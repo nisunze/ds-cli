@@ -1,6 +1,7 @@
 //! Detached native host adapter; no Network computation is linked here.
 mod captured;
 mod design_snapshot;
+mod grid;
 pub use captured::{CapturedNetworkClient, NetworkEnginePin};
 pub use design_snapshot::{
     design_snapshot_engine_pin, process_design_snapshot, DesignSnapshotEnginePin,
@@ -17,6 +18,7 @@ use ds_network_contracts::{
         MAX_NATIVE_LV_INPUT_BYTES, MAX_NATIVE_LV_OUTPUT_BYTES,
     },
 };
+pub use grid::GridOutcome;
 use sha2::{Digest, Sha256};
 use std::{
     ffi::OsString,
@@ -33,15 +35,18 @@ const TASK_TIMEOUT: Duration = Duration::from_secs(3600);
 pub struct NetworkFailure {
     pub code: &'static str,
     pub message: String,
-    pub owner_error: Option<NativeLvError>,
+    pub owner_error: Option<Box<NativeLvError>>,
     pub owner_code: Option<String>,
+    pub owner_detail: Option<Box<serde_json::Value>>,
+    pub owner_remedy: Option<Box<str>>,
+    pub owner_invalid_input: Option<bool>,
 }
 impl NetworkFailure {
     pub fn code(&self) -> &'static str {
         self.code
     }
     pub fn owner_error(&self) -> Option<&NativeLvError> {
-        self.owner_error.as_ref()
+        self.owner_error.as_deref()
     }
     pub fn owner_code(&self) -> Option<&str> {
         self.owner_code.as_deref()
@@ -52,14 +57,20 @@ impl NetworkFailure {
             message: message.into(),
             owner_error: None,
             owner_code: None,
+            owner_detail: None,
+            owner_remedy: None,
+            owner_invalid_input: None,
         }
     }
     fn native(error: NativeLvError) -> Self {
         Self {
             code: error.code(),
             message: error.to_string(),
-            owner_error: Some(error),
+            owner_error: Some(Box::new(error)),
             owner_code: None,
+            owner_detail: None,
+            owner_remedy: None,
+            owner_invalid_input: None,
         }
     }
 }
@@ -174,11 +185,11 @@ fn process_lv_captured(
         ));
     }
     if !completed.succeeded() {
-        return Err(read_refusal(&completed.stdout, &identity)?);
+        return Err(read_refusal(&completed.stdout, identity)?);
     }
     let receipt: NetworkReceiptV1 = serde_json::from_str(&completed.stdout)
         .map_err(|e| NetworkFailure::new("network_receipt_invalid", e.to_string()))?;
-    let cancelled = validate_receipt(&receipt, &identity, &input_sha256, expected_result_schema)?;
+    let cancelled = validate_receipt(&receipt, identity, &input_sha256, expected_result_schema)?;
     let om = fs::symlink_metadata(&output)
         .map_err(|e| NetworkFailure::new("network_result_invalid", e.to_string()))?;
     if !om.is_dir() || om.file_type().is_symlink() {
@@ -211,7 +222,7 @@ fn process_lv_captured(
     }
     let result: NativeLvResultV1 = serde_json::from_slice(&bytes)
         .map_err(|e| NetworkFailure::new("network_result_invalid", e.to_string()))?;
-    validate_result(&result, &request, &identity)?;
+    validate_result(&result, &request, identity)?;
     if digest_file(
         &request_path,
         MAX_NATIVE_LV_INPUT_BYTES as u64,
@@ -445,6 +456,10 @@ fn read_refusal(bytes: &str, identity: &EngineIdentity) -> Result<NetworkFailure
         || refusal.code.is_empty()
         || refusal.code.len() > 128
         || refusal.error.len() > 4096
+        || refusal
+            .remedy
+            .as_ref()
+            .is_some_and(|s| s.len() > MAX_IDENTITY_BYTES)
         || !same_identity(&refusal.engine_identity, identity)?
     {
         return Err(NetworkFailure::new(
@@ -457,6 +472,9 @@ fn read_refusal(bytes: &str, identity: &EngineIdentity) -> Result<NetworkFailure
         message: refusal.error,
         owner_error: None,
         owner_code: Some(refusal.code),
+        owner_detail: refusal.detail.map(Box::new),
+        owner_remedy: refusal.remedy.map(String::into_boxed_str),
+        owner_invalid_input: refusal.invalid_input,
     })
 }
 fn static_code(code: &str) -> &'static str {

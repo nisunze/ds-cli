@@ -55,6 +55,34 @@ pre-extraction byte fixtures and adversarial child fixtures. Ignored acceptance
 tests are run with their required owner/fixture paths; an ordinary test command
 that skips them is not execution proof. The supervisor's owning tests cover
 completion, cancellation, deadlines, input blocking, output limits and reaping.
+
+The same captured client admits Grid query, cheap manifest inspection and
+publication facts through their exact Network contract capabilities. Each call
+supplies opaque package bytes and, when applicable, a typed prepared request.
+The receipt binds request bytes for query/publication and package bytes for
+manifest inspection. The client checks the fixed `query.json`, `manifest.json`
+or `publication.json` artifact, complete byte count/digest, exact captured
+identity, unchanged staged inputs and executable, and the result's source pins.
+It retains complete owner results and bounded progress lines without decoding
+the package or recalculating engineering in the host.
+
+Manifest inspection must retain `decoded: false`: reading its manifest does not
+validate tables or package members. Publication's `source_revision_id` remains
+an owning fact; library/cache identity may hash exact package bytes rather than
+the authored geometry revision. Host authentication and publication effects
+remain outside the executable. Query refusals retain the exact owner code,
+structured detail, remedy and invalid-input classification. Cancelled Grid
+results and responses that arrive after cancellation cannot be admitted.
+
+The explicit `grid_boundary` acceptance runs the real schema-5 fixture through
+all three operations and compares exact prior owner artifact bytes. Adversarial
+executables exercise source/revision/operation mismatch, corrupt receipts and
+artifacts, changed input, symlink output, absent capabilities and cancellation.
+The owning host trace admits only characterized anonymous Rust exec IPC and
+counts outgoing calls separately; the computation executable retains its strict
+zero-network-syscall requirement. A socket control must demonstrate that the
+trace detects prohibited network attempts.
+
 The captured-selection acceptance moves an active pointer between two fixture
 executables, verifies two tasks add zero probes, verifies resume probes only the
 retained executable, and proves a corrupt retained digest refuses before probing.

@@ -61,7 +61,7 @@ impl CapturedNetworkClient {
         let identity = &self.identity;
         let executable_sha256 = &self.executable_sha256;
         let development_override = self.development_override;
-        admit_design_identity(&identity)?;
+        admit_design_identity(identity)?;
         let width = identity.runtime.internal_worker_threads;
         let input_sha256 = digest_bytes(&input);
         let metadata = fs::symlink_metadata(scratch)
@@ -104,13 +104,13 @@ impl CapturedNetworkClient {
             ));
         }
         if !completed.succeeded() {
-            return Err(read_refusal(&completed.stdout, &identity)?);
+            return Err(read_refusal(&completed.stdout, identity)?);
         }
         let receipt: NetworkReceiptV1 = serde_json::from_str(&completed.stdout)
             .map_err(|e| NetworkFailure::new("network_receipt_invalid", e.to_string()))?;
         if receipt.schema != "ds.network.task-result/v1"
             || receipt.input_sha256 != input_sha256
-            || !same_identity(&receipt.engine_identity, &identity)?
+            || !same_identity(&receipt.engine_identity, identity)?
             || receipt.artifact.file != "output.json"
             || receipt.artifact.schema != DESIGN_SNAPSHOT_OUTPUT_SCHEMA_V1
             || receipt.artifact.byte_count == 0
