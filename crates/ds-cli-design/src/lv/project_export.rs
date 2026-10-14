@@ -6,9 +6,9 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
-use ds_network::network::native_fast_lv::{
-    NativeFastLvError, encode_native_fast_lv_request_from_layers,
-    encode_native_fast_lv_request_with_config,
+use ds_network::network::lv_processing::{
+    NativeLvError, encode_native_lv_request_from_layers,
+    encode_native_lv_request_with_config,
 };
 use serde_json::{Value, json};
 
@@ -275,20 +275,20 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         if let Some(receipt) = captured_printing_receipt(&config.result().document, project) {
             let context = receipt.printing_context_for_project(project).map_err(|e| Failure::internal("fast_lv_input_invalid", e))?;
             let bytes = serde_json::to_vec(&receipt).map_err(|e| Failure::internal("fast_lv_input_invalid",e.to_string()))?;
-            if bytes.len() <= ds_network::network::native_fast_lv::MAX_NATIVE_FAST_LV_INPUT_BYTES {
+            if bytes.len() <= ds_network::network::lv_processing::MAX_NATIVE_LV_INPUT_BYTES {
                 let path = output_path.with_extension("printing-receipt.json");
                 write_new(&path,&bytes,&PROJECT_REQUEST)?;
                 printing_label = context["project"].as_str().map(str::to_owned);
                 printing_receipt = Some(json!({"path":path,"sha256":sha256(&bytes),"bytes":bytes.len(),"sheets_sha256":receipt.sheets_sha256}));
             }
         }
-        encode_native_fast_lv_request_with_config(
+        encode_native_lv_request_with_config(
             snapshot.transformer_name(),
             &process_layers,
             &sheets,
         )
     } else {
-        encode_native_fast_lv_request_from_layers(snapshot.transformer_name(), &process_layers)
+        encode_native_lv_request_from_layers(snapshot.transformer_name(), &process_layers)
     }
     .map_err(map_owner_error)?;
     let request_sha256 = sha256(&request);
@@ -366,7 +366,7 @@ fn carry_projected_nature(
     Ok(())
 }
 
-fn map_owner_error(error: NativeFastLvError) -> Failure {
+fn map_owner_error(error: NativeLvError) -> Failure {
     let code = error.code();
     match code {
         "fast_lv_input_too_large" => Failure::invalid(code, error.to_string())
@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn owner_builds_the_request_and_the_cli_does_not_shape_engine_fields() {
-        let bytes = encode_native_fast_lv_request_from_layers("T-1", &layers()).unwrap();
+        let bytes = encode_native_lv_request_from_layers("T-1", &layers()).unwrap();
         let request: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(request["schema"], "ds.fast-lv.request/v1");
         assert_eq!(request["jobs"][0]["config_dfs"], json!({}));
@@ -535,7 +535,7 @@ mod tests {
         let receipt = captured_printing_receipt(&configuration, "project").unwrap();
         let sheets: BTreeMap<String, Value> =
             serde_json::from_value(configuration["sheets"].clone()).unwrap();
-        let encoded = encode_native_fast_lv_request_with_config("T-1", &layers(), &sheets).unwrap();
+        let encoded = encode_native_lv_request_with_config("T-1", &layers(), &sheets).unwrap();
         let request: Value = serde_json::from_slice(&encoded).unwrap();
         assert_eq!(request["jobs"][0]["config_dfs"], configuration["sheets"]);
         for (key, expected) in sheets {

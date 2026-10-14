@@ -137,6 +137,8 @@ ds-grid-composition = { path = "../ds-network/crates/ds-grid-composition" }
 ds-grid-tasks = { path = "../ds-network/crates/ds-grid-tasks" }
 ds-io = { path = "../ds-network/crates/ds-io" }
 ds-network = { path = "../ds-network/crates/ds-network", features = ["arrow_ipc"] }
+ds-network-contracts = { path = "../ds-network/crates/ds-network-contracts" }
+ds-network-client = { path = "../ds-command-kernel/crates/ds-network-client" }
 
 [profile.release]
 opt-level = "s"

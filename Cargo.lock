@@ -1077,6 +1077,8 @@ dependencies = [
  "ds-geo",
  "ds-io",
  "ds-network",
+ "ds-network-client",
+ "ds-network-contracts",
  "lopdf",
  "serde_json",
  "sha2 0.10.9",
@@ -1145,7 +1147,9 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
  "ds-command-kernel",
+ "libc",
  "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1491,7 +1495,8 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "ds-command-kernel",
- "ds-network",
+ "ds-network-client",
+ "ds-network-contracts",
  "ds-solar-contracts",
  "ds-solar-io",
  "ds-solar-process",
@@ -1623,6 +1628,7 @@ dependencies = [
  "ds-graph",
  "ds-grid-model",
  "ds-grid-physics",
+ "ds-network-contracts",
  "ds-profile",
  "regex",
  "schemars",
@@ -1760,6 +1766,7 @@ dependencies = [
  "ds-geo-lite",
  "ds-graph",
  "ds-io",
+ "ds-network-contracts",
  "ds-profile",
  "flate2",
  "rayon",
@@ -1768,6 +1775,33 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror",
  "time",
+]
+
+[[package]]
+name = "ds-network-client"
+version = "0.1.0"
+dependencies = [
+ "ds-cli-contract",
+ "ds-cli-exec",
+ "ds-network-contracts",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "ds-network-contracts"
+version = "0.1.0"
+dependencies = [
+ "ds-grid-model",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror",
 ]
 
 [[package]]
@@ -1840,10 +1874,10 @@ name = "ds-report-host"
 version = "0.1.0"
 dependencies = [
  "ds-command-kernel",
- "ds-project-data",
  "ds-layer-store",
- "serde",
+ "ds-project-data",
  "rustix",
+ "serde",
  "serde_json",
  "sha2 0.10.9",
 ]

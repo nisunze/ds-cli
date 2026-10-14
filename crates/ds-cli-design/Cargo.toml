@@ -18,6 +18,8 @@ ds-cli-auth = { workspace = true }
 # calls; the CLI adds no engineering logic.
 ds-geo = { workspace = true }
 ds-network = { workspace = true }
+ds-network-contracts = { workspace = true }
+ds-network-client = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 zip = { workspace = true }

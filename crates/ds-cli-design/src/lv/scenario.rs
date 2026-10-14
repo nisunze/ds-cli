@@ -11,7 +11,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ds_cli_contract::{Failure, Inputs};
-use ds_network::network::native_fast_lv::NativeFastLvJobV1;
+use ds_network::network::lv_processing::NativeLvJobV1;
 use serde_json::{Map, Value, json};
 
 /// The latest year after commissioning a run may check.
@@ -119,7 +119,7 @@ impl Scenario {
     /// `load` keys each `--load` rewrote. A `--load` category that no job's
     /// `cust_category` (or voltage-drop `category_loads`) defines is refused:
     /// the engine would never read it.
-    pub(super) fn apply(&self, jobs: &mut [NativeFastLvJobV1]) -> Result<Vec<usize>, Failure> {
+    pub(super) fn apply(&self, jobs: &mut [NativeLvJobV1]) -> Result<Vec<usize>, Failure> {
         let mut rewritten = vec![0usize; self.loads.len()];
         let mut defined = vec![false; self.loads.len()];
         for job in jobs.iter_mut() {
@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     fn the_scenario_reaches_every_place_the_method_reads_a_load() {
-        let mut job: NativeFastLvJobV1 = serde_json::from_value(json!({
+        let mut job: NativeLvJobV1 = serde_json::from_value(json!({
             "transformer_name": "T1",
             "gdfs": { "customers": { "type": "FeatureCollection", "features": [
                 { "type": "Feature", "geometry": null, "properties": { "load": "Residential, 250" } },

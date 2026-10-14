@@ -21,6 +21,10 @@ use std::ffi::{OsStr, OsString};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
 
 use ds_cli_contract::outcome::Failure;
@@ -28,6 +32,7 @@ use ds_cli_contract::spec::Availability;
 use serde_json::json;
 
 pub mod addons;
+mod process_tree;
 
 /// Cap on what a called binary may return. Beyond this the output is
 /// truncated and the invocation refused: a result larger than this is not a
@@ -96,6 +101,31 @@ impl CapturedExternal {
     ) -> Result<Completed, Failure> {
         self.owner
             .call_at(&self.executable, subcommand, args, timeout)
+    }
+
+    /// Invoke one fixed owner task under its host CPU and cancellation budget.
+    pub fn call_cancelled(
+        &self,
+        subcommand: &'static str,
+        args: &[OsString],
+        timeout: Duration,
+        workers: usize,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<Completed, Failure> {
+        if workers == 0 {
+            return Err(Failure::invalid(
+                "callee_worker_budget_invalid",
+                "the native worker budget must be positive",
+            ));
+        }
+        self.owner.call_at_supervised(
+            &self.executable,
+            subcommand,
+            args,
+            timeout,
+            Some(workers),
+            cancel,
+        )
     }
 
     pub fn call_json(
@@ -241,78 +271,184 @@ impl External {
         args: &[OsString],
         timeout: Duration,
     ) -> Result<Completed, Failure> {
+        self.call_at_supervised(executable, subcommand, args, timeout, None, &|| false)
+    }
+    fn call_at_supervised(
+        &self,
+        executable: &Path,
+        subcommand: &'static str,
+        args: &[OsString],
+        timeout: Duration,
+        workers: Option<usize>,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<Completed, Failure> {
+        if cancel() {
+            return Err(Failure::failed(
+                "callee_cancelled",
+                format!("`{}` was cancelled before launch", self.name),
+            ));
+        }
         let mut command = Command::new(executable);
         command
             .arg(subcommand)
             .args(args)
-            .stdin(Stdio::null())
+            .stdin(if workers.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-
+        if let Some(workers) = workers {
+            command.env_clear();
+            for key in [
+                "SystemRoot",
+                "WINDIR",
+                "COMSPEC",
+                "TEMP",
+                "TMP",
+                "TMPDIR",
+                "LANG",
+                "LC_ALL",
+                "TZ",
+            ] {
+                if let Some(value) = std::env::var_os(key) {
+                    command.env(key, value);
+                }
+            }
+            let workers = workers
+                .min(std::thread::available_parallelism().map_or(1, usize::from))
+                .max(1)
+                .to_string();
+            for key in [
+                "DS_NETWORK_WORKER_THREADS",
+                "RAYON_NUM_THREADS",
+                "OMP_NUM_THREADS",
+                "OPENBLAS_NUM_THREADS",
+                "MKL_NUM_THREADS",
+                "NUMEXPR_NUM_THREADS",
+                "VECLIB_MAXIMUM_THREADS",
+            ] {
+                command.env(key, &workers);
+            }
+        }
+        process_tree::Tree::prepare(&mut command);
         let mut child = command.spawn().map_err(|error| {
             Failure::unavailable(
                 self.missing_code,
                 format!("`{}` could not be started", self.name),
             )
             .remedy(self.remedy)
-            .detail(json!({ "detail": error.kind().to_string() }))
+            .detail(json!({"detail":error.kind().to_string()}))
         })?;
-
-        // Drain both pipes on their own threads. A callee that fills a pipe
-        // while we are blocked waiting on the other one deadlocks, and
-        // `task-schemas` is already tens of kilobytes.
-        let stdout = child.stdout.take();
-        let stderr = child.stderr.take();
-        let stdout_reader = std::thread::spawn(move || read_bounded(stdout));
-        let stderr_reader = std::thread::spawn(move || read_bounded(stderr));
-
-        let deadline = Instant::now() + timeout;
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break Some(status),
-                Ok(None) => {
-                    if Instant::now() >= deadline {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        break None;
-                    }
-                    std::thread::sleep(POLL);
-                }
-                Err(error) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    let _ = stdout_reader.join();
-                    let _ = stderr_reader.join();
-                    return Err(Failure::internal(
-                        "callee_wait_failed",
-                        format!("could not wait for `{}`", self.name),
-                    )
-                    .detail(json!({ "detail": error.kind().to_string() })));
-                }
+        let mut tree = match process_tree::Tree::attach(&mut child) {
+            Ok(tree) => tree,
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(Failure::internal(
+                    "callee_supervision_failed",
+                    "could not establish native process-tree ownership",
+                )
+                .detail(json!({"detail":error.kind().to_string()})));
             }
         };
-
+        let mut control = child.stdin.take();
+        let mut cancellation_started = None::<Instant>;
+        let overflow = Arc::new(AtomicBool::new(false));
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        let stdout_overflow = Arc::clone(&overflow);
+        let stderr_overflow = Arc::clone(&overflow);
+        let stdout_reader =
+            std::thread::spawn(move || read_bounded_signal(stdout, &stdout_overflow));
+        let stderr_reader =
+            std::thread::spawn(move || read_bounded_signal(stderr, &stderr_overflow));
+        enum Stop {
+            Done(std::process::ExitStatus),
+            Cancelled,
+            Deadline,
+            Overflow,
+            Wait(std::io::Error),
+        }
+        let started = Instant::now();
+        let stop = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break Stop::Done(status),
+                Ok(None) => {}
+                Err(error) => break Stop::Wait(error),
+            }
+            if cancel() && cancellation_started.is_none() {
+                if let Some(pipe) = control.as_mut() {
+                    let _ = pipe.write_all(
+                        b"{\"schema\":\"ds.network.control/v1\",\"operation\":\"cancel\"}\n",
+                    );
+                    let _ = pipe.flush();
+                }
+                cancellation_started = Some(Instant::now());
+            }
+            if cancellation_started
+                .is_some_and(|started| started.elapsed() >= Duration::from_millis(300))
+            {
+                break Stop::Cancelled;
+            }
+            if overflow.load(Ordering::Acquire) {
+                break Stop::Overflow;
+            }
+            if started.elapsed() >= timeout {
+                break Stop::Deadline;
+            }
+            std::thread::sleep(POLL);
+        };
+        // Descendants must close their pipes before either drain can be joined.
+        tree.terminate();
+        drop(control);
+        let waited = match &stop {
+            Stop::Done(status) => Ok(*status),
+            _ => child.wait(),
+        };
         let (stdout, stdout_truncated) = stdout_reader.join().unwrap_or_default();
         let (stderr, stderr_truncated) = stderr_reader.join().unwrap_or_default();
-
-        let Some(status) = status else {
-            return Err(Failure::failed(
-                "callee_timed_out",
-                format!(
-                    "`{}` did not finish within {}s",
-                    self.name,
-                    timeout.as_secs()
-                ),
+        match stop {
+            Stop::Cancelled => {
+                return Err(Failure::failed(
+                    "callee_cancelled",
+                    format!("`{}` was cancelled", self.name),
+                ));
+            }
+            Stop::Deadline => {
+                return Err(Failure::failed(
+                    "callee_timed_out",
+                    format!(
+                        "`{}` did not finish within {}s",
+                        self.name,
+                        timeout.as_secs()
+                    ),
+                )
+                .remedy("retry with a smaller input, or investigate the engine")
+                .detail(json!({"binary":self.name,"timeout_s":timeout.as_secs()})));
+            }
+            Stop::Wait(error) => {
+                return Err(Failure::internal(
+                    "callee_wait_failed",
+                    format!("could not wait for `{}`", self.name),
+                )
+                .detail(json!({"detail":error.kind().to_string()})));
+            }
+            _ => {}
+        }
+        let status = waited.map_err(|error| {
+            Failure::internal(
+                "callee_wait_failed",
+                format!("could not reap `{}`", self.name),
             )
-            .remedy("retry with a smaller input, or investigate the engine")
-            .detail(json!({ "binary": self.name, "timeout_s": timeout.as_secs() })));
-        };
-
+            .detail(json!({"detail":error.kind().to_string()}))
+        })?;
         Ok(Completed {
             status: status.code(),
             stdout,
             stderr,
-            truncated: stdout_truncated || stderr_truncated,
+            truncated: stdout_truncated || stderr_truncated || overflow.load(Ordering::Acquire),
         })
     }
 
@@ -544,6 +680,10 @@ fn is_executable(path: &Path) -> bool {
 
 /// Read a stream to the byte bound, reporting whether it was cut short.
 fn read_bounded(stream: Option<impl Read>) -> (String, bool) {
+    read_bounded_signal(stream, &AtomicBool::new(false))
+}
+
+fn read_bounded_signal(stream: Option<impl Read>, overflow: &AtomicBool) -> (String, bool) {
     let Some(mut stream) = stream else {
         return (String::new(), false);
     };
@@ -557,6 +697,7 @@ fn read_bounded(stream: Option<impl Read>) -> (String, bool) {
                 let room = MAX_OUTPUT_BYTES.saturating_sub(buffer.len());
                 if room == 0 {
                     truncated = true;
+                    overflow.store(true, Ordering::Release);
                     // Keep draining so the callee is never blocked on a full
                     // pipe; we simply stop keeping the bytes.
                     continue;
@@ -564,6 +705,7 @@ fn read_bounded(stream: Option<impl Read>) -> (String, bool) {
                 buffer.extend_from_slice(&chunk[..read.min(room)]);
                 if read > room {
                     truncated = true;
+                    overflow.store(true, Ordering::Release);
                 }
             }
             Err(_) => break,
@@ -770,3 +912,158 @@ mod solar_worker;
 pub use solar_worker::start_solar_project_sync;
 mod design_worker;
 pub use design_worker::start_design_project_process;
+
+#[cfg(test)]
+mod supervised_tests {
+    use super::*;
+    static OWNER: External = External {
+        name: "native-fixture",
+        env_override: "DS_EXEC_NATIVE_FIXTURE_UNUSED",
+        owner: "ds-cli-exec-tests",
+        remedy: "repair fixture",
+        missing_code: "fixture_missing",
+    };
+    fn captured() -> CapturedExternal {
+        OWNER
+            .capture_path(Some(std::env::current_exe().unwrap()))
+            .unwrap()
+    }
+    fn fixture(name: &'static str) -> Vec<OsString> {
+        vec![
+            format!("supervised_tests::{name}").into(),
+            "--ignored".into(),
+            "--nocapture".into(),
+        ]
+    }
+    fn prompt(started: Instant) {
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "stopped task retained inherited pipes"
+        );
+    }
+    #[test]
+    fn supervised_deadline_reaps_native_child() {
+        let started = Instant::now();
+        let failure = captured()
+            .call_cancelled(
+                "--exact",
+                &fixture("fixture_sleep"),
+                Duration::from_millis(80),
+                1,
+                &|| false,
+            )
+            .err()
+            .expect("stalled fixture must timeout");
+        assert_eq!(failure.code(), "callee_timed_out");
+        prompt(started);
+    }
+    #[test]
+    fn supervised_cancellation_reaps_native_child() {
+        let started = Instant::now();
+        let cancel = || started.elapsed() >= Duration::from_millis(80);
+        let failure = captured()
+            .call_cancelled(
+                "--exact",
+                &fixture("fixture_sleep"),
+                Duration::from_secs(10),
+                1,
+                &cancel,
+            )
+            .err()
+            .expect("cancelled fixture must stop");
+        assert_eq!(failure.code(), "callee_cancelled");
+        prompt(started);
+    }
+    #[test]
+    fn completed_leader_reaps_descendant_holding_its_pipes() {
+        let started = Instant::now();
+        let done = captured()
+            .call_cancelled(
+                "--exact",
+                &fixture("fixture_descendant"),
+                Duration::from_secs(2),
+                1,
+                &|| false,
+            )
+            .unwrap();
+        assert!(done.succeeded());
+        assert!(done.stdout.contains("descendant-launched"));
+        prompt(started);
+    }
+    #[test]
+    fn output_overflow_stops_tree_and_retains_completed_contract() {
+        let started = Instant::now();
+        let done = captured()
+            .call_cancelled(
+                "--exact",
+                &fixture("fixture_overflow"),
+                Duration::from_secs(10),
+                1,
+                &|| false,
+            )
+            .unwrap();
+        assert!(done.truncated);
+        assert!(done.stdout.len() <= MAX_OUTPUT_BYTES);
+        assert!(done.stderr.len() <= MAX_OUTPUT_BYTES);
+        prompt(started);
+    }
+    #[test]
+    fn host_worker_budget_caps_thread_pools() {
+        let done = captured()
+            .call_cancelled(
+                "--exact",
+                &fixture("fixture_budget"),
+                Duration::from_secs(2),
+                usize::MAX,
+                &|| false,
+            )
+            .unwrap();
+        assert!(done.succeeded());
+        let width = std::thread::available_parallelism().map_or(1, usize::from);
+        assert!(done.stdout.contains(&format!("worker-width={width}")));
+    }
+    #[test]
+    #[ignore]
+    fn fixture_sleep() {
+        std::thread::sleep(Duration::from_secs(30));
+    }
+    #[test]
+    #[ignore]
+    fn fixture_descendant() {
+        let _child = Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .args(fixture("fixture_sleep"))
+            .spawn()
+            .unwrap();
+        println!("descendant-launched");
+        std::thread::sleep(Duration::from_millis(80));
+    }
+    #[test]
+    #[ignore]
+    fn fixture_overflow() {
+        let stdout = std::thread::spawn(|| {
+            let _ = std::io::stdout().write_all(&vec![b'x'; MAX_OUTPUT_BYTES + 65536]);
+        });
+        let _ = std::io::stderr().write_all(&vec![b'y'; MAX_OUTPUT_BYTES + 65536]);
+        let _ = stdout.join();
+        std::thread::sleep(Duration::from_secs(30));
+    }
+    #[test]
+    #[ignore]
+    fn fixture_budget() {
+        let width = std::env::var("DS_NETWORK_WORKER_THREADS").unwrap();
+        for key in [
+            "RAYON_NUM_THREADS",
+            "OMP_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+            "VECLIB_MAXIMUM_THREADS",
+        ] {
+            assert_eq!(std::env::var(key).unwrap(), width);
+        }
+        assert!(std::env::var_os("GOOGLE_APPLICATION_CREDENTIALS").is_none());
+        assert!(std::env::var_os("LD_PRELOAD").is_none());
+        println!("worker-width={width}");
+    }
+}

@@ -5,13 +5,10 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
-use ds_network::network::native_fast_lv::{
-    MAX_NATIVE_FAST_LV_INPUT_BYTES, NativeFastLvError, decode_native_fast_lv_request,
-    encode_native_fast_lv_result, process_native_fast_lv,
-};
+use ds_network_contracts::lv_processing::{MAX_NATIVE_LV_INPUT_BYTES, NativeLvError};
 use serde_json::{Value, json};
 
 use super::artifact::{RESULT, ensure_absent, sha256, write_new};
@@ -47,6 +44,9 @@ pub static COMMAND: Command = Command {
         runnable: false,
     }],
     refusals: &[
+        Refusal {code:"network_engine_missing",when:"the compatible native Network engine is absent",remedy:"install the matching Network engine addon"},
+        Refusal {code:"network_engine_incompatible",when:"the captured Network executable lacks the required protocol or capability",remedy:"install the compatible Network engine"},
+        Refusal {code:"network_serialization_incompatible",when:"the captured engine differs from this consumer's preserved JSON byte profile",remedy:"install the insertion-order Network component for this host"},
         Refusal {
             code: "fast_lv_source_not_found",
             when: "--input is absent, not a regular file, or cannot be read",
@@ -96,7 +96,7 @@ pub static COMMAND: Command = Command {
     reference: Some("docs/reference/design.md"),
     search: &[],
     requires: Requires::Server,
-    availability: || Availability::Available,
+    availability: || ds_network_client::available(),
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -106,9 +106,24 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let input = bounded_read(&input_path)?;
     let input_sha256 = sha256(&input);
-    let request = decode_native_fast_lv_request(&input).map_err(map_owner_error)?;
-    let runtime = ds_network::execution_runtime();
-    let result = process_native_fast_lv(request).map_err(map_owner_error)?;
+    let workers = std::thread::available_parallelism().map_or(1, usize::from);
+    let scratch = std::env::temp_dir();
+    let outcome = ds_network_client::process_lv_with_order(
+        &input,
+        workers,
+        &scratch,
+        &|| false,
+        ds_network_contracts::engine::JsonObjectOrder::Insertion,
+    )
+    .map_err(map_network_error)?;
+    if outcome.cancelled {
+        return Err(Failure::failed(
+            "network_task_cancelled",
+            "The Network engine did not complete the LV processing batch.",
+        ));
+    }
+    let runtime = outcome.runtime;
+    let result = outcome.result;
     let jobs = result.jobs.len();
     let succeeded = result.jobs.iter().filter(|job| job.ok).count();
     let failed = jobs - succeeded;
@@ -124,8 +139,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             })
         })
         .collect::<Vec<_>>();
-    let engine_core_version = result.engine_core_version;
-    let output = encode_native_fast_lv_result(&result).map_err(map_owner_error)?;
+    let engine_core_version = result.engine_core_version.clone();
+    let output = outcome.bytes;
     let result_sha256 = sha256(&output);
     write_new(&output_path, &output, &RESULT)?;
 
@@ -137,6 +152,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "engine_core_version": engine_core_version,
         "execution_environment": runtime.environment.as_str(),
         "rayon_worker_threads": runtime.internal_worker_threads,
+        "engine_identity": outcome.identity,
+        "executable_sha256": outcome.executable_sha256,
         "jobs": jobs,
         "succeeded": succeeded,
         "failed": failed,
@@ -180,15 +197,15 @@ pub(super) fn bounded_read(path: &Path) -> Result<Vec<u8>, Failure> {
         )
         .remedy("Pass a readable local ds.fast-lv.request/v1 file."));
     }
-    if metadata.len() > MAX_NATIVE_FAST_LV_INPUT_BYTES as u64 {
-        return Err(map_owner_error(NativeFastLvError::InputTooLarge {
+    if metadata.len() > MAX_NATIVE_LV_INPUT_BYTES as u64 {
+        return Err(map_owner_error(NativeLvError::InputTooLarge {
             actual: metadata.len().try_into().unwrap_or(usize::MAX),
-            maximum: MAX_NATIVE_FAST_LV_INPUT_BYTES,
+            maximum: MAX_NATIVE_LV_INPUT_BYTES,
         }));
     }
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
     Read::by_ref(&mut file)
-        .take((MAX_NATIVE_FAST_LV_INPUT_BYTES + 1) as u64)
+        .take((MAX_NATIVE_LV_INPUT_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
         .map_err(|error| {
             Failure::invalid(
@@ -196,26 +213,42 @@ pub(super) fn bounded_read(path: &Path) -> Result<Vec<u8>, Failure> {
                 format!("Could not read the LV request: {error}"),
             )
         })?;
-    if bytes.len() > MAX_NATIVE_FAST_LV_INPUT_BYTES {
-        return Err(map_owner_error(NativeFastLvError::InputTooLarge {
+    if bytes.len() > MAX_NATIVE_LV_INPUT_BYTES {
+        return Err(map_owner_error(NativeLvError::InputTooLarge {
             actual: bytes.len(),
-            maximum: MAX_NATIVE_FAST_LV_INPUT_BYTES,
+            maximum: MAX_NATIVE_LV_INPUT_BYTES,
         }));
     }
     Ok(bytes)
 }
 
-pub(super) fn map_owner_error(error: NativeFastLvError) -> Failure {
-    let code = error.code();
+pub(super) fn map_owner_error(error: NativeLvError) -> Failure {
+    map_owner_message(error.code(), error.to_string())
+}
+fn map_owner_message(code: &'static str, message: String) -> Failure {
     match code {
         "fast_lv_input_too_large"
         | "fast_lv_input_invalid"
         | "fast_lv_schema_unsupported"
-        | "fast_lv_bound_refused" => Failure::invalid(code, error.to_string()),
-        "fast_lv_output_too_large" => Failure::failed(code, error.to_string())
+        | "fast_lv_bound_refused" => Failure::invalid(code, message),
+        "fast_lv_output_too_large" => Failure::failed(code, message)
             .remedy("Split the request into smaller batches; results are never truncated."),
-        "fast_lv_result_encoding_failed" => Failure::internal(code, error.to_string()),
-        _ => Failure::internal("fast_lv_result_encoding_failed", error.to_string()),
+        "fast_lv_result_encoding_failed" => Failure::internal(code, message),
+        _ => Failure::internal("fast_lv_result_encoding_failed", message),
+    }
+}
+fn map_network_error(error: ds_network_client::NetworkFailure) -> Failure {
+    if let Some(owner) = error.owner_error() {
+        return map_owner_message(owner.code(), owner.to_string());
+    }
+    if error.owner_code().is_some() && error.code().starts_with("fast_lv_") {
+        return map_owner_message(error.code(), error.to_string());
+    }
+    if error.code() == "network_engine_missing" {
+        Failure::unavailable(error.code(), error.to_string())
+            .remedy("Install the compatible Network engine beside ds.")
+    } else {
+        Failure::failed(error.code(), error.to_string())
     }
 }
 

@@ -7,8 +7,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::report_export::jcs::layers_content_digest;
-use ds_network::network::native_fast_lv::{
-    MAX_NATIVE_FAST_LV_INPUT_BYTES, MAX_NATIVE_FAST_LV_OUTPUT_BYTES, project_native_fast_lv_result,
+use ds_network::network::lv_processing::{
+    MAX_NATIVE_LV_INPUT_BYTES, MAX_NATIVE_LV_OUTPUT_BYTES, project_native_lv_result,
 };
 use serde_json::{Value, json};
 
@@ -228,8 +228,8 @@ fn run_expected_project(inputs: &Inputs, expected_project: Option<&str>) -> Resu
         &read(inputs.require("process-receipt")?, 1024 * 1024)?,
         "design.lv.process",
     )?;
-    let input = read(inputs.require("input")?, MAX_NATIVE_FAST_LV_INPUT_BYTES)?;
-    let result = read(inputs.require("result")?, MAX_NATIVE_FAST_LV_OUTPUT_BYTES)?;
+    let input = read(inputs.require("input")?, MAX_NATIVE_LV_INPUT_BYTES)?;
+    let result = read(inputs.require("result")?, MAX_NATIVE_LV_OUTPUT_BYTES)?;
     let transformer = inputs.require("transformer")?;
     let lane = inputs.require("lane")?;
     let (project_id, base_version, source_content_digest) =
@@ -240,7 +240,7 @@ fn run_expected_project(inputs: &Inputs, expected_project: Option<&str>) -> Resu
         ));
     }
     let projection =
-        project_native_fast_lv_result(&input, &result, transformer).map_err(|error| {
+        project_native_lv_result(&input, &result, transformer).map_err(|error| {
             Failure::invalid("fast_lv_publication_invalid", error.to_string())
                 .remedy("Process the unchanged fenced source again and inspect every job outcome.")
         })?;
