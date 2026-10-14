@@ -12,16 +12,16 @@
 //! single most expensive call in the product and would undo the reason `ds`
 //! exists.
 //!
-//! Nothing here is copied. The descriptors are read from the engine compiled
-//! into this binary, so they cannot be stale relative to what it will do.
+//! Nothing here is copied. Intentional discovery reads the captured Network
+//! executable; compatible addon updates do not require rebuilding this CLI.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::{
-    ENGINE_VERSION, describe_commands, describe_operations, describe_projections, describe_types,
+use ds_network_contracts::grid_catalog::{
+    GRID_CATALOG_REQUEST_SCHEMA_V1, GridCatalogKind, NativeGridCatalogRequestV1,
 };
 use serde_json::{Value, json};
 
@@ -32,7 +32,7 @@ pub static COMMAND: Command = Command {
     path: &["dsgrid", "describe"],
     contract: 1,
     summary: "List the grid engine's commands, operations, projections and types.",
-    purpose: "Read the compiled engine's catalog. Omit --id for an index; name one entry for parameters, effects and bounded derived type_schemas (fields, required marks, enum tokens, units). more_type_schemas names deferred shapes. Use --kind types --id <type> for fully documented JSON Schema.",
+    purpose: "Read the captured Network engine's catalog. Omit --id for an index; name one entry for parameters, effects and bounded derived type_schemas (fields, required marks, enum tokens, units). more_type_schemas names deferred shapes. Use --kind types --id <type> for fully documented JSON Schema.",
     chapter: Chapter::GridModel,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -61,124 +61,58 @@ pub static COMMAND: Command = Command {
             runnable: true,
         },
     ],
-    refusals: &[Refusal {
-        code: "unknown_descriptor",
-        when: "--id names an entry this engine does not publish",
-        remedy: "run `ds dsgrid describe --kind <kind>` for the ids it does",
-    }],
+    refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &["json schema", "row fields"],
     requires: Requires::Server,
     availability: available,
 };
 
+const OWN_REFUSALS: &[Refusal] = &[Refusal {
+    code: "unknown_descriptor",
+    when: "--id names an entry this engine does not publish",
+    remedy: "run `ds dsgrid describe --kind <kind>` for the ids it does",
+}];
+const REFUSALS: &[Refusal] = &crate::native::extend_refusals::<
+    { OWN_REFUSALS.len() + crate::native::REFUSALS.len() },
+>(OWN_REFUSALS);
+
+/// Metadata-only discovery never starts an addon process.
 fn available() -> Availability {
-    Availability::Available
+    ds_network_client::available()
 }
 
-/// The engine's catalog for one kind. Named here so the mapping from a `ds`
-/// word to an engine function is in one place.
-fn catalog(kind: &str) -> Value {
-    match kind {
-        "commands" => describe_commands(),
-        "projections" => describe_projections(),
-        "types" => describe_types(),
-        _ => describe_operations(),
-    }
+pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let kind = match inputs.value("kind").unwrap_or("operations") {
+        "commands" => GridCatalogKind::Commands,
+        "projections" => GridCatalogKind::Projections,
+        "types" => GridCatalogKind::Types,
+        _ => GridCatalogKind::Operations,
+    };
+    let captured = ds_network_client::CapturedNetworkClient::capture(1, &|| false)
+        .map_err(crate::native::map_failure)?;
+    let scratch = crate::native::scratch()?;
+    let result = captured
+        .grid_catalog(
+            &NativeGridCatalogRequestV1 {
+                schema: GRID_CATALOG_REQUEST_SCHEMA_V1.into(),
+                kind,
+                id: inputs.value("id").map(str::to_string),
+            },
+            scratch.path(),
+            &|| false,
+        )
+        .map_err(crate::native::map_failure)?;
+    Ok(result.result.data)
 }
 
-/// A descriptor's identifier, whichever of the engine's id fields it carries.
-/// The three catalogs do not spell it the same way, and a caller should not
-/// have to know that.
+/// Read the already-admitted descriptor's display identifier.
 fn identifier(entry: &Value) -> Option<&str> {
     entry["operation_id"]
         .as_str()
         .or_else(|| entry["command_id"].as_str())
         .or_else(|| entry["projection_id"].as_str())
         .or_else(|| entry["id"].as_str())
-}
-
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let kind = inputs.value("kind").unwrap_or("operations");
-    let catalog = catalog(kind);
-    let entries = catalog.as_array().cloned().unwrap_or_default();
-
-    let Some(wanted) = inputs.value("id") else {
-        if kind == "types" {
-            // A type has no effect and is never journaled; what locates it is
-            // the operations whose parameters declare it. The index lists the
-            // declared types only: every type they reach is inside their
-            // schema's `$defs` and answers --id too, and listing all of them
-            // would double the index with names nobody starts from.
-            let declared: Vec<&Value> = entries
-                .iter()
-                .filter(|entry| {
-                    entry["declared_by"]
-                        .as_array()
-                        .is_some_and(|operations| !operations.is_empty())
-                })
-                .collect();
-            return Ok(json!({
-                "engine": ENGINE_VERSION,
-                "kind": kind,
-                "entries": declared.iter().map(|entry| json!({
-                    "id": identifier(entry),
-                    "declared_by": entry["declared_by"],
-                    "summary": entry["summary"],
-                })).collect::<Vec<_>>(),
-                "more": {
-                    "next": "ds dsgrid describe --kind types --id <type>",
-                    "nested_types": entries.len() - declared.len(),
-                },
-            }));
-        }
-        return Ok(json!({
-            "engine": ENGINE_VERSION,
-            "kind": kind,
-            "entries": entries.iter().map(|entry| json!({
-                "id": identifier(entry),
-                // The engine spells it `effect_class`; `ds` spells effects
-                // `effect` everywhere else, and a caller reading a `ds`
-                // response should not have to learn a second word for the
-                // same idea at one command.
-                "effect": entry["effect_class"],
-                "journaled": entry["journaled"],
-                "summary": entry["summary"],
-            })).collect::<Vec<_>>(),
-            "more": { "next": "ds dsgrid describe --kind <kind> --id <id>" },
-        }));
-    };
-
-    let found = entries
-        .iter()
-        .find(|entry| identifier(entry) == Some(wanted));
-    let Some(entry) = found else {
-        let known: Vec<&str> = entries.iter().filter_map(identifier).collect();
-        let mut failure = Failure::invalid(
-            "unknown_descriptor",
-            format!("this engine publishes no `{kind}` entry named `{wanted}`"),
-        );
-        match ds_cli_contract::args::nearest(wanted, known.iter().copied()) {
-            Some(suggestion) => failure = failure.remedy(format!("did you mean `{suggestion}`?")),
-            None => {
-                failure = failure.remedy(format!(
-                    "run `ds dsgrid describe --kind {kind}` for the ids it publishes"
-                ))
-            }
-        }
-        // The id list can be long; bound it rather than making a refusal the
-        // largest response in the domain.
-        let (shown, withheld) = crate::package::take(known, 40);
-        return Err(failure
-            .next(format!("ds dsgrid describe --kind {kind}"))
-            .detail(json!({ "ids": shown, "withheld": withheld })));
-    };
-
-    Ok(json!({
-        "engine": ENGINE_VERSION,
-        "kind": kind,
-        "descriptor": entry,
-    }))
 }
 
 /// The string values a schema admits, when it is an enumeration: an `enum`,
