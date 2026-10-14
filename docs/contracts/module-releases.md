@@ -94,6 +94,42 @@ selection, restart recovery or rollback reads an online catalog or launches a
 fresh identity probe. Version directories are retained, so captured old jobs
 continue on their original paths while compatible new jobs capture the new one.
 
+Core owns authorization, runtime state, jobs, receipts and component management;
+Desktop is an optional typed command client. Server execution is a Core background
+mode, not an independent product or component command namespace.
+`ModuleSelectionRecord` reads the existing
+installed-v1 shape and the closed removed-v2 shape from the same `selection.json`.
+`ModuleStore::remove` requires the native lifecycle guard and held generation,
+takes the existing exclusive component/lane lock, increments the generation and
+atomically writes `ds.module-selection/v2` with exact component/channel and
+`state: removed`. It stores no active or previous unit and deletes no version
+directory. Already captured jobs retain their executable and integrity receipt;
+new managed captures return `module_removed` before packaged/PATH fallback.
+An explicit development override keeps its existing precedence. Old v1 readers
+refuse the removed shape; absence is never used to represent removal.
+
+`selection_record_managed` reads installed or removed records without creating
+a writable store. Existing installed-only selection reads return `module_removed`
+for removed records. Stages admitted before removal cannot activate against the
+new generation. An explicit reinstall stages against the removed generation and
+activates a new installed-v1 record with no previous unit. Removal, restart reads
+and rollback refusal require no release authority, transfer or executable probe.
+Removal may fence an absent managed selection at generation zero, also suppressing
+unmanaged fallback for that component/lane.
+
+Hosts apply their existing automatic-update preferences and call
+`admit_automatic_acquisition_managed` before loading authority or acquiring an
+automatic update. Existing opt-in automatic-update policy may authorize background
+acquisition, installation and activation when the native lifecycle guard admits
+idle activation; a new per-download confirmation is not required by this owner.
+`stage_automatic_with_admission` rechecks removal under the
+component lock before any transfer/probe, including grants acquired before
+removal. These are owner APIs, not a new updater, licensing policy or command
+namespace. Component licensing remains future planning; calculation still uses
+existing project governance. Typed Core command and native preference/session
+bindings remain required before product removal or automatic-update completion
+can be claimed.
+
 `ActivationGuard` contains native host observations only. Dirty held edits,
 uncaptured persistent sessions and a required host restart defer activation.
 The UI supplies a native receipt ID, never dirty/idle booleans. Already captured

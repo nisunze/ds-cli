@@ -3,8 +3,9 @@
 use crate::transfer::{self, TransferAdmission, TransferProgress};
 use ds_client_core::{ClientProfile, DeploymentLane};
 use ds_command_kernel::module_install::{
-    self, ActivationGuard, InstalledModule, ModuleSelection, ReleaseAuthorityReceipt,
-    INSTALLED_SCHEMA, SELECTION_SCHEMA,
+    self, ActivationGuard, InstalledModule, ModuleSelection, ModuleSelectionRecord,
+    ReleaseAuthorityReceipt, RemovedModuleSelection, RemovedModuleState, INSTALLED_SCHEMA,
+    REMOVED_SELECTION_SCHEMA, SELECTION_SCHEMA,
 };
 use ds_command_kernel::module_release::{validate_module_release, ModuleComponent, ModuleRelease};
 use fs2::FileExt;
@@ -225,11 +226,39 @@ impl ModuleStore {
         let base = ds_cli_exec::addons::managed_module_base().map_err(|e| e.to_string())?;
         Self::selection_from(&base, component, channel)
     }
+    /// Read both installed-v1 and removed-v2 records without creating a store.
+    pub fn selection_record_managed(
+        component: ModuleComponent,
+        channel: &str,
+    ) -> Result<Option<ModuleSelectionRecord>, String> {
+        let base = ds_cli_exec::addons::managed_module_base().map_err(|e| e.to_string())?;
+        Self::selection_record_from(&base, component, channel)
+    }
+    /// Apply before loading release authority or acquiring any automatic update.
+    /// The host also applies its existing automatic-update preferences.
+    pub fn admit_automatic_acquisition_managed(
+        component: ModuleComponent,
+        channel: &str,
+    ) -> Result<(), String> {
+        Self::selection_record_managed(component, channel)?
+            .map(ModuleSelectionRecord::installed)
+            .transpose()?;
+        Ok(())
+    }
     fn selection_from(
         base: &Path,
         component: ModuleComponent,
         channel: &str,
     ) -> Result<Option<ModuleSelection>, String> {
+        Self::selection_record_from(base, component, channel)?
+            .map(ModuleSelectionRecord::installed)
+            .transpose()
+    }
+    fn selection_record_from(
+        base: &Path,
+        component: ModuleComponent,
+        channel: &str,
+    ) -> Result<Option<ModuleSelectionRecord>, String> {
         if !base.is_absolute() || !matches!(channel, "stable" | "canary") {
             return Err(
                 "module_store_invalid: use an absolute owned base and exact installed lane".into(),
@@ -250,7 +279,7 @@ impl ModuleStore {
             channel: channel.to_owned(),
             platform,
         }
-        .read_selection()
+        .read_selection_record()
     }
     pub fn managed(component: ModuleComponent, channel: &str) -> Result<Self, String> {
         let base = ds_cli_exec::addons::managed_module_base().map_err(|e| e.to_string())?;
@@ -293,6 +322,7 @@ impl ModuleStore {
         })
     }
     fn lock(&self) -> Result<File, String> {
+        self.check_root()?;
         let file = transfer::open_download_partial(&self.root.join("update.lock"))?;
         file.try_lock_exclusive().map_err(|_| {
             "module_update_busy: another native update owns this component".to_owned()
@@ -300,20 +330,32 @@ impl ModuleStore {
         Ok(file)
     }
     fn read_selection(&self) -> Result<Option<ModuleSelection>, String> {
+        self.read_selection_record()?
+            .map(ModuleSelectionRecord::installed)
+            .transpose()
+    }
+    fn read_selection_record(&self) -> Result<Option<ModuleSelectionRecord>, String> {
+        self.check_root()?;
         let path = self.root.join("selection.json");
         if !exists_plain(&path)? {
             return Ok(None);
         }
         let bytes = read_plain(&path, MAX_STAGE_BYTES)?;
-        let selected: ModuleSelection = serde_json::from_slice(&bytes)
+        let selected: ModuleSelectionRecord = serde_json::from_slice(&bytes)
             .map_err(|_| "module_receipt_invalid: malformed native selection")?;
-        module_install::validate_selection(
+        module_install::validate_selection_record(
             &selected,
             self.component,
             &self.channel,
             &self.platform,
         )?;
         Ok(Some(selected))
+    }
+    fn check_root(&self) -> Result<(), String> {
+        for directory in self.root.ancestors().take(3) {
+            ordinary_directory(directory)?;
+        }
+        Ok(())
     }
     fn path(&self, receipt: &InstalledModule) -> Result<PathBuf, String> {
         module_install::validate_installed(receipt, self.component, &self.channel, &self.platform)?;
@@ -364,7 +406,37 @@ impl ModuleStore {
         F: FnMut(TransferProgress),
         A: Fn() -> Result<(), String> + Copy,
     {
-        self.stage_with(grant, cancelled, |asset, path| {
+        self.stage_transfer(grant, report, cancelled, admit_transport, false)
+    }
+    /// Automatic updates recheck removed state while holding the same lock as
+    /// removal. Hosts admit before authority loading, then use this stage path
+    /// so an update acquired before removal cannot reinstall afterwards.
+    pub fn stage_automatic_with_admission<F, A>(
+        &self,
+        grant: TrustedModuleGrant,
+        report: F,
+        cancelled: &dyn Fn() -> bool,
+        admit_transport: A,
+    ) -> Result<StagedModule, String>
+    where
+        F: FnMut(TransferProgress),
+        A: Fn() -> Result<(), String> + Copy,
+    {
+        self.stage_transfer(grant, report, cancelled, admit_transport, true)
+    }
+    fn stage_transfer<F, A>(
+        &self,
+        grant: TrustedModuleGrant,
+        report: F,
+        cancelled: &dyn Fn() -> bool,
+        admit_transport: A,
+        automatic: bool,
+    ) -> Result<StagedModule, String>
+    where
+        F: FnMut(TransferProgress),
+        A: Fn() -> Result<(), String> + Copy,
+    {
+        self.stage_with_mode(grant, cancelled, automatic, |asset, path| {
             // An already-offline host refuses before entering transfer retry
             // scheduling. The transfer retains its existing mid-read checks.
             admit_transport()?;
@@ -383,10 +455,26 @@ impl ModuleStore {
             .map(|_| ())
         })
     }
+    #[cfg(test)]
     fn stage_with<F>(
         &self,
         grant: TrustedModuleGrant,
         cancelled: &dyn Fn() -> bool,
+        download: F,
+    ) -> Result<StagedModule, String>
+    where
+        F: FnOnce(
+            &ds_command_kernel::module_release::ModuleReleaseAsset,
+            &Path,
+        ) -> Result<(), String>,
+    {
+        self.stage_with_mode(grant, cancelled, false, download)
+    }
+    fn stage_with_mode<F>(
+        &self,
+        grant: TrustedModuleGrant,
+        cancelled: &dyn Fn() -> bool,
+        automatic: bool,
         download: F,
     ) -> Result<StagedModule, String>
     where
@@ -406,7 +494,11 @@ impl ModuleStore {
             );
         }
         let _lock = self.lock()?;
-        let generation = self.read_selection()?.map_or(0, |s| s.generation);
+        let selected = self.read_selection_record()?;
+        if automatic && matches!(selected, Some(ModuleSelectionRecord::Removed(_))) {
+            return Err(module_install::module_removed());
+        }
+        let generation = selected.map_or(0, |s| s.generation());
         let asset = grant
             .release
             .assets
@@ -541,10 +633,14 @@ impl ModuleStore {
         {
             return Err("module_receipt_invalid: staged admission facts changed".into());
         }
-        let previous = self.read_selection()?;
-        if previous.as_ref().map_or(0, |s| s.generation) != ready.expected_generation {
+        let prior_record = self.read_selection_record()?;
+        if prior_record.as_ref().map_or(0, |s| s.generation()) != ready.expected_generation {
             return Err("module_selection_changed: a newer native activation already owns selection; retain this staged unit".into());
         }
+        let previous = match prior_record {
+            Some(ModuleSelectionRecord::Installed(s)) => Some(s),
+            _ => None,
+        };
         self.verify(&ready.installed, cancelled)?;
         if let Some(current) = &previous {
             self.verify(&current.active, cancelled)?;
@@ -560,7 +656,10 @@ impl ModuleStore {
             active: ready.installed.clone(),
             previous: previous.map(|s| s.active),
         };
-        self.write_selection(&selected, cancelled)?;
+        self.write_selection(
+            &ModuleSelectionRecord::Installed(selected.clone()),
+            cancelled,
+        )?;
         Ok(selected)
     }
     pub fn rollback(
@@ -600,8 +699,42 @@ impl ModuleStore {
             active: previous,
             previous: prior,
         };
-        self.write_selection(&selected, cancelled)?;
+        self.write_selection(
+            &ModuleSelectionRecord::Installed(selected.clone()),
+            cancelled,
+        )?;
         Ok(selected)
+    }
+    /// Confirmed host removal fences the held generation and preserves immutable
+    /// executables for jobs that captured them before this atomic transition.
+    pub fn remove(
+        &self,
+        expected_generation: u64,
+        guard: ActivationGuard,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<RemovedModuleSelection, String> {
+        guard.admit()?;
+        check_cancel(cancelled)?;
+        let _lock = self.lock()?;
+        let current = self.read_selection_record()?;
+        if current.as_ref().map_or(0, |s| s.generation()) != expected_generation {
+            return Err("module_selection_changed: removal belongs to an earlier selection".into());
+        }
+        let removed = RemovedModuleSelection {
+            schema: REMOVED_SELECTION_SCHEMA.into(),
+            component: self.component,
+            channel: self.channel.clone(),
+            generation: expected_generation
+                .checked_add(1)
+                .ok_or("module_receipt_invalid: selection generation exhausted")?,
+            state: RemovedModuleState::Removed,
+        };
+        self.write_selection(&ModuleSelectionRecord::Removed(removed.clone()), cancelled)?;
+        Ok(removed)
+    }
+    pub fn admit_automatic_acquisition(&self) -> Result<(), String> {
+        self.read_selection()?;
+        Ok(())
     }
     /// Intentional job capture uses retained bytes only, without a child probe
     /// or an authority freshness read. Callers keep this immutable path.
@@ -620,12 +753,15 @@ impl ModuleStore {
     pub fn selection(&self) -> Result<Option<ModuleSelection>, String> {
         self.read_selection()
     }
+    pub fn selection_record(&self) -> Result<Option<ModuleSelectionRecord>, String> {
+        self.read_selection_record()
+    }
     fn write_selection(
         &self,
-        selected: &ModuleSelection,
+        selected: &ModuleSelectionRecord,
         cancelled: &dyn Fn() -> bool,
     ) -> Result<(), String> {
-        module_install::validate_selection(
+        module_install::validate_selection_record(
             selected,
             self.component,
             &self.channel,
@@ -1117,6 +1253,249 @@ mod tests {
                 .unwrap_err()
                 .contains("module_selection_changed"));
         }
+    }
+    #[test]
+    fn removal_restart_stale_stage_reinstall_and_captured_jobs_preserve_one_authority() {
+        for component in [
+            ModuleComponent::Solar,
+            ModuleComponent::Reporter,
+            ModuleComponent::Network,
+        ] {
+            let base = tempfile::tempdir().unwrap();
+            let store = ModuleStore::new(base.path(), component, "canary").unwrap();
+            let (release, bytes) = fixture(component, 1);
+            let first = stage(&store, release.clone(), &bytes);
+            let installed = store
+                .activate(&first, ActivationGuard::default(), &|| false)
+                .unwrap();
+            let v1 = fs::read(store.root.join("selection.json")).unwrap();
+            assert_eq!(
+                serde_json::from_slice::<ModuleSelection>(&v1).unwrap(),
+                installed
+            );
+            assert!(matches!(
+                serde_json::from_slice::<ModuleSelectionRecord>(&v1).unwrap(),
+                ModuleSelectionRecord::Installed(_)
+            ));
+            let captured = owner(component)
+                .capture_for_lane_in("canary", base.path())
+                .unwrap();
+            let (candidate, candidate_bytes) = fixture(component, 2);
+            let stale = stage(&store, candidate, &candidate_bytes);
+            let removed = store
+                .remove(1, ActivationGuard::default(), &|| false)
+                .unwrap();
+            assert_eq!(removed.generation, 2);
+            let removed_bytes = fs::read(store.root.join("selection.json")).unwrap();
+            assert!(serde_json::from_slice::<ModuleSelection>(&removed_bytes).is_err());
+            let restarted = ModuleStore::new(base.path(), component, "canary").unwrap();
+            assert_eq!(
+                restarted.selection_record().unwrap(),
+                Some(ModuleSelectionRecord::Removed(removed))
+            );
+            assert!(restarted
+                .selection()
+                .unwrap_err()
+                .starts_with("module_removed:"));
+            assert!(restarted
+                .selected_executable(&|| false)
+                .unwrap_err()
+                .starts_with("module_removed:"));
+            assert_eq!(
+                owner(component)
+                    .capture_for_lane_in("canary", base.path())
+                    .err()
+                    .unwrap()
+                    .code(),
+                "module_removed"
+            );
+            let rollback_error = restarted
+                .rollback(2, ActivationGuard::default(), &|| false)
+                .unwrap_err();
+            assert!(
+                rollback_error.starts_with("module_removed:"),
+                "{rollback_error}"
+            );
+            let stale = restarted.recover_stage(stale.receipt_id()).unwrap();
+            assert!(restarted
+                .activate(&stale, ActivationGuard::default(), &|| false)
+                .unwrap_err()
+                .starts_with("module_selection_changed:"));
+            assert_eq!(
+                fs::read(store.root.join("selection.json")).unwrap(),
+                removed_bytes
+            );
+            assert_eq!(
+                captured
+                    .call_json("work", &[], Duration::from_secs(2))
+                    .unwrap(),
+                installed.active.engine_identity
+            );
+            let fresh = stage(&restarted, release, &bytes);
+            assert_eq!(fresh.expected_generation, 2);
+            let restored = restarted
+                .activate(&fresh, ActivationGuard::default(), &|| false)
+                .unwrap();
+            assert_eq!(restored.generation, 3);
+            assert!(restored.previous.is_none());
+            assert!(owner(component)
+                .capture_for_lane_in("canary", base.path())
+                .is_ok());
+        }
+    }
+    #[test]
+    fn removal_admission_fences_busy_dirty_cancelled_changed_and_exhausted_generations() {
+        let base = tempfile::tempdir().unwrap();
+        let store = ModuleStore::new(base.path(), ModuleComponent::Network, "canary").unwrap();
+        let (release, bytes) = fixture(ModuleComponent::Network, 1);
+        let staged = stage(&store, release, &bytes);
+        store
+            .activate(&staged, ActivationGuard::default(), &|| false)
+            .unwrap();
+        let held = fs::read(store.root.join("selection.json")).unwrap();
+        for guard in [
+            ActivationGuard {
+                unsaved_edits: true,
+                ..Default::default()
+            },
+            ActivationGuard {
+                uncaptured_sessions: 1,
+                ..Default::default()
+            },
+            ActivationGuard {
+                host_restart_required: true,
+                ..Default::default()
+            },
+        ] {
+            assert!(store
+                .remove(1, guard, &|| false)
+                .unwrap_err()
+                .starts_with("module_activation_deferred:"));
+        }
+        assert!(store
+            .remove(1, ActivationGuard::default(), &|| true)
+            .unwrap_err()
+            .contains("cancel"));
+        assert!(store
+            .remove(0, ActivationGuard::default(), &|| false)
+            .unwrap_err()
+            .starts_with("module_selection_changed:"));
+        let lock = store.lock().unwrap();
+        assert!(store
+            .remove(1, ActivationGuard::default(), &|| false)
+            .unwrap_err()
+            .starts_with("module_update_busy:"));
+        drop(lock);
+        assert_eq!(fs::read(store.root.join("selection.json")).unwrap(), held);
+        let checks = Cell::new(0);
+        assert!(store
+            .remove(1, ActivationGuard::default(), &|| {
+                checks.set(checks.get() + 1);
+                checks.get() == 3
+            })
+            .is_err());
+        assert_eq!(fs::read(store.root.join("selection.json")).unwrap(), held);
+        let mut installed = store.selection().unwrap().unwrap();
+        installed.generation = u64::MAX;
+        store
+            .write_selection(&ModuleSelectionRecord::Installed(installed), &|| false)
+            .unwrap();
+        assert!(store
+            .remove(u64::MAX, ActivationGuard::default(), &|| false)
+            .unwrap_err()
+            .contains("generation exhausted"));
+    }
+    #[test]
+    fn removal_and_removed_automatic_admission_need_no_executable_authority_or_transfer() {
+        let base = tempfile::tempdir().unwrap();
+        let store = ModuleStore::new(base.path(), ModuleComponent::Network, "canary").unwrap();
+        assert!(store.admit_automatic_acquisition().is_ok());
+        let (release, bytes) = fixture(ModuleComponent::Network, 1);
+        let pre_removal_grant = grant(release.clone());
+        let staged = stage(&store, release, &bytes);
+        store
+            .activate(&staged, ActivationGuard::default(), &|| false)
+            .unwrap();
+        let (path, _) = store.selected_executable(&|| false).unwrap().unwrap();
+        // A broken executable must not be probed or reopened by removal/admission.
+        fs::write(&path, b"damaged executable").unwrap();
+        store
+            .remove(1, ActivationGuard::default(), &|| false)
+            .unwrap();
+        let reads = Cell::new(0);
+        let automatic = || -> Result<(), String> {
+            store.admit_automatic_acquisition()?;
+            reads.set(reads.get() + 1);
+            let _ = authority();
+            Ok(())
+        };
+        assert!(automatic().unwrap_err().starts_with("module_removed:"));
+        assert_eq!(reads.get(), 0);
+        assert!(store
+            .stage_automatic_with_admission(
+                pre_removal_grant,
+                |_| panic!("unexpected transfer"),
+                &|| false,
+                || panic!("unexpected transport")
+            )
+            .unwrap_err()
+            .starts_with("module_removed:"));
+        let stable = ModuleStore::new(base.path(), ModuleComponent::Network, "stable").unwrap();
+        assert!(stable.admit_automatic_acquisition().is_ok());
+        assert!(owner(ModuleComponent::Network)
+            .capture_managed_for_lane_in("stable", base.path())
+            .unwrap()
+            .is_none());
+        let solar = ModuleStore::new(base.path(), ModuleComponent::Solar, "canary").unwrap();
+        assert!(solar.admit_automatic_acquisition().is_ok());
+        assert!(store.admit_automatic_acquisition().is_err());
+    }
+    #[test]
+    fn removed_record_read_and_removal_refuse_corrupt_linked_and_crossed_authority() {
+        use std::os::unix::fs::symlink;
+        let base = tempfile::tempdir().unwrap();
+        let store = ModuleStore::new(base.path(), ModuleComponent::Network, "canary").unwrap();
+        store
+            .remove(0, ActivationGuard::default(), &|| false)
+            .unwrap();
+        let path = store.root.join("selection.json");
+        let held = fs::read(&path).unwrap();
+        assert!(matches!(
+            ModuleStore::selection_record_from(base.path(), ModuleComponent::Network, "canary")
+                .unwrap(),
+            Some(ModuleSelectionRecord::Removed(_))
+        ));
+        for value in [
+            json!({"schema":REMOVED_SELECTION_SCHEMA,"component":"network","channel":"stable","generation":1,"state":"removed"}),
+            json!({"schema":REMOVED_SELECTION_SCHEMA,"component":"network","channel":"canary","generation":1,"state":"removed","active":null}),
+        ] {
+            let corrupted = serde_json::to_vec(&value).unwrap();
+            fs::write(&path, &corrupted).unwrap();
+            assert!(store
+                .remove(1, ActivationGuard::default(), &|| false)
+                .is_err());
+            assert!(store.admit_automatic_acquisition().is_err());
+            assert_eq!(fs::read(&path).unwrap(), corrupted);
+        }
+        let linked = base.path().join("removed-record.json");
+        fs::write(&linked, &held).unwrap();
+        fs::remove_file(&path).unwrap();
+        symlink(&linked, &path).unwrap();
+        assert!(store
+            .remove(1, ActivationGuard::default(), &|| false)
+            .is_err());
+        assert!(store.admit_automatic_acquisition().is_err());
+        assert_eq!(fs::read(&linked).unwrap(), held);
+        fs::remove_file(&path).unwrap();
+        fs::write(&path, &held).unwrap();
+        let replaced = store.root.with_file_name("retained-canary");
+        fs::rename(&store.root, &replaced).unwrap();
+        symlink(&replaced, &store.root).unwrap();
+        assert!(store
+            .remove(1, ActivationGuard::default(), &|| false)
+            .is_err());
+        assert!(store.selection_record().is_err());
+        assert_eq!(fs::read(replaced.join("selection.json")).unwrap(), held);
     }
     #[test]
     fn corrupt_incompatible_interrupted_cancelled_or_changed_candidate_preserves_current() {

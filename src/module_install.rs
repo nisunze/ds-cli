@@ -9,6 +9,7 @@ use serde_json::Value;
 
 pub const INSTALLED_SCHEMA: &str = "ds.module-installation/v1";
 pub const SELECTION_SCHEMA: &str = "ds.module-selection/v1";
+pub const REMOVED_SELECTION_SCHEMA: &str = "ds.module-selection/v2";
 pub const MAX_SELECTION_BYTES: usize = 384 * 1024;
 pub const MAX_EXECUTABLE_BYTES: u64 = 512 * 1024 * 1024;
 
@@ -37,6 +38,67 @@ pub struct ModuleSelection {
     pub generation: u64,
     pub active: InstalledModule,
     pub previous: Option<InstalledModule>,
+}
+/// Removed is a new closed record shape: v1 readers refuse it rather than
+/// treating it as an absent selection and discovering an unmanaged executable.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RemovedModuleSelection {
+    pub schema: String,
+    pub component: ModuleComponent,
+    pub channel: String,
+    pub generation: u64,
+    pub state: RemovedModuleState,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RemovedModuleState {
+    Removed,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ModuleSelectionRecord {
+    Installed(ModuleSelection),
+    Removed(RemovedModuleSelection),
+}
+impl ModuleSelectionRecord {
+    pub fn generation(&self) -> u64 {
+        match self {
+            Self::Installed(s) => s.generation,
+            Self::Removed(s) => s.generation,
+        }
+    }
+    pub fn installed(self) -> Result<ModuleSelection, String> {
+        match self {
+            Self::Installed(s) => Ok(s),
+            Self::Removed(_) => Err(module_removed()),
+        }
+    }
+}
+pub fn module_removed() -> String {
+    "module_removed: this component was removed from the selected lane; explicitly reinstall it before use".into()
+}
+pub fn validate_selection_record(
+    record: &ModuleSelectionRecord,
+    component: ModuleComponent,
+    channel: &str,
+    platform: &str,
+) -> Result<(), String> {
+    match record {
+        ModuleSelectionRecord::Installed(s) => validate_selection(s, component, channel, platform),
+        ModuleSelectionRecord::Removed(s) => {
+            platform_target(platform)?;
+            if s.schema != REMOVED_SELECTION_SCHEMA
+                || s.component != component
+                || s.channel != channel
+                || !matches!(channel, "stable" | "canary")
+                || s.generation == 0
+            {
+                return Err("module_receipt_invalid: crossed or empty removed selection".into());
+            }
+            Ok(())
+        }
+    }
 }
 /// Host-owned admission facts. Already captured jobs retain their immutable
 /// executable paths and do not count as an uncaptured persistent session.
@@ -317,4 +379,51 @@ pub fn validate_selection(
         validate_installed(previous, component, channel, platform)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn removed_record_is_closed_lane_bound_and_refused_by_installed_v1_reader() {
+        let raw = json!({"schema":REMOVED_SELECTION_SCHEMA,"component":"network","channel":"canary","generation":2,"state":"removed"});
+        let record: ModuleSelectionRecord = serde_json::from_value(raw.clone()).unwrap();
+        assert_eq!(record.generation(), 2);
+        validate_selection_record(&record, ModuleComponent::Network, "canary", "linux").unwrap();
+        assert!(record
+            .clone()
+            .installed()
+            .unwrap_err()
+            .starts_with("module_removed:"));
+        assert!(serde_json::from_value::<ModuleSelection>(raw.clone()).is_err());
+        for (key, value) in [
+            ("schema", json!(SELECTION_SCHEMA)),
+            ("generation", json!(0)),
+            ("component", json!("solar")),
+            ("channel", json!("stable")),
+        ] {
+            let mut changed = raw.clone();
+            changed[key] = value;
+            let record = serde_json::from_value(changed).unwrap();
+            assert!(validate_selection_record(
+                &record,
+                ModuleComponent::Network,
+                "canary",
+                "linux"
+            )
+            .is_err());
+        }
+        for (key, value) in [
+            ("state", json!("disabled")),
+            ("active", json!(null)),
+            ("previous", json!(null)),
+            ("unexpected", json!(true)),
+        ] {
+            let mut changed = raw.clone();
+            changed[key] = value;
+            assert!(serde_json::from_value::<ModuleSelectionRecord>(changed).is_err());
+        }
+    }
 }
