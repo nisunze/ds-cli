@@ -15,9 +15,9 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
-| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 15 |
+| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 17 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 6 |
-| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 6 |
+| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 10 |
 | [10. Voltage drop](#10-voltage-drop) | 0 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 9 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 9 |
@@ -143,6 +143,10 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 ## 7. Report compute, export and combined output
 
+- **Quantity-only XLSX acquisition** (`0b875c6c`): native transformer quantity export refuses on unrelated survey video outside granted scopes. Preserve media authority, omit inaccessible unrelated media with a bounded diagnostic, and still produce the quantity workbook from unchanged source digests. The offline path also lacks complete groups/sheets/models capture; expose a declared complete-config or quantity-only capture without widening media grants.
+
+- **Reporter catalogue aliases and existence precedence** (`c8663eca`): processing accepts declared structure aliases that reporting marks dirty and excludes from recognized quantities; cable-label spacing aliases can exclude length, and legacy provenance text can override canonical existence fields. Resolve the same admitted physical/cable aliases and respect canonical existence fields in reporting. Prove counts and Dirty Categories while retaining blank/unknown status and unchanged physical definitions.
+
 - **Append a scoped staking addendum without rewriting accepted sheets** (`7cec39bf`): native preview/apply must pin the baseline workbook digest, model revision, selected scope, allowance and non-duplication rules. Preview only the new OPGW sheet and grand total; apply to a fresh workbook, preserving existing worksheet parts and styles, with an auditable receipt. Expose the same contract through CLI/MCP and a thin JSON UI. The School specimen has five spans, 339.7919456737528 m before its recorded 1.10 allowance; no duplicate transformer, pole, phase or hardware supply.
 
 - **Local collision detection is not wired into Project Control** (owner report 2026-10-10): Desktop's `detectCollisions` still sends `/report` `detect_collisions` to the cloud, where non-developers hit remote compute admission. Implement local detection through the existing native reporter owner and CLI/MCP, reuse unchanged authorized transformer rooms, preserve explicit project/revision context, then bind the Desktop action and refresh persisted results. Prove ordinary Desktop operation without developer authority or cloud compute, genuine zero versus unknown results, unchanged cache reuse, and project capability refusals. Do not unblock remote compute or imply local detection already exists.
@@ -188,6 +192,14 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - **Bounded cloud-head reads**: the affected `fill_in_gishubi` cloud-head read produced no output for more than ten minutes. Provide a bounded result or named stalled-acquisition refusal while preserving retained local artifacts. Reproduction receipts: `ds-command-kernel/_discardable/artifact-inventory-refresh/root-installed-publications-stalled.json`; publication recovery is tracked in [SEEDING.md](SEEDING.md#8-sync-publication-and-edge-outbox).
 
 ## 9. LV processing, sizing and headless intake
+
+- **Truthful batch-save parallelism** (`af812107`): `map.design.batch.save` accepts parallelism 1-32 and promises the requested value, but requests 4 and 3 return 1 and run serially. Honour safe requested concurrency or explicitly disclose the enforced limit with requested/effective parallelism; prove bounded workers and unchanged save semantics. Actual speed requires separate measurement.
+
+- **Explicit preservation during span rebuild** (`e1204a03`): a kept-pole rerun promotes supplied unconnected poles into the primary layer, defaults blank existence/drafting status, replaces feeder geometries and rekeys feeder IDs. The promoted poles were already in the supplied union inventory, not newly generated. Provide an explicit preservation mode and reviewable promotion delta while rebuilding disposable topology/spans; preserve exact supplied IDs, geometry, physical definitions, statuses and feeder facts before save.
+
+- **Layer-qualified geometry replacement** (`e9c31772`): `map.design.select --layer lv_lines` identifies one row, but geometry replacement refuses cross-layer repeated IDs; the documented qualified-ID form matches nothing and no layer argument exists. Admit an exact layer selector or canonical qualified identity, preserve other vertices/attributes, and retain ambiguity refusal when the qualified selection still matches multiple records.
+
+- **Unambiguous legacy connection identities** (`240c31d3`): native reprocessing cannot regenerate customer/span references when customer IDs collide with pole IDs, and a supplied pole layer can repeat raw IDs at different positions. Provide typed namespace/reference repair or stable role-qualified internal references, retaining raw source provenance and supplied physical structures. Prove distinct references without guessing source identity from position, material or loads.
 
 - `007c1624` (major): Legacy (unfenced) transformer rooms cannot be read headlessly: lv project-export refuses, features select scans 0, location path resolves nothing, no headless migrate.
 
@@ -492,7 +504,7 @@ Priority ([PRINCIPLES.md §3–4](PRINCIPLES.md#4-report-as-you-go-owner-2026-10
 
 - **Web refusal coverage cannot trace existing relays** (ds-cli owning test, ds-web adapters): `every_application_refusal_code_is_documented` fails on the existing dynamic `cliRefusal` calls in `src/lib/desktop/cli-sync-center.ts:126` and `cli-assets-args.ts:29`. Trace the closed Sync Center recovery vocabulary and Assets helper callers into the declared command refusals, retaining detection of unknown/dynamic codes. Do not exempt these adapters or claim the aggregate gate passes. The governed repair/notes/workflow Rust vocabulary is checked separately; this is a pre-existing Web coverage failure, not proof of an API/runtime failure.
 
-- **Wire CLI and MCP (ds-cli):** (1) ds-cli `docs/reference/feedback.md:57-58` still says `error.feedback` carries the draft and `sre_event`; the code puts `ds feedback draft --last` as the last `error.next` and carries no event id. Fix the text. (2) Nothing sets `DS_CLI_HOST_KIND`, so every event reports `host_kind=headless`; Desktop and Server must set it (spec §3.2). (3) Optional: bound `reporter::file_automatic` by `SEND_BUDGET`. The installed readback is in [SEEDING.md block 25](SEEDING.md#25-cli-reliability-and-feedback).
+- **Desktop CLI host attribution and automatic-feedback budget**: Desktop CLI launches still do not bind `DS_CLI_HOST_KIND=desktop`, so their events default to headless (spec §3.2). Bind explicit Desktop host context at its native CLI launches and preserve caller environment. `reporter::file_automatic` also lacks an explicit `SEND_BUDGET` bound; qualify the actual exit-path budget before changing it. Installed reporting readback remains in [SEEDING.md block 25](SEEDING.md#25-cli-reliability-and-feedback).
 
 - **`ds feedback draft --last` completeness (kernel, ds-cli):** (a) the draft `component` must be the owning repository from the command registry (spec §4): kernel `reporter.rs` `draft_one` still emits `ds-cli/{domain}`, and ds-cli-contract `Command` has no owner field. (b) A CLI draft without `DS_CLI_AGENT` still lists `needs: agent` while `feedback.submit` requires `--agent`; the MCP adapter (ds-cli-mcp `tools.rs` `run_bounded`) never passes `clientInfo.name` to the child as `DS_CLI_AGENT`; the JSON draft's `context` is an object, not the repeated `key=value` input submit takes (only the human render maps it). (c) The `ds` skill (`ds-cli/skills/ds/SKILL.md`, "Report as you go") does not name `ds feedback draft --last`. Signed-in installed acceptance (spec §7.6) is in SEEDING.md block 25.
 

@@ -2,25 +2,26 @@
 
 > Work directly on canonical `run`. Active lists stay in ds-command-kernel/backlog/. Indexed hard cases and their feedback live in backlog/hardproblems/; stage only the selected slice documents.
 
-Active list from the 2026-10-07 snapshot and 2026-10-09 component lookups, with proven closures removed and indexed hard cases moved to [hardproblems/FEEDBACK.md](hardproblems/FEEDBACK.md): 220 tracked rows (83 open, 137 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Active list from the 2026-10-07 snapshot and selected 2026-10-09/2026-10-14 official lookups, with proven closures removed and indexed hard cases moved to [hardproblems/FEEDBACK.md](hardproblems/FEEDBACK.md): 226 tracked rows (90 open, 136 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
-Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) entry citing the active report; **untracked** means none does (110 reports).
+Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) entry citing the active report; **untracked** means none does (109 reports).
 
 | Repository | Total | Blocker | Major | Minor | Waiting | Untracked |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| [ds-cli](#ds-cli) | 86 | 11 | 58 | 17 | 55 | 54 |
-| [ds-network](#ds-network) | 54 | 16 | 34 | 4 | 27 | 18 |
-| [ds-network-reporter](#ds-network-reporter) | 25 | 1 | 18 | 6 | 18 | 13 |
+| [ds-cli](#ds-cli) | 86 | 11 | 58 | 17 | 54 | 53 |
+| [ds-network](#ds-network) | 55 | 16 | 35 | 4 | 27 | 18 |
+| [ds-network-reporter](#ds-network-reporter) | 27 | 1 | 20 | 6 | 18 | 13 |
 | [ds-web](#ds-web) | 34 | 6 | 26 | 2 | 24 | 15 |
-| [ds-command-kernel](#ds-command-kernel) | 4 | 0 | 3 | 1 | 4 | 0 |
+| [ds-command-kernel](#ds-command-kernel) | 6 | 0 | 4 | 2 | 4 | 0 |
 | [ds-brain](#ds-brain) | 7 | 0 | 6 | 1 | 5 | 3 |
 | [ds-vector-tiler](#ds-vector-tiler) | 1 | 0 | 1 | 0 | 1 | 0 |
-| [unassigned](#unassigned) | 9 | 0 | 6 | 3 | 3 | 7 |
+| [unassigned](#unassigned) | 10 | 0 | 7 | 3 | 3 | 7 |
 
 ## ds-cli
 
 | Component | ID | Sev | Kind | Title | State | Backlog |
 | --- | --- | --- | --- | --- | --- | --- |
+| ds-cli | `240c31d3` | major | obstacle | Legacy connection identities block native span regeneration and voltage-drop previews | open | OPEN.md §9 |
 | ds pls desktop (windows native controller) | `34b98f7e` | minor | idea | Add a characterized 'cable edit' workflow (open, set creep model and shift, save) with its dialogs catalogued | open | **untracked** |
 | ds-cli | `d4dacd51` | major | obstacle | Fill-in/upgrade report 2026-09-30: combined ds CLI/MCP gaps (transformer summary, tags, spatial reads, Drive writes, survey, assets, feedback) | waiting: replay of items 6 (kernel f6fedb3) and 7 (ds-cli dff85ebc) on stable b4783c2c/b12041b6; items 1-5, 8, 9 open | **untracked** |
 | ds-cli | `46dec14e` | major | friction | ds caps that force manual manoeuvring for one 10k-point layer: map draw max 10000 features, data inspect --rows max 5000 with no paging, prepared local layers invisible to the running app | waiting: SRE mode: addition parked until the owner says go | OPEN.md §16 |
@@ -58,7 +59,6 @@ Reports are grouped by the live repository that owns the code, then by component
 | ds-cli/dsgrid-replace-structure | `31498e75` | major | bug | replace-structure refuses a real IBC PLS-POLE 20.01 T-off that the PLS workspace import accepts | open | **untracked** |
 | ds-cli/dsgrid-report-staking | `b78f77f0` | major | obstacle | Staking loses transformer designations when a model is re-imported from PLS-CADD | waiting: staking designation carry implementation and 33-row round-trip proof | **untracked** |
 | ds-cli/grid-geojson | `fee42145` | major | bug | Exact-revision MV alignment GeoJSON export panics for a validated GIS-imported model | waiting: install of canary 0.1.7-r79+ carrying ds-cli@68393a8c, then the exact-revision MV alignment GeoJSON export | **untracked** |
-| ds-cli/library | `defcbef3` | major | obstacle | Global catalog artifacts need typed verified download | waiting: install of canary 0.1.7-r79+ carrying ds-cli@0cdb75b2, then global artifact integrity acceptance | **untracked** |
 | ds-cli/library | `46f54c67` | major | obstacle | Northern Hub MV member codes cannot be verified from project library inspection | open | OPEN.md §5, SEEDING.md §5 |
 | ds-cli/native-pls-controller | `e40195d1` | minor | idea | Native controller needs an audited owner-supplied allowable-span limit edit | open | **untracked** |
 | ds-cli/pls | `fe345c40` | major | obstacle | PLS clearance diagnostics require Word even when PDF is unnecessary | waiting: release of ds-cli@1d7ae47e (Windows) | SEEDING.md §21 |
@@ -112,6 +112,7 @@ Reports are grouped by the live repository that owns the code, then by component
 
 | Component | ID | Sev | Kind | Title | State | Backlog |
 | --- | --- | --- | --- | --- | --- | --- |
+| ds-network/lv | `e1204a03` | major | obstacle | Need span rebuild with an immutable supplied pole inventory | open | OPEN.md §9 |
 | ds-grid pls-cadd interop | `9073e4d4` | major | obstacle | No ds what-if for structure-type swaps on a PLS-CADD backup (clearance + uplift + strength) | open | **untracked** |
 | ds-grid-engine + ds report plan-profile (dev build dc11d663) | `2c544caa` | blocker | bug | Gisagara Rev3 PLS .bak cannot print as MV booklet on dev desktop host: print refused, PLS ingest refused, atlas renumbers PLS structures | open | **untracked** |
 | ds-grid-engine/alignments | `8363a4fc` | blocker | bug | Reversing an MV alignment needs a governed section rebuild and attachment-set remap | waiting: install of canary 0.1.7-r79+ carrying ds-network@9afcd2f, then Model 2 exact-set restring and fresh PLS-CADD 16.81 Restore/Open with zero phase prompts; Model 1 native negative control | OPEN.md §12 |
@@ -171,6 +172,8 @@ Reports are grouped by the live repository that owns the code, then by component
 
 | Component | ID | Sev | Kind | Title | State | Backlog |
 | --- | --- | --- | --- | --- | --- | --- |
+| ds-network-reporter | `0b875c6c` | major | obstacle | Unrelated survey media prevents native transformer XLSX export | open | OPEN.md §7 |
+| ds-network-reporter | `c8663eca` | major | bug | Pole material aliases resolve in processing but remain dirty in reports | open | OPEN.md §7 |
 | ds-network-reporter (cloud run) | `ac272198` | blocker | bug | Cloud reporter OOMs at 1024 MiB on export_transformers; forced combined over 86 transformers produces nothing | waiting: Install matching schema-2 ds release, then replay these three cloud exports and forced-compounded failure evidence | SEEDING.md §7 |
 | ds-network-reporter/combined-quantities | `ae4fe689` | major | bug | Explicit new-transformer authority loses supply quantity for fill_in-prefixed identities | open | **untracked** |
 | ds-network-reporter/plan-profile (ds report plan-profile) | `7bc05e22` | major | bug | Plan/profile clearance hairs must be ground offset + the code extra (the checked clearance); they drew false violations | waiting: installed renderer and Model 1 spans 53–57 plan/profile print cross-check | OPEN.md §12 |
@@ -240,6 +243,8 @@ Reports are grouped by the live repository that owns the code, then by component
 
 | Component | ID | Sev | Kind | Title | State | Backlog |
 | --- | --- | --- | --- | --- | --- | --- |
+| ds-command-kernel/design | `af812107` | minor | friction | Batch save receipt ignores requested parallelism | open | OPEN.md §9 |
+| ds-command-kernel/design | `e9c31772` | major | obstacle | Geometry replacement cannot address repeated per-layer IDs | open | OPEN.md §9 |
 | ds-command-kernel/design_config | `d76f6e55` | minor | obstacle | Project copy cannot seed a source configuration sheet absent from destination | waiting: release carrying kernel 8c049ef + ds-cli 33065e06, then installed layer_mapping copy with readback | SEEDING.md §3 |
 | ds-command-kernel/printing | `7da49ff8` | major | friction | Internal drafting diagnostic layers appear in client print legend | waiting: install of canary 0.1.7-r79+ (kernel 24a58f2 carries 0e4389f; reporter b28c844), then Gisagara A0 preview and PDF proof | SEEDING.md §6 |
 | ds-command-kernel/printing | `fe036819` | major | friction | LV print setup silently flattens cable categories to one pen | waiting: install of canary 0.1.7-r79+ (kernel 24a58f2 carries 0e4389f), intended pole category/palette, then categorical A0 preview/PDF evidence | SEEDING.md §6 |
@@ -267,6 +272,7 @@ Reports are grouped by the live repository that owns the code, then by component
 
 | Component | ID | Sev | Kind | Title | State | Backlog |
 | --- | --- | --- | --- | --- | --- | --- |
+| ds-integration/grid-model | `9301de9f` | major | obstacle | Imported MV models retain uncharacterized materials and capacity angle domains | open | OPEN-X.md §12 |
 | ds-agent/notes | `1631a9ba` | minor | idea | Agents should consult personal and project notes and usually create project notes | open | **untracked** |
 | ds-geometry/vector-buffer | `5dc0e8a1` | major | bug | Native line buffer emits self-crossing polygons rejected by DS readers | waiting: install of canary 0.1.7-r79+ (kernel 24a58f2 carries 535a50a), then the exact Model 3 buffer rerun with shared-reader validation | SEEDING.md §16 |
 | ds-notes/project-work | `70f6db77` | minor | idea | Move or copy among tasks, personal notes, and project notes | open | **untracked** |

@@ -10,7 +10,7 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 
 | Area | Remaining entries |
 | --- | ---: |
-| [12. Engineering acceptance and material authority](#12-engineering-acceptance-and-material-authority) | 1 |
+| [12. Engineering acceptance and material authority](#12-engineering-acceptance-and-material-authority) | 2 |
 | [13. Between-angle policy](#13-between-angle-policy) | 0 |
 | [14. Profile display and supervised editing](#14-profile-display-and-supervised-editing) | 0 |
 | [15. Project scope and engineering choices](#15-project-scope-and-engineering-choices) | 4 |
@@ -78,6 +78,8 @@ fails on a mock without `canonicalName`; that failure is not from the preview
 change.
 
 ## 12. Engineering acceptance and material authority
+
+- **Imported material/capacity characterization authority** (`9301de9f`): imported MV structures retain uncharacterized material tokens and capacity-angle domains, with source quantity/type conflicts and incomplete source correlation. **Input needed:** authoritative material/capacity evidence and the scope of the requested governed import/library characterization workflow. **Boundary:** assigning physical materials, interpreting source capacity domains or admitting a new characterization capability; names and partial quantities do not authorize global retyping. Preserve placed IDs, geometry, BOQ and truthful unknowns; rerun native findings separately from engineering acceptance.
 
 - **Engineering acceptance tolerances**: the load/usage, sag/tension and clearance tasks refer to a tolerance without stating it. **Input needed:** identify the approved engineering acceptance basis and tolerances where existing project/native contracts do not already supply them. **Boundary:** declaring engineering equivalence or acceptance, not repairing reproduced computations. Agents implement exact case/source binding and report measured differences under [OPEN.md block 12](OPEN.md#12-ds-grid-engineering-codex-main); native comparison and data qualification remain in [SEEDING.md block 12](SEEDING.md#12-ds-grid-engineering-codex-main). Never widen tolerances to close a defect.
 
