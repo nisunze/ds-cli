@@ -4,6 +4,16 @@ Tier-4 reference. `ds map <command> --help` is the contract; this document is
 the part that does not belong in any command's help because it is true of all
 of them.
 
+## Retained machine-local overlay registry
+
+`ds map layer registry` returns the full bounded native registry revision and
+receipt. `ds map layer registry-edit --file <typed-edit.json>` applies the same
+shared owner operation as the flag-based add/remove/visibility commands, also
+supporting its one-time import. Read each command's capability for the exact
+packet, effects, bounds and refusals. These operations never download tile URLs
+or mutate a project. Optional Desktop forwards these commands to installed Core
+rather than opening another store.
+
 ## Execution hosts
 
 Profile camera controls execute UI-owned Interactions math in the paired

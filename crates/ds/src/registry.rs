@@ -1414,6 +1414,16 @@ static MAP_ENTRIES: &[Entry] = &[
         render: ds_cli_map::layer::reorder::render,
     },
     Entry {
+        command: &ds_cli_map::layer::registry::READ,
+        handler: ds_cli_map::layer::registry::read,
+        render: ds_cli_map::layer::registry::render,
+    },
+    Entry {
+        command: &ds_cli_map::layer::registry::EDIT,
+        handler: ds_cli_map::layer::registry::edit,
+        render: ds_cli_map::layer::registry::render,
+    },
+    Entry {
         command: &ds_cli_map::layer::remote_list::COMMAND,
         handler: ds_cli_map::layer::remote_list::run,
         render: ds_cli_map::layer::remote_list::render,

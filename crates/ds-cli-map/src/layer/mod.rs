@@ -6,6 +6,7 @@ pub mod list;
 pub mod native;
 pub mod project_visibility;
 pub mod remote_list;
+pub mod registry;
 pub mod remove;
 pub mod reorder;
 /// The host a layer operation runs on: the Server transport's own routing

@@ -90,6 +90,8 @@ pub static DOMAIN: Domain = Domain {
         &layer::default_visibility::COMMAND,
         &layer::reorder::COMMAND,
         &layer::remote_list::COMMAND,
+        &layer::registry::READ,
+        &layer::registry::EDIT,
         &layer::add::COMMAND,
         &layer::remove::COMMAND,
         &layer::visibility::COMMAND,
