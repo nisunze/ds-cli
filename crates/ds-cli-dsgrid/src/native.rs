@@ -4,10 +4,17 @@ use ds_network_client::{CapturedNetworkClient, NetworkFailure};
 use std::path::PathBuf;
 
 pub fn capture() -> Result<CapturedNetworkClient, Failure> {
-    CapturedNetworkClient::capture(
-        std::thread::available_parallelism().map_or(1, usize::from),
-        &|| false,
-    )
+    capture_for_release_lane(ds_cli_auth::reliability::release_lane())
+}
+
+fn capture_for_release_lane(lane: &str) -> Result<CapturedNetworkClient, Failure> {
+    let workers = std::thread::available_parallelism().map_or(1, usize::from);
+    // The packaged runtime owns the lane; no account, project or ambient
+    // selection may redirect an installed Stable/Canary build.
+    match lane {
+        "local" => CapturedNetworkClient::capture(workers, &|| false),
+        _ => CapturedNetworkClient::capture_for_lane(lane, workers, &|| false),
+    }
     .map_err(map_failure)
 }
 
@@ -292,3 +299,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(all(test, target_os = "linux", target_arch = "x86_64"))]
+#[path = "../tests/support/native_admission.rs"]
+mod admission_tests;
