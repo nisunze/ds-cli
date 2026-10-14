@@ -28,6 +28,7 @@ impl CapturedNetworkClient {
             GRID_CATALOG_RESULT_SCHEMA_V1,
             MAX_GRID_CATALOG_RESULT_BYTES,
             None,
+            false,
         )?;
         let result = &outcome.result;
         let data = &result.data;

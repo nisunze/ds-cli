@@ -20,6 +20,9 @@ fn main() {
     let mut capabilities = vec!["lv_processing_v1"];
     if mode != "missing-capability" {
         capabilities.extend(["grid_query_v1", "grid_manifest_v1", "grid_publication_v1"]);
+        if mode != "apply-missing-capability" {
+            capabilities.push("grid_apply_v1");
+        }
         if mode != "catalog-missing-capability" {
             capabilities.push("grid_catalog_v1");
         }
@@ -38,6 +41,7 @@ fn main() {
     if mode == "missing-capability"
         || mode == "inspection-missing-capability"
         || mode == "catalog-missing-capability"
+        || mode == "apply-missing-capability"
     {
         panic!("missing capability must refuse without starting an operation");
     }
@@ -84,6 +88,50 @@ fn main() {
     }
     let source = json!({"package_sha256":if mode=="wrong-package" {"0".repeat(64)} else {sha(&model)}, "model_id":"fixture-model", "expected_revision":format!("rev:{}", if mode=="wrong-revision" {"0"} else {"a"}.repeat(64)), "engineering_input_root":format!("fnv1a64:{}", "b".repeat(16))});
     let (name, schema, result) = match command {
+        "grid-apply" => {
+            let dry_run = request["dry_run"].as_bool().unwrap();
+            let emit = !dry_run || mode == "apply-preview-model";
+            let payload = b"complete opaque model";
+            let mut projection = json!({
+                "source":{"model_id":if mode=="apply-wrong-source" {"other"} else {"fixture-model"},"package_revision":0,"authored_revision":format!("rev:{}","a".repeat(64))},
+                "command_id":request["envelope"]["command_id"],"command_kind":request["envelope"]["command"]["command_kind"],
+                "dry_run":dry_run,"persisted":false,"resulting_revision":format!("rev:{}",if mode=="apply-wrong-projection" {"d"} else {"c"}.repeat(64)),
+            });
+            let mut artifacts = Vec::new();
+            if emit {
+                let out = value("--out");
+                let target = Path::new(&out).join("model.dsgrid");
+                if mode != "apply-missing-model" {
+                    #[cfg(unix)]
+                    if mode == "apply-symlink-model" {
+                        let untrusted = Path::new(&out).parent().unwrap().join("untrusted.dsgrid");
+                        fs::write(&untrusted, payload).unwrap();
+                        std::os::unix::fs::symlink(untrusted, &target).unwrap();
+                    } else {
+                        fs::write(&target, payload).unwrap();
+                    }
+                    #[cfg(not(unix))]
+                    fs::write(&target, payload).unwrap();
+                }
+                if mode == "apply-extra-file" {
+                    fs::write(Path::new(&out).join("unexpected.bin"), b"extra").unwrap();
+                }
+                artifacts.push(json!({"file":"model.dsgrid","schema":"ds.grid/v5","byteCount":payload.len(),"sha256":if mode=="apply-model-digest" {"0".repeat(64)} else {sha(payload)}}));
+                projection["artifact"] = json!({"package_revision":1,"byte_len":payload.len(),"sha256":format!("sha256:{}",sha(payload))});
+            }
+            let mut source = source;
+            if mode == "apply-wrong-source" {
+                source["model_id"] = json!("other");
+            }
+            (
+                "result.json",
+                "ds.grid.native-apply-result/v1",
+                json!({
+                    "schema":"ds.grid.native-apply-result/v1","source":source,"engine_version":"fixture-grid/1","result_revision":format!("rev:{}","c".repeat(64)),
+                    "result_engineering_input_root":format!("fnv1a64:{}","b".repeat(16)),"model_schema":5,"projection":projection,"journal":{"history":{},"entries":[]},"artifacts":artifacts,
+                }),
+            )
+        }
         "grid-catalog" => {
             let kind = if mode == "catalog-wrong-kind" {
                 json!("types")

@@ -2,6 +2,7 @@
 mod captured;
 mod design_snapshot;
 mod grid;
+mod grid_apply;
 mod grid_catalog;
 mod profile;
 mod report_engineering;
@@ -22,6 +23,7 @@ use ds_network_contracts::{
     },
 };
 pub use grid::GridOutcome;
+pub use grid_apply::GridApplyOutcome;
 pub use profile::{ProfileCheckpoint, ProfileOutcome, ProfileSession};
 pub use report_engineering::ReportEngineeringOutcome;
 use sha2::{Digest, Sha256};

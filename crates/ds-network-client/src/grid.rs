@@ -14,6 +14,7 @@ pub struct GridOutcome<T> {
     pub development_override: bool,
     /// Bounded owning progress lines; these never enter the result digest.
     pub progress: String,
+    pub(crate) staging: Option<tempfile::TempDir>,
 }
 
 impl CapturedNetworkClient {
@@ -34,6 +35,7 @@ impl CapturedNetworkClient {
             "ds.grid.native-inspection/v1",
             MAX_NATIVE_GRID_REQUEST_BYTES,
             None,
+            false,
         )?;
         validate_source(
             &outcome.result.source,
@@ -83,6 +85,7 @@ impl CapturedNetworkClient {
             NATIVE_GRID_QUERY_RESULT_SCHEMA_V1,
             MAX_NATIVE_GRID_REPORT_BYTES,
             Some(progress),
+            false,
         )?;
         let result = &outcome.result;
         validate_source(&result.source, &request.source, model)?;
@@ -118,6 +121,7 @@ impl CapturedNetworkClient {
             NATIVE_GRID_MANIFEST_SCHEMA_V1,
             MAX_NATIVE_GRID_MANIFEST_BYTES,
             None,
+            false,
         )?;
         if outcome.result.schema != NATIVE_GRID_MANIFEST_SCHEMA_V1
             || outcome.result.package_sha256 != digest_bytes(model)
@@ -149,6 +153,7 @@ impl CapturedNetworkClient {
             NATIVE_GRID_PUBLICATION_RESULT_SCHEMA_V1,
             MAX_NATIVE_GRID_REPORT_BYTES,
             None,
+            false,
         )?;
         let result = &outcome.result;
         validate_source(&result.source, &request.source, model)?;
@@ -182,6 +187,7 @@ impl CapturedNetworkClient {
         artifact_schema: &'static str,
         maximum: usize,
         progress: Option<ProgressObserver<'_>>,
+        retain_staging: bool,
     ) -> Result<GridOutcome<T>, NetworkFailure> {
         if !self.identity.capabilities.contains(&capability) {
             return Err(NetworkFailure::new(
@@ -350,12 +356,14 @@ impl CapturedNetworkClient {
                 ));
             }
         }
+        let request_bound = match task {
+            "grid-apply" => ds_network_contracts::grid_apply::MAX_GRID_APPLY_REQUEST_BYTES,
+            "grid-catalog" => ds_network_contracts::grid_catalog::MAX_GRID_CATALOG_REQUEST_BYTES,
+            _ => MAX_NATIVE_GRID_QUERY_REQUEST_BYTES,
+        };
         if request.is_some()
-            && digest_file(
-                &request_path,
-                MAX_NATIVE_GRID_QUERY_REQUEST_BYTES as u64,
-                "network_input_changed",
-            )? != input_sha256
+            && digest_file(&request_path, request_bound as u64, "network_input_changed")?
+                != input_sha256
         {
             return Err(NetworkFailure::new(
                 "network_input_changed",
@@ -388,6 +396,7 @@ impl CapturedNetworkClient {
             executable_sha256: self.executable_sha256.clone(),
             development_override: self.development_override,
             progress: completed.stderr,
+            staging: retain_staging.then_some(run),
         })
     }
 }
