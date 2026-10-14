@@ -11,11 +11,12 @@
 | **Link the crate** | the owner is a pure library with a clean boundary | `ds dsgrid` links `ds-grid-model`, `ds-grid-exchange` — the same crates `ds-web/src-tauri` links |
 | **Call the binary** | the owning workspace deliberately chose process separation and wrote down why | `ds report` → `reporter`; prepared Solar calculation → `solar` |
 
-The choice belongs to the owning workspace, not to convenience. Four typed
+The choice belongs to the owning workspace, not to convenience. Five typed
 process contracts exist today, each designed as one:
 
 | Binary | Owner | Shape |
 |---|---|---|
+| `ds-network` | `ds-network/crates/ds-network-engine` | fixed identity probe and closed LV processing request; immutable complete result plus typed identity/digest receipt |
 | `ds-grid` | `ds-network/crates/ds-grid-cli` | one named subcommand per call |
 | `reporter` | `ds-network-reporter/src/bin/reporter.rs` | typed request file; machine-readable result file; the result must not already exist |
 | `solar` | `ds-solar/apps/solar` | fixed build identity and sealed prepared-calculation file task; no acquisition |
@@ -65,6 +66,7 @@ named owner classes, and each is audited where it lives:
 |---|---|---|
 | Native Assets PDF text decoder | `ds-command-kernel/crates/ds-assets-pdf-host` (linked by `ds-cli-assets`) | fixed `/usr/bin/prlimit` executing only `/usr/bin/pdfinfo` or `/usr/bin/pdftotext`, over a private local copy of governed signed-read bytes; validated numeric pages, fixed resource limits, no executable/argv/environment/URL/password input |
 | A sibling DS executable | `crates/ds-cli-exec` | `reporter`, `solar`, `ds-solar`, under one named subcommand |
+| Detached Network host client | `ds-command-kernel/crates/ds-network-client` through `ds-cli-exec` supervision | fixed `build-info` and `lv-process` operations; typed local request and validated artifacts, without algorithms linked into this consumer |
 | The platform package manager | `crates/ds-cli-workstation/src/install.rs` | one fixed manager with a `const` package identity |
 | An executable already on this machine, probed | `crates/ds-cli-workstation/src/detect.rs`, `verify.rs` | bounded version probes and the harmless verification smoke test |
 | This same `ds`, and the installed desktop | `crates/ds-cli-mcp/src/tools.rs` | one `ds <path> … --output json` per `tools/call`; for a live-descriptor command that requires desktop authority and has no named descriptor, one fixed no-argument DS GridDesign launch |
@@ -120,6 +122,22 @@ python3 scripts/test-module-interface.py --ds target/debug/ds --scratch out/<run
 The scratch directory must already exist on disk. This checks actual CLI/MCP
 dispatch, zero discovery spawns, one explicit identity probe per addon, missing
 override refusal, and Kernel catalog admission without engine execution.
+
+Qualify the actual detached LV processing consumer with captured native artifacts:
+
+```sh
+python3 scripts/test-network-lv-process.py --ds /absolute/path/to/ds \
+  --engine /absolute/path/to/captured-network-insertion \
+  --fixtures ../ds-network/crates/ds-network/tests/fixtures/native-engine-boundary/v1 \
+  --trace-helper ../ds-command-kernel/scripts/native_host_network_trace.py \
+  --evidence /absolute/disk/path/to/new-evidence
+```
+
+This executes CLI/MCP parity, both historical byte goldens, the canonical schema,
+missing/incompatible/corrupt/cancelled candidates and zero-network checks including
+a detector control. Native process unit/domain tests marked as requiring an
+explicit engine must also run with `DS_NETWORK_ENGINE_BIN` and `--ignored` during
+this qualification; an ordinary host-only test run does not prove execution.
 
 ## Availability must not execute
 

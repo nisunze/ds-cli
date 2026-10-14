@@ -442,7 +442,7 @@ fn run_with(inputs: &Inputs, context: &Context, owners: &Owners) -> Result<Value
     }
     let input_bytes = project_save::read(
         &request_text,
-        ds_network::network::native_fast_lv::MAX_NATIVE_FAST_LV_INPUT_BYTES,
+        ds_network_contracts::lv_processing::MAX_NATIVE_LV_INPUT_BYTES,
     )?;
     if source["request_sha256"] != sha256(&input_bytes) {
         return Err(incomplete(
@@ -471,7 +471,7 @@ fn run_with(inputs: &Inputs, context: &Context, owners: &Owners) -> Result<Value
     }
     let result_bytes = project_save::read(
         &result_text,
-        ds_network::network::native_fast_lv::MAX_NATIVE_FAST_LV_OUTPUT_BYTES,
+        ds_network_contracts::lv_processing::MAX_NATIVE_LV_OUTPUT_BYTES,
     )?;
     let (captured_project, _, _) = project_save::verify_receipts(
         &source,
@@ -566,11 +566,11 @@ fn captured_save_for_preflight(inputs: &Inputs) -> Result<Option<Value>, Failure
     let processed = read_receipt(&directory.join("process.json"), &process::COMMAND)?;
     let input = project_save::read(
         &directory.join("request.json").to_string_lossy(),
-        ds_network::network::native_fast_lv::MAX_NATIVE_FAST_LV_INPUT_BYTES,
+        ds_network_contracts::lv_processing::MAX_NATIVE_LV_INPUT_BYTES,
     )?;
     let result = project_save::read(
         &directory.join("result.json").to_string_lossy(),
-        ds_network::network::native_fast_lv::MAX_NATIVE_FAST_LV_OUTPUT_BYTES,
+        ds_network_contracts::lv_processing::MAX_NATIVE_LV_OUTPUT_BYTES,
     )?;
     let (captured_project, _, _) =
         project_save::verify_receipts(&source, &processed, transformer, lane, &input, &result)?;
@@ -621,7 +621,7 @@ fn print_saved(owners: &Owners, context: &Context, run: PrintRun<'_>) -> Result<
     }
     let receipt_bytes = project_save::read(
         &receipt_path.to_string_lossy(),
-        ds_network::network::native_fast_lv::MAX_NATIVE_FAST_LV_INPUT_BYTES,
+        ds_network_contracts::lv_processing::MAX_NATIVE_LV_INPUT_BYTES,
     )?;
     if capture["sha256"] != sha256(&receipt_bytes) || capture["bytes"] != receipt_bytes.len() {
         return Err(incomplete("The captured printing receipt bytes moved."));
@@ -911,7 +911,7 @@ mod tests {
     fn export(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         stage("export")?;
         assert!(inputs.switch("project-config"));
-        let bytes = ds_network::network::native_fast_lv::encode_native_fast_lv_request_with_config(
+        let bytes = ds_network_contracts::lv_processing::encode_native_lv_request_with_config(
             inputs.require("transformer")?,
             &std::collections::BTreeMap::from([(
                 "tr".to_owned(),
@@ -1556,7 +1556,7 @@ mod tests {
     }
 
     #[test]
-    fn unverified_save_and_failed_native_job_are_failures() {
+    fn unverified_save_is_a_failure() {
         reset();
         CALLS.with(|calls| calls.borrow_mut().unverified = true);
         let temp = tempfile::tempdir().unwrap();
@@ -1568,7 +1568,13 @@ mod tests {
             "fast_lv_run_save_unverified"
         );
         assert!(!directory.join("save.json").exists());
+    }
+
+    #[test]
+    #[ignore = "requires an explicitly selected compatible Network executable"]
+    fn failed_native_job_never_reaches_save() {
         reset();
+        let temp = tempfile::tempdir().unwrap();
         let directory = temp.path().join("native-failure");
         // Real owner request encoder and processor: empty source is not a
         // successful job, even though process writes a complete batch result.

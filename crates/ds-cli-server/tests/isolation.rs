@@ -1805,7 +1805,7 @@ fn activity_scope_covers_a_project_older_than_one_page_of_the_queue() {
             owner: OWNER.to_owned(),
             lane: LANE.to_owned(),
             input_sha256: context.input_sha256.clone(),
-            engine: ds_command_kernel::compute_jobs::EngineKind::FastLv,
+            engine: ds_command_kernel::compute_jobs::EngineKind::LvProcessing,
             input_tag: "ds.fast-lv.request/v1".to_owned(),
             phase: Phase::Queued,
             attempts: 0,

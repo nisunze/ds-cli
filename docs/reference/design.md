@@ -51,18 +51,19 @@ arbitrary request field or browser store.
 ```bash
 ds account connect
 ds design lv project-export --project <id> --transformer T-1042 \
-  --out ./T-1042.fast-lv.json --output json
-ds design lv process --input ./T-1042.fast-lv.json \
-  --out ./T-1042.fast-lv.result.json --output json
+  --out ./T-1042.lv.json --output json
+ds design lv process --input ./T-1042.lv.json \
+  --out ./T-1042.lv.result.json --output json
 ```
 
-`ds design lv process` is the mapless, signed-out native route to the same
-Rust engineering kernel used below ds-web's WASM adapter. Its input is one
-closed `ds.fast-lv.request/v1` file:
+`ds design lv process` is the mapless, signed-out native route through the
+admitted offline Network executable, using the same Rust engineering owner
+as the browser WASM adapter. Its input is one closed
+`ds.lv.process.request/v1` file:
 
 ```json
 {
-  "schema": "ds.fast-lv.request/v1",
+  "schema": "ds.lv.process.request/v1",
   "jobs": [{
     "transformer_name": "Kigali_T1",
     "gdfs": {
@@ -86,12 +87,24 @@ most 64 layers and 64 config sheets per transformer, at most 100,000 input
 features in total, and at most 64 MiB of source bytes. Names are at most 120
 bytes. Unknown envelope/job fields and unknown process settings are refused.
 
-Independent transformer jobs use native Rayon's process-wide pool and results
-retain input order. The complete `ds.fast-lv.result/v1` document is written to
+Historical `ds.fast-lv.request/v1` remains explicit read compatibility and
+produces `ds.fast-lv.result/v1`; it is not a distinct processing mode.
+New exports use `ds.lv.process.request/v1`.
+
+Independent transformer jobs use the executable's bounded native Rayon pool
+and results retain input order. The complete `ds.lv.process.result/v1` document is written to
 an absent `--out` path; it is never truncated or overwritten. Terminal output
 is only a bounded count/digest receipt. This command neither reads nor updates
 Desktop, map, IndexedDB, project, or saved transformer state. Importing or
 saving the result is a separate governed operation.
+
+Missing or incompatible Network components refuse before result publication;
+there is no embedded or cloud fallback. `DS_NETWORK_ENGINE_BIN` is an explicit
+absolute development override, labeled in the receipt. Normally selected
+components must report qualified source and dependency-closure pins. Receipts
+include the captured executable digest and actual engine identity. Discovery
+only inspects local executable metadata and does not start it. Private staging
+is created beside the requested output and removed after completion or refusal.
 
 Each processed job's receipt includes `preservation`: effective settings,
 approved feature count, and per-layer/per-field source-to-result change counts.

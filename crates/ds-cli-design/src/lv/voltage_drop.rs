@@ -19,10 +19,10 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
-use ds_network::network::native_fast_lv::{
-    MAX_NATIVE_FAST_LV_OUTPUT_BYTES, NativeFastLvError, NativeFastLvJobV1,
-    decode_native_fast_lv_request, native_fast_lv_job_input,
+use ds_network_contracts::lv_processing::{
+    MAX_NATIVE_LV_OUTPUT_BYTES, NativeLvError, NativeLvJobV1, decode_native_lv_request,
 };
+use ds_network::network::lv_processing::native_lv_job_input;
 use ds_network::network::process_lv_transformer_with_voltage_drop;
 use ds_network::network::voltage_drop::params::METHOD;
 use ds_network::network::voltage_drop::{VoltageDropAnalysis, VoltageDropRun};
@@ -203,7 +203,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let input = bounded_read(&input_path)?;
     let input_sha256 = sha256(&input);
-    let mut request = decode_native_fast_lv_request(&input).map_err(map_owner_error)?;
+    let mut request = decode_native_lv_request(&input).map_err(map_owner_error)?;
     drop(input);
     // The scenario changes this run's copy of the request only: the file and
     // the project keep their own settings and loads.
@@ -461,9 +461,9 @@ fn amount(value: f64) -> String {
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
-fn solve(job: NativeFastLvJobV1) -> Solved {
+fn solve(job: NativeLvJobV1) -> Solved {
     let transformer_name = job.transformer_name.clone();
-    let input = native_fast_lv_job_input(job);
+    let input = native_lv_job_input(job);
     // The same containment the batch kernel gives `design.lv.process`: a
     // panicking job is that job's failure, not the command's.
     let outcome = match catch_unwind(AssertUnwindSafe(|| {
@@ -529,7 +529,7 @@ fn row(job: &Solved) -> Value {
 /// The complete result document, or a refusal. It is never truncated.
 fn encode(solved: Vec<Solved>, scenario: &Value) -> Result<Vec<u8>, Failure> {
     let encoding = |error: serde_json::Error| {
-        map_owner_error(NativeFastLvError::ResultEncoding(error.to_string()))
+        map_owner_error(NativeLvError::ResultEncoding(error.to_string()))
     };
     // Built by moving values in: `json!` would serialize each layer map into a
     // second copy of itself.
@@ -579,10 +579,10 @@ fn encode(solved: Vec<Solved>, scenario: &Value) -> Result<Vec<u8>, Failure> {
     document.insert("scenario".into(), scenario.clone());
     document.insert("jobs".into(), Value::Array(jobs));
     let bytes = serde_json::to_vec(&document).map_err(encoding)?;
-    if bytes.len() > MAX_NATIVE_FAST_LV_OUTPUT_BYTES {
-        return Err(map_owner_error(NativeFastLvError::OutputTooLarge {
+    if bytes.len() > MAX_NATIVE_LV_OUTPUT_BYTES {
+        return Err(map_owner_error(NativeLvError::OutputTooLarge {
             actual: bytes.len(),
-            maximum: MAX_NATIVE_FAST_LV_OUTPUT_BYTES,
+            maximum: MAX_NATIVE_LV_OUTPUT_BYTES,
         }));
     }
     Ok(bytes)

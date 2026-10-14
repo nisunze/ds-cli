@@ -8552,6 +8552,7 @@ fn a_well_formed_map_call_stops_at_confirmation_or_pairing() {
 // exercised here before the paired collaboration refusals below.
 
 #[test]
+#[ignore = "requires an explicitly selected compatible Network executable"]
 fn design_lv_process_runs_the_native_batch_without_project_or_desktop_state() {
     let root = temp_root("native-fast-lv");
     std::fs::create_dir_all(&root).unwrap();
