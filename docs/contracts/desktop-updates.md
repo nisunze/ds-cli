@@ -23,6 +23,13 @@ have HTTPS without embedded credentials and carry an exact bounded size/SHA-256.
 Blocked, stopped and rolled-back releases are visible but cannot be acquired.
 Local development inspects installed facts without public release acquisition.
 
+The verified native transfer implementation lives in the detached
+`ds-update-runtime::transfer` owner. The Desktop download adapter preserves its
+existing calls and injects held connectivity admission alongside cancellation.
+Both SHA-256 and CRC32C retain the existing resumed-transfer, bounded deadline,
+private/no-link file and reopened-byte verification. Native Server consumers
+use the same owner without importing Web or an engineering crate.
+
 The host extends its existing verified transfer transaction with staging and
 activation. Staging returns a native ready receipt and never launches an
 installer or exits. Activation accepts only that receipt, reopens and verifies
