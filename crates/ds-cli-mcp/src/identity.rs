@@ -81,8 +81,8 @@ fn lane_camel(lane: &str) -> &'static str {
     match lane {
         "stable" => "Stable",
         "canary" => "Canary",
-        "headless" => "Headless",
-        "headless-canary" => "HeadlessCanary",
+        "core" => "Core",
+        "core-canary" => "CoreCanary",
         "local" => "Local",
         "development" => "Development",
         _ => unreachable!("build.rs admits only closed MCP release lanes"),
@@ -163,13 +163,13 @@ mod tests {
     }
 
     #[test]
-    fn canary_server_registration_is_distinct_from_desktop_and_stable_server() {
-        let server = ServerIdentity::new("headless-canary", RuntimePlatform::Linux);
+    fn canary_core_registration_is_distinct_from_desktop_and_stable_core() {
+        let server = ServerIdentity::new("core-canary", RuntimePlatform::Linux);
         assert_eq!(
             server.registration_name(),
-            "dsGridDesignHeadlessCanaryLinux"
+            "dsGridDesignCoreCanaryLinux"
         );
-        for lane in ["headless", "canary", "stable"] {
+        for lane in ["core", "canary", "stable"] {
             let other = ServerIdentity::new(lane, RuntimePlatform::Linux);
             assert_ne!(server.registration_name(), other.registration_name());
             assert_ne!(server.protocol_name(), other.protocol_name());
