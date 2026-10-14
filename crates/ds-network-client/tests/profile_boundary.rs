@@ -44,6 +44,16 @@ fn acceptance_profile_real_owner_retains_history_exact_artifacts_and_cached_rest
     isolated(&required("DS_PROFILE_REAL_ENGINE"), "real");
 }
 #[test]
+#[ignore = "requires explicit built Profile authored-facts owner and exact owning replay fixture"]
+fn acceptance_profile_real_owner_reconciles_staged_journal_and_reads_exact_authored_facts() {
+    isolated(&required("DS_PROFILE_REAL_ENGINE"), "authored");
+}
+#[test]
+#[ignore = "requires explicit previous ProfileSession engine without authored-facts capability"]
+fn acceptance_profile_old_owner_refuses_authored_facts_before_staging() {
+    isolated(&required("DS_PROFILE_OLD_ENGINE"), "old-authored");
+}
+#[test]
 #[ignore = "requires explicit adversarial retained native owner fixture"]
 fn acceptance_profile_adversarial_receipts_supervision_and_captured_selection() {
     let fixture = required("DS_PROFILE_TEST_FIXTURE");
@@ -83,7 +93,7 @@ fn isolated_profile_case() {
     let case = env::var("DS_PROFILE_TEST_CASE").unwrap();
     let scratch = tempfile::tempdir().unwrap();
     let captured = CapturedNetworkClient::capture(1, &|| false).unwrap();
-    let input = if case == "real" {
+    let input = if case == "real" || case == "authored" || case == "old-authored" {
         fs::read(required("DS_PROFILE_OPEN_FIXTURE")).unwrap()
     } else {
         serde_json::to_vec(&NativeProfileOpenV1{schema:PROFILE_OPEN_SCHEMA.into(),seed_json:json!({"model_id":"fixture","history":{"initial_revision":format!("rev:{}", "1".repeat(64)),"model_revision":format!("rev:{}", "1".repeat(64)),"undo_depth":0,"redo_depth":0,"history_pin":"2".repeat(64)}}).to_string(),binding_history:None,calculated:None,analysis:None}).unwrap()
@@ -92,7 +102,13 @@ fn isolated_profile_case() {
     let result = captured.open_profile_session_with_timeout(
         &input,
         scratch.path(),
-        Duration::from_millis(if case == "real" { 30000 } else { 200 }),
+        Duration::from_millis(
+            if case == "real" || case == "authored" || case == "old-authored" {
+                30000
+            } else {
+                200
+            },
+        ),
         &|| false,
     );
     if case == "profile-capability" {
@@ -135,6 +151,132 @@ fn isolated_profile_case() {
     }
     let mut session = result.unwrap();
     let pid = session.process_id();
+    if case == "old-authored" {
+        let initial = session.history().clone();
+        let snapshot = session
+            .request(NativeProfileOperationV1::Snapshot, &|| false)
+            .unwrap_err();
+        assert_eq!(snapshot.code(), "network_engine_incompatible");
+        let journal = fs::read(required("DS_PROFILE_OWNER_JOURNAL")).unwrap();
+        let target: Value =
+            serde_json::from_slice(&fs::read(required("DS_PROFILE_OWNER_HISTORY")).unwrap())
+                .unwrap();
+        assert_eq!(
+            session
+                .reconcile_journal(&journal, target, &|| false)
+                .unwrap_err()
+                .code(),
+            "network_engine_incompatible"
+        );
+        let run = fs::read_dir(scratch.path())
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert_eq!(
+            fs::read_dir(&run).unwrap().count(),
+            2,
+            "only original open and output directory exist"
+        );
+        assert_eq!(session.history(), &initial);
+        assert_eq!(state(&mut session)["calculation_requests"], 0);
+        session.close(&|| false).unwrap();
+        assert_dead(pid);
+        return;
+    }
+    if case == "authored" {
+        let journal = fs::read(required("DS_PROFILE_OWNER_JOURNAL")).unwrap();
+        assert!(journal.len() > MAX_PROFILE_CONTROL_BYTES);
+        let target: Value =
+            serde_json::from_slice(&fs::read(required("DS_PROFILE_OWNER_HISTORY")).unwrap())
+                .unwrap();
+        let initial = session.history().clone();
+        let snapshot = session
+            .request(NativeProfileOperationV1::Snapshot, &|| false)
+            .unwrap()
+            .bytes;
+        let facts: NativeProfileSnapshotV1 = serde_json::from_slice(&snapshot).unwrap();
+        assert!(facts.snapshot_json.contains("-0.0"));
+        assert_eq!(facts.history, initial);
+        assert_eq!(state(&mut session)["calculation_requests"], 0);
+        for file in [
+            "../journal.json",
+            "/journal.json",
+            "https://example.invalid/journal",
+        ] {
+            let refusal = session
+                .request(
+                    NativeProfileOperationV1::ReconcileJournal {
+                        journal: ds_network_contracts::engine::ArtifactReceipt {
+                            file: file.into(),
+                            byte_count: journal.len(),
+                            sha256: "0".repeat(64),
+                            schema: PROFILE_JOURNAL_SCHEMA.into(),
+                        },
+                        target_history: target.clone(),
+                    },
+                    &|| false,
+                )
+                .unwrap_err();
+            assert_eq!(refusal.code(), "profile_replay_input_invalid");
+            assert_eq!(session.history(), &initial);
+        }
+        let outcome = session
+            .reconcile_journal(&journal, target.clone(), &|| false)
+            .unwrap();
+        let result: NativeProfileReconcileV1 = serde_json::from_slice(&outcome.bytes).unwrap();
+        assert_eq!(
+            result.snapshot.snapshot_json.as_bytes(),
+            fs::read(required("DS_PROFILE_OWNER_SNAPSHOT")).unwrap()
+        );
+        assert_eq!(result.snapshot.journal_json.as_bytes(), journal);
+        assert_eq!(session.history(), &target);
+        assert_eq!(
+            session.process_id(),
+            pid,
+            "one held model retains one child"
+        );
+        let status = state(&mut session);
+        assert_eq!(status["calculation_requests"], 0);
+        assert_eq!(status["analysis_requests"], 0);
+        assert_eq!(status["session_initializations"], 1);
+        let refused = session
+            .reconcile_journal(b"{}", target.clone(), &|| false)
+            .unwrap_err();
+        assert_eq!(refused.owner_code(), Some("profile_replay_invalid"));
+        assert_eq!(session.history(), &target);
+        assert!(!session.is_closed());
+        let facts_bytes = session
+            .request(NativeProfileOperationV1::Snapshot, &|| false)
+            .unwrap()
+            .bytes;
+        let checkpoint = session.checkpoint(&|| false).unwrap().bytes;
+        let pin = session.pin().clone();
+        session.close(&|| false).unwrap();
+        assert_dead(pid);
+        let captured = CapturedNetworkClient::from_pin(&pin, &|| false).unwrap();
+        let mut resumed = captured
+            .open_profile_session(&checkpoint, scratch.path(), &|| false)
+            .unwrap();
+        assert_eq!(
+            resumed
+                .request(NativeProfileOperationV1::Snapshot, &|| false)
+                .unwrap()
+                .bytes,
+            facts_bytes
+        );
+        assert_eq!(state(&mut resumed)["calculation_requests"], 0);
+        resumed.close(&|| false).unwrap();
+        drop(resumed);
+        drop(session);
+        assert_eq!(
+            fs::read_dir(scratch.path()).unwrap().count(),
+            0,
+            "private input and result staging is cleaned"
+        );
+        return;
+    }
     if case == "real" {
         let initial_state = state(&mut session);
         assert_eq!(initial_state["calculation_requests"], 0);

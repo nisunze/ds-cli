@@ -1,6 +1,7 @@
 //! Retained offline Profile client; no engineering or package decode in the host.
 use super::*;
 use ds_cli_exec::NetworkProfileProcess;
+use ds_network_contracts::engine::ArtifactReceipt;
 use ds_network_contracts::profile::*;
 use serde_json::Value;
 
@@ -182,6 +183,72 @@ impl ProfileSession {
     ) -> Result<ProfileOutcome, NetworkFailure> {
         self.request_at(operation, Some(self.history.clone()), TASK_TIMEOUT, cancel)
     }
+    /// Exact complete journal bytes are staged once inside this retained
+    /// session, rather than fragmented into commands or oversized frames.
+    pub fn reconcile_journal(
+        &mut self,
+        journal: &[u8],
+        target_history: Value,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<ProfileOutcome, NetworkFailure> {
+        if self.closed {
+            return Err(NetworkFailure::new(
+                "profile_session_closed",
+                "Profile session cannot accept another journal",
+            ));
+        }
+        if self.sequence >= MAX_PROFILE_REQUESTS {
+            return Err(NetworkFailure::new(
+                "profile_session_capacity",
+                "Profile request capacity reached; retain the last checkpoint",
+            ));
+        }
+        if !self
+            .pin
+            .identity
+            .capabilities
+            .contains(&NetworkCapability::ProfileAuthoredFactsV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "captured Network has no exact Profile authored-facts capability",
+            ));
+        }
+        if journal.is_empty()
+            || journal.len() > MAX_PROFILE_JOURNAL_BYTES
+            || !valid_history(&target_history)
+        {
+            return Err(NetworkFailure::new(
+                "profile_replay_input_invalid",
+                "exact journal bytes and target history must be bounded",
+            ));
+        }
+        let file = format!("profile-input-{:010}.json", self.sequence + 1);
+        let path = self.run.path().join(&file);
+        write_request(&path, journal)?;
+        let result = self.request(
+            NativeProfileOperationV1::ReconcileJournal {
+                journal: ArtifactReceipt {
+                    file,
+                    byte_count: journal.len(),
+                    sha256: digest_bytes(journal),
+                    schema: PROFILE_JOURNAL_SCHEMA.into(),
+                },
+                target_history,
+            },
+            cancel,
+        );
+        let retained = read_regular(&path, MAX_PROFILE_JOURNAL_BYTES, "network_request_changed");
+        let cleanup = fs::remove_file(&path);
+        if !matches!(retained, Ok(ref bytes) if bytes == journal) || cleanup.is_err() {
+            self.abort();
+            return Err(NetworkFailure::new(
+                "network_request_changed",
+                "staged Profile journal changed during reconciliation",
+            ));
+        }
+        result
+    }
     pub fn request_at(
         &mut self,
         operation: NativeProfileOperationV1,
@@ -193,6 +260,20 @@ impl ProfileSession {
             return Err(NetworkFailure::new(
                 "profile_session_closed",
                 "Profile session is closed",
+            ));
+        }
+        if matches!(
+            operation,
+            NativeProfileOperationV1::Snapshot | NativeProfileOperationV1::ReconcileJournal { .. }
+        ) && !self
+            .pin
+            .identity
+            .capabilities
+            .contains(&NetworkCapability::ProfileAuthoredFactsV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "captured Network has no exact Profile authored-facts capability",
             ));
         }
         if self.sequence >= MAX_PROFILE_REQUESTS {
@@ -208,6 +289,34 @@ impl ProfileSession {
             expected_history,
             operation,
         };
+        if let NativeProfileOperationV1::ReconcileJournal {
+            journal,
+            target_history,
+        } = &request.operation
+        {
+            if journal.file != format!("profile-input-{:010}.json", request.sequence)
+                || journal.schema != PROFILE_JOURNAL_SCHEMA
+                || journal.byte_count > MAX_PROFILE_JOURNAL_BYTES
+                || !valid_hex(&journal.sha256, 64)
+                || !valid_history(target_history)
+            {
+                return Err(NetworkFailure::new(
+                    "profile_replay_input_invalid",
+                    "journal must name the fixed-sequence private staged input",
+                ));
+            }
+            let bytes = read_regular(
+                &self.run.path().join(&journal.file),
+                MAX_PROFILE_JOURNAL_BYTES,
+                "profile_replay_input_invalid",
+            )?;
+            if bytes.len() != journal.byte_count || digest_bytes(&bytes) != journal.sha256 {
+                return Err(NetworkFailure::new(
+                    "profile_replay_input_invalid",
+                    "staged journal differs from its receipt",
+                ));
+            }
+        }
         let input = serde_json::to_vec(&request).map_err(|e| invalid(e.to_string()))?;
         if input.len() + 1 > MAX_PROFILE_CONTROL_BYTES {
             return Err(NetworkFailure::new(
@@ -234,7 +343,11 @@ impl ProfileSession {
             NativeProfileOperationV1::Checkpoint | NativeProfileOperationV1::Close
         );
         let close = matches!(request.operation, NativeProfileOperationV1::Close);
-        let control = matches!(request.operation, NativeProfileOperationV1::Control { .. });
+        let control = matches!(
+            request.operation,
+            NativeProfileOperationV1::Control { .. }
+                | NativeProfileOperationV1::ReconcileJournal { .. }
+        );
         let bytes = self
             .process
             .request(input, timeout, cancel)
@@ -295,6 +408,15 @@ impl ProfileSession {
             return Err(invalid(
                 "Profile success differs from its history or terminal contract",
             ));
+        }
+        if let NativeProfileOperationV1::ReconcileJournal { target_history, .. } =
+            &request.operation
+        {
+            if &reply.history != target_history {
+                return Err(invalid(
+                    "Profile reconciliation differs from its exact target history",
+                ));
+            }
         }
         let artifact = reply
             .artifact
@@ -366,6 +488,32 @@ impl ProfileSession {
         } else {
             let _: Box<serde_json::value::RawValue> =
                 serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+            let snapshot = match &request.operation {
+                NativeProfileOperationV1::Snapshot => Some(
+                    serde_json::from_slice::<NativeProfileSnapshotV1>(&bytes)
+                        .map_err(|e| invalid(e.to_string()))?,
+                ),
+                NativeProfileOperationV1::ReconcileJournal { journal, .. } => {
+                    let result: NativeProfileReconcileV1 =
+                        serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+                    if result.journal_sha256 != journal.sha256 {
+                        return Err(invalid(
+                            "Profile result differs from the exact staged journal digest",
+                        ));
+                    }
+                    Some(result.snapshot)
+                }
+                _ => None,
+            };
+            if snapshot.is_some_and(|snapshot| {
+                snapshot.schema != PROFILE_SNAPSHOT_SCHEMA
+                    || snapshot.model_id != self.model_id
+                    || snapshot.history != reply.history
+            }) {
+                return Err(invalid(
+                    "Profile authored facts differ from their model or history",
+                ));
+            }
         }
         fs::remove_file(&artifact_path).map_err(|e| invalid(e.to_string()))?;
         self.sequence = sequence;
