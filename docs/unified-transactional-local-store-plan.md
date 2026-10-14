@@ -6,6 +6,10 @@ sequence. It is not proof of implementation, installed behavior or migration.
 This assessment changes documentation only: no product code, live data,
 transformer history, dependency installation, build or deployment.
 
+The cross-repository runtime and release target is governed by the
+[Browser/native compute architecture](https://github.com/nisunze/ds-architecture/blob/master/architecture/browser-native-compute.md). This document owns the
+transactional storage and synchronization migration inside that target.
+
 ## 1. Decision and scope
 
 Proceed toward SQLite on native Desktop/Server and SQLite-WASM with OPFS in
