@@ -1,7 +1,7 @@
 //! Thin command/HTTP host for the shared native compute runtime.
 mod auth;
-pub mod modules;
 pub mod desktop_update;
+pub mod modules;
 // The HTTP host and the layer binding are reachable from an integration test
 // so the isolation proof can stand up a real owner-only socket over a fixture
 // identity and a fixture document source. Nothing here is a supported API:
@@ -211,6 +211,11 @@ const SERVE_REFUSALS: &[Refusal] = &[
         remedy: "send the documented route query and request body",
     },
     PLATFORM,
+    Refusal {
+        code: "headless_signed_out",
+        when: "this machine holds no native credential for the requested Server lane",
+        remedy: "run ds account connect for the same lane, approve the trusted device, then start the Server again",
+    },
     REFUSED,
     OWNER_CHANGED,
     MULTI_PRINCIPAL,
@@ -897,6 +902,14 @@ fn failure(e: impl ToString) -> Failure {
     Failure::failed("server_refused", e.to_string())
         .remedy("verify native authentication, protected server state and ds server serve")
 }
+fn startup_failure(error: auth::StartupFailure, lane: &str) -> Failure {
+    match error {
+        auth::StartupFailure::SignedOut => Failure::unauthorized("headless_signed_out", auth::SIGNED_OUT)
+            .remedy("connect this Server's native account for the same lane, approve the trusted device, then start it again")
+            .next(format!("ds account connect --lane {lane}")),
+        auth::StartupFailure::Observation(message) => failure(message),
+    }
+}
 fn state(inputs: &Inputs) -> Result<PathBuf, Failure> {
     let explicit = inputs.value("state-dir").map(Path::new);
     let path = ds_compute_runtime::server_state_directory(inputs.require("lane")?, explicit)
@@ -1076,7 +1089,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         Arc::new(auth::NativeCredential::new(lane.clone()));
     let authorizer =
         auth::NativeAuthorizer::from_source(credential.clone(), auth::OBSERVE_INTERVAL)
-            .map_err(failure)?;
+            .map_err(|error| startup_failure(error, &lane))?;
     let owner = authorizer.owner().to_owned();
     let directory = state(inputs)?;
     host::prepare_directory(&directory).map_err(failure)?;
@@ -1567,6 +1580,30 @@ mod tests {
                 "`{code}` has no remedy when the Server sends none"
             );
         }
+    }
+
+    #[test]
+    fn startup_keeps_signed_out_distinct_from_a_protected_state_failure() {
+        let absent = startup_failure(auth::StartupFailure::SignedOut, "stable");
+        assert_eq!(absent.code(), "headless_signed_out");
+        assert_eq!(absent.class(), ExitClass::Unauthorized);
+        assert_eq!(
+            absent.next_commands(),
+            &["ds account connect --lane stable"]
+        );
+        assert!(
+            SERVE_REFUSALS
+                .iter()
+                .any(|refusal| refusal.code == absent.code())
+        );
+        let unavailable = startup_failure(
+            auth::StartupFailure::Observation("protected state unavailable".into()),
+            "stable",
+        );
+        assert_eq!(unavailable.code(), "server_refused");
+        assert_eq!(unavailable.class(), ExitClass::Failed);
+        assert_eq!(unavailable.message(), "protected state unavailable");
+        assert!(unavailable.next_commands().is_empty());
     }
 
     #[test]

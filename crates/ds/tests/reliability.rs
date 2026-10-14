@@ -187,6 +187,68 @@ fn host_context_reaches_the_event_without_changing_the_answer() {
     );
 }
 
+#[test]
+fn a_signed_out_server_is_a_local_refusal_not_a_platform_failure() {
+    let state = state_root("server-signed-out");
+    let mut catalog: Value = serde_json::from_str(include_str!(
+        "../../ds-cli-auth/tests/fixtures/development-catalog.json"
+    ))
+    .unwrap();
+    catalog["schema_version"] = serde_json::json!(ds_client_core::CLIENT_PROFILE_SCHEMA);
+    for profile in catalog["profiles"].as_object_mut().unwrap().values_mut() {
+        profile["design_versions"]["actions"] =
+            serde_json::json!(ds_client_core::DESIGN_VERSIONS_ACTIONS);
+    }
+    let bundle = state.join("catalog.json");
+    fs::write(&bundle, serde_json::to_vec(&catalog).unwrap()).unwrap();
+    let config = state.join("empty-auth");
+    let host_state = state.join("server");
+    let env = [
+        ("DS_NATIVE_CLIENT_PROFILE_BUNDLE", bundle.to_str().unwrap()),
+        ("DS_CONFIG_HOME", config.to_str().unwrap()),
+        ("DS_CLI_SURFACE", "mcp"),
+    ];
+    let args = [
+        "server",
+        "serve",
+        "--lane",
+        "stable",
+        "--state-dir",
+        host_state.to_str().unwrap(),
+        "--workers",
+        "2",
+        "--output",
+        "json",
+    ];
+    let reported = ds(&state, "on", &env, &args);
+    let quiet = ds(&state, "off", &env, &args);
+    assert_eq!(
+        reported.status.code(),
+        Some(i32::from(
+            ds_cli_contract::outcome::ExitClass::Unauthorized.code()
+        ))
+    );
+    assert_eq!(reported.stdout, quiet.stdout);
+    assert_eq!(reported.stderr, quiet.stderr);
+    let answer: Value = serde_json::from_slice(&reported.stdout).unwrap();
+    assert_eq!(answer["error"]["code"], "headless_signed_out");
+    assert_eq!(answer["error"]["class"], "unauthorized");
+    assert_eq!(
+        answer["error"]["next"],
+        serde_json::json!(["ds account connect --lane stable"])
+    );
+    assert!(
+        !host_state.exists(),
+        "no Server state is opened before its owner is admitted"
+    );
+    let (_, document) = stored(&state);
+    let event = &document["outbox"][0]["event"];
+    assert_eq!(event["host_kind"], "server");
+    assert_eq!(event["result_class"], "refused");
+    assert_eq!(event["outcome"], "success");
+    assert!(document["last_flush"].is_null());
+}
+
 /// `ds doctor` shows the switch, the outbox and the last flush, and probes no
 /// network to do it.
 #[test]

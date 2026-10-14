@@ -88,7 +88,8 @@ impl ServerSyncSession {
             credential_binding,
         )?;
         let install_id = gateway.install_id().to_owned();
-        let authorizer = auth::NativeAuthorizer::new(connection.lane.clone())?;
+        let authorizer = auth::NativeAuthorizer::new(connection.lane.clone())
+            .map_err(|error| error.to_string())?;
         Ok(Self {
             store: open_store(database)?,
             fence: fence_for(context.account_uid(), context.deployment(), &install_id),

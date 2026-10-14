@@ -60,6 +60,13 @@ named. No saved selection is consulted.
 Passing `--project` there is still worth doing — it is how you learn you
 prepared the wrong city, as a differing name refuses `scope_mismatch`.
 
+A Server that holds no credential for the requested lane refuses locally with
+`headless_signed_out` and an `account connect` command for that same lane.
+Approve the trusted device in the signed-in Desktop, then start the Server
+again. No Server state or socket is created before its owner is admitted.
+Failure to read protected state remains a failure; it is distinct from being
+signed out.
+
 ### Working two projects side by side
 
 ```bash

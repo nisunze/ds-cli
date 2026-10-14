@@ -135,7 +135,7 @@ pub fn owner_fence(lane: &str) -> Result<String, String> {
     }
 }
 
-const SIGNED_OUT: &str = "this machine holds no native credential for this lane; sign in under the server's Linux account";
+pub(crate) const SIGNED_OUT: &str = "this machine holds no native credential for this lane; sign in under the server's Linux account";
 const OWNER_CHANGED: &str = "server identity changed; old jobs are fenced";
 const CREDENTIAL_CHANGED: &str = "server credential changed; restart the host explicitly to resume retained work under the new login";
 
@@ -165,6 +165,23 @@ pub(crate) fn gateway_reconnect_generation() -> u64 {
     GATEWAY_RECONNECT_GENERATION.load(Ordering::Acquire)
 }
 
+/// The startup distinction is typed: absence of a credential is an expected
+/// refusal, while failure to read protected state remains a real failure.
+#[derive(Debug, PartialEq, Eq)]
+pub enum StartupFailure {
+    SignedOut,
+    Observation(String),
+}
+
+impl std::fmt::Display for StartupFailure {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SignedOut => output.write_str(SIGNED_OUT),
+            Self::Observation(message) => output.write_str(message),
+        }
+    }
+}
+
 /// One authenticated owner, observed locally.
 ///
 /// Constructed from the credential on disk — which is why a host starts with
@@ -184,15 +201,15 @@ pub struct NativeAuthorizer {
 impl NativeAuthorizer {
     /// The production authorizer for one lane. Reads the protected state on
     /// this machine once and nothing else: no network, no saved selection.
-    pub fn new(lane: String) -> Result<Self, String> {
+    pub fn new(lane: String) -> Result<Self, StartupFailure> {
         Self::from_source(Arc::new(NativeCredential::new(lane)), OBSERVE_INTERVAL)
     }
 
     pub fn from_source(
         source: Arc<dyn OwnerCredential>,
         interval: Duration,
-    ) -> Result<Self, String> {
-        match source.held()? {
+    ) -> Result<Self, StartupFailure> {
+        match source.held().map_err(StartupFailure::Observation)? {
             OwnerAnswer::Held { owner, credential } => Ok(Self {
                 source,
                 owner,
@@ -201,7 +218,7 @@ impl NativeAuthorizer {
                 observed: Mutex::new(None),
                 reported: Mutex::new(None),
             }),
-            OwnerAnswer::SignedOut => Err(SIGNED_OUT.to_owned()),
+            OwnerAnswer::SignedOut => Err(StartupFailure::SignedOut),
         }
     }
 
@@ -511,7 +528,7 @@ pub(crate) mod tests {
         let refused = NativeAuthorizer::from_source(source, Duration::ZERO)
             .err()
             .expect("a machine with no credential cannot host");
-        assert_eq!(refused, SIGNED_OUT);
+        assert_eq!(refused, StartupFailure::SignedOut);
     }
 
     /// Reachability is one fact about the process, so the two tests that
