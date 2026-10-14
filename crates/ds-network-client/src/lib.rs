@@ -6,6 +6,7 @@ mod grid_apply;
 mod grid_apply_batch;
 mod grid_catalog;
 mod grid_create;
+mod grid_write_admission;
 mod mv_projection;
 mod mv_report;
 mod profile;

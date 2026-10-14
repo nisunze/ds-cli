@@ -374,6 +374,9 @@ impl CapturedNetworkClient {
             "grid-apply" => ds_network_contracts::grid_apply::MAX_GRID_APPLY_REQUEST_BYTES,
             "grid-catalog" => ds_network_contracts::grid_catalog::MAX_GRID_CATALOG_REQUEST_BYTES,
             "grid-create" => ds_network_contracts::grid_create::MAX_GRID_CREATE_REQUEST_BYTES,
+            "grid-write-admission" => {
+                ds_network_contracts::grid_write_admission::MAX_GRID_WRITE_ADMISSION_BYTES
+            }
             _ => MAX_NATIVE_GRID_QUERY_REQUEST_BYTES,
         };
         if request.is_some()
