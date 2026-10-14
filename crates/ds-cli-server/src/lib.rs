@@ -176,7 +176,7 @@ const PAYLOAD_CHANGED_FOR_KEY: Refusal = Refusal {
 };
 const CAPACITY_EXHAUSTED: Refusal = Refusal {
     code: "capacity_exhausted",
-    when: "a queue or the request door is full; the answer names scope and retry_after_ms",
+    when: "a queue, request door or result observer budget is full; the answer names scope and retry_after_ms",
     remedy: "retry after retry_after_ms, cancel work you no longer need, or raise --workers",
 };
 const CONTEXT_UNRECOVERABLE: Refusal = Refusal {
@@ -188,6 +188,26 @@ const OUTPUT_EXISTS: Refusal = Refusal {
     code: "server_output_exists",
     when: "the result output path already exists",
     remedy: "choose an absent output file; existing files are never overwritten",
+};
+const RESULT_PENDING: Refusal = Refusal {
+    code: "result_pending",
+    when: "the bounded observation ended while the admitted job is queued or running; detail includes its durable job and wait_seconds",
+    remedy: "reattach to this same job when a result is needed",
+};
+const RESULT_FAILED: Refusal = Refusal {
+    code: "result_failed",
+    when: "an observed job failed; detail includes its durable job and retained error",
+    remedy: "inspect the job error and retained input before submitting corrected work",
+};
+const RESULT_CANCELLED: Refusal = Refusal {
+    code: "result_cancelled",
+    when: "an observed job was cancelled; detail includes its durable job",
+    remedy: "inspect the retained job; submit new work only when intended",
+};
+const RESULT_WAIT_INVALID: Refusal = Refusal {
+    code: "result_wait_invalid",
+    when: "--wait is not an integer in 1..=600 seconds",
+    remedy: "omit --wait for an immediate read or pass --wait <1..600>",
 };
 
 /// The one refusal a second account meets on one Server, declared on the
@@ -288,6 +308,10 @@ const JOB_REFUSALS: &[Refusal] = &[
 ];
 /// Naming a job and a destination file.
 const RESULT_REFUSALS: &[Refusal] = &[
+    RESULT_PENDING,
+    RESULT_FAILED,
+    RESULT_CANCELLED,
+    RESULT_WAIT_INVALID,
     PLATFORM,
     REFUSED,
     OWNER_CHANGED,
@@ -581,6 +605,11 @@ pub static RESULT: Command = command(
         PROJECT,
         JOB,
         Arg::value("out", "<path>", "Absent destination file.").required(),
+        Arg::value(
+            "wait",
+            "<seconds>",
+            "Observe terminal completion for 1..600 seconds without polling; timeout/disconnect detaches and never cancels the job. Success also returns its durable job receipt.",
+        ),
     ],
     RESULT_REFUSALS,
     &[Example {
@@ -667,6 +696,10 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         Some("payload_changed_for_key") => Failure::new(class, "payload_changed_for_key", message),
         Some("capacity_exhausted") => Failure::new(class, "capacity_exhausted", message),
         Some("context_unrecoverable") => Failure::new(class, "context_unrecoverable", message),
+        Some("result_pending") => Failure::new(class, "result_pending", message),
+        Some("result_failed") => Failure::new(class, "result_failed", message),
+        Some("result_cancelled") => Failure::new(class, "result_cancelled", message),
+        Some("result_wait_invalid") => Failure::new(class, "result_wait_invalid", message),
         // The Server connection's own fence.
         Some("server_owner_changed") => Failure::new(class, "server_owner_changed", message),
         // The shared layer owner's, re-raised for `ds map layer … --target core`.
@@ -710,6 +743,11 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
     // Capacity is the one refusal a caller can act on programmatically, so its
     // numbers travel as structured detail and not only inside a sentence.
     match (code, value.get("retry_after_ms")) {
+        (Some("result_pending" | "result_failed" | "result_cancelled"), _) => {
+            refusal.detail(json!({
+                "job":value["job"], "wait_seconds":value.get("wait_seconds")
+            }))
+        }
         (Some("capacity_exhausted"), Some(retry)) => refusal.detail(json!({
             "retry_after_ms": retry.clone(),
             "scope": value.get("scope").cloned().unwrap_or(Value::Null),
@@ -724,7 +762,9 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
 /// the answer, and a differing class would disclose that the job exists.
 fn default_class(code: Option<&str>, status: u16) -> ExitClass {
     match code {
-        Some("project_required" | "context_corrupt") => ExitClass::InvalidInput,
+        Some("project_required" | "context_corrupt" | "result_wait_invalid") => {
+            ExitClass::InvalidInput
+        }
         Some("server_owner_changed") => ExitClass::Unauthorized,
         Some(
             "scope_mismatch"
@@ -732,9 +772,10 @@ fn default_class(code: Option<&str>, status: u16) -> ExitClass {
             | "payload_changed_for_key"
             | "principal_mismatch"
             | "not_visible"
-            | "context_unrecoverable",
+            | "context_unrecoverable"
+            | "result_cancelled",
         ) => ExitClass::Conflict,
-        Some("capacity_exhausted") => ExitClass::Unavailable,
+        Some("capacity_exhausted" | "result_pending") => ExitClass::Unavailable,
         _ if status == 429 => ExitClass::Unavailable,
         _ => ExitClass::Failed,
     }
@@ -758,6 +799,10 @@ fn default_remedy(code: Option<&str>, body: &Value) -> Option<String> {
             // nothing on every host below that floor. Say the arithmetic.
             format!(
                 "the request door is full; retry after {retry} ms — it clears as requests finish, and only restarting the host with --workers above {MIN_REQUEST_PERMITS} widens it"
+            )
+        } else if scope == "result_waiters" {
+            format!(
+                "all 32 result observers are in flight; retry after {retry} ms or detach an observer you no longer need"
             )
         } else {
             format!(
@@ -1415,6 +1460,14 @@ pub fn cancel(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 pub fn result(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     require_native_host()?;
+    let wait = inputs
+        .value("wait")
+        .map(|value| {
+            let seconds = value.parse::<u64>().map_err(|_| invalid_result_wait())?;
+            validate_result_wait(seconds)?;
+            Ok::<_, Failure>(seconds)
+        })
+        .transpose()?;
     let output = PathBuf::from(inputs.require("out")?);
     if output.exists() {
         return Err(
@@ -1425,18 +1478,73 @@ pub fn result(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
                 .remedy(OUTPUT_EXISTS.remedy),
         );
     }
-    let bytes = request(
-        inputs,
-        "GET",
-        &with_project(
-            &format!("/v1/jobs/{}/result", id(inputs)?),
-            &project(inputs)?,
-        ),
-        None,
-        256 * 1024 * 1024,
-    )?;
+    let project = project(inputs)?;
+    let path = with_project(&format!("/v1/jobs/{}/result", id(inputs)?), &project);
+    let (bytes, job) = if let Some(wait) = wait {
+        use base64::Engine;
+        let answer = request_with_timeout(
+            inputs,
+            "GET",
+            &format!("{path}&wait={wait}"),
+            None,
+            360 * 1024 * 1024,
+            wait + 60,
+        )?;
+        let answer: Value = serde_json::from_slice(&answer).map_err(failure)?;
+        let job: ds_command_kernel::compute_jobs::Job =
+            serde_json::from_value(answer["job"].clone()).map_err(failure)?;
+        if job.id != id(inputs)?
+            || job.context.as_ref().is_none_or(|c| c.project != project)
+            || job.lane != inputs.require("lane")?
+            || job.phase != ds_command_kernel::compute_jobs::Phase::Completed
+        {
+            return Err(failure(
+                "Core returned a result receipt outside the captured job context",
+            ));
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(
+                answer["result_base64"]
+                    .as_str()
+                    .ok_or_else(|| failure("Core returned no result bytes"))?,
+            )
+            .map_err(failure)?;
+        if bytes.len() > 256 * 1024 * 1024
+            || job.result_sha256.as_deref() != Some(&ds_compute_runtime::digest(&bytes))
+        {
+            return Err(failure(
+                "Core returned a result outside its durable digest or byte bound",
+            ));
+        }
+        (bytes, Some(job))
+    } else {
+        (
+            request(inputs, "GET", &path, None, 256 * 1024 * 1024)?,
+            None,
+        )
+    };
     ds_design_workspace::write_new(&output, &bytes).map_err(failure)?;
-    Ok(json!({"out":output,"byte_count":bytes.len(),"sha256":ds_compute_runtime::digest(&bytes)}))
+    let mut receipt =
+        json!({"out":output,"byte_count":bytes.len(),"sha256":ds_compute_runtime::digest(&bytes)});
+    if let Some(job) = job {
+        receipt["job"] = serde_json::to_value(job).map_err(failure)?;
+    }
+    Ok(receipt)
+}
+
+fn invalid_result_wait() -> Failure {
+    Failure::invalid(
+        "result_wait_invalid",
+        "wait must be an integer in 1..=600 seconds",
+    )
+    .remedy(RESULT_WAIT_INVALID.remedy)
+}
+pub(crate) fn validate_result_wait(seconds: u64) -> Result<(), Failure> {
+    if (1..=600).contains(&seconds) {
+        Ok(())
+    } else {
+        Err(invalid_result_wait())
+    }
 }
 /// The bytes a job was admitted with, back to the owner who handed them over.
 ///

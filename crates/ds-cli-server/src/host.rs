@@ -20,7 +20,7 @@ use axum::{
     routing::{get, post},
 };
 use ds_cli_contract::{Failure, outcome::ExitClass};
-use ds_command_kernel::compute_jobs::Event;
+use ds_command_kernel::compute_jobs::{Event, Job, Phase};
 use ds_command_kernel::execution_context::CAPACITY_EXHAUSTED;
 use ds_compute_runtime::{self as runtime, Admission, Authorizer};
 use serde::{Deserialize, Serialize};
@@ -126,6 +126,7 @@ const DOOR_RETRY_MAX_MS: u64 = 60_000;
 /// wait and the remedy — and not a bare 429 a caller has to guess about.
 pub struct Door {
     permits: Arc<tokio::sync::Semaphore>,
+    waiters: Arc<tokio::sync::Semaphore>,
     width: usize,
 }
 
@@ -133,6 +134,7 @@ impl Door {
     pub fn new(width: usize) -> Self {
         Self {
             permits: Arc::new(tokio::sync::Semaphore::new(width)),
+            waiters: Arc::new(tokio::sync::Semaphore::new(32)),
             width,
         }
     }
@@ -311,9 +313,40 @@ async fn access(
         .copied();
     crate::transport::admit(peer, app.os_uid).map_err(|refused| typed(&refused))?;
     let permit = app.requests.enter().map_err(|full| typed(&full))?;
+    let waiting = request.method() == axum::http::Method::GET
+        && request.uri().path().starts_with("/v1/jobs/")
+        && request.uri().path().ends_with("/result")
+        && Query::<ResultQuery>::try_from_uri(request.uri()).is_ok_and(|q| q.wait.is_some());
+    let _waiter = if waiting {
+        Some(
+            app.requests
+                .waiters
+                .clone()
+                .try_acquire_owned()
+                .map_err(|_| {
+                    typed(
+                        &Failure::unavailable(
+                            "capacity_exhausted",
+                            "all 32 result observers are in flight",
+                        )
+                        .remedy("retry after 250 ms; detach an observer you no longer need")
+                        .detail(json!({"scope":"result_waiters","retry_after_ms":250})),
+                    )
+                })?,
+        )
+    } else {
+        None
+    };
     tokio::task::spawn_blocking(move || authorize(&app))
         .await
         .map_err(|_| typed(&worker_lost("authorization")))??;
+    // Authorization uses the ordinary door; sleeping observers never hold it.
+    let permit = if waiting {
+        drop(permit);
+        None
+    } else {
+        Some(permit)
+    };
     let response = next.run(request).await;
     drop(permit);
     Ok(response)
@@ -601,7 +634,10 @@ async fn cancel(
             .map_err(host_failure)?
             .update_job(&caller, &id, Event::Cancel, runtime::now_ms(), None)
         {
-            Ok(job) => Ok(Json(json!({"job":job}))),
+            Ok(job) => {
+                runtime::notify_terminal(&app.database, &job);
+                Ok(Json(json!({"job":job})))
+            }
             Err(error) if error.to_string().contains("job_already_terminal") => {
                 let completed = runtime::open(&app.database)
                     .map_err(host_failure)?
@@ -623,9 +659,23 @@ async fn result(
     State(app): State<App>,
     _headers: HeaderMap,
     Param(id): Param<String>,
-    query: Option<Query<ProjectQuery>>,
+    query: Option<Query<ResultQuery>>,
+    shutdown: Option<axum::extract::Extension<crate::transport::ObserverShutdown>>,
 ) -> Result<Response, ApiError> {
-    let project = project_query(query)?;
+    let Some(Query(query)) = query else {
+        return Err(typed(
+            &Failure::invalid(
+                "invalid_input",
+                "expected project and optional bounded wait",
+            )
+            .remedy("send ?project=<exact-id>&wait=<1..600>"),
+        ));
+    };
+    let project = sessions::narrowing_project(query.project.as_deref()).map_err(|f| typed(&f))?;
+    if let Some(wait) = query.wait {
+        crate::validate_result_wait(wait).map_err(|f| typed(&f))?;
+        return result_wait(app, id, project, wait, shutdown.map(|s| s.0)).await;
+    }
     admitting(move || {
         let identity = app.sessions.identity();
         let caller = identity.caller(project.as_deref());
@@ -654,6 +704,80 @@ async fn result(
             .into_response())
     })
     .await
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct ResultQuery {
+    project: Option<String>,
+    wait: Option<u64>,
+}
+
+async fn result_wait(
+    app: App,
+    id: String,
+    project: Option<String>,
+    wait: u64,
+    shutdown: Option<crate::transport::ObserverShutdown>,
+) -> Result<Response, ApiError> {
+    // Subscription first: a commit during the initial read cannot be missed.
+    let mut listener = runtime::observe_terminal(&app.database, &id);
+    let first_app = app.clone();
+    let first_id = id.clone();
+    let first_project = project.clone();
+    let job =
+        admitting(move || result_job(&first_app, &first_id, first_project.as_deref())).await?;
+    if matches!(job.phase, Phase::Queued | Phase::Running) {
+        tokio::select! {
+            _ = listener.changed() => {},
+            _ = tokio::time::sleep(std::time::Duration::from_secs(wait)) => {},
+            _ = async { match shutdown { Some(stop) => stop.closed().await, None => std::future::pending().await } } => {
+                return Err(typed(&Failure::unavailable("server_refused", "Core stopped observing; the durable job is retained")
+                    .remedy("reattach to the same job after restarting Core")));
+            }
+        }
+    }
+    admitting(move || {
+        // Recheck local credential/revocation and all durable visibility fences
+        // after notification or timeout, before any bytes leave this host.
+        let job = result_job(&app, &id, project.as_deref())?;
+        match job.phase {
+            Phase::Completed => {
+                use base64::Engine;
+                let bytes = runtime::open(&app.database).map_err(host_failure)?
+                    .job_result(&app.sessions.identity().caller(project.as_deref()), &id)
+                    .map_err(|e| host_failure(e.to_string()))?
+                    .ok_or_else(|| host_failure("completed job has no result"))?;
+                if bytes.len() > 256 * 1024 * 1024 {
+                    return Err(host_failure("completed result exceeds the 256 MiB byte bound"));
+                }
+                Ok(Json(json!({"job":job,"result_base64":base64::engine::general_purpose::STANDARD.encode(bytes)})).into_response())
+            }
+            Phase::Failed => Err(Failure::failed("result_failed", "the job failed; its input and failure are retained")
+                .remedy("inspect the job error and retained input before submitting corrected work")
+                .detail(json!({"job":job}))),
+            Phase::Cancelled => Err(Failure::conflict("result_cancelled", "the job was cancelled; its input is retained")
+                .remedy("inspect the retained job; submit new work only when intended")
+                .detail(json!({"job":job}))),
+            Phase::Queued | Phase::Running => Err(Failure::unavailable("result_pending", "the observation deadline elapsed; the job remains admitted")
+                .remedy("reattach to this same job when a result is needed")
+                .detail(json!({"job":job,"wait_seconds":wait}))),
+        }
+    }).await
+}
+
+fn result_job(app: &App, id: &str, project: Option<&str>) -> Result<Job, Failure> {
+    app.auth
+        .authorize(&app.connection.owner)
+        .map_err(|reason| {
+            Failure::unauthorized("server_owner_changed", reason)
+                .remedy(crate::OWNER_CHANGED.remedy)
+        })?;
+    runtime::open(&app.database)
+        .map_err(host_failure)?
+        .job(&app.sessions.identity().caller(project), id)
+        .map_err(|e| host_failure(e.to_string()))?
+        .ok_or_else(sessions::not_found)
 }
 /// `GET /v1/jobs/:id/input[?project=<id>]` — the exact request bytes this job
 /// was admitted with, back to the owner who handed them over.
@@ -3226,4 +3350,5 @@ pub(crate) mod tests {
         assert_eq!(mode(&cache), 0o700);
         assert_eq!(mode(&store), 0o600);
     }
+    include!("result_wait_tests.rs");
 }

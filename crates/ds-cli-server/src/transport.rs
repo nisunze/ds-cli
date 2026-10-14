@@ -31,6 +31,7 @@
 
 use ds_cli_contract::Failure;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// The socket's name inside the protected state directory.
@@ -122,6 +123,16 @@ pub struct Reply {
 const NO_SOCKETS: &str = "the native Core needs an owner-only Unix socket, which this platform does not provide; run the Core and its callers on Linux";
 
 // ── the server half ─────────────────────────────────────────────────────
+
+/// Transport shutdown detaches result observers before graceful connection
+/// drain. It has no access to the durable job or its cancellation authority.
+#[derive(Clone)]
+pub(crate) struct ObserverShutdown(Arc<tokio::sync::watch::Sender<()>>);
+impl ObserverShutdown {
+    pub(crate) async fn closed(&self) {
+        self.0.closed().await;
+    }
+}
 
 #[cfg(unix)]
 pub use unix::{Listening, listen, serve};
@@ -300,9 +311,11 @@ mod unix {
                 uid: credential.uid(),
             };
             let router = router.clone();
+            let observer_shutdown = super::ObserverShutdown(stop.clone());
             let service =
                 hyper::service::service_fn(move |mut request: hyper::Request<Incoming>| {
                     request.extensions_mut().insert(peer);
+                    request.extensions_mut().insert(observer_shutdown.clone());
                     router.clone().oneshot(request)
                 });
             let stop = stop.clone();
