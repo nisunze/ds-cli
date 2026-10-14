@@ -495,21 +495,28 @@ not a second Brain engineering implementation. The current worker's
 presence does not prove that the full Solar or Reporter compute engines already
 run in the browser.
 
-Keep full Solar and Reporter computation native in their standalone executables
-for Desktop and Server by default. This suits their heavier memory, artifact and
-packaging workloads and the expected affinity of power users for Desktop. A
-cloud-native browser should not download either engine during startup, map use,
-synchronization or ordinary result viewing. It can consume already retained or
-published results without loading the producing engine.
+Network and the Solar compute core are the preferred heavy browser-WASM
+candidates. Publish each from the same owning Rust source closure as its native
+executable. Desktop and Server retain the native engine as the stable default
+for large jobs, offline installations and an LLM-friendly CLI. The browser
+offers the same typed compute deliberately on a capable device; it does not
+download Solar, Network or Reporter during startup, map use, synchronization or
+ordinary result viewing.
 
-A later browser Solar or Reporter WASM build is justified only if one compiled
-Rust owner can serve browser and native consumers and the slice deletes a
-meaningful duplicate calculation/orchestration implementation from ds-brain or
-another host. Brain continues to own authentication, authorization, cloud
-admission, durable receipts, project publication and artifact access. It does
-not need to retain a second calculation merely because a browser is a possible
-host. Conversely, adding WASM while keeping both compute paths indefinitely is
-not simplification.
+Keep full Reporter document/artifact rendering native by default because fonts,
+office/PDF output, filesystem staging and packaging are a different closure.
+Reporter projections or calculations may later become an intent-loaded WASM
+engine when a measured slice preserves artifact truth and deletes more host
+code than it adds. This does not prevent the browser from viewing, governing or
+downloading retained reports without the producing engine.
+
+One compiled Rust owner should serve browser and native consumers. Brain
+continues to own authentication, authorization, release/data admission, durable
+receipts, project publication and artifact access. After WASM/native parity and
+real-consumer migration, retire the duplicate Brain or host calculation route;
+keeping all compute paths indefinitely would increase hybrid complexity. A job
+chooses browser, Desktop/native or admitted Server execution before it starts.
+There is no mid-run venue fallback or hidden recomputation elsewhere.
 
 Every optional heavy engine uses an explicit lifecycle:
 
@@ -541,6 +548,71 @@ port: Desktop/native remains the primary heavy-processing environment; browser
 WASM is admitted where it removes more Brain/host code and operational surface
 than its bundle, worker and compatibility costs add. Transformer Network
 processing already demonstrates the single local compiled-owner direction.
+
+### Application shell and dual-artifact component releases
+
+Treat ds-web as an application shell: presentation, typed module loader,
+capability discovery and effect adapters. Publish the shell only when its UI,
+loader, CSP, worker protocol or minimum compatible component range changes.
+Kernel, Interactions, SQLite, Network, Solar and any admitted later engine have
+independent immutable releases. A compatible engine fix or optimization does
+not require republishing unchanged Web UI.
+
+Extend the existing shell-only and standalone component release governance;
+do not create another updater. One logical component release may contain:
+
+- browser WASM, matching JavaScript glue/worker and optional data extensions;
+- Linux and Windows native executable/library assets where that owner supports
+  native execution;
+- one engine/build identity, source closure and typed protocol/schema range;
+- platform-specific byte digests, sizes, capability requirements and receipts.
+
+WASM and native outputs need not have identical bytes, but they represent the
+same logical engine release and pass the same contract/parity corpus. Platform
+specific floating-point, threading or ordering differences are either removed
+or declared and bounded by the owning algorithm contract. Publishing one asset
+must not silently advance or relabel an unverified asset for another platform.
+Carry-forward retains its original bytes and receipt.
+
+Browser heavy compute is a device-local opt-in. Store the choice in that browser
+profile, scoped by component and release channel; do not sync it as a user or
+project preference that would enable a phone automatically. Before enabling,
+show the engine download, expected retained-data size, storage quota result,
+memory/capability check and whether threading/isolation is available. Default
+phones, constrained devices and unsupported browsers to disabled. A person may
+enable Network or Solar independently, keep a compatible engine warm, disable
+it, or clear its cached engine/data without deleting authored project state.
+
+Local compute may seed admitted national and project inputs into SQLite/OPFS.
+Seed manifests are content-addressed and scoped: dataset identity/version,
+authority, exact files/chunks, byte counts, digests, completeness, source basis,
+expiry/revocation policy and dependent engine range. Use bounded authorized
+URLs; no cloud credential or bucket prefix enters the engine. Preflight quota,
+download resumably, verify before publication, retain complete prior seeds
+until the replacement commits, and let warm/offline runs consume the captured
+version without incidental network checks. National data is shared locally only
+where authority and schema permit; project data remains principal/lane/project
+isolated.
+
+Execution venue is explicit and stable for a job:
+
+- Browser: opted-in verified WASM plus captured local inputs;
+- Desktop/CLI: the matching native engine and local governed workspace;
+- Server: an admitted stable native service for users who select managed
+  execution or whose device cannot run the job.
+
+A failure retains input and progress/receipt evidence and offers an explicit
+retry or venue change. It never silently starts a second venue. Results carry
+engine release, platform, input/seed digests and operation identity so the same
+publication admission can accept equivalent browser, Desktop or Server work.
+
+This model reduces ds-brain toward a control plane: identity, authorization,
+release manifests, scoped data grants, synchronization, receipts, conflict
+admission and artifact publication. Remove a Brain compute implementation only
+after matching WASM/native consumers pass historical, adversarial and installed
+acceptance. The native CLI remains first-class even where browser WASM exists;
+it is the stable automation and agent surface rather than a fallback copy of
+business logic.
 
 ### Independently published browser engines
 
@@ -697,6 +769,7 @@ do not block its release cadence on this entire campaign. CLI/MCP precede UI.
 | 6. Acquisition and changed-record reads | Adapt existing complete-room/source-observation owners and atomic acquisition publication; add bounded cursor/tombstones if required. Remove independent transformer fetchers and duplicated metadata decisions. | Eight concurrent consumers coalesce; warm/offline/unused invalidation has zero source reads; changed/deleted source reconciles; Unknown remains Unknown; an in-flight download cannot replace a newer edit. |
 | 7. Other owners, one vertical at a time | Migrate dataset/snapshot/local-view catalogs, Grid storage, PM, survey intents, Assets and other relevant stores through the proven contract. Remove each replaced writer/fallback; retain existing algorithm, permission and mirror owners. | Per-owner transactional/import proof, account/lane/audience separation, read economics and real native/browser consumer acceptance; no revived retired workspace or duplicate queue. |
 | 8. Installed release and retirement | Publish matching schema/engine/host manifests, qualify Windows/Linux/browser, complete controlled data import and remove temporary tooling. | Installed build/platform identities and migration receipts, cold/warm restart and conflict recovery; explicit minimum writer protocol; superseded clients cannot bypass revision admission; no orphaned authored data. |
+| 9. Shell/component release separation | Extend the existing release catalog with compatible browser WASM assets beside each component's native assets; bind the shell loader to immutable manifests and per-device opt-in. No new updater or generic module execution. | Publish a compatible Kernel/Network/Solar engine without a Web shell release; old shell admits it within range, incompatible ABI refuses, rollback selects the prior digest, native/WASM identities share one logical release, and an unopted phone requests no heavy artifact. |
 
 Slices 2 and 4 may share one focused storage implementation if that reduces
 duplication; dependent admission/receipt decisions remain one coordinated lane.
@@ -750,6 +823,16 @@ New shared cases must exercise:
     optional engines: ordinary open/edit/sync causes zero Network/Solar/Reporter
     loads; named processing produces one request, warm reuse produces no second
     request, termination releases the worker and restart reproduces the result.
+12. A shell-only release admits independently published compatible Kernel,
+    Network and Solar assets without republishing UI; incompatible manifests,
+    altered bytes and mixed glue/WASM refuse while the prior release remains usable.
+13. Browser heavy-compute opt-in stays on one device/profile, remains disabled on
+    an unopted phone, reports quota/capability before download, verifies a bounded
+    project/national seed, runs offline from that capture and clears engine/cache
+    data without deleting authored revisions or pending synchronization.
+14. Browser, native CLI/Desktop and admitted Server fixtures use the same logical
+    engine release and input digests; venue is selected before execution, no
+    failure starts a second venue, and publication records the producing asset.
 
 Completion is the real consumer and installed release passing these gates, not
 a native helper test, a build, a schema-only port or the existence of this plan.
