@@ -1,6 +1,6 @@
 //! Atomic file-only application of typed engine commands, packed once.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::io::Read;
 use std::path::Path;
 
@@ -11,18 +11,21 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_grid_engine::correction_scope::CorrectionScope;
 use ds_grid_engine::{CommandEnvelope, GridCommand, RevisionId};
-use ds_grid_exchange::{PackOptions, dsgrid};
+use ds_network_contracts::grid_apply_batch::{
+    GRID_APPLY_BATCH_REQUEST_SCHEMA_V1, NativeGridApplyBatchRequestV1, NativeGridBatchCommandV1,
+    NativeGridCorrectionGuardV1,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    apply::{guard_admin_refresh, map_command_error, validate_output_path, write_new},
+    apply::{guard_admin_refresh, validate_output_path, write_new},
     package,
 };
 
-const MAX_BATCH_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_COMMANDS: usize = 4096;
+const MAX_BATCH_BYTES: u64 = ds_network_contracts::grid_apply_batch::MAX_GRID_BATCH_BYTES as u64;
+const MAX_COMMANDS: usize = ds_network_contracts::grid_apply_batch::MAX_GRID_BATCH_COMMANDS;
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.apply-batch",
@@ -89,145 +92,149 @@ SHA-256. Receipt size is independent of entity count.",
             runnable: false,
         },
     ],
-    refusals: &[
-        package::PROTECTED_MODEL,
-        package::PLS_SECTION_IDENTITY_UNRESOLVED,
-        Refusal {
-            code: "model_not_found",
-            when: "the source path does not exist or is not a file",
-            remedy: "check the path; --model takes one .dsgrid file",
-        },
-        Refusal {
-            code: "model_too_large",
-            when: "the source is above the 512 MiB read bound",
-            remedy: "confirm the file is a .dsgrid package and not a disk image",
-        },
-        Refusal {
-            code: "model_unreadable",
-            when: "the source exists but cannot be read",
-            remedy: "check file permissions",
-        },
-        Refusal {
-            code: "not_a_dsgrid_package",
-            when: "the source bytes are not a readable .dsgrid container",
-            remedy: "convert the native source through dsgrid-exchange first",
-        },
-        Refusal {
-            code: "package_decode_failed",
-            when: "the source manifest or canonical tables do not verify",
-            remedy: "run `ds dsgrid validate --model <path>` and repair the package",
-        },
-        Refusal {
-            code: "batch_not_found",
-            when: "--batch does not name one regular file",
-            remedy: "write one bounded batch JSON file",
-        },
-        Refusal {
-            code: "batch_too_large",
-            when: "the batch exceeds 16 MiB or 4096 commands",
-            remedy: "use a batch of at most 4096 commands and 16 MiB",
-        },
-        Refusal {
-            code: "batch_unreadable",
-            when: "the envelope exists but cannot be read",
-            remedy: "check file permissions",
-        },
-        Refusal {
-            code: "batch_invalid",
-            when: "a row is malformed (named by row, command_kind, field path and serde error), revision pins differ, IDs repeat, or no command is given",
-            remedy: "fix the named field; `ds dsgrid describe --kind types --id <Type>` gives the row shape",
-        },
-        Refusal {
-            code: "selection_invalid",
-            when: "a selected command ID is duplicate or absent, or --select omits --guard",
-            remedy: "choose unique command IDs present in the batch and supply a correction guard",
-        },
-        Refusal {
-            code: "correction_guard_invalid",
-            when: "guard JSON is unreadable, invalid, lacks an exact source package digest and selected scope, or selected commands lack review references",
-            remedy: "provide source_sha256, alignment_ids, allowed_command_kinds, and a review_ref for each selected command",
-        },
-        Refusal {
-            code: "correction_not_approved",
-            when: "a guarded correction is still a draft or lacks an exact approval decision reference",
-            remedy: "dry-run the proposal, then supply review_state approved and an authored decision_ref before writing",
-        },
-        Refusal {
-            code: "source_digest_conflict",
-            when: "the source .dsgrid bytes differ from the reviewed package",
-            remedy: "re-read the package and re-author the correction guard",
-        },
-        Refusal {
-            code: "correction_scope_violation",
-            when: "a guarded command names a missing target, edits a read-only field, or exceeds its selected alignments or permitted kinds",
-            remedy: "for read-only fields, remove that edit; for missing entities, select an existing target; for alignment-scope conflicts, split the correction or explicitly include every affected alignment after review",
-        },
-        Refusal {
-            code: "admin_authority_required",
-            when: "a batch carries Rwanda admin facts that have not been resolved from the exact local village index",
-            remedy: "use ds dsgrid structure admin-refresh with a verified village index",
-        },
-        Refusal {
-            code: "revision_conflict",
-            when: "expected_revision does not equal the model's current authored revision",
-            remedy: "re-read the model and deliberately rebuild the envelope against its current revision",
-        },
-        Refusal {
-            code: "target_not_found",
-            when: "the command addresses an entity absent from this model",
-            remedy: "use an id from a projection of this exact package revision",
-        },
-        Refusal {
-            code: "command_invalid",
-            when: "the engine rejects the command's typed values or semantics",
-            remedy: "read detail.engine and the live command descriptor; do not approximate missing values",
-        },
-        Refusal {
-            code: "terrain_acquisition_required",
-            when: "elevation interpolation has no effective ground coverage at the requested station",
-            remedy: "author a verified terrain source and observations before inserting the point",
-        },
-        Refusal {
-            code: "model_validation_failed",
-            when: "the command would introduce new canonical model errors",
-            remedy: "read detail.issues and revise the command; no output was written",
-        },
-        Refusal {
-            code: "command_replay_conflict",
-            when: "a transaction partially overlaps commands already applied in the live session",
-            remedy: "refresh the model and submit one fresh, non-overlapping intent",
-        },
-        Refusal {
-            code: "output_required",
-            when: "an apply omits --out",
-            remedy: "name a new .dsgrid file, or pass --dry-run",
-        },
-        Refusal {
-            code: "output_exists",
-            when: "--out already exists",
-            remedy: "choose a new path; apply never overwrites the source or an earlier result",
-        },
-        Refusal {
-            code: "output_parent_missing",
-            when: "the output parent directory does not exist",
-            remedy: "create the intended directory, then retry",
-        },
-        Refusal {
-            code: "package_emit_failed",
-            when: "the revised canonical snapshot cannot be packaged with its retained assets",
-            remedy: "report this engine failure with the model and batch digests",
-        },
-        Refusal {
-            code: "output_unwritable",
-            when: "the new output file cannot be created or fully written",
-            remedy: "check the parent path and permissions; a partial file is removed",
-        },
-    ],
+    refusals: &crate::native::extend_refusals::<
+        { OWN_REFUSALS.len() + crate::native::REFUSALS.len() },
+    >(OWN_REFUSALS),
     reference: Some("docs/reference/dsgrid.md"),
     search: &[],
     requires: Requires::Server,
     availability: available,
 };
+
+const OWN_REFUSALS: &[Refusal] = &[
+    package::PROTECTED_MODEL,
+    package::PLS_SECTION_IDENTITY_UNRESOLVED,
+    Refusal {
+        code: "model_not_found",
+        when: "the source path does not exist or is not a file",
+        remedy: "check the path; --model takes one .dsgrid file",
+    },
+    Refusal {
+        code: "model_too_large",
+        when: "the source is above the 512 MiB read bound",
+        remedy: "confirm the file is a .dsgrid package and not a disk image",
+    },
+    Refusal {
+        code: "model_unreadable",
+        when: "the source exists but cannot be read",
+        remedy: "check file permissions",
+    },
+    Refusal {
+        code: "not_a_dsgrid_package",
+        when: "the source bytes are not a readable .dsgrid container",
+        remedy: "convert the native source through dsgrid-exchange first",
+    },
+    Refusal {
+        code: "package_decode_failed",
+        when: "the source manifest or canonical tables do not verify",
+        remedy: "run `ds dsgrid validate --model <path>` and repair the package",
+    },
+    Refusal {
+        code: "batch_not_found",
+        when: "--batch does not name one regular file",
+        remedy: "write one bounded batch JSON file",
+    },
+    Refusal {
+        code: "batch_too_large",
+        when: "the batch exceeds 16 MiB or 4096 commands",
+        remedy: "use a batch of at most 4096 commands and 16 MiB",
+    },
+    Refusal {
+        code: "batch_unreadable",
+        when: "the envelope exists but cannot be read",
+        remedy: "check file permissions",
+    },
+    Refusal {
+        code: "batch_invalid",
+        when: "a row is malformed (named by row, command_kind, field path and serde error), revision pins differ, IDs repeat, or no command is given",
+        remedy: "fix the named field; `ds dsgrid describe --kind types --id <Type>` gives the row shape",
+    },
+    Refusal {
+        code: "selection_invalid",
+        when: "a selected command ID is duplicate or absent, or --select omits --guard",
+        remedy: "choose unique command IDs present in the batch and supply a correction guard",
+    },
+    Refusal {
+        code: "correction_guard_invalid",
+        when: "guard JSON is unreadable, invalid, lacks an exact source package digest and selected scope, or selected commands lack review references",
+        remedy: "provide source_sha256, alignment_ids, allowed_command_kinds, and a review_ref for each selected command",
+    },
+    Refusal {
+        code: "correction_not_approved",
+        when: "a guarded correction is still a draft or lacks an exact approval decision reference",
+        remedy: "dry-run the proposal, then supply review_state approved and an authored decision_ref before writing",
+    },
+    Refusal {
+        code: "source_digest_conflict",
+        when: "the source .dsgrid bytes differ from the reviewed package",
+        remedy: "re-read the package and re-author the correction guard",
+    },
+    Refusal {
+        code: "correction_scope_violation",
+        when: "a guarded command names a missing target, edits a read-only field, or exceeds its selected alignments or permitted kinds",
+        remedy: "for read-only fields, remove that edit; for missing entities, select an existing target; for alignment-scope conflicts, split the correction or explicitly include every affected alignment after review",
+    },
+    Refusal {
+        code: "admin_authority_required",
+        when: "a batch carries Rwanda admin facts that have not been resolved from the exact local village index",
+        remedy: "use ds dsgrid structure admin-refresh with a verified village index",
+    },
+    Refusal {
+        code: "revision_conflict",
+        when: "expected_revision does not equal the model's current authored revision",
+        remedy: "re-read the model and deliberately rebuild the envelope against its current revision",
+    },
+    Refusal {
+        code: "target_not_found",
+        when: "the command addresses an entity absent from this model",
+        remedy: "use an id from a projection of this exact package revision",
+    },
+    Refusal {
+        code: "command_invalid",
+        when: "the engine rejects the command's typed values or semantics",
+        remedy: "read detail.engine and the live command descriptor; do not approximate missing values",
+    },
+    Refusal {
+        code: "terrain_acquisition_required",
+        when: "elevation interpolation has no effective ground coverage at the requested station",
+        remedy: "author a verified terrain source and observations before inserting the point",
+    },
+    Refusal {
+        code: "model_validation_failed",
+        when: "the command would introduce new canonical model errors",
+        remedy: "read detail.issues and revise the command; no output was written",
+    },
+    Refusal {
+        code: "command_replay_conflict",
+        when: "a transaction partially overlaps commands already applied in the live session",
+        remedy: "refresh the model and submit one fresh, non-overlapping intent",
+    },
+    Refusal {
+        code: "output_required",
+        when: "an apply omits --out",
+        remedy: "name a new .dsgrid file, or pass --dry-run",
+    },
+    Refusal {
+        code: "output_exists",
+        when: "--out already exists",
+        remedy: "choose a new path; apply never overwrites the source or an earlier result",
+    },
+    Refusal {
+        code: "output_parent_missing",
+        when: "the output parent directory does not exist",
+        remedy: "create the intended directory, then retry",
+    },
+    Refusal {
+        code: "package_emit_failed",
+        when: "the revised canonical snapshot cannot be packaged with its retained assets",
+        remedy: "report this engine failure with the model and batch digests",
+    },
+    Refusal {
+        code: "output_unwritable",
+        when: "the new output file cannot be created or fully written",
+        remedy: "check the parent path and permissions; a partial file is removed",
+    },
+];
 
 /// The review workflow's mandatory-scope entry point. It calls the same
 /// transaction implementation as apply-batch, but cannot omit the guard.
@@ -287,7 +294,7 @@ decision_ref; a draft can dry-run. Dry-run and write use identical engineering c
 };
 
 fn available() -> Availability {
-    Availability::Available
+    ds_network_client::available()
 }
 
 #[derive(Deserialize)]
@@ -306,7 +313,7 @@ struct BatchCommand {
     review_ref: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CorrectionGuardFile {
     source_sha256: String,
@@ -699,162 +706,55 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
         .detail(json!({"expected": guard.source_sha256, "actual": sha256(&bytes)})));
     }
-    let package = package::decode(model_path, &bytes)?;
-    package::authorize_write(&package, "apply batch")?;
-    let before = package.snapshot.clone();
-    if let Some((guard, _)) = &guard {
-        for item in &batch.commands {
-            if item
-                .review_ref
-                .as_ref()
-                .is_none_or(|value| value.trim().is_empty() || value.len() > 256)
-            {
-                return Err(Failure::invalid(
-                    "correction_guard_invalid",
-                    format!(
-                        "{} needs a nonempty review_ref of at most 256 bytes",
-                        item.command_id
-                    ),
-                ));
-            }
-        }
-        guard
-            .scope
-            .validate(&before)
-            .map_err(|error| Failure::invalid("correction_guard_invalid", error))?;
-        let mut preview = before.clone();
-        for item in &batch.commands {
-            guard
-                .scope
-                .validate_command(&preview, &item.command)
-                .map_err(|error| {
-                    Failure::invalid(
-                        "correction_scope_violation",
-                        format!("{}: {error}", item.command_id),
-                    )
-                })?;
-            item.command
-                .apply_to(&mut preview)
-                .map_err(map_command_error)?;
-        }
-    }
-    let mut session = ds_grid_exchange::linked_models::open_session(&package);
-    let head = session.current_revision().revision_id.clone();
-    let command_count = batch.commands.len();
-    let applied_command_ids: Vec<_> = batch
-        .commands
-        .iter()
-        .map(|item| item.command_id.clone())
-        .collect();
-    let selected_reviews: Vec<_> = batch
-        .commands
-        .iter()
-        .map(|item| {
-            json!({
-                "command_id": item.command_id, "review_ref": item.review_ref,
-                "command_kind": item.command.command_kind()
+    let captured = crate::native::capture()?;
+    let scratch = crate::native::scratch()?;
+    let inspection = captured
+        .grid_inspect(&bytes, scratch.path(), &|| false)
+        .map_err(crate::native::map_failure)?;
+    let request = NativeGridApplyBatchRequestV1 {
+        schema: GRID_APPLY_BATCH_REQUEST_SCHEMA_V1.into(),
+        source: inspection.result.source,
+        expected_revision: batch.expected_revision.to_string(),
+        batch_sha256: batch_digest,
+        commands: batch
+            .commands
+            .into_iter()
+            .map(|row| {
+                Ok(NativeGridBatchCommandV1 {
+                    command_id: row.command_id,
+                    command: serde_json::to_value(row.command)
+                        .map_err(|error| Failure::invalid("batch_invalid", error.to_string()))?,
+                    review_ref: row.review_ref,
+                })
             })
-        })
-        .collect();
-    let mut operations: BTreeMap<String, usize> = BTreeMap::new();
-    for item in &batch.commands {
-        *operations
-            .entry(item.command.command_kind().to_string())
-            .or_default() += 1;
-    }
-    // This session is private to the file operation: dry-run and write use
-    // exactly the same atomic engine gates, and neither touches the source.
-    let outcome = session
-        .apply_transaction_at_head(
-            batch.expected_revision,
-            batch
-                .commands
-                .into_iter()
-                .map(|item| (item.command_id, item.command))
-                .collect(),
-        )
-        .map_err(map_command_error)?;
-    let deltas = outcome
-        .outcomes
-        .iter()
-        .map(|command| command.delta.clone())
-        .collect::<Vec<_>>();
-    let exchange_bindings = package::admit_command_bindings(
-        &package.exchange_bindings,
-        &deltas,
-        outcome.idempotent_replay,
-    )?;
-    let checkpoint = session.save_checkpoint().map_err(map_command_error)?;
-    if let Some((guard, _)) = &guard {
-        guard
-            .scope
-            .validate_result(&before, &checkpoint.snapshot)
-            .map_err(|error| Failure::invalid("correction_scope_violation", error))?;
-    }
-    let mut receipt = json!({
-        "source": {"path": model_path, "model_id": package.manifest.model.model_id.as_str(),
-            "package_revision": package.manifest.model.model_revision,
-            "authored_revision": head.as_str()},
-        "batch_sha256": batch_digest,
-        "source_sha256": sha256(&bytes),
-        "selected_command_ids": applied_command_ids,
-        "commands": command_count,
-        "operations": operations,
-        "dry_run": dry_run,
-        "persisted": false,
-        "would_apply": true,
-        "idempotent_replay": outcome.idempotent_replay,
-        "parent_revision": head.as_str(),
-        "resulting_revision": outcome.final_revision.revision_id.as_str(),
-        "package_revision_increment": checkpoint.sequence,
-    });
-    if let Some((guard, digest)) = &guard {
-        receipt["correction_guard"] = json!({"sha256": digest,
-            "alignment_ids": guard.scope.alignment_ids,
-            "allowed_command_kinds": guard.scope.allowed_command_kinds,
-            "level": guard.scope.level,
-            "intervals": guard.scope.intervals,
-            "preserved_structure_ids": guard.scope.preserved_structure_ids,
-            "preserved_route_node_ids": guard.scope.preserved_route_node_ids,
-            "preserved_section_ids": guard.scope.preserved_section_ids,
-            "preservation_source_ref": guard.preservation_source_ref,
-            "review_state": guard.review_state,
-            "decision_ref": guard.decision_ref});
-        receipt["selected_reviews"] = json!(selected_reviews);
-        let diff = ds_grid_engine::correction_scope::correction_diff(&before, &checkpoint.snapshot);
-        receipt["changes"] = json!({"tables": diff.changed_tables.iter().map(|kind| kind.name()).collect::<Vec<_>>(),
-            "added": diff.added_total, "removed": diff.removed_total, "changed": diff.changed_total});
-    }
+            .collect::<Result<Vec<_>, Failure>>()?,
+        guard: guard
+            .map(|(guard, sha256)| {
+                Ok(NativeGridCorrectionGuardV1 {
+                    sha256,
+                    document: serde_json::to_value(guard).map_err(|error| {
+                        Failure::invalid("correction_guard_invalid", error.to_string())
+                    })?,
+                })
+            })
+            .transpose()?,
+        dry_run,
+    };
+    let output = captured
+        .grid_apply_batch(&request, &bytes, scratch.path(), &|| false)
+        .map_err(crate::native::map_failure)?;
+    let mut receipt = output.metadata.result.projection;
+    receipt["source"]["path"] = json!(model_path);
     if let Some(out_path) = out_path {
-        let options = PackOptions {
-            presentation: package.manifest.model.presentation.clone(),
-            model_id: package.manifest.model.model_id,
-            model_revision: package.manifest.model.model_revision + checkpoint.sequence,
-            coordinate_system: package.manifest.model.coordinate_system,
-            library_pins: package.manifest.model.library_pins,
-            library_needs: package.manifest.model.library_needs,
-            assets: package.assets,
-            exchange_bindings,
-        };
-        let (plan, _) = dsgrid::emit(&checkpoint.snapshot, &options).map_err(|error| {
+        let bytes = output.model.ok_or_else(|| {
             Failure::failed(
                 "package_emit_failed",
-                "the revised package could not be emitted",
+                "Network returned no complete package",
             )
-            .remedy("report this engine failure with the source model and batch digest")
-            .detail(json!({"engine": error.to_string()}))
         })?;
-        let artifact = plan.artifacts.first().ok_or_else(|| {
-            Failure::failed(
-                "package_emit_failed",
-                "package emitter returned no artifact",
-            )
-            .remedy("report this engine failure")
-        })?;
-        write_new(out_path, &artifact.bytes)?;
+        write_new(out_path, &bytes)?;
         receipt["persisted"] = json!(true);
-        receipt["artifact"] = json!({"path": out_path, "package_revision": options.model_revision,
-            "byte_len": artifact.bytes.len(), "sha256": sha256(&artifact.bytes)});
+        receipt["artifact"]["path"] = json!(out_path);
     }
     Ok(receipt)
 }
