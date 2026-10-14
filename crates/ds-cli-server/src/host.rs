@@ -2197,7 +2197,7 @@ pub(crate) mod tests {
         let app = app(dir.path(), true);
         let identity = app.sessions.identity().clone();
         let id = ds_compute_runtime::digest(b"completed-solar-cancel");
-        let queued = ds_command_kernel::compute_jobs::Job {
+        let mut queued = ds_command_kernel::compute_jobs::Job {
             id: id.clone(),
             owner: identity.owner.clone(),
             lane: "stable".into(),
@@ -2212,6 +2212,7 @@ pub(crate) mod tests {
             lease_until_ms: 0,
             result_sha256: None,
             error: None,
+            engine_pin: None,
             context: Some(ds_command_kernel::execution_context::ExecutionContext {
                 principal_uid: UID.into(),
                 lane: "stable".into(),
@@ -2226,6 +2227,19 @@ pub(crate) mod tests {
                 admitted_at_ms: 1,
             }),
         };
+        queued.engine_pin = Some(ds_command_kernel::compute_jobs::EnginePin {
+            schema: "ds.compute.engine-pin/v1".into(),
+            engine: queued.engine.clone(),
+            owner: queued.owner.clone(),
+            lane: ds_command_kernel::compute_jobs::EngineLane::Stable,
+            context: queued.context.clone().unwrap(),
+            source: ds_command_kernel::compute_jobs::EnginePinSource::NativeLaneCapture,
+            executable: "/native-owned/test-engine".into(),
+            executable_sha256: "a".repeat(64),
+            identity: serde_json::json!({"storage_fixture":true}),
+            workers: 1,
+            development_override: true,
+        });
         let caller = identity.caller(None);
         let mut store = runtime::open(&database).unwrap();
         store.submit_job(&queued, input, limits()).unwrap();
@@ -2611,6 +2625,7 @@ pub(crate) mod tests {
                 lease_until_ms: 0,
                 result_sha256: Some(digest.clone()),
                 error: None,
+                engine_pin: None,
                 context: Some(ExecutionContext {
                     principal_uid: UID.into(),
                     lane: app.connection.lane.clone(),

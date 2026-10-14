@@ -1510,6 +1510,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "ds-cli-exec",
  "ds-command-kernel",
  "ds-network-client",
  "ds-network-contracts",

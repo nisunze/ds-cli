@@ -1800,7 +1800,7 @@ fn activity_scope_covers_a_project_older_than_one_page_of_the_queue() {
             input_sha256: runtime::digest(key.as_bytes()),
             admitted_at_ms: created_at_ms,
         };
-        let job = Job {
+        let mut job = Job {
             id: context.job_id.clone(),
             owner: OWNER.to_owned(),
             lane: LANE.to_owned(),
@@ -1815,8 +1815,22 @@ fn activity_scope_covers_a_project_older_than_one_page_of_the_queue() {
             lease_until_ms: 0,
             result_sha256: None,
             error: None,
+            engine_pin: None,
             context: Some(context),
         };
+        job.engine_pin = Some(ds_command_kernel::compute_jobs::EnginePin {
+            schema: "ds.compute.engine-pin/v1".into(),
+            engine: job.engine.clone(),
+            owner: job.owner.clone(),
+            lane: ds_command_kernel::compute_jobs::EngineLane::parse(LANE).unwrap(),
+            context: job.context.clone().unwrap(),
+            source: ds_command_kernel::compute_jobs::EnginePinSource::NativeLaneCapture,
+            executable: "/native-owned/test-engine".into(),
+            executable_sha256: "a".repeat(64),
+            identity: serde_json::json!({"storage_fixture":true}),
+            workers: 1,
+            development_override: true,
+        });
         store
             .submit_job(&job, key.as_bytes(), host.limits)
             .expect("the durable queue takes the row");
