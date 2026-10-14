@@ -7,6 +7,25 @@ The process remains in the foreground until stopped. Discover `core.serve` for
 its complete flags and admission contract; see [background runtime](server.md)
 for job, project and synchronization controls.
 
+Core and Desktop publish independently. A release listing identifies **DS Core
+(CLI / Kernel)** as an installable runtime with its own version, release number,
+publication date and artifact identity. Desktop has its own shell identity;
+Interactions belongs to the Web/Desktop shell, never the native Core closure.
+Network, Solar and Reporter are independently admitted components.
+
+There is no installation-wide release pin. Every installed artifact retains its
+own exact source, dependency/protocol identity and SHA-256. Native compatibility
+currently uses the declared owner protocol and pinned engine provenance;
+metadata does not yet declare a Core semantic-version compatibility range.
+A carried artifact keeps its own immutable release identity. Missing per-artifact
+publication dates remain unknown rather than inheriting a newer catalog date.
+
+The public background command is `core.serve`, contract 2. Native automation uses
+`--target core` and `--core-state-dir` where the command declares those inputs.
+Retired product commands, targets and build-lane spellings have no aliases;
+existing installations require explicit removal. Internal stored schema and
+refusal identifiers retain their declared read compatibility.
+
 Discover the typed contracts with `ds capabilities core.component.selection`
 and `ds capabilities core.component.remove`. CLI and MCP project these same
 commands. Machine component management requires local per-user ownership and
