@@ -41,6 +41,7 @@ mod process_tree;
 pub const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 /// Cap on an in-memory typed request transferred to a sibling through stdin.
 pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
+type StderrObserver<'a> = &'a dyn Fn(&[u8]);
 
 /// How often the wait loop checks. Small enough that a fast task is not
 /// delayed, large enough not to spin.
@@ -127,6 +128,36 @@ impl CapturedExternal {
             timeout,
             Some(workers),
             cancel,
+            None,
+        )
+    }
+
+    /// Observe bounded stderr chunks on the calling thread while the owned
+    /// process runs. The observer must return promptly; stdout, cancellation,
+    /// deadlines and process-tree cleanup keep their existing bounds.
+    pub fn call_cancelled_observed(
+        &self,
+        subcommand: &'static str,
+        args: &[OsString],
+        timeout: Duration,
+        workers: usize,
+        cancel: &dyn Fn() -> bool,
+        stderr_observer: &dyn Fn(&[u8]),
+    ) -> Result<Completed, Failure> {
+        if workers == 0 {
+            return Err(Failure::invalid(
+                "callee_worker_budget_invalid",
+                "the native worker budget must be positive",
+            ));
+        }
+        self.owner.call_at_supervised(
+            &self.executable,
+            subcommand,
+            args,
+            timeout,
+            Some(workers),
+            cancel,
+            Some(stderr_observer),
         )
     }
 
@@ -290,8 +321,9 @@ impl External {
         args: &[OsString],
         timeout: Duration,
     ) -> Result<Completed, Failure> {
-        self.call_at_supervised(executable, subcommand, args, timeout, None, &|| false)
+        self.call_at_supervised(executable, subcommand, args, timeout, None, &|| false, None)
     }
+    #[allow(clippy::too_many_arguments)]
     fn call_at_supervised(
         &self,
         executable: &Path,
@@ -300,6 +332,7 @@ impl External {
         timeout: Duration,
         workers: Option<usize>,
         cancel: &dyn Fn() -> bool,
+        stderr_observer: Option<StderrObserver<'_>>,
     ) -> Result<Completed, Failure> {
         if cancel() {
             return Err(Failure::failed(
@@ -379,10 +412,13 @@ impl External {
         let stderr = child.stderr.take();
         let stdout_overflow = Arc::clone(&overflow);
         let stderr_overflow = Arc::clone(&overflow);
+        let (stderr_events, stderr_receiver) = std::sync::mpsc::channel();
+        let stderr_events = stderr_observer.map(|_| stderr_events);
         let stdout_reader =
             std::thread::spawn(move || read_bounded_signal(stdout, &stdout_overflow));
-        let stderr_reader =
-            std::thread::spawn(move || read_bounded_signal(stderr, &stderr_overflow));
+        let stderr_reader = std::thread::spawn(move || {
+            read_bounded_signal_observed(stderr, &stderr_overflow, stderr_events)
+        });
         enum Stop {
             Done,
             Cancelled,
@@ -392,6 +428,11 @@ impl External {
         }
         let started = Instant::now();
         let stop = loop {
+            if let Some(observer) = stderr_observer {
+                for chunk in stderr_receiver.try_iter() {
+                    observer(&chunk);
+                }
+            }
             match tree.try_wait(&mut child) {
                 Ok(Some(_)) => break Stop::Done,
                 Ok(None) => {}
@@ -428,6 +469,11 @@ impl External {
         let waited = child.wait();
         let (stdout, stdout_truncated) = stdout_reader.join().unwrap_or_default();
         let (stderr, stderr_truncated) = stderr_reader.join().unwrap_or_default();
+        if let Some(observer) = stderr_observer {
+            for chunk in stderr_receiver.try_iter() {
+                observer(&chunk);
+            }
+        }
         match stop {
             Stop::Cancelled => {
                 return Err(Failure::failed(
@@ -734,6 +780,14 @@ fn is_executable(path: &Path) -> bool {
 
 /// Read a stream to the byte bound, reporting overflow or invalid UTF-8.
 fn read_bounded_signal(stream: Option<impl Read>, overflow: &AtomicBool) -> (String, bool) {
+    read_bounded_signal_observed(stream, overflow, None)
+}
+
+fn read_bounded_signal_observed(
+    stream: Option<impl Read>,
+    overflow: &AtomicBool,
+    events: Option<std::sync::mpsc::Sender<Vec<u8>>>,
+) -> (String, bool) {
     let Some(mut stream) = stream else {
         return (String::new(), false);
     };
@@ -753,6 +807,11 @@ fn read_bounded_signal(stream: Option<impl Read>, overflow: &AtomicBool) -> (Str
                     continue;
                 }
                 buffer.extend_from_slice(&chunk[..read.min(room)]);
+                if let Some(events) = &events {
+                    // Only retained bytes enter this queue, so total queued
+                    // data can never exceed MAX_OUTPUT_BYTES.
+                    let _ = events.send(chunk[..read.min(room)].to_vec());
+                }
                 if read > room {
                     truncated = true;
                     overflow.store(true, Ordering::Release);
@@ -1229,6 +1288,63 @@ mod supervised_tests {
         assert!(done.truncated);
         assert!(done.stderr.len() <= MAX_OUTPUT_BYTES);
         prompt(started);
+    }
+    #[test]
+    fn observed_stderr_arrives_before_exit_and_cancellation_reaps_the_task() {
+        let observed = std::cell::Cell::new(false);
+        let started = Instant::now();
+        let failure = captured()
+            .call_cancelled_observed(
+                "--exact",
+                &fixture("fixture_live_progress"),
+                Duration::from_secs(10),
+                1,
+                &|| observed.get(),
+                &|chunk| {
+                    if chunk
+                        .windows(b"owner-progress".len())
+                        .any(|bytes| bytes == b"owner-progress")
+                    {
+                        observed.set(true);
+                    }
+                },
+            )
+            .err()
+            .expect("observed progress must cancel the running child");
+        assert!(
+            observed.get(),
+            "stderr must be delivered while the child is alive"
+        );
+        assert_eq!(failure.code(), "callee_cancelled");
+        prompt(started);
+    }
+    #[test]
+    fn observed_stderr_keeps_the_output_limit_and_stops_overflow() {
+        let count = std::cell::Cell::new(0usize);
+        let started = Instant::now();
+        let done = captured()
+            .call_cancelled_observed(
+                "--exact",
+                &fixture("fixture_stderr_overflow"),
+                Duration::from_secs(10),
+                1,
+                &|| false,
+                &|chunk| count.set(count.get() + chunk.len()),
+            )
+            .unwrap();
+        assert!(done.truncated);
+        assert!(count.get() <= MAX_OUTPUT_BYTES);
+        assert!(done.stderr.len() <= MAX_OUTPUT_BYTES);
+        prompt(started);
+    }
+    #[test]
+    #[ignore = "invoked by the live progress supervision test"]
+    fn fixture_live_progress() {
+        std::io::stderr().write_all(b"owner-progress\n").unwrap();
+        std::io::stderr().flush().unwrap();
+        loop {
+            std::thread::sleep(Duration::from_millis(100));
+        }
     }
     #[test]
     fn invalid_utf8_cannot_expand_the_output_bound_or_become_json() {
