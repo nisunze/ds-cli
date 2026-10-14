@@ -11,8 +11,9 @@ consumers must update together. There is no numeric SID compatibility cast.
 These native implementation interfaces are not a supported client SDK.
 
 Typed CLI/MCP commands, `core.serve` contract 2 and the connection record v2 are
-unchanged. Windows hosting remains explicitly unavailable pending native runtime
-qualification; other unsupported targets refuse before credential or state access.
+unchanged. Windows hosting now uses the protected native named-pipe adapter;
+unsupported targets refuse before credential or state access. Windows public
+publication remains unavailable until its own artifact admission.
 Legacy TCP/bearer connections remain refused and retired Server/headless command
 aliases are not restored. Desktop remains an optional client of independent Core.
 
@@ -27,3 +28,7 @@ before opening the queue or publishing its private pipe. Broader ACLs, links or
 an inventory beyond 100,000 entries, depth 64 or 16 MiB of path bytes refuse with
 `server_refused`; retained files remain unchanged. Repair retained permissions
 and retry. Making only the parent directory private is insufficient on Windows.
+
+Windows Core connections carry the same result-observer shutdown signal as Unix.
+Core shutdown detaches observation before connection drain; it never cancels the
+durable job. Native host constructors use the updated account API on both hosts.

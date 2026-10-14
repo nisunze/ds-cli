@@ -112,8 +112,10 @@ pub async fn serve(
         }
         let peer = Peer { account };
         let router = router.clone();
+        let observer_shutdown = super::ObserverShutdown(stop.clone());
         let service = hyper::service::service_fn(move |mut request: hyper::Request<Incoming>| {
             request.extensions_mut().insert(peer);
+            request.extensions_mut().insert(observer_shutdown.clone());
             router.clone().oneshot(request)
         });
         let stop = stop.clone();
@@ -310,6 +312,54 @@ mod tests {
             .unwrap_err();
             assert!(matches!(missing, CallError::Unreachable(_)));
         }
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn transport_shutdown_detaches_a_waiting_request_before_connection_drain() {
+        let (_temp, state) = state();
+        let listening = listen(&state).unwrap();
+        let socket = listening.socket().to_owned();
+        let started = Arc::new(tokio::sync::Notify::new());
+        let observing = started.clone();
+        let router = axum::Router::new().route(
+            "/observe",
+            get(
+                move |Extension(stop): Extension<super::super::ObserverShutdown>| {
+                    let observing = observing.clone();
+                    async move {
+                        observing.notify_one();
+                        stop.closed().await;
+                        "detached"
+                    }
+                },
+            ),
+        );
+        let (stop, stopped) = oneshot::channel();
+        let server = tokio::spawn(serve(listening, router, async {
+            let _ = stopped.await;
+        }));
+        let client = tokio::task::spawn_blocking(move || {
+            super::super::call(
+                &socket,
+                "GET",
+                "/observe",
+                &[],
+                None,
+                128,
+                Duration::from_secs(5),
+            )
+        });
+        tokio::time::timeout(Duration::from_secs(5), started.notified())
+            .await
+            .unwrap();
+        stop.send(()).unwrap();
+        let reply = client.await.unwrap().unwrap();
+        assert_eq!(reply.status, 200);
+        assert_eq!(reply.body, b"detached");
+        tokio::time::timeout(Duration::from_secs(5), server)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
     }
     #[tokio::test]
     async fn busy_pipe_timeout_is_bounded_without_sending_request_bytes() {
