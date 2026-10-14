@@ -191,14 +191,14 @@ pub struct Inspection {
     pub update: Option<DesktopUpdate>,
 }
 
-/// Three existing release owners, with no new installation registry. Module
+/// Existing release owners, with no new installation registry. Module
 /// admission remains read-only; only the shell has an update transaction.
 pub fn inspect(
     component: &str,
     channel: &str,
     input: InspectionInput,
 ) -> Result<Inspection, String> {
-    if !matches!(component, "shell" | "solar" | "reporter")
+    if !matches!(component, "shell" | "solar" | "reporter" | "network")
         || !matches!(channel, "stable" | "canary" | "local")
         || !matches!(input.platform.as_str(), "windows" | "linux" | "macos")
     {
@@ -220,6 +220,17 @@ pub fn inspect(
                     .get(key)
                     .and_then(Value::as_str)
                     .filter(|v| !v.is_empty())
+            })
+            .or_else(|| {
+                if component == "network" {
+                    input
+                        .installed
+                        .pointer("/engineIdentity/coreVersion")
+                        .and_then(Value::as_str)
+                        .filter(|v| !v.is_empty())
+                } else {
+                    None
+                }
             });
         let installed = release_identity(
             version,
@@ -411,6 +422,29 @@ mod tests {
         assert_eq!(result.installed.build_number, None);
         assert_eq!(result.installed.release_date, None);
         assert_eq!(result.published.unwrap().build_number, Some(4));
+    }
+
+    #[test]
+    fn network_inspection_projects_engine_version_without_inventing_publication() {
+        let held = InspectionInput {
+            release: Value::Null,
+            installed: json!({"schema":"ds.engine-build/v1","module":"network", "engineIdentity":{"coreVersion":"1.4.0","builtAt":"2026-10-14T00:00:00Z"}}),
+            platform: "linux".into(),
+        };
+        let result = inspect("network", "local", held).unwrap();
+        assert_eq!(result.installed.version.as_deref(), Some("1.4.0"));
+        assert_eq!(result.installed.build_number, None);
+        assert_eq!(result.installed.release_date, None);
+        assert!(result.update.is_none());
+        assert!(result.published.is_none());
+        let missing = InspectionInput {
+            release: Value::Null,
+            installed: Value::Null,
+            platform: "linux".into(),
+        };
+        let result = inspect("network", "canary", missing).unwrap();
+        assert_eq!(result.installed.version, None);
+        assert!(result.update.is_none());
     }
     #[test]
     fn carried_asset_ahead_identity_withdrawal_and_crossed_lane_never_update() {

@@ -3,7 +3,7 @@
 `src/desktop_update.rs` owns closed shell/module inspection and shell download
 admission. `server.update-inspect` is its read-only CLI/MCP projection and the
 Desktop `ds_invoke` adapter calls the same owner over held metadata. No project
-data is acquired by this operation. Solar and Reporter use their existing
+data is acquired by this operation. Solar, Reporter and Network use their existing
 module manifest validator; inspection grants no module installation trust.
 
 Installed/published identity has three distinct fields: `version`,
@@ -12,6 +12,8 @@ encoding supplies the publication build number. A recorded `released_at`
 supplies the release date. Neither a build timestamp, filesystem modification,
 download time nor current clock can fill a missing publication receipt.
 Development and legacy installations retain null fields where no receipt exists.
+Network build-info projects its recorded `engineIdentity.coreVersion`; source or
+dependency-closure qualification does not invent a publication build/release date.
 
 Shell availability retains the existing per-platform source/build identity
 comparison: a higher intentional version or later same-version platform build

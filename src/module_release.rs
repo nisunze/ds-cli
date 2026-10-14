@@ -1,4 +1,4 @@
-//! Semantic admission of the two fixed standalone module catalogs.
+//! Semantic admission of the fixed standalone module catalogs.
 //!
 //! Public metadata is not an installation or signature grant. This pure owner
 //! performs no read, download, process launch, subscription or activation.
@@ -13,12 +13,14 @@ use url::Url;
 
 pub const MODULE_RELEASE_SCHEMA: &str = "ds.module-release/v1";
 pub const MODULE_PROTOCOL: &str = "ds.module/v1";
+pub const NETWORK_PROTOCOL: &str = "ds.network-engine/v1";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleComponent {
     Solar,
     Reporter,
+    Network,
 }
 
 impl ModuleComponent {
@@ -26,6 +28,7 @@ impl ModuleComponent {
         match self {
             Self::Solar => "solar",
             Self::Reporter => "reporter",
+            Self::Network => "network",
         }
     }
 
@@ -33,6 +36,22 @@ impl ModuleComponent {
         match self {
             Self::Solar => "ds-solar",
             Self::Reporter => "ds-network-reporter",
+            Self::Network => "ds-network",
+        }
+    }
+
+    pub fn protocol(self) -> &'static str {
+        match self {
+            Self::Solar | Self::Reporter => MODULE_PROTOCOL,
+            Self::Network => NETWORK_PROTOCOL,
+        }
+    }
+
+    pub fn executable(self) -> &'static str {
+        match self {
+            Self::Solar => "solar",
+            Self::Reporter => "reporter",
+            Self::Network => "ds-network",
         }
     }
 
@@ -40,9 +59,10 @@ impl ModuleComponent {
         match component {
             "solar" => Ok(Self::Solar),
             "reporter" => Ok(Self::Reporter),
+            "network" => Ok(Self::Network),
             _ => fail(
                 "module_release_component_invalid",
-                "Component must be solar or reporter",
+                "Component must be solar, reporter or network",
             ),
         }
     }
@@ -250,7 +270,7 @@ pub fn validate_module_release(
             "Module release does not match the requested component and lane",
         );
     }
-    if release.protocol != MODULE_PROTOCOL {
+    if release.protocol != component.protocol() {
         return fail(
             "module_release_protocol_unsupported",
             "Module protocol is unsupported",
@@ -275,7 +295,7 @@ pub fn validate_module_release(
         if !matches!(asset.platform.as_str(), "linux" | "windows")
             || asset.arch != "x86_64"
             || asset.kind != "module-executable"
-            || asset.protocol != MODULE_PROTOCOL
+            || asset.protocol != component.protocol()
             || platforms.contains(&asset.platform.as_str())
         {
             return fail(
@@ -316,7 +336,7 @@ pub fn validate_module_release(
         let segments: Vec<_> = url.path().split('/').collect();
         let filename = format!(
             "{}{}",
-            component.as_str(),
+            component.executable(),
             if asset.platform == "windows" {
                 ".exe"
             } else {
@@ -366,6 +386,44 @@ mod tests {
         assert_eq!(admitted.assets[0].source_revisions.len(), 2);
         assert!(admitted.assets[0].url.contains("0.1.0-r1"));
         assert_eq!(serde_json::to_value(admitted).unwrap(), value);
+    }
+
+    fn network_catalog() -> Value {
+        let mut value = catalog();
+        value["component"] = json!("network");
+        value["product_id"] = json!("rw.datasolutions.module.network.canary");
+        value["protocol"] = json!(NETWORK_PROTOCOL);
+        let asset = &mut value["assets"][0];
+        asset["protocol"] = json!(NETWORK_PROTOCOL);
+        asset["url"] = json!("https://storage.googleapis.com/dedicated-public-releases/modules/network/canary/0.1.0-r1/ds-network");
+        asset["source_revisions"] = json!({"ds-network":"b".repeat(40)});
+        asset["engines"][0]["engine"] = json!("ds-network");
+        asset["engines"][0]["release"] = json!(format!("ds-network@0.1.0+{}", "b".repeat(40)));
+        value
+    }
+
+    #[test]
+    fn network_uses_its_declared_engine_protocol_and_executable() {
+        let mut value = network_catalog();
+        let admitted = validate_module_release("network", "canary", &value).unwrap();
+        assert_eq!(admitted.component, ModuleComponent::Network);
+        assert_eq!(serde_json::to_value(admitted).unwrap(), value);
+        let asset = &mut value["assets"][0];
+        asset["platform"] = json!("windows");
+        asset["url"] = json!("https://storage.googleapis.com/dedicated-public-releases/modules/network/canary/0.1.0-r1/ds-network.exe");
+        assert!(validate_module_release("network", "canary", &value).is_ok());
+        for (path, replacement) in [
+            ("/protocol", json!(MODULE_PROTOCOL)),
+            ("/assets/0/protocol", json!(MODULE_PROTOCOL)),
+            ("/assets/0/url", json!("https://storage.googleapis.com/dedicated-public-releases/modules/network/canary/0.1.0-r1/network.exe")),
+            ("/assets/0/engines/0/engine", json!("ds-network-reporter")),
+            ("/assets/0/source_revisions", json!({"ds-network-reporter":"b".repeat(40)})),
+        ] {
+            let mut invalid = value.clone();
+            *invalid.pointer_mut(path).unwrap() = replacement;
+            assert!(validate_module_release("network", "canary", &invalid).is_err(), "{path}");
+        }
+        assert!(validate_module_release("reporter", "canary", &value).is_err());
     }
 
     #[test]

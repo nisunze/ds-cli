@@ -1,7 +1,7 @@
 # Standalone module catalog admission
 
-The fixed component IDs are `solar` and `reporter`; their engine owners are
-`ds-solar` and `ds-network-reporter`. The shell retains its existing desktop
+The fixed component IDs are `solar`, `reporter` and `network`; their engine owners
+are `ds-solar`, `ds-network-reporter` and `ds-network`. The shell retains its existing desktop
 release namespace and is not decoded as a module. This slice introduces no
 general plugin registry or installation framework.
 
@@ -20,7 +20,7 @@ offline. The error carries one stable `code` and a bounded rule `message`.
 
 The closed `ds.module-release/v1` DTO carries component, channel, lane-bound
 product ID (`rw.datasolutions.module.<component>[.canary]`), version, protocol
-`ds.module/v1`, release timestamp, governance status, optional notes and one or
+`ds.module/v1` for Solar/Reporter or `ds.network-engine/v1` for Network, release timestamp, governance status, optional notes and one or
 two platform assets. Windows/Linux x86_64 are admitted first. An asset carries
 `module-executable`, its matching protocol, immutable public HTTPS storage URL,
 size/digest, build timestamp, owner source revision, producer-declared source
@@ -50,4 +50,10 @@ The protected publication envelope remains distinct from the existing public
 
 Focused executable proof is `cargo test --lib module_release --jobs 2`: carried
 source preservation, closed DTO round-trip, component/lane/legacy refusals,
-malformed target/provenance/URL bounds and withdrawal-status preservation.
+malformed target/provenance/URL bounds and withdrawal-status preservation, plus Network-specific protocol/executable/producer admission.
+
+Network assets name `ds-network` on Linux and `ds-network.exe` on Windows. Its
+metadata selects the existing engine protocol; it is not relabeled as the Solar
+prepared-task protocol. The common module catalog/artifact envelopes stay at v1.
+No Network release is inferred from this declaration: an absent public pointer
+remains absent until an exact qualified producer artifact is published.
