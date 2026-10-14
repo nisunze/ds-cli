@@ -43,6 +43,43 @@ fn isolated(test: &str, engine: &std::path::Path, mode: Option<&str>) {
     );
 }
 #[test]
+#[ignore = "requires exact built Network executable and immutable schema-5 owner fixture"]
+fn acceptance_grid_read_real_owner() {
+    isolated(
+        "isolated_grid_read_real_owner",
+        &required("DS_NETWORK_GRID_REAL_ENGINE"),
+        None,
+    );
+}
+
+#[test]
+#[ignore = "isolated environment for one retained executable selection"]
+fn isolated_grid_read_real_owner() {
+    let model = fs::read(required("DS_NETWORK_GRID_MODEL")).unwrap();
+    let scratch = tempfile::tempdir().unwrap();
+    let captured = CapturedNetworkClient::capture(1, &|| false).unwrap();
+    let request = ds_network_contracts::grid_read::NativeGridReadRequestV1 {
+        schema: ds_network_contracts::grid_read::NATIVE_GRID_READ_REQUEST_SCHEMA_V1.into(),
+        issue_limit: 50,
+        advisory_limit: 50,
+    };
+    let result = captured
+        .grid_read(&request, &model, scratch.path(), &|| false)
+        .unwrap();
+    assert!(result.result.container.verified);
+    assert_eq!(result.result.package_sha256, sha(&model));
+    assert_eq!(result.receipt.artifact.sha256, sha(&result.bytes));
+    let cancelled = captured
+        .grid_read(&request, &model, scratch.path(), &|| true)
+        .unwrap_err();
+    assert!(matches!(
+        cancelled.code(),
+        "callee_cancelled" | "network_task_cancelled"
+    ));
+    assert_eq!(fs::read_dir(scratch.path()).unwrap().count(), 0);
+}
+
+#[test]
 #[ignore = "requires exact built Network executable and immutable schema-5 owner fixtures"]
 fn acceptance_grid_real_owner_artifacts_and_refusals() {
     isolated(
@@ -89,6 +126,30 @@ fn isolated_grid_real_owner() {
         manifest.bytes,
         fs::read(goldens.join("manifest/manifest.json")).unwrap()
     );
+    let read = captured
+        .grid_read(
+            &ds_network_contracts::grid_read::NativeGridReadRequestV1 {
+                schema: ds_network_contracts::grid_read::NATIVE_GRID_READ_REQUEST_SCHEMA_V1.into(),
+                issue_limit: 50,
+                advisory_limit: 50,
+            },
+            &model,
+            scratch.path(),
+            &|| false,
+        )
+        .unwrap();
+    assert!(read.result.container.verified);
+    assert_eq!(read.result.package_sha256, sha(&model));
+    assert!(
+        read.result
+            .model
+            .as_ref()
+            .unwrap()
+            .authored_revision
+            .starts_with("rev:")
+    );
+    assert_eq!(read.receipt.artifact.sha256, sha(&read.bytes));
+
     let inspection = captured
         .grid_inspect(&model, scratch.path(), &|| false)
         .unwrap();
@@ -131,11 +192,13 @@ fn isolated_grid_real_owner() {
         error.owner_detail.as_ref().unwrap()["unknown"],
         json!(["unowned"])
     );
-    assert!(error
-        .owner_remedy
-        .as_ref()
-        .unwrap()
-        .contains("project_plan"));
+    assert!(
+        error
+            .owner_remedy
+            .as_ref()
+            .unwrap()
+            .contains("project_plan")
+    );
     query.params = json!({});
     query.source.expected_revision = Some(format!("rev:{}", "0".repeat(64)));
     assert_eq!(
@@ -199,6 +262,13 @@ fn acceptance_grid_receiver_rejects_unbound_corrupt_and_cancelled_results() {
         ("publication-package-revision", "success"),
         ("manifest-wrong-source", "network_result_invalid"),
         ("manifest-decoded", "network_result_invalid"),
+        ("read-wrong-package", "network_result_invalid"),
+        ("read-wrong-limits", "network_result_invalid"),
+        ("read-invalid-counts", "network_result_invalid"),
+        ("read-damaged-shape", "network_result_invalid"),
+        ("read-wrong-schema", "network_result_invalid"),
+        ("read-changed-input", "network_input_changed"),
+        ("read-missing-capability", "network_engine_incompatible"),
     ] {
         let name = if cfg!(windows) {
             format!("{mode}.exe")
@@ -253,6 +323,20 @@ fn isolated_grid_adversarial_owner() {
         );
         assert_eq!(expected, "success");
         return;
+    } else if mode.starts_with("read-") {
+        captured
+            .grid_read(
+                &ds_network_contracts::grid_read::NativeGridReadRequestV1 {
+                    schema: ds_network_contracts::grid_read::NATIVE_GRID_READ_REQUEST_SCHEMA_V1
+                        .into(),
+                    issue_limit: 50,
+                    advisory_limit: 50,
+                },
+                &model,
+                scratch.path(),
+                &|| false,
+            )
+            .unwrap_err()
     } else if mode.starts_with("inspection-") {
         captured
             .grid_inspect(&model, scratch.path(), &|| false)

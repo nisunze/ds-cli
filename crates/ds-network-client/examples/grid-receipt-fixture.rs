@@ -1,5 +1,5 @@
 //! Adversarial artifact transport only: this fixture performs no Grid computation.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{env, fs, io::Write, path::Path};
 fn sha(bytes: &[u8]) -> String {
@@ -32,6 +32,9 @@ fn main() {
         if mode != "inspection-missing-capability" {
             capabilities.push("grid_inspect_v1");
         }
+        if mode != "read-missing-capability" {
+            capabilities.push("grid_read_v1");
+        }
     }
     let identity = json!({"schema":"ds.network-engine/v1","jsonObjectOrder":"sorted","protocolMajor":1,"protocolMinor":0,"coreVersion":"fixture-core","sourceSha":null,"dependencyClosureSha256":null,"environment":"native","runtime":{"environment":"native","logicalCpus":workers,"internalWorkerThreads":workers},"capabilities":capabilities});
     if command == "build-info" {
@@ -46,6 +49,7 @@ fn main() {
         || mode == "differential-missing-capability"
         || mode == "catalog-missing-capability"
         || mode == "apply-missing-capability"
+        || mode == "read-missing-capability"
     {
         panic!("missing capability must refuse without starting an operation");
     }
@@ -137,7 +141,8 @@ fn main() {
             )
         }
         "lv-differential-plan" => (
-            "plan.json", "ds.lv.native-differential-plan-result/v1",
+            "plan.json",
+            "ds.lv.native-differential-plan-result/v1",
             json!({"schema":if mode=="differential-wrong-schema" {"other/v1"} else {"ds.lv.native-differential-plan-result/v1"},
                 "plan":{"scope":if mode=="differential-wrong-scope" {"host_override"} else {"full"},
                     "feeders":if mode=="differential-wrong-full" {json!(["f1"])} else {json!([])},
@@ -160,6 +165,35 @@ fn main() {
                 "catalog.json",
                 "ds.grid.native-catalog-result/v1",
                 json!({"schema":"ds.grid.native-catalog-result/v1","kind":kind,"engine_version":version,"data":data}),
+            )
+        }
+        "grid-read" => {
+            let issue_limit = request["issue_limit"].as_u64().unwrap() as usize;
+            let advisory_limit = request["advisory_limit"].as_u64().unwrap() as usize;
+            let damaged = mode == "read-damaged-shape";
+            (
+                "read.json",
+                "ds.grid.native-read-result/v1",
+                json!({
+                    "schema":if mode=="read-wrong-schema" {"other/v1"} else {"ds.grid.native-read-result/v1"},
+                    "package_sha256":if mode=="read-wrong-package" {"0".repeat(64)} else {sha(&model)},
+                    "issue_limit":if mode=="read-wrong-limits" {issue_limit+1} else {issue_limit},
+                    "advisory_limit":advisory_limit,
+                    "container":{"verified":!damaged,"members":if damaged {Value::Null} else {json!(65)},
+                        "detail":if damaged {json!({"detail":"damaged"})} else {Value::Null}},
+                    "model":if damaged {
+                        json!({"id":"impossible"})
+                    } else {
+                        json!({"id":"fixture-model","package_revision":7,
+                            "authored_revision":format!("rev:{}","a".repeat(64)),
+                            "fingerprint":"fnv1a64:0123456789abcdef","valid":mode!="read-invalid-counts",
+                            "issue_count":if mode=="read-invalid-counts" {1} else {0},
+                            "issues":[],"issues_withheld":0,"advisory_count":0,
+                            "advisories":[],"advisories_withheld":0,
+                            "counts":{"alignments":1,"route_nodes":2,"structures":3,
+                                "structure_types":4,"tension_sections":5,"described_structures":2}})
+                    }
+                }),
             )
         }
         "grid-inspect" => (
@@ -200,7 +234,7 @@ fn main() {
     }
     #[cfg(not(unix))]
     fs::write(&artifact, &bytes).unwrap();
-    if mode == "changed-input" {
+    if mode == "changed-input" || mode == "read-changed-input" {
         if let Some(model_path) = &model_path {
             fs::write(model_path, b"changed package").unwrap();
         } else {

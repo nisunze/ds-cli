@@ -18,6 +18,75 @@ pub struct GridOutcome<T> {
 }
 
 impl CapturedNetworkClient {
+    pub fn grid_read(
+        &self,
+        request: &ds_network_contracts::grid_read::NativeGridReadRequestV1,
+        model: &[u8],
+        scratch: &Path,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<GridOutcome<ds_network_contracts::grid_read::NativeGridReadResultV1>, NetworkFailure>
+    {
+        use ds_network_contracts::grid_read::*;
+        if model.len() > MAX_NATIVE_GRID_READ_PACKAGE_BYTES {
+            return Err(NetworkFailure::new(
+                "grid_task_bound_refused",
+                "opaque Grid package exceeds the 512 MiB read bound",
+            ));
+        }
+        let input = encode(request, MAX_NATIVE_GRID_READ_REQUEST_BYTES)?;
+        let outcome = self.grid_artifact::<NativeGridReadResultV1>(
+            "grid-read",
+            NetworkCapability::GridReadV1,
+            Some(&input),
+            Some(model),
+            scratch,
+            cancel,
+            "read.json",
+            NATIVE_GRID_READ_RESULT_SCHEMA_V1,
+            MAX_NATIVE_GRID_READ_RESULT_BYTES,
+            None,
+            false,
+        )?;
+        let result = &outcome.result;
+        let container_shape_valid = if result.container.verified {
+            result.container.members.is_some()
+                && result.container.detail.is_none()
+                && result.model.is_some()
+        } else {
+            result.container.members.is_none()
+                && result.container.detail.is_some()
+                && result.model.is_none()
+        };
+        if result.schema != NATIVE_GRID_READ_RESULT_SCHEMA_V1
+            || result.package_sha256 != digest_bytes(model)
+            || result.issue_limit != request.issue_limit
+            || result.advisory_limit != request.advisory_limit
+            || !container_shape_valid
+        {
+            return Err(invalid_result(
+                "Grid read result differs from the captured package or request",
+            ));
+        }
+        if let Some(model) = &result.model {
+            let revision_valid = model
+                .authored_revision
+                .strip_prefix("rev:")
+                .is_some_and(|revision| valid_hex(revision, 64));
+            if !revision_valid
+                || model.valid != (model.issue_count == 0)
+                || model.issues.len() > request.issue_limit
+                || model.advisories.len() > request.advisory_limit
+                || model.issues.len() + model.issues_withheld != model.issue_count
+                || model.advisories.len() + model.advisories_withheld != model.advisory_count
+            {
+                return Err(invalid_result(
+                    "Grid read findings, counts or revision are inconsistent",
+                ));
+            }
+        }
+        Ok(outcome)
+    }
+
     pub fn grid_inspect(
         &self,
         model: &[u8],
@@ -380,6 +449,7 @@ impl CapturedNetworkClient {
             "grid-write-admission" => {
                 ds_network_contracts::grid_write_admission::MAX_GRID_WRITE_ADMISSION_BYTES
             }
+            "grid-read" => ds_network_contracts::grid_read::MAX_NATIVE_GRID_READ_REQUEST_BYTES,
             _ => MAX_NATIVE_GRID_QUERY_REQUEST_BYTES,
         };
         if request.is_some()
