@@ -94,3 +94,64 @@ fn isolated_catalog_owner() {
         "catalog reads retain no model or task outputs"
     );
 }
+
+#[test]
+#[ignore = "requires the built protocol-only adversarial fixture"]
+fn acceptance_catalog_rejects_unbound_metadata() {
+    let fixture = PathBuf::from(env::var_os("DS_NETWORK_GRID_FIXTURE").expect("protocol fixture"));
+    let scratch = tempfile::tempdir().unwrap();
+    for (mode, expected) in [
+        ("catalog-missing-capability", "network_engine_incompatible"),
+        ("catalog-wrong-kind", "network_result_invalid"),
+        ("catalog-wrong-version", "network_result_invalid"),
+        ("catalog-wrong-descriptor", "network_result_invalid"),
+        ("wrong-digest", "network_result_digest_mismatch"),
+        ("wrong-file", "network_receipt_invalid"),
+        ("symlink-result", "network_result_invalid"),
+        ("changed-input", "network_input_changed"),
+    ] {
+        if mode == "symlink-result" && !cfg!(unix) {
+            continue;
+        }
+        let executable = scratch.path().join(mode);
+        fs::copy(&fixture, &executable).unwrap();
+        let result = Command::new(env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "isolated_catalog_adversary",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("DS_NETWORK_ENGINE_BIN", &executable)
+            .env("DS_NETWORK_CATALOG_MODE", mode)
+            .env("DS_NETWORK_CATALOG_EXPECTED", expected)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{mode}: {}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+}
+#[test]
+#[ignore = "isolated protocol fixture selection"]
+fn isolated_catalog_adversary() {
+    let scratch = tempfile::tempdir().unwrap();
+    let captured = CapturedNetworkClient::capture(1, &|| false).unwrap();
+    let mode = env::var("DS_NETWORK_CATALOG_MODE").unwrap();
+    let request = NativeGridCatalogRequestV1 {
+        schema: GRID_CATALOG_REQUEST_SCHEMA_V1.into(),
+        kind: GridCatalogKind::Operations,
+        id: (mode == "catalog-wrong-descriptor").then(|| "project_plan".into()),
+    };
+    assert_eq!(
+        captured
+            .grid_catalog(&request, scratch.path(), &|| false)
+            .unwrap_err()
+            .code(),
+        env::var("DS_NETWORK_CATALOG_EXPECTED").unwrap()
+    );
+    assert_eq!(fs::read_dir(scratch.path()).unwrap().count(), 0);
+}

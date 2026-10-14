@@ -20,6 +20,9 @@ fn main() {
     let mut capabilities = vec!["lv_processing_v1"];
     if mode != "missing-capability" {
         capabilities.extend(["grid_query_v1", "grid_manifest_v1", "grid_publication_v1"]);
+        if mode != "catalog-missing-capability" {
+            capabilities.push("grid_catalog_v1");
+        }
         if mode != "inspection-missing-capability" {
             capabilities.push("grid_inspect_v1");
         }
@@ -32,7 +35,10 @@ fn main() {
         );
         return;
     }
-    if mode == "missing-capability" || mode == "inspection-missing-capability" {
+    if mode == "missing-capability"
+        || mode == "inspection-missing-capability"
+        || mode == "catalog-missing-capability"
+    {
         panic!("missing capability must refuse without starting an operation");
     }
     if mode == "structured-refusal" || mode == "malformed-refusal" {
@@ -46,8 +52,15 @@ fn main() {
         );
         std::process::exit(1);
     }
-    let model_path = value("--model");
-    let model = fs::read(&model_path).unwrap();
+    let model_path = if command == "grid-catalog" {
+        None
+    } else {
+        Some(value("--model"))
+    };
+    let model = model_path
+        .as_ref()
+        .map(|path| fs::read(path).unwrap())
+        .unwrap_or_default();
     let request_bytes = if command == "grid-manifest" || command == "grid-inspect" {
         None
     } else {
@@ -71,6 +84,24 @@ fn main() {
     }
     let source = json!({"package_sha256":if mode=="wrong-package" {"0".repeat(64)} else {sha(&model)}, "model_id":"fixture-model", "expected_revision":format!("rev:{}", if mode=="wrong-revision" {"0"} else {"a"}.repeat(64)), "engineering_input_root":format!("fnv1a64:{}", "b".repeat(16))});
     let (name, schema, result) = match command {
+        "grid-catalog" => {
+            let kind = if mode == "catalog-wrong-kind" {
+                json!("types")
+            } else {
+                request["kind"].clone()
+            };
+            let version = "fixture-grid/1";
+            let data = if let Some(id) = request["id"].as_str() {
+                json!({"engine":version,"kind":kind,"descriptor":{"operation_id":if mode=="catalog-wrong-descriptor" {"other"} else {id}}})
+            } else {
+                json!({"engine":if mode=="catalog-wrong-version" {"other"} else {version},"kind":kind,"entries":[]})
+            };
+            (
+                "catalog.json",
+                "ds.grid.native-catalog-result/v1",
+                json!({"schema":"ds.grid.native-catalog-result/v1","kind":kind,"engine_version":version,"data":data}),
+            )
+        }
         "grid-inspect" => (
             "inspection.json",
             "ds.grid.native-inspection/v1",
@@ -110,7 +141,11 @@ fn main() {
     #[cfg(not(unix))]
     fs::write(&artifact, &bytes).unwrap();
     if mode == "changed-input" {
-        fs::write(&model_path, b"changed package").unwrap();
+        if let Some(model_path) = &model_path {
+            fs::write(model_path, b"changed package").unwrap();
+        } else {
+            fs::write(value("--request"), b"changed request").unwrap();
+        }
     }
     println!(
         "{}",
