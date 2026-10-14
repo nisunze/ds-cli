@@ -22,6 +22,7 @@ pub mod grid_held_models;
 pub mod profile_controls;
 pub mod profile_display;
 pub mod profile_encoding;
+pub mod profile_inputs;
 pub mod profile_layout;
 pub mod profile_style;
 pub use ds_kml as kml;

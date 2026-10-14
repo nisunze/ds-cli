@@ -16,56 +16,9 @@ mod analysis_queries;
 #[cfg(test)]
 mod lazy_fact_tests;
 
-/// Independent admitted result sources; reading never changes the display case.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum QuerySource {
-    #[default]
-    Profile,
-    ModelAnalysis,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum QueryKind {
-    Usage,
-    Failures,
-    NegativeLoading,
-    ViolatingSections,
-    Qualification,
-    Blockers,
-    Findings,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct QueryCursor {
-    pub result_id: String,
-    pub scope: String,
-    pub model_id: String,
-    pub history: SessionHistoryState,
-    pub kind: QueryKind,
-    #[serde(default)]
-    pub source: QuerySource,
-    pub entity_ids: Vec<String>,
-    pub offset: usize,
-}
-
-/// Shared CLI/MCP input DTO. The transport supplies the captured native
-/// scope/model/history/root; all bounds and engineering predicates remain here.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct QueryArguments {
-    pub kind: QueryKind,
-    #[serde(default)]
-    pub source: QuerySource,
-    #[serde(default)]
-    pub entity_ids: Vec<String>,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-    #[serde(default)]
-    pub cursor: Option<QueryCursor>,
-}
+pub use ds_command_kernel::profile_inputs::{QueryKind, QuerySource};
+pub type QueryCursor = ds_command_kernel::profile_inputs::QueryCursor<SessionHistoryState>;
+pub type QueryArguments = ds_command_kernel::profile_inputs::QueryArguments<SessionHistoryState>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -87,7 +40,7 @@ pub struct QueryResultsRequest {
     pub cursor: Option<QueryCursor>,
 }
 fn default_limit() -> usize {
-    50
+    ds_command_kernel::profile_inputs::DEFAULT_QUERY_LIMIT
 }
 
 #[derive(Clone)]

@@ -438,6 +438,7 @@ dependencies = [
  "ds-graph",
  "ds-grid-model",
  "ds-grid-physics",
+ "ds-network-contracts",
  "ds-profile",
  "regex",
  "schemars",
@@ -497,7 +498,6 @@ dependencies = [
  "ds-cleaning",
  "ds-geo",
  "ds-graph",
- "ds-grid-physics",
  "ds-kml",
  "encoding_rs",
  "flate2",
@@ -520,6 +520,19 @@ dependencies = [
  "quick-xml 0.41.0",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "ds-network-contracts"
+version = "0.1.0"
+dependencies = [
+ "ds-geo-lite",
+ "ds-grid-model",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
 ]
 
 [[package]]

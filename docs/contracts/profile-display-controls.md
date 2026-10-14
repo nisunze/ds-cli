@@ -178,7 +178,7 @@ packs a model. First initialization still projects synchronously; these controls
 address calculation in an already retained editable Profile.
 
 `calculation_control` accepts `{scope, model_id, expected_history?, request}`.
-Its shared native `CalculationArguments` is a closed action DTO: `start` takes
+Its shared `CalculationArguments` lives in portable Kernel `profile_inputs`, alongside the generic query input/cursor vocabulary. Network contracts own the one authored history shape; native consumers retain the engineering revision type, while transports carry opaque revision strings. CLI input parsing requires neither a retained Profile runtime nor a solver. The existing runtime re-exports these types and keeps engineering/query-result evaluation. `CalculationArguments` is a closed action DTO: `start` takes
 `job_id`, optional `display_case` and `analyze` (default false); `status`,
 `cancel` and `admit` take only `job_id`. Start requires exact observed history.
 Start also accepts the closed `scene_transfer` object: `{"mode":"full"}`

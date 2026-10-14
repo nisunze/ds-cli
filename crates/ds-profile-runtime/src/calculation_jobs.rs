@@ -144,10 +144,7 @@ impl Drop for ActiveWorker {
 }
 
 pub(super) fn identity(id: &str) -> Result<(), String> {
-    if id.is_empty() || id.len() > 128 || id.chars().any(char::is_control) {
-        return Err("invalid_profile_view: invalid calculation identity".into());
-    }
-    Ok(())
+    ds_command_kernel::profile_inputs::validate_calculation_identity(id)
 }
 
 impl Runtime {
