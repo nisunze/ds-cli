@@ -498,6 +498,7 @@ fn read_refusal(bytes: &str, identity: &EngineIdentity) -> Result<NetworkFailure
 }
 fn static_code(code: &str) -> &'static str {
     match code {
+        "module_removed" => "module_removed",
         "network_engine_missing" => "network_engine_missing",
         "callee_cancelled" => "callee_cancelled",
         "network_task_cancelled" => "network_task_cancelled",
