@@ -2,7 +2,7 @@
 
 > Work directly on canonical `run`. Active lists stay in ds-command-kernel/backlog/. Indexed hard cases and their feedback live in backlog/hardproblems/; stage only the selected slice documents.
 
-Active list from the 2026-10-07 snapshot and selected 2026-10-09/2026-10-14 official lookups, with proven closures removed and indexed hard cases moved to [hardproblems/FEEDBACK.md](hardproblems/FEEDBACK.md): 226 tracked rows (90 open, 136 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
+Active list from the 2026-10-07 snapshot and selected 2026-10-09/2026-10-14 official lookups, with proven closures removed and indexed hard cases moved to [hardproblems/FEEDBACK.md](hardproblems/FEEDBACK.md): 226 tracked rows (89 open, 137 waiting according to the rows below). These are file counts, not a fresh live backlog total. The feedback API is the authority: verify each selected report's current status, full ID, version and acceptance through `ds`, close only what is proven, and remove its row. Delete this file when its remaining work is fulfilled; keep no completed-work archive.
 
 Reports are grouped by the live repository that owns the code, then by component. The component is the submitter's free-text label, shown verbatim so `ds feedback list --component` finds it. Legacy labels map as follows: `ds-grid*`, `dsgrid*`, `ds/grid-*`, `ds/pls-library` → ds-network; `ds-report*`, `ds-printing*` → ds-network-reporter; `ds-desktop*` → ds-web (`src-tauri`); `ds pls desktop` → ds-cli (`ds-cli-pls/desktop`). Labels that name no repository stay **unassigned**. "Backlog" names the [OPEN.md](OPEN.md), [OPEN-X.md](OPEN-X.md) or [SEEDING.md](SEEDING.md) entry citing the active report; **untracked** means none does (109 reports).
 
@@ -15,7 +15,7 @@ Reports are grouped by the live repository that owns the code, then by component
 | [ds-command-kernel](#ds-command-kernel) | 6 | 0 | 4 | 2 | 4 | 0 |
 | [ds-brain](#ds-brain) | 7 | 0 | 6 | 1 | 5 | 3 |
 | [ds-vector-tiler](#ds-vector-tiler) | 1 | 0 | 1 | 0 | 1 | 0 |
-| [unassigned](#unassigned) | 10 | 0 | 7 | 3 | 3 | 7 |
+| [unassigned](#unassigned) | 10 | 0 | 7 | 3 | 4 | 7 |
 
 ## ds-cli
 
@@ -272,7 +272,7 @@ Reports are grouped by the live repository that owns the code, then by component
 
 | Component | ID | Sev | Kind | Title | State | Backlog |
 | --- | --- | --- | --- | --- | --- | --- |
-| ds-integration/grid-model | `9301de9f` | major | obstacle | Imported MV models retain uncharacterized materials and capacity angle domains | open | OPEN-X.md §12 |
+| ds-integration/grid-model | `9301de9f` | major | obstacle | Imported MV models retain uncharacterized materials and capacity angle domains | waiting: authoritative material/capacity source evidence and admitted characterization scope | OPEN-X.md §12 |
 | ds-agent/notes | `1631a9ba` | minor | idea | Agents should consult personal and project notes and usually create project notes | open | **untracked** |
 | ds-geometry/vector-buffer | `5dc0e8a1` | major | bug | Native line buffer emits self-crossing polygons rejected by DS readers | waiting: install of canary 0.1.7-r79+ (kernel 24a58f2 carries 535a50a), then the exact Model 3 buffer rerun with shared-reader validation | SEEDING.md §16 |
 | ds-notes/project-work | `70f6db77` | minor | idea | Move or copy among tasks, personal notes, and project notes | open | **untracked** |

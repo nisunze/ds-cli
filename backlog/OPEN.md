@@ -11,7 +11,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 5 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 6 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 8 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
@@ -32,7 +32,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [22. Operations product code](#22-operations-product-code) | 5 |
 | [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 4 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 6 |
-| [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 6 |
+| [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 5 |
 <!-- /toc -->
 
 ## 1. Source integration and release code
@@ -98,6 +98,8 @@ is ruled in the sync contract: simple local clean and recompute.
   proof requires the strict command to pass without lint suppression.
 
 ## 2. Green `run` and release gates
+
+- **Server Solar completion consumer gates**: `cargo test -p ds-cli-server --lib` fails `host::tests::a_completed_solar_job_seals_its_row_with_no_session_and_the_pump_adopts_nothing`, `a_solar_job_completed_with_no_row_is_not_adopted_and_its_result_is_retired_on_observation`, and `a_restart_replays_no_completion_and_unsealed_results_of_one_city_are_all_retired`: `run_one` returns work but no expected completed result/sealed row appears. The first case also fails against the unchanged startup-auth baseline and with `DS_SOLAR_ENGINE_BIN` naming the retained source engine. Diagnose the actual engine/result admission or fixture-protocol cause and prove all three without weakening durability assertions. Evidence: `.verification/reporting-host-20261014/server-startup-unit.log`, `server-solar-prerequisite.log`, and `server-solar-baseline.log` on ds-server.
 
 - **Network strict Clippy has untouched baseline diagnostics.** In `ds-network`,
   `cargo clippy --locked --offline -p ds-network -p ds-network-contracts
@@ -507,7 +509,5 @@ Priority ([PRINCIPLES.md §3–4](PRINCIPLES.md#4-report-as-you-go-owner-2026-10
 - **Desktop CLI host attribution and automatic-feedback budget**: Desktop CLI launches still do not bind `DS_CLI_HOST_KIND=desktop`, so their events default to headless (spec §3.2). Bind explicit Desktop host context at its native CLI launches and preserve caller environment. `reporter::file_automatic` also lacks an explicit `SEND_BUDGET` bound; qualify the actual exit-path budget before changing it. Installed reporting readback remains in [SEEDING.md block 25](SEEDING.md#25-cli-reliability-and-feedback).
 
 - **`ds feedback draft --last` completeness (kernel, ds-cli):** (a) the draft `component` must be the owning repository from the command registry (spec §4): kernel `reporter.rs` `draft_one` still emits `ds-cli/{domain}`, and ds-cli-contract `Command` has no owner field. (b) A CLI draft without `DS_CLI_AGENT` still lists `needs: agent` while `feedback.submit` requires `--agent`; the MCP adapter (ds-cli-mcp `tools.rs` `run_bounded`) never passes `clientInfo.name` to the child as `DS_CLI_AGENT`; the JSON draft's `context` is an object, not the repeated `key=value` input submit takes (only the human render maps it). (c) The `ds` skill (`ds-cli/skills/ds/SKILL.md`, "Report as you go") does not name `ds feedback draft --last`. Signed-in installed acceptance (spec §7.6) is in SEEDING.md block 25.
-
-- **`ds capabilities --search` does not find `feedback.submit` (ds-cli, text only):** `ds capabilities --search 'report a bug'`, `'report a problem'` and `'file a bug'` return no `feedback.submit` (its search list is empty); only `feedback`, `friction` and `idea` find it. **Proof:** all three phrases return `feedback.submit`; the discovery tests pass.
 
 - **PLS qualification cleanup/recovery (ds-cli):** installed Windows DS3db830b2 leaves an owned session open when an offline fresh-backup content/count check fails. Add a governed receipt-pinned recovery control for an already stopped owned session, fenced to the failed run's receipt/PID/executable and characterized Exit/No-save transition; unknown dialogs must remain stopped, no process kill or generic click. Existing PowerShell contract suite also fails on both HEAD and the cleanup candidate at the stale filename Edit setter assertion after WM_CHAR replaced WM_SETTEXT; repair that test against the current characterized path setter without weakening it.
