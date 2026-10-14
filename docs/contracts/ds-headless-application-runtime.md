@@ -184,6 +184,24 @@ restart. Resume supported transfers without repeating completed effects or
 falsely reporting success. Define what a local commit guarantees; the UI must
 not report a durable capture before the owning store confirms that commit.
 
+Durable native Network LV and prepared Solar jobs capture their addon at accepted
+admission. After context, input, idempotency and capacity checks, the owning store
+holds one write transaction while the native lane resolver captures the absolute
+executable, SHA-256, owner identity and positive host worker share. The same row
+retains that pin, exact input and full execution context atomically. Duplicate
+and refused admissions start no addon. Retry and restart validate the retained
+program and identity; they do not resolve the active lane pointer or executable
+override again. Solar's existing owner worker limit also bounds its admitted
+share. A reduced host or owner share refuses execution instead of changing the
+captured width. Completed idempotent reads need no addon or freshness probe.
+
+Historical or misbound addon pins are excluded from claims and capacity census
+without deleting their rows or blocking valid jobs. Their status and input remain
+readable and pending work remains cancellable. Recovery names missing-pin jobs
+and directs the owner to export the stored input and submit a new key with the
+explicit project and a compatible available addon; it never invents a pin.
+Prepared tiles keep their existing execution contract.
+
 Distinguish local retention, attempted transfer, server acknowledgement and
 downstream visibility. Preserve the evidence required by each existing
 operation. Every deferred or refused item needs a truthful reason and a

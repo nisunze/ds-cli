@@ -37,6 +37,17 @@ impl CapturedNetworkClient {
         workers: usize,
         cancel: &dyn Fn() -> bool,
     ) -> Result<Self, NetworkFailure> {
+        Self::capture_for_lane_in(lane, workers, cancel, None)
+    }
+
+    /// Native-owned relocated addon store, never an authored IPC path.
+    /// None uses the machine's normal protected addon base.
+    pub fn capture_for_lane_in(
+        lane: &str,
+        workers: usize,
+        cancel: &dyn Fn() -> bool,
+        module_base: Option<&Path>,
+    ) -> Result<Self, NetworkFailure> {
         if workers == 0 {
             return Err(NetworkFailure::new(
                 "network_workers_invalid",
@@ -44,7 +55,11 @@ impl CapturedNetworkClient {
             ));
         }
         let width = workers.min(std::thread::available_parallelism().map_or(1, usize::from));
-        let engine = NETWORK.capture_for_lane(lane).map_err(|error| {
+        let selected = match module_base {
+            Some(base) => NETWORK.capture_for_lane_in(lane, base),
+            None => NETWORK.capture_for_lane(lane),
+        };
+        let engine = selected.map_err(|error| {
             let code = if error.code() == "module_receipt_invalid" {
                 "network_engine_incompatible"
             } else {

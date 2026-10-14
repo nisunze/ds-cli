@@ -10,10 +10,8 @@
 use ds_command_kernel::compute_jobs::{Event, Phase};
 use ds_command_kernel::execution_context::{Limits, Principal};
 use ds_compute_runtime::{self as runtime, Admission, Authorizer, HostIdentity, WorkerContext};
-use ds_solar_contracts::{
-    BundleBytes, CityIdentity, PreparedSolarCityInput, RunOptions, SnapshotRevision,
-    SolarCityInput, WeatherDataset, WeatherKey, WeatherPin,
-};
+mod common;
+use common::prepared_solar_request;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -92,71 +90,6 @@ fn legacy_job_id(owner: &str, lane: &str, key: &str) -> String {
 
 fn request() -> Vec<u8> {
     serde_json::to_vec(&json!({"schema":"ds.fast-lv.request/v1","jobs":[{"transformer_name":"T1","gdfs":{"tr":{"type":"FeatureCollection","features":[{"type":"Feature","id":"tr-1","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"name":"T1","names":"T1"}}]},"lv_lines":{"type":"FeatureCollection","features":[{"type":"Feature","id":"line-1","geometry":{"type":"LineString","coordinates":[[30.0,-2.0],[30.0004,-2.0]]},"properties":{}}]},"customers":{"type":"FeatureCollection","features":[]}},"settings":{}}]})).unwrap()
-}
-
-fn prepared_solar_request() -> Vec<u8> {
-    let root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-solar/fixtures");
-    let city = "aderm_bere";
-    let snapshot: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(root.join(format!("city/{city}.snapshot.json"))).unwrap(),
-    )
-    .unwrap();
-    let input = SolarCityInput::from_city_snapshot(
-        CityIdentity {
-            project_id: SOLAR_PROJECT.to_string(),
-            root: "solar".to_string(),
-            city_id: city.to_string(),
-            display_name: snapshot["_root"]["display_name"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-        },
-        SnapshotRevision {
-            source: "ds-brain".to_string(),
-            captured_at: "2026-08-08T00:00:00Z".to_string(),
-            record_updated_at_ms: None,
-            revision: Some("a".repeat(64)),
-        },
-        RunOptions::default(),
-        &snapshot,
-    )
-    .unwrap();
-    let weather: WeatherDataset = serde_json::from_slice(
-        &std::fs::read(root.join(format!("weather/{city}.weather.json"))).unwrap(),
-    )
-    .unwrap();
-    let weather_key = WeatherKey::new(
-        input.site.latitude,
-        input.site.longitude,
-        weather.provenance.timezone.clone(),
-        WeatherPin::pvgis_tmy(),
-    )
-    .unwrap();
-    let reference_root = root.join("reference").join(city);
-    let reference = ds_solar_contracts::reference_unit::open(&BundleBytes {
-        weather_json: std::fs::read(reference_root.join("weather.json")).unwrap(),
-        reference_unit_json: std::fs::read(reference_root.join("reference-unit.json")).unwrap(),
-        reference_unit_parquet: std::fs::read(reference_root.join("reference-unit.parquet"))
-            .unwrap(),
-        manifest_json: std::fs::read(reference_root.join("manifest.json")).unwrap(),
-    })
-    .unwrap()
-    .reference_unit;
-    let prepared = PreparedSolarCityInput::commit(
-        input,
-        weather_key,
-        weather,
-        reference,
-        "2026-08-20T00:00:00Z",
-    )
-    .unwrap();
-    serde_json::to_vec(&json!({
-        "prepared": prepared,
-        "render_charts": false,
-        "run_id": "durable-solar-run",
-    }))
-    .unwrap()
 }
 
 #[test]
@@ -794,6 +727,7 @@ fn direct_submission_and_durable_replay_reject_invalid_snapshot_provenance() {
     job.input_sha256 = runtime::digest(&invalid);
     let context = job.context.as_mut().unwrap();
     context.input_sha256 = job.input_sha256.clone();
+    job.engine_pin.as_mut().unwrap().context = context.clone();
     runtime::open(&replay_path)
         .unwrap()
         .submit_job(&job, &invalid, limits())

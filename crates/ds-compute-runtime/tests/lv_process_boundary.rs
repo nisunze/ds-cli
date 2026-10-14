@@ -76,7 +76,7 @@ fn required(name: &str) -> PathBuf {
 }
 
 #[test]
-fn current_schema_and_engine_name_are_persisted_without_a_component_probe() {
+fn current_schema_engine_name_and_admission_pin_are_persisted_together() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("store.sqlite");
     let identity = identity();
@@ -97,6 +97,7 @@ fn current_schema_and_engine_name_are_persisted_without_a_component_probe() {
         input
     );
     assert_eq!(job.phase, Phase::Queued);
+    assert!(job.engine_pin.is_some());
 }
 
 #[test]
@@ -215,9 +216,11 @@ fn isolated(engine: &Path, mode: &str, marker: Option<&Path>) {
 }
 #[test]
 #[ignore = "executes the missing-component path in a separate process"]
-fn missing_component_fails_only_execution_and_retains_durable_work() {
+fn missing_retained_component_fails_execution_and_retains_durable_work() {
     let root = tempfile::tempdir().unwrap();
-    isolated(&root.path().join("missing-network"), "missing", None);
+    let retained = root.path().join("retained-network");
+    fs::copy(required("DS_NETWORK_ENGINE_BIN"), &retained).unwrap();
+    isolated(&retained, "missing", None);
 }
 
 #[cfg(unix)]
@@ -275,6 +278,7 @@ fn isolated_failure_or_cancel() {
         );
     } else {
         assert_eq!(mode, "missing");
+        fs::remove_file(required("DS_NETWORK_ENGINE_BIN")).unwrap();
         assert!(runtime::run_one(&worker(&path, &identity), "worker").unwrap());
     }
     let store = runtime::open(&path).unwrap();

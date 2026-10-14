@@ -133,6 +133,10 @@ pub struct Recovery {
     /// it has no result) and submits it again naming the project, which is a
     /// new job with its own id.
     pub unrecoverable: Vec<String>,
+    /// Pending rows from before addon pinning, retained but never claimable.
+    pub unpinned_count: usize,
+    /// Bounded names for the startup remedy; status/input still expose every row.
+    pub unpinned_ids: Vec<String>,
 }
 
 impl Store {
@@ -161,6 +165,21 @@ impl Store {
     /// executed; the owner submits its stored input again naming the project,
     /// which is a new job with its own id.
     pub fn submit_job(&mut self, job: &Job, input: &[u8], limits: Limits) -> Result<Job> {
+        self.submit_job_capturing_pin(job, input, limits, || Ok(job.engine_pin.clone()))
+    }
+
+    /// Capture only after idempotency and capacity have been decided. The
+    /// native caller may perform bounded local identity/file checks here, no
+    /// acquisition: this holds the IMMEDIATE writer lock until the same
+    /// transaction retains the pin, input and context. Racing duplicate or
+    /// refused submissions start no addon.
+    pub fn submit_job_capturing_pin(
+        &mut self,
+        job: &Job,
+        input: &[u8],
+        limits: Limits,
+        capture: impl FnOnce() -> Result<Option<compute_jobs::EnginePin>>,
+    ) -> Result<Job> {
         if !compute_jobs::digest(&job.id)
             || !compute_jobs::digest(&job.input_sha256)
             || !valid_input_tag(&job.engine, &job.input_tag)
@@ -225,7 +244,17 @@ impl Store {
                 {
                     return Err(Error::Kernel("compute_job_scope_conflict".into()));
                 }
-                Some(_) => return Ok(existing),
+                Some(_) => {
+                    if matches!(existing.phase, Phase::Queued | Phase::Running)
+                        && compute_jobs::validate_engine_pin(&existing).is_err()
+                    {
+                        return Err(Error::Kernel(format!(
+                            "compute_engine_pin_required: {}",
+                            compute_jobs::ENGINE_PIN_REMEDY
+                        )));
+                    }
+                    return Ok(existing);
+                }
                 None => {
                     return Err(Error::Refused(Refusal {
                         code: CONTEXT_UNRECOVERABLE,
@@ -248,9 +277,12 @@ impl Store {
             &census.queued,
             &context.project,
         ))?;
-        transaction.execute("INSERT INTO compute_jobs(id,owner,lane,phase,lease_until,created,row,input) VALUES (?1,?2,?3,'queued',0,?4,?5,?6)", params![job.id,job.owner,job.lane,job.created_at_ms,serde_json::to_string(job)?,input])?;
+        let mut job = job.clone();
+        job.engine_pin = capture()?;
+        compute_jobs::validate_engine_pin(&job).map_err(|code| Error::Kernel(code.into()))?;
+        transaction.execute("INSERT INTO compute_jobs(id,owner,lane,phase,lease_until,created,row,input) VALUES (?1,?2,?3,'queued',0,?4,?5,?6)", params![job.id,job.owner,job.lane,job.created_at_ms,serde_json::to_string(&job)?,input])?;
         transaction.commit()?;
-        Ok(job.clone())
+        Ok(job)
     }
     /// This caller's newest durable jobs. Rows it may not see are absent, not
     /// refused. A caller narrowed to one project is narrowed in the query
@@ -339,6 +371,9 @@ impl Store {
                     continue;
                 };
                 if !caller.sees(&current) {
+                    continue;
+                }
+                if compute_jobs::validate_engine_pin(&current).is_err() {
                     continue;
                 }
                 match execution_context::capacity(
@@ -562,6 +597,18 @@ impl Store {
                 Err(_) => recovery.unrecoverable.push(job.id.clone()),
             }
         }
+        recovery.unpinned_count = self.connection.query_row(
+            "SELECT COUNT(*) FROM compute_jobs WHERE owner=?1 AND lane=?2 AND phase IN ('queued','running') AND json_extract(row,'$.engine') != 'tiles_prepared' AND json_extract(row,'$.engine_pin') IS NULL",
+            params![owner, principal.lane], |row| row.get::<_, i64>(0),
+        )? as usize;
+        let mut statement = self.connection.prepare(
+            "SELECT id FROM compute_jobs WHERE owner=?1 AND lane=?2 AND phase IN ('queued','running') AND json_extract(row,'$.engine') != 'tiles_prepared' AND json_extract(row,'$.engine_pin') IS NULL ORDER BY created,id LIMIT 20",
+        )?;
+        recovery.unpinned_ids = statement
+            .query_map(params![owner, principal.lane], |row| {
+                row.get::<_, String>(0)
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(recovery)
     }
 
@@ -645,6 +692,9 @@ fn census_in(connection: &Connection, owner: &str, lane: &str, now: u64) -> Resu
     let mut census = Census::default();
     for row in rows {
         let job: Job = serde_json::from_str(&row?)?;
+        if job.owner != owner || job.lane != lane {
+            continue;
+        }
         // Exactly what `claim_job` will accept: a context that is there and
         // that reads. Anything else is work no worker can take, and the
         // capacity decision must not be made about it.
@@ -655,6 +705,9 @@ fn census_in(connection: &Connection, owner: &str, lane: &str, now: u64) -> Resu
         else {
             continue;
         };
+        if compute_jobs::validate_engine_pin(&job).is_err() {
+            continue;
+        }
         let slot = Slot {
             project: context.project.clone(),
         };

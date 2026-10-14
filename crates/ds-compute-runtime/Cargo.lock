@@ -431,6 +431,7 @@ dependencies = [
  "ds-network-contracts",
  "libc",
  "serde_json",
+ "sha2",
  "windows-sys",
 ]
 
@@ -465,6 +466,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64",
+ "ds-cli-exec",
  "ds-command-kernel",
  "ds-network-client",
  "ds-network-contracts",
@@ -533,6 +535,7 @@ dependencies = [
 name = "ds-network-contracts"
 version = "0.1.0"
 dependencies = [
+ "ds-geo-lite",
  "ds-grid-model",
  "schemars",
  "serde",

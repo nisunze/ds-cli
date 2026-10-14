@@ -26,6 +26,115 @@ pub enum EngineKind {
     TilesPrepared,
 }
 
+/// The native authority lane is captured by the host, never authored input.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineLane {
+    Stable,
+    Canary,
+}
+impl EngineLane {
+    pub fn parse(lane: &str) -> Result<Self, &'static str> {
+        match lane {
+            "stable" => Ok(Self::Stable),
+            "canary" => Ok(Self::Canary),
+            _ => Err("compute_engine_pin_lane_invalid"),
+        }
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Canary => "canary",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EnginePinSource {
+    /// The native owner's explicit lane resolver, including its admitted
+    /// development override or packaged fallback. This is not installation trust.
+    NativeLaneCapture,
+}
+
+/// Portable storage envelope. Native owners validate their own identity DTO;
+/// the kernel binds that opaque identity and executable to exactly one job.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct EnginePin {
+    pub schema: String,
+    pub engine: EngineKind,
+    pub owner: String,
+    pub lane: EngineLane,
+    pub context: crate::execution_context::ExecutionContext,
+    pub source: EnginePinSource,
+    pub executable: String,
+    pub executable_sha256: String,
+    pub identity: serde_json::Value,
+    pub workers: usize,
+    pub development_override: bool,
+}
+
+pub const ENGINE_PIN_REMEDY: &str = "read its stored input and submit it under a new key naming the project and an available compatible native addon";
+
+/// Missing historical pins are parked, never silently upgraded to latest.
+/// This pure check starts no addon and performs no filesystem/network read.
+pub fn validate_engine_pin(job: &Job) -> Result<(), &'static str> {
+    if job.engine == EngineKind::TilesPrepared {
+        return if job.engine_pin.is_none() {
+            Ok(())
+        } else {
+            Err("compute_engine_pin_invalid")
+        };
+    }
+    let pin = job
+        .engine_pin
+        .as_ref()
+        .ok_or("compute_engine_pin_required")?;
+    let context = job
+        .context
+        .as_ref()
+        .ok_or("compute_engine_pin_context_mismatch")?;
+    if pin.schema != "ds.compute.engine-pin/v1"
+        || pin.engine != job.engine
+        || pin.owner != job.owner
+        || pin.lane.as_str() != job.lane
+        || pin.context != *context
+        || context.validate().is_err()
+        || context.job_id != job.id
+        || context.input_sha256 != job.input_sha256
+        || context.lane != job.lane
+        || context.operation
+            != match job.engine {
+                EngineKind::LvProcessing => crate::execution_context::TRANSFORMER_PROCESSING,
+                EngineKind::SolarPrepared => crate::execution_context::SOLAR_PROCESSING,
+                EngineKind::TilesPrepared => unreachable!(),
+            }
+        || !absolute_executable(&pin.executable)
+        || pin.executable.len() > 4096
+        || pin.executable.chars().any(char::is_control)
+        || !digest(&pin.executable_sha256)
+        || !(1..=65536).contains(&pin.workers)
+        || !pin.identity.is_object()
+        || !serde_json::to_vec(&pin.identity).is_ok_and(|bytes| bytes.len() <= 64 * 1024)
+    {
+        return Err("compute_engine_pin_invalid");
+    }
+    Ok(())
+}
+
+// The envelope is portable: accept POSIX roots and Windows drive/UNC roots
+// without letting the machine reading a row reinterpret a relative path.
+fn absolute_executable(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    path.starts_with('/')
+        || path.starts_with("\\\\")
+        || (bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'/' | b'\\'))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Job {
@@ -54,6 +163,10 @@ pub struct Job {
     /// it — no lifecycle event moves a job to another project.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<crate::execution_context::ExecutionContext>,
+    /// Written atomically with input and context at native admission. Older
+    /// rows remain readable with None and require explicit resubmission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_pin: Option<EnginePin>,
 }
 
 pub enum Event<'a> {
@@ -184,6 +297,7 @@ mod tests {
             result_sha256: None,
             error: None,
             context: None,
+            engine_pin: None,
         }
     }
     fn context() -> crate::execution_context::ExecutionContext {
@@ -199,6 +313,60 @@ mod tests {
             idempotency_key: "key-a".into(),
             input_sha256: "2".repeat(64),
             admitted_at_ms: 1,
+        }
+    }
+    fn pinned() -> Job {
+        let mut job = queued();
+        job.context = Some(context());
+        job.engine_pin = Some(EnginePin {
+            schema: "ds.compute.engine-pin/v1".into(),
+            engine: job.engine.clone(),
+            owner: job.owner.clone(),
+            lane: EngineLane::Stable,
+            context: context(),
+            source: EnginePinSource::NativeLaneCapture,
+            executable: "/immutable/network".into(),
+            executable_sha256: "a".repeat(64),
+            identity: serde_json::json!({"native_identity":"opaque to pure kernel"}),
+            workers: 1,
+            development_override: false,
+        });
+        job
+    }
+    #[test]
+    fn engine_pin_binds_every_admitted_scope_and_legacy_rows_are_explicitly_unready() {
+        assert_eq!(
+            validate_engine_pin(&queued()),
+            Err("compute_engine_pin_required")
+        );
+        assert!(validate_engine_pin(&pinned()).is_ok());
+        for mutate in [
+            |p: &mut EnginePin| p.owner = "other".into(),
+            |p: &mut EnginePin| p.lane = EngineLane::Canary,
+            |p: &mut EnginePin| p.context.project = "other".into(),
+            |p: &mut EnginePin| p.context.input_sha256 = "b".repeat(64),
+            |p: &mut EnginePin| p.context.job_id = "c".repeat(64),
+            |p: &mut EnginePin| p.engine = EngineKind::SolarPrepared,
+            |p: &mut EnginePin| p.workers = 0,
+            |p: &mut EnginePin| p.executable = "relative/network".into(),
+            |p: &mut EnginePin| p.executable = "C:relative.exe".into(),
+            |p: &mut EnginePin| p.executable_sha256 = "unknown".into(),
+        ] {
+            let mut job = pinned();
+            mutate(job.engine_pin.as_mut().unwrap());
+            assert_eq!(validate_engine_pin(&job), Err("compute_engine_pin_invalid"));
+        }
+        let mut value = serde_json::to_value(pinned()).unwrap();
+        value["engine_pin"]["source"] = serde_json::json!("authored_path");
+        assert!(serde_json::from_value::<Job>(value).is_err());
+        for executable in [
+            "/native/network",
+            "C:\\native\\network.exe",
+            "\\\\host\\native\\network.exe",
+        ] {
+            let mut job = pinned();
+            job.engine_pin.as_mut().unwrap().executable = executable.into();
+            assert!(validate_engine_pin(&job).is_ok());
         }
     }
     /// A row written by a Server released before execution contexts existed.
@@ -228,8 +396,7 @@ mod tests {
 
     #[test]
     fn no_lifecycle_event_touches_the_execution_context() {
-        let mut job = queued();
-        job.context = Some(context());
+        let job = pinned();
         let claimed = transition(
             &job,
             Event::Claim {
@@ -240,6 +407,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(claimed.context, job.context);
+        assert_eq!(claimed.engine_pin, job.engine_pin);
         for event in [
             Event::Renew {
                 worker: "w",
@@ -260,6 +428,7 @@ mod tests {
                 next.context, job.context,
                 "a lifecycle event rewrote the execution context"
             );
+            assert_eq!(next.engine_pin, job.engine_pin);
         }
         // A retry after a lease takeover keeps it too.
         let retaken = transition(
@@ -272,6 +441,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(retaken.context, job.context);
+        assert_eq!(retaken.engine_pin, job.engine_pin);
         assert_eq!(retaken.attempts, 2);
     }
     #[test]

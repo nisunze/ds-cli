@@ -8,7 +8,9 @@
 //! about a real SQLite file, not about a serde attribute. These tests write
 //! and read actual rows.
 
-use ds_command_kernel::compute_jobs::{EngineKind, Event, Job, Phase};
+use ds_command_kernel::compute_jobs::{
+    EngineKind, EngineLane, EnginePin, EnginePinSource, Event, Job, Phase,
+};
 use ds_command_kernel::execution_context::{
     ExecutionContext, Limits, Principal, Slot, SOLAR_PROCESSING, TRANSFORMER_PROCESSING,
 };
@@ -63,7 +65,7 @@ fn context() -> ExecutionContext {
     }
 }
 fn job(context: Option<ExecutionContext>) -> Job {
-    Job {
+    let mut job = Job {
         id: ID.into(),
         owner: "owner-digest".into(),
         lane: "canary".into(),
@@ -78,8 +80,111 @@ fn job(context: Option<ExecutionContext>) -> Job {
         lease_until_ms: 0,
         result_sha256: None,
         error: None,
+        engine_pin: None,
         context,
+    };
+    job.engine_pin = job.context.as_ref().map(|_| pin(&job));
+    job
+}
+fn pin(job: &Job) -> EnginePin {
+    EnginePin {
+        schema: "ds.compute.engine-pin/v1".into(),
+        engine: job.engine.clone(),
+        owner: job.owner.clone(),
+        lane: EngineLane::parse(&job.lane).unwrap(),
+        context: job.context.clone().unwrap(),
+        source: EnginePinSource::NativeLaneCapture,
+        executable: "/native-owned/immutable-test-engine".into(),
+        executable_sha256: "a".repeat(64),
+        identity: serde_json::json!({"storage_test": true}),
+        workers: 1,
+        development_override: true,
     }
+}
+
+#[test]
+fn admission_captures_once_inside_the_insert_and_never_for_duplicate_or_full_queue() {
+    use std::cell::Cell;
+    let directory = tempfile::tempdir().unwrap();
+    let mut store = store(directory.path());
+    let calls = Cell::new(0);
+    let first = job(Some(context()));
+    let accepted = store
+        .submit_job_capturing_pin(&first, b"input", roomy(), || {
+            calls.set(calls.get() + 1);
+            Ok(Some(pin(&first)))
+        })
+        .unwrap();
+    assert_eq!(calls.get(), 1);
+    assert_eq!(accepted.engine_pin, first.engine_pin);
+    let duplicate = store
+        .submit_job_capturing_pin(&first, b"input", roomy(), || {
+            panic!("duplicate probes no addon")
+        })
+        .unwrap();
+    assert_eq!(duplicate, accepted);
+    let tight = Limits {
+        global_running: 1,
+        per_project_running: 1,
+        global_queued: 1,
+        per_project_queued: 1,
+    };
+    let refusal = store
+        .submit_job_capturing_pin(&nth("project-a", 2), b"second", tight, || {
+            panic!("capacity refusal probes no addon")
+        })
+        .unwrap_err();
+    assert!(refusal.to_string().contains("capacity_exhausted"));
+    let other = nth("project-b", 3);
+    assert!(store
+        .submit_job_capturing_pin(&other, b"other", roomy(), || Err(Error::Kernel(
+            "capture-refused".into()
+        )))
+        .is_err());
+    assert!(
+        store.job(&caller(), &other.id).unwrap().is_none(),
+        "failed capture commits no row"
+    );
+}
+
+#[test]
+fn historical_and_misbound_pins_are_parked_without_blocking_valid_work_or_cancellation() {
+    let directory = tempfile::tempdir().unwrap();
+    drop(store(directory.path()));
+    let mut historical = nth("project-a", 1);
+    historical.engine_pin = None;
+    insert_row(directory.path(), &historical, b"old");
+    let mut corrupt = nth("project-b", 2);
+    corrupt.engine_pin.as_mut().unwrap().context.project = "wrong-project".into();
+    insert_row(directory.path(), &corrupt, b"bad");
+    let valid = nth("project-c", 3);
+    let mut store = store(directory.path());
+    store.submit_job(&valid, b"valid", roomy()).unwrap();
+    let census = store
+        .census("owner-digest", "canary", 1_700_000_001_000)
+        .unwrap();
+    assert_eq!(census.queued.len(), 1);
+    let claimed = store
+        .claim_job(&caller(), "worker", 1_700_000_001_000, 30_000, roomy())
+        .unwrap()
+        .unwrap()
+        .0;
+    assert_eq!(claimed.id, valid.id);
+    assert_eq!(
+        store.job_input(&caller(), &historical.id).unwrap().unwrap(),
+        b"old"
+    );
+    let cancelled = store
+        .update_job(
+            &caller(),
+            &historical.id,
+            Event::Cancel,
+            1_700_000_002_000,
+            None,
+        )
+        .unwrap();
+    assert_eq!(cancelled.phase, Phase::Cancelled);
+    assert!(store.job(&caller(), &corrupt.id).unwrap().is_some());
 }
 /// The second project's job: another id, another sealed digest, everything
 /// else the same connection.
@@ -95,6 +200,7 @@ fn job_b() -> Job {
     job.input_sha256 = INPUT_B.into();
     job.created_at_ms = 1_700_000_000_001;
     job.updated_at_ms = 1_700_000_000_001;
+    job.engine_pin = Some(pin(&job));
     job
 }
 /// The n-th job of `project`, created in order of `n`, with its own id and
@@ -116,6 +222,7 @@ fn nth(project: &str, n: u64) -> Job {
     job.input_sha256 = digest;
     job.created_at_ms = 1_700_000_000_000 + n;
     job.updated_at_ms = job.created_at_ms;
+    job.engine_pin = Some(pin(&job));
     job
 }
 fn claim(store: &mut Store, worker: &str, now: u64, limits: Limits) -> Option<String> {
@@ -320,7 +427,7 @@ fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_never
             .is_none(),
         "the transformer row is left exactly as it was written"
     );
-    // The recovered row is visible per project now, and claimable.
+    // Its project is recovered, but no historical executable can be invented.
     assert_eq!(
         store(directory.path())
             .jobs(&caller().about(Some("project-b")), 10)
@@ -336,6 +443,11 @@ fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_never
     assert_eq!(again.stored, 1);
     assert_eq!(again.from_sealed_input, 0);
     assert_eq!(again.unrecoverable, vec![ID_B.to_owned()]);
+    assert_eq!(again.unpinned_count, 2);
+    assert!(store(directory.path())
+        .claim_job(&caller(), "no-latest", 1_700_000_601_000, 30_000, roomy())
+        .unwrap()
+        .is_none());
 }
 
 /// Reopening a queue must cost the rows that need something, not the queue.

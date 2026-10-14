@@ -29,6 +29,7 @@
 //! no gain. A host that reaches upstream in `authorize` therefore delays new
 //! work while it cannot answer; it can never destroy work already done.
 mod claim;
+mod engine_pins;
 pub mod tiles;
 pub use claim::{decode_solar_server_submission, encode_solar_server_submission};
 
@@ -217,9 +218,20 @@ impl From<Fault> for SubmitError {
 }
 
 pub fn submit(path: &Path, admission: &Admission<'_>, input: &[u8]) -> Result<Job, SubmitError> {
+    submit_with_module_base(path, admission, input, None)
+}
+
+/// Native-owned relocated addon storage, never an authored HTTP/IPC path.
+/// Production callers normally pass None for the protected machine store.
+pub fn submit_with_module_base(
+    path: &Path,
+    admission: &Admission<'_>,
+    input: &[u8],
+    module_base: Option<&Path>,
+) -> Result<Job, SubmitError> {
     let request = decode_native_lv_request(input)
         .map_err(|error| SubmitError::Invalid(format!("lv_request_invalid: {error}")))?;
-    submit_validated(
+    submit_validated_in(
         path,
         admission,
         input,
@@ -227,6 +239,7 @@ pub fn submit(path: &Path, admission: &Admission<'_>, input: &[u8]) -> Result<Jo
         &request.schema,
         TRANSFORMER_PROCESSING,
         None,
+        module_base,
     )
 }
 
@@ -239,6 +252,16 @@ pub fn submit_solar(
     admission: &Admission<'_>,
     input: &[u8],
 ) -> Result<Job, SubmitError> {
+    submit_solar_with_module_base(path, admission, input, None)
+}
+
+/// Native-owned relocated addon store; never populated by an authored request.
+pub fn submit_solar_with_module_base(
+    path: &Path,
+    admission: &Admission<'_>,
+    input: &[u8],
+    module_base: Option<&Path>,
+) -> Result<Job, SubmitError> {
     if input.len() > 64 * 1024 * 1024 {
         return Err(SubmitError::Invalid(
             "solar_prepared_request_too_large".into(),
@@ -249,7 +272,7 @@ pub fn submit_solar(
     })?;
     validate_solar_request(&request).map_err(SubmitError::Invalid)?;
     let sealed = request.prepared.city.identity.project_id.clone();
-    submit_validated(
+    submit_validated_in(
         path,
         admission,
         input,
@@ -257,6 +280,7 @@ pub fn submit_solar(
         "ds.solar.calculate.prepared/v1",
         SOLAR_PROCESSING,
         Some(&sealed),
+        module_base,
     )
 }
 
@@ -323,6 +347,31 @@ fn submit_validated(
     operation: &str,
     sealed_project: Option<&str>,
 ) -> Result<Job, SubmitError> {
+    submit_validated_in(
+        path,
+        admission,
+        input,
+        engine,
+        input_tag,
+        operation,
+        sealed_project,
+        None,
+    )
+}
+
+// Preserve the existing validated admission arguments; relocation is a native
+// host seam, separate from authored payload and execution context.
+#[allow(clippy::too_many_arguments)]
+fn submit_validated_in(
+    path: &Path,
+    admission: &Admission<'_>,
+    input: &[u8],
+    engine: EngineKind,
+    input_tag: &str,
+    operation: &str,
+    sealed_project: Option<&str>,
+    module_base: Option<&Path>,
+) -> Result<Job, SubmitError> {
     let Admission {
         identity,
         client,
@@ -368,8 +417,18 @@ fn submit_validated(
     if let Admitted::Existing(_) = &admitted {
         // An idempotent resubmit: the stored job, unchanged, and no capacity
         // consumed for work that is already queued or done.
-        return existing
-            .ok_or_else(|| SubmitError::Host("an existing context has no durable job row".into()));
+        let existing = existing.ok_or_else(|| {
+            SubmitError::Host("an existing context has no durable job row".into())
+        })?;
+        if matches!(existing.phase, Phase::Queued | Phase::Running)
+            && compute_jobs::validate_engine_pin(&existing).is_err()
+        {
+            return Err(SubmitError::Invalid(format!(
+                "compute_engine_pin_required: that retained job cannot run; {}",
+                compute_jobs::ENGINE_PIN_REMEDY
+            )));
+        }
+        return Ok(existing);
     }
     let context = admitted.context().clone();
     let job = Job {
@@ -388,6 +447,7 @@ fn submit_validated(
         result_sha256: None,
         error: None,
         context: Some(context),
+        engine_pin: None,
     };
     // The queue bound is the store's to apply, inside the transaction that
     // inserts: a census read here would describe a queue other submissions
@@ -395,7 +455,14 @@ fn submit_validated(
     // said it — including `context_unrecoverable` for a row written before
     // execution contexts, which is never adopted and never run.
     store
-        .submit_job(&job, input, limits)
+        .submit_job_capturing_pin(&job, input, limits, || {
+            engine_pins::capture(
+                &job,
+                engine_pins::worker_share(limits.global_running),
+                module_base,
+            )
+            .map_err(ds_sync_store::Error::Kernel)
+        })
         .map_err(|error| match error {
             ds_sync_store::Error::Refused(refusal) => SubmitError::Refused(refusal),
             ds_sync_store::Error::Kernel(code) => match key_conflict(&code) {
@@ -814,6 +881,10 @@ impl Workers {
         // gets the context it never had. It happens once, before any worker
         // can claim, and it never guesses.
         let recovery = recover_contexts(&context.path, &context.identity)?;
+        if recovery.unpinned_count > 0 {
+            eprintln!("compute_engine_pin_required: {} pending durable job(s) predate native addon capture and remain parked; for each one, {} (`ds server input --job <id> --out request.json`): {}",
+                recovery.unpinned_count, compute_jobs::ENGINE_PIN_REMEDY, named(&recovery.unpinned_ids));
+        }
         if !recovery.unrecoverable.is_empty() {
             // The remedy is per row and starts with an id, so the line that
             // states it names the rows. Telling an operator to run `ds server
@@ -989,11 +1060,13 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
     };
     // Every active component receives a share of the one host admission
     // budget; detached batches cannot each start a machine-wide engine pool.
-    let engine_workers = thread::available_parallelism().map_or(1, usize::from)
-        / context.limits.global_running.max(1);
+    let available_engine_workers = engine_pins::worker_share(context.limits.global_running);
     let output = std::panic::catch_unwind(|| {
         if digest(&input) != job.input_sha256 {
             return Err("durable input digest mismatch".to_string());
+        }
+        if job.engine_pin.as_ref().is_some_and(|pin| pin.workers > available_engine_workers) {
+            return Err("compute_engine_pin_budget_unavailable: restore the admitted native worker share; input and exact engine pin are retained".into());
         }
         if job.engine == EngineKind::TilesPrepared {
             tiles::execute(path, &input, &job, &cancelled)
@@ -1003,7 +1076,6 @@ pub fn run_one(context: &WorkerContext, worker: &str) -> Result<bool, String> {
                 &job,
                 Some(&cancelled),
                 path.parent().unwrap_or_else(|| Path::new(".")),
-                engine_workers,
             )
         }
     })
@@ -1081,7 +1153,6 @@ fn execute(
     job: &Job,
     cancel: Option<&CancelToken>,
     scratch: &Path,
-    workers: usize,
 ) -> Result<Vec<u8>, String> {
     if job.engine == EngineKind::LvProcessing {
         if !matches!(
@@ -1099,14 +1170,15 @@ fn execute(
         // admission/context/queue ownership; only Network performs engineering.
         // Preserve the native host's established insertion-order byte contract.
         let cancelled = || cancel.is_some_and(CancelToken::is_cancelled);
-        let outcome = ds_network_client::process_lv_with_order(
-            input,
-            workers.max(1),
-            scratch,
-            &cancelled,
-            ds_network_contracts::engine::JsonObjectOrder::Insertion,
-        )
-        .map_err(|error| format!("{}: {error}", error.code()))?;
+        let engine = engine_pins::network(job, &cancelled)?;
+        let outcome = engine
+            .process_lv_with_order(
+                input,
+                scratch,
+                &cancelled,
+                ds_network_contracts::engine::JsonObjectOrder::Insertion,
+            )
+            .map_err(|error| format!("{}: {error}", error.code()))?;
         if outcome.cancelled {
             return Err("network_task_cancelled: LV processing did not complete".into());
         }
@@ -1121,9 +1193,7 @@ fn execute(
     validate_solar_request(&request)?;
     let run_id = request.run_id.unwrap_or_else(|| job.id.clone());
     let cancel = cancel.cloned().unwrap_or_else(CancelToken::new);
-    let engine_path = ds_solar_process::installed_engine_path()?;
-    let engine = ds_solar_process::PreparedEngine::capture(&engine_path, scratch, workers, &cancel)
-        .map_err(|error| error.to_string())?;
+    let engine = engine_pins::solar(job, scratch, &cancel)?;
     let outcome = engine
         .calculate(
             &ds_solar_contracts::PreparedCalculationRequest {
