@@ -2,6 +2,7 @@
 mod captured;
 mod design_snapshot;
 mod grid;
+mod profile;
 mod report_engineering;
 pub use captured::{CapturedNetworkClient, NetworkEnginePin};
 pub use design_snapshot::{
@@ -20,6 +21,7 @@ use ds_network_contracts::{
     },
 };
 pub use grid::GridOutcome;
+pub use profile::{ProfileCheckpoint, ProfileOutcome, ProfileSession};
 pub use report_engineering::ReportEngineeringOutcome;
 use sha2::{Digest, Sha256};
 use std::{
