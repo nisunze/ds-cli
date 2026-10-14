@@ -2720,6 +2720,19 @@ pub(crate) mod tests {
         .unwrap()
     }
 
+    fn assert_solar_completed(context: &runtime::WorkerContext, id: &str, project: &str) {
+        let job = runtime::open(&context.path)
+            .expect("open the durable Solar queue")
+            .job(&context.identity.caller(Some(project)), id)
+            .expect("read the admitted Solar job")
+            .expect("the admitted Solar job remains visible");
+        assert_eq!(
+            job.phase,
+            ds_command_kernel::compute_jobs::Phase::Completed,
+            "Solar execution did not complete; durable job: {job:?}"
+        );
+    }
+
     /// A completed prepared Solar job seals its row into the sync store in
     /// the completion's own step — under this host's local fence, with no
     /// session and no gateway — so the queue holds it before any pump runs,
@@ -2769,7 +2782,8 @@ pub(crate) mod tests {
             auth: app.auth.clone(),
             observer: Some(activity.clone()),
         };
-        assert!(runtime::run_one(&context, "worker").expect("the real engine runs"));
+        assert!(runtime::run_one(&context, "worker").expect("the worker claims the Solar job"));
+        assert_solar_completed(&context, &job.id, A);
 
         // The row: held, keyed by the job, naming its bytes in this file.
         let held = rows(&app.database);
@@ -2883,7 +2897,8 @@ pub(crate) mod tests {
             auth: app.auth.clone(),
             observer: None,
         };
-        assert!(runtime::run_one(&context, "worker").expect("the real engine runs"));
+        assert!(runtime::run_one(&context, "worker").expect("the worker claims the Solar job"));
+        assert_solar_completed(&context, &job.id, A);
         let result = |id: &str| {
             runtime::open(&app.database)
                 .unwrap()
@@ -2991,7 +3006,8 @@ pub(crate) mod tests {
                 auth: app.auth.clone(),
                 observer: None,
             };
-            assert!(runtime::run_one(&context, "worker").expect("the real engine runs"));
+            assert!(runtime::run_one(&context, "worker").expect("the worker claims the Solar job"));
+            assert_solar_completed(&context, &job.id, A);
             unsealed.push(job.id);
         }
         let activity =

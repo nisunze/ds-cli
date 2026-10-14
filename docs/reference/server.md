@@ -90,8 +90,9 @@ CLI requests. Asking about another project's job answers
 
 `ds server activity` answers one envelope,
 `{"schema":"ds.server-activity/v1","projects":[{"project","activity","more"}]}`,
-with one entry per project the request covers. A project whose Sync Center state
-cannot be read right now says so in its own entry (`unavailable`, with the
+with one entry per project holding retained work visible to the caller. A named
+project with no such work returns `"projects": []`. A project whose Sync Center
+state cannot be read right now says so in its own entry (`unavailable`, with the
 reason, and no activity); the other projects still report theirs. `more` says
 whether that project holds more durable Solar work than one projection covers
 — the newest 512 rows per project — and is read from this machine's own rows,
@@ -424,6 +425,23 @@ The development launcher isolates config, cache, data and Server state below
 mode to authenticate that development environment. It neither copies the
 installed Server login nor allows a development state override into installed
 Server state.
+
+## Native consumer tests
+
+The Server's Solar completion tests execute a real compatible standalone engine.
+Select that engine explicitly when it is not beside the test executable:
+
+```bash
+DS_SOLAR_ENGINE_BIN=/absolute/path/to/solar cargo test -p ds-cli-server --lib
+```
+
+The engine must satisfy the existing protocol and 512 MiB executable admission
+limit. A source debug build can exceed that limit; use an admitted build or a
+separate copy with only debug information stripped, preserving the original.
+The tests inspect the durable job's completed phase and retained error before
+checking seal, retirement and restart behavior. The worker's `run_one` returning
+`true` means it claimed work, including work whose execution failed; it does not
+prove a completed result.
 
 ## Native publication recovery
 
