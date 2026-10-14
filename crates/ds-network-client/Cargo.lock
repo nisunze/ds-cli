@@ -256,6 +256,7 @@ dependencies = [
  "ds-network-contracts",
  "libc",
  "serde_json",
+ "sha2",
  "windows-sys",
 ]
 

@@ -30,6 +30,39 @@ impl CapturedNetworkClient {
         })
     }
 
+    /// Capture only the explicit installed release lane. Development selection
+    /// remains explicit; managed receipt errors never select another lane.
+    pub fn capture_for_lane(
+        lane: &str,
+        workers: usize,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<Self, NetworkFailure> {
+        if workers == 0 {
+            return Err(NetworkFailure::new(
+                "network_workers_invalid",
+                "worker budget must be positive",
+            ));
+        }
+        let width = workers.min(std::thread::available_parallelism().map_or(1, usize::from));
+        let engine = NETWORK.capture_for_lane(lane).map_err(|error| {
+            let code = if error.code() == "module_receipt_invalid" {
+                "network_engine_incompatible"
+            } else {
+                static_code(error.code())
+            };
+            NetworkFailure::new(code, error.to_string())
+        })?;
+        let development_override = admit_candidate(&engine)?;
+        let (engine, identity, executable_sha256, development_override) =
+            capture_resolved_identity(engine, width, development_override, cancel)?;
+        Ok(Self {
+            engine,
+            identity,
+            executable_sha256,
+            development_override,
+        })
+    }
+
     pub fn identity(&self) -> &EngineIdentity {
         &self.identity
     }
