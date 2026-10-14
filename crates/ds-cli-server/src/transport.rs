@@ -20,12 +20,12 @@
 //! an impostor to collect. The HTTP spoken over it is unchanged, so no route
 //! changed with it.
 //!
-//! One `ds server serve` per state directory is held by an advisory lock
+//! One `ds core serve` per state directory is held by an advisory lock
 //! beside the socket (`server.lock`), taken before the socket is touched: a
 //! socket file left by a host that died is removed only by the host that
 //! holds the lock, and only when nothing answers on it.
 //!
-//! Platforms without Unix sockets have no door at all. `ds server serve` was
+//! Platforms without Unix sockets have no door at all. `ds core serve` was
 //! never available there and the protected state it needs is Unix-only, so
 //! nothing listens and nothing is sent: both halves refuse by name.
 
@@ -161,7 +161,7 @@ mod unix {
         fn drop(&mut self) {
             drop(self.listener.take());
             // Only a socket is ever removed, and only this host's: it holds
-            // the lock, so no other `ds server serve` can have bound here.
+            // the lock, so no other `ds core serve` can have bound here.
             if fs::symlink_metadata(&self.socket).is_ok_and(|meta| meta.file_type().is_socket()) {
                 let _ = fs::remove_file(&self.socket);
             }
@@ -350,7 +350,7 @@ mod unix {
         match fs::symlink_metadata(socket) {
             Err(error) if error.kind() == ErrorKind::NotFound => {
                 return Err(CallError::Unreachable(
-                    "no Server is listening on this state directory; start ds server serve".into(),
+                    "no Server is listening on this state directory; start ds core serve".into(),
                 ));
             }
             Err(error) => {
@@ -378,7 +378,7 @@ mod unix {
                 ) =>
             {
                 return Err(CallError::Unreachable(
-                    "no Server answers on this state directory; start ds server serve".into(),
+                    "no Server answers on this state directory; start ds core serve".into(),
                 ));
             }
             Err(error) => {

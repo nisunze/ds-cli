@@ -7,8 +7,8 @@ use serde_json::Value;
 use std::io::Read;
 
 pub static INSPECT: Command = Command {
-    id: "server.update-inspect",
-    path: &["server", "update-inspect"],
+    id: "core.update-inspect",
+    path: &["core", "update-inspect"],
     contract: 1,
     summary: "Inspect shell or module update identity without installation changes.",
     purpose: "Read bounded held release and installed identity JSON. The Kernel admits exact component/lane/platform metadata, projects recorded Version, Build number and Release date, and decides main application update availability. Missing installed publication fields stay null. Build time is never a release date. This grants no module installation trust and performs no network, download, process launch or activation.",
@@ -24,7 +24,7 @@ pub static INSPECT: Command = Command {
     output: "Inspection with component, installed/published {version,buildNumber,releaseDate}, admitted release and optional main application update. Null fields mean not recorded; modules never carry an activation instruction.",
     examples: &[],
     refusals: &[Refusal { code: "desktop_update_invalid", when: "held metadata, component/lane/platform or exact installer identity is malformed, crossed or excessive", remedy: "retain the installed application; supply the exact lane/platform metadata and real recorded identity" }],
-    reference: Some("docs/reference/server.md"),
+    reference: Some("docs/reference/core.md"),
     search: &["automatic", "update", "version", "build", "release"],
     requires: Requires::Server,
     availability: || Availability::Available,

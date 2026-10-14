@@ -1,7 +1,7 @@
 //! Core's local component commands over the protected native module owner.
 //! No release authority, executable probe or process belongs to removal.
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Domain, Effect, Execution, Refusal, Requires,
+    Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::{module_install::ModuleSelectionRecord, module_release::ModuleComponent};
@@ -198,12 +198,6 @@ pub static SELECTION: Command = Command {
     search: &["component", "installed", "removed", "generation", "offline"],
     requires: Requires::Server,
     availability: || Availability::Available,
-};
-
-pub static DOMAIN: Domain = Domain {
-    id: "core",
-    summary: "Native runtime and machine components.",
-    commands: &[&REMOVE, &SELECTION],
 };
 
 fn selected(inputs: &Inputs) -> Result<(ModuleComponent, &str), Failure> {
@@ -575,7 +569,7 @@ mod tests {
 
     #[test]
     fn command_declares_closed_machine_effect_and_central_confirmation() {
-        assert_eq!(DOMAIN.id, "core");
+        assert_eq!(crate::DOMAIN.id, "core");
         assert_eq!(REMOVE.id, "core.component.remove");
         assert_eq!(REMOVE.path, ["core", "component", "remove"]);
         assert_eq!(REMOVE.effect, Effect::MachineWrite);

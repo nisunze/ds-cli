@@ -53,7 +53,7 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "sync_row_not_found",
         when: "the exact standing row is absent from this owner fence and project",
-        remedy: "read server sync status under the intended account and project",
+        remedy: "read ds core sync status under the intended account and project",
     },
     Refusal {
         code: "sync_row_not_retryable",
@@ -68,8 +68,8 @@ const REFUSALS: &[Refusal] = &[
 ];
 
 pub static STATUS: Command = super::command(
-    "server.sync.status",
-    &["server", "sync", "status"],
+    "core.sync.status",
+    &["core", "sync", "status"],
     "Inspect native retained publications under one explicit project.",
     Effect::ReadOnly,
     Execution::Sync,
@@ -78,8 +78,8 @@ pub static STATUS: Command = super::command(
     &[],
 );
 pub static RETRY: Command = super::command(
-    "server.sync.retry",
-    &["server", "sync", "retry"],
+    "core.sync.retry",
+    &["core", "sync", "retry"],
     "Explicitly retry one recoverable retained publication (needs --yes).",
     Effect::GlobalWrite,
     Execution::Sync,
@@ -88,8 +88,8 @@ pub static RETRY: Command = super::command(
     &[],
 );
 pub static PREVIEW: Command = super::command(
-    "server.sync.sanitize.preview",
-    &["server", "sync", "sanitize", "preview"],
+    "core.sync.sanitize.preview",
+    &["core", "sync", "sanitize", "preview"],
     "Preview digest-bound native queue recovery and history archival.",
     Effect::ReadOnly,
     Execution::Sync,
@@ -98,8 +98,8 @@ pub static PREVIEW: Command = super::command(
     &[],
 );
 pub static APPLY: Command = super::command(
-    "server.sync.sanitize.apply",
-    &["server", "sync", "sanitize", "apply"],
+    "core.sync.sanitize.apply",
+    &["core", "sync", "sanitize", "apply"],
     "Apply inspected native sanitation while retaining files (needs --yes).",
     Effect::GlobalWrite,
     Execution::Sync,

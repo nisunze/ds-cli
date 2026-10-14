@@ -1,10 +1,15 @@
-# Native server
+# Core background runtime
+
+Discover the independently installed runtime through `ds capabilities core`.
+The supported background-mode entry point is `ds core serve --lane stable` or
+`ds core serve --lane canary`; the process remains in the foreground until
+stopped. See [Core](core.md) for component selection and removal.
 
 ## Native addon staging and retained selection
 
-`ds server module-stage` stages one exact published Solar, Reporter or Network
+`ds core module-stage` stages one exact published Solar, Reporter or Network
 asset through the shared native updater. Discover its complete declaration with
-`ds capabilities server.module-stage --output json`. Name the component, exact
+`ds capabilities core.module-stage --output json`. Name the component, exact
 stable/canary channel and selected asset's lowercase SHA-256; `--yes` confirms
 the machine write. The packaged production native profile supplies release
 authority. Held metadata, development catalogs, URLs and paths cannot supply it.
@@ -12,26 +17,27 @@ One intentional catalog read precedes bounded verified transfer and one fixed
 identity probe. The result is a private native ready receipt, with no activation,
 selection change, application exit or project acquisition.
 
-`ds server module-selection` reads the requested component and lane's retained
-active/previous receipts locally. It creates no store, changes no permissions,
+`ds core component selection` reads the requested component and lane's retained
+installed-v1 or removed-v2 selection and generation locally. It creates no store,
+changes no permissions,
 reads no authority and launches no executable. Absence returns null. Recorded
 selection does not establish fresh executable availability. CLI and MCP use the
 same declared effects; staging needs MCP `confirm: true`, while selection is
 read-only. Activation and rollback await a headless binding to the owning native
 session observations.
 
-`ds server engine --output json` inspects the Solar engine linked into this
+`ds core engine --output json` inspects the Solar engine linked into this
 executable, without login, a running server or network access. Release builds
 return the owner's `ds.engine-build/v1` identity. The release publisher registers
 this manifest separately from the bundled standalone `ds-solar` manifest:
 their Cargo dependency closures can differ. Development builds omit release
 provenance and cannot be admitted as release engines.
 
-`ds server serve` hosts the shared Rust compute runtime under the identity
+`ds core serve` hosts the shared Rust compute runtime under the identity
 established by `ds account connect` (device linking). Run both under the same Linux
 user and lane. No browser, paired Desktop, ADC or service-account impersonation
-is involved. The Server is the desktop's own core without the desktop: it
-stands on the desktop's side of the one boundary with ds-brain, and the API is
+is involved. Core is an independently installed ds runtime. Desktop is an
+optional client; Core stands on the user's side of the boundary with ds-brain, and the API is
 that owner's control over an owner-only Unix socket in the Server's state
 directory — no TCP port and no bearer (see [The door](#the-door-an-owner-only-socket)).
 One authenticated owner per Server, always
@@ -39,20 +45,20 @@ One authenticated owner per Server, always
 shuts down; many users are many machines, never many accounts in one process.
 
 ```bash
-ds server serve --lane stable
+ds core serve --lane stable
 # From another terminal under the same account:
-ds server submit --input transformer-batch.json --key processing-001 --project <exact-id>
-ds server solar submit --input pala.server-submission.json --key solar-001
-ds server status --project <exact-id>
-ds server activity --lane stable --project <exact-id> --output json
-ds server status --job <id> --project <exact-id>
-ds server result --job <id> --out result.json --project <exact-id>
-ds server input --job <id> --out request.json
+ds core submit --input transformer-batch.json --key processing-001 --project <exact-id>
+ds core solar submit --input pala.server-submission.json --key solar-001
+ds core status --project <exact-id>
+ds core activity --lane stable --project <exact-id> --output json
+ds core status --job <id> --project <exact-id>
+ds core result --job <id> --out result.json --project <exact-id>
+ds core input --job <id> --out request.json
 ```
 
 ## One project per call, named by the caller
 
-Project-scoped `ds server` commands take `--project <exact-id>` explicitly.
+Project-scoped `ds core` commands take `--project <exact-id>` explicitly.
 The CLI never reads or changes saved selection to resolve these requests. The
 UI may supply its active project as request context; that is a UI decision.
 The Server executes what its authenticated owner hands it for the project named;
@@ -62,7 +68,7 @@ work — and it carries no online/offline conditional: admission, queueing,
 execution, restart recovery and capacity are local and work with no upstream
 present at all. Three consequences worth stating plainly:
 
-- **`ds server serve` needs no selected project.** An account that has never
+- **`ds core serve` needs no selected project.** An account that has never
   run `ds auth project use` can host. Callers name their project per request.
 - **One Server serves many projects at once.** Nothing switches, and nothing
   needs a restart to move between them.
@@ -73,7 +79,7 @@ present at all. Three consequences worth stating plainly:
 
 Without `--project` there is nothing to record and
 nothing worth guessing, so the call refuses `project_required` locally rather
-than admitting a job with no scope. The one exception is `ds server solar
+than admitting a job with no scope. The one exception is `ds core solar
 submit`: the sealed `ds.solar.server-submission/v1` envelope names its own
 project and that name is authoritative, so it can be submitted with nothing
 named. No saved selection is consulted.
@@ -91,15 +97,15 @@ signed out.
 
 ```bash
 # Two projects, one Server, no switching and no restart.
-ds server solar submit --input kigali.server-submission.json --key solar-a-001    # sealed: project A
-ds server submit --input b-transformers.json --key lv-b-001 --project project-b
-ds server status --project project-a --output json      # A's jobs only
-ds server status --project project-b --output json      # B's jobs only
-ds server activity --project project-b --output json    # B's publication state only
+ds core solar submit --input kigali.server-submission.json --key solar-a-001    # sealed: project A
+ds core submit --input b-transformers.json --key lv-b-001 --project project-b
+ds core status --project project-a --output json      # A's jobs only
+ds core status --project project-b --output json      # B's jobs only
+ds core activity --project project-b --output json    # B's publication state only
 
 # Another explicit request leaves work in flight unchanged.
-ds server status --project project-c --output json
-ds server status --project project-a --output json      # A's jobs, still running, unchanged
+ds core status --project project-c --output json
+ds core status --project project-a --output json      # A's jobs, still running, unchanged
 ```
 
 Nothing about a running job's project can be rewritten after admission —
@@ -108,7 +114,7 @@ the job was admitted under. Saved project selection has no effect on these
 CLI requests. Asking about another project's job answers
 `job not found`, identically to an id that never existed.
 
-`ds server activity` answers one envelope,
+`ds core activity` answers one envelope,
 `{"schema":"ds.server-activity/v1","projects":[{"project","activity","more"}]}`,
 with one entry per project holding retained work visible to the caller. A named
 project with no such work returns `"projects": []`. A project whose Sync Center
@@ -117,12 +123,12 @@ reason, and no activity); the other projects still report theirs. `more` says
 whether that project holds more durable Solar work than one projection covers
 — the newest 512 rows per project — and is read from this machine's own rows,
 so it is there on an `unavailable` entry too. Nothing is lost when it is true:
-every row stays readable by id with `ds server status`, `ds server result` and
-`ds server input`, and a long queue is never a failed answer.
+every row stays readable by id with `ds core status`, `ds core result` and
+`ds core input`, and a long queue is never a failed answer.
 
 ### Capacity between projects
 
-`ds server serve --workers N` bounds the whole host. `--per-project M` bounds
+`ds core serve --workers N` bounds the whole host. `--per-project M` bounds
 what one project may hold while another has work queued; it defaults to
 `max(1, N / 2)` and must leave a worker for a second project — `M` equal to `N`
 is refused on any host with more than one worker, because a project allowed
@@ -158,7 +164,7 @@ operation fails identically whichever host executed it.
 | `scope_mismatch_for_key` | that key, in this project, already admitted a job for another operation |
 | `payload_changed_for_key` | that key already admitted a job with different input bytes |
 | `capacity_exhausted` | the global queue, one project's queue or the request door is full; carries `retry_after_ms` and `scope` (`global`, `project` or `door`) |
-| `context_unrecoverable` | a job stored by an older Server names no project; read its stored input with `ds server input` and resubmit it under an explicit `--project` |
+| `context_unrecoverable` | a job stored by an older Server names no project; read its stored input with `ds core input` and resubmit it under an explicit `--project` |
 
 `not_visible` says `job not found` and nothing more. It never names the
 project, the owner or whether the id exists — the class, the code and the
@@ -170,13 +176,13 @@ distinguishable where that is safe and identical where it is not.
 
 ### One owner per Server
 
-One `ds server serve` serves **one authenticated native account** and as many
+One `ds core serve` serves **one authenticated native account** and as many
 of that account's projects as it names. Its socket answers processes of the
 operating-system account it runs as, by the kernel's word, and a process of any
 other account — root included — is `server_peer_refused`; that is the whole
 enforcement — there is no header naming an account, no bearer, and no second
 identity for this process to have. A second account needs its own
-`ds server serve` with its own `--state-dir`. This is the model, not a gap to close: one
+`ds core serve` with its own `--state-dir`. This is the model, not a gap to close: one
 user per machine, many users are many machines. Nothing in the Server is built
 for many users in one process — no per-principal limits, no multi-user auth, no
 fairness beyond the owner's own projects sharing one machine.
@@ -197,8 +203,8 @@ engineering outcomes, including failures; `completed` means the complete result
 document was produced. Each job receipt carries the context it was admitted
 under, including its project.
 
-`ds server input --job <id> --out <absent-path>` writes back the exact request
-bytes a job was admitted with. It is the same fence as `ds server result` —
+`ds core input --job <id> --out <absent-path>` writes back the exact request
+bytes a job was admitted with. It is the same fence as `ds core result` —
 your own jobs, and another project's job answers `job not found` exactly as an
 invented id does — with two differences: the job need not have finished, and
 `--project` here narrows the read; no saved selection is consulted.
@@ -208,7 +214,7 @@ therefore visible only to a read that names none either. Such a row never ran,
 so there is no result to read; its input is what there is, and resubmitting it
 under an explicit `--project` is new work with its own id.
 
-`server solar submit` accepts one private `ds.solar.server-submission/v1`
+`core solar submit` accepts one private `ds.solar.server-submission/v1`
 envelope. It contains the existing prepared calculation fields (`prepared`,
 optional `render_charts`, optional `run_id`) and the exact matching
 `ds-solar.prepared-publication-claim/v1` as `publication_claim`. The Server
@@ -230,7 +236,7 @@ because the desktop's own transformer processing takes bytes.
 
 ## Layers on the running Server
 
-`ds server layers list|default|show|hide|reorder` are **retired**. One operation has
+`ds core layers list|default|show|hide|reorder` are **retired**. One operation has
 one command id whichever host executes it, so the layer drawer's catalogue,
 visibility and order are `ds map layer list|default|show|hide|reorder` with an explicit
 `--target server|desktop[:instance]` (the routing default decides when you pass
@@ -307,14 +313,14 @@ direction.
   that is a socket, owned by its own account, in a state directory it owns
   (0700, `connection.json` 0600), and refuses — sending nothing — when the
   process answering runs as another account.
-- **One host per state directory.** `ds server serve` takes an advisory lock
+- **One host per state directory.** `ds core serve` takes an advisory lock
   (`server.lock`) before it touches the socket; a second host on the same state
   is refused `a Server is already running on …`. A socket left by a host that
   died is removed at the next start only when nothing answers on it; something
   that does answer is never replaced. A stopped host removes its socket, so a
-  caller is told `no Server is listening … start ds server serve` at once.
+  caller is told `no Server is listening … start ds core serve` at once.
 - **Which Server is which `--state-dir`.** There is no `--listen` any more
-  (`server.serve` contract 2). Two Servers on one machine — Stable beside
+  (`core.serve` contract 2). Two Servers on one machine — Stable beside
   Canary, or a development Server beside the installed one — are two state
   directories. A Unix socket path is limited to about 100 bytes, so a very long
   `--state-dir` is refused at start with that reason.
@@ -330,11 +336,11 @@ say what to do; neither hangs:
 | Situation | What happens |
 |---|---|
 | New `ds` client, Server started by an older `ds` | `server_refused`: "started by an older ds that listens on <address>"; nothing is sent to that address. Stop that Server and start it again with the new `ds`. |
-| New `ds server serve` over an older record | The record is adopted (same owner and lane) and rewritten without the bearer, taking it off the disk. If the recorded address still accepts connections, an older Server may still be running on this state, so the start is refused `server_refused` naming the address — stop it first. If the port belongs to something else, remove `connection.json` (it holds only the retired bearer) and start again. |
+| New `ds core serve` over an older record | The record is adopted (same owner and lane) and rewritten without the bearer, taking it off the disk. If the recorded address still accepts connections, an older Server may still be running on this state, so the start is refused `server_refused` naming the address — stop it first. If the port belongs to something else, remove `connection.json` (it holds only the retired bearer) and start again. |
 | Older `ds` client, Server started by the new `ds` | The older client cannot read the new record and fails at once with `invalid protected server connection`. Upgrade that `ds`. |
-| Older `ds server serve` over a new record | Refused at start with `invalid protected server connection`. Use the new `ds`. |
+| Older `ds core serve` over a new record | Refused at start with `invalid protected server connection`. Use the new `ds`. |
 
-**Where there are no Unix sockets.** `ds server serve` has only ever been
+**Where there are no Unix sockets.** `ds core serve` has only ever been
 available on Linux, and its protected state is Unix-only. On Windows nothing
 changes: the Server commands remain unavailable (`server_platform_unsupported`),
 nothing listens and nothing is sent. The Desktop does not use this Server; its
@@ -387,7 +393,7 @@ row written by a Server released before per-job context recovers its project
 from its own sealed input (Solar) and from nothing else: a transformer row
 carries no project by design, so it is `context_unrecoverable` — readable,
 never claimed, never published, whatever project happens to be selected when
-the host restarts. Read its stored input with `ds server input --job <id> --out
+the host restarts. Read its stored input with `ds core input --job <id> --out
 <path>` and resubmit that file under an explicit `--project`; the resubmission
 is new work beside it, with its own id. Cancellation retains input, fences late results and releases the
 job's capacity. The native engine finishes its current computation before
@@ -416,7 +422,7 @@ credential resumes it. Offline execution over retained prepared inputs remains
 local: publication admission never runs inside a compute worker. Derived Solar
 batch publication coverage is still being migrated to this common store.
 
-`server activity` reads the server's shared Sync Center state, including native
+`core activity` reads the server's shared Sync Center state, including native
 job lifecycle and artifact publication receipts, grouped by project. It uses the
 same protected connection and native identity as other Server commands; it
 creates no queue. A completed calculation and a published artifact are separate
@@ -430,7 +436,7 @@ into the same report artifact store consumed by Desktop. The foreground Server
 publishes queued reports in the background through the existing WorkGrant
 authority, under the job's own project. `queued_for_server_sync` is an enqueue
 receipt, not proof of remote publication; inspect
-`ds server activity --lane canary --project <exact-id> --output json`.
+`ds core activity --lane canary --project <exact-id> --output json`.
 
 Both commands must use the same user, lane and state directory. If Server uses
 `--state-dir`, export must receive that exact path as `--server-state-dir`.
@@ -465,20 +471,20 @@ prove a completed result.
 
 ## Native publication recovery
 
-`ds server sync status --project <exact-id> --output json` reads bounded,
+`ds core sync status --project <exact-id> --output json` reads bounded,
 path-free publication history under this Server's principal, deployment and
 installation. It works offline and creates no state when the queue is absent.
 
-`ds server sync retry --project <exact-id> --row <exact-id> --yes` explicitly
+`ds core sync retry --project <exact-id> --row <exact-id> --yes` explicitly
 requeues a recoverable typed admission/storage-comparison failure while keeping
 its exact producing build, source fingerprint, ids and retained bytes. A live
 worker, stale source, integrity/permission refusal, absent bytes or an untyped
 legacy error refuses retry. Reconnecting or admitting a build alone does not
 reopen a terminal row.
 
-`ds server sync sanitize preview --project <exact-id> --limit 50` returns a digest
+`ds core sync sanitize preview --project <exact-id> --limit 50` returns a digest
 covering the complete bounded retained snapshot, even when its display is
-truncated. Apply with `ds server sync sanitize apply --project <exact-id>
+truncated. Apply with `ds core sync sanitize apply --project <exact-id>
 --digest <sha256> --yes`. Changed data refuses that digest. Sanitation may archive
 published or fully superseded terminal history and explicitly retry recoverable
 current failures; it retains authored inputs, immutable files and provenance.

@@ -5,7 +5,7 @@
 //! whichever host runs it. So `ds map layer list|show|hide|reorder` and
 //! `ds survey working-area forms|select|clear` are one operation each, and
 //! `--target` is the one routing decision on top of them. There is
-//! deliberately no `ds server layers …`: a second id that differed only by
+//! deliberately no `ds core layers …`: a second id that differed only by
 //! who answered is exactly what that ruling ended. The decision lives in this
 //! crate because the `server` half of it is this crate's transport; every
 //! domain that takes a host uses it from here.
@@ -18,7 +18,7 @@
 //!   refused by name (`target_instance_unsupported`) so a caller learns the
 //!   spelling now and gets a real answer when slice 2 wires it, rather than
 //!   discovering the argument does not parse.
-//! * `server` — the running `ds server serve` on this machine, over its
+//! * `server` — the running `ds core serve` on this machine, over its
 //!   owner-only socket. The project is sent explicitly on every
 //!   request, so the Server verifies one named project and reads no selection
 //!   of its own.
@@ -57,7 +57,7 @@ pub const UNKNOWN_TARGET: Refusal = Refusal {
 /// remembered visibility and the governed order are all decided without one —
 /// so none of them declares `needs_paired_map`. That refusal belongs to the
 /// map-bound commands the day they take a host; on this host it is declared by
-/// `ds server serve`, which is what answers it.
+/// `ds core serve`, which is what answers it.
 ///
 /// The rest of what taking `--target` adds to a layer command's declared
 /// refusals. Every one of these is the Server's own answer re-raised literally
@@ -66,17 +66,17 @@ pub const UNKNOWN_TARGET: Refusal = Refusal {
 pub const SERVER_REFUSED: Refusal = Refusal {
     code: "server_refused",
     when: "--target server was passed and the host is unreachable, or it refused the request",
-    remedy: "read the stated reason; verify ds server serve is running under this lane",
+    remedy: "read the stated reason; verify ds core serve is running under this lane",
 };
 /// A second ACCOUNT is not something a layer request can meet: one Server is
 /// signed in as one owner, its socket answers only that owner's account, and a
 /// request from any other never reaches an operation. `multi_principal_unsupported` is
-/// therefore declared by `ds server serve`, which is where a second account
+/// therefore declared by `ds core serve`, which is where a second account
 /// actually meets one Server, and claimed by nothing here.
 pub const SERVER_OWNER_CHANGED: Refusal = Refusal {
     code: "server_owner_changed",
     when: "the Server's account differs from this caller's, or its credential was revoked",
-    remedy: "sign in under the intended Server account and explicitly restart ds server serve",
+    remedy: "sign in under the intended Server account and explicitly restart ds core serve",
 };
 pub const PROJECT_REQUIRED: Refusal = Refusal {
     code: "project_required",

@@ -1,4 +1,11 @@
-# Core components
+# Core runtime and components
+
+Core is the independently installed `ds` native runtime. Desktop is an optional
+client of that owner. Run its background mode with `ds core serve --lane stable`
+or `ds core serve --lane canary` under the intended operating-system account.
+The process remains in the foreground until stopped. Discover `core.serve` for
+its complete flags and admission contract; see [background runtime](server.md)
+for job, project and synchronization controls.
 
 Discover the typed contracts with `ds capabilities core.component.selection`
 and `ds capabilities core.component.remove`. CLI and MCP project these same

@@ -7,8 +7,8 @@ use serde_json::Value;
 use std::{fs::File, io::Read};
 
 pub static INVENTORY: Command = Command {
-    id: "server.modules",
-    path: &["server", "modules"],
+    id: "core.modules",
+    path: &["core", "modules"],
     contract: 1,
     summary: "Inspect installed Solar, Reporter and Network engine addons.",
     purpose: "Inspect the three fixed native addon executables, their captured build identities and declared capabilities. Starts at most one build-info task per available addon on intentional inspection; help and command discovery start none. Missing or incompatible engines remain named rows. This does not install, update, acquire project data, or establish full application workflow readiness.",
@@ -25,15 +25,15 @@ pub static INVENTORY: Command = Command {
     output: "ds.module-inventory/v1 with Solar, Reporter and Network rows, or exactly the selected component: available, missing or refused, captured path, identity and capabilities or a named remedy. Development provenance remains explicit.",
     examples: &[],
     refusals: &[],
-    reference: Some("docs/reference/server.md"),
+    reference: Some("docs/reference/core.md"),
     search: &["addons", "extensions"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
 
 pub static RELEASE: Command = Command {
-    id: "server.module-release",
-    path: &["server", "module-release"],
+    id: "core.module-release",
+    path: &["core", "module-release"],
     contract: 1,
     summary: "Validate one module's declared release metadata.",
     purpose: "Read bounded local JSON and ask the Kernel to validate the selected module and lane's release metadata. This is read-only schema and compatibility inspection; it grants no installation trust, download, activation, computation or publication authority.",
@@ -66,7 +66,7 @@ pub static RELEASE: Command = Command {
         when: "the local file, manifest, selected module or lane is invalid, excessive or incompatible",
         remedy: "retain the metadata; select its exact module and lane or obtain a corrected declared release",
     }],
-    reference: Some("docs/reference/server.md"),
+    reference: Some("docs/reference/core.md"),
     search: &["addons", "release"],
     requires: Requires::Server,
     availability: || Availability::Available,

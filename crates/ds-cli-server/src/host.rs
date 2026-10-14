@@ -57,7 +57,7 @@ pub struct Connection {
     /// socket: that Server listened on this TCP loopback address and admitted
     /// a bearer. Such a record identifies its owner and lane and is never a
     /// transport — a client refuses it by name and sends nothing, and the
-    /// next `ds server serve` rewrites it without the bearer.
+    /// next `ds core serve` rewrites it without the bearer.
     pub legacy_address: Option<SocketAddr>,
 }
 
@@ -336,7 +336,7 @@ async fn unserved(request: Request) -> ApiError {
             "unsupported_operation",
             format!("this server does not serve {path}"),
         )
-        .remedy("update ds, or read ds server --help for what this host serves"),
+        .remedy("update ds, or read ds core --help for what this host serves"),
     )
 }
 
@@ -348,7 +348,7 @@ fn worker_lost(what: &str) -> Failure {
         "server_refused",
         format!("this host's {what} worker did not return"),
     )
-    .remedy("repeat the request; if it repeats, restart ds server serve and report it")
+    .remedy("repeat the request; if it repeats, restart ds core serve and report it")
 }
 
 /// Work whose failure is a plain sentence rather than a typed refusal.
@@ -786,7 +786,7 @@ fn admitted<T>(
 
 fn host_failure(message: impl ToString) -> Failure {
     Failure::conflict("server_refused", message.to_string())
-        .remedy("read the stated reason; verify ds auth status and that ds server serve is running")
+        .remedy("read the stated reason; verify ds auth status and that ds core serve is running")
 }
 
 pub fn prepare_directory(path: &Path) -> Result<(), String> {
@@ -927,7 +927,7 @@ pub fn connection(directory: &Path, owner: String, lane: String) -> Result<Conne
             "multi_principal_unsupported",
             "this protected server state belongs to another account; one Server serves exactly one owner",
         )
-        .remedy("run that account its own ds server serve, with its own --state-dir"));
+        .remedy("run that account its own ds core serve, with its own --state-dir"));
     }
     if existing.lane != lane {
         return Err(host_failure(
@@ -941,11 +941,11 @@ pub fn connection(directory: &Path, owner: String, lane: String) -> Result<Conne
         return Err(Failure::conflict(
             "server_refused",
             format!(
-                "{address}, where an older ds server on this state directory listened, still accepts connections; nothing was sent to it"
+                "{address}, where an older ds core on this state directory listened, still accepts connections; nothing was sent to it"
             ),
         )
         .remedy(
-            "stop that older ds server serve, then start this one again; if that port belongs to something else, remove connection.json from the state directory (it holds only the retired bearer) and start again",
+            "stop that older ds core serve, then start this one again; if that port belongs to something else, remove connection.json from the state directory (it holds only the retired bearer) and start again",
         ));
     }
     write_record(directory, &existing.owner, &existing.lane)?;

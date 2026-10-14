@@ -59,8 +59,8 @@ const CHANNEL: Arg = Arg::value(
 .required();
 
 pub static STAGE: Command = Command {
-    id: "server.module-stage",
-    path: &["server", "module-stage"],
+    id: "core.module-stage",
+    path: &["core", "module-stage"],
     contract: 1,
     summary: "Stage one exact published native addon without activating it.",
     purpose: "Capture the packaged production lane's release authority, intentionally read its fixed public catalog once, and require the exact selected native asset SHA-256. The shared native updater performs bounded verified transfer and one fixed build-info compatibility probe, then retains an immutable executable and private ready receipt. Staging changes no active selection and acquires no project data. Held JSON, development catalogs, caller URLs and paths grant no installation trust. Requires --yes; never exits or activates the application.",
@@ -169,61 +169,8 @@ pub static STAGE: Command = Command {
             remedy: "retain the current selection and start a new explicit stage when ready",
         },
     ],
-    reference: Some("docs/reference/server.md"),
+    reference: Some("docs/reference/core.md"),
     search: &["addons", "update", "install", "ready"],
-    requires: Requires::Server,
-    availability: || Availability::Available,
-};
-
-pub static SELECTION: Command = Command {
-    id: "server.module-selection",
-    path: &["server", "module-selection"],
-    contract: 1,
-    summary: "Read one lane's retained native addon selection locally.",
-    purpose: "Read the fixed component/lane's bounded native active and previous installation receipt. Missing selection returns null. Validates retained receipt and path ownership without creating directories, changing permissions, locking, reading release authority or starting a process. Recorded provenance does not establish fresh executable availability or installation trust for caller-held metadata.",
-    chapter: Chapter::Design,
-    effect: Effect::ReadOnly,
-    authority: Authority::None,
-    execution: Execution::Sync,
-    args: &[COMPONENT, CHANNEL],
-    output: "Retained ds.module-selection/v1 with exact component, channel, generation, active and optional previous native receipt; null when absent. No freshness or compatibility probe is implied.",
-    examples: &[],
-    refusals: &[
-        SCHEMA_INVALID,
-        IDENTITY_MISMATCH,
-        PROTOCOL_UNSUPPORTED,
-        TARGET_UNSUPPORTED,
-        ASSET_INVALID,
-        PROVENANCE_INVALID,
-        URL_INVALID,
-        Refusal {
-            code: "module_store_invalid",
-            when: "an existing native path is linked, reparsed or not an ordinary directory/file",
-            remedy: "retain the selected lane and repair its native owned store",
-        },
-        Refusal {
-            code: "module_release_invalid",
-            when: "retained native publication facts fail catalog admission",
-            remedy: "retain the selected lane and repair its exact native installation receipt",
-        },
-        Refusal {
-            code: "module_engine_incompatible",
-            when: "retained engine identity differs from its recorded producer facts",
-            remedy: "retain the selected lane and repair its exact native installation receipt",
-        },
-        Refusal {
-            code: "module_receipt_invalid",
-            when: "retained selection is malformed, excessive, corrupt or crossed",
-            remedy: "retain the selected lane and repair or roll back its verified native installation",
-        },
-        Refusal {
-            code: "module_platform_unsupported",
-            when: "this host is outside the admitted native targets",
-            remedy: "use a supported Linux or Windows x86_64 host",
-        },
-    ],
-    reference: Some("docs/reference/server.md"),
-    search: &["addons", "active", "previous", "offline"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
@@ -308,18 +255,10 @@ pub fn stage(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         .map_err(|error| Failure::internal("module_result_invalid", error.to_string()))
 }
 
-pub fn selection(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let component = component(inputs)?;
-    let lane = ds_cli_auth::Lane::parse(inputs.require("channel")?)?;
-    let selection = ModuleStore::selection_managed(component, lane.token())
-        .map_err(|message| native_failure_or(message, "module_store_invalid"))?;
-    serde_json::to_value(selection)
-        .map_err(|error| Failure::internal("module_result_invalid", error.to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core_components::SELECTION;
     use ds_cli_contract::{Format, Output};
 
     #[test]

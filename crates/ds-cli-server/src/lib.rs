@@ -101,12 +101,12 @@ const PLATFORM: Refusal = Refusal {
 const REFUSED: Refusal = Refusal {
     code: "server_refused",
     when: "native authentication, protected state, job identity, capacity or the request is invalid or unavailable",
-    remedy: "read the stated reason; verify ds auth status, the state directory and that ds server serve is running",
+    remedy: "read the stated reason; verify ds auth status, the state directory and that ds core serve is running",
 };
 const OWNER_CHANGED: Refusal = Refusal {
     code: "server_owner_changed",
     when: "the Server's account differs from the caller's, or its credential was revoked or replaced",
-    remedy: "sign in under the intended Server account and explicitly restart ds server serve",
+    remedy: "sign in under the intended Server account and explicitly restart ds core serve",
 };
 const PROJECT_REQUIRED: Refusal = Refusal {
     code: "project_required",
@@ -121,7 +121,7 @@ const CONTEXT_CORRUPT: Refusal = Refusal {
 const NOT_VISIBLE: Refusal = Refusal {
     code: "not_visible",
     when: "the job id is unknown, or belongs to another principal, lane, deployment or project",
-    remedy: "read ds server status --project <exact-id> for the jobs you can see",
+    remedy: "read ds core status --project <exact-id> for the jobs you can see",
 };
 const PRINCIPAL_MISMATCH: Refusal = Refusal {
     code: "principal_mismatch",
@@ -151,7 +151,7 @@ const CAPACITY_EXHAUSTED: Refusal = Refusal {
 const CONTEXT_UNRECOVERABLE: Refusal = Refusal {
     code: "context_unrecoverable",
     when: "a job stored by an older Server names no project and none can be recovered",
-    remedy: "read the job's stored input with ds server input, then resubmit it under an explicit --project",
+    remedy: "read the job's stored input with ds core input, then resubmit it under an explicit --project",
 };
 const OUTPUT_EXISTS: Refusal = Refusal {
     code: "server_output_exists",
@@ -160,14 +160,14 @@ const OUTPUT_EXISTS: Refusal = Refusal {
 };
 
 /// The one refusal a second account meets on one Server, declared on the
-/// command that answers it. `ds server serve` refuses to adopt a protected
+/// command that answers it. `ds core serve` refuses to adopt a protected
 /// state directory that already belongs to another owner; there is no second
 /// identity a running host can have, so this is the whole of "many users":
 /// many machines, or at least many hosts, never many accounts in one process.
 const MULTI_PRINCIPAL: Refusal = Refusal {
     code: host::MULTI_PRINCIPAL_UNSUPPORTED,
     when: "the protected state directory already belongs to another account",
-    remedy: "run that account its own ds server serve, with its own --state-dir",
+    remedy: "run that account its own ds core serve, with its own --state-dir",
 };
 
 const INSTALL_UNAVAILABLE: Refusal = Refusal {
@@ -184,7 +184,7 @@ const INSTALL_UNAVAILABLE: Refusal = Refusal {
 // one for an operation that genuinely needs a rendered map, one for a route
 // this build does not serve at all — which is what a caller of a different
 // version reaches. They are declared here, on the command that RUNS the host,
-// because that is the only `ds server` command they belong to; the map-bound
+// because that is the only `ds core` command they belong to; the map-bound
 // half belongs in `ds map …`'s own descriptor once `--target server` is wired
 // to this transport.
 const NEEDS_MAP: Refusal = Refusal {
@@ -195,7 +195,7 @@ const NEEDS_MAP: Refusal = Refusal {
 const UNSUPPORTED: Refusal = Refusal {
     code: "unsupported_operation",
     when: "a request names a route this host does not serve, usually a version skew",
-    remedy: "update ds, or read ds server --help for what this host serves",
+    remedy: "update ds, or read ds core --help for what this host serves",
 };
 /// The door's own answer. `ds` never meets it — it refuses a state directory
 /// it does not own before it connects — but anything else that reaches the
@@ -204,7 +204,7 @@ const UNSUPPORTED: Refusal = Refusal {
 const PEER_REFUSED: Refusal = Refusal {
     code: "server_peer_refused",
     when: "a process of another account reaches the socket",
-    remedy: "run it as the account that runs ds server serve",
+    remedy: "run it as the account that runs ds core serve",
 };
 const SERVE_REFUSALS: &[Refusal] = &[
     Refusal {
@@ -312,7 +312,7 @@ const fn command(
         output: "A bounded receipt or list, each naming its project; full bytes only to a named file. No credential is printed.",
         examples,
         refusals,
-        reference: Some("docs/reference/server.md"),
+        reference: Some("docs/reference/core.md"),
         search: &[],
         requires: Requires::Server,
         availability: || {
@@ -329,8 +329,8 @@ const fn command(
     }
 }
 pub static ENGINE: Command = Command {
-    id: "server.engine",
-    path: &["server", "engine"],
+    id: "core.engine",
+    path: &["core", "engine"],
     contract: 2,
     summary: "Inspect the Solar addon this Server will execute.",
     purpose: "Identify the captured standalone Solar engine used by prepared-city computation. This local inspection needs no login, running server, state directory or network connection. It does not establish full native application workflow readiness; development builds intentionally omit release provenance.",
@@ -341,7 +341,7 @@ pub static ENGINE: Command = Command {
     args: &[],
     output: "The standalone engine's actual identity and stamped schema inventory. Release builds carry their own ds.engine-build/v1 provenance.",
     examples: &[Example {
-        command: "ds server engine --output json",
+        command: "ds core engine --output json",
         note: "Inspect the installed Solar addon without starting or authenticating a server.",
         runnable: true,
     }],
@@ -357,7 +357,7 @@ pub static ENGINE: Command = Command {
             remedy: "rebuild the executable from the pinned engine sources and retry",
         },
     ],
-    reference: Some("docs/reference/server.md"),
+    reference: Some("docs/reference/core.md"),
     search: &[],
     requires: Requires::Server,
     availability: || Availability::Available,
@@ -382,13 +382,13 @@ pub fn engine(_: &Inputs, _: &Context) -> Result<Value, Failure> {
 /// commands are about a project; this one is about the host, and the whole
 /// point of the slice is that starting a host settles no project at all.
 pub static SERVE: Command = Command {
-    id: "server.serve",
-    path: &["server", "serve"],
+    id: "core.serve",
+    path: &["core", "serve"],
     // 2: `--listen` is gone. The host answers only on `<state>/server.sock`,
     // so which Server a caller reaches is which `--state-dir` it names.
     contract: 2,
-    summary: "Host durable parallel compute for every project this account reaches.",
-    purpose: "Host the shared Rust compute runtime under this Linux user's native account: the desktop's own core, without the desktop. No project is selected or captured here and no directory is fetched: callers name the project per request, the Server records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Server; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control is an owner-only socket in the state directory. This process runs in the foreground until it stops.",
+    summary: "Run Core in background mode for this account's projects.",
+    purpose: "Run the independently installed ds Core runtime in background mode under this Linux user's native account; Desktop is an optional client of the same native owner. No project is selected or captured here and no directory is fetched: callers name the project per request, the Server records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Server; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control is an owner-only socket in the state directory. This process runs in the foreground until it stops.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessUser,
@@ -409,12 +409,12 @@ pub static SERVE: Command = Command {
     ],
     output: "The worker and per-project limits the host ran under, once it stops. No credential is printed.",
     examples: &[Example {
-        command: "ds server serve --lane stable",
+        command: "ds core serve --lane stable",
         note: "Run after native login under the same Linux user. No project need be selected: callers name theirs.",
         runnable: false,
     }],
     refusals: SERVE_REFUSALS,
-    reference: Some("docs/reference/server.md"),
+    reference: Some("docs/reference/core.md"),
     search: &[],
     requires: Requires::Server,
     availability: || {
@@ -430,8 +430,8 @@ pub static SERVE: Command = Command {
     },
 };
 pub static SUBMIT: Command = command(
-    "server.submit",
-    &["server", "submit"],
+    "core.submit",
+    &["core", "submit"],
     "Queue a complete native transformer batch and return immediately.",
     Effect::LocalFileWrite,
     Execution::Job,
@@ -454,14 +454,14 @@ pub static SUBMIT: Command = command(
     ],
     SUBMIT_REFUSALS,
     &[Example {
-        command: "ds server submit --input transformer-batch.json --key processing-001 --project <exact-id>",
+        command: "ds core submit --input transformer-batch.json --key processing-001 --project <exact-id>",
         note: "Queue an explicit native transformer request in one named project on the running server.",
         runnable: false,
     }],
 );
 pub static SOLAR_SUBMIT: Command = command(
-    "server.solar.submit",
-    &["server", "solar", "submit"],
+    "core.solar.submit",
+    &["core", "solar", "submit"],
     "Queue one sealed prepared Solar calculation and return immediately.",
     Effect::LocalFileWrite,
     Execution::Job,
@@ -484,14 +484,14 @@ pub static SOLAR_SUBMIT: Command = command(
     ],
     SUBMIT_REFUSALS,
     &[Example {
-        command: "ds server solar submit --input pala.server-submission.json --key solar-001",
+        command: "ds core solar submit --input pala.server-submission.json --key solar-001",
         note: "The sealed project is authoritative; a different --project refuses scope_mismatch.",
         runnable: false,
     }],
 );
 pub static TILE_SUBMIT: Command = command(
-    "server.tile.submit",
-    &["server", "tile", "submit"],
+    "core.tile.submit",
+    &["core", "tile", "submit"],
     "Queue prepared vector tiles with this host’s verified local cache.",
     Effect::LocalFileWrite,
     Execution::Job,
@@ -502,14 +502,14 @@ pub static TILE_SUBMIT: Command = command(
     ],
     SUBMIT_REFUSALS,
     &[Example {
-        command: "ds server tile submit --input tiles.prepared.json --key tiles-001",
+        command: "ds core tile submit --input tiles.prepared.json --key tiles-001",
         note: "Linux compute uses the kernel-pinned shared host Tippecanoe and PMTiles toolchain; status/result/cancel use the returned job id. The result is local until separately published.",
         runnable: false,
     }],
 );
 pub static STATUS: Command = command(
-    "server.status",
-    &["server", "status"],
+    "core.status",
+    &["core", "status"],
     "Inspect one project's durable jobs without a browser or desktop.",
     Effect::ReadOnly,
     Execution::Sync,
@@ -525,42 +525,42 @@ pub static STATUS: Command = command(
     ],
     JOB_REFUSALS,
     &[Example {
-        command: "ds server status --project <exact-id> --output json",
+        command: "ds core status --project <exact-id> --output json",
         note: "Read bounded job receipts for one project from the running server.",
         runnable: false,
     }],
 );
 pub static ACTIVITY: Command = command(
-    "server.activity",
-    &["server", "activity"],
+    "core.activity",
+    &["core", "activity"],
     "Read one project's shared Sync Center activity and publication state.",
     Effect::ReadOnly,
     Execution::Sync,
     &[STATE, LANE, PROJECT],
     JOB_REFUSALS,
     &[Example {
-        command: "ds server activity --project <exact-id> --output json",
+        command: "ds core activity --project <exact-id> --output json",
         note: "Read running jobs and held publication state for one project.",
         runnable: false,
     }],
 );
 pub static CANCEL: Command = command(
-    "server.cancel",
-    &["server", "cancel"],
+    "core.cancel",
+    &["core", "cancel"],
     "Cancel a queued or running job while retaining its inputs.",
     Effect::LocalFileWrite,
     Execution::Sync,
     &[STATE, LANE, PROJECT, JOB],
     JOB_REFUSALS,
     &[Example {
-        command: "ds server cancel --job <job-id> --project <exact-id>",
+        command: "ds core cancel --job <job-id> --project <exact-id>",
         note: "Cancels queued/running compute, or a completed Solar job's pending publication, and releases its capacity.",
         runnable: false,
     }],
 );
 pub static RESULT: Command = command(
-    "server.result",
-    &["server", "result"],
+    "core.result",
+    &["core", "result"],
     "Save a completed job's full result to a new local file.",
     Effect::LocalFileWrite,
     Execution::Sync,
@@ -573,15 +573,15 @@ pub static RESULT: Command = command(
     ],
     RESULT_REFUSALS,
     &[Example {
-        command: "ds server result --job <job-id> --out result.json",
+        command: "ds core result --job <job-id> --out result.json",
         note: "Export to an absent path after completion.",
         runnable: false,
     }],
 );
 
 pub static INPUT: Command = command(
-    "server.input",
-    &["server", "input"],
+    "core.input",
+    &["core", "input"],
     "Save a job's own stored request bytes to a new local file.",
     Effect::LocalFileWrite,
     Execution::Sync,
@@ -594,7 +594,7 @@ pub static INPUT: Command = command(
     ],
     INPUT_REFUSALS,
     &[Example {
-        command: "ds server input --job <job-id> --out request.json",
+        command: "ds core input --job <job-id> --out request.json",
         note: "Recover the exact bytes a job was admitted with, including a job stored before execution contexts.",
         runnable: false,
     }],
@@ -602,7 +602,7 @@ pub static INPUT: Command = command(
 
 // -- the layer drawer on a Server: a transport, no longer a command set --
 //
-// `ds server layers list|show|hide|reorder` are RETIRED. The standing ruling
+// `ds core layers list|show|hide|reorder` are RETIRED. The standing ruling
 // is one command id per operation whichever host executes it, so the drawer's
 // catalogue, visibility and order are `ds map layer list|show|hide|reorder`
 // with an explicit `--target server|desktop[:instance]`. A second set of ids
@@ -878,14 +878,15 @@ pub fn working_area_forms_clear(inputs: &Inputs, _: &Context) -> Result<Value, F
 }
 
 pub static DOMAIN: Domain = Domain {
-    id: "server",
-    summary: "Native server.",
+    id: "core",
+    summary: "Native runtime and machine components.",
     commands: &[
         &ENGINE,
         &modules::INVENTORY,
         &modules::RELEASE,
         &module_updates::STAGE,
-        &module_updates::SELECTION,
+        &core_components::SELECTION,
+        &core_components::REMOVE,
         &desktop_update::INSPECT,
         &SERVE,
         &SUBMIT,
@@ -904,7 +905,7 @@ pub static DOMAIN: Domain = Domain {
 };
 fn failure(e: impl ToString) -> Failure {
     Failure::failed("server_refused", e.to_string())
-        .remedy("verify native authentication, protected server state and ds server serve")
+        .remedy("verify native authentication, protected server state and ds core serve")
 }
 fn startup_failure(error: auth::StartupFailure, lane: &str) -> Failure {
     match error {
@@ -1159,7 +1160,7 @@ fn started_by_an_older_ds(address: std::net::SocketAddr) -> Failure {
         ),
     )
     .remedy(
-        "stop that ds server serve and start it again with this ds — it moves to the owner-only socket by itself; an older ds client is upgraded the same way",
+        "stop that ds core serve and start it again with this ds — it moves to the owner-only socket by itself; an older ds client is upgraded the same way",
     )
 }
 fn request_with_timeout(
@@ -1194,7 +1195,7 @@ fn request_with_timeout(
     .map_err(|error| match error {
         transport::CallError::Unreachable(reason) => failure(reason),
         transport::CallError::NotOwner(reason) => Failure::unauthorized("server_refused", reason)
-            .remedy("run ds as the account that runs ds server serve, against its own --state-dir"),
+            .remedy("run ds as the account that runs ds core serve, against its own --state-dir"),
         transport::CallError::TooLarge => failure(transport::CallError::TooLarge),
         transport::CallError::Failed(reason) => failure(reason),
     })?;
@@ -1413,7 +1414,7 @@ pub fn result(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 ///
 /// The project is sent only when the caller NAMED one, because that row is
 /// visible only to an unnarrowed read. Everything else about the answer is
-/// `ds server result`: the owner's own bytes, a job in another project
+/// `ds core result`: the owner's own bytes, a job in another project
 /// indistinguishable from an id that never existed, and a destination file
 /// that must be absent.
 pub fn input(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
@@ -1460,6 +1461,38 @@ mod tests {
 
     fn refused(body: Value) -> Failure {
         typed_refusal(409, serde_json::to_string(&body).unwrap().as_bytes())
+    }
+
+    #[test]
+    fn core_domain_has_one_namespace_and_one_authoritative_selection() {
+        assert_eq!(DOMAIN.id, "core");
+        let mut ids = std::collections::BTreeSet::new();
+        let mut paths = std::collections::BTreeSet::new();
+        for command in DOMAIN.commands {
+            assert!(command.id.starts_with("core."), "{}", command.id);
+            assert_eq!(command.path.first(), Some(&"core"));
+            assert_eq!(command.id, command.path.join("."));
+            assert!(ids.insert(command.id), "duplicate id {}", command.id);
+            assert!(
+                paths.insert(command.path),
+                "duplicate path {:?}",
+                command.path
+            );
+            for example in command.examples {
+                assert!(example.command.starts_with("ds core "));
+            }
+            for refusal in command.refusals {
+                assert!(!refusal.remedy.contains("ds server"));
+            }
+        }
+        assert_eq!(ids.len(), 20);
+        assert!(ids.contains("core.serve"));
+        assert!(ids.contains("core.component.remove"));
+        assert!(ids.contains("core.component.selection"));
+        assert!(!ids.contains("core.module-selection"));
+        assert_eq!(SERVE.arg("lane").unwrap().choices, &["stable", "canary"]);
+        assert_eq!(core_components::SELECTION.effect, Effect::ReadOnly);
+        assert!(core_components::REMOVE.requires_confirmation());
     }
 
     #[test]
@@ -1665,7 +1698,7 @@ mod tests {
     fn reading_a_stored_input_narrows_only_when_the_caller_names_a_project() {
         // The row this command exists for names no project, and is visible
         // only to a read that names none either. So this is the one `ds
-        // server` command that must NOT default to the saved selection.
+        // core` command that must NOT default to the saved selection.
         let unnamed = inputs(&INPUT, &["--job", &"a".repeat(64), "--out", "/tmp/x"]);
         assert_eq!(named_project(&unnamed).unwrap(), None);
         assert_eq!(
@@ -1702,7 +1735,7 @@ mod tests {
         // thing it does have, and the command that returns it.
         let remedy =
             default_remedy(Some("context_unrecoverable"), &Value::Null).expect("a declared remedy");
-        assert!(remedy.contains("ds server input"), "{remedy}");
+        assert!(remedy.contains("ds core input"), "{remedy}");
         assert!(!remedy.contains("result"), "{remedy}");
         assert_eq!(
             remedy,
@@ -1712,12 +1745,12 @@ mod tests {
                 .map(|_| CONTEXT_UNRECOVERABLE.remedy)
                 .expect("the kernel raises it and this command declares it"),
         );
-        // And the command that answers it is registered under `ds server`.
+        // And the command that answers it is registered under `ds core`.
         assert!(
             DOMAIN
                 .commands
                 .iter()
-                .any(|command| command.id == "server.input"),
+                .any(|command| command.id == "core.input"),
             "the remedy names a command this domain does not offer"
         );
     }
@@ -1734,7 +1767,7 @@ mod tests {
     #[test]
     fn every_command_that_names_a_job_or_a_project_declares_project() {
         for command in DOMAIN.commands {
-            if command.authority == Authority::None || command.id == "server.serve" {
+            if command.authority == Authority::None || command.id == "core.serve" {
                 continue;
             }
             assert!(
@@ -1786,7 +1819,7 @@ mod tests {
     fn the_retired_layer_commands_are_gone_from_the_domain() {
         for command in DOMAIN.commands {
             assert!(
-                !command.id.starts_with("server.layers"),
+                !command.id.starts_with("core.layers"),
                 "`{}` is retired: the operation is `ds map layer …` with --target",
                 command.id
             );
