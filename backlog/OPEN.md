@@ -16,7 +16,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 17 |
-| [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 6 |
+| [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 7 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 10 |
 | [10. Voltage drop](#10-voltage-drop) | 0 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 9 |
@@ -189,6 +189,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - Never-landed (owner 2026-10-02, land adapted to run): Generic archive-group readers: kernel, ds-cli (890bac3) and ds-web (54a65730) read the `group_count`/`groups` ds-brain writes, not `district_count` only.
 
 ## 8. Sync, publication and edge outbox
+
+- **Unified transactional local storage and recoverable transformer conflicts** (owner, 2026-10-14): browser/Desktop transformer rooms still use IndexedDB and host-owned save/clean decisions; missing cloud base generations bypass CAS, late acknowledgements can clear newer local edits, and stale authored candidates lack durable independent recovery. Execute the [source-grounded SQLite/native-WASM plan](../docs/unified-transactional-local-store-plan.md) one admitted vertical at a time. First prove exact submitted-revision/generation/operation acknowledgements, mandatory cloud expectations and same-user draft preservation; then shared native/browser SQLite transactions, retained conflict revisions and explicit CLI/MCP resolution. Preserve canonical transformer identity, geometry/types/blank statuses, scoped authority, one queue, lazy acquisition and explicit Save; conflict labels do not create duplicate transformer/quantity rows or automatically bump governance vN. Acceptance includes real multi-writer/late-ACK/restart/rollback/parity tests, controlled import with old writer deletion, and matching installed-platform proof. Existing acquisition work remains in section 16; do not expand or block the active engine extraction release lane.
 
 - **Cross-process native publication wake without polling** (owner 2026-10-10): Desktop sync runs on auth/startup, intentional navigation/refresh, reconnect, visible return and native/local producer events. Deliver seals/recovery transitions from independent CLI/MCP/native producers into that existing wake path using an owned IPC/filesystem event; schedule retained retry work only at the kernel's deadline. Preserve account/install/project fences, coalescing and headless publication. Do not restore idle thirty-second queue scans or use report-activity timers to discover work. Prove an external sealed result wakes the primary and duplicate wake events do not duplicate publication.
 
