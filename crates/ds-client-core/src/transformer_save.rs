@@ -6,10 +6,14 @@ use crate::{
     AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
 };
 use ds_command_kernel::report_export::jcs::layers_content_digest;
-use ds_network::network::{
-    native_fast_lv::{validate_native_fast_lv_analysis, NativeFastLvJobV1},
+use ds_network_client::CapturedNetworkClient;
+use ds_network_contracts::{
+    lv::LvProcessSettings,
+    lv_processing::{
+        NativeLvAnalysisValidationJobV1, NativeLvAnalysisValidationRequestV1, NativeLvJobV1,
+        NATIVE_LV_ANALYSIS_VALIDATION_SCHEMA_V1,
+    },
     voltage_drop::VoltageDropAnalysis,
-    LvProcessSettings,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -36,7 +40,7 @@ pub struct TransformerSaveItem {
     pub config_dfs: BTreeMap<String, Value>,
     pub process_metadata: Value,
     /// Exact hydrated process request; never included in the save body.
-    pub process_input: NativeFastLvJobV1,
+    pub process_input: NativeLvJobV1,
     pub voltage_drop: VoltageDropAnalysis,
     pub operation_id: String,
 }
@@ -115,6 +119,7 @@ impl TransformerSaveBatch {
             return Err(invalid("transformer_save_project_or_batch_invalid"));
         }
         let mut names = BTreeSet::new();
+        let mut validation_jobs = Vec::with_capacity(self.items.len());
         for item in &self.items {
             if !token(&item.transformer_name)
                 || matches!(
@@ -142,11 +147,23 @@ impl TransformerSaveBatch {
             if digest(&item.source_layers)? != item.source_content_digest {
                 return Err(invalid("transformer_save_source_digest_mismatch"));
             }
-            validate_analysis(item)?;
+            validation_jobs.push(analysis_validation_job(item)?);
         }
         if self.wire_body()?.len() > MAX_SAVE_BYTES {
             return Err(invalid("transformer_save_payload_too_large"));
         }
+        let stage = private_network_stage()?;
+        let engine = CapturedNetworkClient::capture(1, &|| false).map_err(network_failure)?;
+        engine
+            .validate_lv_analysis(
+                &NativeLvAnalysisValidationRequestV1 {
+                    schema: NATIVE_LV_ANALYSIS_VALIDATION_SCHEMA_V1.into(),
+                    jobs: validation_jobs,
+                },
+                stage.path(),
+                &|| false,
+            )
+            .map_err(network_failure)?;
         Ok(())
     }
     fn wire_body(&self) -> Result<Vec<u8>, ClientError> {
@@ -178,7 +195,9 @@ fn analysis_sha(item: &TransformerSaveItem) -> Result<String, ClientError> {
         .map(|b| format!("{b:02x}"))
         .collect())
 }
-fn validate_analysis(item: &TransformerSaveItem) -> Result<(), ClientError> {
+fn analysis_validation_job(
+    item: &TransformerSaveItem,
+) -> Result<NativeLvAnalysisValidationJobV1, ClientError> {
     if item.process_metadata.get("voltage_drop").is_some()
         || item.process_input.transformer_name != item.transformer_name
         || item
@@ -210,11 +229,24 @@ fn validate_analysis(item: &TransformerSaveItem) -> Result<(), ClientError> {
     let settings: LvProcessSettings =
         serde_json::from_value(item.process_metadata["settings"].clone())
             .map_err(|_| invalid("transformer_save_analysis_settings_invalid"))?;
-    let gdfs = item.gdfs.clone().into_iter().collect();
-    validate_native_fast_lv_analysis(&item.process_input, &gdfs, &settings, &item.voltage_drop)
-        .map_err(|_| invalid("transformer_save_analysis_binding_invalid"))?;
-    Ok(())
+    Ok(NativeLvAnalysisValidationJobV1 {
+        source: item.process_input.clone(),
+        gdfs: item.gdfs.clone().into_iter().collect(),
+        settings_used: settings,
+        analysis: item.voltage_drop.clone(),
+    })
 }
+fn network_failure(error: ds_network_client::NetworkFailure) -> ClientError {
+    if error.owner_error().is_some() || error.owner_code().is_some() {
+        invalid("transformer_save_analysis_binding_invalid")
+    } else {
+        ClientError::new(ErrorKind::DurableState, error.code())
+    }
+}
+fn private_network_stage() -> Result<tempfile::TempDir, ClientError> {
+    ds_network_client::private_disk_stage().map_err(network_failure)
+}
+
 fn analysis_matches(
     item: &TransformerSaveItem,
     metadata: Option<&Value>,
@@ -504,25 +536,17 @@ impl TransformerSaveCall<'_> {
 mod tests {
     use super::*;
     fn item_with_nature(nature: &str) -> TransformerSaveItem {
-        use ds_network::network::native_fast_lv::{
-            decode_native_fast_lv_request, encode_native_fast_lv_result, process_native_fast_lv,
-            project_native_fast_lv_result,
+        let bytes: &[u8] = match nature {
+            "new_transformer" => {
+                include_bytes!("../tests/fixtures/native-lv-save-new.publication.json")
+            }
+            "fill_in" => {
+                include_bytes!("../tests/fixtures/native-lv-save-reserved.publication.json")
+            }
+            _ => panic!("no captured owning fixture for transformer nature"),
         };
-        let mut request: Value = serde_json::from_slice(include_bytes!(
-            "../tests/fixtures/native-lv-save-request.json"
-        ))
-        .unwrap();
-        request["jobs"][0]["gdfs"]["tr"]["features"][0]["properties"]["transformer_nature"] =
-            json!(nature);
-        let input = serde_json::to_vec(&request).unwrap();
-        let output =
-            process_native_fast_lv(decode_native_fast_lv_request(&input).unwrap()).unwrap();
-        let projection = project_native_fast_lv_result(
-            &input,
-            &encode_native_fast_lv_result(&output).unwrap(),
-            "T1",
-        )
-        .unwrap();
+        let projection: ds_network_contracts::lv_processing::NativeLvPublication =
+            serde_json::from_slice(bytes).unwrap();
         TransformerSaveItem {
             transformer_name: "T1".into(),
             base_version: 7,
@@ -582,6 +606,7 @@ mod tests {
         assert!(preflight(&item, &snapshot(&item, &item.gdfs, 6), &result_digest).is_err());
     }
     #[test]
+    #[ignore = "requires an explicitly retained native Network save-validation executable"]
     fn save_binds_project_config_and_result_digest_without_source_or_force_fields_on_wire() {
         let item = item();
         let mut batch = TransformerSaveBatch {
@@ -634,6 +659,7 @@ mod tests {
         assert!(batch.validate("project").is_err());
     }
     #[test]
+    #[ignore = "requires an explicitly retained native Network save-validation executable"]
     fn native_calculated_and_reserved_analysis_are_required_and_bound() {
         for nature in ["new_transformer", "fill_in"] {
             let item = item_with_nature(nature);
@@ -676,7 +702,7 @@ mod tests {
                     7 => changed.process_metadata["voltage_drop"] = analysis_value(&item).unwrap(),
                     _ => {
                         changed.voltage_drop.status =
-                            ds_network::network::voltage_drop::AnalysisStatus::Incomplete
+                            ds_network_contracts::voltage_drop::AnalysisStatus::Incomplete
                     }
                 }
                 assert!(
@@ -692,6 +718,7 @@ mod tests {
         }
     }
     #[test]
+    #[ignore = "requires an explicitly retained native Network save-validation executable"]
     fn hydrated_nature_preserves_the_source_fence_but_other_source_changes_fail() {
         let mut item = item();
         item.source_layers.get_mut("tr").unwrap()["features"][0]["properties"]

@@ -7,7 +7,9 @@ rust-version = "1.88"
 publish = false
 
 [dependencies]
-ds-network = { path = "../../../ds-network/crates/ds-network" }
+ds-network-contracts = { path = "../../../ds-network/crates/ds-network-contracts" }
+ds-network-client = { path = "../ds-network-client" }
+tempfile = "3"
 ds-solar-contracts = { path = "../../../ds-solar/crates/ds-solar-contracts", default-features = false }
 base64 = "0.22"
 ds-command-kernel = { path = "../.." }

@@ -6,6 +6,8 @@ mod grid_apply;
 mod grid_catalog;
 mod profile;
 mod report_engineering;
+mod lv_publication;
+mod staging;
 pub use captured::{CapturedNetworkClient, NetworkEnginePin};
 pub use design_snapshot::{
     design_snapshot_engine_pin, process_design_snapshot, DesignSnapshotEnginePin,
@@ -26,6 +28,8 @@ pub use grid::GridOutcome;
 pub use grid_apply::GridApplyOutcome;
 pub use profile::{ProfileCheckpoint, ProfileOutcome, ProfileSession};
 pub use report_engineering::ReportEngineeringOutcome;
+pub use lv_publication::{LvAnalysisValidationOutcome, LvPublicationOutcome};
+pub use staging::private_disk_stage;
 use sha2::{Digest, Sha256};
 use std::{
     ffi::OsString,

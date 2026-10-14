@@ -113,3 +113,14 @@ engineering session or derive a source revision. Normal workspace dependencies
 exclude Network, Grid engine/exchange/physics and Profile calculation crates;
 portable wire/model vocabulary remains shared. Library adoption/detach and
 protected combined publication tests explicitly run with the actual executable.
+
+Saved LV publication uses the captured `lv-project` operation with independent
+request and retained-result digests. Analysis validation uses one captured
+`lv-analysis-validate` batch. Both admit exactly one declared ordinary artifact,
+check the captured executable and unchanged staged inputs, and preserve owner
+refusals. The Core save client keeps source/configuration fences and transport;
+its normal and test dependency graphs contain only portable Network vocabulary,
+not engineering crates. Stable save fixtures were produced by the actual native
+owner, replacing linked test calculations. Explicit actual-engine tests cover
+calculated/reserved analysis, hydrated nature, changed inputs, exact save body,
+readback integrity and absence before any project read or write.

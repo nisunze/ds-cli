@@ -20,9 +20,9 @@ pub const TRANSFORMER_ANALYSIS_SHA256_HEADER: &str = "X-DS-Analysis-SHA256";
 pub const TRANSFORMER_ANALYSIS_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
 pub const TRANSFORMER_ANALYSIS_TIMEOUT_SECONDS: u64 = 120;
 
-pub use ds_network::network::voltage_drop::params::METHOD as SAVED_LV_ANALYSIS_METHOD;
 /// Saved analysis vocabulary is exported from the producer, never retyped.
-pub use ds_network::network::voltage_drop::VOLTAGE_DROP_ANALYSIS_SCHEMA_V1 as SAVED_LV_ANALYSIS_SCHEMA;
+pub use ds_network_contracts::voltage_drop::VOLTAGE_DROP_ANALYSIS_SCHEMA_V1 as SAVED_LV_ANALYSIS_SCHEMA;
+pub use ds_network_contracts::voltage_drop::VOLTAGE_DROP_METHOD as SAVED_LV_ANALYSIS_METHOD;
 pub type SavedLvAnalysisPins = (u64, String, String);
 
 /// Validate the immutable pins returned by a verified saved-analysis operation.

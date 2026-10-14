@@ -13177,22 +13177,15 @@ fn retire_carries_its_reason_to_the_audit() {
 }
 
 #[test]
+#[ignore = "requires an explicitly retained native Network save-validation executable"]
 fn native_lv_save_atomically_sends_exact_analysis_and_refuses_replaced_readback() {
     use ds_client_core::{TransformerSaveBatch, TransformerSaveItem};
     use ds_command_kernel::report_export::jcs::layers_content_digest;
-    use ds_network::network::native_fast_lv::{
-        decode_native_fast_lv_request, encode_native_fast_lv_result, process_native_fast_lv,
-        project_native_fast_lv_result,
-    };
-    let request = include_bytes!("fixtures/native-lv-save-request.json");
-    let processed =
-        process_native_fast_lv(decode_native_fast_lv_request(request).unwrap()).unwrap();
-    let projection = project_native_fast_lv_result(
-        request,
-        &encode_native_fast_lv_result(&processed).unwrap(),
-        "T1",
-    )
-    .unwrap();
+    let projection: ds_network_contracts::lv_processing::NativeLvPublication =
+        serde_json::from_slice(include_bytes!(
+            "fixtures/native-lv-save-new.publication.json"
+        ))
+        .unwrap();
     let item = TransformerSaveItem {
         transformer_name: "T1".into(),
         base_version: 7,
@@ -13267,6 +13260,22 @@ fn native_lv_save_atomically_sends_exact_analysis_and_refuses_replaced_readback(
             );
         }
         let state = transport.0.lock().unwrap();
+        assert_eq!(
+            state
+                .calls
+                .iter()
+                .filter(|call| call.starts_with("transformer_context "))
+                .count(),
+            2
+        );
+        assert_eq!(
+            state
+                .calls
+                .iter()
+                .filter(|call| call.starts_with("config "))
+                .count(),
+            1
+        );
         assert_eq!(state.transformer_save_bodies.len(), 1);
         let wire = &state.transformer_save_bodies[0];
         assert_eq!(wire["eds_project_id"], "explicit-project");
@@ -13278,6 +13287,72 @@ fn native_lv_save_atomically_sends_exact_analysis_and_refuses_replaced_readback(
         assert!(row["process_metadata"].get("voltage_drop").is_none());
         assert!(row.get("process_input").is_none());
     }
+}
+
+#[test]
+#[ignore = "isolates the absent Network executable and proves project read counts"]
+fn native_lv_save_missing_engine_refuses_without_project_reads() {
+    if std::env::var_os("DS_NETWORK_MISSING_SAVE_ISOLATED").is_none() {
+        let stage = tempfile::tempdir().unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "native_lv_save_missing_engine_refuses_without_project_reads",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("DS_NETWORK_MISSING_SAVE_ISOLATED", "1")
+            .env("DS_NETWORK_ENGINE_BIN", stage.path().join("absent-network"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+    let projection: ds_network_contracts::lv_processing::NativeLvPublication =
+        serde_json::from_slice(include_bytes!(
+            "fixtures/native-lv-save-new.publication.json"
+        ))
+        .unwrap();
+    let item = ds_client_core::TransformerSaveItem {
+        transformer_name: "T1".into(),
+        base_version: 7,
+        source_content_digest: ds_command_kernel::report_export::jcs::layers_content_digest(
+            &projection.source_layers,
+        )
+        .unwrap(),
+        source_layers: projection.source_layers,
+        gdfs: projection.gdfs,
+        config_dfs: projection.config_dfs,
+        process_metadata: projection.process_metadata,
+        process_input: projection.process_input,
+        voltage_drop: projection.voltage_drop,
+        operation_id: "save-T1-7".into(),
+    };
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let error = client
+        .save_transformers(
+            "explicit-project",
+            &ds_client_core::TransformerSaveBatch {
+                project_id: "explicit-project".into(),
+                items: vec![item],
+            },
+            NOW + 1,
+        )
+        .unwrap_err();
+    assert_eq!(error.to_string(), "network_engine_missing");
+    let state = transport.0.lock().unwrap();
+    assert!(!state
+        .calls
+        .iter()
+        .any(|call| call.starts_with("transformer_context ")
+            || call.starts_with("config ")));
+    assert!(state.transformer_save_bodies.is_empty());
 }
 
 fn analysis_sha(bytes: &[u8]) -> String {
