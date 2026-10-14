@@ -1145,7 +1145,9 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
  "ds-command-kernel",
+ "libc",
  "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1623,6 +1625,7 @@ dependencies = [
  "ds-graph",
  "ds-grid-model",
  "ds-grid-physics",
+ "ds-network-contracts",
  "ds-profile",
  "regex",
  "schemars",
@@ -1760,6 +1763,7 @@ dependencies = [
  "ds-geo-lite",
  "ds-graph",
  "ds-io",
+ "ds-network-contracts",
  "ds-profile",
  "flate2",
  "rayon",
@@ -1768,6 +1772,18 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror",
  "time",
+]
+
+[[package]]
+name = "ds-network-contracts"
+version = "0.1.0"
+dependencies = [
+ "ds-grid-model",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror",
 ]
 
 [[package]]

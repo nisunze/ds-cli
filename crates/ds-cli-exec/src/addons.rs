@@ -75,3 +75,12 @@ pub fn inventory() -> Value {
         .collect();
     json!({"schema":"ds.module-inventory/v1","modules":modules})
 }
+
+/// Fixed independent Network owner; discovery never starts the executable.
+pub static NETWORK: External = External {
+    name: "ds-network",
+    env_override: "DS_NETWORK_ENGINE_BIN",
+    owner: "ds-network",
+    remedy: "install the Network addon, or set DS_NETWORK_ENGINE_BIN to a compatible ds-network executable",
+    missing_code: "network_engine_missing",
+};
