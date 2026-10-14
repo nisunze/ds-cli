@@ -283,6 +283,8 @@ const HOLDINGS_STORE: Refusal = Refusal {
 };
 
 pub(super) const REFUSALS: &[Refusal] = &[
+    super::mv_context::NETWORK_ENGINE_MISSING,
+    super::mv_context::NETWORK_ENGINE_INCOMPATIBLE,
     super::vd_preview::MISSING,
     super::vd_preview::STALE,
     super::NATIVE_PROFILE,

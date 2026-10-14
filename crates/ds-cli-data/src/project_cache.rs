@@ -41,6 +41,17 @@ use std::path::{Path, PathBuf};
 
 mod local_source;
 
+const NETWORK_ENGINE_MISSING: Refusal = Refusal {
+    code: "network_engine_missing",
+    when: "MV route coverage is requested but the Network executable is absent",
+    remedy: "Install or activate a compatible Network engine for MV geographic projection",
+};
+const NETWORK_ENGINE_INCOMPATIBLE: Refusal = Refusal {
+    code: "network_engine_incompatible",
+    when: "MV route coverage's captured Network executable or encoding profile cannot be admitted",
+    remedy: "Install or activate a compatible Network engine for MV geographic projection",
+};
+
 const DATASET_ARG: Arg = Arg::value(
     "dataset",
     "<dataset-id>",
@@ -396,6 +407,8 @@ const HEADLESS_REFUSALS: [Refusal; 20] = [
 ];
 
 const STATUS_REFUSALS: &[Refusal] = &[
+    NETWORK_ENGINE_MISSING,
+    NETWORK_ENGINE_INCOMPATIBLE,
     INVALID_SCOPE,
     RETIRED,
     CATALOG_UNAVAILABLE,
@@ -425,6 +438,8 @@ const STATUS_REFUSALS: &[Refusal] = &[
 ];
 
 const SEED_REFUSALS: &[Refusal] = &[
+    NETWORK_ENGINE_MISSING,
+    NETWORK_ENGINE_INCOMPATIBLE,
     INVALID_SCOPE,
     RETIRED,
     NO_DESIGN_EXTENT,
@@ -1403,6 +1418,7 @@ fn mv_route_extents(
     }
     let mut extents = Vec::new();
     let mut sources = Vec::new();
+    let mut projection_session = None;
     for row in models {
         if row["model_kind"] != "mv_line" || row["state"] != "active" {
             continue;
@@ -1439,8 +1455,13 @@ fn mv_route_extents(
                 format!("MV model {id} has no verified bytes"),
             )
         })?;
-        let routes = ds_project_data::mv_projection::route_extents(&bytes, &revision, &id)
-            .map_err(|error| Failure::failed(INVALID_SCOPE.code, error))?;
+        let session = projection_session
+            .get_or_insert_with(ds_project_data::mv_projection::ProjectionSession::capture)
+            .as_ref()
+            .map_err(mv_projection_fail)?;
+        let routes = session
+            .route_extents(&bytes, &revision, &id)
+            .map_err(|error| mv_projection_fail(&error))?;
         sources.push(json!({"model_id":id,"revision_id":revision,"sha256":digest,"route_segments":routes.len()}));
         extents.extend(routes);
         if extents.len() > policy::MAX_EXTENTS {
@@ -1467,12 +1488,29 @@ fn mv_route_extents(
 }
 
 fn local_mv_route_extents(path: &str) -> Result<(Vec<policy::Extent>, Value), Failure> {
-    let local = ds_project_data::mv_projection::load_local(Path::new(path))
-        .map_err(|e| Failure::invalid(INVALID_SCOPE.code, format!("--mv-model: {e}")))?;
+    let local = ds_project_data::mv_projection::load_local(Path::new(path)).map_err(|error| {
+        if error.unavailable() {
+            mv_projection_fail(&error)
+        } else {
+            Failure::invalid(INVALID_SCOPE.code, format!("--mv-model: {error}"))
+        }
+    })?;
     let source = json!({"kind":"local_draft","path":path,
         "sha256":format!("sha256:{}",local.sha256),
         "revision_id":local.revision_id,"route_segments":local.route_extents.len()});
     Ok((local.route_extents, source))
+}
+fn mv_projection_fail(error: &ds_project_data::mv_projection::ProjectionError) -> Failure {
+    if error.unavailable() {
+        if error.code() == "network_engine_missing" {
+            Failure::unavailable(NETWORK_ENGINE_MISSING.code, error.to_string())
+        } else {
+            Failure::unavailable(NETWORK_ENGINE_INCOMPATIBLE.code, error.to_string())
+        }
+        .remedy("Install or activate a compatible Network engine for MV geographic projection")
+    } else {
+        Failure::failed(INVALID_SCOPE.code, error.to_string())
+    }
 }
 
 pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -1936,6 +1974,35 @@ pub fn render_seed(data: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore = "requires a built compatible Network engine and immutable package fixture"]
+    fn acceptance_native_mv_projection_local_route_context() {
+        let path = std::env::var("DS_MV_PROJECTION_MODEL").unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let digest = ds_command_kernel::report_export::sha256_hex(&bytes);
+        let (routes, source) = super::local_mv_route_extents(&path).unwrap();
+        assert!(!routes.is_empty());
+        assert!(routes.iter().all(|route| {
+            route
+                .name
+                .starts_with(&format!("mv:local-{}:", &digest[..16]))
+        }));
+        assert_eq!(source["sha256"], format!("sha256:{digest}"));
+        assert_eq!(source["revision_id"], format!("local:sha256:{digest}"));
+        assert_eq!(source["route_segments"], routes.len());
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
+    }
+    #[test]
+    #[ignore = "requires an explicitly unavailable captured Network engine"]
+    fn acceptance_native_mv_missing_engine_is_unavailable() {
+        let path = std::env::var("DS_MV_PROJECTION_MODEL").unwrap();
+        let error = super::local_mv_route_extents(&path).unwrap_err();
+        assert_eq!(
+            error.class(),
+            ds_cli_contract::outcome::ExitClass::Unavailable
+        );
+        assert_eq!(error.code(), "network_engine_missing");
+    }
     use super::*;
     use ds_command_kernel::project_dataset_cache::CONTOURS_DATASET_ID;
 

@@ -1,10 +1,22 @@
 //! Read-only native model acquisition. Engineering projection and CRS belong
-//! to ds-grid-exchange/ds-geo; clipping and print provenance belong to the kernel.
+//! to the captured Network engine; clipping and print provenance belong to the kernel.
 use ds_cli_contract::outcome::Failure;
+use ds_cli_contract::spec::Refusal;
 use ds_command_kernel::{printing::map, report_export};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+
+pub(super) const NETWORK_ENGINE_MISSING: Refusal = Refusal {
+    code: "network_engine_missing",
+    when: "MV context is requested but the Network executable is absent",
+    remedy: "Install or activate a compatible Network engine for MV geographic projection",
+};
+pub(super) const NETWORK_ENGINE_INCOMPATIBLE: Refusal = Refusal {
+    code: "network_engine_incompatible",
+    when: "MV context's captured Network executable or encoding profile cannot be admitted",
+    remedy: "Install or activate a compatible Network engine for MV geographic projection",
+};
 
 pub(super) struct Model {
     identity: map::Model,
@@ -38,7 +50,8 @@ pub(super) fn provenance(models: &[Model]) -> Vec<Value> {
     models.iter().map(|model| json!({"model_id":model.identity.id,"revision_id":model.identity.revision_id,"sha256":model.identity.digest,"label":model.identity.label})).collect()
 }
 pub(super) fn load_local(path: &str) -> Result<Model, Failure> {
-    let local = ds_project_data::mv_projection::load_local(Path::new(path)).map_err(fail)?;
+    let local = ds_project_data::mv_projection::load_local(Path::new(path))
+        .map_err(|error| projection_fail(&error))?;
     Ok(Model {
         identity: map::Model {
             id: local.model_id,
@@ -52,6 +65,18 @@ pub(super) fn load_local(path: &str) -> Result<Model, Failure> {
 fn fail(e: impl std::fmt::Display) -> Failure {
     Failure::failed("print_context_invalid", e.to_string())
         .remedy("Check the exact project's promoted MV model and declared CRS; no model is modified by printing")
+}
+fn projection_fail(error: &ds_project_data::mv_projection::ProjectionError) -> Failure {
+    if error.unavailable() {
+        if error.code() == "network_engine_missing" {
+            Failure::unavailable(NETWORK_ENGINE_MISSING.code, error.to_string())
+        } else {
+            Failure::unavailable(NETWORK_ENGINE_INCOMPATIBLE.code, error.to_string())
+        }
+        .remedy("Install or activate a compatible Network engine for MV geographic projection")
+    } else {
+        fail(error)
+    }
 }
 pub(super) fn load(
     lane: &str,
@@ -97,6 +122,7 @@ pub(super) fn load(
     }
     let mut models = Vec::new();
     let mut features_total = 0;
+    let mut projection_session = None;
     for row in rows {
         if row["model_kind"] != "mv_line" || row["state"] != "active" {
             continue;
@@ -128,8 +154,13 @@ pub(super) fn load(
         let bytes = result
             .bytes
             .ok_or_else(|| fail("MV owner returned no verified model bytes"))?;
-        let projection =
-            ds_project_data::mv_projection::project(&bytes, &revision).map_err(fail)?;
+        let session = projection_session
+            .get_or_insert_with(ds_project_data::mv_projection::ProjectionSession::capture)
+            .as_ref()
+            .map_err(projection_fail)?;
+        let projection = session
+            .project(&bytes, &revision)
+            .map_err(|error| projection_fail(&error))?;
         features_total += projection["features"].as_array().map_or(0, Vec::len);
         if features_total > 200_000 {
             return Err(fail("MV print projections exceed 200,000 features"));
@@ -277,6 +308,46 @@ fn point_coords(feature: &Value) -> Option<[f64; 2]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "requires a built compatible Network engine and immutable package fixture"]
+    fn acceptance_native_mv_projection_local_print_context() {
+        let path = std::env::var("DS_MV_PROJECTION_MODEL").unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let digest = report_export::sha256_hex(&bytes);
+        let model = load_local(&path).unwrap();
+        assert_eq!(model.identity.id, format!("local-{}", &digest[..16]));
+        assert_eq!(model.identity.revision_id, format!("local:sha256:{digest}"));
+        assert_eq!(model.identity.digest, digest);
+        let expected: Value = serde_json::from_slice(
+            &std::fs::read(std::env::var("DS_MV_PROJECTION_GOLDEN").unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(model.projection, expected);
+        let sources = provenance(std::slice::from_ref(&model));
+        assert_eq!(sources[0]["sha256"], digest);
+        let layers = overview(std::slice::from_ref(&model)).unwrap();
+        assert!(
+            !layers["dsgrid_mv_lines"]["features"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
+    }
+    #[test]
+    #[ignore = "requires an explicitly unavailable captured Network engine"]
+    fn acceptance_native_mv_missing_engine_is_unavailable() {
+        let path = std::env::var("DS_MV_PROJECTION_MODEL").unwrap();
+        let error = match load_local(&path) {
+            Err(error) => error,
+            Ok(_) => panic!("missing engine cannot return a projection"),
+        };
+        assert_eq!(
+            error.class(),
+            ds_cli_contract::outcome::ExitClass::Unavailable
+        );
+        assert_eq!(error.code(), "network_engine_missing");
+    }
     #[test]
     fn mv_context_uses_metric_crs_and_records_model_identity_without_changing_geometry_source() {
         let projection = json!({"type":"FeatureCollection","features":[{"type":"Feature","id":"route-1","geometry":{"type":"LineString","coordinates":[[29.999,-2.],[30.001,-2.]]},"properties":{"_layer":"alignments","label":"MV A"}}]});
