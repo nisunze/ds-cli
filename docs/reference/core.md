@@ -47,3 +47,23 @@ metadata targets. Unsupported targets refuse `module_platform_unsupported`
 before authority acquisition or store creation. Read-only release metadata
 inspection remains platform-neutral. Unadmitted engine WASM targets stay
 explicitly unavailable in their producer; Core is a native application runtime.
+
+`core.identity` reads the lane's existing protected Core installation identity
+without creating it or restoring credentials. `appVersion` identifies Core;
+the optional Desktop shell reports its own version separately. A missing
+identity requires authenticating and starting Core once, never a shell UUID.
+`core.auth.status` observes both retained providers offline without refresh or
+writes. They must agree on UID, lane and credential audience. It exposes no
+credential material and reports `project: null`: operations still name and
+authorize their own explicit project.
+
+Activate an already verified ready receipt through `core.component.activate`
+with its exact `--receipt-id` and the generation read from
+`core.component.selection`. Roll back through `core.component.rollback` at the
+held generation. Both require explicit confirmation and the selected lane's
+running Core. The shared durable job capture fence remains held through the
+updater's component lock and atomic selection write. A stale caller generation
+or ready receipt refuses; no previous unit refuses `module_rollback_unavailable`.
+These operations verify retained bytes without release lookup, download,
+executable probe or Desktop. They return the committed installed-v1 selection;
+a staging receipt alone remains ready and is not activation.

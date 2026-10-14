@@ -248,6 +248,14 @@ pub fn router(app: App) -> Router {
             "/v1/core/component/remove",
             post(crate::core_components::invoke),
         )
+        .route(
+            "/v1/core/component/activate",
+            post(crate::component_lifecycle::invoke_activate),
+        )
+        .route(
+            "/v1/core/component/rollback",
+            post(crate::component_lifecycle::invoke_rollback),
+        )
         .route("/v1/jobs", get(list))
         .route("/v1/jobs/:id", get(status))
         .route("/v1/jobs/:id/cancel", post(cancel))

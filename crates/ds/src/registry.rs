@@ -3695,6 +3695,26 @@ static MCP_ENTRIES: &[Entry] = &[
 
 static SERVER_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_server::component_lifecycle::ACTIVATE,
+        handler: ds_cli_server::component_lifecycle::activate,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::component_lifecycle::ROLLBACK,
+        handler: ds_cli_server::component_lifecycle::rollback,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_auth::core_identity::IDENTITY,
+        handler: ds_cli_auth::core_identity::identity,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_auth::core_identity::AUTH_STATUS,
+        handler: ds_cli_auth::core_identity::auth_status,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::core_components::REMOVE,
         handler: ds_cli_server::core_components::remove,
         render: ds_cli_server::render,
@@ -4124,7 +4144,7 @@ pub fn dispatch(entry: &Entry, tokens: &[String], context: &Context) -> Result<V
         Some(ds_cli_report::touch::project(
             inputs.require("lane")?,
             inputs.require("project")?,
-            inputs.value("server-state-dir"),
+            inputs.value("core-state-dir"),
         ))
     } else {
         None

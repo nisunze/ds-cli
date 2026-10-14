@@ -13,14 +13,14 @@ use std::{path::Path, time::Duration};
 const REMOVE_ROUTE: &str = "/v1/core/component/remove";
 const MAX_REQUEST_BYTES: usize = 512;
 
-const COMPONENT: Arg = Arg::value(
+pub(crate) const COMPONENT: Arg = Arg::value(
     "component",
     "<solar|reporter|network>",
     "Fixed native component owner.",
 )
 .choices(&["solar", "reporter", "network"])
 .required();
-const CHANNEL: Arg = Arg::value(
+pub(crate) const CHANNEL: Arg = Arg::value(
     "channel",
     "<stable|canary>",
     "Exact installed component lane.",
@@ -28,7 +28,7 @@ const CHANNEL: Arg = Arg::value(
 .choices(&["stable", "canary"])
 .required();
 
-const REFUSALS: &[Refusal] = &[
+pub(crate) const REFUSALS: &[Refusal] = &[
     crate::PLATFORM,
     Refusal {
         code: "invalid_choice",
@@ -64,6 +64,16 @@ const REFUSALS: &[Refusal] = &[
         code: "component_uncaptured_jobs",
         when: "the owned Core runtime has pending work without a valid immutable engine capture",
         remedy: "finish or cancel the pending legacy work before removing this component; its stored input remains retained",
+    },
+    Refusal {
+        code: "module_removed",
+        when: "the component has an authoritative removed selection and no active unit",
+        remedy: "explicitly stage and activate a compatible published component at the current removed generation",
+    },
+    Refusal {
+        code: "module_rollback_unavailable",
+        when: "no retained verified previous component unit is available",
+        remedy: "retain the current selection or explicitly stage and activate a compatible published unit",
     },
     Refusal {
         code: "module_activation_deferred",
@@ -201,7 +211,7 @@ pub static SELECTION: Command = Command {
     availability: crate::module_updates::native_module_availability,
 };
 
-fn selected(inputs: &Inputs) -> Result<(ModuleComponent, &str), Failure> {
+pub(crate) fn selected(inputs: &Inputs) -> Result<(ModuleComponent, &str), Failure> {
     let component = match inputs.require("component")? {
         "solar" => ModuleComponent::Solar,
         "reporter" => ModuleComponent::Reporter,
@@ -223,7 +233,7 @@ fn selected(inputs: &Inputs) -> Result<(ModuleComponent, &str), Failure> {
     Ok((component, channel))
 }
 
-fn owner_failure(message: String) -> Failure {
+pub(crate) fn owner_failure(message: String) -> Failure {
     let code = message.split(':').next().unwrap_or_default();
     let refusal = REFUSALS.iter().find(|r| r.code == code).unwrap_or_else(|| {
         REFUSALS
@@ -240,6 +250,8 @@ fn owner_failure(message: String) -> Failure {
         | "component_runtime_unavailable"
         | "component_uncaptured_jobs"
         | "module_activation_deferred"
+        | "module_rollback_unavailable"
+        | "module_removed"
         | "module_platform_unsupported" => Failure::unavailable(refusal.code, bounded),
         "component_generation_invalid"
         | "component_request_invalid"

@@ -17,8 +17,12 @@ fn envelope(output: &Output) -> Value {
 fn core_serve_and_components_are_registered_without_server_aliases() {
     for id in [
         "core.serve",
+        "core.identity",
+        "core.auth.status",
         "core.component.selection",
         "core.component.remove",
+        "core.component.activate",
+        "core.component.rollback",
     ] {
         let output = ds(&["capabilities", id, "--output", "json"]);
         assert!(

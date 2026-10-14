@@ -1,5 +1,6 @@
 //! Thin command/HTTP host for the shared native compute runtime.
 mod auth;
+pub mod component_lifecycle;
 pub mod core_components;
 pub mod desktop_update;
 pub mod module_updates;
@@ -899,12 +900,16 @@ pub static DOMAIN: Domain = Domain {
     id: "core",
     summary: "Native runtime and machine components.",
     commands: &[
+        &ds_cli_auth::core_identity::IDENTITY,
+        &ds_cli_auth::core_identity::AUTH_STATUS,
         &ENGINE,
         &modules::INVENTORY,
         &modules::RELEASE,
         &module_updates::STAGE,
         &core_components::SELECTION,
         &core_components::REMOVE,
+        &component_lifecycle::ACTIVATE,
+        &component_lifecycle::ROLLBACK,
         &desktop_update::INSPECT,
         &SERVE,
         &SUBMIT,
@@ -1563,7 +1568,7 @@ mod tests {
                 assert!(!refusal.remedy.contains("ds server"));
             }
         }
-        assert_eq!(ids.len(), 20);
+        assert_eq!(ids.len(), 24);
         assert!(ids.contains("core.serve"));
         assert!(ids.contains("core.component.remove"));
         assert!(ids.contains("core.component.selection"));
