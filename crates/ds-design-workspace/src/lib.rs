@@ -14,6 +14,7 @@ use std::{
 
 pub mod grid_publication;
 mod run;
+mod network_staging;
 mod repair;
 pub use repair::RepairRequest;
 pub use run::RunReceipt;

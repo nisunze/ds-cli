@@ -19,6 +19,7 @@ fn package() -> Vec<u8> {
     .unwrap()
 }
 #[test]
+#[ignore = "requires an explicitly qualified native Network grid-publication executable"]
 fn linked_publication_captures_explicit_creation_and_existing_head_with_native_lineage() {
     let bytes = package();
     let mut request = Request {
@@ -51,6 +52,7 @@ fn linked_publication_captures_explicit_creation_and_existing_head_with_native_l
 }
 
 #[test]
+#[ignore = "requires an explicitly qualified native Network grid-publication executable"]
 fn the_combined_models_binding_and_publication_revision_are_derived() {
     use ds_design_workspace::grid_publication::{
         combined_model_id, publication_revision, COMBINED_DISPLAY_NAME, COMBINED_GRAPH_ID,
@@ -98,6 +100,7 @@ fn the_combined_models_binding_and_publication_revision_are_derived() {
 }
 
 #[test]
+#[ignore = "requires an explicitly qualified native Network grid-publication executable"]
 fn ordinary_publication_refuses_protected_combined_but_derived_publication_and_reads_work() {
     let source = |id| {
         pack(

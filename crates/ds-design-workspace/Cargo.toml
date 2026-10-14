@@ -17,9 +17,6 @@ description = "Native offline Design persistence and job lifecycle; no renderer 
 ds-command-kernel = { path = "../.." }
 ds-network-contracts = { path = "../../../ds-network/crates/ds-network-contracts" }
 ds-network-client = { path = "../ds-network-client" }
-ds-grid-model = { path = "../../../ds-network/crates/ds-grid-model" }
-ds-grid-engine = { path = "../../../ds-network/crates/ds-grid-engine" }
-ds-grid-exchange = { path = "../../../ds-network/crates/ds-grid-exchange" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "0.10"
@@ -28,3 +25,8 @@ rayon = "1"
 fs2 = "0.4"
 tempfile = "3"
 thiserror = "2"
+
+[dev-dependencies]
+ds-grid-model = { path = "../../../ds-network/crates/ds-grid-model" }
+ds-grid-engine = { path = "../../../ds-network/crates/ds-grid-engine" }
+ds-grid-exchange = { path = "../../../ds-network/crates/ds-grid-exchange" }

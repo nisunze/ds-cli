@@ -3,7 +3,11 @@
 use ds_command_kernel::grid_publication::{
     revision_identifier, Approval, CompositionSource, Intent, MigrationSource, MAX_MODEL_BYTES,
 };
-use ds_grid_engine::GridSession;
+use ds_network_client::CapturedNetworkClient;
+use ds_network_contracts::grid::{
+    NativeGridPublicationFactsV1, NativeGridPublicationModeV1, NativeGridPublicationRequestV1,
+    NativeGridQuerySourcePin, NATIVE_GRID_PUBLICATION_SCHEMA_V1,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -47,7 +51,7 @@ pub const COMBINED_DISPLAY_NAME: &str = "Combined model";
 /// The project model ID of the engine's combined identity:
 /// `combined.<16 hex>` -> `combined-<16 hex>`.
 pub fn combined_model_id(identity: &str) -> Result<String, String> {
-    if !ds_grid_engine::composite::is_combined_identity(identity) {
+    if !ds_network_contracts::grid::is_combined_identity(identity) {
         return Err(format!(
             "combined_identity_invalid: {identity} is not a derived combined-model identity"
         ));
@@ -57,30 +61,46 @@ pub fn combined_model_id(identity: &str) -> Result<String, String> {
 
 /// The project revision ID publication assigns to these exact package bytes.
 pub fn publication_revision(bytes: &[u8]) -> Result<String, String> {
-    let decoded =
-        ds_grid_exchange::package::unpack(bytes).map_err(|e| format!("model_invalid: {e}"))?;
-    revision_identifier(&source_revision(bytes, &decoded))
+    let facts = publication_facts(bytes, NativeGridPublicationModeV1::Inspect)?;
+    revision_identifier(&facts.source_revision_id)
         .ok_or_else(|| "grid_publication_revision_invalid".to_owned())
 }
 
-// Authored geometry can stay identical while immutable library identity changes.
-// Retained cache evidence also records detach history. Bind publication to the
-// exact package in either case; keep the established revision for other models.
-fn source_revision(bytes: &[u8], decoded: &ds_grid_exchange::package::GridPackage) -> String {
-    if !decoded.manifest.model.library_pins.is_empty()
-        || decoded.assets.iter().any(|asset| {
-            asset
-                .invariant_leaf
-                .starts_with(ds_grid_exchange::model_library::LIBRARY_CACHE_PREFIX)
-        })
-    {
-        format!("rev:{:x}", Sha256::digest(bytes))
+fn publication_facts(
+    bytes: &[u8],
+    mode: NativeGridPublicationModeV1,
+) -> Result<NativeGridPublicationFactsV1, String> {
+    if bytes.is_empty() || bytes.len() > MAX_MODEL_BYTES {
+        return Err("model_too_large: expected a nonempty package up to 256 MiB".into());
+    }
+    let scratch = crate::network_staging::private_stage()?;
+    let client = CapturedNetworkClient::capture(1, &|| false).map_err(publication_failure)?;
+    let request = NativeGridPublicationRequestV1 {
+        schema: NATIVE_GRID_PUBLICATION_SCHEMA_V1.into(),
+        source: NativeGridQuerySourcePin {
+            package_sha256: format!("{:x}", Sha256::digest(bytes)),
+            expected_revision: None,
+            engineering_input_root: None,
+        },
+        mode,
+    };
+    client
+        .grid_publication(&request, bytes, scratch.path(), &|| false)
+        .map(|outcome| outcome.result)
+        .map_err(publication_failure)
+}
+
+fn publication_failure(error: ds_network_client::NetworkFailure) -> String {
+    let code = match error.owner_code() {
+        Some("package_refused") => "model_invalid",
+        Some(code) => code,
+        None => error.code(),
+    };
+    let message = &error.message;
+    if message.starts_with(&format!("{code}:")) {
+        message.into()
     } else {
-        GridSession::open(decoded.snapshot.clone())
-            .current_revision()
-            .revision_id
-            .as_str()
-            .into()
+        format!("{code}: {message}")
     }
 }
 
@@ -98,19 +118,12 @@ fn prepare_inner(
     if bytes.is_empty() || bytes.len() > MAX_MODEL_BYTES {
         return Err("model_too_large: expected a nonempty package up to 256 MiB".into());
     }
-    let decoded =
-        ds_grid_exchange::package::unpack(bytes).map_err(|e| format!("model_invalid: {e}"))?;
-    if !reconciled_generation {
-        ds_grid_exchange::linked_models::authorize_package_write(&decoded, "publish", &[])
-            .map_err(|error| error.to_string())?;
-    }
-    let validation = ds_grid_model::validate_snapshot(&decoded.snapshot);
-    if !validation.is_valid() {
-        return Err(format!(
-            "model_invalid: {} validation findings; inspect the source before publication",
-            validation.issues.len()
-        ));
-    }
+    let mode = if reconciled_generation {
+        NativeGridPublicationModeV1::ReconciledGeneration
+    } else {
+        NativeGridPublicationModeV1::UserPublish
+    };
+    let facts = publication_facts(bytes, mode)?;
     if request.model_id.is_some() && request.display_name.is_some() {
         return Err(
             "project_model_rename_unsupported: publish cannot rename an existing model".into(),
@@ -150,11 +163,11 @@ fn prepare_inner(
         model_id,
         model_kind: request.model_kind.clone(),
         expected_head_revision_id: expected,
-        manifest_model_id: decoded.manifest.model.model_id.as_str().into(),
-        manifest_model_revision: decoded.manifest.model.model_revision,
-        source_revision_id: source_revision(bytes, &decoded),
-        model_schema_version: ds_grid_model::SCHEMA_VERSION.to_string(),
-        engine_version: ds_grid_engine::ENGINE_VERSION.into(),
+        manifest_model_id: facts.source.model_id.as_str().into(),
+        manifest_model_revision: facts.manifest_model_revision,
+        source_revision_id: facts.source_revision_id,
+        model_schema_version: facts.model_schema.to_string(),
+        engine_version: facts.engine_version,
         display_name: request.display_name.clone(),
         reason: request.reason.clone(),
         bump_version: request.bump_version,

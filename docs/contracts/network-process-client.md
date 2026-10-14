@@ -104,3 +104,12 @@ pending records without a retained executable pin explicitly refuse rebinding.
 Saved report inputs retain the exact producer analysis bytes and can be exported
 without a running or installed engine. Cancellation of a child keeps that job
 pending, while publication remains a separate host operation.
+
+Grid publication preparation also consumes the captured executable. Network
+returns package validity, protected-generation admission, the package source
+revision and schema/engine facts. The workspace retains project authorization,
+head fences and publication effects. It does not unpack the package, open an
+engineering session or derive a source revision. Normal workspace dependencies
+exclude Network, Grid engine/exchange/physics and Profile calculation crates;
+portable wire/model vocabulary remains shared. Library adoption/detach and
+protected combined publication tests explicitly run with the actual executable.
