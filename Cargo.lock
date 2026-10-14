@@ -1651,6 +1651,7 @@ dependencies = [
  "ds-grid-engine",
  "ds-grid-model",
  "ds-io",
+ "ds-network-contracts",
  "polars-arrow",
  "serde",
  "serde_json",
