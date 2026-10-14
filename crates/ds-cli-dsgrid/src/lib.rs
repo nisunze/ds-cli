@@ -46,6 +46,7 @@ pub mod folder;
 mod host_memory;
 pub mod import_structure;
 pub mod inspect;
+mod native;
 pub mod model;
 pub mod mutation;
 pub mod objects;

@@ -1116,6 +1116,8 @@ dependencies = [
  "ds-grid-model",
  "ds-io",
  "ds-layer-store",
+ "ds-network-client",
+ "ds-network-contracts",
  "ds-rwanda-admin-bounds",
  "schemars",
  "serde",

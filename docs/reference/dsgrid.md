@@ -8,7 +8,9 @@ Tier-4 reference. `ds dsgrid <command> --help` is the contract.
 `ds-grid-model`, `ds-grid-engine` and `ds-grid-exchange` are pure libraries
 with a clean boundary — no ambient state, no process contract, no documented
 reason to stay separate. `ds-web/src-tauri` links them; so does `ds` for the
-file commands (`create`, `inspect`, `validate`, `describe`, `run`, and `apply`).
+file commands. `inspect` and `run` now reach the separately admitted Network
+executable through its captured typed client; the other file adapters retain
+their current library consumers until their individual migrations are proven.
 
 The working-copy commands answer from THIS machine. A working copy is a fact
 about a machine — a lane, a DS account and a directory beside the local-layer
@@ -24,10 +26,11 @@ with `--path` publishes exact bytes through the native owner; without it, it
 still publishes the paired Desktop's own browser-held working copy through
 the bridge — the one door left in this domain.
 
-This split is visible in availability. The native file commands remain
-available without a Desktop, sidecar, or populated `PATH`; the working-copy
+This split is visible in availability. File operations need no Desktop;
+`inspect` and `run` require a compatible Network addon. Discovery checks only
+executable metadata and missing addons produce `network_engine_missing`. The working-copy
 and project commands are honestly unavailable in a build with no digest-pinned
-release catalog. No command in this domain calls a sidecar process.
+release catalog.
 
 These file commands provide native model creation, engineering reads/solves,
 revision-gated mutation and persistence. They do not make the paired model
@@ -332,9 +335,9 @@ judged at all.
 operation entry carries its parameters, its effect class, whether it is
 journaled, and its result type; each type entry carries its exact shape.
 
-Nothing is copied into this repository. The descriptors come from the engine
-compiled into this binary, so they cannot be stale relative to what it will
-actually do.
+The descriptors currently come from the engine compiled into this binary.
+The separately captured executable admits its own complete descriptor on each
+query; a Grid catalog transport is still required to migrate `describe` itself.
 
 The catalog is large, so it is tiered the same way `ds` tiers its own help:
 
@@ -373,8 +376,8 @@ and answer `--id` too. Write a batch from this, not from trial dry runs.
 
 ## Running native non-mutating operations
 
-`ds dsgrid run` executes the read, solve, and propose operations published by
-the native engine compiled into the CLI. It never admits journaled mutations,
+`ds dsgrid run` captures one compatible Network executable and transports one
+typed opaque-package query to its read, solve or proposal owner. It never admits journaled mutations,
 imports, or exports, and never writes the source `.dsgrid` package.
 
 Discover the exact operation and parameter contract before invoking it:
@@ -645,10 +648,10 @@ identity still reaches it without loading exchange planning.
 | Command | Owner |
 |---|---|
 | `create` | `ds_grid_exchange::create_blank_model` |
-| `inspect` | `ds_grid_exchange::dsgrid::inspect`, `package::unpack`, `ds_grid_model::GridModelSummary` |
+| `inspect` | Network `grid-manifest` and explicitly requested `grid-inspect`; host presentation only |
 | `validate` | `ds_grid_exchange::package::unpack`, `ds_grid_model::validate_snapshot` |
 | `describe` | `ds_grid_engine::{describe_commands, describe_operations, describe_projections, describe_types}` |
-| `run` | the operation selected from `ds_grid_engine::operation_descriptors` and its typed native engine API |
+| `run` | Network `grid-query`, its complete owning descriptor and typed result; host output bounds only |
 | `apply` | `ds_grid_engine::GridSession`, `ds_grid_exchange::dsgrid::emit` |
 | `model list/show/create-local/import-external/set-active` | `ds_command_kernel::local_models` over `ds_layer_store::local_models` (this machine's catalogue); `show` opens the package with `ds_grid_engine::GridSession` |
 | `structure describe/retype` | `ds_grid_engine::GridSession::apply_transaction_at_head` (`describe_structure`, `retype_structure`), `ds_grid_engine::evaluate_structure_type`, `ds_grid_exchange::dsgrid::emit`, `local_models::Op::Revise` |

@@ -18,8 +18,8 @@ question anyone actually has, which is almost always one of:
 
 ## The cost model
 
-This is the part worth understanding, because it is why calling `inspect`
-before anything else is free.
+Inspection serves an intentional model-identification request. Its default
+projection reads manifest facts without decoding the model's tables.
 
 A `.dsgrid` is a zip. Its `manifest.json` member already carries the model's
 identity, per-table row counts, per-table fingerprints, and a record for every
@@ -32,6 +32,12 @@ member. Reading it requires **no Arrow decode at all**.
 | `--include members` | manifest | no |
 | `--include library` | decoded snapshot | **yes** |
 | `--include extent` | decoded snapshot | **yes** |
+| `--include authored-revision` | decoded snapshot | **yes** |
+
+The host captures the Network addon once. Default, tables and members use its
+manifest-only operation; library, extent and authored revision share one additional
+decoded inspection. The CLI presents Network's supplied facts and preserves
+the original source bytes. Neither path contacts a service or acquires project data.
 
 The response reports which happened:
 

@@ -20,9 +20,8 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::GridSession;
-use ds_grid_model::GridModelSummary;
 
+use crate::native;
 use crate::package::{self, DEFAULT_LIMIT, parse_limit, table_token, take};
 use serde_json::{Map, Value, json};
 
@@ -32,6 +31,44 @@ const INCLUDE_CHOICES: &[&str] = &[
     "library",
     "extent",
     "authored-revision",
+];
+
+const COMMAND_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "model_not_found",
+        when: "the path does not exist or is not a file",
+        remedy: "check the path; --model takes a file, not a directory",
+    },
+    Refusal {
+        code: "model_too_large",
+        when: "the file is above the 512 MiB read bound",
+        remedy: "confirm the file is a .dsgrid package and not a disk image",
+    },
+    Refusal {
+        code: "not_a_dsgrid_package",
+        when: "the bytes are not a readable .dsgrid container",
+        remedy: "a .dsgrid is a zip containing manifest.json; convert other formats first",
+    },
+    Refusal {
+        code: "invalid_limit",
+        when: "--limit is not a whole number in 1..5000",
+        remedy: "pass a limit inside the range, or omit it for the default of 50",
+    },
+    Refusal {
+        code: "model_unreadable",
+        when: "the file exists but cannot be read",
+        remedy: "check file permissions",
+    },
+    Refusal {
+        code: "manifest_unreadable",
+        when: "the package manifest does not match this build's schema",
+        remedy: "rebuild the package with a matching ds-network release",
+    },
+    Refusal {
+        code: "package_decode_failed",
+        when: "--include library or extent was asked for and the tables would not decode",
+        remedy: "the package is damaged or carries a table schema this build does not decode; re-convert it from its PLS-CADD workspace",
+    },
 ];
 
 pub static COMMAND: Command = Command {
@@ -80,54 +117,18 @@ projections not requested and any collection that was truncated.",
             runnable: false,
         },
     ],
-    refusals: &[
-        Refusal {
-            code: "model_not_found",
-            when: "the path does not exist or is not a file",
-            remedy: "check the path; --model takes a file, not a directory",
-        },
-        Refusal {
-            code: "model_too_large",
-            when: "the file is above the 512 MiB read bound",
-            remedy: "confirm the file is a .dsgrid package and not a disk image",
-        },
-        Refusal {
-            code: "not_a_dsgrid_package",
-            when: "the bytes are not a readable .dsgrid container",
-            remedy: "a .dsgrid is a zip containing manifest.json; convert other formats first",
-        },
-        Refusal {
-            code: "invalid_limit",
-            when: "--limit is not a whole number in 1..5000",
-            remedy: "pass a limit inside the range, or omit it for the default of 50",
-        },
-        Refusal {
-            code: "model_unreadable",
-            when: "the file exists but cannot be read",
-            remedy: "check file permissions",
-        },
-        Refusal {
-            code: "manifest_unreadable",
-            when: "the package manifest does not match this build's schema",
-            remedy: "rebuild the package with a matching ds-network release",
-        },
-        Refusal {
-            code: "package_decode_failed",
-            when: "--include library or extent was asked for and the tables would not decode",
-            remedy: "the package is damaged or carries a table schema this build does not decode; re-convert it from its PLS-CADD workspace",
-        },
-    ],
+    refusals: &native::extend_refusals::<{ COMMAND_REFUSALS.len() + native::REFUSALS.len() }>(
+        COMMAND_REFUSALS,
+    ),
     reference: Some("docs/reference/dsgrid.inspect.md"),
     search: &[],
     requires: Requires::Server,
     availability: available,
 };
 
-/// Always available: the engine is linked into this binary, so there is
-/// nothing to discover, install or reach. Resolving this must stay free — the
-/// domain index calls it for every command.
+/// Discovery checks filesystem metadata only; it never starts a component.
 fn available() -> Availability {
-    Availability::Available
+    ds_network_client::available()
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -141,7 +142,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let bytes = package::read_bytes(raw_path)?;
     // The cheap read: manifest and member inventory, no table decode.
-    let manifest = package::read_manifest(raw_path, &bytes)?;
+    let scratch = native::scratch()?;
+    let client = native::capture()?;
+    let manifest_result = client
+        .grid_manifest(&bytes, scratch.path(), &|| false)
+        .map_err(native::map_failure)?
+        .result;
+    let manifest: ds_grid_exchange::package::PackageManifest =
+        serde_json::from_value(manifest_result.manifest)
+            .map_err(|error| Failure::failed("network_result_invalid", error.to_string()))?;
 
     let mut answer = Map::new();
     answer.insert("path".into(), json!(raw_path));
@@ -216,15 +225,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     {
         // The expensive read. Only reached because the caller named a
         // projection that cannot be answered from the manifest.
-        let package = package::decode(raw_path, &bytes)?;
+        let inspection = client
+            .grid_inspect(&bytes, scratch.path(), &|| false)
+            .map_err(native::map_failure)?
+            .result;
         decoded = true;
-        let summary = GridModelSummary::for_snapshot(&package.snapshot);
+        let summary = inspection.content_summary;
 
         if requested.contains(&"authored-revision") {
-            let session = GridSession::open(package.snapshot.clone());
             answer.insert(
                 "authored_revision".into(),
-                json!(session.current_revision().revision_id.as_str()),
+                json!(inspection.source.expected_revision),
             );
         }
 

@@ -10,6 +10,8 @@ publish.workspace = true
 
 [dependencies]
 ds-cli-contract = { workspace = true }
+ds-network-contracts = { workspace = true }
+ds-network-client = { workspace = true }
 # A DS Grid model held locally by the running application is a live session,
 # not a file: the application owns which one occupies Profile, and it alone
 # can publish a revision under the identity it already holds. That family is
