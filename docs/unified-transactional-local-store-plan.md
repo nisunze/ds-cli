@@ -307,6 +307,24 @@ engine or silent IndexedDB/memory fallback. Declare minimum SQLite SQL features,
 extensions, schema compatibility and host capabilities in the release manifest.
 Native and browser bindings need not be identical; query/transition fixtures do.
 
+The official SQLite 3.54.0 WebAssembly and JavaScript release archive is
+711.72 KiB, and the current canonical `sqlite3.wasm` artifact is 679,587 bytes.
+Budget approximately 0.8-1.5 MiB of packaged application growth for the engine,
+worker/VFS scripts and the first typed DS adapter, then measure the actual
+compressed transfer, compile latency, instantiated heap, page cache and query
+peaks in the supported browser and installed WebView. OPFS database bytes are
+separate retained product data, not application bundle size. Pin the exact
+SQLite release and build receipt; do not substitute a CDN at runtime.
+
+Introducing SQLite-WASM creates a physical WASM artifact even when Kernel owns
+the transaction policy. The current Network boundary contract names exactly
+three browser WASM units. Implementation must amend that contract explicitly
+rather than hide SQLite inside the count or force it into the Kernel binary.
+The proposed steady baseline is three DS logic units plus one commodity storage
+runtime: permanently available Kernel, Interactions and SQLite, with Network
+loaded only for engineering intent. Ordinary storage and UI activity still
+causes zero Network loads.
+
 The browser database has one admitted worker writer/broker per fenced database.
 Tabs and windows submit commands to it instead of opening competing writers.
 Use an explicit browser capability/lease ownership protocol with generation
@@ -468,6 +486,63 @@ geometry policy, UI hit testing, engineering calculations or release proof.
 Do not start macOS packaging or add GDAL to browser startup as part of this
 storage plan.
 
+### Optional heavy compute placement and lifetime
+
+The existing browser transformer path is the precedent: a deliberate LV
+processing request loads Network and invokes its owning
+`process_lv_transformers_chunked` WASM operation. It is local browser compute,
+not a second Brain engineering implementation. The current worker's
+`solar-snapshot` and `report-command` branches call Kernel projections; their
+presence does not prove that the full Solar or Reporter compute engines already
+run in the browser.
+
+Keep full Solar and Reporter computation native in their standalone executables
+for Desktop and Server by default. This suits their heavier memory, artifact and
+packaging workloads and the expected affinity of power users for Desktop. A
+cloud-native browser should not download either engine during startup, map use,
+synchronization or ordinary result viewing. It can consume already retained or
+published results without loading the producing engine.
+
+A later browser Solar or Reporter WASM build is justified only if one compiled
+Rust owner can serve browser and native consumers and the slice deletes a
+meaningful duplicate calculation/orchestration implementation from ds-brain or
+another host. Brain continues to own authentication, authorization, cloud
+admission, durable receipts, project publication and artifact access. It does
+not need to retain a second calculation merely because a browser is a possible
+host. Conversely, adding WASM while keeping both compute paths indefinitely is
+not simplification.
+
+Every optional heavy engine uses an explicit lifecycle:
+
+1. `absent`: no module request, compilation or engine heap;
+2. `loading`: initiated by processing intent or a narrowly defined deliberate
+   imminence signal, with exact engine/build identity;
+3. `active`: bounded captured inputs, cancellation and progress;
+4. `warm`: retain the initialized engine for nearby repeated work when measured
+   memory permits;
+5. `terminated`: release the worker and linear memory after an idle bound,
+   memory pressure, logout/scope retirement, explicit disable or fatal trap.
+
+Committed inputs, receipts and results live in SQLite/OPFS or the owning
+immutable artifact store, never only in a warm engine heap. Recreating a worker
+must reproduce the same result from captured inputs. The UI may expose a clear
+Desktop-preferred route or an explicit browser-engine download for heavy work;
+it must not silently fall back to an unversioned cloud calculator.
+
+Before admitting a browser heavy engine, measure its compressed and installed
+bytes, cold compilation, peak linear memory, transfer copies, warm reuse,
+termination recovery and low-memory refusal. Prove module-request counts with a
+positive detector: ordinary startup/open/edit/sync requests SQLite as designed
+and requests no Network, Solar or Reporter engine; each deliberate processing
+entry point requests only its named engine. Full application startup proof is
+separate from an isolated adapter test.
+
+This creates two valid product placements rather than an automatic browser
+port: Desktop/native remains the primary heavy-processing environment; browser
+WASM is admitted where it removes more Brain/host code and operational surface
+than its bundle, worker and compatibility costs add. Transformer Network
+processing already demonstrates the single local compiled-owner direction.
+
 ### Polars and DuckDB policy
 
 Do not declare Polars categorically defective, and do not preserve it by
@@ -513,13 +588,12 @@ polars-arrow elsewhere is not removal of the Polars dependency closure.
 
 DuckDB is an embedded analytical engine optimized for bulk operations. It is not
 the synchronization database and does not replace SQLite's transaction role.
-Its standard browser distribution brings a worker, a WASM engine and optional
-extensions. Do not add standalone DuckDB-WASM as a fourth browser engine. The
-browser target remains Kernel, Interactions and lazily loaded Network. If a
-future browser analytical need is admitted, it must fit an existing owning
-engine boundary or explicitly revise that architecture with bundle/load proof.
-Ordinary opening, editing, movement, selection and synchronization must not load
-an analytical or engineering engine.
+Its standard browser distribution brings another worker, WASM engine and
+optional extensions. Do not add DuckDB-WASM to the browser baseline. A future
+browser analytical need must fit an already admitted owning heavy-engine
+boundary or explicitly revise the architecture with deletion, bundle and load
+proof. Ordinary opening, editing, movement, selection and synchronization must
+not load an analytical or engineering engine.
 
 Any DuckDB or Spatial extensions used in a release are pinned, captured and
 served from the installed release. Runtime extension downloads, CDNs and hidden
@@ -621,6 +695,10 @@ New shared cases must exercise:
    read-only schema refusal; offline retained inputs with zero incidental IO.
 10. Content blob survives migration/export/import, digest and byte readback agree,
     unresolved/pinned/pending data survives cleanup, and obsolete writers are gone.
+11. Browser request instrumentation proves the SQLite bootstrap separately from
+    optional engines: ordinary open/edit/sync causes zero Network/Solar/Reporter
+    loads; named processing produces one request, warm reuse produces no second
+    request, termination releases the worker and restart reproduces the result.
 
 Completion is the real consumer and installed release passing these gates, not
 a native helper test, a build, a schema-only port or the existence of this plan.
