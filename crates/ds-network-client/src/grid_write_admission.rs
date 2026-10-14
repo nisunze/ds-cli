@@ -27,7 +27,7 @@ impl CapturedNetworkClient {
             cancel,
             "admission.json",
             GRID_WRITE_ADMISSION_RESULT_SCHEMA_V1,
-            MAX_GRID_WRITE_ADMISSION_BYTES,
+            MAX_GRID_WRITE_ADMISSION_RESULT_BYTES,
             None,
             false,
         )?;

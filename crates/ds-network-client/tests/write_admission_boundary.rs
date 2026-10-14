@@ -44,25 +44,34 @@ fn captured_guard_fences_source_refusal_and_cleanup() {
             .owner_code(),
         Some("stale_revision")
     );
-    let protected = fs::read(root.join("protected.dsgrid")).unwrap();
-    let expected: serde_json::Value =
-        serde_json::from_slice(&fs::read(root.join("protected-delete.json")).unwrap()).unwrap();
-    let outcome = captured
-        .grid_write_admission(&crate::request(&protected), &protected, &scratch, &|| false)
-        .unwrap();
-    match outcome.result.verdict {
-        NativeGridWriteAdmissionVerdictV1::Denied { code, message } => {
-            assert_eq!(code, "composite_model_protected");
-            assert_eq!(message, expected["message"].as_str().unwrap());
+    for prefix in ["protected", "long-protected"] {
+        let protected = fs::read(root.join(format!("{prefix}.dsgrid"))).unwrap();
+        let expected: serde_json::Value =
+            serde_json::from_slice(&fs::read(root.join(format!("{prefix}-delete.json"))).unwrap())
+                .unwrap();
+        let outcome = captured
+            .grid_write_admission(&crate::request(&protected), &protected, &scratch, &|| false)
+            .unwrap();
+        if prefix == "long-protected" {
+            assert!(outcome.bytes.len() > MAX_GRID_WRITE_ADMISSION_BYTES);
         }
-        NativeGridWriteAdmissionVerdictV1::Admitted => panic!("protected model admitted"),
+        match outcome.result.verdict {
+            NativeGridWriteAdmissionVerdictV1::Denied { code, message } => {
+                assert_eq!(code, "composite_model_protected");
+                assert_eq!(message, expected["message"].as_str().unwrap());
+            }
+            NativeGridWriteAdmissionVerdictV1::Admitted => panic!("protected model admitted"),
+        }
+        assert_eq!(
+            fs::read(root.join(format!("{prefix}.dsgrid"))).unwrap(),
+            protected
+        );
     }
     assert!(captured
         .grid_write_admission(&crate::request(&ordinary), &ordinary, &scratch, &|| true)
         .is_err());
     assert_eq!(fs::read_dir(&scratch).unwrap().count(), 0);
     assert_eq!(fs::read(root.join("ordinary.dsgrid")).unwrap(), ordinary);
-    assert_eq!(fs::read(root.join("protected.dsgrid")).unwrap(), protected);
 }
 
 #[test]
