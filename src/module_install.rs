@@ -168,6 +168,7 @@ pub fn validate_engine_identity(receipt: &InstalledModule) -> Result<(), String>
             || v["profile"] != "release"
             || v["target"] != platform_target(&receipt.platform)?
             || !hex(field(v, "cargo_lock_sha256")?, 64)
+            || field(v, "rustc")?.is_empty()
             || field(v, "rustc")?.len() > 4096
         {
             return Err("module_engine_incompatible: unqualified module build or target".into());

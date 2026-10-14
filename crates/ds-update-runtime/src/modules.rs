@@ -820,6 +820,14 @@ mod tests {
             assert!(store.selected_executable(&|| false).unwrap().is_none());
             let (one, bytes) = fixture(component, 1);
             let first = stage(&store, one, &bytes);
+            let mut incomplete = first.installed.clone();
+            let compiler = if component == ModuleComponent::Network {
+                &mut incomplete.engine_identity["build"]["rustc"]
+            } else {
+                &mut incomplete.engine_identity["rustc"]
+            };
+            *compiler = json!("");
+            assert!(module_install::validate_engine_identity(&incomplete).is_err());
             assert!(store.selection().unwrap().is_none());
             let first_selection = store
                 .activate(&first, ActivationGuard::default(), &|| false)
