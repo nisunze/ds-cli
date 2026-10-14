@@ -75,7 +75,7 @@ pub const REVISION_CONFLICT: Refusal = Refusal {
 /// Every refusal these commands can return: the kernel's closed vocabulary
 /// plus this host's one IO failure. Composed, so a new kernel refusal is
 /// documented the moment it exists.
-pub const REFUSALS: &[Refusal] = &[
+const BASE_REFUSALS: &[Refusal] = &[
     crate::package::PROTECTED_MODEL,
     UNKNOWN_MODEL,
     NAME_TAKEN,
@@ -84,6 +84,9 @@ pub const REFUSALS: &[Refusal] = &[
     SCOPE_MISMATCH,
     STORE_UNAVAILABLE,
 ];
+pub const REFUSALS: &[Refusal] = &crate::native::extend_refusals::<
+    { BASE_REFUSALS.len() + crate::native::REFUSALS.len() },
+>(BASE_REFUSALS);
 
 /// Which catalogue this invocation is about.
 pub fn scope(inputs: &Inputs) -> Result<Scope, Failure> {
@@ -145,7 +148,31 @@ pub fn execute(inputs: &Inputs, op: Op, package: Option<&[u8]>) -> Result<Outcom
 
 /// Apply one operation to a catalogue already located by [`locate`].
 pub fn execute_in(scope: &Scope, op: Op, package: Option<&[u8]>) -> Result<Outcome, Failure> {
+    execute_in_with_client(scope, op, package, None)
+}
+
+/// Creation already captures its owner. Catalogue guards reuse that handle;
+/// other mutations capture lazily only if an opaque package requires admission.
+pub(crate) fn execute_in_with_client(
+    scope: &Scope,
+    op: Op,
+    package: Option<&[u8]>,
+    client: Option<&ds_network_client::CapturedNetworkClient>,
+) -> Result<Outcome, Failure> {
     let root = root()?;
+    let mut captured = None;
+    let mut guard = |path: &str, bytes: &[u8], operation: &str| {
+        let client = match client {
+            Some(client) => client,
+            None => {
+                if captured.is_none() {
+                    captured = Some(crate::native::capture()?);
+                }
+                captured.as_ref().expect("captured above")
+            }
+        };
+        crate::package::authorize_write_bytes(client, path, bytes, operation)
+    };
     let guarded = match &op {
         // Acquiring a verified project revision is a read view, not model creation.
         Op::Register {
@@ -174,18 +201,16 @@ pub fn execute_in(scope: &Scope, op: Op, package: Option<&[u8]>) -> Result<Outco
             // ordinary payloads. Decode engineering only for a combined identity.
             if crate::package::read_manifest(&path.to_string_lossy(), &bytes).is_ok_and(
                 |manifest| {
-                    ds_grid_engine::composite::is_combined_identity(
+                    ds_network_contracts::grid::is_combined_identity(
                         manifest.model.model_id.as_str(),
                     )
                 },
             ) {
-                let opened = crate::package::decode(&path.to_string_lossy(), &bytes)?;
-                crate::package::authorize_write(&opened, operation)?;
+                guard(&path.to_string_lossy(), &bytes, operation)?;
             }
         }
         if let Some(bytes) = package {
-            let opened = crate::package::decode("working copy", bytes)?;
-            crate::package::authorize_write(&opened, operation)?;
+            guard("working copy", bytes, operation)?;
         }
     }
     ds_layer_store::local_models::execute_at(&root, scope, op, package).map_err(refuse)

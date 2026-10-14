@@ -66,6 +66,44 @@ pub fn authorize_write(package: &GridPackage, operation: &str) -> Result<(), Fai
     )
 }
 
+/// Opaque byte guard for the local catalogue. Reuse the operation's captured
+/// executable; decoding and protected-package policy remain in Network.
+pub(crate) fn authorize_write_bytes(
+    client: &ds_network_client::CapturedNetworkClient,
+    raw_path: &str,
+    bytes: &[u8],
+    operation: &str,
+) -> Result<(), Failure> {
+    use ds_network_contracts::{grid::NativeGridQuerySourcePin, grid_write_admission::*};
+    use sha2::{Digest, Sha256};
+    let request = NativeGridWriteAdmissionRequestV1 {
+        schema: GRID_WRITE_ADMISSION_SCHEMA_V1.into(),
+        source: NativeGridQuerySourcePin {
+            package_sha256: format!("{:x}", Sha256::digest(bytes)),
+            expected_revision: None,
+            engineering_input_root: None,
+        },
+        operation: operation.into(),
+    };
+    let scratch = crate::native::scratch()?;
+    client
+        .grid_write_admission(&request, bytes, scratch.path(), &|| false)
+        .map_err(|error| {
+            if error.owner_code() == Some("package_refused") {
+                Failure::failed("package_decode_failed", format!("`{raw_path}` did not decode"))
+                    .remedy("the canonical reader accepts current schema only; retain the original and use `ds dsgrid package migrate --path <source> --expected-source-sha256 <capture> --dry-run`, then open the saved current package")
+                    .detail(json!({ "detail": error.to_string() }))
+            } else {
+                crate::native::map_failure(error)
+            }
+        })
+        .and_then(|outcome| match outcome.result.verdict {
+            NativeGridWriteAdmissionVerdictV1::Admitted => Ok(()),
+            NativeGridWriteAdmissionVerdictV1::Denied { message, .. } =>
+                Err(Failure::invalid("composite_model_protected", message).remedy(PROTECTED_MODEL.remedy)),
+        })
+}
+
 /// The refusals every command in this domain shares. Declared here as data so
 /// a command can splice them into its own list rather than restating them —
 /// a restatement is a second description, and those drift.

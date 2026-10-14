@@ -78,9 +78,7 @@ nothing governed: publishing a revision is `ds dsgrid publish-version`.",
         note: "Read .data.model; the new model is already the active one.",
         runnable: false,
     }],
-    refusals: &crate::native::extend_refusals::<
-        { CREATE_REFUSALS.len() + crate::native::REFUSALS.len() },
-    >(CREATE_REFUSALS),
+    refusals: CREATE_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &[],
     requires: Requires::Server,
@@ -95,7 +93,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         standards_sha256: None,
     };
     let scratch = crate::native::scratch()?;
-    let model = crate::native::capture()?
+    let client = crate::native::capture()?;
+    let model = client
         .grid_create(&request, None, scratch.path(), &|| false)
         .map_err(|error| {
             // Preserve this command's existing blank-authoring refusal projection.
@@ -114,8 +113,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .filter(|value| !value.is_empty())
         .map_or_else(|| format!("Local model {id}"), str::to_owned);
 
-    let outcome = workspace::execute(
-        inputs,
+    let outcome = workspace::execute_in_with_client(
+        &workspace::scope(inputs)?,
         Op::Register {
             id: id.clone(),
             display_name: name,
@@ -131,6 +130,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             activate: true,
         },
         Some(&model.model),
+        Some(&client),
     )?;
     let created = outcome
         .model
