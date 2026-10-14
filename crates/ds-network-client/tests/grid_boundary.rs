@@ -89,6 +89,19 @@ fn isolated_grid_real_owner() {
         manifest.bytes,
         fs::read(goldens.join("manifest/manifest.json")).unwrap()
     );
+    let inspection = captured
+        .grid_inspect(&model, scratch.path(), &|| false)
+        .unwrap();
+    assert_eq!(inspection.result.model_schema, 5);
+    assert_eq!(
+        inspection.result.source.expected_revision,
+        result.result.source.expected_revision
+    );
+    assert_eq!(inspection.result.source.package_sha256, sha(&model));
+    assert_eq!(
+        inspection.bytes,
+        fs::read(goldens.join("inspection/inspection.json")).unwrap()
+    );
     let publication = NativeGridPublicationRequestV1 {
         schema: NATIVE_GRID_PUBLICATION_SCHEMA_V1.into(),
         source: query.source.clone(),
@@ -176,6 +189,11 @@ fn acceptance_grid_receiver_rejects_unbound_corrupt_and_cancelled_results() {
         ("changed-input", "network_input_changed"),
         ("cancelled", "callee_cancelled"),
         ("missing-capability", "network_engine_incompatible"),
+        ("wrong-progress-input", "network_result_invalid"),
+        (
+            "inspection-missing-capability",
+            "network_engine_incompatible",
+        ),
         ("malformed-refusal", "network_refusal_invalid"),
         ("structured-refusal", "network_engine_refused"),
         ("publication-package-revision", "success"),
@@ -235,6 +253,10 @@ fn isolated_grid_adversarial_owner() {
         );
         assert_eq!(expected, "success");
         return;
+    } else if mode.starts_with("inspection-") {
+        captured
+            .grid_inspect(&model, scratch.path(), &|| false)
+            .unwrap_err()
     } else if mode.starts_with("manifest-") {
         captured
             .grid_manifest(&model, scratch.path(), &|| false)

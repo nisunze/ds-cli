@@ -2,6 +2,7 @@
 use super::*;
 use ds_network_contracts::grid::*;
 use serde::de::DeserializeOwned;
+type ProgressObserver<'a> = &'a dyn Fn(&str);
 
 #[derive(Debug)]
 pub struct GridOutcome<T> {
@@ -16,12 +17,59 @@ pub struct GridOutcome<T> {
 }
 
 impl CapturedNetworkClient {
+    pub fn grid_inspect(
+        &self,
+        model: &[u8],
+        scratch: &Path,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<GridOutcome<NativeGridInspectionV1>, NetworkFailure> {
+        let outcome = self.grid_artifact::<NativeGridInspectionV1>(
+            "grid-inspect",
+            NetworkCapability::GridInspectV1,
+            None,
+            model,
+            scratch,
+            cancel,
+            "inspection.json",
+            "ds.grid.native-inspection/v1",
+            MAX_NATIVE_GRID_REQUEST_BYTES,
+            None,
+        )?;
+        validate_source(
+            &outcome.result.source,
+            &NativeGridQuerySourcePin {
+                package_sha256: digest_bytes(model),
+                expected_revision: None,
+                engineering_input_root: None,
+            },
+            model,
+        )?;
+        if outcome.result.schema != "ds.grid.native-inspection/v1"
+            || outcome.result.model_schema == 0
+        {
+            return Err(invalid_result("inspection has an incompatible schema"));
+        }
+        Ok(outcome)
+    }
+
     pub fn grid_query(
         &self,
         request: &NativeGridQueryRequestV1,
         model: &[u8],
         scratch: &Path,
         cancel: &dyn Fn() -> bool,
+    ) -> Result<GridOutcome<NativeGridQueryResultV1>, NetworkFailure> {
+        self.grid_query_observed(request, model, scratch, cancel, &|_| {})
+    }
+
+    /// Forward the owner's validated progress frames during execution.
+    pub fn grid_query_observed(
+        &self,
+        request: &NativeGridQueryRequestV1,
+        model: &[u8],
+        scratch: &Path,
+        cancel: &dyn Fn() -> bool,
+        progress: &dyn Fn(&str),
     ) -> Result<GridOutcome<NativeGridQueryResultV1>, NetworkFailure> {
         let input = encode(request, MAX_NATIVE_GRID_QUERY_REQUEST_BYTES)?;
         let outcome = self.grid_artifact::<NativeGridQueryResultV1>(
@@ -34,6 +82,7 @@ impl CapturedNetworkClient {
             "query.json",
             NATIVE_GRID_QUERY_RESULT_SCHEMA_V1,
             MAX_NATIVE_GRID_REPORT_BYTES,
+            Some(progress),
         )?;
         let result = &outcome.result;
         validate_source(&result.source, &request.source, model)?;
@@ -68,6 +117,7 @@ impl CapturedNetworkClient {
             "manifest.json",
             NATIVE_GRID_MANIFEST_SCHEMA_V1,
             MAX_NATIVE_GRID_MANIFEST_BYTES,
+            None,
         )?;
         if outcome.result.schema != NATIVE_GRID_MANIFEST_SCHEMA_V1
             || outcome.result.package_sha256 != digest_bytes(model)
@@ -98,6 +148,7 @@ impl CapturedNetworkClient {
             "publication.json",
             NATIVE_GRID_PUBLICATION_RESULT_SCHEMA_V1,
             MAX_NATIVE_GRID_REPORT_BYTES,
+            None,
         )?;
         let result = &outcome.result;
         validate_source(&result.source, &request.source, model)?;
@@ -130,6 +181,7 @@ impl CapturedNetworkClient {
         artifact_name: &'static str,
         artifact_schema: &'static str,
         maximum: usize,
+        progress: Option<ProgressObserver<'_>>,
     ) -> Result<GridOutcome<T>, NetworkFailure> {
         if !self.identity.capabilities.contains(&capability) {
             return Err(NetworkFailure::new(
@@ -180,9 +232,40 @@ impl CapturedNetworkClient {
             args.extend(["--request".into(), request_path.as_os_str().to_owned()]);
         }
         let input_sha256 = digest_bytes(request.unwrap_or(model));
+        let pending = std::cell::RefCell::new(Vec::<u8>::new());
+        let invalid_progress = std::cell::Cell::new(false);
+        let observe = |chunk: &[u8]| {
+            let Some(progress) = progress else { return };
+            let mut pending = pending.borrow_mut();
+            pending.extend_from_slice(chunk);
+            while let Some(end) = pending.iter().position(|byte| *byte == b'\n') {
+                let bytes = pending.drain(..=end).collect::<Vec<_>>();
+                if bytes.len() > 64 * 1024 {
+                    invalid_progress.set(true);
+                    continue;
+                }
+                let line = std::str::from_utf8(&bytes);
+                let event = line
+                    .ok()
+                    .and_then(|line| serde_json::from_str::<serde_json::Value>(line).ok());
+                if event.as_ref().is_some_and(|event| {
+                    event["schema"] == "ds.network.grid-progress/v1"
+                        && event["input_sha256"] == input_sha256
+                        && event["progress"].is_object()
+                }) {
+                    progress(line.expect("validated UTF-8"));
+                } else {
+                    invalid_progress.set(true);
+                }
+            }
+            if pending.len() > 64 * 1024 {
+                pending.clear();
+                invalid_progress.set(true);
+            }
+        };
         let completed = self
             .engine
-            .call_cancelled(task, &args, TASK_TIMEOUT, width, cancel)
+            .call_cancelled_observed(task, &args, TASK_TIMEOUT, width, cancel, &observe)
             .map_err(|e| NetworkFailure::new(static_code(e.code()), e.to_string()))?;
         if completed.truncated || completed.stdout.len() > MAX_IDENTITY_BYTES {
             return Err(NetworkFailure::new(
@@ -192,6 +275,12 @@ impl CapturedNetworkClient {
         }
         if !completed.succeeded() {
             return Err(read_refusal(&completed.stdout, &self.identity)?);
+        }
+        if progress.is_some() && (invalid_progress.get() || !pending.borrow().is_empty()) {
+            return Err(NetworkFailure::new(
+                "network_result_invalid",
+                "Grid progress did not match the captured request",
+            ));
         }
         let receipt: NetworkReceiptV1 = serde_json::from_str(&completed.stdout)
             .map_err(|e| NetworkFailure::new("network_receipt_invalid", e.to_string()))?;
