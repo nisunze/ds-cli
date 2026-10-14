@@ -1,5 +1,25 @@
 # Native server
 
+## Native addon staging and retained selection
+
+`ds server module-stage` stages one exact published Solar, Reporter or Network
+asset through the shared native updater. Discover its complete declaration with
+`ds capabilities server.module-stage --output json`. Name the component, exact
+stable/canary channel and selected asset's lowercase SHA-256; `--yes` confirms
+the machine write. The packaged production native profile supplies release
+authority. Held metadata, development catalogs, URLs and paths cannot supply it.
+One intentional catalog read precedes bounded verified transfer and one fixed
+identity probe. The result is a private native ready receipt, with no activation,
+selection change, application exit or project acquisition.
+
+`ds server module-selection` reads the requested component and lane's retained
+active/previous receipts locally. It creates no store, changes no permissions,
+reads no authority and launches no executable. Absence returns null. Recorded
+selection does not establish fresh executable availability. CLI and MCP use the
+same declared effects; staging needs MCP `confirm: true`, while selection is
+read-only. Activation and rollback await a headless binding to the owning native
+session observations.
+
 `ds server engine --output json` inspects the Solar engine linked into this
 executable, without login, a running server or network access. Release builds
 return the owner's `ds.engine-build/v1` identity. The release publisher registers

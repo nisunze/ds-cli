@@ -7,6 +7,7 @@ publish.workspace = true
 ds-report-artifacts = { path = "../../../ds-command-kernel/crates/ds-report-artifacts" }
 ds-cli-contract.workspace = true
 ds-cli-exec.workspace = true
+ds-update-runtime = { path = "../../../ds-command-kernel/crates/ds-update-runtime" }
 ds-solar-process = { path = "../../../ds-solar/crates/ds-solar-process" }
 ds-cli-auth.workspace = true
 ds-design-workspace.workspace = true

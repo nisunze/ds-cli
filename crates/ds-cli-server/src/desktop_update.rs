@@ -10,7 +10,7 @@ pub static INSPECT: Command = Command {
     id: "server.update-inspect",
     path: &["server", "update-inspect"],
     contract: 1,
-    summary: "Inspect main application or module update identity without changing installation.",
+    summary: "Inspect shell or module update identity without installation changes.",
     purpose: "Read bounded held release and installed identity JSON. The Kernel admits exact component/lane/platform metadata, projects recorded Version, Build number and Release date, and decides main application update availability. Missing installed publication fields stay null. Build time is never a release date. This grants no module installation trust and performs no network, download, process launch or activation.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,

@@ -1,6 +1,7 @@
 //! Thin command/HTTP host for the shared native compute runtime.
 mod auth;
 pub mod desktop_update;
+pub mod module_updates;
 pub mod modules;
 // The HTTP host and the layer binding are reachable from an integration test
 // so the isolation proof can stand up a real owner-only socket over a fixture
@@ -882,6 +883,8 @@ pub static DOMAIN: Domain = Domain {
         &ENGINE,
         &modules::INVENTORY,
         &modules::RELEASE,
+        &module_updates::STAGE,
+        &module_updates::SELECTION,
         &desktop_update::INSPECT,
         &SERVE,
         &SUBMIT,

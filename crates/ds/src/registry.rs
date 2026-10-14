@@ -3700,6 +3700,16 @@ static MCP_ENTRIES: &[Entry] = &[
 
 static SERVER_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_server::module_updates::STAGE,
+        handler: ds_cli_server::module_updates::stage,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::module_updates::SELECTION,
+        handler: ds_cli_server::module_updates::selection,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::desktop_update::INSPECT,
         handler: ds_cli_server::desktop_update::inspect,
         render: ds_cli_server::render,
