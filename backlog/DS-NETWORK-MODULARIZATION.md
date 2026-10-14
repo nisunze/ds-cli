@@ -210,6 +210,23 @@ An active job/session keeps its captured executable path and digest. Never overw
 
 Use event-driven completion/update/wake signals and kernel deadlines. Do not add periodic queue scans, per-component tray owners or retry timers that reinterpret authority. Component unavailability and reactivation must remain scoped by account/install/lane/project. Explicit component check/navigation/push-driven update behavior reuses the existing release contract.
 
+### 7.4 Remaining CLI managed-admission edges
+
+CLI `crates/ds-cli-dsgrid/src/native.rs::capture` still calls the unmanaged
+`CapturedNetworkClient::capture`. Activating a retained addon therefore does
+not redirect Grid consumers using that helper. Adapt this shared host admission
+boundary to the existing installed release lane and `capture_for_lane`, retaining
+explicit local development selection. Preserve the completed `dsgrid.validate`
+and `dsgrid.model.show` result transformations.
+
+Also migrate unmanaged Network admission in CLI
+`ds-cli-design/src/lv/process.rs`, `lv/project_save.rs`, `autoprocess.rs` and
+`ds-cli-dsgrid/src/describe.rs`, including raw LV availability discovery. Prove
+installed CLI/MCP selection with no development override, lane isolation,
+corrupt-selection refusal before spawn and retained execution across activation.
+Desktop native LV and durable compute already capture the named lane; do not
+globally reinterpret the unmanaged capture API or inject process-wide overrides.
+
 ## 8. Browser WASM lifecycle and package boundaries
 
 **Owner refinement, 2026-10-14:** the browser has no fixed WASM-unit count.
