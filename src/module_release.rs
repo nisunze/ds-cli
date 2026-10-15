@@ -11,6 +11,8 @@ use serde_json::Value;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use url::Url;
 
+pub mod browser;
+
 pub const MODULE_RELEASE_SCHEMA: &str = "ds.module-release/v1";
 pub const MODULE_PROTOCOL: &str = "ds.module/v1";
 pub const NETWORK_PROTOCOL: &str = "ds.network-engine/v1";
@@ -185,43 +187,45 @@ fn bounded_shape(value: &Value) -> bool {
     if assets.is_empty() || assets.len() > 2 {
         return false;
     }
-    assets.iter().all(|asset| {
-        if !bounded_fields(
-            asset,
-            &[
-                "platform",
-                "arch",
-                "kind",
-                "protocol",
-                "url",
-                "size_bytes",
-                "sha256",
-                "source_sha",
-                "built_at",
-                "source_revisions",
-                "engines",
-            ],
-            2048,
-        ) {
-            return false;
-        }
-        let Some(revisions) = asset.get("source_revisions").and_then(Value::as_object) else {
-            return false;
-        };
-        if revisions.is_empty()
-            || revisions.len() > 16
-            || revisions.iter().any(|(key, value)| {
-                key.len() > 64 || value.as_str().is_none_or(|text| text.len() != 40)
-            })
-        {
-            return false;
-        }
-        let Some(engines) = asset.get("engines").and_then(Value::as_array) else {
-            return false;
-        };
-        engines.len() == 1
-            && bounded_fields(&engines[0], &["engine", "release", "manifest_sha256"], 200)
-    })
+    assets.iter().all(bounded_asset_shape)
+}
+
+fn bounded_asset_shape(asset: &Value) -> bool {
+    if !bounded_fields(
+        asset,
+        &[
+            "platform",
+            "arch",
+            "kind",
+            "protocol",
+            "url",
+            "size_bytes",
+            "sha256",
+            "source_sha",
+            "built_at",
+            "source_revisions",
+            "engines",
+        ],
+        2048,
+    ) {
+        return false;
+    }
+    let Some(revisions) = asset.get("source_revisions").and_then(Value::as_object) else {
+        return false;
+    };
+    if revisions.is_empty()
+        || revisions.len() > 16
+        || revisions.iter().any(|(key, value)| {
+            key.len() > 64 || value.as_str().is_none_or(|text| text.len() != 40)
+        })
+    {
+        return false;
+    }
+    let Some(engines) = asset.get("engines").and_then(Value::as_array) else {
+        return false;
+    };
+    engines.len() == 1
+        && bounded_fields(&engines[0], &["engine", "release", "manifest_sha256"], 200)
 }
 
 /// Admit one held catalog for exactly the requested component and lane.
@@ -288,8 +292,6 @@ pub fn validate_module_release(
             "Module release version, timestamp or governance status is invalid",
         );
     }
-    let repository_pattern = Regex::new(r"^ds-[a-z][a-z0-9-]{0,60}$").unwrap();
-    let engine_release_pattern = Regex::new(r"^[A-Za-z0-9][A-Za-z0-9.+_@-]{0,199}$").unwrap();
     let mut platforms = Vec::with_capacity(2);
     for asset in &release.assets {
         if !matches!(asset.platform.as_str(), "linux" | "windows")
@@ -310,26 +312,7 @@ pub fn validate_module_release(
                 "Module asset size and SHA-256 must be exact",
             );
         }
-        let engine = &asset.engines[0];
-        if !hex(&asset.source_sha, 40)
-            || asset
-                .source_revisions
-                .get(component.engine_owner())
-                .map(String::as_str)
-                != Some(asset.source_sha.as_str())
-            || asset.source_revisions.iter().any(|(repository, revision)| {
-                !repository_pattern.is_match(repository) || !hex(revision, 40)
-            })
-            || OffsetDateTime::parse(&asset.built_at, &Rfc3339).is_err()
-            || engine.engine != component.engine_owner()
-            || !engine_release_pattern.is_match(&engine.release)
-            || !hex(&engine.manifest_sha256, 64)
-        {
-            return fail(
-                "module_release_provenance_invalid",
-                "Module asset lacks its exact producer closure and engine identity",
-            );
-        }
+        validate_asset_provenance(component, asset)?;
         let Ok(url) = Url::parse(&asset.url) else {
             return fail("module_release_url_invalid", "Module asset URL is invalid");
         };
@@ -366,6 +349,40 @@ pub fn validate_module_release(
         }
     }
     Ok(release)
+}
+
+fn validate_asset_provenance(
+    component: ModuleComponent,
+    asset: &ModuleReleaseAsset,
+) -> Result<(), ModuleReleaseError> {
+    let repository_pattern = Regex::new(r"^ds-[a-z][a-z0-9-]{0,60}$").unwrap();
+    let engine_release_pattern = Regex::new(r"^[A-Za-z0-9][A-Za-z0-9.+_@-]{0,199}$").unwrap();
+    let [engine] = asset.engines.as_slice() else {
+        return fail(
+            "module_release_provenance_invalid",
+            "Exactly one producer identity is required",
+        );
+    };
+    if !hex(&asset.source_sha, 40)
+        || asset
+            .source_revisions
+            .get(component.engine_owner())
+            .map(String::as_str)
+            != Some(asset.source_sha.as_str())
+        || asset.source_revisions.iter().any(|(repository, revision)| {
+            !repository_pattern.is_match(repository) || !hex(revision, 40)
+        })
+        || OffsetDateTime::parse(&asset.built_at, &Rfc3339).is_err()
+        || engine.engine != component.engine_owner()
+        || !engine_release_pattern.is_match(&engine.release)
+        || !hex(&engine.manifest_sha256, 64)
+    {
+        return fail(
+            "module_release_provenance_invalid",
+            "Module asset lacks its exact producer closure and engine identity",
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]

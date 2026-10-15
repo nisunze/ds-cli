@@ -172,3 +172,39 @@ current generation must match under the same component lock. Rollback without
 a retained previous unit refuses `module_rollback_unavailable`. No lifecycle
 operation downloads, reads a release catalogue, launches an engine or requires
 Desktop. Installed acceptance remains distinct from source and fixture proof.
+
+## Browser Network unit decisions
+
+`module_release::browser` owns the closed `browserModule` WASM wire and the
+matching native decision functions. `core.module-release --runtime wasm` is
+read-only inspection of this owner; native remains the default. Only Network
+has an admitted browser publication contract. Solar/Reporter refuse before
+file access; public metadata inspection never installs or authorizes processing.
+
+A browser unit contains exactly the JavaScript loader, WASM, and both type
+files, with matching lane, immutable release folder, producer source closure,
+build timestamp and engine identity. Its SHA-256 binds the complete typed
+catalog with assets sorted by URL. Shape limits precede cloning; unknown keys,
+mixed producers, crossed lanes, repeated/missing members and mutable URLs refuse.
+
+The host asks `acquisition_plan` with its compiled lane, confirmed unit digest
+and consent before asset transfer. It supplies actual byte hashes and sizes to
+`verify_files` before executing even the loader's identity adapter. `prepare`
+then admits the loaded engine identity and captured gateway/route authority.
+These pure decisions perform zero acquisition, cache writes or engine calls;
+they are not trusted installation grants or project authorization.
+
+`ds.browser-module-selection/v1` records active and retained previous receipts,
+or an explicit removed state. Activation and rollback take the existing
+`ActivationGuard`; all mutations compare the held generation before advancing
+it. Removal prevents selection of an active unit and retains bytes only for
+explicit rollback. Repeated removal refuses; no fallback or online refresh is
+implied. A host must serialize and atomically persist the returned transition,
+reverify retained bytes, and admit its current authority before use. The wire
+cannot substitute caller assertions for a protected host lifecycle observation.
+
+The browser host, existing update/notification integration, durable cache,
+worker capture, and principal/project/revision result fences remain required
+before deployed processing can be enabled. These decision and CLI tests do not
+prove a governed browser installation or qualify an unadmitted engine. Hosting
+must retain its explicit unavailable processing state until those consumers pass.
