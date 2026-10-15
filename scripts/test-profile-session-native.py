@@ -20,10 +20,11 @@ def dep(g,name):
 # Follow one compiled server closure, including its exact Kernel and display
 # runtime. Choosing newest independent libraries can cross an unsuffixed Kernel
 # ABI after an independent captured build; no sibling HEAD substitutes qualify.
-servers=sorted(deps.glob('libds_cli_server-*.rlib'),key=lambda p:p.stat().st_mtime_ns,reverse=True)
-server=next((p for p in servers if any(x[1]=='ds_profile_runtime' for x in graph(p)['deps'])),None)
-if server is None: raise RuntimeError('Compile the qualified Profile View server source before this native fixture; retained old server closure has no display owner')
-sg=graph(server)
+candidates=sorted([*fp.glob('ds-cli-server-*/lib-ds_cli_server.json'),*fp.glob('ds-cli-server-*/test-lib-ds_cli_server.json')],key=lambda p:p.stat().st_mtime_ns,reverse=True)
+selected=next((p for p in candidates if any(x[1]=='ds_profile_runtime' for x in json.loads(p.read_text())['deps'])),None)
+if selected is None: raise RuntimeError('Compile the qualified Profile View server source before this native fixture; retained old server closure has no display owner')
+sg=json.loads(selected.read_text())
+(out/'server-graph-proof.json').write_text(json.dumps({'fingerprint':str(selected),'kind':'test' if selected.name.startswith('test-') else 'library'},indent=2)+'\n')
 roots={name:dep(sg,name)[0] for name in ['ds_grid_exchange','ds_network_client','ds_cli_contract','serde','serde_json','ds_grid_engine','sha2','base64','ds_network_contracts','getrandom','ds_profile_runtime','ds_command_kernel']}
 src=cli/'crates/ds-cli-server/src/profile_sessions.rs'
 command=[str(pathlib.Path.home()/'.cargo/bin/rustc'),'--edition=2024','--test',str(src),'-Ldependency='+str(deps),'-Ccodegen-units=1','-o',str(out/'profile-owner-tests')]

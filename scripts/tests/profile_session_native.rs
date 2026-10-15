@@ -101,6 +101,28 @@ fn main() {
     assert_eq!(again["history"], history);
     assert_eq!(again["payload"], open["payload"]);
     checks.push("retained-snapshot-identical");
+    let view_request = |cached| Request {
+        schema: REQUEST_SCHEMA.into(),
+        operation: Operation::View {
+            session_id: id.clone(), model_id: model_id.clone(), expected_history: history.clone(),
+            options: serde_json::to_value(ds_grid_engine::ProfileAtlasOptions::default()).unwrap(),
+            patch: json!({}),
+            style_document: serde_json::from_str(include_str!("../../../ds-command-kernel/tests/fixtures/profile-display-style.json")).unwrap(),
+            cached,
+        },
+    };
+    let view = sessions.execute(scope.clone(), std::path::Path::new(&scratch), view_request(false), &||Ok(())).unwrap();
+    assert_eq!(view["history"], history);
+    assert_eq!(view["payload"]["ran"], false);
+    assert_eq!(view["payload"]["analysis"], Value::Null);
+    let scene: Value = serde_json::from_str(view["payload"]["scene_json"].as_str().unwrap()).unwrap();
+    assert_eq!(scene["model_revision"], history["model_revision"]);
+    assert!(view["payload"]["display"].is_object());
+    checks.push("native-view-render-display-and-no-analysis");
+    let cached = sessions.execute(scope.clone(), std::path::Path::new(&scratch), view_request(true), &||Ok(())).unwrap();
+    assert_eq!(cached["payload"]["scene_json"], view["payload"]["scene_json"]);
+    assert_eq!(cached["history"], history);
+    checks.push("cached-native-view-identical");
     let checkpoint = sessions
         .execute(
             scope.clone(),
