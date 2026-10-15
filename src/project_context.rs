@@ -151,7 +151,7 @@ pub fn route_paired<'a>(
     };
     if desktop.lane != "local"
         || desktop.instance != Some(target_instance)
-        || target_instance.is_empty()
+        || !crate::desktop_instance::instance_id_valid(target_instance)
         || !matches!(native_credential_lane, "stable" | "canary")
         || cli.lane != native_credential_lane
         || cli.uid != desktop.uid
@@ -320,6 +320,22 @@ mod tests {
             Ok(Route::CurrentDesktop)
         );
         assert_eq!(local.lane, "local");
+        assert_eq!(
+            route_paired(
+                Requirement::MapProject,
+                Switch::Never,
+                Some(caller),
+                Context {
+                    instance: Some("malformed"),
+                    ..local
+                },
+                PairedHostScope::ExplicitLocalDevelopment {
+                    target_instance: "malformed",
+                    native_credential_lane: "canary"
+                },
+            ),
+            Err(Refusal::IdentityMismatch)
+        );
         for (changed, scope) in [
             (
                 Context {
