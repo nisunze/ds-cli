@@ -23,7 +23,7 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Authority, Availability, Chapter, Command, Effect, Example, Execution, Requires,
+    Authority, Availability, Chapter, Command, Effect, Example, Execution, LANE, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::desktop_instance as kernel;
@@ -51,7 +51,7 @@ is never a choice. Nothing running is an answer, not a failure.",
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[],
+    args: &[LANE],
     output: "\
 `live` and `instances`: each id, how it was identified, profile, lane, open \
 project, build, start time, window count, and `can_serve` with a reason \

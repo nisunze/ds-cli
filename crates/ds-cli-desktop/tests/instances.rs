@@ -960,3 +960,78 @@ fn with_no_native_profile_a_dead_instance_still_refuses() {
     assert_eq!(refusal.code(), "desktop_target_not_live");
     untouched(&[&alpha]);
 }
+
+/// Canary navigation declares its native caller lane, while a Stable caller
+/// still cannot move a Canary window under the same account.
+#[test]
+fn explicit_navigation_lane_preserves_cross_lane_refusal_and_exact_target() {
+    let machine = Machine::new();
+    let alpha = Bridge::start(ALPHA, Some("project-a"), SHARED_NAME);
+    machine.publish(&alpha);
+    let command = &ds_cli_desktop::project::SWITCH_COMMAND;
+    let denied = refused(
+        Invocation::signed_in().in_lane("stable").run(
+            command,
+            ds_cli_desktop::project::switch,
+            &[
+                "--project",
+                "project-z",
+                "--lane",
+                "stable",
+                "--target",
+                &target(ALPHA),
+            ],
+        ),
+        "Stable credentials cannot switch a Canary window",
+    );
+    assert_eq!(denied.code(), "desktop_target_mismatch");
+    assert!(alpha.invoked().is_empty());
+    assert_eq!(alpha.project().as_deref(), Some("project-a"));
+    let switched = Invocation::signed_in()
+        .run(
+            command,
+            ds_cli_desktop::project::switch,
+            &[
+                "--project",
+                "project-z",
+                "--lane",
+                "canary",
+                "--target",
+                &target(ALPHA),
+            ],
+        )
+        .expect("explicit Canary caller reaches its exact Canary window");
+    assert_eq!(switched["servedBy"], json!(ALPHA));
+    assert_eq!(switched["activeProject"], json!("project-z"));
+    assert_eq!(alpha.invoked(), vec!["project.switch".to_owned()]);
+}
+
+#[test]
+fn navigation_contracts_declare_lane_without_changing_stable_default() {
+    for (command, base) in [
+        (&ds_cli_desktop::list::COMMAND, vec![]),
+        (&ds_cli_desktop::project::LIST_COMMAND, vec![]),
+        (
+            &ds_cli_desktop::project::SWITCH_COMMAND,
+            vec!["--project", "project-a"],
+        ),
+    ] {
+        let original = base.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            ds_cli_contract::parse(command, &original)
+                .unwrap()
+                .value("lane"),
+            Some("stable")
+        );
+        let mut explicit = original;
+        explicit.extend(["--lane".to_owned(), "canary".to_owned()]);
+        assert_eq!(
+            ds_cli_contract::parse(command, &explicit)
+                .unwrap()
+                .value("lane"),
+            Some("canary")
+        );
+        *explicit.last_mut().unwrap() = "other".to_owned();
+        assert!(ds_cli_contract::parse(command, &explicit).is_err());
+    }
+}

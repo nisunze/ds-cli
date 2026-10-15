@@ -1,5 +1,35 @@
 # Release notes
 
+## Unreleased: independent Desktop manager updates
+
+Old behavior: Windows Desktop Update inherited Core Update and could replace
+the shell before refusing `core_update_unavailable`; required UI installation
+could also select a newer public unit during an unrelated shell update.
+New behavior: Windows reuses its receipt/SHA-admitted compatible Core, and both
+platforms reuse required UI units only after complete native capture verification.
+New public UI releases do not force shell updates to replace an installed unit;
+missing or removed requirements use the existing verified Install owner.
+
+Manager callers need a newly verified manager package to receive this fix.
+Direct Windows Core Update still refuses `core_update_unavailable`. Linux keeps
+its existing qualified DEB owner and explicit future different-Core receipt gap.
+No data/component reset, second updater or shared component pin is introduced.
+
+## Unreleased: explicit native lane for Desktop project navigation
+
+Old interface: `desktop list`, `desktop project list` and `desktop project switch`
+had no lane input, so dispatch observed Stable native credentials and could
+correctly refuse a Canary window even on a Canary Core installation. New
+interface adds the existing `--lane stable|canary` input to those commands;
+the default remains Stable and command/output contracts remain unchanged.
+
+Canary CLI/MCP callers must use `--lane canary` after installing a qualified
+CLI/Core release containing this change. Older clients refuse that flag as
+`unknown_flag`. No account/profile is substituted and no window is retargeted:
+principal, lane, audience, instance and project fences still refuse mismatches
+before an effect. Credential-independent `desktop status` is unchanged.
+
+
 ## Unreleased: Core structural cloud-cache recovery
 
 Old behavior: `core.serve` refused startup when its canonical SQLite cache was

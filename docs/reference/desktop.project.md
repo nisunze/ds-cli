@@ -22,3 +22,14 @@ before any project-authority command. When several instances are running, name
 one with `--target desktop:<instance_id>` — from `ds desktop list` — on the
 list, the switch, the status check and the project work that follows, so all
 four are about the same window. See [`ds desktop`](desktop.md).
+
+`desktop list`, `desktop project list` and `desktop project switch` accept
+`--lane stable|canary`, using the shared native credential lane grammar. The
+default remains Stable. Canary callers must pass `--lane canary`; older builds
+refuse that input as `unknown_flag` and require a qualified CLI/Core update.
+This selects the caller's protected native session for routing. It does not
+change a window's profile, copy credentials, switch accounts, or relax the
+existing principal, lane, audience, instance and project fences. A mismatched
+window continues to refuse `desktop_target_mismatch` before any effect.
+`desktop status` remains a credential-independent observation of the named
+window and needs no lane argument.

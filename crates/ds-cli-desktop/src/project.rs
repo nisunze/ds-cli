@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, LANE, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
@@ -96,6 +96,7 @@ the CLI never invents an id from a display name.",
         ),
         Arg::value("limit", "<n>", "Return at most this many matches; 1..500.")
             .default(DEFAULT_LIMIT),
+        LANE,
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
@@ -139,6 +140,7 @@ paired command whose selected project is not open anywhere refuses with \
             "Exact project id returned by `desktop project list`.",
         )
         .required(),
+        LANE,
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],

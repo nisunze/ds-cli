@@ -687,6 +687,14 @@ impl Invocation {
         }
     }
 
+    /// Scope the fixture's native credential observation to one explicit lane.
+    pub fn in_lane(mut self, lane: &str) -> Self {
+        if let Some(identity) = self.identity.as_mut() {
+            identity.lane = lane.to_owned();
+        }
+        self
+    }
+
     /// The same caller with a saved project selection, running a command whose
     /// declared authority is `Project` — the one authority that narrows which
     /// live instance may serve the work.
