@@ -116,6 +116,24 @@ is the headless read, from the same held copy). Survey migration left the window
 `survey migrate plan|apply`, headless, with `--source-project` and the
 destination `--project` both explicit (`migration.md`).
 
+## Paired command credential lane
+
+Map commands without a declared `--lane` use an explicit `DS_CORE_LANE=stable`
+or `DS_CORE_LANE=canary` for native identity preflight; without that selection
+they retain the Stable default. A command's declared lane and its declared
+default take precedence. Invalid, empty, Local or non-Unicode selected values
+refuse `invalid_lane`; they never fall back to another identity. The original
+Local development window identity remains Local. Explicit instance selection,
+UID, credential audience, project and late session fences remain required.
+
+`map design open` now preserves `auth_context_mismatch` and its owning remedy
+instead of misreporting every identity refusal as `project_mismatch`. CLI/MCP
+consumers must handle those codes separately: confirm the intended credential
+lane/account/audience for the former, and the actual project for the latter.
+Older CLI retains the Stable-only lane-less preflight and misleading refusal;
+update the operator CLI. No background Core restart, credential migration or
+project switch is required by this correction.
+
 ## Two tiers, and why they are not one
 
 | | Local layers | Design layers |

@@ -1,5 +1,19 @@
 # Release notes
 
+## Unreleased: explicit Core lane for paired Map preflight
+
+Old lane-less Map commands always probed Stable credentials even when the
+operator selected `DS_CORE_LANE=canary`, and `map design open` relabeled every
+`auth_context_mismatch` as `project_mismatch`. Updated operator CLI preflight
+uses the explicit Core lane when no command lane is declared, retaining the
+legacy Stable default and declared command lane precedence. Invalid selected
+lanes refuse; Local window identity, UID/audience/project and session fences
+remain unchanged. Open preserves the owning authentication refusal and remedy.
+CLI/MCP consumers must distinguish authentication from actual project mismatch
+and update the operator CLI; older clients retain the refusal. No background
+Core protocol/update, credential migration or project switch is introduced.
+
+
 ## Unreleased: deliberate stopped-Core account cache transition
 
 Old `core.serve` refused an account change with `multi_principal_unsupported` and

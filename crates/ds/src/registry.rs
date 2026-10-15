@@ -4232,6 +4232,27 @@ fn report_held_read(id: &str) -> bool {
     )
 }
 
+/// A declared command lane keeps its own default. Lane-less paired commands
+/// may select the existing Core lane explicitly; absent selection stays Stable.
+fn paired_auth_lane(
+    command_lane: Option<&str>,
+    core_lane: Option<&std::ffi::OsStr>,
+) -> Result<ds_cli_auth::Lane, Failure> {
+    if let Some(lane) = command_lane {
+        return ds_cli_auth::Lane::parse(lane);
+    }
+    let Some(lane) = core_lane else {
+        return Ok(ds_cli_auth::Lane::Stable);
+    };
+    let lane = lane.to_str().ok_or_else(|| {
+        Failure::invalid("invalid_lane", "DS_CORE_LANE must be stable or canary")
+            .remedy("set DS_CORE_LANE to stable or canary, or remove the explicit selection")
+    })?;
+    ds_cli_auth::Lane::parse(lane).map_err(|failure| {
+        failure.remedy("set DS_CORE_LANE to stable or canary, or remove the explicit selection")
+    })
+}
+
 fn scope_headless_identity(
     command: &Command,
     inputs: &Inputs,
@@ -4266,12 +4287,13 @@ fn scope_headless_identity(
     {
         return Ok(ds_cli_desktop::ops::scope_headless_identity(None));
     }
-    let observed =
-        match ds_cli_auth::probe_headless_identity(inputs.value("lane").unwrap_or("stable")) {
-            Ok(observed) => observed,
-            Err(error) if headless_probe_means_absent(&error) || enumeration => None,
-            Err(error) => return Err(error),
-        };
+    let core_lane = std::env::var_os("DS_CORE_LANE");
+    let lane = paired_auth_lane(inputs.value("lane"), core_lane.as_deref())?;
+    let observed = match ds_cli_auth::probe_headless_identity(lane.token()) {
+        Ok(observed) => observed,
+        Err(error) if headless_probe_means_absent(&error) || enumeration => None,
+        Err(error) => return Err(error),
+    };
     let observed = observed.map(
         |(identity, project)| ds_cli_desktop::ops::HeadlessIdentity {
             uid: identity.uid().to_owned(),
@@ -4344,6 +4366,54 @@ mod asset_download_tests {
 #[cfg(test)]
 mod identity_preflight_tests {
     use super::*;
+
+    #[test]
+    fn lane_less_map_preflight_uses_explicit_core_lane_and_keeps_stable_default() {
+        use std::ffi::OsStr;
+        for command in [
+            &ds_cli_map::design::open::COMMAND,
+            &ds_cli_map::design::process_setup::COMMAND,
+        ] {
+            assert!(command.arg("lane").is_none());
+        }
+        assert_eq!(
+            paired_auth_lane(None, None).unwrap(),
+            ds_cli_auth::Lane::Stable
+        );
+        for (text, expected) in [
+            ("stable", ds_cli_auth::Lane::Stable),
+            ("canary", ds_cli_auth::Lane::Canary),
+        ] {
+            assert_eq!(
+                paired_auth_lane(None, Some(OsStr::new(text))).unwrap(),
+                expected
+            );
+            // Declared lanes (including their declared defaults) take priority.
+            assert_eq!(
+                paired_auth_lane(Some(text), Some(OsStr::new("invalid"))).unwrap(),
+                expected
+            );
+        }
+        for invalid in ["", "local", "CANARY", " canary"] {
+            let failure = paired_auth_lane(None, Some(OsStr::new(invalid))).unwrap_err();
+            assert_eq!(failure.code(), "invalid_lane");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn selected_non_unicode_core_lane_refuses_without_affecting_declared_lane() {
+        use std::os::unix::ffi::OsStrExt;
+        let lane = std::ffi::OsStr::from_bytes(&[0xff]);
+        assert_eq!(
+            paired_auth_lane(None, Some(lane)).unwrap_err().code(),
+            "invalid_lane"
+        );
+        assert_eq!(
+            paired_auth_lane(Some("canary"), Some(lane)).unwrap(),
+            ds_cli_auth::Lane::Canary
+        );
+    }
 
     #[test]
     fn windows_without_native_store_still_allows_map_only_authority() {

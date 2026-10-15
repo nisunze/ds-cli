@@ -50,6 +50,11 @@ pub static COMMAND: Command = Command {
             remedy: "run `ds map design list --output json` and pass one exact transformer name",
         },
         Refusal {
+            code: "auth_context_mismatch",
+            when: "the native caller and paired application differ in account, credential lane or audience, or the captured identity changed",
+            remedy: "verify the paired account, credential lane and audience; for lane-less commands set DS_CORE_LANE to the intended stable or canary lane, then retry",
+        },
+        Refusal {
             code: "project_mismatch",
             when: "the requested or previously active design context belongs to another project",
             remedy: "open the intended exact project in DS GridDesign, verify `ds desktop status`, then retry",
@@ -163,15 +168,6 @@ fn unreadable_reply(message: impl Into<String>) -> Failure {
 
 fn classify_open_failure(failure: Failure) -> Failure {
     let failure = crate::classify_design_failure(failure);
-    if failure.code() == "auth_context_mismatch" {
-        return Failure::conflict(
-            "project_mismatch",
-            "the paired application's active project changed before context entry",
-        )
-        .remedy(
-            "open the intended exact project in DS GridDesign, verify `ds desktop status`, then retry",
-        );
-    }
     if failure.code() != "desktop_refused" {
         return failure;
     }
@@ -299,10 +295,11 @@ mod tests {
                 .detail(json!({ "detail": format!("{code}: bounded owner detail") }));
             assert_eq!(classify_open_failure(failure).code(), code);
         }
-        let identity_race = Failure::conflict("auth_context_mismatch", "project changed");
-        assert_eq!(
-            classify_open_failure(identity_race).code(),
-            "project_mismatch"
-        );
+        let identity_race = Failure::conflict("auth_context_mismatch", "identity changed")
+            .remedy("verify the account and lane");
+        let retained = classify_open_failure(identity_race);
+        assert_eq!(retained.code(), "auth_context_mismatch");
+        assert_eq!(retained.to_string(), "auth_context_mismatch: identity changed");
+        assert_eq!(retained.remedy_text(), Some("verify the account and lane"));
     }
 }

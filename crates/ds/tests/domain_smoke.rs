@@ -8262,6 +8262,7 @@ fn map_design_open_is_the_one_discoverable_visible_context_entry() {
             "desktop_signed_out",
             "desktop_refused",
             "transformer_not_found",
+            "auth_context_mismatch",
             "project_mismatch",
             "dirty_room",
             "desktop_operation_unsupported",
