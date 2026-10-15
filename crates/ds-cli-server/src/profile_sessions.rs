@@ -1,6 +1,6 @@
 //! Process-lifetime Profile ownership. Parsing/engineering stay in their existing
 //! Grid exchange and managed Network owners; no browser, SDK or caller argv.
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use ds_cli_contract::Failure;
 use ds_grid_exchange::profile_session::ProfileSessionSeed;
 use ds_network_client::{CapturedNetworkClient, NetworkFailure, ProfileSession};
@@ -10,7 +10,7 @@ use ds_network_contracts::profile::{
 };
 use ds_sync_store::{ProfileSourceHeader, ProfileSourceScope, Store};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
@@ -294,6 +294,7 @@ fn open_original(
             .ok_or_else(|| invalid("Native snapshot has no asset count"))?
             as usize,
         display_state: Default::default(),
+        style: None,
         touched: Instant::now(),
         source,
         session,
@@ -303,6 +304,109 @@ fn open_original(
 fn closed_source_receipt(scope: &Scope, source: &ProfileSourceHeader) -> Value {
     json!({"schema":RECEIPT_SCHEMA,"session_id":source.session_id,"project":scope.project,"lane":scope.lane,"package_sha256":source.package_sha256,"source_revision":source.source_revision,"coordinate_system":source.coordinate_system,"model_id":source.model_id,"history":source.initial_history,"engine":source.engine,"closed":true,"rehydrated":false,"payload":null})
 }
+const MAX_STYLE_BYTES: usize = 64 * 1024;
+#[derive(Clone)]
+struct StyleCapture {
+    identity: ds_cli_auth::ProviderIdentity,
+    document: Value,
+}
+struct StyleCatalogue {
+    identity: ds_cli_auth::ProviderIdentity,
+    lane: String,
+    project: String,
+    document: Value,
+}
+fn style_error(message: impl ToString) -> Failure {
+    Failure::failed("core_profile_styles_unavailable", message.to_string())
+        .remedy("Read the same project's authored ds_grid/profile Style Center document under the same native Core account; do not substitute default pens")
+}
+fn style_identity(scope: &Scope, identity: &ds_cli_auth::ProviderIdentity) -> Result<(), Failure> {
+    if identity.uid() != scope.principal || identity.lane() != scope.lane {
+        return Err(style_error(
+            "Profile style identity differs from its native account/lane",
+        ));
+    }
+    Ok(())
+}
+/// Null alone demands the existing authenticated catalogue. Present documents,
+/// including malformed ones, remain the caller's exact input to physical admission.
+fn resolve_style(
+    scope: &Scope,
+    supplied: Value,
+    cached: Option<&StyleCapture>,
+    authorized: &dyn Fn() -> Result<(), Failure>,
+    identity: &dyn Fn() -> Result<ds_cli_auth::ProviderIdentity, Failure>,
+    fetch: &dyn Fn() -> Result<StyleCatalogue, Failure>,
+) -> Result<(Value, Option<StyleCapture>), Failure> {
+    if !supplied.is_null() {
+        return Ok((supplied, None));
+    }
+    authorized()?;
+    let before = identity()?;
+    style_identity(scope, &before)?;
+    let capture = if let Some(cached) = cached {
+        if cached.identity != before {
+            return Err(style_error(
+                "The captured Profile style audience/account changed",
+            ));
+        }
+        cached.clone()
+    } else {
+        let catalogue = fetch()?;
+        if catalogue.identity != before {
+            return Err(style_error(
+                "The returned Profile style catalogue has another captured native owner",
+            ));
+        }
+        if catalogue.lane != scope.lane
+            || catalogue.project != scope.project
+            || catalogue.document["project_id"] != scope.project
+        {
+            return Err(style_error(
+                "Profile style catalogue belongs to another project/lane",
+            ));
+        }
+        let document = catalogue.document["styles"]["ds_grid/profile"].clone();
+        if !document.is_object() {
+            return Err(style_error(
+                "The authored ds_grid/profile document is missing",
+            ));
+        }
+        if serde_json::to_vec(&document).map_err(invalid)?.len() > MAX_STYLE_BYTES {
+            return Err(style_error("The authored Profile style exceeds 64 KiB"));
+        }
+        StyleCapture {
+            identity: before.clone(),
+            document,
+        }
+    };
+    authorized()?;
+    if identity()? != before {
+        return Err(style_error(
+            "Native account/lane/audience changed during Profile style demand",
+        ));
+    }
+    Ok((capture.document.clone(), Some(capture)))
+}
+fn adopt_style_capture(
+    target: &mut Option<StyleCapture>,
+    capture: Option<StyleCapture>,
+    authorized: &dyn Fn() -> Result<(), Failure>,
+    identity: &dyn Fn() -> Result<ds_cli_auth::ProviderIdentity, Failure>,
+) -> Result<(), Failure> {
+    authorized()?;
+    if let Some(capture) = capture.as_ref() {
+        if identity()? != capture.identity {
+            return Err(style_error(
+                "Native account/lane/audience changed before Profile style adoption",
+            ));
+        }
+    }
+    // A successful supplied successor deliberately clears the older null-demand
+    // capture; failed preparation never reaches this adoption boundary.
+    *target = capture;
+    Ok(())
+}
 struct Held {
     scope: Scope,
     package_sha256: String,
@@ -311,6 +415,7 @@ struct Held {
     presentation: Value,
     retained_asset_count: usize,
     display_state: ds_command_kernel::profile_display::DisplayState,
+    style: Option<StyleCapture>,
     touched: Instant,
     source: ProfileSourceHeader,
     session: ProfileSession,
@@ -503,6 +608,24 @@ impl Sessions {
                     .map_err(|_| invalid("Use existing native DisplayPatch"))?;
                 let presentation = serde_json::from_value(value.presentation.clone())
                     .map_err(|_| invalid("Admitted package presentation changed"))?;
+                let native_identity =
+                    || ds_cli_auth::headless_identity_for_named_project(&scope.lane);
+                let (style_document, style_capture) = resolve_style(
+                    &scope,
+                    style_document,
+                    value.style.as_ref(),
+                    authorized,
+                    &native_identity,
+                    &|| {
+                        let catalogue = ds_cli_auth::style_catalog(&scope.lane, &scope.project)?;
+                        Ok(StyleCatalogue {
+                            identity: catalogue.identity().clone(),
+                            lane: catalogue.lane().into(),
+                            project: catalogue.project_id().into(),
+                            document: catalogue.result().document().clone(),
+                        })
+                    },
+                )?;
                 let prepared = ds_profile_runtime::native_projection::prepare(
                     &value.display_state,
                     options,
@@ -549,6 +672,12 @@ impl Sessions {
                 )
                 .map_err(invalid)?;
                 authorized()?;
+                adopt_style_capture(
+                    &mut value.style,
+                    style_capture,
+                    authorized,
+                    &native_identity,
+                )?;
                 value.display_state = display;
                 value.touched = Instant::now();
                 receipt(
@@ -803,6 +932,391 @@ mod tests {
         assert!(validate_label_fields(&["arbitrary".into()]).is_err());
         assert!(validate_label_fields(&vec!["number".into(); 65]).is_err());
     }
+    fn style_scope() -> Scope {
+        Scope {
+            principal: "fixture".into(),
+            lane: "canary".into(),
+            deployment: "fixture-deployment".into(),
+            install: "fixture-install".into(),
+            project: "fixture-project".into(),
+        }
+    }
+    fn style_owner() -> ds_cli_auth::ProviderIdentity {
+        ds_cli_auth::ProviderIdentity::new("canary", &"a".repeat(64), "fixture").unwrap()
+    }
+    fn authored_style() -> Value {
+        serde_json::from_str(include_str!(
+            "../../../../ds-command-kernel/tests/fixtures/profile-display-style.json"
+        ))
+        .unwrap()
+    }
+    fn style_catalogue(document: Value) -> StyleCatalogue {
+        StyleCatalogue {
+            identity: style_owner(),
+            lane: "canary".into(),
+            project: "fixture-project".into(),
+            document: json!({"project_id":"fixture-project","styles":{"ds_grid/profile":document}}),
+        }
+    }
+    fn physical_style(document: Value) -> Result<(), String> {
+        ds_profile_runtime::native_projection::prepare(
+            &Default::default(),
+            Default::default(),
+            &Default::default(),
+            document,
+            &Default::default(),
+        )
+        .map(|_| ())
+    }
+    #[test]
+    fn present_style_never_fetches_or_replaces_malformed_authored_input() {
+        for document in [
+            json!({}),
+            json!({"metadata":{"profile_pens":{"grid":{"width_mm":-1}}}}),
+        ] {
+            let (actual, capture) = resolve_style(
+                &style_scope(),
+                document.clone(),
+                None,
+                &|| panic!("Present style does not acquire authority again"),
+                &|| panic!("No native identity read for caller document"),
+                &|| panic!("Malformed supplied style is never replaced"),
+            )
+            .unwrap();
+            assert_eq!(actual, document);
+            assert!(capture.is_none());
+            assert!(physical_style(actual).is_err());
+        }
+    }
+    #[test]
+    fn null_style_captures_exact_authored_document_and_repeats_without_fetch() {
+        let calls = std::cell::Cell::new(0);
+        let mut document = authored_style();
+        document["metadata"]["owner_extension"] = json!({"untouched":[1,"exact",false]});
+        let fetch = || {
+            calls.set(calls.get() + 1);
+            Ok(style_catalogue(document.clone()))
+        };
+        let (actual, candidate) = resolve_style(
+            &style_scope(),
+            Value::Null,
+            None,
+            &|| Ok(()),
+            &|| Ok(style_owner()),
+            &fetch,
+        )
+        .unwrap();
+        assert_eq!(actual, document);
+        physical_style(actual.clone()).unwrap(); // Unchanged complete 17-pen/physical owner.
+        let mut captured = None;
+        adopt_style_capture(&mut captured, candidate, &|| Ok(()), &|| Ok(style_owner())).unwrap();
+        let (repeated, _) = resolve_style(
+            &style_scope(),
+            Value::Null,
+            captured.as_ref(),
+            &|| Ok(()),
+            &|| Ok(style_owner()),
+            &fetch,
+        )
+        .unwrap();
+        assert_eq!(repeated, document);
+        assert_eq!(calls.get(), 1);
+    }
+    #[test]
+    fn missing_excessive_and_foreign_catalogues_are_not_adopted() {
+        let mut candidates = vec![
+            style_catalogue(Value::Null),
+            style_catalogue(json!({"padding":"x".repeat(MAX_STYLE_BYTES)})),
+        ];
+        let mut lane = style_catalogue(authored_style());
+        lane.lane = "stable".into();
+        candidates.push(lane);
+        let mut project = style_catalogue(authored_style());
+        project.project = "foreign".into();
+        candidates.push(project);
+        let mut body = style_catalogue(authored_style());
+        body.document["project_id"] = json!("foreign");
+        candidates.push(body);
+        for catalogue in candidates {
+            let fetch = || {
+                Ok(StyleCatalogue {
+                    identity: catalogue.identity.clone(),
+                    lane: catalogue.lane.clone(),
+                    project: catalogue.project.clone(),
+                    document: catalogue.document.clone(),
+                })
+            };
+            assert!(
+                resolve_style(
+                    &style_scope(),
+                    Value::Null,
+                    None,
+                    &|| Ok(()),
+                    &|| Ok(style_owner()),
+                    &fetch
+                )
+                .is_err()
+            );
+        }
+    }
+    #[test]
+    fn delayed_style_read_refuses_changed_uid_lane_or_audience() {
+        for changed in [
+            ds_cli_auth::ProviderIdentity::new("canary", &"a".repeat(64), "foreign").unwrap(),
+            ds_cli_auth::ProviderIdentity::new("stable", &"a".repeat(64), "fixture").unwrap(),
+            ds_cli_auth::ProviderIdentity::new("canary", &"b".repeat(64), "fixture").unwrap(),
+        ] {
+            let current = std::cell::RefCell::new(style_owner());
+            let fetch = || {
+                *current.borrow_mut() = changed.clone();
+                Ok(style_catalogue(authored_style()))
+            };
+            let error = resolve_style(
+                &style_scope(),
+                Value::Null,
+                None,
+                &|| Ok(()),
+                &|| Ok(current.borrow().clone()),
+                &fetch,
+            )
+            .err()
+            .unwrap();
+            assert_eq!(error.code(), "core_profile_styles_unavailable");
+        }
+    }
+    #[test]
+    fn missing_or_late_native_authority_never_adopts_a_style() {
+        let refused = || {
+            Err(Failure::unauthorized(
+                "server_owner_changed",
+                "fixture authority changed",
+            ))
+        };
+        assert!(
+            resolve_style(
+                &style_scope(),
+                Value::Null,
+                None,
+                &refused,
+                &|| Ok(style_owner()),
+                &|| panic!("Signed-out owner must not fetch")
+            )
+            .is_err()
+        );
+        let calls = std::cell::Cell::new(0);
+        let authorized = || {
+            calls.set(calls.get() + 1);
+            if calls.get() > 1 { refused() } else { Ok(()) }
+        };
+        assert!(
+            resolve_style(
+                &style_scope(),
+                Value::Null,
+                None,
+                &authorized,
+                &|| Ok(style_owner()),
+                &|| Ok(style_catalogue(authored_style()))
+            )
+            .is_err()
+        );
+        let (_, capture) = resolve_style(
+            &style_scope(),
+            Value::Null,
+            None,
+            &|| Ok(()),
+            &|| Ok(style_owner()),
+            &|| Ok(style_catalogue(authored_style())),
+        )
+        .unwrap();
+        let mut adopted = None;
+        assert!(
+            adopt_style_capture(&mut adopted, capture.clone(), &refused, &|| Ok(
+                style_owner()
+            ))
+            .is_err()
+        );
+        assert!(adopted.is_none());
+        assert!(
+            adopt_style_capture(&mut adopted, capture.clone(), &|| Ok(()), &|| {
+                ds_cli_auth::ProviderIdentity::new("canary", &"b".repeat(64), "fixture")
+            })
+            .is_err()
+        );
+        assert!(
+            resolve_style(
+                &style_scope(),
+                Value::Null,
+                capture.as_ref(),
+                &|| Ok(()),
+                &|| ds_cli_auth::ProviderIdentity::new("canary", &"b".repeat(64), "fixture"),
+                &|| panic!("Changed cached audience must not silently refetch")
+            )
+            .is_err()
+        );
+    }
+    #[test]
+    fn simultaneous_intents_coalesce_only_after_physical_and_late_authority_admission() {
+        let cache = std::sync::Mutex::new(None::<StyleCapture>);
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        std::thread::scope(|threads| {
+            for _ in 0..2 {
+                threads.spawn(|| {
+                    // Production Holds this same session-owner mutex through View.
+                    let mut cached = cache.lock().unwrap();
+                    let (document, candidate) = resolve_style(
+                        &style_scope(),
+                        Value::Null,
+                        cached.as_ref(),
+                        &|| Ok(()),
+                        &|| Ok(style_owner()),
+                        &|| {
+                            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            std::thread::sleep(Duration::from_millis(5));
+                            Ok(style_catalogue(authored_style()))
+                        },
+                    )
+                    .unwrap();
+                    physical_style(document).unwrap();
+                    adopt_style_capture(&mut cached, candidate, &|| Ok(()), &|| Ok(style_owner()))
+                        .unwrap();
+                });
+            }
+        });
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+    #[test]
+    fn inner_catalogue_owner_aba_is_refused_even_when_ambient_returns_to_a() {
+        let (_, capture) = resolve_style(
+            &style_scope(),
+            Value::Null,
+            None,
+            &|| Ok(()),
+            &|| Ok(style_owner()),
+            &|| {
+                let mut catalogue = style_catalogue(authored_style());
+                catalogue.identity =
+                    ds_cli_auth::ProviderIdentity::new("canary", &"b".repeat(64), "fixture")
+                        .unwrap();
+                Ok(catalogue)
+            },
+        )
+        .map(|result| (true, result.1))
+        .unwrap_or((false, None));
+        assert!(capture.is_none());
+        for foreign in [
+            ds_cli_auth::ProviderIdentity::new("canary", &"b".repeat(64), "fixture").unwrap(),
+            ds_cli_auth::ProviderIdentity::new("canary", &"a".repeat(64), "foreign").unwrap(),
+        ] {
+            let error = resolve_style(
+                &style_scope(),
+                Value::Null,
+                None,
+                &|| Ok(()),
+                &|| Ok(style_owner()),
+                &|| {
+                    let mut catalogue = style_catalogue(authored_style());
+                    catalogue.identity = foreign.clone();
+                    Ok(catalogue)
+                },
+            )
+            .err()
+            .unwrap();
+            assert_eq!(error.code(), "core_profile_styles_unavailable");
+        }
+    }
+    #[test]
+    fn successful_supplied_successor_clears_cache_failed_physical_input_preserves_it() {
+        let (_, mut cache) = resolve_style(
+            &style_scope(),
+            Value::Null,
+            None,
+            &|| Ok(()),
+            &|| Ok(style_owner()),
+            &|| Ok(style_catalogue(authored_style())),
+        )
+        .unwrap();
+        let prior = cache.as_ref().unwrap().document.clone();
+        let (bad, _) = resolve_style(
+            &style_scope(),
+            json!({}),
+            cache.as_ref(),
+            &|| panic!(),
+            &|| panic!(),
+            &|| panic!(),
+        )
+        .unwrap();
+        assert!(physical_style(bad).is_err());
+        assert_eq!(cache.as_ref().unwrap().document, prior);
+        let (valid, successor) = resolve_style(
+            &style_scope(),
+            authored_style(),
+            cache.as_ref(),
+            &|| panic!(),
+            &|| panic!(),
+            &|| panic!(),
+        )
+        .unwrap();
+        physical_style(valid).unwrap();
+        adopt_style_capture(&mut cache, successor, &|| Ok(()), &|| {
+            panic!("Supplied style has no acquired identity")
+        })
+        .unwrap();
+        assert!(cache.is_none());
+        let reads = std::cell::Cell::new(0);
+        resolve_style(
+            &style_scope(),
+            Value::Null,
+            cache.as_ref(),
+            &|| Ok(()),
+            &|| Ok(style_owner()),
+            &|| {
+                reads.set(reads.get() + 1);
+                Ok(style_catalogue(authored_style()))
+            },
+        )
+        .unwrap();
+        assert_eq!(reads.get(), 1);
+    }
+    #[test]
+    fn native_scope_mismatch_or_fetch_refusal_does_not_use_another_style() {
+        let mut scope = style_scope();
+        scope.principal = "foreign".into();
+        assert!(
+            resolve_style(
+                &scope,
+                Value::Null,
+                None,
+                &|| Ok(()),
+                &|| Ok(style_owner()),
+                &|| panic!("Foreign native principal must not fetch")
+            )
+            .is_err()
+        );
+        let mut scope = style_scope();
+        scope.lane = "stable".into();
+        assert!(
+            resolve_style(
+                &scope,
+                Value::Null,
+                None,
+                &|| Ok(()),
+                &|| Ok(style_owner()),
+                &|| panic!("Foreign native lane must not fetch")
+            )
+            .is_err()
+        );
+        let error = resolve_style(
+            &style_scope(),
+            Value::Null,
+            None,
+            &|| Ok(()),
+            &|| Ok(style_owner()),
+            &|| Err(style_error("Authored catalogue unavailable")),
+        )
+        .err()
+        .unwrap();
+        assert_eq!(error.code(), "core_profile_styles_unavailable");
+    }
     #[test]
     fn package_digest_is_exact_before_decode_or_process() {
         let bytes = b"synthetic package bytes";
@@ -840,24 +1354,28 @@ mod tests {
         assert_eq!(projected["revision"], history["model_revision"]);
         assert!(project_checkpoint(&bytes, "foreign", &history, &crs, &[]).is_err());
         assert!(project_checkpoint(&bytes, "projection-fixture", &json!({}), &crs, &[]).is_err());
-        assert!(project_checkpoint(
-            &bytes,
-            "projection-fixture",
-            &history,
-            &crs,
-            &["arbitrary".into()]
-        )
-        .is_err());
+        assert!(
+            project_checkpoint(
+                &bytes,
+                "projection-fixture",
+                &history,
+                &crs,
+                &["arbitrary".into()]
+            )
+            .is_err()
+        );
         let mut crossed: Value = serde_json::from_slice(&bytes).unwrap();
         crossed["schema"] = json!("wrong");
-        assert!(project_checkpoint(
-            &serde_json::to_vec(&crossed).unwrap(),
-            "projection-fixture",
-            &history,
-            &crs,
-            &[]
-        )
-        .is_err());
+        assert!(
+            project_checkpoint(
+                &serde_json::to_vec(&crossed).unwrap(),
+                "projection-fixture",
+                &history,
+                &crs,
+                &[]
+            )
+            .is_err()
+        );
     }
     #[test]
     fn unknown_or_foreign_handles_never_launch_a_process() {

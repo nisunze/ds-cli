@@ -342,3 +342,28 @@ owner. Older Core retains its unavailable refusal and cannot promise rebind.
 An original-only rebind does not recover a checkpoint, undo history, edited head
 or calculated result. A qualified successor Core is required for live behavior;
 independent Shell, Network and other component versions are not globally pinned.
+
+### Intentional Profile style demand
+
+The existing contract-1 View `style_document` now uses JSON `null` to demand the
+fixed authored `ds_grid/profile` document from the same project's existing native
+`style_catalog` owner. Previously an absent ambient Desktop document became `{}`
+and failed the unchanged physical 17-pen admission. A present document, including
+`{}` or malformed pens, still reaches that admission unchanged and is never
+silently replaced. Older Core does not implement this null demand and refuses;
+Desktop consumers must require a qualified successor Core for this behavior.
+
+Core binds the catalogue owner's captured native UID/lane/audience (including
+an A-to-B-to-A ambient transition), immediate running-connection owner fence
+before/after null demand, returned project/lane and late native completion
+before adopting the exact complete document. Its <=64 KiB capture belongs only
+to the existing live Held session, independent of immutable SQLite originals;
+concurrent intentional Views coalesce under that owner and repeated same-owner
+Views make no catalogue fetch. Missing/oversized documents or changed native
+scope refuse with `core_profile_styles_unavailable`; authored physical errors
+retain their existing refusal. No default style, credential path, polling,
+publication, second store or new command is introduced. Explicit supplied
+successor documents continue to be admitted as supplied and clear an older
+null-demand capture only after successful View; malformed failures preserve the
+prior capture. Closing or rehydrating
+a worker drops its captured style, and the next null demand observes anew.

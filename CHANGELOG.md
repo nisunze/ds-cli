@@ -1,5 +1,18 @@
 # Release notes
 
+## Unreleased: Core-owned Profile style demand
+
+Old Desktop Views sent `{}` when their ambient authored Profile style was absent,
+so valid model opens failed missing physical pens. Existing `core.profile-session`
+View now accepts `style_document: null` as intentional demand for the fixed
+`ds_grid/profile` document through the same native authenticated style catalogue.
+Complete authored metadata is retained within the existing live session only
+after unchanged 17-pen validation and late UID/lane/audience/project/owner fences;
+repeat intents reuse it. Present malformed documents remain refusals and are never
+replaced. Consumers must send null for absence and update Core independently; old
+Core refuses, missing/oversized/changed-scope demands refuse explicitly. No default
+pens, global pins, new database, command or updater are introduced.
+
 ## Unreleased: bounded Core Profile original rebind
 
 Old retained Profile workers lost their source after idle retirement; normal

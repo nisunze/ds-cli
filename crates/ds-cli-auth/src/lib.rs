@@ -1189,6 +1189,7 @@ impl HeadlessLayerSnapshot {
 }
 
 pub struct HeadlessStyleSnapshot {
+    identity: ProviderIdentity,
     lane: &'static str,
     project_id: String,
     project_name: String,
@@ -1196,6 +1197,10 @@ pub struct HeadlessStyleSnapshot {
     result: StyleSnapshot,
 }
 impl HeadlessStyleSnapshot {
+    /// Exact native UID/lane/audience captured by the authenticated catalogue owner.
+    pub const fn identity(&self) -> &ProviderIdentity {
+        &self.identity
+    }
     pub const fn lane(&self) -> &'static str {
         self.lane
     }

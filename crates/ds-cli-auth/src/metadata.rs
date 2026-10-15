@@ -77,21 +77,23 @@ pub fn observed_style_catalog(
     project: &str,
     refresh: bool,
 ) -> Result<(HeadlessStyleSnapshot, bool), Failure> {
-    let (_, document, cached) = acquired(lane, project, Kind::Styles, refresh, |expected| {
-        let named = headless_named_project(
-            lane,
-            project,
-            |device, project| device.style_catalog(project),
-            |client, project| client.style_catalog(project, now()),
-        )?;
-        if named.identity() != expected {
-            return Err(failed("style observation account changed".into()));
-        }
-        Ok(named.result.document().clone())
-    })?;
+    let (identity, document, cached) =
+        acquired(lane, project, Kind::Styles, refresh, |expected| {
+            let named = headless_named_project(
+                lane,
+                project,
+                |device, project| device.style_catalog(project),
+                |client, project| client.style_catalog(project, now()),
+            )?;
+            if named.identity() != expected {
+                return Err(failed("style observation account changed".into()));
+            }
+            Ok(named.result.document().clone())
+        })?;
     let result = StyleSnapshot::from_observation(project, document).map_err(map_client)?;
     Ok((
         HeadlessStyleSnapshot {
+            identity,
             lane: Lane::parse(lane)?.token(),
             project_id: project.into(),
             project_name: String::new(),

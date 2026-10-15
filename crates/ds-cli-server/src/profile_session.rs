@@ -21,7 +21,7 @@ const FILE_SCHEMA: &str = "ds.core.profile-artifact/v1";
 pub static COMMAND: Command = Command {
     id: "core.profile-session", path: &["core", "profile-session"], contract: 1,
     summary: "Open, read or close a retained native Grid Profile session.",
-    purpose: "Keep one exact verified .dsgrid package's live Profile with the authenticated Core owner and its independently installed managed Network process. The closed request admits open, snapshot, state, view, scene, gis_projection, checkpoint or close only; handles are fenced to the current account/lane/deployment/install/project/model/history. Workers retire opportunistically after fifteen idle minutes; at most eight exact readonly initial package sources remain bounded in the same protected Core SQLite Store. An intentional request may rebind only the exact unchanged initial model/history/CRS/managed engine; missing, changed, invalidated or corrupt sources refuse. Close removes the exact known source without reopening an expired worker. GIS presentation reopens only the exact managed checkpoint through its existing seed/history owner and forwards bounded ordered StructureLabelField values to the shared native/WASM projection, preserving declared CRS. Scene executes only the existing native ProfileRuntimeScene protocol with exact history; cached mode never requests engineering calculation. No browser engine, arbitrary RPC, editing, publication or printing acceptance is granted.",
+    purpose: "Keep one exact verified .dsgrid package's live Profile with the authenticated Core owner and its independently installed managed Network process. The closed request admits open, snapshot, state, view, scene, gis_projection, checkpoint or close only; handles are fenced to the current account/lane/deployment/install/project/model/history. Workers retire opportunistically after fifteen idle minutes; at most eight exact readonly initial package sources remain bounded in the same protected Core SQLite Store. An intentional request may rebind only the exact unchanged initial model/history/CRS/managed engine; missing, changed, invalidated or corrupt sources refuse. Close removes the exact known source without reopening an expired worker. GIS presentation reopens only the exact managed checkpoint through its existing seed/history owner and forwards bounded ordered StructureLabelField values to the shared native/WASM projection, preserving declared CRS. Scene executes only the existing native ProfileRuntimeScene protocol with exact history; cached mode never requests engineering calculation. View style_document null alone demands the same project's fixed authored ds_grid/profile document through the existing authenticated Style Center owner; at most 64 KiB complete style metadata is retained only in the existing live session after unchanged physical-pen admission and late native-owner fences. A present malformed document is never replaced. Repeated same-owner Views reuse that captured document without catalogue fetch. No browser engine, arbitrary RPC, editing, publication or printing acceptance is granted.",
     chapter: Chapter::Design, effect: Effect::LocalFileWrite, authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[crate::STATE_DIR_ARG, crate::LANE_ARG, crate::PROJECT_ARG.required(), Arg::value("request", "<json-file>", "Ordinary file at most 48 MiB containing ds.core.profile-session/v1; open binds at most 32 MiB exact package bytes and SHA-256, other actions bind the captured session/model/history.").required(), Arg::value("out", "<absolute-new-json-file>", "Optional fixed native result file, at most 72 MiB; output becomes a small path/size/SHA/scope-bound receipt. Existing files are never replaced.")],
@@ -33,6 +33,7 @@ pub static COMMAND: Command = Command {
         Refusal {code:"core_profile_request_invalid",when:"the closed schema, package bytes/digest or native package identity is invalid or exceeds bounds",remedy:"use the declared exact package/session request and preserve immutable source bytes"},
         Refusal {code:"core_profile_session_unavailable",when:"the handle has no exact eligible retained source, is closed or belongs to another account/lane/project/model",remedy:"explicitly reopen the exact package through the same Core owner"},
         Refusal {code:"core_profile_source_unavailable",when:"the protected SQLite original is missing, corrupt, incompatible, invalidated or cannot be retained within bounds",remedy:"preserve original model/history and follow the protected-store refusal; never substitute a package for authored or uncertain history"},
+        Refusal {code:"core_profile_styles_unavailable",when:"a null View style demand cannot admit the same native UID/lane/audience/project authored ds_grid/profile document within 64 KiB, or its owner changes before adoption",remedy:"restore the intended project style through Style Center and retry intentionally; no default pens or alternate account are substituted"},
         Refusal {code:"core_profile_source_changed",when:"rehydration does not reproduce the exact original model/history/CRS/managed engine",remedy:"retain the original and explicitly resolve the changed source or component; no candidate worker is adopted"},
         Refusal {code:"core_profile_history_conflict",when:"the captured authored history differs from the retained head",remedy:"read the retained head before submitting the intended operation again"},
         Refusal {code:"core_profile_capacity",when:"Core already retains eight active Profile processes",remedy:"close an existing Profile session before opening another"},
@@ -193,6 +194,27 @@ fn write_output(path: &std::path::Path, bytes: &[u8], value: &Value) -> Result<V
 mod artifact_tests {
     use super::*;
     #[test]
+    fn null_style_immediate_owner_guard_binds_connection_uid_lane_and_audience() {
+        let owner = crate::auth::fence("fixture", "canary", &"a".repeat(64)).unwrap();
+        require_style_owner(&owner, Ok(owner.clone())).unwrap();
+        for changed in [
+            crate::auth::fence("fixture", "canary", &"b".repeat(64)).unwrap(),
+            crate::auth::fence("foreign", "canary", &"a".repeat(64)).unwrap(),
+            crate::auth::fence("fixture", "stable", &"a".repeat(64)).unwrap(),
+        ] {
+            assert_eq!(
+                require_style_owner(&owner, Ok(changed)).unwrap_err().code(),
+                "server_owner_changed"
+            );
+        }
+        assert_eq!(
+            require_style_owner(&owner, Err("No native credential".into()))
+                .unwrap_err()
+                .code(),
+            "server_owner_changed"
+        );
+    }
+    #[test]
     fn file_handoff_keeps_exact_large_bytes_and_bounded_scope_receipt() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("profile.json");
@@ -307,6 +329,17 @@ fn read_request_file(path: &std::path::Path) -> Result<std::fs::File, Failure> {
     }
 }
 
+fn require_style_owner(expected: &str, actual: Result<String, String>) -> Result<(), Failure> {
+    let actual = actual.map_err(|error| Failure::unauthorized("server_owner_changed", error))?;
+    if actual != expected {
+        return Err(Failure::unauthorized(
+            "server_owner_changed",
+            "Profile style demand no longer belongs to this Core connection",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) async fn invoke(
     State(app): State<App>,
     query: Option<Query<ProjectQuery>>,
@@ -336,10 +369,17 @@ pub(crate) async fn invoke(
         })?;
         let scratch = parent.join("profile-sessions");
         crate::host::prepare_directory(&scratch).map_err(crate::failure)?;
+        let style_demand = matches!(&request.operation, Operation::View { style_document, .. } if style_document.is_null());
         let authorized = || {
-            app.auth
-                .authorize(&app.connection.owner)
-                .map_err(|e| Failure::unauthorized("server_owner_changed", e))
+            app.auth.authorize(&app.connection.owner)
+                .map_err(|e| Failure::unauthorized("server_owner_changed", e))?;
+            if style_demand {
+                // Null style acquisition crosses the existing authenticated
+                // metadata owner. Bind it immediately to this Core connection,
+                // rather than its ordinary fifteen-second local observation.
+                require_style_owner(&app.connection.owner, crate::auth::owner_fence(&app.connection.lane))?;
+            }
+            Ok(())
         };
         app.profiles
             .execute(scope, &scratch, &app.database, request, &authorized)
