@@ -34,7 +34,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 14 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 19 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 5 |
-| [21. Windows native release](#21-windows-native-release) | 10 |
+| [21. Windows native release](#21-windows-native-release) | 11 |
 | [22. Operations](#22-operations) | 10 |
 | [25. CLI reliability and feedback](#25-cli-reliability-and-feedback) | 6 |
 <!-- /toc -->
@@ -419,7 +419,9 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 
 - **Windows MCP acceptance**: prove startup timing, native server transport and package validation on the Windows host before publication.
 
-- **Clean Windows manager installation and Core background acceptance**: start from the public Canary manager download after the verified replacement artifacts are ready, remove the reviewed existing Canary installation/cache through its native owners, then download/install Desktop 0.2.0, independent Core, Interactions and UI Kernel without a checkout or preinstalled component. Preserve Stable Core/Network/Solar, credentials and user data. Prove the final installed shell's missing-Core/UI Download/Modules recovery, actual UI/worker execution, and exact per-artifact receipts; then connect the Canary native account and prove Core contract-2 named-pipe startup, peer/account/SID/DACL and single-owner fences. Activate the qualified independent Reporter only through that running Core and execute its installed smoke case. An installed package, a signed-out refusal or source tests alone do not establish complete runtime acceptance.
+- **Final installed Desktop integration:** install the consolidated Windows shell through the verified public manager, preserving installed Core, Reporter, UI selections, Stable Network/Solar and user data. Prove the final normal owner-window typed working-area and engineering request/result, account/project changes, missing-UI recovery with Core present, offline UI restart and generation-fenced update/rollback/removal. Qualify each installed artifact against its own immutable source/dependency/protocol/digest identity. Existing first-install, Core private-transport/single-owner, UI/worker and synthetic Reporter proofs do not establish those remaining workspace operations.
+
+- **Core cache-recovery host acceptance:** the new bounded recovery source still needs complete native host-lock integration and actual Windows SID/DACL/rename qualification through the existing Core artifact owners. Exercise confirmed corruption, retained original/sidecars and same-owner recreation, plus unchanged healthy migration, constraint, permission, ownership and unsupported-schema refusals using private synthetic fixtures. Preserve the currently healthy installed Core, credentials, installation identity, component selections and project/input/output files; source/helper tests are not an installed Core update or recovery proof.
 
 - **Final Windows native gates**: rerun the full current pinned CLI suite, strict Clippy, formatting, skill content and installer checks on Windows. Earlier Windows-only fixture/path and artifact-lock assumptions had source fixes applied; remove this acceptance task when the final rerun passes, and promote only reproduced remaining source failures to `OPEN.md`.
 
