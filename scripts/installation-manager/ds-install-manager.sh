@@ -41,12 +41,43 @@ remove_legacy_desktop() {
   else sudo -n apt-get remove -y --no-auto-remove "$package";fi
  done
 }
+ensure_required_ui() {
+ local name=$1 selection state captured
+ selection=$("$command" core component selection --component "$name" --channel "$channel" --runtime wasm --output json)
+ state=$(python3 - "$selection" <<'PY_SELECTION'
+import json,sys
+x=json.loads(sys.argv[1]);assert x['status']=='ok'
+data=x.get('data')
+if data is None:print('missing')
+else:
+ state=data['selection']['state'];assert state in ['installed','removed'],'component_selection_invalid'
+ print(state)
+PY_SELECTION
+ )
+ if [[ "$state" == installed ]];then
+  # The existing native capture owner verifies all four immutable files and
+  # build identity under its updater lock. Never reuse selection JSON alone.
+  captured=$("$command" core component capture --component "$name" --channel "$channel" --runtime wasm --output json)
+  python3 - "$selection" "$captured" "$name" "$channel" <<'PY_CAPTURE'
+import json,re,sys
+s,c=map(json.loads,sys.argv[1:3]);assert c['v']==1 and c['command']=='core.component.capture' and c['contract']==1 and c['status']=='ok','component_receipt_invalid'
+s=s['data'];c=c['data'];r=c['receipt'];u=r['unit'];release=u['release']
+assert r['schema']=='ds.ui-module-installation/v1' and c['generation']==s['generation'],'component_receipt_invalid'
+assert re.fullmatch('[a-f0-9]{64}',u['unit_sha256']) and u['unit_sha256']==s['selection']['active']['unit']['unit_sha256'],'component_receipt_invalid'
+assert release['component']==sys.argv[3] and release['channel']==sys.argv[4] and release['runtime']=='wasm','component_receipt_invalid'
+assert len(release['assets'])==4 and all(re.fullmatch('[a-f0-9]{64}',a['sha256']) and a['size_bytes']>0 for a in release['assets']),'component_receipt_invalid'
+PY_CAPTURE
+  printf 'Already installed the natively captured %s unit; preserving its generation.\n' "$name"
+ else
+  bash "$0" install "$name" "$channel" --yes
+ fi
+}
 if [[ "$component" == core || "$component" == desktop ]];then
  [[ "$action" == install || "$action" == update ]] || { echo 'component_lifecycle_unavailable: use the qualified platform owner' >&2;exit 2; }
  if [[ "$component" == desktop ]];then remove_legacy_desktop;DS_GRIDDESIGN_CHANNEL="$channel" bash "$root/install-desktop.sh";fi
  replace_core=0;[[ "$component:$action" != core:update ]] || replace_core=1
  DS_GRIDDESIGN_CORE_REPLACE="$replace_core" DS_GRIDDESIGN_CORE_CATALOG=independent DS_GRIDDESIGN_CHANNEL="$channel" bash "$root/install-core.sh"
- [[ "$component" != desktop ]] || { bash "$0" install interactions "$channel" --yes;bash "$0" install command-kernel "$channel" --yes; }
+ [[ "$component" != desktop ]] || { ensure_required_ui interactions;ensure_required_ui command-kernel; }
  exit 0
 fi
 command -v "$command" >/dev/null || { echo 'core_missing: install Core first' >&2;exit 2; }

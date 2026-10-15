@@ -167,11 +167,19 @@ public static class FixtureUninstaller {
  $r=FreshCoreRelease;$r.assets=@($r.assets[0]);RefuseCore $r
  # Execute the actual ensure path with a bounded native-owner fixture.
  # Matching units must still admit public metadata, without restaging workers.
- $script:EnsureCalls=@();$script:EnsureSha='a'*64;$script:AdmittedSha='a'*64
+ $script:EnsureCalls=@();$script:EnsureSha='a'*64;$script:AdmittedSha='a'*64;$script:SelectionState='installed';$script:CaptureSha='a'*64;$script:CaptureGeneration=7;$script:CaptureRefused=$false;$script:CoreAvailable=$true
  function Release([string]$Name,[string]$Runtime='native'){return [pscustomobject]@{component=$Name;runtime=$Runtime}}
- function InvokeCore([string[]]$Arguments){
+ function InvokeCore([string[]]$Arguments,[string]$ExpectedCommand,[int]$ExpectedContract=0){
+  if($Arguments[0] -eq 'version'){$script:EnsureCalls+=@('version');return [pscustomobject]@{version='0.1.0'}}
+  if($Arguments[0] -eq 'capabilities'){$script:EnsureCalls+=@('capabilities');return [pscustomobject]@{command=[pscustomobject]@{id='core.serve';contract=2;availability=$(if($script:CoreAvailable){'available'}else{'unavailable'})}}}
   $verb=$Arguments[1];$script:EnsureCalls+=@(($Arguments -join ' '))
-  if($verb -eq 'component' -and $Arguments[2] -eq 'selection'){return [pscustomobject]@{schema='ds.ui-module-selection/v1';generation=7;selection=[pscustomobject]@{state='installed';active=[pscustomobject]@{unit=[pscustomobject]@{unit_sha256=$script:EnsureSha}}}}}
+  if($verb -eq 'component' -and $Arguments[2] -eq 'selection'){return [pscustomobject]@{schema='ds.ui-module-selection/v1';generation=7;selection=[pscustomobject]@{state=$script:SelectionState;active=[pscustomobject]@{unit=[pscustomobject]@{unit_sha256=$script:EnsureSha}}}}}
+  if($verb -eq 'component' -and $Arguments[2] -eq 'capture'){
+   if($script:CaptureRefused){throw 'module_artifact_invalid: native capture refused corrupt bytes'}
+   $name=$Arguments[4]
+   $assets=@(1..4 | ForEach-Object {[pscustomobject]@{sha256=('d'*64);size_bytes=100}})
+   return [pscustomobject]@{generation=$script:CaptureGeneration;receipt=[pscustomobject]@{schema='ds.ui-module-installation/v1';unit=[pscustomobject]@{unit_sha256=$script:CaptureSha;release=[pscustomobject]@{component=$name;channel=$Channel;runtime='wasm';assets=$assets}}}}
+  }
   if($verb -eq 'module-release'){return [pscustomobject]@{unit_sha256=$script:AdmittedSha}}
   if($verb -eq 'module-stage'){return [pscustomobject]@{receiptId='fixture-receipt'}}
   if($verb -eq 'component' -and $Arguments[2] -eq 'activate'){return [pscustomobject]@{generation=8}}
@@ -184,6 +192,28 @@ public static class FixtureUninstaller {
  $changed=ComponentAction interactions Update
  Check ($changed.generation -eq 8 -and $script:EnsureCalls.Count -eq 4) 'A changed admitted UI unit bypassed stage and activation'
  Check ($script:EnsureCalls[3] -like '*--expected-generation 7*') 'Changed unit lost its native generation fence'
+ # Desktop Update must ensure only missing requirements. A newer public UI
+ # identity is deliberately available; the existing captured unit stays active.
+ $Action='Update';$script:EnsureCalls=@();$script:Completed=@()
+ EnsureDesktopRequirements
+ Check (($script:EnsureCalls -join '|') -eq 'version|capabilities|core component selection --component interactions --channel canary --runtime wasm|core component capture --component interactions --channel canary --runtime wasm|core component selection --component command-kernel --channel canary --runtime wasm|core component capture --component command-kernel --channel canary --runtime wasm') 'Desktop Update advanced independent dependencies or skipped native capture'
+ Check (($script:Completed -join ',') -eq 'Core,interactions,command-kernel') 'Desktop requirement completion differs'
+ $refused=$false;try{$null=InstallCore Update}catch{$refused=$_.Exception.Message.Contains('core_update_unavailable')}
+ Check $refused 'Direct Core Update lost its explicit replacement refusal'
+ $script:CoreAvailable=$false;$refused=$false
+ try{EnsureDesktopRequirements}catch{$refused=$_.Exception.Message.Contains('core_incompatible')}
+ Check $refused 'Incompatible Core was treated as a missing dependency'
+ $script:CoreAvailable=$true
+ foreach($case in @('corrupt','crossed','generation')){
+  $script:EnsureCalls=@();$script:CaptureRefused=($case -eq 'corrupt');$script:CaptureSha=if($case -eq 'crossed'){'b'*64}else{'a'*64};$script:CaptureGeneration=if($case -eq 'generation'){8}else{7};$refused=$false
+  try{$null=ComponentAction interactions Install -PreserveInstalled}catch{$refused=$true}
+  Check $refused "Required UI $case capture was reused"
+  Check (@($script:EnsureCalls | Where-Object {$_ -like '*module-stage*' -or $_ -like '*activate*' -or $_ -like '*module-release*'}).Count -eq 0) 'A refused capture silently installed another unit'
+ }
+ $script:CaptureRefused=$false;$script:CaptureSha='a'*64;$script:CaptureGeneration=7;$script:SelectionState='removed';$script:EnsureCalls=@()
+ $missing=ComponentAction interactions Install -PreserveInstalled
+ Check ($missing.generation -eq 8 -and $script:EnsureCalls.Count -eq 4) 'Removed required UI did not use normal public admission/stage/activation'
+ Check ($script:EnsureCalls[3] -like '*--expected-generation 7*') 'Required UI installation lost its existing generation fence'
  Write-Output "Native Windows manager checks: $script:Checks passed"
 } finally {
  # Bounded disposable test cleanup, never a product or caller supplied path.

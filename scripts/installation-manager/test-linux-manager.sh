@@ -27,6 +27,7 @@ fixture() {
 printf '%s\n' 'unexpected owning installer execution' >> "$DS_MANAGER_TEST_OWNER_LOG"
 if [[ "${0##*/}" == install-core.sh && "${DS_GRIDDESIGN_CORE_CATALOG:-}" != independent ]];then exit 92;fi
 if [[ "${0##*/}" == install-core.sh && "${DS_GRIDDESIGN_CORE_REPLACE:-}" != "${DS_MANAGER_TEST_EXPECT_REPLACE:-0}" ]];then exit 93;fi
+[[ "${DS_MANAGER_TEST_OWNERS_SUCCEED:-0}" != 1 ]] || exit 0
 exit 91
 OWNER
   done
@@ -213,6 +214,15 @@ with open(os.environ['DS_MANAGER_TEST_CORE_LOG'],'a') as f:f.write(json.dumps(a)
 if a[:3]==['core','component','selection']:
  active={'unit':{'unit_sha256':os.environ['DS_MANAGER_TEST_ACTIVE_DIGEST']}}
  data={'generation':7,'selection':{'state':os.environ.get('DS_MANAGER_TEST_SELECTION_STATE','installed'),'active':active}}
+elif a[:3]==['core','component','capture']:
+ case=os.environ.get('DS_MANAGER_TEST_CAPTURE_CASE','valid')
+ if case=='corrupt':
+  print(json.dumps({'status':'error','error':{'code':'module_artifact_invalid'}}));sys.exit(3)
+ component=a[a.index('--component')+1]
+ digest=os.environ['DS_MANAGER_TEST_ACTIVE_DIGEST'] if case!='crossed' else 'e'*64
+ release={'component':component,'channel':'canary','runtime':'wasm','assets':[{'sha256':'d'*64,'size_bytes':100} for _ in range(4)]}
+ data={'generation':8 if case=='generation' else 7,'receipt':{'schema':'ds.ui-module-installation/v1','unit':{'unit_sha256':digest,'release':release}}}
+ print(json.dumps({'v':1,'command':'core.component.capture','contract':1,'status':'ok','data':data}));sys.exit(0)
 elif a[:2]==['core','module-release']:
  if os.environ.get('DS_MANAGER_TEST_ADMISSION_REFUSED')=='1':
   print(json.dumps({'status':'error','error':{'code':'release_stopped'}}));sys.exit(3)
@@ -246,5 +256,50 @@ PY_EFFECTS
   then pass "UI $component $case preserves admission and exact-unit generation";else fail "UI $component $case preserves admission and exact-unit generation";fi
  done
 done
+# Desktop-target updates use the shell installer and the existing non-replacing
+# Core owner, then reuse only fully captured UI units. New public UI versions
+# must not become forced shell dependencies.
+export DS_MANAGER_TEST_OWNERS_SUCCEED=1 DS_MANAGER_TEST_CAPTURE_CASE=valid DS_MANAGER_TEST_ADMISSION_REFUSED=0 DS_MANAGER_TEST_SELECTION_STATE=installed
+export DS_MANAGER_TEST_ACTIVE_DIGEST=$(printf 'c%.0s' {1..64})
+for action in install update;do
+ fixture "desktop-$action-independent"
+ rm -f "$DS_MANAGER_TEST_CORE_LOG" "$DS_MANAGER_TEST_OWNER_LOG"
+ invoke "$action" desktop canary --yes
+ if [[ "$result" -eq 0 ]] && "$python_bin" - "$DS_MANAGER_TEST_CORE_LOG" "$DS_MANAGER_TEST_OWNER_LOG" <<'PY_REQUIRED'
+import json,pathlib,sys
+calls=[json.loads(x) for x in pathlib.Path(sys.argv[1]).read_text().splitlines()]
+assert len(calls)==4 and [a[:3] for a in calls]==[['core','component','selection'],['core','component','capture']]*2,calls
+assert [a[a.index('--component')+1] for a in calls]==['interactions','interactions','command-kernel','command-kernel'],calls
+assert len(pathlib.Path(sys.argv[2]).read_text().splitlines())==2
+PY_REQUIRED
+ then pass "Desktop $action preserves independently captured UI and never selects Core replacement";else fail "Desktop $action preserves independently captured UI and never selects Core replacement";fi
+done
+for case in corrupt crossed generation;do
+ fixture "desktop-capture-$case"
+ export DS_MANAGER_TEST_CAPTURE_CASE="$case"
+ rm -f "$DS_MANAGER_TEST_CORE_LOG"
+ invoke update desktop canary --yes
+ if [[ "$result" -ne 0 ]] && "$python_bin" - "$DS_MANAGER_TEST_CORE_LOG" <<'PY_REFUSED'
+import json,pathlib,sys
+calls=[json.loads(x) for x in pathlib.Path(sys.argv[1]).read_text().splitlines()]
+assert len(calls)==2 and calls[1][:3]==['core','component','capture'],calls
+PY_REFUSED
+ then pass "Desktop refuses $case capture without installing another UI unit";else fail "Desktop refuses $case capture without installing another UI unit";fi
+done
+export DS_MANAGER_TEST_CAPTURE_CASE=valid DS_MANAGER_TEST_SELECTION_STATE=removed
+fixture desktop-required-ui-removed
+rm -f "$DS_MANAGER_TEST_CORE_LOG"
+invoke update desktop canary --yes
+if [[ "$result" -eq 0 ]] && "$python_bin" - "$DS_MANAGER_TEST_CORE_LOG" <<'PY_MISSING'
+import json,pathlib,sys
+calls=[json.loads(x) for x in pathlib.Path(sys.argv[1]).read_text().splitlines()]
+assert len(calls)==10,calls
+for group in [calls[:5],calls[5:]]:
+ assert [a[:3] for a in group[:2]]==[['core','component','selection']]*2,group
+ assert group[2][:2]==['core','module-release'] and group[3][:2]==['core','module-stage'] and group[4][:3]==['core','component','activate'],group
+ assert group[4][group[4].index('--expected-generation')+1]=='7',group
+PY_MISSING
+then pass 'Desktop installs removed required UI only through normal public admission and generation fences';else fail 'Desktop installs removed required UI only through normal public admission and generation fences';fi
+unset DS_MANAGER_TEST_OWNERS_SUCCEED DS_MANAGER_TEST_CAPTURE_CASE
 printf 'Linux manager tests: %s passed, %s failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

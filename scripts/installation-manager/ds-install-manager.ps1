@@ -84,7 +84,7 @@ function AdmitCore([string]$Exe) {
  $receipt=ReadJson $receiptPath 2097152
  if($receipt.contract -ne 'ds.core-windows-artifact/v1' -or $receipt.lane -ne $Channel -or $receipt.target -ne 'x86_64-pc-windows-msvc' -or $receipt.executable_sha256 -notmatch '^[a-f0-9]{64}$' -or (Digest $Exe) -cne $receipt.executable_sha256){Fail 'core_identity_invalid' 'Installed Core receipt does not match this lane and executable'}
 }
-function InvokeCore([string[]]$Arguments) {
+function InvokeCore([string[]]$Arguments,[string]$ExpectedCommand,[int]$ExpectedContract=0) {
  $exe=CorePath
  if(!(Test-Path -LiteralPath $exe -PathType Leaf)) { Fail 'core_missing' 'Install DS Core for this lane first' }
  AdmitCore $exe
@@ -94,6 +94,7 @@ function InvokeCore([string[]]$Arguments) {
  if((Digest $exe) -cne $before) { Fail 'core_changed' 'Core changed during the command; retry with its current identity' }
  try { $envelope=($result -join "`n") | ConvertFrom-Json } catch { Fail 'core_incompatible' 'Core returned malformed command output' }
  if($exit -ne 0 -or $envelope.status -ne 'ok') { Fail $envelope.error.code $envelope.error.message }
+ if($ExpectedCommand -and ($envelope.v -ne 1 -or $envelope.command -cne $ExpectedCommand -or $envelope.contract -ne $ExpectedContract)){Fail 'core_incompatible' 'Core returned a crossed or incompatible native command envelope'}
  return $envelope.data
 }
 function Release([string]$Name,[string]$Runtime='native') {
@@ -174,10 +175,10 @@ function CoreAssets([object]$Release) {
  }
  return @{zip=$zip[0];receipt=$receipt[0];version=($folder -replace '-r[1-9]\d*$','')}
 }
-function InstallCore {
+function InstallCore([ValidateSet('Install','Update')][string]$Verb='Install') {
  if(Test-Path -LiteralPath (CorePath)) {
-  if($Action -eq 'Update'){Fail 'core_update_unavailable' 'Existing Core is preserved until its qualified replacement owner is available'}
-  return InvokeCore -Arguments @('version')
+  if($Verb -eq 'Update'){Fail 'core_update_unavailable' 'Existing Core is preserved until its qualified replacement owner is available'}
+  return InvokeCore -Arguments @('version') -ExpectedCommand version -ExpectedContract 1
  }
  if($CoreArtifact -or $CoreReceipt -or $CoreSha256){
   if(!$CoreArtifact -or !$CoreReceipt -or $CoreSha256 -notmatch '^[a-f0-9]{64}$'){Fail 'core_package_incomplete' 'Supply the qualified local ZIP, artifact receipt and ZIP digest together'}
@@ -193,14 +194,26 @@ function InstallCore {
  }
  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'install-ds-core-windows.ps1') -Artifact $CoreArtifact -Receipt $CoreReceipt -Sha256 $CoreSha256
  if($LASTEXITCODE -ne 0) { Fail 'core_install_failed' 'The owning Core installer refused; existing installations were preserved' }
- return InvokeCore -Arguments @('version')
+ return InvokeCore -Arguments @('version') -ExpectedCommand version -ExpectedContract 1
 }
-function ComponentAction([string]$Name,[string]$Verb) {
+function ComponentAction([string]$Name,[string]$Verb,[switch]$PreserveInstalled) {
  $runtime=if($Name -in @('interactions','command-kernel')){'wasm'}else{'native'}
  $commandArgs=@('core','component','selection','--component',$Name,'--channel',$Channel,'--runtime',$runtime)
  $selection=InvokeCore -Arguments $commandArgs
  $generation=if($null -eq $selection){0}else{$selection.generation}
  if($Verb -eq 'Status'){return $selection}
+ if($PreserveInstalled -and $runtime -eq 'wasm' -and $selection){
+  if($selection.selection.state -eq 'installed'){
+   # Capture verifies all four immutable members and their installed build
+   # identity through Core's native owner; selection JSON alone is not proof.
+   $captured=InvokeCore -Arguments @('core','component','capture','--component',$Name,'--channel',$Channel,'--runtime','wasm') -ExpectedCommand core.component.capture -ExpectedContract 1
+   $unit=$captured.receipt.unit
+   if($captured.receipt.schema -ne 'ds.ui-module-installation/v1' -or $captured.generation -ne $generation -or $unit.unit_sha256 -notmatch '^[a-f0-9]{64}$' -or $unit.unit_sha256 -cne $selection.selection.active.unit.unit_sha256 -or $unit.release.component -ne $Name -or $unit.release.channel -ne $Channel -or $unit.release.runtime -ne 'wasm' -or @($unit.release.assets).Count -ne 4){Fail 'component_receipt_invalid' 'Installed UI capture differs from its native selection'}
+   foreach($member in $unit.release.assets){if($member.sha256 -notmatch '^[a-f0-9]{64}$' -or $member.size_bytes -lt 1){Fail 'component_receipt_invalid' 'Installed UI capture has an invalid member identity'}}
+   return $selection
+  }
+  if($selection.selection.state -ne 'removed'){Fail 'component_selection_invalid' 'An unknown installed UI state cannot be treated as missing'}
+ }
  if($Verb -in @('Remove','Rollback')) { return InvokeCore -Arguments @('core','component',$Verb.ToLowerInvariant(),'--component',$Name,'--channel',$Channel,'--runtime',$runtime,'--expected-generation',"$generation",'--yes') }
  $release=Release $Name $runtime
  $path=Join-Path $script:Cache "$Name-release.json"
@@ -218,6 +231,15 @@ function ComponentAction([string]$Name,[string]$Verb) {
  }
  $ready=InvokeCore -Arguments @('core','module-stage','--component',$Name,'--channel',$Channel,'--runtime',$runtime,'--sha256',$sha,'--yes')
  return InvokeCore -Arguments @('core','component','activate','--component',$Name,'--channel',$Channel,'--runtime',$runtime,'--receipt-id',$ready.receiptId,'--expected-generation',"$generation",'--yes')
+}
+function EnsureDesktopRequirements {
+ $script:CurrentComponent='Core'
+ $null=InstallCore Install
+ $capability=InvokeCore -Arguments @('capabilities','core.serve') -ExpectedCommand capabilities -ExpectedContract 1
+ if($capability.command.id -ne 'core.serve' -or $capability.command.contract -ne 2 -or $capability.command.availability -ne 'available'){Fail 'core_incompatible' 'Installed Core does not provide its admitted native background contract'}
+ $script:Completed+=@('Core'); $script:CurrentComponent='interactions'
+ $null=ComponentAction interactions Install -PreserveInstalled; $script:Completed+=@('interactions'); $script:CurrentComponent='command-kernel'
+ $null=ComponentAction command-kernel Install -PreserveInstalled; $script:Completed+=@('command-kernel')
 }
 function Status {
  $name=if($Channel -eq 'canary'){'DS GridDesign Canary'}else{'DS GridDesign'}
@@ -279,7 +301,7 @@ try {
  if($Action -eq 'Status') { if($Component -in @('Core','Desktop')){Status | ConvertTo-Json -Depth 12}else{ComponentAction $Component Status | ConvertTo-Json -Depth 30}; return }
  if(!$Yes){Fail 'confirmation_required' 'Use -Yes for the selected installation action'}
  $script:Cache=Join-Path $script:Local 'DS Installation Manager Cache'; PrivateDirectory $script:Cache
- if($Component -eq 'Core') { if($Action -notin @('Install','Update')){Fail 'core_lifecycle_unavailable' 'Core removal and rollback require their qualified owner; no data was changed'}; InstallCore | ConvertTo-Json -Depth 20; return }
+ if($Component -eq 'Core') { if($Action -notin @('Install','Update')){Fail 'core_lifecycle_unavailable' 'Core removal and rollback require their qualified owner; no data was changed'}; InstallCore $Action | ConvertTo-Json -Depth 20; return }
  if($Component -eq 'Desktop') {
   if($Action -notin @('Install','Update')){Fail 'desktop_lifecycle_unavailable' 'Use the existing Desktop uninstaller with data-preserving semantics'}
   $release=Release Desktop
@@ -295,10 +317,8 @@ try {
    if($setup.ExitCode -ne 0){Fail 'desktop_install_failed' "The owning installer exited $($setup.ExitCode)"}
    RecordDesktop $assets[0]
   }
-  $script:Completed+=@('Desktop'); $script:CurrentComponent='Core'
-  $null=InstallCore; $script:Completed+=@('Core'); $script:CurrentComponent='interactions'
-  $null=ComponentAction interactions Install; $script:Completed+=@('interactions'); $script:CurrentComponent='command-kernel'
-  $null=ComponentAction command-kernel Install; $script:Completed+=@('command-kernel')
+  $script:Completed+=@('Desktop')
+  EnsureDesktopRequirements
   Status | ConvertTo-Json -Depth 20; return
  }
  ComponentAction $Component $Action | ConvertTo-Json -Depth 30

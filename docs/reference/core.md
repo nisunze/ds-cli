@@ -116,6 +116,42 @@ numeric UID. Host construction and router fixtures must update together; these
 implementation interfaces do not form a supported client SDK. CLI/MCP remains
 the client surface. See [release notes](../../CHANGELOG.md) for the source update.
 
+## Installation Manager Desktop updates
+
+The existing Windows `-Action Update -Component Desktop` and Linux
+`update desktop <lane> --yes` actions select the Desktop shell only. On Windows,
+Core installation now receives an explicit Install intention instead of inheriting
+the caller's global Update action. An existing Core is reused only through its
+SID-owned installation receipt, exact executable SHA and native `core.serve`
+contract-2 capability owner. Direct Windows Core Update still refuses
+`core_update_unavailable`; this change does not add a Core replacement owner.
+
+For required Interactions and UI Kernel, both platforms retain an installed unit
+only after `core component capture --runtime wasm` verifies all four immutable
+members and build identity under the existing native updater lock. Its receipt,
+whole-unit SHA, component, lane and generation must match the selection. A newer
+public UI release does not force an independent shell update to replace that
+unit. Missing or explicitly removed UI requirements use the normal public
+admission, verified stage and generation-fenced installation path. Corrupt,
+incompatible, crossed or refused captures remain errors, never missing-component
+fallbacks. Explicit UI Update retains its own public-admission/update behavior.
+
+Old Windows behavior could replace the shell and then report a partial result
+because the dependency step incorrectly requested Core Update. Existing manager
+callers require a newly digest-verified manager package to receive this fix;
+installed Core/components and data are not migrated or reset. Public package and
+Hosting publication are separate acceptance obligations from source regressions.
+
+Linux continues to use its existing qualified Core DEB installer with replacement
+disabled for Desktop actions; only explicit `update core` selects its qualified
+APT replacement path. That owner verifies the public package/receipt and exact
+executable. A future public Core differing from the installed binary still refuses
+`core_update_required` during a Desktop action: the installed Linux package does
+not yet retain the expected executable SHA receipt required for independent
+reuse. OS MD5 metadata or an unanchored hash/version does not remove that fence.
+This limitation is explicit; the current unchanged admitted Linux Core remains
+usable without replacement.
+
 ## UI component installation before sign-in
 
 `core.module-release`, `core.module-stage`, `core.component.selection`,
