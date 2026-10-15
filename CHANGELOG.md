@@ -147,3 +147,16 @@ and retry. Making only the parent directory private is insufficient on Windows.
 Windows Core connections carry the same result-observer shutdown signal as Unix.
 Core shutdown detaches observation before connection drain; it never cancels the
 durable job. Native host constructors use the updated account API on both hosts.
+
+### Native retained Profile command
+
+Adds `core.profile-session` contract 1: verified exact package opening and
+state/snapshot/scene/checkpoint/close live with Core's managed Network process,
+fenced to native principal/lane/deployment/install/project/model/history. The
+Desktop consumer replaces its missing browser `openDsgrid` dependency through
+a closed adapter; independently installed old Core must report
+`core_incompatible` until a qualified update provides this command. Existing
+paired `dsgrid.profile.open` semantics remain unchanged. Unsupported actions,
+crossed identity/history and altered package digests refuse; no generic RPC,
+embedded Desktop Grid engine, silent package migration or full editing/printing
+acceptance is introduced. Shell remains 0.2.0.

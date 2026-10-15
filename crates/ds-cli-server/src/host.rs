@@ -106,6 +106,7 @@ pub struct App {
     /// the per-project sessions. No directory lives here.
     pub sessions: Arc<ServerSessions>,
     pub solar: Arc<crate::solar_application::Applications>,
+    pub profiles: Arc<crate::profile_sessions::Sessions>,
 }
 
 type ApiError = (StatusCode, Json<Value>);
@@ -261,6 +262,7 @@ pub fn router(app: App) -> Router {
             "/v1/core/component/rollback",
             post(crate::component_lifecycle::invoke_rollback),
         )
+        .route("/v1/profile-session", post(crate::profile_session::invoke))
         .route("/v1/jobs", get(list))
         .route("/v1/jobs/:id", get(status))
         .route("/v1/jobs/:id/cancel", post(cancel))
@@ -1326,6 +1328,7 @@ pub(crate) mod tests {
             requests: Arc::new(Door::new(4)),
             activity: None,
             solar: Arc::new(crate::solar_application::Applications::default()),
+            profiles: Arc::new(crate::profile_sessions::Sessions::default()),
             layers: crate::layers::NativeLayerHost::fixture_native("stable"),
             sessions,
         }

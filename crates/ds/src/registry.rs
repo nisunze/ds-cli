@@ -3750,6 +3750,11 @@ static SERVER_ENTRIES: &[Entry] = &[
         render: ds_cli_server::render,
     },
     Entry {
+        command: &ds_cli_server::profile_session::COMMAND,
+        handler: ds_cli_server::profile_session::command,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::desktop_update::INSPECT,
         handler: ds_cli_server::desktop_update::inspect,
         render: ds_cli_server::render,

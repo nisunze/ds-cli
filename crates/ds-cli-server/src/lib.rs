@@ -6,6 +6,9 @@ pub mod core_components;
 pub mod desktop_update;
 pub mod module_updates;
 pub mod modules;
+pub mod profile_session;
+#[doc(hidden)]
+pub mod profile_sessions;
 pub mod ui_components;
 // The HTTP host and the layer binding are reachable from an integration test
 // so the isolation proof can stand up a real owner-only socket over a fixture
@@ -702,6 +705,11 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         Some("result_failed") => Failure::new(class, "result_failed", message),
         Some("result_cancelled") => Failure::new(class, "result_cancelled", message),
         Some("result_wait_invalid") => Failure::new(class, "result_wait_invalid", message),
+        Some("core_profile_request_invalid") => Failure::new(class, "core_profile_request_invalid", message),
+        Some("core_profile_session_unavailable") => Failure::new(class, "core_profile_session_unavailable", message),
+        Some("core_profile_history_conflict") => Failure::new(class, "core_profile_history_conflict", message),
+        Some("core_profile_capacity") => Failure::new(class, "core_profile_capacity", message),
+        Some("core_profile_native_refused") => Failure::new(class, "core_profile_native_refused", message),
         // The Server connection's own fence.
         Some("server_owner_changed") => Failure::new(class, "server_owner_changed", message),
         // The shared layer owner's, re-raised for `ds map layer … --target core`.
@@ -960,6 +968,7 @@ pub static DOMAIN: Domain = Domain {
         &component_lifecycle::ACTIVATE,
         &component_lifecycle::ROLLBACK,
         &desktop_update::INSPECT,
+        &profile_session::COMMAND,
         &SERVE,
         &SUBMIT,
         &SOLAR_SUBMIT,
@@ -1206,6 +1215,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         requests: Arc::new(host::Door::new(request_permits(workers))),
         activity: None,
         solar: Arc::new(solar_application::Applications::default()),
+        profiles: Arc::new(profile_sessions::Sessions::default()),
         sessions,
     };
     // The gateway refresh starts here and runs BESIDE the host: its own

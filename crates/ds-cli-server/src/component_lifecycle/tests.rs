@@ -247,6 +247,7 @@ fn app(path: &Path) -> crate::host::App {
         activity: None,
         sessions,
         solar: Arc::new(crate::solar_application::Applications::default()),
+        profiles: Arc::new(crate::profile_sessions::Sessions::default()),
         layers: crate::layers::NativeLayerHost::fixture_native("canary"),
     }
 }

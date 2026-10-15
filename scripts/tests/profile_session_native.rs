@@ -1,0 +1,157 @@
+#[path = "../../crates/ds-cli-server/src/profile_sessions.rs"]
+mod profile_sessions;
+use base64::{engine::general_purpose::STANDARD, Engine};
+use profile_sessions::*;
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+fn main() {
+    let scratch = std::env::args().nth(1).expect("private fixture path");
+    let model = ds_grid_exchange::blank_model::create_blank_model(
+        &ds_grid_exchange::blank_model::BlankModelRequest {
+            model_id: Some("native-profile-fixture"),
+            coordinate_system: Some("EPSG:3395"),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let digest = format!("{:x}", Sha256::digest(&model.bytes));
+    let scope = Scope {
+        principal: "synthetic-fixture-owner".into(),
+        lane: "canary".into(),
+        deployment: "https://fixture.invalid".into(),
+        install: "synthetic-fixture-install".into(),
+        project: "synthetic-profile-project".into(),
+    };
+    let sessions = Sessions::default();
+    let mut checks = Vec::new();
+    let open = sessions
+        .execute(
+            scope.clone(),
+            std::path::Path::new(&scratch),
+            Request {
+                schema: REQUEST_SCHEMA.into(),
+                operation: Operation::Open {
+                    package_base64: STANDARD.encode(&model.bytes),
+                    package_sha256: digest.clone(),
+                },
+            },
+            &|| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(open["model_id"], "native-profile-fixture");
+    assert_eq!(open["package_sha256"], digest);
+    assert_eq!(open["payload"]["schema"], "ds.network.profile-snapshot/v1");
+    let presentation: Value =
+        serde_json::from_str(open["payload"]["presentation_json"].as_str().unwrap()).unwrap();
+    assert!(presentation.is_object());
+    checks.push("exact-package-cold-open-presentation");
+    let id = open["session_id"].as_str().unwrap().to_owned();
+    let model_id = open["model_id"].as_str().unwrap().to_owned();
+    let history = open["history"].clone();
+    let snapshot = || Request {
+        schema: REQUEST_SCHEMA.into(),
+        operation: Operation::Snapshot {
+            session_id: id.clone(),
+            model_id: model_id.clone(),
+            expected_history: history.clone(),
+        },
+    };
+    for field in 0..5 {
+        let mut crossed = scope.clone();
+        match field {
+            0 => crossed.principal = "foreign".into(),
+            1 => crossed.lane = "stable".into(),
+            2 => crossed.deployment = "https://other.invalid".into(),
+            3 => crossed.install = "foreign-install".into(),
+            _ => crossed.project = "foreign-project".into(),
+        };
+        let e = sessions
+            .execute(crossed, std::path::Path::new(&scratch), snapshot(), &|| {
+                Ok(())
+            })
+            .unwrap_err();
+        assert_eq!(e.code(), "core_profile_session_unavailable");
+    }
+    checks.push("all-five-native-scope-crossings-refused");
+    let bad = sessions
+        .execute(
+            scope.clone(),
+            std::path::Path::new(&scratch),
+            Request {
+                schema: REQUEST_SCHEMA.into(),
+                operation: Operation::Snapshot {
+                    session_id: id.clone(),
+                    model_id: model_id.clone(),
+                    expected_history: json!({}),
+                },
+            },
+            &|| Ok(()),
+        )
+        .unwrap_err();
+    assert_eq!(bad.code(), "core_profile_history_conflict");
+    checks.push("stale-history-refused");
+    let again = sessions
+        .execute(
+            scope.clone(),
+            std::path::Path::new(&scratch),
+            snapshot(),
+            &|| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(again["history"], history);
+    assert_eq!(again["payload"], open["payload"]);
+    checks.push("retained-snapshot-identical");
+    let checkpoint = sessions
+        .execute(
+            scope.clone(),
+            std::path::Path::new(&scratch),
+            Request {
+                schema: REQUEST_SCHEMA.into(),
+                operation: Operation::Checkpoint {
+                    session_id: id.clone(),
+                    model_id: model_id.clone(),
+                    expected_history: history.clone(),
+                },
+            },
+            &|| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(
+        checkpoint["payload"]["schema"],
+        "ds.network.profile-open/v1"
+    );
+    checks.push("owner-checkpoint");
+    let closed = sessions
+        .execute(
+            scope.clone(),
+            std::path::Path::new(&scratch),
+            Request {
+                schema: REQUEST_SCHEMA.into(),
+                operation: Operation::Close {
+                    session_id: id.clone(),
+                    model_id: model_id.clone(),
+                    expected_history: history.clone(),
+                },
+            },
+            &|| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(closed["closed"], true);
+    assert_eq!(
+        sessions
+            .execute(
+                scope,
+                std::path::Path::new(&scratch),
+                snapshot(),
+                &|| Ok(())
+            )
+            .unwrap_err()
+            .code(),
+        "core_profile_session_unavailable"
+    );
+    checks.push("close-and-reopen-required");
+    println!(
+        "{}",
+        json!({"schema":"ds.profile-owner-native-fixture-proof/v1","checks":checks,"package_sha256":digest,"model_id":model_id,"history":history,"engine_sha256":open["engine"]["executable_sha256"],"engine_source":open["engine"]["identity"]["build"],"core_transport_qualified":false,"user_project_effects":false})
+    );
+}

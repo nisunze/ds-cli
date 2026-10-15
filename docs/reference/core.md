@@ -225,3 +225,26 @@ project files and input/output bytes outside the database. A constraint error
 failure or unsuccessful quarantine still refuses; none is a request to clear all
 state. Existing clients require the independently released compatible Core
 artifact for this behavior; updating Desktop alone does not update Core.
+
+### Retained native Grid Profile
+
+`core.profile-session` contract 1 forwards one bounded closed request through
+the existing protected Core transport. Open binds exact `.dsgrid` bytes/SHA-256
+and verifies the owning package manifest, member digests and library pins. Core
+captures a managed same-lane Network process; subsequent state, snapshot, scene,
+checkpoint and close requests bind its opaque handle, model and full authored
+history to the native principal/lane/deployment/install/project context. Scene
+uses the existing native RuntimeScene DTO; unsupported actions refuse, and
+cached observation never requests engineering calculation. No arbitrary RPC,
+argv, paths, alternate credentials or browser engine is exposed.
+
+Previous Desktop package opening required the unavailable browser `openDsgrid`
+binding. Its replacement is this independently qualified Core command plus the
+closed Desktop adapter; older installed Core explicitly refuses
+`core_incompatible` until updated. The former `dsgrid.profile.open` paired UI
+command remains a request to the actual Desktop, not a synonym for this owner.
+Shell remains 0.2.0 and engine/Core source versions stay independent. The first
+vertical lifecycle/scene interface does not admit unfinished Profile edits,
+publication or printing. Core shutdown and explicit close reap workers; idle
+sessions are retired on the next Profile request after fifteen minutes. At most
+eight sessions and a thirty-second native operation deadline are admitted.

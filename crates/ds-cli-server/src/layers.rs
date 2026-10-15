@@ -636,6 +636,7 @@ pub(crate) mod tests {
             requests: Arc::new(crate::host::Door::new(4)),
             activity: None,
             solar: Arc::new(crate::solar_application::Applications::default()),
+            profiles: Arc::new(crate::profile_sessions::Sessions::default()),
             layers: Arc::new(FixtureHost {
                 upstream,
                 root: dir.join("layers"),
