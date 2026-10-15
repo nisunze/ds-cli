@@ -79,7 +79,7 @@
 
 use crate::compute_jobs::{self, EngineKind, Job};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 pub const SCHEMA: &str = "ds.execution-context/v1";
 pub const MAX_INPUT_BYTES: usize = 8 * 1024 * 1024;
@@ -965,7 +965,11 @@ pub fn capacity(
 /// configuration is a share of exactly 1. So `1/1` is admitted and `2/1` is
 /// not, and from two slots up the share must be strictly smaller.
 const fn divides(share: usize, pool: usize) -> bool {
-    if pool == 1 { share == 1 } else { share < pool }
+    if pool == 1 {
+        share == 1
+    } else {
+        share < pool
+    }
 }
 
 /// Deterministic guidance: one second per unit of work that must go first,
@@ -1350,11 +1354,9 @@ mod tests {
         // look up a constant it does not have.
         let mut wrong_lane = context("project-a");
         wrong_lane.lane = "development".into();
-        assert!(
-            refusal(wrong_lane.validate().unwrap_err())
-                .message
-                .contains("one of stable, canary")
-        );
+        assert!(refusal(wrong_lane.validate().unwrap_err())
+            .message
+            .contains("one of stable, canary"));
         let mut wrong_operation = context("project-a");
         wrong_operation.operation = "everything".into();
         let listed = refusal(wrong_operation.validate().unwrap_err()).message;
@@ -1778,16 +1780,14 @@ mod tests {
         let idle: Vec<Slot> = vec![];
         assert!(capacity(limits(), Intent::Admit, &idle, &idle, "project-a").is_ok());
         // A full running pool never refuses a submission: it queues.
-        assert!(
-            capacity(
-                limits(),
-                Intent::Admit,
-                &slots(&["project-a"; 4]),
-                &idle,
-                "project-a"
-            )
-            .is_ok()
-        );
+        assert!(capacity(
+            limits(),
+            Intent::Admit,
+            &slots(&["project-a"; 4]),
+            &idle,
+            "project-a"
+        )
+        .is_ok());
         let refused = refusal(
             capacity(
                 limits(),
@@ -1802,16 +1802,14 @@ mod tests {
         assert_eq!(refused.scope, Some("project"));
         assert_eq!(refused.retry_after_ms, Some(4_000));
         // …and another project is still admitted while A is saturated.
-        assert!(
-            capacity(
-                limits(),
-                Intent::Admit,
-                &idle,
-                &slots(&["project-a", "project-a", "project-a"]),
-                "project-b"
-            )
-            .is_ok()
-        );
+        assert!(capacity(
+            limits(),
+            Intent::Admit,
+            &idle,
+            &slots(&["project-a", "project-a", "project-a"]),
+            "project-b"
+        )
+        .is_ok());
         let global = refusal(
             capacity(
                 limits(),
@@ -1844,16 +1842,14 @@ mod tests {
     fn a_claim_shares_the_running_pool_only_while_another_project_waits() {
         let idle: Vec<Slot> = vec![];
         // Over its share, with nothing else waiting: the machine is used.
-        assert!(
-            capacity(
-                limits(),
-                Intent::Claim,
-                &slots(&["project-a", "project-a", "project-a"]),
-                &slots(&["project-a"]),
-                "project-a"
-            )
-            .is_ok()
-        );
+        assert!(capacity(
+            limits(),
+            Intent::Claim,
+            &slots(&["project-a", "project-a", "project-a"]),
+            &slots(&["project-a"]),
+            "project-a"
+        )
+        .is_ok());
         // Over its share while another project waits: fairness refuses.
         let refused = refusal(
             capacity(
@@ -1874,16 +1870,14 @@ mod tests {
             refused.message
         );
         // The waiting project claims freely.
-        assert!(
-            capacity(
-                limits(),
-                Intent::Claim,
-                &slots(&["project-a", "project-a"]),
-                &slots(&["project-b"]),
-                "project-b"
-            )
-            .is_ok()
-        );
+        assert!(capacity(
+            limits(),
+            Intent::Claim,
+            &slots(&["project-a", "project-a"]),
+            &slots(&["project-b"]),
+            "project-b"
+        )
+        .is_ok());
         // Global exhaustion refuses every project, fairly or not.
         let global = refusal(
             capacity(
@@ -1929,16 +1923,14 @@ mod tests {
             assert_eq!(refused.scope, Some("project"), "{project}");
             assert_eq!(refused.retry_after_ms, Some(2_000), "{project}");
         }
-        assert!(
-            capacity(
-                roomy,
-                Intent::Claim,
-                &both_at_share,
-                &third_waiting,
-                "project-c"
-            )
-            .is_ok()
-        );
+        assert!(capacity(
+            roomy,
+            Intent::Claim,
+            &both_at_share,
+            &third_waiting,
+            "project-c"
+        )
+        .is_ok());
     }
 
     #[test]
@@ -2333,18 +2325,14 @@ mod tests {
                 .is_err()
         );
         // Every op's body is closed.
-        assert!(
-            wire(json!({
-                "kind": "retain", "context": context("project-a"), "event": "retry", "surprise": 1
-            }))
-            .is_err()
-        );
-        assert!(
-            wire(json!({
-                "kind": "retain", "context": context("project-a"), "event": "reassign_project"
-            }))
-            .is_err()
-        );
+        assert!(wire(json!({
+            "kind": "retain", "context": context("project-a"), "event": "retry", "surprise": 1
+        }))
+        .is_err());
+        assert!(wire(json!({
+            "kind": "retain", "context": context("project-a"), "event": "reassign_project"
+        }))
+        .is_err());
         assert!(wire(json!({"kind": "visible", "caller": caller()})).is_err());
         assert!(evaluate(&vec![b' '; MAX_INPUT_BYTES + 1]).is_err());
     }
