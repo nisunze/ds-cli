@@ -47,6 +47,15 @@ from a product installation problem; it does not make that shell available.
 Inspect the concrete protected-state error before recommending repair or
 reinstallation. Do not reset credentials or change identity to diagnose it.
 
+After a device is explicitly relinked to another account, `auth project list`
+and `auth project use` compare the protected providers' canonical UID, lane and
+client audience without loading the previous account's selected project.
+`project use` still fetches fresh project visibility and atomically saves only
+an exact visible project. An invisible project leaves the old selection
+untouched. `auth status` continues to report `project_context_stale` until that
+explicit selection succeeds; it never presents the previous account's project
+as the new account's selection.
+
 The selected project is only a device-local address plus an authority fence,
 and since 2026-09-24 no `ds` command reads it: every project command names its
 project with `--project`, so one machine, Server or agent serves several

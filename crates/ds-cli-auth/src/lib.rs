@@ -4466,7 +4466,10 @@ pub fn run_logout(inputs: &Inputs, _context: &Context) -> Result<Value, Failure>
 pub fn run_project_list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let limit = parse_limit(inputs.require("limit")?)?;
     let lane = Lane::parse(inputs.require("lane")?)?;
-    let _ = probe_headless_identity(lane.token())?;
+    // Fresh directory reads and replacing a selection must remain possible
+    // after relinking this machine. Compare provider identity, never the old
+    // saved selection that this command is meant to replace.
+    let _ = probe_headless_identity_for_named_project(lane.token())?;
     if let Some(mut device) = device::restore_session(lane)? {
         let directory = device.list_projects().map_err(map_client)?;
         let mut answer = directory_answer(lane, &directory, limit);
@@ -4497,7 +4500,10 @@ fn directory_answer(lane: Lane, directory: &ProjectDirectory, limit: usize) -> V
 
 pub fn run_project_use(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = Lane::parse(inputs.require("lane")?)?;
-    let _ = probe_headless_identity(lane.token())?;
+    // Fresh directory reads and replacing a selection must remain possible
+    // after relinking this machine. Compare provider identity, never the old
+    // saved selection that this command is meant to replace.
+    let _ = probe_headless_identity_for_named_project(lane.token())?;
     if let Some(mut device) = device::restore_session(lane)? {
         let identity = device.context();
         let directory = device.list_projects().map_err(map_client)?;
@@ -8198,6 +8204,99 @@ mod tests {
     /// as "no role" when the truth was "seen by elevation". The answer now
     /// carries the verdict, and a row the server left roleless says so; a role
     /// the server named is untouched, and without the verdict nothing changes.
+    /// Recovery observes the new principal without trusting the old account's
+    /// selection. Use a subprocess so protected-state/profile fixtures cannot
+    /// alter another test's process-wide configuration.
+    #[cfg(unix)]
+    #[test]
+    fn relink_recovery_does_not_read_the_previous_principals_selection() {
+        use crate::test_support::{FixtureTransport, NOW, SIGN_IN};
+        use std::os::unix::fs::PermissionsExt;
+        const CHILD: &str = "DS_AUTH_RELINK_FIXTURE_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let root = std::env::temp_dir().join(format!("ds-auth-relink-{}", std::process::id()));
+            std::fs::create_dir(&root).unwrap();
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+            let catalog = root.join("catalog.json");
+            let mut bytes: Value =
+                serde_json::from_str(include_str!("../tests/fixtures/development-catalog.json"))
+                    .unwrap();
+            bytes["schema_version"] = json!(ds_client_core::CLIENT_PROFILE_SCHEMA);
+            for lane in ["stable", "canary"] {
+                bytes["profiles"][lane]["firebase"]["project_id"] = json!("firebase-project");
+                bytes["profiles"][lane]["design_versions"]["actions"] =
+                    json!(ds_client_core::DESIGN_VERSIONS_ACTIONS);
+            }
+            std::fs::write(&catalog, serde_json::to_vec(&bytes).unwrap()).unwrap();
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::relink_recovery_does_not_read_the_previous_principals_selection",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .env("DS_CONFIG_HOME", root.join("state"))
+                .env("DS_NATIVE_CLIENT_PROFILE_BUNDLE", &catalog)
+                .env_remove("DS_NATIVE_LOCAL_GO")
+                .status()
+                .unwrap();
+            std::fs::remove_dir_all(root).unwrap();
+            assert!(status.success());
+            return;
+        }
+        let profile = profile::load(Lane::Canary).unwrap();
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        for state in ["active", "archived", "testing", "template"] {
+            transport.push_projects(&serde_json::to_vec(&json!({"success":true,"data":{
+                "count":1,"projects":[{"id":format!("visible-{state}"),"eds_project_id":format!("visible-{state}"),
+                    "project_name":state,"role":"owner","lifecycle_state":state}],"elevated":false,"status":state
+            }})).unwrap());
+        }
+        let mut client = Client::new(
+            profile.clone(),
+            transport,
+            NativeRefreshStore::open().unwrap(),
+        );
+        let user = client
+            .sign_in("user@example.com", "fixture-password", NOW)
+            .unwrap();
+        let directory = client.list_projects(NOW + 1).unwrap();
+        let project = directory.exact("visible-active").unwrap();
+        {
+            let context = ProjectContextLease::acquire(&profile).unwrap();
+            context
+                .save(&profile, "previous-principal", "old@example.com", project)
+                .unwrap();
+        }
+        assert_eq!(
+            probe_headless_identity("canary").unwrap_err().code(),
+            "project_context_stale"
+        );
+        let identity = probe_headless_identity_for_named_project("canary")
+            .unwrap()
+            .unwrap();
+        assert_eq!(identity.uid(), user.uid());
+        assert!(directory.exact("invisible-project").is_none());
+        {
+            let context = ProjectContextLease::acquire(&profile).unwrap();
+            // A refused address never reaches save or overwrites the old row.
+            assert_eq!(
+                context
+                    .load(&profile, "previous-principal", "old@example.com")
+                    .unwrap()
+                    .unwrap()
+                    .project_id(),
+                "visible-active"
+            );
+            context
+                .save(&profile, user.uid(), user.email(), project)
+                .unwrap();
+        }
+        let (restored, selected) = probe_headless_identity("canary").unwrap().unwrap();
+        assert_eq!(restored, identity);
+        assert_eq!(selected.as_deref(), Some("visible-active"));
+    }
+
     #[test]
     fn an_elevated_directory_names_its_roleless_rows_as_elevated() {
         use crate::test_support::{FixtureTransport, NOW, SIGN_IN, signed_in};
