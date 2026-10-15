@@ -36,7 +36,7 @@ pub static RELEASE: Command = Command {
     path: &["core", "module-release"],
     contract: 1,
     summary: "Validate one module's declared release metadata.",
-    purpose: "Read bounded local JSON and ask the Kernel to validate the selected module and lane's release metadata. This is read-only schema and compatibility inspection; it grants no installation trust, download, activation, computation or publication authority.",
+    purpose: "Read bounded local JSON and ask the Kernel to validate the selected module and lane's release metadata. Native is the default; runtime wasm inspects the complete four-file Network browser unit. This is read-only schema and compatibility inspection; it grants no installation trust, download, activation, computation or publication authority.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -52,6 +52,13 @@ pub static RELEASE: Command = Command {
         Arg::value("channel", "<stable|canary>", "Exact release lane.")
             .choices(&["stable", "canary"])
             .required(),
+        Arg::value(
+            "runtime",
+            "<native|wasm>",
+            "Publication runtime; wasm admits Network only.",
+        )
+        .choices(&["native", "wasm"])
+        .default("native"),
         Arg::value(
             "file",
             "<json-file>",
@@ -154,6 +161,14 @@ pub fn release(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         Failure::invalid("module_release_invalid", message)
         .remedy("retain the metadata; select its exact module and lane or obtain a corrected declared release")
     };
+    let runtime = inputs.value("runtime").unwrap_or("native");
+    if runtime == "wasm" {
+        ds_command_kernel::module_release::browser::admit_target(
+            inputs.require("component")?,
+            inputs.require("channel")?,
+        )
+        .map_err(|error| invalid(error.to_string()))?;
+    }
     let path = inputs.require("file")?;
     let metadata = std::fs::symlink_metadata(path).map_err(|error| invalid(error.to_string()))?;
     if !metadata.is_file() || metadata.len() > LIMIT {
@@ -176,6 +191,12 @@ pub fn release(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     if value.is_null() {
         return Ok(Value::Null);
     }
+    if runtime == "wasm" {
+        let admitted =
+            ds_command_kernel::module_release::browser::inspect(inputs.require("channel")?, value)
+                .map_err(|error| invalid(error.to_string()))?;
+        return serde_json::to_value(admitted.release).map_err(|error| invalid(error.to_string()));
+    }
     let admitted = ds_command_kernel::module_release::validate_module_release(
         inputs.require("component")?,
         inputs.require("channel")?,
@@ -188,6 +209,82 @@ pub fn release(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 #[cfg(test)]
 mod inventory_tests {
     use super::*;
+    use std::io::Write;
+
+    fn inspect_file(
+        path: &std::path::Path,
+        component: &str,
+        runtime: Option<&str>,
+    ) -> Result<Value, Failure> {
+        let mut tokens = vec![
+            "--component".into(),
+            component.into(),
+            "--channel".into(),
+            "canary".into(),
+            "--file".into(),
+            path.to_string_lossy().into_owned(),
+        ];
+        if let Some(runtime) = runtime {
+            tokens.extend(["--runtime".into(), runtime.into()]);
+        }
+        let inputs = ds_cli_contract::parse(&RELEASE, &tokens)?;
+        release(
+            &inputs,
+            &Context {
+                confirmed: false,
+                output: ds_cli_contract::Output::resolve(
+                    ds_cli_contract::Format::Json,
+                    false,
+                    true,
+                ),
+            },
+        )
+    }
+
+    #[test]
+    fn browser_release_inspection_is_explicit_and_native_default_is_preserved() {
+        let mut browser = tempfile::NamedTempFile::new().unwrap();
+        browser
+            .write_all(include_bytes!(
+                "../../../../ds-command-kernel/src/module_release/fixtures/network-wasm-canary.json"
+            ))
+            .unwrap();
+        assert!(inspect_file(browser.path(), "network", None).is_err());
+        let admitted = inspect_file(browser.path(), "network", Some("wasm")).unwrap();
+        assert_eq!(admitted["runtime"], "wasm");
+        assert_eq!(admitted["protocol"], "ds.network-wasm/v1");
+        assert_eq!(admitted["assets"].as_array().unwrap().len(), 4);
+        let mut native = tempfile::NamedTempFile::new().unwrap();
+        native.write_all(include_bytes!("../../../../ds-command-kernel/src/module_release/fixtures/network-native-canary.json")).unwrap();
+        let legacy = inspect_file(native.path(), "network", None).unwrap();
+        assert_eq!(
+            legacy,
+            inspect_file(native.path(), "network", Some("native")).unwrap()
+        );
+        assert_eq!(legacy["protocol"], "ds.network-engine/v1");
+        assert!(legacy.get("runtime").is_none());
+        assert!(inspect_file(native.path(), "network", Some("wasm")).is_err());
+    }
+
+    #[test]
+    fn unsupported_browser_target_refuses_before_file_access_and_unknown_runtime_is_not_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let absent = dir.path().join("must-not-read.json");
+        for component in ["solar", "reporter"] {
+            let error = inspect_file(&absent, component, Some("wasm")).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("module_release_target_unsupported")
+            );
+        }
+        assert_eq!(
+            inspect_file(&absent, "network", Some("other"))
+                .unwrap_err()
+                .code(),
+            "invalid_choice"
+        );
+    }
     #[test]
     fn unsupported_release_lane_refuses_before_any_addon_probe() {
         let error = inventory_for_release_lane(
