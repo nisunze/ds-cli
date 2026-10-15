@@ -87,6 +87,20 @@ pub struct BridgeOp {
     pub arguments: &'static [&'static str],
 }
 
+/// Closed development controls; native admission restricts these to debug local-dev.
+pub const DEV_SNAPSHOT: BridgeOp = BridgeOp {
+    operation: "desktop.dev.snapshot",
+    arguments: &["project", "transformer", "limit"],
+};
+pub const DEV_SELECT: BridgeOp = BridgeOp {
+    operation: "desktop.dev.select",
+    arguments: &["project", "transformers", "mode"],
+};
+pub const DEV_REFRESH: BridgeOp = BridgeOp {
+    operation: "desktop.dev.refresh",
+    arguments: &["project", "transformer"],
+};
+
 /// Resolve the instance this operation is for: the descriptor a caller named,
 /// or the one live instance the kernel selects for the host `--target` (or
 /// `DS_TARGET`) named.
@@ -198,7 +212,22 @@ fn invocation_route<'a>(
     } else {
         Requirement::DesktopUser
     };
-    project_context::route(
+    // Only an explicitly named observed Local window gets the reviewed
+    // development scope. Keep its Local IPC fence separate from the real
+    // native credential lane; automatic/provisioned routing remains strict.
+    let target = scoped_target();
+    let scope = match (target.as_deref(), instance, headless) {
+        (Some(target), Some(instance), Some(native))
+            if fence.lane == "local" && target.strip_prefix("desktop:") == Some(instance) =>
+        {
+            project_context::PairedHostScope::ExplicitLocalDevelopment {
+                target_instance: instance,
+                native_credential_lane: &native.lane,
+            }
+        }
+        _ => project_context::PairedHostScope::Provisioned,
+    };
+    project_context::route_paired(
         requirement,
         switch_for(operation),
         headless.map(|h| ProjectContext {
@@ -211,6 +240,7 @@ fn invocation_route<'a>(
             instance: None,
         }),
         fence_context(fence, instance),
+        scope,
     )
     .map_err(refused_route)
 }
@@ -925,6 +955,71 @@ mod tests {
         fence.lane = "canary".to_owned();
         assert_eq!(
             invocation_route("map.zoom_to", Some(&headless), &fence, Some(INSTANCE))
+                .unwrap_err()
+                .code(),
+            "auth_context_mismatch"
+        );
+    }
+
+    #[test]
+    fn explicit_local_target_uses_native_identity_without_relabeling_the_window() {
+        let caller = HeadlessIdentity {
+            uid: "uid-1".into(),
+            lane: "canary".into(),
+            credential_audience_sha256: "a".repeat(64),
+            project: Some("project".into()),
+            command_authority: Authority::Project,
+        };
+        let session = json!({"uid":"uid-1","lane":"local","credential_audience_sha256":"a".repeat(64),"project":"project","session_revision":4});
+        let fence = bridge::IdentityFence::from_session(&session).unwrap();
+        let _automatic = scope_target(None);
+        assert_eq!(
+            invocation_route("map.zoom_to", Some(&caller), &fence, Some(INSTANCE))
+                .unwrap_err()
+                .code(),
+            "auth_context_mismatch"
+        );
+        {
+            let _named = scope_target(Some(format!("desktop:{INSTANCE}")));
+            assert_eq!(
+                invocation_route("map.zoom_to", Some(&caller), &fence, Some(INSTANCE)).unwrap(),
+                Route::CurrentDesktop
+            );
+            let foreign = HeadlessIdentity {
+                uid: "foreign".into(),
+                ..caller.clone()
+            };
+            assert_eq!(
+                invocation_route("map.zoom_to", Some(&foreign), &fence, Some(INSTANCE))
+                    .unwrap_err()
+                    .code(),
+                "auth_context_mismatch"
+            );
+            invoke_routed(
+                &ZOOM_TO,
+                json!({}),
+                Duration::from_secs(1),
+                Some(&caller),
+                Some(INSTANCE),
+                || Ok(session.clone()),
+                |_, _, held, _| {
+                    assert_eq!(held.lane, "local");
+                    assert_eq!(held.session_revision, 4);
+                    assert_eq!(held.project.as_deref(), Some("project"));
+                    Ok(json!({}))
+                },
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            invocation_route("map.zoom_to", Some(&caller), &fence, Some(INSTANCE))
+                .unwrap_err()
+                .code(),
+            "auth_context_mismatch"
+        );
+        let _wrong = scope_target(Some("desktop:another-instance".into()));
+        assert_eq!(
+            invocation_route("map.zoom_to", Some(&caller), &fence, Some(INSTANCE))
                 .unwrap_err()
                 .code(),
             "auth_context_mismatch"

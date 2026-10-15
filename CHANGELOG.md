@@ -1,5 +1,17 @@
 # Release notes
 
+## Unreleased: explicit Local development pairing
+
+Old native CLI routing refused an explicitly targeted Local development window
+with a matching Canary/Stable account because host and credential lanes were
+compared as one field. New typed `route_paired` captures the native credential
+lane separately and admits only `--target desktop:<exact observed local id>`
+with the same UID and credential audience. The window's Local identity and
+session/window/project fences remain unchanged. Automatic Local selection and
+installed Stable/Canary crossings still refuse. Consumers need the updated CLI;
+older CLI keeps refusing, with no credential or cache migration required.
+
+
 ## Unreleased: lossless held transformer preview through Core
 
 Old Desktop transformer preview could not cross the installed-Core boundary

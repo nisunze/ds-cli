@@ -33,3 +33,13 @@ existing principal, lane, audience, instance and project fences. A mismatched
 window continues to refuse `desktop_target_mismatch` before any effect.
 `desktop status` remains a credential-independent observation of the named
 window and needs no lane argument.
+
+For the friendly Local development window, name its exact observed instance
+with `--target desktop:<instance_id>` and the real protected native credential
+lane with `--lane canary` or `--lane stable`. New CLI builds admit this explicit
+pair only when the window and native principal have the same UID and credential
+audience. The window remains Local; automatic Local selection and installed
+Stable/Canary crossings remain refused. Existing project, session revision and
+window generation fences still apply. Older CLI builds refuse this combination
+with `auth_context_mismatch`; update the CLI, without copying credentials or
+changing the development profile.
