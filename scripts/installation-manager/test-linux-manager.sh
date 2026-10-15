@@ -26,6 +26,7 @@ fixture() {
 #!/usr/bin/env bash
 printf '%s\n' 'unexpected owning installer execution' >> "$DS_MANAGER_TEST_OWNER_LOG"
 if [[ "${0##*/}" == install-core.sh && "${DS_GRIDDESIGN_CORE_CATALOG:-}" != independent ]];then exit 92;fi
+if [[ "${0##*/}" == install-core.sh && "${DS_GRIDDESIGN_CORE_REPLACE:-}" != "${DS_MANAGER_TEST_EXPECT_REPLACE:-0}" ]];then exit 93;fi
 exit 91
 OWNER
   done
@@ -129,6 +130,10 @@ if [[ ! -e "$DS_MANAGER_TEST_OWNER_LOG" ]]; then pass 'no owning installer or co
 fixture independent-core-receiver
 invoke install core canary --yes
 if [[ "$result" -eq 91 ]];then pass 'Core receiver delegates independent catalog to existing installer owner';else fail 'Core receiver delegates independent catalog to existing installer owner';fi
+export DS_MANAGER_TEST_EXPECT_REPLACE=1
+invoke update core canary --yes
+if [[ "$result" -eq 91 ]];then pass 'Explicit Core update selects qualified replacement owner';else fail 'Explicit Core update selects qualified replacement owner';fi
+unset DS_MANAGER_TEST_EXPECT_REPLACE
 # Legacy Desktop tests stop at a fixture installer, before Core/UI acquisition.
 # Mock package commands record effects; none can invoke the real package manager.
 ln -s "$(command -v dpkg)" "$scratch/bin/dpkg"
@@ -182,6 +187,55 @@ else:assert calls==[],calls
 PY
     then pass "legacy Desktop $lane $version boundary"; else fail "legacy Desktop $lane $version boundary"; fi
   done
+done
+# UI install idempotence uses Core's admitted public unit, never only a local
+# version label. Mocks record stage/activation effects in this disposable home.
+for tool in mktemp rm;do ln -s "$(command -v "$tool")" "$scratch/bin/$tool";done
+cat > "$scratch/bin/curl" <<'CURL'
+#!/usr/bin/env python3
+import pathlib,sys
+a=sys.argv[1:];pathlib.Path(a[a.index('-o')+1]).write_text('{}')
+CURL
+cat > "$scratch/bin/ds-canary" <<'CORE'
+#!/usr/bin/env python3
+import json,os,sys
+a=sys.argv[1:]
+with open(os.environ['DS_MANAGER_TEST_CORE_LOG'],'a') as f:f.write(json.dumps(a)+chr(10))
+if a[:3]==['core','component','selection']:
+ active={'unit':{'unit_sha256':os.environ['DS_MANAGER_TEST_ACTIVE_DIGEST']}}
+ data={'generation':7,'selection':{'state':os.environ.get('DS_MANAGER_TEST_SELECTION_STATE','installed'),'active':active}}
+elif a[:2]==['core','module-release']:
+ if os.environ.get('DS_MANAGER_TEST_ADMISSION_REFUSED')=='1':
+  print(json.dumps({'status':'error','error':{'code':'release_stopped'}}));sys.exit(3)
+ data={'unit_sha256':'b'*64}
+elif a[:2]==['core','module-stage']:data={'receiptId':'qualified-fixture'}
+elif a[:3]==['core','component','activate']:data={'generation':8}
+else:raise AssertionError(a)
+print(json.dumps({'status':'ok','data':data}))
+CORE
+chmod +x "$scratch/bin/curl" "$scratch/bin/ds-canary"
+export DS_MANAGER_TEST_CORE_LOG="$scratch/core-effects.jsonl"
+for component in interactions command-kernel;do
+ for case in exact changed removed admission-refused;do
+  fixture "ui-$component-$case"
+  export DS_MANAGER_TEST_ACTIVE_DIGEST=$(printf 'b%.0s' {1..64})
+  export DS_MANAGER_TEST_SELECTION_STATE=installed DS_MANAGER_TEST_ADMISSION_REFUSED=0
+  [[ "$case" != changed ]] || export DS_MANAGER_TEST_ACTIVE_DIGEST=$(printf 'c%.0s' {1..64})
+  [[ "$case" != removed ]] || export DS_MANAGER_TEST_SELECTION_STATE=removed
+  [[ "$case" != admission-refused ]] || export DS_MANAGER_TEST_ADMISSION_REFUSED=1
+  rm -f "$DS_MANAGER_TEST_CORE_LOG"
+  invoke install "$component" canary --yes
+  if [[ "$result" -eq 0 && "$case" != admission-refused || "$result" -ne 0 && "$case" == admission-refused ]] && "$python_bin" - "$DS_MANAGER_TEST_CORE_LOG" "$case" <<'PY_EFFECTS'
+import json,pathlib,sys
+calls=[json.loads(x) for x in pathlib.Path(sys.argv[1]).read_text().splitlines()];case=sys.argv[2]
+assert calls[0][:3]==['core','component','selection'] and calls[1][:2]==['core','module-release'],calls
+if case in ['exact','admission-refused']:assert len(calls)==2,calls
+else:
+ assert len(calls)==4 and calls[2][:2]==['core','module-stage'] and calls[3][:3]==['core','component','activate'],calls
+ assert calls[3][calls[3].index('--expected-generation')+1]=='7',calls
+PY_EFFECTS
+  then pass "UI $component $case preserves admission and exact-unit generation";else fail "UI $component $case preserves admission and exact-unit generation";fi
+ done
 done
 printf 'Linux manager tests: %s passed, %s failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

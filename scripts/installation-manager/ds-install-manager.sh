@@ -42,7 +42,8 @@ remove_legacy_desktop() {
 if [[ "$component" == core || "$component" == desktop ]];then
  [[ "$action" == install || "$action" == update ]] || { echo 'component_lifecycle_unavailable: use the qualified platform owner' >&2;exit 2; }
  if [[ "$component" == desktop ]];then remove_legacy_desktop;DS_GRIDDESIGN_CHANNEL="$channel" bash "$root/install-desktop.sh";fi
- DS_GRIDDESIGN_CORE_CATALOG=independent DS_GRIDDESIGN_CHANNEL="$channel" bash "$root/install-core.sh"
+ replace_core=0;[[ "$component:$action" != core:update ]] || replace_core=1
+ DS_GRIDDESIGN_CORE_REPLACE="$replace_core" DS_GRIDDESIGN_CORE_CATALOG=independent DS_GRIDDESIGN_CHANNEL="$channel" bash "$root/install-core.sh"
  [[ "$component" != desktop ]] || { bash "$0" install interactions "$channel" --yes;bash "$0" install command-kernel "$channel" --yes; }
  exit 0
 fi
@@ -64,6 +65,20 @@ else:
  r=json.load(open(sys.argv[2]))['release'];a=[a for a in r['assets'] if a['platform']=='linux' and a['arch']=='x86_64'];assert len(a)==1;print(a[0]['sha256'])
 PY
 )
+# Public admission remains mandatory even when this exact UI unit is active.
+# Repeating install must not create a new generation or disturb captured workers.
+if [[ "$runtime" == wasm ]] && python3 - "$selection" "$digest" <<'PY_ACTIVE'
+import json,sys
+r=json.loads(sys.argv[1]);assert r['status']=='ok'
+selection=(r.get('data') or {}).get('selection') or {}
+active=selection.get('active') or {}
+sys.exit(0 if selection.get('state')=='installed' and (active.get('unit') or {}).get('unit_sha256')==sys.argv[2] else 1)
+PY_ACTIVE
+then
+ printf 'Already installed the exact admitted %s unit; preserving generation %s.\n' "$component" "$generation"
+ printf '%s\n' "$selection"
+ exit 0
+fi
 ready=$("$command" core module-stage --component "$component" --channel "$channel" --runtime "$runtime" --sha256 "$digest" --yes --output json)
 receipt=$(python3 -c 'import json,sys;x=json.load(sys.stdin);assert x["status"]=="ok";print(x["data"]["receiptId"])' <<<"$ready")
 "$command" core component activate --component "$component" --channel "$channel" --runtime "$runtime" --receipt-id "$receipt" --expected-generation "$generation" --yes --output json
