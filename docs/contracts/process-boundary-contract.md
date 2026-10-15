@@ -233,3 +233,24 @@ only as `solar project sync --workspace <absolute path> --project <validated pro
 --watch --yes --output json`. `ds-cli-exec::start_solar_project_sync` owns this
 closed process boundary after the initiating command's governed-write gate.
 It accepts no arbitrary executable, subcommand, URL or argument vector.
+
+
+## Retained Linux Profile creator lifetime
+
+The fixed `network_profile_session` owner retains a private Linux launch thread
+until its exact child/tree has been terminated and the child reaped. Linux
+[`PR_SET_PDEATHSIG`](https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html) follows the creating thread, so a temporary caller or Tokio
+blocking-pool thread may return without cancelling the retained session. The
+parent-death signal, unique process group, bounded pipes/deadlines and native
+identity fences remain enforced. Constructor failure, abandoned handoff,
+Close, cancellation and Drop reap before releasing that private creator. The
+Windows suspended-spawn/Job Object path remains its existing owner and creates
+no additional launch thread.
+
+Previously a returned blocking-pool caller could kill the retained Linux
+worker while Core remained alive, making a later valid request refuse. A
+qualified Core artifact containing this process-owner repair is required;
+Desktop and engine artifacts retain their independent versions and identities.
+Abrupt whole-parent death still kills the direct engine. Group cleanup covers
+its admitted descendants during normal owner termination; this does not claim
+that Linux parent-death signals propagate to arbitrary fork descendants.

@@ -257,3 +257,11 @@ Survey loading and retained print preparation, must discover the new flag and
 verify the receipt; older Core is refused rather than silently truncating.
 `--complete-file` without `--out`, or with `--include-deleted`, refuses before
 authority or output creation. This adds no new storage or command owner.
+
+- Retained Linux Profile workers survive the return or retirement of their
+  caller's background thread. The existing native process owner keeps a private
+  creator thread until exact child/tree termination and reap, retaining Linux
+  parent-death/process-group fences and the existing Windows Job behavior.
+  Constructor failure, abandoned handoff, Close, cancellation and Drop remain
+  bounded. Update the independently qualified Core artifact for this fix;
+  no matching Desktop/Network version or engine rebuild is required.
