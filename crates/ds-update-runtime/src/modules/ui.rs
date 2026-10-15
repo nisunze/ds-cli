@@ -10,14 +10,72 @@ const STAGE_SCHEMA: &str = "ds.ui-module-stage/v1";
 const MAX_STORED_BYTES: u64 = 1024 * 1024;
 pub const MAX_MEMBER_CHUNK: usize = 1024 * 1024;
 
-/// UI installation is admitted on the qualified private Linux store. Native
-/// engine Windows support is unchanged; UI needs its own qualified DACL adapter.
+/// Native host IO hooks reuse the existing protected Windows state owner.
+/// These are process-local implementation plumbing, never an IPC/SDK surface.
+#[cfg(windows)]
+pub struct WindowsUiStoreOwner {
+    pub prepare_directory: fn(&Path) -> Result<(), String>,
+    pub validate_directory: fn(&Path) -> Result<(), String>,
+    pub validate_file: fn(&Path) -> Result<(), String>,
+}
+#[cfg(windows)]
+static WINDOWS_OWNER: std::sync::OnceLock<&'static WindowsUiStoreOwner> =
+    std::sync::OnceLock::new();
+#[cfg(windows)]
+pub fn register_windows_store_owner(owner: &'static WindowsUiStoreOwner) -> Result<(), String> {
+    let held = WINDOWS_OWNER.get_or_init(|| owner);
+    if !std::ptr::eq(*held, owner) {
+        return Err(
+            "module_store_invalid: another Windows UI state owner is already registered".into(),
+        );
+    }
+    Ok(())
+}
 pub fn ui_platform() -> Result<(), String> {
     if cfg!(target_os = "linux") && cfg!(target_arch = "x86_64") {
-        Ok(())
-    } else {
-        Err("ui_component_platform_unavailable: UI installation requires the qualified Linux x86_64 private store; Windows UI ownership is not yet admitted".into())
+        return Ok(());
     }
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    if WINDOWS_OWNER.get().is_some() {
+        return Ok(());
+    }
+    Err("ui_component_platform_unavailable: UI installation requires qualified Linux x86_64 storage or the registered Windows x86_64 SID/DACL owner".into())
+}
+#[cfg(windows)]
+fn windows_owner() -> Result<&'static WindowsUiStoreOwner, String> {
+    WINDOWS_OWNER.get().copied().ok_or_else(|| {
+        "ui_component_platform_unavailable: the Windows SID/DACL owner is not registered".into()
+    })
+}
+#[cfg(windows)]
+fn audit_windows_tree(root: &Path) -> Result<(), String> {
+    let owner = windows_owner()?;
+    let mut pending = vec![(root.to_path_buf(), 0usize)];
+    let mut count = 0usize;
+    while let Some((directory, depth)) = pending.pop() {
+        (owner.validate_directory)(&directory)?;
+        for entry in fs::read_dir(directory).map_err(|e| e.to_string())? {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            count += 1;
+            if count > 10_000 || depth >= 16 {
+                return Err(
+                    "module_store_invalid: Windows UI ownership inventory exceeds its bound".into(),
+                );
+            }
+            let metadata = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+            if transfer::metadata_is_link_or_reparse(&metadata) {
+                return Err("module_store_invalid: linked or reparsed UI state".into());
+            }
+            if metadata.is_dir() {
+                pending.push((path, depth + 1));
+            } else if metadata.is_file() {
+                (owner.validate_file)(&path)?;
+            } else {
+                return Err("module_store_invalid: nonordinary UI state".into());
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Minted only by this native gateway acquisition, never by held catalog JSON.
@@ -195,11 +253,19 @@ impl UiModuleStore {
                 "module_store_invalid: use the exact absolute native store and lane".into(),
             );
         }
+        #[cfg(windows)]
+        {
+            let owner = windows_owner()?;
+            (owner.prepare_directory)(&base.join(component.as_str()))?;
+            (owner.prepare_directory)(&base.join(component.as_str()).join(channel))?;
+        }
         let root = transfer::ensure_owned_directory(
             base,
             &PathBuf::from(component.as_str()).join(channel),
         )?;
         for name in ["versions", "receipts"] {
+            #[cfg(windows)]
+            (windows_owner()?.prepare_directory)(&root.join(name))?;
             transfer::ensure_owned_directory(&root, Path::new(name))?;
         }
         let store = Self {
@@ -242,6 +308,15 @@ impl UiModuleStore {
         .selection()
     }
     fn check_root(&self) -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            (windows_owner()?.validate_directory)(
+                self.root
+                    .parent()
+                    .ok_or("module_store_invalid: missing UI parent")?,
+            )?;
+            audit_windows_tree(&self.root)?;
+        }
         for path in self.root.ancestors().take(3) {
             ordinary_directory(path)?;
             #[cfg(unix)]

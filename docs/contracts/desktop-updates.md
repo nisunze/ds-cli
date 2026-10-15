@@ -60,3 +60,15 @@ or uncaptured consumers refuse conservatively. Automatic module activation is
 not declared. A completed explicit activation refreshes only that module's local
 inventory against held metadata, with no release freshness read. Publication
 version/build/release date belong only to a matching active executable receipt.
+
+The opaque UI store keeps the same four-member, generation-fenced lifecycle on
+Linux and Windows. Windows is unavailable until the native host registers the
+existing protected-state SID/DACL owner. Registration creates no identity or
+state. Component/lane roots are created with that owner's sole-account DACL;
+retained directories and every retained file are audited before reads or updates.
+Foreign-readable children, foreign ownership, reparse points and a second update
+owner refuse without rewriting retained permissions. The shared base and existing
+native engine installations are preserved. Native qualification must include the
+actual published unit, removal/rollback/reopen, byte tampering and ACL negatives;
+source registration alone is not installed acceptance. macOS UI installation
+remains unavailable. WASM publication remains the Web/WASM lane on every OS.
