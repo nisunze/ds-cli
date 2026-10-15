@@ -60,6 +60,9 @@ use ds_report_host::{
 use ds_sync_runtime::reports::{SealOutcome, SealRequest};
 use serde_json::{Value, json};
 
+#[path = "held_preview.rs"]
+mod held_preview;
+
 use super::reuse::{self, Decision, OutputPlan, RunScope};
 use super::{LANE_ARG, TRANSFORMER_ARG};
 use crate::{DISCOVERY_TIMEOUT, DS_REPORT, EXPORT_TIMEOUT};
@@ -283,6 +286,16 @@ const HOLDINGS_STORE: Refusal = Refusal {
 };
 
 pub(super) const REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "report_held_preview_invalid",
+        when: "The closed held-preview payload, original receipt/media/context or controls fail admission",
+        remedy: "Preserve the held snapshot and correct the named field; never reacquire or substitute current report rows",
+    },
+    Refusal {
+        code: "project_context_changed",
+        when: "The held preview project, Core lane, audience or explicit CRS scope differs from its captured owner",
+        remedy: "Retain completed artifacts and capture the intended owner-window context again",
+    },
     super::mv_context::NETWORK_ENGINE_MISSING,
     super::mv_context::NETWORK_ENGINE_INCOMPATIBLE,
     super::vd_preview::MISSING,
@@ -365,6 +378,11 @@ pub static COMMAND: Command = Command {
     execution: Execution::Sync,
     args: &[
         TRANSFORMER_ARG,
+        Arg::value(
+            "held-preview",
+            "<json-file>",
+            "Closed ds.report-held-preview/v1 exact caller-held transformer preview; no config/room/style acquisition or publication. Requires fresh absolute out-dir for private scratch.",
+        ),
         OUT_DIR_ARG,
         CONCURRENCY_ARG,
         ADMIN_BOUNDS_ARG,
@@ -903,6 +921,9 @@ fn concurrency_limit(inputs: &Inputs) -> Result<usize, Failure> {
 /// Local refusal pass that must run before a project report touch restores
 /// credentials or reconciles remote report state.
 pub fn preflight(inputs: &Inputs) -> Result<(), Failure> {
+    if inputs.value("held-preview").is_some() {
+        return held_preview::preflight(inputs);
+    }
     super::transformer_set(inputs)?;
     concurrency_limit(inputs)?;
     run_output_selection(inputs)?;
@@ -1393,6 +1414,9 @@ fn pinned_rooms(
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    if inputs.value("held-preview").is_some() {
+        return held_preview::run(inputs);
+    }
     if inputs.switch("preview-voltage-drop") {
         return super::vd_preview::run(inputs);
     }

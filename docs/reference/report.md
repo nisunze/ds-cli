@@ -579,6 +579,34 @@ project. It pins the exact source revision and creates with an empty
 destination revision or replaces an exact destination revision. The source
 remains unchanged and the destination keeps its pinned lineage.
 
+`report.project.export --held-preview <json-file> --out-dir <fresh-absolute-scratch>
+--project <exact-id> --lane canary` consumes one exact Desktop-held transformer
+preview instead of acquiring project inputs, rooms or styles. The closed
+`ds.report-held-preview/v1` document carries `uid`, `project`, `lane`,
+`credential_audience_sha256`, original `args` (`transformer`, inline
+`preview-layout`, optional `preview-retention` and fresh `preview-out`), original
+`held` (`receipt`, room, style capture, media grant, captures and retained
+contexts), the matching `media_grant_document`, and optional `project_crs`.
+The whole document is bounded to 128 MiB; the receipt's original `sheets_json`
+bytes/digest, saved room revision/layers, style and context are never replaced.
+Core revalidates the receipt and Kernel room/style decisions, then restores its
+own native account and requires the same visible project, UID, lane and audience
+before admitting its managed Reporter. A supplied CRS capture must retain its
+scope and match Core's declared project CRS source; where a metric map requires
+one and no capture was supplied, Core captures its existing authenticated project
+projection authority. No CRS, style, model or report rows are invented.
+
+This mode cannot combine with seeding, delivery/batch selection, room pins,
+context acquisition, force, dry-run or other preview modes. `out-dir` is private
+fresh scratch only; no report delivery/queue is opened. The result uses the
+existing common SVG artifact/expiry owner and original preview answer. Explicit
+`preview-out` copies that same verified artifact to a fresh destination. Account
+or context changes refuse adoption and retain completed artifact/output details.
+Older Core without the new input is incompatible for this mode; Desktop reports
+`core_incompatible`, preserves the snapshot and never falls back to its retired
+local engine or silently refreshes the inputs. Existing export modes and command
+contract 2 remain unchanged.
+
 `report.layout.render --request render.json` calls the installed reporter's
 fixed `render-print-layout` task with held GeoJSON. Discover that task's complete
 schema with `report.tasks --task render_print_layout`. It writes SVG/PDF to a

@@ -1,5 +1,23 @@
 # Release notes
 
+## Unreleased: lossless held transformer preview through Core
+
+Old Desktop transformer preview could not cross the installed-Core boundary
+without replacing its held receipt/style/room/context, so it explicitly refused.
+New `report.project.export --held-preview <json-file>` adds the bounded closed
+`ds.report-held-preview/v1` variant to existing command contract 2. Core admits
+the exact caller-held inputs under its own matching UID/project/lane/audience,
+uses its managed Reporter and the existing shared retained SVG artifact owner,
+and preserves completed output on late context refusal. It never refreshes
+report rows, publishes, opens a queue or restores a Desktop engine.
+
+Desktop/CLI consumers need a qualified Core artifact advertising `held-preview`
+for this variant; older Core remains explicitly incompatible and held inputs
+remain intact. Existing export modes and independently installed components
+are unchanged. The required fresh absolute `out-dir` is private scratch in this
+mode; optional held `preview-out` remains an explicit fresh verified copy.
+
+
 ## Unreleased: captured-layout Core target discovery
 
 Old discovery text for `report.layout.render` advertised `--target server`,
