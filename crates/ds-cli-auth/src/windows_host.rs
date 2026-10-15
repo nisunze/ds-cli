@@ -307,6 +307,13 @@ pub fn audit_runtime_tree(root: &Path, lock: &RuntimeLock) -> Result<(), String>
 pub fn register_ui_store_owner() -> Result<(), String> {
     use ds_update_runtime::modules::ui::{WindowsUiStoreOwner, register_windows_store_owner};
     fn validate_file(path: &Path) -> Result<(), String> {
+        if path.file_name().is_some_and(|name| name == "update.lock") {
+            validate_directory(path.parent().ok_or_else(error)?)?;
+            let file = crate::state_windows::open_lock_metadata(path).map_err(|_| error())?;
+            // Same SID, DACL, hardlink and reparse checks, without excluding
+            // the updater's own held writer before its generation fence.
+            return validate_private(&file);
+        }
         drop(read_file(path)?);
         Ok(())
     }
@@ -344,11 +351,13 @@ mod ui_store_tests {
             .unwrap()
             .as_nanos();
         let sequence = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let base = FixtureDirectory(std::env::temp_dir().join(format!(
+        // The managed sandbox grants foreign SIDs writes to TEMP; the native
+        // owner correctly refuses it. Use its safe current-user known folder.
+        let base = FixtureDirectory(local_application_data().unwrap().join(format!(
             "ds-ui-native-{}-{nonce}-{sequence}",
             std::process::id()
         )));
-        fs::create_dir(base.path()).unwrap();
+        prepare_directory(base.path()).unwrap();
         let store = UiModuleStore::new(base.path(), UiComponent::Interactions, "canary").unwrap();
         (base, store)
     }

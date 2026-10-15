@@ -122,10 +122,20 @@ pub(super) fn create_new(path: &Path) -> Result<File, StoreError> {
 }
 
 pub(super) fn open_read(path: &Path) -> Result<File, StoreError> {
+    open_read_with_sharing(path, FILE_SHARE_READ)
+}
+
+// Metadata-only inspection of the updater's fixed lock must coexist with its
+// writer handle. Credential reads keep their original read-only sharing fence.
+pub(super) fn open_lock_metadata(path: &Path) -> Result<File, StoreError> {
+    open_read_with_sharing(path, FILE_SHARE_READ | FILE_SHARE_WRITE)
+}
+
+fn open_read_with_sharing(path: &Path, sharing: u32) -> Result<File, StoreError> {
     validate_absolute_local_path(path)?;
     let file = OpenOptions::new()
         .read(true)
-        .share_mode(FILE_SHARE_READ)
+        .share_mode(sharing)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
         .open(path)
         .map_err(|_| StoreError::Unavailable)?;

@@ -30,6 +30,14 @@ PowerShell 5.1 without requiring RuntimeInformation.OSArchitecture reflection.
 
 ## Unreleased: independently installed UI units
 
+Windows UI audits now inspect the fixed updater lock through the existing
+SID/DACL owner with metadata sharing compatible with its held writer. Credential
+reads keep their original sharing fence. This fixes self-refusal during native
+staging/capture while retaining foreign ACL, hardlink/reparse and single-owner
+refusals. No user data or retained ACL is rewritten. UI store tests use a private
+current-user known folder because managed sandbox TEMP is foreign-writable.
+
+
 Component metadata, staging, selection, activation, removal and rollback move
 to command contract 2, adding explicit `--runtime wasm` for `interactions` and
 `command-kernel`. The `native` default and existing native engine lifecycle
