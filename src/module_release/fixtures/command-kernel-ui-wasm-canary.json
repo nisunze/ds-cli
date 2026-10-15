@@ -1,0 +1,109 @@
+{
+  "schema": "ds.module-release/v1",
+  "component": "command-kernel",
+  "runtime": "wasm",
+  "channel": "canary",
+  "product_id": "rw.datasolutions.module.command-kernel.canary",
+  "version": "0.1.0-r1",
+  "protocol": "ds.ui-wasm/v1",
+  "released_at": "2026-10-15T08:00:00Z",
+  "status": "active",
+  "assets": [
+    {
+      "platform": "browser",
+      "arch": "wasm32",
+      "kind": "module-javascript",
+      "protocol": "ds.ui-wasm/v1",
+      "url": "https://storage.googleapis.com/dedicated-public-releases/modules/command-kernel/canary/wasm/0.1.0-r1/ds_command_kernel.js",
+      "size_bytes": 29,
+      "sha256": "ac992d0c19c33cc1afc02452eb656f57ea9650ded46b0e9ff7f11a2fdf980c57",
+      "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "built_at": "2026-10-15T08:00:00Z",
+      "source_revisions": {
+        "ds-command-kernel": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "engines": [
+        {
+          "engine": "ds-command-kernel",
+          "release": "ds-command-kernel@0.1.0+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "manifest_sha256": "05303c7fd2f65adadc9244f6fc31bf2d0a443ea8a516ae5eda71013427c6e959"
+        }
+      ]
+    },
+    {
+      "platform": "browser",
+      "arch": "wasm32",
+      "kind": "module-wasm",
+      "protocol": "ds.ui-wasm/v1",
+      "url": "https://storage.googleapis.com/dedicated-public-releases/modules/command-kernel/canary/wasm/0.1.0-r1/ds_command_kernel_bg.wasm",
+      "size_bytes": 34,
+      "sha256": "fe09e442cc49ba3d7376a0fe81e7c139af9bb141d9f52feefa114631097c4e5f",
+      "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "built_at": "2026-10-15T08:00:00Z",
+      "source_revisions": {
+        "ds-command-kernel": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "engines": [
+        {
+          "engine": "ds-command-kernel",
+          "release": "ds-command-kernel@0.1.0+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "manifest_sha256": "05303c7fd2f65adadc9244f6fc31bf2d0a443ea8a516ae5eda71013427c6e959"
+        }
+      ]
+    },
+    {
+      "platform": "browser",
+      "arch": "wasm32",
+      "kind": "module-types",
+      "protocol": "ds.ui-wasm/v1",
+      "url": "https://storage.googleapis.com/dedicated-public-releases/modules/command-kernel/canary/wasm/0.1.0-r1/ds_command_kernel.d.ts",
+      "size_bytes": 31,
+      "sha256": "9054dc3e64a618778c0dc380865c116695f9551edd64193899c5eea27785bb6c",
+      "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "built_at": "2026-10-15T08:00:00Z",
+      "source_revisions": {
+        "ds-command-kernel": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "engines": [
+        {
+          "engine": "ds-command-kernel",
+          "release": "ds-command-kernel@0.1.0+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "manifest_sha256": "05303c7fd2f65adadc9244f6fc31bf2d0a443ea8a516ae5eda71013427c6e959"
+        }
+      ]
+    },
+    {
+      "platform": "browser",
+      "arch": "wasm32",
+      "kind": "module-types",
+      "protocol": "ds.ui-wasm/v1",
+      "url": "https://storage.googleapis.com/dedicated-public-releases/modules/command-kernel/canary/wasm/0.1.0-r1/ds_command_kernel_bg.wasm.d.ts",
+      "size_bytes": 39,
+      "sha256": "bb9daee72d8bcbdf6386ed5082eb82b63a6f76a483e459525ea0f9a834a10474",
+      "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "built_at": "2026-10-15T08:00:00Z",
+      "source_revisions": {
+        "ds-command-kernel": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "engines": [
+        {
+          "engine": "ds-command-kernel",
+          "release": "ds-command-kernel@0.1.0+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "manifest_sha256": "05303c7fd2f65adadc9244f6fc31bf2d0a443ea8a516ae5eda71013427c6e959"
+        }
+      ]
+    }
+  ],
+  "build_manifest": {
+    "schema": "ds.ui-engine-build/v1",
+    "component": "command-kernel",
+    "protocol": "ds.ui-wasm/v1",
+    "ui_contract": 1,
+    "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "cargo_lock_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "rustc": "rustc 1.90.0 (1159e78c4 2025-09-14); binary: rustc; commit-hash: 1159e78c4747b1e8c650a0b0c0d0e0f012345678; commit-date: 2025-09-14; host: x86_64-unknown-linux-gnu; release: 1.90.0; LLVM version: 20.1.8",
+    "target": "wasm32-unknown-unknown",
+    "profile": "release",
+    "config_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }
+}

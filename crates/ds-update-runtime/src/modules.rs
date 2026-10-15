@@ -1,5 +1,6 @@
 //! Fixed native addon effects over the existing release authority and transfer.
 //! Only native HTTPS acquisition mints a grant. Held/UI catalog JSON cannot.
+pub mod ui;
 use crate::transfer::{self, TransferAdmission, TransferProgress};
 use ds_client_core::{ClientProfile, DeploymentLane};
 use ds_command_kernel::module_install::{
@@ -22,6 +23,15 @@ use std::{
 const MAX_RELEASE_BYTES: u64 = 128 * 1024;
 const MAX_STAGE_BYTES: u64 = module_install::MAX_SELECTION_BYTES as u64;
 const STAGE_SCHEMA: &str = "ds.module-stage/v1";
+
+/// Release the OS lock explicitly before closing its descriptor. A concurrent
+/// native engine spawn can briefly inherit an open description across fork.
+struct ModuleLock(File);
+impl Drop for ModuleLock {
+    fn drop(&mut self) {
+        let _ = FileExt::unlock(&self.0);
+    }
+}
 
 /// Privileged native adapter input. Construct only from the exact production
 /// catalog loaded by the owning native profile loader; this is not an IPC DTO.
@@ -323,13 +333,13 @@ impl ModuleStore {
             platform,
         })
     }
-    fn lock(&self) -> Result<File, String> {
+    fn lock(&self) -> Result<ModuleLock, String> {
         self.check_root()?;
         let file = transfer::open_download_partial(&self.root.join("update.lock"))?;
         file.try_lock_exclusive().map_err(|_| {
             "module_update_busy: another native update owns this component".to_owned()
         })?;
-        Ok(file)
+        Ok(ModuleLock(file))
     }
     fn read_selection(&self) -> Result<Option<ModuleSelection>, String> {
         self.read_selection_record()?
@@ -786,29 +796,42 @@ impl ModuleStore {
         )?;
         check_cancel(cancelled)?;
         let bytes = serde_json::to_vec(selected).map_err(|e| e.to_string())?;
-        if bytes.len() > module_install::MAX_SELECTION_BYTES {
-            return Err("module_receipt_invalid: excessive selection".into());
-        }
-        let path = self.root.join("selection.json");
-        if exists_plain(&path)? {
-            ordinary_file(&path)?;
-        }
-        let mut staged = tempfile::NamedTempFile::new_in(&self.root).map_err(|e| e.to_string())?;
-        staged
-            .write_all(&bytes)
-            .and_then(|_| staged.as_file().sync_all())
-            .map_err(|e| e.to_string())?;
-        check_cancel(cancelled)?;
-        // tempfile persists by one atomic replace on both Unix and Windows.
-        // Active and previous are one record; there is no torn two-file pair.
-        staged.persist(&path).map_err(|e| {
-            format!(
-                "module_activation_failed: prior selection is retained; {}",
-                e.error
-            )
-        })?;
-        sync_directory(&self.root)
+        persist_selection(
+            &self.root,
+            &bytes,
+            module_install::MAX_SELECTION_BYTES as u64,
+            cancelled,
+        )
     }
+}
+fn persist_selection(
+    root: &Path,
+    bytes: &[u8],
+    max: u64,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<(), String> {
+    if bytes.len() as u64 > max {
+        return Err("module_receipt_invalid: excessive selection".into());
+    }
+    let path = root.join("selection.json");
+    if exists_plain(&path)? {
+        ordinary_file(&path)?;
+    }
+    let mut staged = tempfile::NamedTempFile::new_in(root).map_err(|e| e.to_string())?;
+    staged
+        .write_all(bytes)
+        .and_then(|_| staged.as_file().sync_all())
+        .map_err(|e| e.to_string())?;
+    check_cancel(cancelled)?;
+    // tempfile persists by one atomic replace on both Unix and Windows.
+    // Active and previous are one record; there is no torn two-file pair.
+    staged.persist(&path).map_err(|e| {
+        format!(
+            "module_activation_failed: prior selection is retained; {}",
+            e.error
+        )
+    })?;
+    sync_directory(root)
 }
 fn staged(stored: StoredStage) -> StagedModule {
     let asset = stored
@@ -910,7 +933,10 @@ fn read_plain(path: &Path, max: u64) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    if bytes.len() as u64 > MAX_STAGE_BYTES {
+    write_new_bounded(path, bytes, MAX_STAGE_BYTES)
+}
+fn write_new_bounded(path: &Path, bytes: &[u8], max: u64) -> Result<(), String> {
+    if bytes.len() as u64 > max {
         return Err("module_receipt_invalid: excessive native receipt".into());
     }
     let mut options = OpenOptions::new();
@@ -1229,7 +1255,10 @@ mod tests {
             .activate_at_generation(&ready, 0, ActivationGuard::default(), &|| false)
             .unwrap_err()
             .starts_with("module_selection_changed:"));
-        assert_eq!(std::fs::read(store.root.join("selection.json")).unwrap(), before);
+        assert_eq!(
+            std::fs::read(store.root.join("selection.json")).unwrap(),
+            before
+        );
     }
 
     #[test]
@@ -1697,7 +1726,10 @@ mod tests {
         let stale_error = store
             .activate(&third, ActivationGuard::default(), &|| false)
             .unwrap_err();
-        assert!(stale_error.contains("module_selection_changed"), "{stale_error}");
+        assert!(
+            stale_error.contains("module_selection_changed"),
+            "{stale_error}"
+        );
         assert_eq!(fs::read(store.root.join("selection.json")).unwrap(), held);
         let active = store.selected_executable(&|| false).unwrap().unwrap().0;
         fs::write(&active, b"damaged active unit").unwrap();

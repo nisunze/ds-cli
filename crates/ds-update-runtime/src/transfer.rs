@@ -127,6 +127,25 @@ impl VerifiedDownload {
     pub fn path(&self) -> &Path {
         &self.path
     }
+    /// Read a bounded transport chunk from the very handle whose full bytes
+    /// were verified, rather than reopening a potentially replaced path.
+    pub fn read_range(&mut self, offset: u64, limit: usize) -> Result<Vec<u8>, String> {
+        if limit == 0
+            || limit > 1024 * 1024
+            || offset > self._held.metadata().map_err(|e| e.to_string())?.len()
+        {
+            return Err("module_artifact_invalid: invalid bounded member range".into());
+        }
+        self._held
+            .seek(SeekFrom::Start(offset))
+            .map_err(|e| e.to_string())?;
+        let mut bytes = Vec::new();
+        Read::by_ref(&mut self._held)
+            .take(limit as u64)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        Ok(bytes)
+    }
 }
 
 #[cfg(not(windows))]
@@ -848,5 +867,23 @@ mod tests {
         assert_eq!(mode(&old), 0o700);
         assert_eq!(mode(owned.parent().unwrap()), 0o700);
         assert_eq!(mode(&owned), 0o700);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn transport_chunk_keeps_the_verified_handle_when_its_path_is_replaced() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("member");
+        let bytes = b"complete verified member";
+        std::fs::write(&path, bytes).unwrap();
+        let digest = format!("{:x}", Sha256::digest(bytes));
+        let mut held =
+            reopen_verified_download(&path, bytes.len() as u64, &digest, || Ok(())).unwrap();
+        std::fs::rename(&path, directory.path().join("original")).unwrap();
+        std::fs::write(&path, b"replaced unverified member").unwrap();
+        assert_eq!(held.read_range(0, 8).unwrap(), &bytes[..8]);
+        assert_eq!(held.read_range(8, 1024).unwrap(), &bytes[8..]);
+        assert!(held.read_range(0, 0).is_err());
+        assert!(held.read_range(0, 1024 * 1024 + 1).is_err());
+        assert!(held.read_range(u64::MAX, 8).is_err());
     }
 }

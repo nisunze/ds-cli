@@ -1,6 +1,6 @@
 # Standalone module catalog admission
 
-The fixed component IDs are `solar`, `reporter` and `network`; their engine owners
+The fixed native component IDs are `solar`, `reporter` and `network`; their engine owners
 are `ds-solar`, `ds-network-reporter` and `ds-network`. The shell retains its existing desktop
 release namespace and is not decoded as a module. This slice introduces no
 general plugin registry or installation framework.
@@ -221,3 +221,63 @@ the actual cache and apply consumers before deployed processing can be enabled.
 Source decision, pool and loader checks alone do not prove governed processing
 or qualify an unadmitted engine. Hosting retains its explicit unavailable
 processing state until those consumers pass.
+
+## Desktop UI WASM units
+
+`module_release::ui` owns the pure admission and retained selection decisions
+for the two closed UI component IDs `interactions` and `command-kernel`. They
+are distinct from the three native engine components; no UI value is added to
+`ModuleComponent`. Core retains installation and acquisition authority. This
+owner performs zero network, filesystem, executable probe or native effects;
+Desktop consumes Core's admitted receipt and complete bytes through its loader.
+
+The existing `ds.module-release/v1` catalog uses `runtime: wasm`, protocol
+`ds.ui-wasm/v1`, and the existing lane-bound module product IDs. It carries
+exactly four existing `ModuleReleaseAsset` records: JavaScript glue, WASM,
+the JavaScript type declaration and the WASM type declaration. Interactions
+uses the `ds_interactions_wasm` stem; Kernel uses `ds_command_kernel`. Each
+member has platform `browser`, arch `wasm32`, and kind `module-javascript`,
+`module-wasm` or `module-types`. All four share one immutable bucket and path
+`/modules/<component>/<lane>/wasm/<version>/<fixed-member>`, exact producer,
+source closure, timestamp and build identity. The catalog unit digest includes
+every catalog fact with members sorted by URL. Shape and collection limits
+precede cloning; incomplete units, unknown keys and crossed facts refuse.
+
+Every UI catalog requires a typed `build_manifest`, carrying the closed ten-field
+`ds.ui-engine-build/v1` DTO that the loaded unit must return:
+`schema`, `component`, `protocol`, integer `ui_contract: 1`, `source_sha`,
+`cargo_lock_sha256`, `rustc`, `target`, `profile`, `config_sha256`. Source is
+exactly 40 lowercase hex characters; lock/config hashes are 64 lowercase hex.
+Only `wasm32-unknown-unknown` and `release` are admitted. Compiler text remains
+exact and must have the producer's `rustc <version> (<commit> <date>)` form. The catalog producer `engines[0].manifest_sha256` is SHA-256 over compact
+UTF-8 JSON with these ten keys sorted alphabetically and no trailing newline.
+Its engine is `ds-interactions` or `ds-command-kernel` and release is
+`<owner>@<base-version>+<source_sha>`. Loaded source must equal the catalog's
+producer source. Debug/development exports are visible build facts and refuse
+installation admission; none is silently filled with the installed shell's
+source or compiler facts.
+
+`inspect(component, lane, release)` admits held metadata, `verify_files` admits
+all four actual member hashes and sizes before loading JavaScript, and `prepare`
+copies the already admitted catalog build manifest into its installation receipt
+with captured release authority. Core never executes UI WASM or JavaScript to
+stage a unit. The loader later supplies the actual exported identity to
+`admit_loaded`, which requires exact equality of all ten trusted manifest fields. Public metadata and these pure decisions do not mint the
+native trusted acquisition grant. Existing consent/update preferences and Core
+lifecycle observations remain with their existing owners.
+
+`ds.ui-module-installation/v1` retains the complete unit, identity and authority.
+`ds.ui-module-selection/v1` retains active/previous installations or an explicit
+removed state, with component/lane/generation fences. `activate` and `rollback`
+reuse the native `ActivationGuard`; hosts supply protected observations, serialize
+and atomically persist the transition, and reverify retained bytes under their
+existing lock. `capture` selects one exact retained receipt offline;
+`admit_loaded` rechecks its byte set and loaded identity. Existing captures stay
+on that unit while later selection changes affect new loads. These owner APIs
+are not a second updater or a Tauri policy. Native Core commands, durable bytes,
+loader integration and installed acceptance are separate consumer obligations.
+
+Focused proof is `cargo test --lib module_release::ui --jobs 1`, including both
+closed component fixtures, exact compiler/configuration identity binding,
+unknown keys, unsupported UI ABI, lane/source/member tampering, withdrawn status,
+generation races, protected lifecycle deferral and offline retained rollback.

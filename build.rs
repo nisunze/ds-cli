@@ -1,6 +1,8 @@
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 
+mod build_ui;
+
 fn sources(dir: &Path, paths: &mut Vec<std::path::PathBuf>) {
     for entry in fs::read_dir(dir).expect("kernel source directory") {
         let path = entry.expect("kernel source entry").path();
@@ -23,7 +25,11 @@ fn sources(dir: &Path, paths: &mut Vec<std::path::PathBuf>) {
 
 fn main() {
     let root = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let mut paths = vec![root.join("Cargo.toml"), root.join("build.rs")];
+    let mut paths = vec![
+        root.join("Cargo.toml"),
+        root.join("build.rs"),
+        root.join("build_ui.rs"),
+    ];
     for dir in ["src", "crates"] {
         println!("cargo:rerun-if-changed={dir}");
         sources(&root.join(dir), &mut paths);
@@ -48,4 +54,5 @@ fn main() {
         "cargo:rustc-env=DS_KERNEL_SOURCE_SHA256={:x}",
         hash.finalize()
     );
+    build_ui::emit(&root);
 }

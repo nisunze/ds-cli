@@ -12,6 +12,8 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use url::Url;
 
 pub mod browser;
+pub mod ui;
+pub mod ui_build;
 
 pub const MODULE_RELEASE_SCHEMA: &str = "ds.module-release/v1";
 pub const MODULE_PROTOCOL: &str = "ds.module/v1";
