@@ -1,6 +1,6 @@
 //! Core startup's bounded cloud-cache recovery. Never called by generic Store::open.
 use ds_sync_store::cache_health::{self, CacheHealth};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
@@ -10,11 +10,12 @@ use std::{
 
 const DATABASE: &str = "store.sqlite";
 const SUFFIXES: [&str; 4] = ["-wal", "-shm", "-journal", ""];
-#[derive(Clone, Serialize)]
-struct HeldFile {
-    name: String,
-    size_bytes: u64,
-    sha256: String,
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HeldFile {
+    pub(crate) name: String,
+    pub(crate) size_bytes: u64,
+    pub(crate) sha256: String,
 }
 
 /// The borrow proves the existing native single-Core owner remains held.
@@ -34,7 +35,7 @@ pub(crate) fn prepare(
     }
     Ok(())
 }
-fn private_file(path: &Path) -> Result<File, String> {
+pub(crate) fn private_file(path: &Path) -> Result<File, String> {
     #[cfg(windows)]
     {
         return ds_cli_auth::windows_host::read_file(path);
@@ -65,7 +66,11 @@ fn private_file(path: &Path) -> Result<File, String> {
     }
 }
 fn held(path: &Path) -> Result<HeldFile, String> {
-    let mut file = private_file(path)?;
+    held_with_limit(path, u64::MAX)
+}
+pub(crate) fn held_with_limit(path: &Path, limit: u64) -> Result<HeldFile, String> {
+    let file = private_file(path)?;
+    let mut file = file.take(limit.saturating_add(1));
     let mut hash = Sha256::new();
     let mut size = 0u64;
     let mut bytes = [0u8; 65536];
@@ -75,6 +80,9 @@ fn held(path: &Path) -> Result<HeldFile, String> {
             break;
         }
         size += count as u64;
+        if size > limit {
+            return Err("Core cache exceeds its held file bound".into());
+        }
         hash.update(&bytes[..count]);
     }
     Ok(HeldFile {
@@ -87,7 +95,7 @@ fn held(path: &Path) -> Result<HeldFile, String> {
         sha256: format!("{:x}", hash.finalize()),
     })
 }
-fn create_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(crate) fn create_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
     #[cfg(any(unix, windows))]
     {
         #[cfg(windows)]
@@ -113,7 +121,7 @@ fn create_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
     }
 }
 
-fn sync_directory(directory: &Path) -> Result<(), String> {
+pub(crate) fn sync_directory(directory: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
         File::open(directory)
@@ -131,7 +139,7 @@ fn sync_directory(directory: &Path) -> Result<(), String> {
         Err("Core cache recovery durability unavailable".into())
     }
 }
-fn move_private(source: &Path, destination: &Path) -> Result<(), String> {
+pub(crate) fn move_private(source: &Path, destination: &Path) -> Result<(), String> {
     if destination.try_exists().map_err(|e| e.to_string())? {
         return Err("Core cache quarantine destination already exists".into());
     }
@@ -146,6 +154,41 @@ fn move_private(source: &Path, destination: &Path) -> Result<(), String> {
     }
     sync_directory(source.parent().ok_or("Core cache has no parent")?)
 }
+/// Retention never replaces an occupied archive/evidence path, even if it is
+/// introduced between admission and rename. Ordinary replacement is unchanged.
+pub(crate) fn move_private_no_replace(source: &Path, destination: &Path) -> Result<(), String> {
+    drop(private_file(source)?);
+    if source.parent() != destination.parent() {
+        return Err("Core retention must stay in its protected directory".into());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let from =
+            std::ffi::CString::new(source.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+        let to = std::ffi::CString::new(destination.as_os_str().as_bytes())
+            .map_err(|e| e.to_string())?;
+        // SAFETY: both C strings remain live, and no caller-supplied flags or fd.
+        if unsafe {
+            libc::renameat2(
+                libc::AT_FDCWD,
+                from.as_ptr(),
+                libc::AT_FDCWD,
+                to.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        } != 0
+        {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+    }
+    #[cfg(windows)]
+    ds_cli_auth::windows_host::move_file_no_replace(source, destination)?;
+    #[cfg(not(any(target_os = "linux", windows)))]
+    return Err("Core retention requires its admitted Linux or Windows filesystem owner".into());
+    sync_directory(source.parent().ok_or("Core cache has no parent")?)
+}
+
 fn prepare_cache(directory: &Path) -> Result<Option<PathBuf>, String> {
     crate::host::prepare_directory(directory)?;
     let database = directory.join(DATABASE);
@@ -213,7 +256,10 @@ fn quarantine(
             for (from, to) in moved.iter().rev() {
                 rollback_failed |= move_private(to, from).is_err();
             }
-            return Err(format!("Core cache quarantine stopped: {error}; rollback_failed={rollback_failed}; diagnostic receipt {}", receipt.display()));
+            return Err(format!(
+                "Core cache quarantine stopped: {error}; rollback_failed={rollback_failed}; diagnostic receipt {}",
+                receipt.display()
+            ));
         }
         moved.push((source.clone(), destination));
     }
@@ -401,7 +447,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn symlinks_hardlinks_and_foreign_permissions_refuse_without_cache_mutation() {
-        use std::os::unix::fs::{symlink, PermissionsExt};
+        use std::os::unix::fs::{PermissionsExt, symlink};
         for kind in 0..3 {
             let root = directory();
             let target = root.path().join("other");

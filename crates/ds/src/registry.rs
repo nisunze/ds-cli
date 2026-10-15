@@ -3705,6 +3705,11 @@ static MCP_ENTRIES: &[Entry] = &[
 
 static SERVER_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_server::cache_retire::COMMAND,
+        handler: ds_cli_server::cache_retire::command,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::ui_components::CAPTURE,
         handler: ds_cli_server::ui_components::capture,
         render: ds_cli_server::render,

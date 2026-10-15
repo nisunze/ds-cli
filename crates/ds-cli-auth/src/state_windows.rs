@@ -306,6 +306,16 @@ pub(super) fn unprotect(path: &Path, envelope: &[u8]) -> Result<Vec<u8>, StoreEr
     Ok(plaintext)
 }
 
+pub(super) fn move_no_replace(source: &Path, destination: &Path) -> Result<(), StoreError> {
+    let from: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+    let to: Vec<u16> = destination.as_os_str().encode_wide().chain(Some(0)).collect();
+    // No MOVEFILE_REPLACE_EXISTING: an occupied destination is never overwritten.
+    if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), MOVEFILE_WRITE_THROUGH) } == 0 {
+        return Err(StoreError::UnsafeOrUnreadable);
+    }
+    Ok(())
+}
+
 pub(super) fn replace(temp: &Path, destination: &Path) -> Result<(), StoreError> {
     validate_absolute_local_path(temp)?;
     validate_absolute_local_path(destination)?;

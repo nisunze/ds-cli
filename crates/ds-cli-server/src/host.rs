@@ -991,6 +991,11 @@ fn protected(path: &Path, directory: bool) -> Result<(), String> {
         Err("Core connection requires a protected native state adapter on this platform".into())
     }
 }
+/// Validate existing state without creating or tightening any cache member.
+pub(crate) fn validate_directory(path: &Path) -> Result<(), String> {
+    protected(path, true)
+}
+
 /// Read the protected `connection.json` of the Server over `directory`.
 ///
 /// Both shapes are read — this build's, and the one a `ds` from before the

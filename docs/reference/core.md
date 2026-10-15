@@ -252,3 +252,33 @@ vertical lifecycle/scene interface does not admit unfinished Profile edits,
 publication or printing. Core shutdown and explicit close reap workers; idle
 sessions are retired on the next Profile request after fifteen minutes. At most
 eight sessions and a thirty-second native operation deadline are admitted.
+
+## Deliberate account cache retirement
+
+`ds core cache retire --lane canary --dry-run` inspects a stopped Core after
+an intentional native account change. Apply with the returned exact `--digest`
+and canonical `--yes`. The plan binds the resolved protected state directory,
+lane, previous/current account fences and exact fixed cache-member bytes. The
+existing native owner lock refuses maintenance while Core is running.
+
+Old behavior: `core.serve` refused `multi_principal_unsupported` after an account
+change, with no canonical same-path fresh-cache transition. New behavior adds
+this deliberate command; ordinary startup still refuses another account's
+connection or rows. Desktop and CLI callers must use a qualified Core containing
+the command, inspect the plan and explicitly authorize it. Older clients keep
+refusing; there is no automatic reset or import of old account history.
+
+Retirement retains `store.sqlite`, its fixed SQLite sidecars and `connection.json`
+under one digest-derived archive prefix, with a protected receipt and completion
+marker. Atomic staged evidence and no-replace native moves preserve exact bytes.
+A pending journal prevents startup from creating a new connection or database;
+after interruption, the same command previews and continues only the same exact
+plan under the captured current account. A move failure attempts restoration of
+the complete old epoch and retains pending evidence if restoration cannot finish.
+
+This changes only the canonical queue/history cache epoch. Native credentials,
+installation identity, components and authored files remain with their existing
+owners. The command neither stops nor starts Core. SQLite structural-corruption
+recovery remains separate and cannot reset healthy schema, permission or owner
+errors. Windows source support uses the existing SID/DACL owner; source checks
+alone do not qualify an installed Windows release.

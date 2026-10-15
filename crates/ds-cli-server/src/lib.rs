@@ -1,6 +1,7 @@
 //! Thin command/HTTP host for the shared native compute runtime.
 mod auth;
 mod cache_recovery;
+pub mod cache_retire;
 pub mod component_lifecycle;
 pub mod core_components;
 pub mod desktop_update;
@@ -969,6 +970,7 @@ pub static DOMAIN: Domain = Domain {
         &component_lifecycle::ROLLBACK,
         &desktop_update::INSPECT,
         &profile_session::COMMAND,
+        &cache_retire::COMMAND,
         &SERVE,
         &SUBMIT,
         &SOLAR_SUBMIT,
@@ -1195,6 +1197,7 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     };
     // Typed as the host decided it: a protected state directory that already
     // belongs to another account is `multi_principal_unsupported`, by name.
+    cache_retire::require_complete(&directory).map_err(failure)?;
     let connection = host::connection(&directory, owner, lane.clone())?;
     let database = directory.join("store.sqlite");
     let sessions =
@@ -1697,7 +1700,11 @@ mod tests {
                 assert!(!refusal.remedy.contains("ds server"));
             }
         }
-        assert_eq!(ids.len(), 26);
+        assert_eq!(ids.len(), 28);
+        assert!(ids.contains("core.profile-session"));
+        assert!(ids.contains("core.cache.retire"));
+        assert!(cache_retire::COMMAND.requires_confirmation());
+        assert!(cache_retire::COMMAND.arg("project").is_none());
         assert!(ids.contains("core.serve"));
         assert!(ids.contains("core.component.remove"));
         assert!(ids.contains("core.component.selection"));
@@ -1979,7 +1986,7 @@ mod tests {
     #[test]
     fn every_command_that_names_a_job_or_a_project_declares_project() {
         for command in DOMAIN.commands {
-            if command.authority == Authority::None || command.id == "core.serve" {
+            if command.authority == Authority::None || matches!(command.id, "core.serve" | "core.cache.retire") {
                 continue;
             }
             assert!(

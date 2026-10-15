@@ -1,5 +1,21 @@
 # Release notes
 
+## Unreleased: deliberate stopped-Core account cache transition
+
+Old `core.serve` refused an account change with `multi_principal_unsupported` and
+had no canonical same-path cache transition. New `core cache retire --dry-run`
+previews a resolved-path/account/lane/member-digest-bound plan; explicit
+`--digest` plus `--yes` retains the old connection, SQLite cache and fixed
+sidecars as one protected epoch. A pending journal fences startup and supports
+explicit same-plan continuation; move failures attempt exact rollback.
+
+Affected Core/Desktop/CLI operators need a qualified Core advertising the new
+command. Ordinary startup and older clients retain the ownership refusal; old
+rows are never adopted or silently imported. Installation identity, credentials,
+component selections and authored files remain unchanged. No new state root,
+background owner or automatic account switch is introduced.
+
+
 ## Unreleased: explicit Local development pairing
 
 Old native CLI routing refused an explicitly targeted Local development window
