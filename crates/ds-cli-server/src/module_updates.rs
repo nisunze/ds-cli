@@ -7,14 +7,6 @@ use ds_command_kernel::module_release::ModuleComponent;
 use ds_update_runtime::modules::ModuleStore;
 use serde_json::Value;
 
-const COMPONENT: Arg = Arg::value(
-    "component",
-    "<solar|reporter|network>",
-    "Exact fixed native addon owner.",
-)
-.choices(&["solar", "reporter", "network"])
-.required();
-
 const SCHEMA_INVALID: Refusal = Refusal {
     code: "module_release_schema_invalid",
     when: "module metadata names an unsupported schema",
@@ -61,26 +53,42 @@ const CHANNEL: Arg = Arg::value(
 pub static STAGE: Command = Command {
     id: "core.module-stage",
     path: &["core", "module-stage"],
-    contract: 1,
-    summary: "Stage one exact published native addon without activating it.",
-    purpose: "Capture the packaged production lane's release authority, intentionally read its fixed public catalog once, and require the exact selected native asset SHA-256. The shared native updater performs bounded verified transfer and one fixed build-info compatibility probe, then retains an immutable executable and private ready receipt. Staging changes no active selection and acquires no project data. Held JSON, development catalogs, caller URLs and paths grant no installation trust. Requires --yes; never exits or activates the application.",
+    contract: 2,
+    summary: "Stage one exact published component without activating it.",
+    purpose: "Native is the default. Explicit runtime wasm stages only Interactions or UI Kernel locally under this OS account before login, using the complete UI unit digest; all four members and trusted source/compiler/configuration identity are admitted before staging, with zero JavaScript or WASM evaluation. Capture the packaged production lane's release authority, intentionally read its fixed public catalog once, and require the exact selected native asset SHA-256. The shared native updater performs bounded verified transfer and one fixed build-info compatibility probe, then retains an immutable executable and private ready receipt. Staging changes no active selection and acquires no project data. Held JSON, development catalogs, caller URLs and paths grant no installation trust. Requires --yes; never exits or activates the application.",
     chapter: Chapter::Design,
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
-        COMPONENT,
+        crate::core_components::COMPONENT,
         CHANNEL,
+        crate::core_components::RUNTIME,
         Arg::value(
             "sha256",
             "<sha256>",
-            "Exact lowercase SHA-256 of the selected published native executable.",
+            "Exact lowercase SHA-256 of the native executable or complete admitted UI unit.",
         )
         .required(),
     ],
-    output: "Native ready receipt with state, receiptId, component, channel, version and sha256. Retains staged bytes only; active/previous selection and captured jobs are unchanged. Progress is diagnostic stderr, separate from the result envelope.",
+    output: "UI runtime wasm returns ds.ui-module-stage/v1 ready receipt and expectedGeneration. Native returns a ready receipt with state, receiptId, component, channel, version and sha256. Retains staged bytes only; active/previous selection and captured jobs are unchanged. Progress is diagnostic stderr, separate from the result envelope.",
     examples: &[],
     refusals: &[
+        Refusal {
+            code: "ui_component_platform_unavailable",
+            when: "UI installation is requested on an unqualified native platform",
+            remedy: "use Linux x86_64; Windows UI installation awaits the qualified private DACL adapter",
+        },
+        Refusal {
+            code: "module_release_component_invalid",
+            when: "the selected runtime does not admit the component",
+            remedy: "use native for Solar, Reporter or Network; use wasm for Interactions or UI Kernel",
+        },
+        Refusal {
+            code: "module_artifact_invalid",
+            when: "UI member bytes do not match the complete trusted unit",
+            remedy: "retain the active unit and obtain all four exact qualified members",
+        },
         SCHEMA_INVALID,
         IDENTITY_MISMATCH,
         PROTOCOL_UNSUPPORTED,
@@ -91,7 +99,7 @@ pub static STAGE: Command = Command {
         Refusal {
             code: "module_release_invalid",
             when: "the selected digest or authority metadata is malformed, excessive or crossed",
-            remedy: "select the exact component, lane and lowercase asset SHA-256",
+            remedy: "select the exact component, lane and lowercase native executable or complete UI unit SHA-256",
         },
         Refusal {
             code: "module_authority_unavailable",
@@ -195,7 +203,7 @@ fn component(inputs: &Inputs) -> Result<ModuleComponent, Failure> {
     })
 }
 
-fn native_failure(message: String) -> Failure {
+pub(crate) fn native_failure(message: String) -> Failure {
     native_failure_or(message, "module_stage_failed")
 }
 
@@ -218,7 +226,8 @@ fn native_failure_or(message: String, fallback: &str) -> Failure {
         | "module_release_unavailable"
         | "module_release_unpublished"
         | "module_release_inactive"
-        | "module_platform_unsupported" => Failure::unavailable(code, bounded),
+        | "module_platform_unsupported"
+        | "ui_component_platform_unavailable" => Failure::unavailable(code, bounded),
         _ => Failure::failed(code, bounded),
     };
     failure.remedy(
@@ -232,6 +241,9 @@ fn native_failure_or(message: String, fallback: &str) -> Failure {
 }
 
 pub fn stage(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::ui_components::requested(inputs)? {
+        return crate::ui_components::stage(inputs);
+    }
     ds_update_runtime::modules::current_platform().map_err(native_failure)?;
     let component = component(inputs)?;
     let lane = ds_cli_auth::Lane::parse(inputs.require("channel")?)?;
@@ -281,7 +293,7 @@ mod tests {
         assert_eq!(SELECTION.effect, Effect::ReadOnly);
         assert_eq!(
             STAGE.args.iter().map(|arg| arg.name).collect::<Vec<_>>(),
-            ["component", "channel", "sha256"]
+            ["component", "channel", "runtime", "sha256"]
         );
         assert_eq!(
             SELECTION
@@ -289,7 +301,7 @@ mod tests {
                 .iter()
                 .map(|arg| arg.name)
                 .collect::<Vec<_>>(),
-            ["component", "channel"]
+            ["component", "channel", "runtime"]
         );
         for command in [&STAGE, &SELECTION] {
             for forbidden in ["file", "url", "path", "probe", "authority", "idle", "dirty"] {

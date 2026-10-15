@@ -36,7 +36,7 @@ fn lifecycle_contracts_confirm_closed_inputs_and_bound_generation() {
         assert_eq!(command.effect, Effect::MachineWrite);
         assert_eq!(command.authority, Authority::None);
         assert!(command.requires_confirmation());
-        assert_eq!(command.contract, 1);
+        assert_eq!(command.contract, 2);
         assert!(crate::DOMAIN.commands.iter().any(|c| c.id == command.id));
         let mut arguments = vec![
             "--component",

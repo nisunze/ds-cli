@@ -3705,6 +3705,16 @@ static MCP_ENTRIES: &[Entry] = &[
 
 static SERVER_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_server::ui_components::CAPTURE,
+        handler: ds_cli_server::ui_components::capture,
+        render: ds_cli_server::render,
+    },
+    Entry {
+        command: &ds_cli_server::ui_components::MEMBER,
+        handler: ds_cli_server::ui_components::member,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::component_lifecycle::ACTIVATE,
         handler: ds_cli_server::component_lifecycle::activate,
         render: ds_cli_server::render,

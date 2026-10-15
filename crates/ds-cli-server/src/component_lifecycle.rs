@@ -1,6 +1,6 @@
 //! Fixed Core lifecycle adapters. Core fences its durable captures; the
 //! updater alone owns generation admission and atomic component selection.
-use crate::core_components::{CHANNEL, COMPONENT, REFUSALS, owner_failure, selected};
+use crate::core_components::{CHANNEL, COMPONENT, REFUSALS, RUNTIME, owner_failure, selected};
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::module_install::{ModuleSelection, validate_selection};
@@ -23,9 +23,9 @@ const GENERATION: Arg = Arg::value(
 pub static ACTIVATE: Command = Command {
     id: "core.component.activate",
     path: &["core", "component", "activate"],
-    contract: 1,
-    summary: "Activate one verified staged native component through Core.",
-    purpose: "Confirm an existing native staging receipt at an explicitly held generation. The selected lane's running Core fences durable job admission and refuses uncaptured pending work. The shared updater recovers the exact receipt, verifies retained executable bytes and atomically advances selection under its component lock. Captured jobs retain their immutable executable. No download, release lookup, engine process, Desktop session, caller idle assertion or project calculation is involved.",
+    contract: 2,
+    summary: "Activate one verified staged component through Core.",
+    purpose: "Explicit runtime wasm activates an existing UI staging receipt locally under this OS account without login or a running Core, rechecking its captured generation and complete bytes. Native remains the default: confirm an existing native staging receipt at an explicitly held generation. The selected lane's running Core fences durable job admission and refuses uncaptured pending work. The shared updater recovers the exact receipt, verifies retained executable bytes and atomically advances selection under its component lock. Captured jobs retain their immutable executable. No download, release lookup, engine process, Desktop session, caller idle assertion or project calculation is involved.",
     chapter: Chapter::Workstation,
     effect: Effect::MachineWrite,
     authority: Authority::None,
@@ -33,6 +33,7 @@ pub static ACTIVATE: Command = Command {
     args: &[
         COMPONENT,
         CHANNEL,
+        RUNTIME,
         Arg::value(
             "receipt-id",
             "<id>",
@@ -41,7 +42,7 @@ pub static ACTIVATE: Command = Command {
         .required(),
         GENERATION,
     ],
-    output: "Committed ds.module-selection/v1 installed receipt with incremented generation, active unit and retained previous unit when present.",
+    output: "UI runtime wasm returns committed ds.ui-module-selection/v1. Native returns committed ds.module-selection/v1 installed receipt with incremented generation, active unit and retained previous unit when present.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
@@ -52,15 +53,15 @@ pub static ACTIVATE: Command = Command {
 pub static ROLLBACK: Command = Command {
     id: "core.component.rollback",
     path: &["core", "component", "rollback"],
-    contract: 1,
+    contract: 2,
     summary: "Restore a verified retained previous component through Core.",
-    purpose: "Confirm rollback of one native component at an explicitly held generation through the selected lane's running Core. The same durable job admission fence and shared updater selection lock apply. The updater verifies the retained previous bytes without network or process launch, advances the generation and preserves already captured jobs. An absent previous unit explicitly refuses; it never downloads a substitute.",
+    purpose: "Explicit runtime wasm restores a retained verified UI unit locally under this OS account without login or a running Core. Native remains the default: confirm rollback of one native component at an explicitly held generation through the selected lane's running Core. The same durable job admission fence and shared updater selection lock apply. The updater verifies the retained previous bytes without network or process launch, advances the generation and preserves already captured jobs. An absent previous unit explicitly refuses; it never downloads a substitute.",
     chapter: Chapter::Workstation,
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[COMPONENT, CHANNEL, GENERATION],
-    output: "Committed ds.module-selection/v1 receipt naming the verified previous unit as active and the incremented generation.",
+    args: &[COMPONENT, CHANNEL, RUNTIME, GENERATION],
+    output: "UI runtime wasm returns committed ds.ui-module-selection/v1. Native returns committed ds.module-selection/v1 receipt naming the verified previous unit as active and the incremented generation.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
@@ -173,10 +174,16 @@ fn from_inputs(inputs: &Inputs, activate: bool) -> Result<Request, Failure> {
     Ok(request)
 }
 pub fn activate(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::ui_components::requested(inputs)? {
+        return crate::ui_components::activate(inputs);
+    }
     crate::require_native_host()?;
     request_runtime(&from_inputs(inputs, true)?)
 }
 pub fn rollback(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::ui_components::requested(inputs)? {
+        return crate::ui_components::rollback(inputs);
+    }
     crate::require_native_host()?;
     request_runtime(&from_inputs(inputs, false)?)
 }

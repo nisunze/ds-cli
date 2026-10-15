@@ -1,5 +1,22 @@
 # Release notes
 
+## Unreleased: independently installed UI units
+
+Component metadata, staging, selection, activation, removal and rollback move
+to command contract 2, adding explicit `--runtime wasm` for `interactions` and
+`command-kernel`. The `native` default and existing native engine lifecycle
+are retained. UI metadata now returns the complete unit plus its digest;
+staging confirms that digest, rather than one file hash. Update typed consumers
+to select the new contract and inspect the runtime-specific receipt shape.
+
+Core owns local OS-user UI installation before sign-in, using its packaged
+production profile, trusted gateway acquisition and existing verified updater.
+It never executes UI code. New typed capture/member commands provide retained
+receipts and bounded verified chunks to the loader. UI installation currently
+admits Linux x86_64; Windows UI ownership remains explicitly unavailable until
+the private DACL adapter is qualified. This source change claims no published
+UI unit or installed Desktop loader acceptance.
+
 ## Unreleased: Windows native transport
 
 Native host Rust consumers must replace `transport::own_uid() -> Option<u32>`

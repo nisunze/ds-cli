@@ -5,6 +5,7 @@ pub mod core_components;
 pub mod desktop_update;
 pub mod module_updates;
 pub mod modules;
+pub mod ui_components;
 // The HTTP host and the layer binding are reachable from an integration test
 // so the isolation proof can stand up a real owner-only socket over a fixture
 // identity and a fixture document source. Nothing here is a supported API:
@@ -952,6 +953,8 @@ pub static DOMAIN: Domain = Domain {
         &modules::RELEASE,
         &module_updates::STAGE,
         &core_components::SELECTION,
+        &ui_components::CAPTURE,
+        &ui_components::MEMBER,
         &core_components::REMOVE,
         &component_lifecycle::ACTIVATE,
         &component_lifecycle::ROLLBACK,
@@ -1680,7 +1683,7 @@ mod tests {
                 assert!(!refusal.remedy.contains("ds server"));
             }
         }
-        assert_eq!(ids.len(), 24);
+        assert_eq!(ids.len(), 26);
         assert!(ids.contains("core.serve"));
         assert!(ids.contains("core.component.remove"));
         assert!(ids.contains("core.component.selection"));

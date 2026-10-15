@@ -15,11 +15,25 @@ const MAX_REQUEST_BYTES: usize = 512;
 
 pub(crate) const COMPONENT: Arg = Arg::value(
     "component",
-    "<solar|reporter|network>",
-    "Fixed native component owner.",
+    "<solar|reporter|network|interactions|command-kernel>",
+    "Fixed component owner; UI components require runtime wasm.",
 )
-.choices(&["solar", "reporter", "network"])
+.choices(&[
+    "solar",
+    "reporter",
+    "network",
+    "interactions",
+    "command-kernel",
+])
 .required();
+pub(crate) const RUNTIME: Arg = Arg::value(
+    "runtime",
+    "<native|wasm>",
+    "Native engine or UI WASM installation; native remains the default.",
+)
+.choices(&["native", "wasm"])
+.default("native");
+
 pub(crate) const CHANNEL: Arg = Arg::value(
     "channel",
     "<stable|canary>",
@@ -30,6 +44,26 @@ pub(crate) const CHANNEL: Arg = Arg::value(
 
 pub(crate) const REFUSALS: &[Refusal] = &[
     crate::PLATFORM,
+    Refusal {
+        code: "ui_component_platform_unavailable",
+        when: "UI installation or retained reads are requested on an unqualified native platform",
+        remedy: "use Linux x86_64; retain Windows UI installation until its private DACL adapter is qualified",
+    },
+    Refusal {
+        code: "module_not_installed",
+        when: "no UI component selection exists",
+        remedy: "explicitly stage and activate a published UI unit",
+    },
+    Refusal {
+        code: "module_artifact_invalid",
+        when: "retained UI bytes or bounded member range differ from their immutable receipt",
+        remedy: "retain the capture and repair or explicitly reinstall its exact UI unit",
+    },
+    Refusal {
+        code: "module_release_component_invalid",
+        when: "the runtime does not admit the selected component",
+        remedy: "select native for Solar, Reporter or Network; select wasm for Interactions or UI Kernel",
+    },
     Refusal {
         code: "invalid_choice",
         when: "component or channel is outside the declared closed choices",
@@ -165,9 +199,9 @@ pub(crate) const REFUSALS: &[Refusal] = &[
 pub static REMOVE: Command = Command {
     id: "core.component.remove",
     path: &["core", "component", "remove"],
-    contract: 1,
+    contract: 2,
     summary: "Remove one managed component selection from this machine.",
-    purpose: "Confirm removal of one fixed component and lane at an explicitly held generation through that lane's existing owned Core background runtime. Its native owner fences new job admission, checks every owned pending job across projects for a valid immutable engine capture, then the shared native updater locks and atomically commits a removed-v2 selection. Legacy uncaptured jobs refuse. Existing immutable versions and captured jobs remain retained; new managed captures refuse instead of falling back to packaged or PATH executables. Generation zero may fence an absent selection. No project, release catalog, download, licence, executable probe or Desktop launch is involved; an absent or older Core runtime refuses.",
+    purpose: "Explicit runtime wasm removes an installed UI selection locally under this OS account, retaining its immutable bytes and previous receipt for rollback without requiring login or a running Core. Native remains the default: confirm removal of one fixed component and lane at an explicitly held generation through that lane's existing owned Core background runtime. Its native owner fences new job admission, checks every owned pending job across projects for a valid immutable engine capture, then the shared native updater locks and atomically commits a removed-v2 selection. Legacy uncaptured jobs refuse. Existing immutable versions and captured jobs remain retained; new managed captures refuse instead of falling back to packaged or PATH executables. Generation zero may fence an absent selection. No project, release catalog, download, licence, executable probe or Desktop launch is involved; an absent or older Core runtime refuses.",
     chapter: Chapter::Workstation,
     effect: Effect::MachineWrite,
     authority: Authority::None,
@@ -175,6 +209,7 @@ pub static REMOVE: Command = Command {
     args: &[
         COMPONENT,
         CHANNEL,
+        RUNTIME,
         Arg::value(
             "expected-generation",
             "<u64>",
@@ -182,7 +217,7 @@ pub static REMOVE: Command = Command {
         )
         .required(),
     ],
-    output: "Committed ds.module-selection/v2 removal receipt: exact component, channel, incremented generation and state removed. No active or previous selection remains; version directories are retained for already captured jobs.",
+    output: "For UI runtime wasm, committed ds.ui-module-selection/v1 removed state retaining the previous unit for rollback. For native, committed ds.module-selection/v2 removal receipt: exact component, channel, incremented generation and state removed. No active or previous selection remains; version directories are retained for already captured jobs.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
@@ -194,15 +229,15 @@ pub static REMOVE: Command = Command {
 pub static SELECTION: Command = Command {
     id: "core.component.selection",
     path: &["core", "component", "selection"],
-    contract: 1,
+    contract: 2,
     summary: "Read a component's retained selection and generation offline.",
     purpose: "Read the protected local native selection, including installed-v1 and removed-v2 records, to capture the exact generation for component removal. An absent record returns null and has generation zero. Reads retained provenance without creating directories, changing permissions, taking an update lock, querying release authority or probing an executable. No account or project authority is needed for this per-user machine state.",
     chapter: Chapter::Workstation,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[COMPONENT, CHANNEL],
-    output: "Retained ds.module-selection/v1 installed record or ds.module-selection/v2 removed record, including component, channel and generation; null when absent. No fresh executable availability is implied.",
+    args: &[COMPONENT, CHANNEL, RUNTIME],
+    output: "UI runtime wasm returns ds.ui-module-selection/v1 offline, including active/previous or removed state. Native returns retained ds.module-selection/v1 installed record or ds.module-selection/v2 removed record, including component, channel and generation; null when absent. No fresh executable availability is implied.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
@@ -252,10 +287,13 @@ pub(crate) fn owner_failure(message: String) -> Failure {
         | "module_activation_deferred"
         | "module_rollback_unavailable"
         | "module_removed"
+        | "module_not_installed"
+        | "ui_component_platform_unavailable"
         | "module_platform_unsupported" => Failure::unavailable(refusal.code, bounded),
         "component_generation_invalid"
         | "component_request_invalid"
         | "invalid_choice"
+        | "module_release_component_invalid"
         | "module_release_schema_invalid"
         | "module_release_identity_mismatch"
         | "module_release_protocol_unsupported"
@@ -271,7 +309,8 @@ pub(crate) fn owner_failure(message: String) -> Failure {
         | "module_receipt_invalid"
         | "module_update_cancelled"
         | "module_activation_failed"
-        | "module_engine_incompatible" => Failure::failed(refusal.code, bounded),
+        | "module_engine_incompatible"
+        | "module_artifact_invalid" => Failure::failed(refusal.code, bounded),
         _ => Failure::failed("module_store_invalid", bounded),
     };
     failure.remedy(refusal.remedy)
@@ -298,6 +337,9 @@ fn removal_request(inputs: &Inputs) -> Result<RemovalRequest, Failure> {
 }
 
 pub fn remove(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::ui_components::requested(inputs)? {
+        return crate::ui_components::remove(inputs);
+    }
     crate::require_native_host()?;
     let request = removal_request(inputs)?;
     request_runtime(&request)
@@ -440,6 +482,9 @@ fn remove_on_runtime(
 }
 
 pub fn selection(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::ui_components::requested(inputs)? {
+        return crate::ui_components::selection(inputs);
+    }
     ds_update_runtime::modules::current_platform().map_err(owner_failure)?;
     selection_with(inputs, ModuleStore::selection_record_managed)
 }
@@ -609,7 +654,7 @@ mod tests {
         assert!(!SELECTION.requires_confirmation());
         assert_eq!(
             REMOVE.args.iter().map(|arg| arg.name).collect::<Vec<_>>(),
-            ["component", "channel", "expected-generation"]
+            ["component", "channel", "runtime", "expected-generation"]
         );
         assert_eq!(
             SELECTION
@@ -617,7 +662,7 @@ mod tests {
                 .iter()
                 .map(|arg| arg.name)
                 .collect::<Vec<_>>(),
-            ["component", "channel"]
+            ["component", "channel", "runtime"]
         );
         let descriptor = ds_cli_contract::help::command_json(&REMOVE);
         assert_eq!(descriptor["confirmation_required"], true);

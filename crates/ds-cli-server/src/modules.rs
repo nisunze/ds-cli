@@ -34,9 +34,9 @@ pub static INVENTORY: Command = Command {
 pub static RELEASE: Command = Command {
     id: "core.module-release",
     path: &["core", "module-release"],
-    contract: 1,
+    contract: 2,
     summary: "Validate one module's declared release metadata.",
-    purpose: "Read bounded local JSON and ask the Kernel to validate the selected module and lane's release metadata. Native is the default; runtime wasm inspects the complete four-file Network browser unit. This is read-only schema and compatibility inspection; it grants no installation trust, download, activation, computation or publication authority.",
+    purpose: "Read bounded local JSON and ask the Kernel to validate the selected module and lane's release metadata. Native is the default; runtime wasm inspects the complete four-file Network browser unit or Interactions/UI Kernel unit with required trusted build manifest. UI inspection returns its whole-unit digest. This is read-only schema and compatibility inspection; it grants no installation trust, download, activation, computation or publication authority.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -44,10 +44,16 @@ pub static RELEASE: Command = Command {
     args: &[
         Arg::value(
             "component",
-            "<solar|reporter|network>",
+            "<solar|reporter|network|interactions|command-kernel>",
             "Exact addon identity.",
         )
-        .choices(&["solar", "reporter", "network"])
+        .choices(&[
+            "solar",
+            "reporter",
+            "network",
+            "interactions",
+            "command-kernel",
+        ])
         .required(),
         Arg::value("channel", "<stable|canary>", "Exact release lane.")
             .choices(&["stable", "canary"])
@@ -55,7 +61,7 @@ pub static RELEASE: Command = Command {
         Arg::value(
             "runtime",
             "<native|wasm>",
-            "Publication runtime; wasm admits Network only.",
+            "Publication runtime; wasm admits Network browser units and the two UI units.",
         )
         .choices(&["native", "wasm"])
         .default("native"),
@@ -66,7 +72,7 @@ pub static RELEASE: Command = Command {
         )
         .required(),
     ],
-    output: "The Kernel-admitted module manifest, or null when no release was declared. Never a verified install receipt.",
+    output: "For UI WASM, UiUnit with release, unit_sha256 and total_bytes; otherwise the Kernel-admitted module manifest, or null when no release was declared. Never a verified install receipt.",
     examples: &[],
     refusals: &[Refusal {
         code: "module_release_invalid",
@@ -162,12 +168,26 @@ pub fn release(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         .remedy("retain the metadata; select its exact module and lane or obtain a corrected declared release")
     };
     let runtime = inputs.value("runtime").unwrap_or("native");
+    let component = inputs.require("component")?;
+    let ui = matches!(component, "interactions" | "command-kernel");
     if runtime == "wasm" {
-        ds_command_kernel::module_release::browser::admit_target(
-            inputs.require("component")?,
-            inputs.require("channel")?,
-        )
-        .map_err(|error| invalid(error.to_string()))?;
+        if ui {
+            ds_command_kernel::module_release::ui::admit_target(
+                component,
+                inputs.require("channel")?,
+            )
+            .map_err(|e| invalid(e.to_string()))?;
+        } else {
+            ds_command_kernel::module_release::browser::admit_target(
+                component,
+                inputs.require("channel")?,
+            )
+            .map_err(|e| invalid(e.to_string()))?;
+        }
+    } else if ui {
+        return Err(invalid(
+            "module_release_component_invalid: UI components require explicit runtime wasm".into(),
+        ));
     }
     let path = inputs.require("file")?;
     let metadata = std::fs::symlink_metadata(path).map_err(|error| invalid(error.to_string()))?;
@@ -190,6 +210,15 @@ pub fn release(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let value = value.get("release").unwrap_or(&value);
     if value.is_null() {
         return Ok(Value::Null);
+    }
+    if runtime == "wasm" && ui {
+        let unit = ds_command_kernel::module_release::ui::inspect(
+            component,
+            inputs.require("channel")?,
+            value,
+        )
+        .map_err(|e| invalid(e.to_string()))?;
+        return serde_json::to_value(unit).map_err(|e| invalid(e.to_string()));
     }
     if runtime == "wasm" {
         let admitted =
@@ -293,5 +322,23 @@ mod inventory_tests {
         )
         .unwrap_err();
         assert_eq!(error.code(), "module_lane_invalid");
+    }
+
+    #[test]
+    fn ui_inspection_returns_complete_digest_and_requires_explicit_wasm_before_file_access() {
+        for (component, bytes) in [
+            ("interactions", include_bytes!("../../../../ds-command-kernel/src/module_release/fixtures/interactions-ui-wasm-canary.json").as_slice()),
+            ("command-kernel", include_bytes!("../../../../ds-command-kernel/src/module_release/fixtures/command-kernel-ui-wasm-canary.json").as_slice()),
+        ] {
+            let mut file = tempfile::NamedTempFile::new().unwrap();
+            file.write_all(bytes).unwrap();
+            let inspected = inspect_file(file.path(), component, Some("wasm")).unwrap();
+            assert_eq!(inspected["release"]["protocol"], "ds.ui-wasm/v1");
+            assert_eq!(inspected["release"]["assets"].as_array().unwrap().len(), 4);
+            assert_eq!(inspected["unit_sha256"].as_str().unwrap().len(), 64);
+            let absent = file.path().with_extension("absent");
+            assert!(inspect_file(&absent, component, None).unwrap_err().to_string().contains("module_release_component_invalid"));
+            assert!(inspect_file(&absent, component, Some("native")).unwrap_err().to_string().contains("module_release_component_invalid"));
+        }
     }
 }

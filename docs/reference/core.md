@@ -115,3 +115,59 @@ SID through the existing protected-state owner. A SID is never shortened to a
 numeric UID. Host construction and router fixtures must update together; these
 implementation interfaces do not form a supported client SDK. CLI/MCP remains
 the client surface. See [release notes](../../CHANGELOG.md) for the source update.
+
+## UI component installation before sign-in
+
+`core.module-release`, `core.module-stage`, `core.component.selection`,
+`core.component.activate`, `core.component.remove` and `core.component.rollback`
+use contract **2**. The added `--runtime native|wasm` defaults to `native`.
+Their existing native engine requests and protected background Core lifecycle
+remain unchanged. `interactions` and `command-kernel` require explicit
+`--runtime wasm`; native UI requests refuse before effects. Installation of
+Network/Solar/Reporter WASM through these commands remains unavailable.
+Read-only Network browser metadata inspection keeps its existing behavior.
+
+UI installation is a local OS-user Core operation, available before Firebase
+or sign-in. It requires the production native lane profile and a grant minted
+by one fixed HTTPS gateway release read. Held catalog JSON only provides
+inspection and the digest to confirm: it cannot authorize installation.
+All four members, owner source closure and the required ten-field trusted
+compiler/configuration manifest are admitted before any transfer. Core never
+evaluates the JavaScript loader or UI WASM. Interactions remains absent from
+the native implementation closure. UI installation and retained reads
+currently admit Linux x86_64 only. Windows refuses
+`ui_component_platform_unavailable` until its private DACL store adapter is
+qualified; native Windows behavior is unchanged.
+
+UI metadata inspection returns `UiUnit { release, unit_sha256, total_bytes }`.
+Pass this whole-unit digest as `core.module-stage --sha256`. A successful stage
+returns `ds.ui-module-stage/v1` with `state: ready`, `receiptId`, component,
+channel, version, `sha256` and `expectedGeneration`. The receipt is a private
+Core record, never a caller-supplied catalog, URL or filesystem path. Staging
+changes no active selection. Confirm activation using the receipt ID and exact
+generation. The same private component lock and atomic selection replacement
+store `ds.ui-module-selection/v1`, with installed active/previous receipts or
+an explicit removed state. Removal retains the previous unit for offline
+rollback. Existing captures keep their immutable version bytes. These UI
+operations need no running job host and hold no compute database transaction;
+they grant no project, calculation or publication authority.
+
+The Tauri loader uses two typed read-only commands, with explicit runtime wasm:
+
+- `core.component.capture` verifies all four retained members under the updater
+  lock and returns `{ generation, receipt }`. The receipt's
+  `unit.unit_sha256` pins every subsequent read.
+- `core.component.member` accepts that `--unit-sha256`, a component-fixed
+  `--filename`, unsigned `--offset`, and `--limit` from 1 through 1048576
+  (default 1048576). It reads the owner-retained installation receipt,
+  re-admits its complete identity and re-verifies the requested complete member.
+  Its chunk comes from the same verified handle. The result carries schema
+  `ds.ui-module-member/v1`, unit digest, filename, offset, byte count, complete
+  member size/SHA-256, `body_base64`, and `more` for the remaining suffix.
+
+These reads create no store and perform no online freshness check. No private
+path, database, socket, arbitrary URL or caller-held receipt enters the loader
+contract. The loader must collect all four exact members, verify their hashes
+and admit the actual exported identity before using the unit. Native source
+and isolated fixture tests do not establish UI publication or installed
+Desktop acceptance.
