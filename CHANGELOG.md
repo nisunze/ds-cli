@@ -1,5 +1,24 @@
 # Release notes
 
+## Unreleased: Core structural cloud-cache recovery
+
+Old behavior: `core.serve` refused startup when its canonical SQLite cache was
+structurally corrupt, including cases initially surfaced as a failed schema
+migration. New behavior: after its existing native single-owner lock, protected
+connection owner and installation identity checks, Core positively diagnoses
+structural corruption, retains the database/fixed sidecars with digest evidence,
+and recreates only that canonical cache through the existing store owner.
+
+Affected consumers are independently installed Core and its Desktop/CLI clients.
+They keep `core.serve` contract 2 and their existing commands; install a qualified
+Core artifact containing this change to receive recovery. Old queue/history
+metadata is not imported or assigned to another account. Credentials, identity,
+component selections, project files and input/output bytes remain preserved.
+Healthy NOT NULL/CHECK or migration/schema failures, unsupported versions,
+permissions, owner/auth changes and failed quarantine continue to refuse.
+Desktop remains 0.2.0; no shared installation version or component pin is added.
+
+
 ## Unreleased: DS Installation Manager
 
 `scripts/installation-manager/ds-install-manager.ps1` adds the Windows

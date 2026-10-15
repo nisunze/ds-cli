@@ -171,3 +171,21 @@ contract. The loader must collect all four exact members, verify their hashes
 and admit the actual exported identity before using the unit. Native source
 and isolated fixture tests do not establish UI publication or installed
 Desktop acceptance.
+
+## Structurally damaged cloud cache
+
+`ds core serve --lane <stable|canary>` uses the same protected native account,
+installation and canonical state directory across restarts. A Core release with
+the structural-cache recovery owner checks SQLite after acquiring its existing
+single-host lock and verifying that identity. Confirmed page/tree or SQLite-format
+corruption retains `store.sqlite` and its fixed sidecars under a unique
+`store.sqlite.corrupt-<nonce>` prefix with a digest receipt, then allows the usual
+owner to create fresh canonical queue/history metadata. No old rows are salvaged.
+
+This replaces the previous unconditional startup refusal for that damage only.
+It preserves credentials, connection/installation identity, installed components,
+project files and input/output bytes outside the database. A constraint error
+(such as `artifacts.account` NOT NULL), unsupported schema, permission/owner/auth
+failure or unsuccessful quarantine still refuses; none is a request to clear all
+state. Existing clients require the independently released compatible Core
+artifact for this behavior; updating Desktop alone does not update Core.

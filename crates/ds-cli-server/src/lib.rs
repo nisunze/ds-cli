@@ -1,5 +1,6 @@
 //! Thin command/HTTP host for the shared native compute runtime.
 mod auth;
+mod cache_recovery;
 pub mod component_lifecycle;
 pub mod core_components;
 pub mod desktop_update;
@@ -434,7 +435,7 @@ pub static SERVE: Command = Command {
     // so which Server a caller reaches is which `--state-dir` it names.
     contract: 2,
     summary: "Run Core in background mode for this account's projects.",
-    purpose: "Run the independently installed ds Core runtime in background mode under this operating-system user's native account; Desktop is an optional client of the same native owner. No project is selected or captured here and no directory is fetched: callers name the project per request, the Core records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Core; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control uses the protected private local transport. This process runs in the foreground until it stops.",
+    purpose: "Run the independently installed ds Core runtime in background mode under this operating-system user's native account; Desktop is an optional client of the same native owner. No project is selected or captured here and no directory is fetched: callers name the project per request, the Core records it and runs what its owner hands it, and the gateway enforces entitlement at publication and sync -- so one host serves several projects at once, needs no ds auth project use to start, and runs with no upstream. One owner per Core; many users are many machines. --workers bounds the whole host; --per-project bounds what one project may hold while another has work queued. Control uses the protected private local transport. This process runs in the foreground until it stops. Confirmed structural SQLite cloud-cache corruption is quarantined with its sidecars and digest evidence after native ownership checks, then the same canonical cache is recreated; healthy constraint/schema, permission and owner errors still refuse.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessUser,
@@ -1190,6 +1191,9 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let sessions =
         server_sync::sessions::ServerSessions::native(connection.clone(), database.clone(), limits)
             .map_err(failure)?;
+    // Single-owner transport, connection principal and native install identity
+    // are settled before inspecting or quarantining only this Core's cache.
+    cache_recovery::prepare(&directory, &listening).map_err(failure)?;
     let layer_auth: Arc<dyn ds_compute_runtime::Authorizer> = Arc::new(authorizer);
     let layer_host =
         layers::NativeLayerHost::bound(&lane, connection.owner.clone(), layer_auth.clone());
