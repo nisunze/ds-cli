@@ -377,7 +377,7 @@ Four related objects have separate lifecycles:
 
 ## Survey data held on this machine
 
-The Server core (the Desktop's core) holds one read-only copy of each survey
+Installed DS Core holds one read-only copy of each survey
 form it has read, per account and project: the rows, the working-area filter
 they were read under, when they were refreshed, and the cursor a refresh
 continues from; held photos sit beside it. Every decision over the copy is the
@@ -426,6 +426,28 @@ reads the cloud directly (`source: cloud`): deleted entries are never held.
 count under the filters, and `truncated` says whether the returned entries are
 all of them. `--out` writes a new GeoJSON FeatureCollection (never
 overwriting) whose features are the rows unchanged, each with a `media` member.
+
+For a complete Core-held view, use the additive contract-2 mode:
+
+```text
+ds survey entries read --project <project-id> --form <form-slug> \
+  --refresh local --complete-file --out complete-entries.geojson --output json
+```
+
+`--complete-file` requires `--out` and refuses `--include-deleted` before
+account access. It writes every original held Feature under the admitted
+filter, without truncating at `--limit` or adding derived media properties.
+The existing 64 MiB canonical held-source limit still applies, counting each
+original Feature plus its NDJSON newline; the file's additional bound is the
+exact serialized empty FeatureCollection scope/header. The create-new output
+is private on Unix (0600), never clobbers another file, and is removed if its
+own write fails. Stdout contains the original held manifest and a
+`ds.survey-held-file/v1` receipt: exact path/project/form, feature count,
+size, SHA-256, source bytes/limit and header bytes. It omits inline entries.
+Ordinary `--out` and default/explicit `--limit` keep their prior bounded
+behavior. Consumers needing complete rows must discover `complete-file` in
+the live descriptor, verify the receipt and scope, and refuse an older Core;
+they must not relabel a truncated result as complete.
 
 Each `media` item names the dotted `property` it was found in (`data.photo`),
 the `reference` as stored, the `bucket` when the reference names one, the

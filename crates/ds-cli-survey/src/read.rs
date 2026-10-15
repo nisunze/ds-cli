@@ -17,13 +17,16 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_client_core::survey_entries_read::{SURVEY_ENTRIES_READ_MAX_LIMIT, entry_media};
+use ds_client_core::survey_entries_read::{entry_media, SURVEY_ENTRIES_READ_MAX_LIMIT};
 use ds_client_core::{SurveyEntriesRead, SurveyEntriesReadRequest, SurveyEntry};
 use ds_command_kernel::project_dataset_cache::Scope;
 use ds_command_kernel::survey::hold::{self, AdminBoundary, Filter, Manifest, Refresh, View};
 use ds_command_kernel::time::OffsetDateTime;
 use ds_project_data::survey_hold::{self as store, HoldError};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
+
+#[path = "read/complete_file.rs"]
+mod complete_file;
 
 const FORM: Arg = Arg::value(
     "form",
@@ -76,6 +79,7 @@ const OUT: Arg = Arg::value(
     "<file.geojson>",
     "Write the entries as a new GeoJSON file; never overwritten.",
 );
+const COMPLETE_FILE: Arg = Arg::switch("complete-file", "Write the complete admitted held view to --out with original features and a SHA-256/size/count receipt; stdout remains bounded metadata. The source-format byte bound is the existing survey response limit; --limit does not truncate this file.");
 const LANE: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
@@ -117,7 +121,7 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "survey_entries_output",
-        when: "--out names an existing or unwritable file",
+        when: "--out names an existing or unwritable file, or complete-file is incomplete or exceeds the owning source-format byte bound",
         remedy: "choose a new writable path",
     },
     ds_cli_auth::SIGNED_OUT_REFUSAL,
@@ -162,9 +166,10 @@ pub static COMMAND: Command = Command {
         LIMIT,
         INCLUDE_DELETED,
         OUT,
+        COMPLETE_FILE,
         LANE,
     ],
-    output: "The project, form and filter; source (held, delta, replace or cloud) and the held copy (filter, rows, refreshed, cursor); the total, how many were returned and whether that is all; each entry's geometry, properties and photos. With --out, the entries go to a GeoJSON file.",
+    output: "The project, form and filter; source (held, delta, replace or cloud) and the held copy (filter, rows, refreshed, cursor); the total, how many were returned and whether that is all; each entry's geometry, properties and photos. With --out, the entries go to a bounded GeoJSON file; --complete-file writes every admitted held-view feature unchanged and returns ds.survey-held-file/v1 with source-format byte bound, count, size and SHA-256.",
     examples: &[
         Example {
             command: "ds survey entries read --project <exact-id> --form <form-slug> --output json",
@@ -172,8 +177,8 @@ pub static COMMAND: Command = Command {
             runnable: false,
         },
         Example {
-            command: "ds survey entries read --project <exact-id> --form <form-slug> --refresh local --limit 5000 --out entries.geojson",
-            note: "The whole held form to a GeoJSON file without going online; each feature lists its photos under `media`.",
+            command: "ds survey entries read --project <exact-id> --form <form-slug> --refresh local --complete-file --out entries.geojson",
+            note: "The complete held view, with original features and file identity; never truncates at 5,000 or goes online.",
             runnable: false,
         },
     ],
@@ -192,6 +197,7 @@ pub static COMMAND: Command = Command {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // Every caller-controlled byte is checked before any credential is read.
+    complete_file::admit(inputs)?;
     let request = parse(inputs)?;
     if inputs.switch("include-deleted") {
         return cloud(inputs, &request);
@@ -270,7 +276,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             )
         }
     };
-    let limit = request.limit();
+    let limit = if inputs.switch("complete-file") {
+        rows.len()
+    } else {
+        request.limit()
+    };
     let read = SurveyEntriesRead {
         project: project_id.clone(),
         form: form.to_owned(),
@@ -289,6 +299,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut data = answer_json(&lane_token, &read, inputs, &request);
     data["source"] = json!(source.as_str());
     data["held"] = held_json(&manifest);
+    if inputs.switch("complete-file") {
+        data["held"] = serde_json::to_value(&manifest).map_err(|e| store_failure(e.to_string()))?;
+        let path = inputs.require("out")?;
+        data["file"] = json!(path);
+        data["complete_file"] = complete_file::write(path, &read)?;
+        return Ok(data);
+    }
     finish(data, &read, inputs.value("out"))
 }
 
@@ -522,7 +539,7 @@ mod tests {
     use super::*;
     use ds_cli_contract::args::parse as parse_args;
 
-    fn inputs(arguments: &[&str]) -> Inputs {
+    pub(super) fn inputs(arguments: &[&str]) -> Inputs {
         parse_args(
             &COMMAND,
             &arguments

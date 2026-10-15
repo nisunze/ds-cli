@@ -245,3 +245,15 @@ repeating or discarding an unknown completed action.
   refuse the action and require a qualified independent Core update; arbitrary
   operations, foreign scope and stale history remain refused. No new dependency
   edge, native engine protocol or Desktop engine prerequisite is introduced.
+
+## Unreleased: complete retained Survey file handoff
+
+Old `survey.entries.read --out` returned at most 5,000 rows. The existing
+contract-2 command adds `--complete-file --out` for all original Features in an
+admitted Core-held view, with a scope/count/size/SHA-256 receipt and the existing
+64 MiB canonical-source bound plus its exact GeoJSON header. Default limits
+and ordinary output remain unchanged. Complete consumers, including Desktop
+Survey loading and retained print preparation, must discover the new flag and
+verify the receipt; older Core is refused rather than silently truncating.
+`--complete-file` without `--out`, or with `--include-deleted`, refuses before
+authority or output creation. This adds no new storage or command owner.
