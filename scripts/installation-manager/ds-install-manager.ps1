@@ -206,7 +206,12 @@ function ComponentAction([string]$Name,[string]$Verb) {
  $path=Join-Path $script:Cache "$Name-release.json"
  [IO.File]::WriteAllText($path,($release | ConvertTo-Json -Depth 30),(New-Object Text.UTF8Encoding($false)))
  $admitted=InvokeCore -Arguments @('core','module-release','--component',$Name,'--channel',$Channel,'--runtime',$runtime,'--file',$path)
- if($runtime -eq 'wasm'){$sha=$admitted.unit_sha256}else{
+ if($runtime -eq 'wasm'){
+  $sha=$admitted.unit_sha256
+  # Admit the current public identity even when installation is already done.
+  # Preserve the active generation and captured workers for an exact unit.
+  if($selection -and $selection.state -eq 'installed' -and $selection.active.unit.unit_sha256 -ceq $sha){return $selection}
+ }else{
   $assets=@($release.assets | Where-Object {$_.platform -eq 'windows' -and $_.arch -eq 'x86_64'})
   if($assets.Count -ne 1){Fail 'component_platform_unavailable' 'No unique Windows executable is published'}
   $sha=$assets[0].sha256

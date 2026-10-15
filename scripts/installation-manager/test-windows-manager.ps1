@@ -165,6 +165,25 @@ public static class FixtureUninstaller {
  $r=FreshCoreRelease;$r.assets[1].url=$r.assets[1].url+'?token=mutable';RefuseCore $r
  $r=FreshCoreRelease;$r.assets[1].built_at='2026-10-15T01:00:00Z';RefuseCore $r
  $r=FreshCoreRelease;$r.assets=@($r.assets[0]);RefuseCore $r
+ # Execute the actual ensure path with a bounded native-owner fixture.
+ # Matching units must still admit public metadata, without restaging workers.
+ $script:EnsureCalls=@();$script:EnsureSha='a'*64;$script:AdmittedSha='a'*64
+ function Release([string]$Name,[string]$Runtime='native'){return [pscustomobject]@{component=$Name;runtime=$Runtime}}
+ function InvokeCore([string[]]$Arguments){
+  $verb=$Arguments[1];$script:EnsureCalls+=@(($Arguments -join ' '))
+  if($verb -eq 'component' -and $Arguments[2] -eq 'selection'){return [pscustomobject]@{generation=7;state='installed';active=[pscustomobject]@{unit=[pscustomobject]@{unit_sha256=$script:EnsureSha}}}}
+  if($verb -eq 'module-release'){return [pscustomobject]@{unit_sha256=$script:AdmittedSha}}
+  if($verb -eq 'module-stage'){return [pscustomobject]@{receiptId='fixture-receipt'}}
+  if($verb -eq 'component' -and $Arguments[2] -eq 'activate'){return [pscustomobject]@{generation=8}}
+  throw 'Unexpected native-owner fixture operation'
+ }
+ $ensured=ComponentAction interactions Install
+ Check ($ensured.generation -eq 7) 'Exact installed UI unit advanced its generation'
+ Check ($script:EnsureCalls.Count -eq 2 -and $script:EnsureCalls[1] -like 'core module-release *') 'Exact unit skipped public admission or restaged workers'
+ $script:EnsureCalls=@();$script:AdmittedSha='b'*64
+ $changed=ComponentAction interactions Update
+ Check ($changed.generation -eq 8 -and $script:EnsureCalls.Count -eq 4) 'A changed admitted UI unit bypassed stage and activation'
+ Check ($script:EnsureCalls[3] -like '*--expected-generation 7*') 'Changed unit lost its native generation fence'
  Write-Output "Native Windows manager checks: $script:Checks passed"
 } finally {
  # Bounded disposable test cleanup, never a product or caller supplied path.
