@@ -319,3 +319,26 @@ Core request parsers refuse the new action explicitly; consumers must update
 Core to a qualified artifact containing the action, without requiring a
 matching Desktop or Network version. Unknown label fields, excessive controls,
 foreign handles and stale history refuse; no browser-engine fallback exists.
+
+### Readonly Profile original retention and intentional rebind
+
+`core.profile-session` contract 1 keeps the same closed action/request fields.
+Previously, idle retirement discarded the only source and Close refused the
+expired handle. Open now retains at most eight exact <=32 MiB original packages
+in the existing protected Core SQLite Store, fenced by its complete owner scope,
+model, declared CRS, package digest, complete initial history and managed engine.
+Fifteen-minute worker retirement remains unchanged. On an intentional request,
+an absent worker may be recreated under the same opaque handle only from that
+verified unchanged initial source; no source bytes remain in steady-state RAM.
+Known-source expired Close removes its row without launching a worker. Unknown
+handles, incompatible/corrupt sources, changed engine/history and invalidated
+original-only eligibility refuse; future authored edits cannot be reset to the
+original. No queue, publication, browser model record or credentials are changed.
+
+The receipt adds `rehydrated: boolean`; existing native Value/structural clients
+accept it. Consumers that reuse an already-open cached scene must intentionally
+read State and, when rebound, restore their derived View through the existing
+owner. Older Core retains its unavailable refusal and cannot promise rebind.
+An original-only rebind does not recover a checkpoint, undo history, edited head
+or calculated result. A qualified successor Core is required for live behavior;
+independent Shell, Network and other component versions are not globally pinned.

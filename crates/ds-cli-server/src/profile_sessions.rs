@@ -1,6 +1,6 @@
 //! Process-lifetime Profile ownership. Parsing/engineering stay in their existing
 //! Grid exchange and managed Network owners; no browser, SDK or caller argv.
-use base64::{Engine, engine::general_purpose::STANDARD};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use ds_cli_contract::Failure;
 use ds_grid_exchange::profile_session::ProfileSessionSeed;
 use ds_network_client::{CapturedNetworkClient, NetworkFailure, ProfileSession};
@@ -8,14 +8,15 @@ use ds_network_contracts::profile::NativeProfileGridInkV1;
 use ds_network_contracts::profile::{
     NativeProfileOpenV1, NativeProfileOperationV1, PROFILE_OPEN_SCHEMA,
 };
+use ds_sync_store::{ProfileSourceHeader, ProfileSourceScope, Store};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     path::Path,
     sync::Mutex,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 pub const REQUEST_SCHEMA: &str = "ds.core.profile-session/v1";
@@ -179,6 +180,129 @@ fn package_open(bytes: &[u8]) -> Result<(NativeProfileOpenV1, u64, String), Fail
         manifest.coordinate_system.as_str().to_owned(),
     ))
 }
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis().min(u64::MAX as u128) as u64)
+}
+fn source_scope(scope: &Scope) -> ProfileSourceScope {
+    ProfileSourceScope {
+        principal: scope.principal.clone(),
+        lane: scope.lane.clone(),
+        deployment: scope.deployment.clone(),
+        install: scope.install.clone(),
+        project: scope.project.clone(),
+    }
+}
+fn source_error(error: ds_sync_store::Error) -> Failure {
+    Failure::failed("core_profile_source_unavailable",error.to_string()).remedy("Preserve the exact original and history; inspect the protected Core SQLite source cache without resetting authored models")
+}
+fn operation_owner(operation: &Operation) -> Option<(&str, &str, &Value)> {
+    match operation {
+        Operation::Open { .. } => None,
+        Operation::Snapshot {
+            session_id,
+            model_id,
+            expected_history,
+        }
+        | Operation::State {
+            session_id,
+            model_id,
+            expected_history,
+        }
+        | Operation::Checkpoint {
+            session_id,
+            model_id,
+            expected_history,
+        }
+        | Operation::Close {
+            session_id,
+            model_id,
+            expected_history,
+        }
+        | Operation::View {
+            session_id,
+            model_id,
+            expected_history,
+            ..
+        }
+        | Operation::Scene {
+            session_id,
+            model_id,
+            expected_history,
+            ..
+        }
+        | Operation::GisProjection {
+            session_id,
+            model_id,
+            expected_history,
+            ..
+        } => Some((session_id, model_id, expected_history)),
+    }
+}
+fn open_original(
+    scope: Scope,
+    scratch: &Path,
+    bytes: &[u8],
+    id: &str,
+    authorized: &dyn Fn() -> Result<(), Failure>,
+) -> Result<(Held, Vec<u8>), Failure> {
+    let (open, source_revision, coordinate_system) = package_open(bytes)?;
+    let input =
+        serde_json::to_vec(&open).map_err(|_| invalid("Cannot encode native Profile opening"))?;
+    let workers = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(2);
+    let client =
+        CapturedNetworkClient::capture_for_lane(&scope.lane, workers, &|| false).map_err(native)?;
+    authorized()?;
+    let mut session = client
+        .open_profile_session_with_timeout(&input, scratch, DEADLINE, &|| false)
+        .map_err(native)?;
+    let result = session
+        .request_at(
+            NativeProfileOperationV1::Snapshot,
+            Some(session.history().clone()),
+            DEADLINE,
+            &|| false,
+        )
+        .map_err(native)?;
+    authorized()?;
+    let source = ProfileSourceHeader {
+        scope: source_scope(&scope),
+        schema: "ds.core.profile-source/v1".into(),
+        session_id: id.into(),
+        model_id: session.model_id().into(),
+        package_sha256: sha(bytes),
+        package_bytes: bytes.len() as u64,
+        initial_history: session.history().clone(),
+        source_revision,
+        coordinate_system: coordinate_system.clone(),
+        engine: serde_json::to_value(session.pin()).map_err(invalid)?,
+    };
+    let value = Held {
+        scope,
+        package_sha256: source.package_sha256.clone(),
+        source_revision,
+        coordinate_system,
+        presentation: serde_json::from_str::<Value>(&open.seed_json)
+            .map_err(|_| invalid("Admitted seed changed"))?["presentation"]
+            .clone(),
+        retained_asset_count: serde_json::from_slice::<Value>(&result.bytes)
+            .map_err(|_| invalid("Native snapshot changed"))?["retained_asset_count"]
+            .as_u64()
+            .ok_or_else(|| invalid("Native snapshot has no asset count"))?
+            as usize,
+        display_state: Default::default(),
+        touched: Instant::now(),
+        source,
+        session,
+    };
+    Ok((value, result.bytes))
+}
+fn closed_source_receipt(scope: &Scope, source: &ProfileSourceHeader) -> Value {
+    json!({"schema":RECEIPT_SCHEMA,"session_id":source.session_id,"project":scope.project,"lane":scope.lane,"package_sha256":source.package_sha256,"source_revision":source.source_revision,"coordinate_system":source.coordinate_system,"model_id":source.model_id,"history":source.initial_history,"engine":source.engine,"closed":true,"rehydrated":false,"payload":null})
+}
 struct Held {
     scope: Scope,
     package_sha256: String,
@@ -188,6 +312,7 @@ struct Held {
     retained_asset_count: usize,
     display_state: ds_command_kernel::profile_display::DisplayState,
     touched: Instant,
+    source: ProfileSourceHeader,
     session: ProfileSession,
 }
 #[derive(Default)]
@@ -199,6 +324,7 @@ impl Sessions {
         &self,
         scope: Scope,
         scratch: &Path,
+        database: &Path,
         request: Request,
         authorized: &dyn Fn() -> Result<(), Failure>,
     ) -> Result<Value, Failure> {
@@ -223,8 +349,62 @@ impl Sessions {
             )
         })?;
         // Dropping a native session aborts/reaps its entire supervised worker.
-        held.retain(|_, value| value.touched.elapsed() < IDLE && !value.session.is_closed());
-        match request.operation {
+        held.retain(|_, value| {
+            // Original-only expiry may never silently discard authored history.
+            value.session.history() != &value.source.initial_history
+                || (value.touched.elapsed() < IDLE && !value.session.is_closed())
+        });
+        let mut rehydrated = false;
+        if let Some((id, model, expected)) = operation_owner(&request.operation) {
+            if !held.contains_key(id) {
+                let source_scope = source_scope(&scope);
+                let source = Store::open_read_only(database)
+                    .map_err(source_error)?
+                    .map(|store| store.profile_source(&source_scope, id))
+                    .transpose()
+                    .map_err(source_error)?
+                    .flatten();
+                if let Some((header, bytes)) = source {
+                    if header.model_id != model || &header.initial_history != expected {
+                        return Err(Failure::conflict(
+                            "core_profile_history_conflict",
+                            "Retained original differs from the exact requested model/initial history",
+                        ));
+                    }
+                    authorized()?;
+                    if matches!(request.operation, Operation::Close { .. }) {
+                        Store::open(database)
+                            .map_err(source_error)?
+                            .remove_profile_source(&source_scope, &header)
+                            .map_err(source_error)?;
+                        authorized()?;
+                        return Ok(closed_source_receipt(&scope, &header));
+                    }
+                    if held.len() >= MAX_SESSIONS {
+                        return Err(Failure::unavailable(
+                            "core_profile_capacity",
+                            "Core already retains eight Profile sessions",
+                        ));
+                    }
+                    let (value, _) = open_original(scope.clone(), scratch, &bytes, id, authorized)?;
+                    if value.source != header {
+                        return Err(Failure::conflict(
+                            "core_profile_source_changed",
+                            "Exact original model/history/CRS/managed engine changed during rebind",
+                        ));
+                    }
+                    authorized()?;
+                    Store::open(database)
+                        .map_err(source_error)?
+                        .touch_profile_source(&source_scope, &header, now_ms())
+                        .map_err(source_error)?;
+                    authorized()?;
+                    held.insert(id.to_owned(), value);
+                    rehydrated = true;
+                }
+            }
+        }
+        let mut answer = match request.operation {
             Operation::Open {
                 package_base64,
                 package_sha256,
@@ -237,28 +417,6 @@ impl Sessions {
                     .remedy("Close an existing Profile session before opening another"));
                 }
                 let bytes = decode_package(&package_base64, &package_sha256)?;
-                let (open, source_revision, coordinate_system) = package_open(&bytes)?;
-                let input = serde_json::to_vec(&open)
-                    .map_err(|_| invalid("Cannot encode native Profile opening"))?;
-                let workers = std::thread::available_parallelism()
-                    .map_or(1, usize::from)
-                    .min(2);
-                let client =
-                    CapturedNetworkClient::capture_for_lane(&scope.lane, workers, &|| false)
-                        .map_err(native)?;
-                authorized()?;
-                let mut session = client
-                    .open_profile_session_with_timeout(&input, scratch, DEADLINE, &|| false)
-                    .map_err(native)?;
-                let result = session
-                    .request_at(
-                        NativeProfileOperationV1::Snapshot,
-                        Some(session.history().clone()),
-                        DEADLINE,
-                        &|| false,
-                    )
-                    .map_err(native)?;
-                authorized()?;
                 let mut random = [0u8; 16];
                 getrandom::getrandom(&mut random).map_err(|_| {
                     Failure::internal(
@@ -270,30 +428,29 @@ impl Sessions {
                     .iter()
                     .map(|b| format!("{b:02x}"))
                     .collect::<String>();
-                let value = Held {
-                    scope,
-                    package_sha256,
-                    source_revision,
-                    coordinate_system,
-                    presentation: serde_json::from_str::<Value>(&open.seed_json)
-                        .map_err(|_| invalid("Admitted seed changed"))?["presentation"]
-                        .clone(),
-                    retained_asset_count: serde_json::from_slice::<Value>(&result.bytes)
-                        .map_err(|_| invalid("Native snapshot changed"))?["retained_asset_count"]
-                        .as_u64()
-                        .ok_or_else(|| invalid("Native snapshot has no asset count"))?
-                        as usize,
-                    display_state: Default::default(),
-                    touched: Instant::now(),
-                    session,
-                };
-                let receipt = receipt(&id, &value, &result.bytes, false)?;
-                if held.insert(id, value).is_some() {
+                if held.contains_key(&id) {
                     return Err(Failure::internal(
                         "core_profile_session_unavailable",
                         "Private Profile handle collision",
                     ));
                 }
+                let (value, snapshot) =
+                    open_original(scope.clone(), scratch, &bytes, &id, authorized)?;
+                authorized()?;
+                let active: Vec<_> = held.keys().cloned().collect();
+                Store::open(database)
+                    .map_err(source_error)?
+                    .retain_profile_source(
+                        &source_scope(&scope),
+                        &value.source,
+                        &bytes,
+                        &active,
+                        now_ms(),
+                    )
+                    .map_err(source_error)?;
+                authorized()?;
+                let receipt = receipt(&id, &value, &snapshot, false)?;
+                held.insert(id, value);
                 Ok(receipt)
             }
             Operation::GisProjection {
@@ -467,6 +624,19 @@ impl Sessions {
                     | Operation::GisProjection { .. } => unreachable!(),
                 };
                 let session = owned(&mut held, &scope, &id, &model, &expected)?;
+                if matches!(&native_op, NativeProfileOperationV1::Close) {
+                    let current = Store::open(database)
+                        .map_err(source_error)?
+                        .profile_source(&source_scope(&scope), &id)
+                        .map_err(source_error)?;
+                    if current.as_ref().map(|(header, _)| header) != Some(&session.source) {
+                        return Err(Failure::conflict(
+                            "core_profile_source_changed",
+                            "Exact original changed before native Close",
+                        ));
+                    }
+                    authorized()?;
+                }
                 let result = session
                     .session
                     .request_at(native_op, Some(expected), DEADLINE, &|| false)
@@ -476,11 +646,29 @@ impl Sessions {
                 let closed = result.reply.closed;
                 let receipt = receipt(&id, session, &result.bytes, closed)?;
                 if closed {
+                    let source = session.source.clone();
+                    Store::open(database)
+                        .map_err(source_error)?
+                        .remove_profile_source(&source_scope(&scope), &source)
+                        .map_err(source_error)?;
+                    authorized()?;
                     held.remove(&id);
                 }
                 Ok(receipt)
             }
+        }?;
+        answer["rehydrated"] = json!(rehydrated);
+        Ok(answer)
+    }
+    #[cfg(test)]
+    pub fn expire_for_test(&self, id: &str) {
+        if let Some(value) = self.held.lock().unwrap().get_mut(id) {
+            value.touched = Instant::now() - IDLE;
         }
+    }
+    #[cfg(test)]
+    pub fn held_count_for_test(&self) -> usize {
+        self.held.lock().unwrap().len()
     }
 }
 fn validate_label_fields(fields: &[String]) -> Result<(), Failure> {
@@ -652,28 +840,24 @@ mod tests {
         assert_eq!(projected["revision"], history["model_revision"]);
         assert!(project_checkpoint(&bytes, "foreign", &history, &crs, &[]).is_err());
         assert!(project_checkpoint(&bytes, "projection-fixture", &json!({}), &crs, &[]).is_err());
-        assert!(
-            project_checkpoint(
-                &bytes,
-                "projection-fixture",
-                &history,
-                &crs,
-                &["arbitrary".into()]
-            )
-            .is_err()
-        );
+        assert!(project_checkpoint(
+            &bytes,
+            "projection-fixture",
+            &history,
+            &crs,
+            &["arbitrary".into()]
+        )
+        .is_err());
         let mut crossed: Value = serde_json::from_slice(&bytes).unwrap();
         crossed["schema"] = json!("wrong");
-        assert!(
-            project_checkpoint(
-                &serde_json::to_vec(&crossed).unwrap(),
-                "projection-fixture",
-                &history,
-                &crs,
-                &[]
-            )
-            .is_err()
-        );
+        assert!(project_checkpoint(
+            &serde_json::to_vec(&crossed).unwrap(),
+            "projection-fixture",
+            &history,
+            &crs,
+            &[]
+        )
+        .is_err());
     }
     #[test]
     fn unknown_or_foreign_handles_never_launch_a_process() {
@@ -694,7 +878,13 @@ mod tests {
             },
         };
         let refused = sessions
-            .execute(scope, Path::new("/absent"), request, &|| Ok(()))
+            .execute(
+                scope,
+                Path::new("/absent"),
+                Path::new("/absent/store.sqlite"),
+                request,
+                &|| Ok(()),
+            )
             .unwrap_err();
         assert_eq!(refused.code(), "core_profile_session_unavailable");
     }

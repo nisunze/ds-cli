@@ -1,5 +1,20 @@
 # Release notes
 
+## Unreleased: bounded Core Profile original rebind
+
+Old retained Profile workers lost their source after idle retirement; normal
+read/Close could not recover the expired handle. The same contract-1 request
+actions now retain a bounded readonly original in Core's existing SQLite Store
+and may recreate only its exact initial worker on intentional use. Known expired
+Close removes that source without reopening. Receipts add `rehydrated`; Desktop
+consumers must check State on explicit already-open intent and restore derived
+View after rebind. Older Core still refuses; corrupt/incompatible source, changed
+complete history/CRS/model/engine or invalidated authored-history eligibility must
+refuse without original substitution. This is not checkpoint/edit recovery or a
+new queue/database/updater. Qualify and update Core independently; Shell stays
+0.2.0 and other component pins/versions remain independent.
+
+
 ## Unreleased: explicit Core lane for paired Map preflight
 
 Old lane-less Map commands always probed Stable credentials even when the
