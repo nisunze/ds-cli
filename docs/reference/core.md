@@ -301,24 +301,42 @@ session scope; a newly opened session is closed through its existing owner when
 still authorized. Existing sessions are preserved and cleanup failures remain
 explicit, so callers must inspect completion before retrying.
 
-#### Retained GIS presentation
+#### Retained worker presentation reads
 
-`core.profile-session` contract 1 additionally admits `gis_projection` with
-`session_id`, `model_id`, `expected_history` and `label_fields` (at most 64
-ordered existing `StructureLabelField` strings). Core requests the exact
-retained Network checkpoint, verifies model/full history, reopens it through
-the existing seed/asset owner, and calls the single application GIS projection
-owner. Output is the existing FeatureCollection with authored revision,
-original declared model CRS and requested Rust-composed labels; it does not
-calculate, edit, publish or transform coordinates to another CRS.
+`core.profile-session` contract 1 admits these additional closed readonly
+requests, each with exact `session_id`, `model_id` and `expected_history`:
 
-Previously installed Desktop GIS consumers refused this read as
-`core_profile_operation_unavailable`. They now use this closed action and must
-retain their exact session/account/project/lane/source/history fences. Older
-Core request parsers refuse the new action explicitly; consumers must update
-Core to a qualified artifact containing the action, without requiring a
-matching Desktop or Network version. Unknown label fields, excessive controls,
-foreign handles and stale history refuse; no browser-engine fallback exists.
+- `feature_codes` has no caller projection arguments.
+- `engineering_attributes` requires `table: "structures" | "sections"` only.
+- Existing `gis_projection` keeps `label_fields`: at most 64 ordered existing
+  `StructureLabelField` strings, preserving order and duplicate fields. It admits
+  no caller CRS; the private worker request receives the retained manifest CRS.
+
+All three require the exact captured worker's `profile_read_projections_v1`
+capability before request staging. An expired eligible original also checks its
+retained engine identity and the newly captured current engine before launching
+or adopting any worker. Engine source/version remains independently released;
+compatibility is the declared capability plus immutable captured executable,
+protocol, source/dependency identities and exact scope/history, not equality to
+Core's compile-time Network source pin.
+
+Older Core parsers refuse the two new actions. Previous Core GIS read requested
+a checkpoint and opened a second in-process Grid session for projection; the
+new action forwards the same existing projection to its already initialized
+managed worker. Old Network producers without the capability refuse
+`core_profile_native_refused` with `native_code: network_engine_incompatible`
+before new request/staging; install a qualified compatible same-lane Network and
+explicitly reopen the exact original when its worker-affine identity changes.
+No unsupported operation, generic RPC, browser fallback, second session,
+engineering calculation, edit, publication or coordinate-system substitution is
+introduced. Native reply model/history/engine and artifact digest admission stay
+unchanged; Core additionally verifies GIS revision and original declared CRS.
+
+Desktop Map/Table/GIS consumers must use these closed typed actions and preserve
+account/project/lane/source/history fences. Unsupported table/label fields,
+excessive controls, foreign handles and stale history refuse. Core and compatible
+Network artifacts must be qualified independently before claiming live behavior;
+Shell version remains 0.2.0 and is not a universal component pin.
 
 ### Readonly Profile original retention and intentional rebind
 

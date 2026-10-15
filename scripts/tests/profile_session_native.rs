@@ -1,8 +1,8 @@
 #[path = "../../crates/ds-cli-server/src/profile_sessions.rs"]
 mod profile_sessions;
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use profile_sessions::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 fn main() {
     let scratch = std::env::args().nth(1).expect("private fixture path");
@@ -31,6 +31,22 @@ fn main() {
     };
     let sessions = Sessions::default();
     let database = std::path::Path::new(&scratch).join("store.sqlite");
+    let stored_original = |id: &str| {
+        let key = ds_sync_store::ProfileSourceScope {
+            principal: scope.principal.clone(),
+            lane: scope.lane.clone(),
+            deployment: scope.deployment.clone(),
+            install: scope.install.clone(),
+            project: scope.project.clone(),
+        };
+        ds_sync_store::Store::open_read_only(&database)
+            .unwrap()
+            .unwrap()
+            .profile_source(&key, id)
+            .unwrap()
+            .unwrap()
+            .0
+    };
     let mut checks = Vec::new();
     let open = sessions
         .execute(
@@ -178,29 +194,191 @@ fn main() {
     );
     assert_eq!(cached["history"], history);
     checks.push("cached-native-view-identical");
-    let gis = sessions
+    let source_before = stored_original(&id);
+    let late_calls = std::cell::Cell::new(0);
+    let late = sessions
+        .execute(
+            scope.clone(),
+            std::path::Path::new(&scratch),
+            &database,
+            view_request(true),
+            &|| {
+                late_calls.set(late_calls.get() + 1);
+                if late_calls.get() == 2 {
+                    Err(ds_cli_contract::Failure::unauthorized(
+                        "server_owner_changed",
+                        "synthetic late response owner change",
+                    ))
+                } else {
+                    Ok(())
+                }
+            },
+        )
+        .unwrap_err();
+    assert_eq!(late.code(), "server_owner_changed");
+    assert_eq!(late_calls.get(), 2);
+    assert_eq!(stored_original(&id), source_before);
+    assert_eq!(sessions.held_count_for_test(), 1);
+    checks.push("late-native-view-owner-refusal-adopts-no-derived-receipt-or-original-change");
+    let refused_worker = sessions
         .execute(
             scope.clone(),
             std::path::Path::new(&scratch),
             &database,
             Request {
                 schema: REQUEST_SCHEMA.into(),
-                operation: Operation::GisProjection {
+                operation: Operation::Scene {
                     session_id: id.clone(),
                     model_id: model_id.clone(),
                     expected_history: history.clone(),
-                    label_fields: vec!["number".into(), "station".into()],
+                    options: serde_json::to_value(ds_grid_engine::ProfileAtlasOptions::default())
+                        .unwrap(),
+                    label_policy: json!({}),
+                    grid_ink: ds_network_contracts::profile::NativeProfileGridInkV1 {
+                        color: "#000000".into(),
+                        width_px: -1.,
+                        dash_px: vec![],
+                    },
+                    cached: true,
                 },
             },
             &|| Ok(()),
         )
-        .unwrap();
-    assert_eq!(gis["history"], history);
-    assert_eq!(gis["payload"]["type"], "FeatureCollection");
-    assert_eq!(gis["payload"]["crs"], expected_crs);
-    assert_eq!(gis["payload"]["revision"], history["model_revision"]);
-    assert_eq!(gis["engine"], open["engine"]);
-    checks.push("retained-gis-projection-exact-history-crs-engine");
+        .unwrap_err();
+    assert_eq!(refused_worker.code(), "core_profile_native_refused");
+    assert_eq!(stored_original(&id), source_before);
+    assert_eq!(sessions.held_count_for_test(), 1);
+    checks.push("native-worker-scene-refusal-adopts-no-derived-receipt-or-original-change");
+    let projection_capable = open["engine"]["identity"]["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|cap| cap == "profile_read_projections_v1");
+    let projection_requests = || {
+        vec![
+            Operation::FeatureCodes {
+                session_id: id.clone(),
+                model_id: model_id.clone(),
+                expected_history: history.clone(),
+            },
+            Operation::EngineeringAttributes {
+                session_id: id.clone(),
+                model_id: model_id.clone(),
+                expected_history: history.clone(),
+                table: ds_network_contracts::profile::NativeProfileEngineeringTableV1::Structures,
+            },
+            Operation::EngineeringAttributes {
+                session_id: id.clone(),
+                model_id: model_id.clone(),
+                expected_history: history.clone(),
+                table: ds_network_contracts::profile::NativeProfileEngineeringTableV1::Sections,
+            },
+            Operation::GisProjection {
+                session_id: id.clone(),
+                model_id: model_id.clone(),
+                expected_history: history.clone(),
+                label_fields: vec!["number".into(), "station".into()],
+            },
+        ]
+    };
+    if projection_capable {
+        for operation in projection_requests() {
+            let is_gis = matches!(&operation, Operation::GisProjection { .. });
+            let is_feature = matches!(&operation, Operation::FeatureCodes { .. });
+            let expected_table = match &operation {
+                Operation::EngineeringAttributes {
+                    table:
+                        ds_network_contracts::profile::NativeProfileEngineeringTableV1::Structures,
+                    ..
+                } => Some("structures"),
+                Operation::EngineeringAttributes {
+                    table: ds_network_contracts::profile::NativeProfileEngineeringTableV1::Sections,
+                    ..
+                } => Some("sections"),
+                _ => None,
+            };
+            let result = sessions
+                .execute(
+                    scope.clone(),
+                    std::path::Path::new(&scratch),
+                    &database,
+                    Request {
+                        schema: REQUEST_SCHEMA.into(),
+                        operation,
+                    },
+                    &|| Ok(()),
+                )
+                .unwrap();
+            assert_eq!(result["history"], history);
+            assert_eq!(result["engine"], open["engine"]);
+            assert!(!result["payload"].is_null());
+            if is_feature {
+                let rows = result["payload"]
+                    .as_array()
+                    .expect("FeatureCodes owner returns ProjectionRow array");
+                for row in rows {
+                    assert_eq!(row["model_revision"], history["model_revision"]);
+                }
+            }
+            if let Some(table) = expected_table {
+                assert_eq!(result["payload"]["schema_version"], 2);
+                assert_eq!(
+                    result["payload"]["model_revision"],
+                    history["model_revision"]
+                );
+                assert_eq!(result["payload"]["table"], table);
+                assert!(result["payload"]["columns"].is_array());
+                assert!(result["payload"]["rows"].is_array());
+            }
+            if is_gis {
+                assert_eq!(result["payload"]["type"], "FeatureCollection");
+                assert_eq!(result["payload"]["crs"], expected_crs);
+                assert_eq!(result["payload"]["revision"], history["model_revision"]);
+            }
+        }
+        checks
+            .push("same-managed-worker-feature-codes-engineering-tables-and-gis-exact-history-crs");
+    } else {
+        fn staged_files(root: &std::path::Path) -> Vec<(std::path::PathBuf, u64)> {
+            let mut result = Vec::new();
+            for entry in std::fs::read_dir(root).unwrap() {
+                let entry = entry.unwrap();
+                let meta = entry.path().symlink_metadata().unwrap();
+                assert!(!meta.file_type().is_symlink());
+                if meta.is_dir() {
+                    result.extend(staged_files(&entry.path()));
+                } else {
+                    result.push((entry.path(), meta.len()));
+                }
+            }
+            result.sort();
+            result
+        }
+        let before = staged_files(std::path::Path::new(&scratch));
+        for operation in projection_requests() {
+            let error = sessions
+                .execute(
+                    scope.clone(),
+                    std::path::Path::new(&scratch),
+                    &database,
+                    Request {
+                        schema: REQUEST_SCHEMA.into(),
+                        operation,
+                    },
+                    &|| Ok(()),
+                )
+                .unwrap_err();
+            assert_eq!(error.code(), "core_profile_native_refused");
+            assert_eq!(
+                error.detail_value().unwrap()["native_code"],
+                "network_engine_incompatible"
+            );
+        }
+        assert_eq!(before, staged_files(std::path::Path::new(&scratch)));
+        assert_eq!(sessions.held_count_for_test(), 1);
+        checks
+            .push("old-managed-engine-projection-capability-refuses-before-staging-or-new-worker");
+    }
     let checkpoint = sessions
         .execute(
             scope.clone(),
@@ -257,6 +435,31 @@ fn main() {
     assert_eq!(refused.code(), "core_profile_history_conflict");
     assert_eq!(sessions.held_count_for_test(), 1);
     checks.push("expired-wrong-history-refused-without-launch");
+    if !projection_capable {
+        let before = stored_original(&id);
+        for operation in projection_requests() {
+            let refused = sessions
+                .execute(
+                    scope.clone(),
+                    std::path::Path::new(&scratch),
+                    &database,
+                    Request {
+                        schema: REQUEST_SCHEMA.into(),
+                        operation,
+                    },
+                    &|| Ok(()),
+                )
+                .unwrap_err();
+            assert_eq!(refused.code(), "core_profile_native_refused");
+            assert_eq!(
+                refused.detail_value().unwrap()["required_capability"],
+                "profile_read_projections_v1"
+            );
+            assert_eq!(sessions.held_count_for_test(), 1); // Only independent other worker.
+        }
+        assert_eq!(stored_original(&id), before);
+        checks.push("expired-old-cap-source-refuses-before-candidate-launch-or-source-adoption");
+    }
     let attempts = std::sync::atomic::AtomicUsize::new(0);
     let refused = sessions
         .execute(
@@ -369,6 +572,6 @@ fn main() {
     checks.push("close-and-reopen-required");
     println!(
         "{}",
-        json!({"schema":"ds.profile-owner-native-fixture-proof/v1","checks":checks,"package_sha256":digest,"model_id":model_id,"history":history,"engine_sha256":open["engine"]["executable_sha256"],"engine_source":open["engine"]["identity"]["sourceSha"],"engine_dependency_closure_sha256":open["engine"]["identity"]["dependencyClosureSha256"],"engine_protocol":[open["engine"]["identity"]["protocolMajor"],open["engine"]["identity"]["protocolMinor"]],"idle_control":"private clock-age seam exercises production fifteen-minute retirement; not an elapsed fifteen-minute runtime claim","core_transport_qualified":false,"user_project_effects":false})
+        json!({"schema":"ds.profile-owner-native-fixture-proof/v1","checks":checks,"package_sha256":digest,"model_id":model_id,"history":history,"projection_capability_present":projection_capable,"engine_executable":open["engine"]["executable"],"engine_sha256":open["engine"]["executable_sha256"],"engine_source":open["engine"]["identity"]["sourceSha"],"engine_dependency_closure_sha256":open["engine"]["identity"]["dependencyClosureSha256"],"engine_protocol":[open["engine"]["identity"]["protocolMajor"],open["engine"]["identity"]["protocolMinor"]],"idle_control":"private clock-age seam exercises production fifteen-minute retirement; not an elapsed fifteen-minute runtime claim","core_transport_qualified":false,"user_project_effects":false})
     );
 }

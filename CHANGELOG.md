@@ -1,5 +1,36 @@
 # Release notes
 
+## Unreleased: retained Network worker presentation reads
+
+Desktop's feature-code/engineering-attribute table projections previously had no
+admitted installed-Core operation. Contract-1 `core.profile-session` adds closed
+`feature_codes` and `engineering_attributes` (`structures`/`sections` only), and
+existing `gis_projection` now forwards typed reads to the same retained managed
+Network worker. Core no longer reopens a checkpoint into a second Grid session
+for GIS. Caller model/history/labels and retained original CRS remain exact.
+All three demand captured `profile_read_projections_v1` before staging/request;
+old producers refuse explicitly, with no embedded/browser fallback. Consumers
+must update Core and install a qualified compatible Network independently, then
+explicitly reopen when the immutable worker identity changes. Unknown actions,
+tables, labels, foreign scope and stale history remain refusals; no generic RPC,
+new identity/session, authored mutation or universal source/version pin appears.
+
+## Unreleased: Store preparation preserves SQLite POSIX locks
+
+Old Unix Store preparation opened and closed a raw descriptor for an existing
+database, canceling the process's SQLite locks and allowing WAL/SHM detachment
+beneath retained workers. The required committed Store owner now uses guarded
+create-new only for an absent file and metadata/chmod for existing files;
+readonly opens share the fresh-creation guard. SQLite remains the existing inode's
+sole descriptor owner. Data/sidecars remain ordinary, single-link and 0600 with
+same-owner admission; new parents are 0700. Existing group/other-writable parents
+now refuse instead of being silently accepted. Affected native hosts must update
+Core/Store and explicitly protect their intended owner directory (remove
+`go+w`) or use the existing canonical protected owner; shared/project directories
+and queues are never automatically chmodded, moved or deleted. Preserved raw
+sidecar bytes are diagnostic evidence, not a recovered/checkpointed queue claim.
+No schema, credential, global version pin or updater is added.
+
 ## Unreleased: Core-owned Profile style demand
 
 Old Desktop Views sent `{}` when their ambient authored Profile style was absent,

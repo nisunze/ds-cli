@@ -4,9 +4,11 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use ds_cli_contract::Failure;
 use ds_grid_exchange::profile_session::ProfileSessionSeed;
 use ds_network_client::{CapturedNetworkClient, NetworkFailure, ProfileSession};
+use ds_network_contracts::engine::NetworkCapability;
 use ds_network_contracts::profile::NativeProfileGridInkV1;
 use ds_network_contracts::profile::{
-    NativeProfileOpenV1, NativeProfileOperationV1, PROFILE_OPEN_SCHEMA,
+    NativeProfileEngineeringTableV1, NativeProfileOpenV1, NativeProfileOperationV1,
+    PROFILE_OPEN_SCHEMA,
 };
 use ds_sync_store::{ProfileSourceHeader, ProfileSourceScope, Store};
 use serde::{Deserialize, Serialize};
@@ -71,6 +73,17 @@ pub enum Operation {
         patch: Value,
         style_document: Value,
         cached: bool,
+    },
+    FeatureCodes {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+    },
+    EngineeringAttributes {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        table: NativeProfileEngineeringTableV1,
     },
     GisProjection {
         session_id: String,
@@ -237,6 +250,17 @@ fn operation_owner(operation: &Operation) -> Option<(&str, &str, &Value)> {
             model_id,
             expected_history,
             ..
+        }
+        | Operation::FeatureCodes {
+            session_id,
+            model_id,
+            expected_history,
+        }
+        | Operation::EngineeringAttributes {
+            session_id,
+            model_id,
+            expected_history,
+            ..
         } => Some((session_id, model_id, expected_history)),
     }
 }
@@ -246,6 +270,7 @@ fn open_original(
     bytes: &[u8],
     id: &str,
     authorized: &dyn Fn() -> Result<(), Failure>,
+    projection_required: bool,
 ) -> Result<(Held, Vec<u8>), Failure> {
     let (open, source_revision, coordinate_system) = package_open(bytes)?;
     let input =
@@ -256,6 +281,9 @@ fn open_original(
     let client =
         CapturedNetworkClient::capture_for_lane(&scope.lane, workers, &|| false).map_err(native)?;
     authorized()?;
+    if projection_required {
+        require_projection_capability(&client.identity().capabilities)?;
+    }
     let mut session = client
         .open_profile_session_with_timeout(&input, scratch, DEADLINE, &|| false)
         .map_err(native)?;
@@ -447,6 +475,15 @@ impl Sessions {
                 "Profile needs a captured native account/lane/deployment/install/project",
             ));
         }
+        let projection_required = matches!(
+            &request.operation,
+            Operation::FeatureCodes { .. }
+                | Operation::EngineeringAttributes { .. }
+                | Operation::GisProjection { .. }
+        );
+        if let Operation::GisProjection { label_fields, .. } = &request.operation {
+            validate_label_fields(label_fields)?;
+        }
         let mut held = self.held.lock().map_err(|_| {
             Failure::internal(
                 "core_profile_session_unavailable",
@@ -485,13 +522,27 @@ impl Sessions {
                         authorized()?;
                         return Ok(closed_source_receipt(&scope, &header));
                     }
+                    if projection_required {
+                        // Source identity is admitted before staging/recreating any
+                        // worker; a newer current executable cannot substitute for it.
+                        let pin: ds_network_client::NetworkEnginePin =
+                            serde_json::from_value(header.engine.clone()).map_err(invalid)?;
+                        require_projection_capability(&pin.identity.capabilities)?;
+                    }
                     if held.len() >= MAX_SESSIONS {
                         return Err(Failure::unavailable(
                             "core_profile_capacity",
                             "Core already retains eight Profile sessions",
                         ));
                     }
-                    let (value, _) = open_original(scope.clone(), scratch, &bytes, id, authorized)?;
+                    let (value, _) = open_original(
+                        scope.clone(),
+                        scratch,
+                        &bytes,
+                        id,
+                        authorized,
+                        projection_required,
+                    )?;
                     if value.source != header {
                         return Err(Failure::conflict(
                             "core_profile_source_changed",
@@ -540,7 +591,7 @@ impl Sessions {
                     ));
                 }
                 let (value, snapshot) =
-                    open_original(scope.clone(), scratch, &bytes, &id, authorized)?;
+                    open_original(scope.clone(), scratch, &bytes, &id, authorized, false)?;
                 authorized()?;
                 let active: Vec<_> = held.keys().cloned().collect();
                 Store::open(database)
@@ -558,39 +609,34 @@ impl Sessions {
                 held.insert(id, value);
                 Ok(receipt)
             }
-            Operation::GisProjection {
-                session_id,
-                model_id,
-                expected_history,
-                label_fields,
-            } => {
-                validate_label_fields(&label_fields)?;
-                let value = owned(&mut held, &scope, &session_id, &model_id, &expected_history)?;
-                let checkpoint = value
+            operation @ (Operation::FeatureCodes { .. }
+            | Operation::EngineeringAttributes { .. }
+            | Operation::GisProjection { .. }) => {
+                let (id, model, expected) =
+                    operation_owner(&operation).expect("Closed read projection owner");
+                let session = owned(&mut held, &scope, id, model, expected)?;
+                require_projection_capability(&session.session.pin().identity.capabilities)?;
+                let native_op = read_projection_operation(&operation, &session.coordinate_system)?
+                    .expect("Closed read projection");
+                let is_gis = matches!(&native_op, NativeProfileOperationV1::GisProjection { .. });
+                let result = session
                     .session
-                    .request_at(
-                        NativeProfileOperationV1::Checkpoint,
-                        Some(expected_history.clone()),
-                        DEADLINE,
-                        &|| false,
-                    )
+                    .request_at(native_op, Some(expected.clone()), DEADLINE, &|| false)
                     .map_err(native)?;
                 authorized()?;
-                let projected = project_checkpoint(
-                    &checkpoint.bytes,
-                    &model_id,
-                    &expected_history,
-                    &value.coordinate_system,
-                    &label_fields,
-                )?;
-                authorized()?;
-                value.touched = Instant::now();
-                receipt(
-                    &session_id,
-                    value,
-                    &serde_json::to_vec(&projected).map_err(invalid)?,
-                    false,
-                )
+                if is_gis {
+                    let projected: Value =
+                        serde_json::from_slice(&result.bytes).map_err(invalid)?;
+                    if projected["revision"] != session.session.history()["model_revision"]
+                        || projected["crs"] != session.coordinate_system
+                    {
+                        return Err(invalid(
+                            "Native GIS projection differs from retained revision/declared CRS",
+                        ));
+                    }
+                }
+                session.touched = Instant::now();
+                receipt(id, session, &result.bytes, false)
             }
             Operation::View {
                 session_id,
@@ -750,6 +796,8 @@ impl Sessions {
                     ),
                     Operation::Open { .. }
                     | Operation::View { .. }
+                    | Operation::FeatureCodes { .. }
+                    | Operation::EngineeringAttributes { .. }
                     | Operation::GisProjection { .. } => unreachable!(),
                 };
                 let session = owned(&mut held, &scope, &id, &model, &expected)?;
@@ -822,45 +870,35 @@ fn validate_label_fields(fields: &[String]) -> Result<(), Failure> {
     }
     Ok(())
 }
-/// Read-only projection of the exact worker-owned head. The existing seed owner
-/// verifies all assets and replays its authored journal/history; no package,
-/// calculated result or cached coordinates replace the retained head.
-fn project_checkpoint(
-    bytes: &[u8],
-    model: &str,
-    history: &Value,
-    crs: &str,
-    fields: &[String],
-) -> Result<Value, Failure> {
-    validate_label_fields(fields)?;
-    if bytes.len() > 64 * 1024 * 1024 {
-        return Err(invalid("Native checkpoint exceeds its bound"));
+fn require_projection_capability(capabilities: &[NetworkCapability]) -> Result<(), Failure> {
+    if !capabilities.contains(&NetworkCapability::ProfileReadProjectionsV1) {
+        return Err(Failure::unavailable("core_profile_native_refused",
+            "The captured Network worker has no profile_read_projections_v1 capability")
+            .remedy("Install an admitted compatible same-lane Network component and explicitly reopen the exact original; no Core/browser projection fallback exists")
+            .detail(json!({"native_code":"network_engine_incompatible","required_capability":"profile_read_projections_v1"})));
     }
-    let checkpoint: NativeProfileOpenV1 = serde_json::from_slice(bytes).map_err(invalid)?;
-    if checkpoint.schema != PROFILE_OPEN_SCHEMA {
-        return Err(invalid("Native checkpoint schema changed"));
-    }
-    let seed: ProfileSessionSeed = serde_json::from_str(&checkpoint.seed_json).map_err(invalid)?;
-    if seed.model_id.as_str() != model
-        || serde_json::to_value(&seed.history).map_err(invalid)? != *history
-    {
-        return Err(invalid(
-            "Native checkpoint differs from retained model/history",
-        ));
-    }
-    let initialized = seed.open().map_err(invalid)?;
-    let mut labels = initialized
-        .presentation
-        .effective_profile_structure_labels();
-    labels.fields = serde_json::from_value(json!(fields)).map_err(invalid)?;
-    let projection =
-        ds_grid_exchange::gis::application_projection(&initialized.session, crs, &labels);
-    if projection["revision"] != history["model_revision"] || projection["crs"] != crs {
-        return Err(invalid(
-            "GIS projection differs from retained revision/declared CRS",
-        ));
-    }
-    Ok(projection)
+    Ok(())
+}
+fn read_projection_operation(
+    operation: &Operation,
+    coordinate_system: &str,
+) -> Result<Option<NativeProfileOperationV1>, Failure> {
+    Ok(match operation {
+        Operation::FeatureCodes { .. } => Some(NativeProfileOperationV1::FeatureCodes {}),
+        Operation::EngineeringAttributes { table, .. } => {
+            Some(NativeProfileOperationV1::EngineeringAttributes {
+                table: table.clone(),
+            })
+        }
+        Operation::GisProjection { label_fields, .. } => {
+            validate_label_fields(label_fields)?;
+            Some(NativeProfileOperationV1::GisProjection {
+                coordinate_system: coordinate_system.into(),
+                label_fields: serde_json::from_value(json!(label_fields)).map_err(invalid)?,
+            })
+        }
+        _ => None,
+    })
 }
 fn owned<'a>(
     held: &'a mut BTreeMap<String, Held>,
@@ -1329,53 +1367,73 @@ mod tests {
         assert!(package_open(bytes).is_err());
     }
     #[test]
-    fn gis_checkpoint_requires_exact_model_history_and_declared_crs() {
-        let package = ds_grid_exchange::blank_model::create_blank_model(
-            &ds_grid_exchange::blank_model::BlankModelRequest {
-                model_id: Some("projection-fixture"),
-                coordinate_system: Some("EPSG:32735"),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        let (checkpoint, _, crs) = package_open(&package.bytes).unwrap();
-        let seed: ProfileSessionSeed = serde_json::from_str(&checkpoint.seed_json).unwrap();
-        let history = serde_json::to_value(&seed.history).unwrap();
-        let bytes = serde_json::to_vec(&checkpoint).unwrap();
-        let projected = project_checkpoint(
-            &bytes,
-            "projection-fixture",
-            &history,
-            &crs,
-            &["number".into()],
-        )
-        .unwrap();
-        assert_eq!(projected["crs"], "EPSG:32735");
-        assert_eq!(projected["revision"], history["model_revision"]);
-        assert!(project_checkpoint(&bytes, "foreign", &history, &crs, &[]).is_err());
-        assert!(project_checkpoint(&bytes, "projection-fixture", &json!({}), &crs, &[]).is_err());
-        assert!(
-            project_checkpoint(
-                &bytes,
-                "projection-fixture",
-                &history,
-                &crs,
-                &["arbitrary".into()]
+    fn read_projection_actions_are_closed_typed_and_preserve_ordered_label_fields() {
+        let base = |action: &str| json!({"schema":REQUEST_SCHEMA,"operation":{"action":action,"session_id":"captured","model_id":"fixture-model","expected_history":{"model_revision":"head"}}});
+        let feature = Request::parse(&serde_json::to_vec(&base("feature_codes")).unwrap()).unwrap();
+        assert!(matches!(
+            read_projection_operation(&feature.operation, "EPSG:32735").unwrap(),
+            Some(NativeProfileOperationV1::FeatureCodes { .. })
+        ));
+        for table in ["structures", "sections"] {
+            let mut request = base("engineering_attributes");
+            request["operation"]["table"] = json!(table);
+            let parsed = Request::parse(&serde_json::to_vec(&request).unwrap()).unwrap();
+            let forwarded = serde_json::to_value(
+                read_projection_operation(&parsed.operation, "EPSG:32735")
+                    .unwrap()
+                    .unwrap(),
             )
-            .is_err()
-        );
-        let mut crossed: Value = serde_json::from_slice(&bytes).unwrap();
-        crossed["schema"] = json!("wrong");
-        assert!(
-            project_checkpoint(
-                &serde_json::to_vec(&crossed).unwrap(),
-                "projection-fixture",
-                &history,
-                &crs,
-                &[]
+            .unwrap();
+            assert_eq!(
+                forwarded,
+                json!({"action":"engineering_attributes","table":table})
+            );
+        }
+        for table in ["unknown", "structure", "Structures", "", "terrain"] {
+            let mut request = base("engineering_attributes");
+            request["operation"]["table"] = json!(table);
+            assert!(Request::parse(&serde_json::to_vec(&request).unwrap()).is_err());
+        }
+        let mut feature_extra = base("feature_codes");
+        feature_extra["operation"]["table"] = json!("structures");
+        assert!(Request::parse(&serde_json::to_vec(&feature_extra).unwrap()).is_err());
+        let mut gis = base("gis_projection");
+        gis["operation"]["label_fields"] = json!(["station", "number", "number"]);
+        let parsed = Request::parse(&serde_json::to_vec(&gis).unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_value(
+                read_projection_operation(&parsed.operation, "EPSG:32735")
+                    .unwrap()
+                    .unwrap()
             )
-            .is_err()
+            .unwrap(),
+            json!({"action":"gis_projection","coordinate_system":"EPSG:32735","label_fields":["station","number","number"]})
         );
+        let mut caller_crs = gis.clone();
+        caller_crs["operation"]["coordinate_system"] = json!("EPSG:4326");
+        assert!(Request::parse(&serde_json::to_vec(&caller_crs).unwrap()).is_err());
+        gis["operation"]["label_fields"] = json!(["arbitrary"]);
+        let parsed = Request::parse(&serde_json::to_vec(&gis).unwrap()).unwrap();
+        assert!(read_projection_operation(&parsed.operation, "EPSG:32735").is_err());
+    }
+    #[test]
+    fn old_or_unrelated_engine_capabilities_refuse_the_projection_boundary() {
+        for capabilities in [
+            vec![],
+            vec![
+                NetworkCapability::ProfileSessionV1,
+                NetworkCapability::ProfileRuntimeV1,
+            ],
+            vec![NetworkCapability::Unknown("unrelated".into())],
+        ] {
+            let error = require_projection_capability(&capabilities).unwrap_err();
+            assert_eq!(error.code(), "core_profile_native_refused");
+            assert_eq!(
+                error.detail_value().unwrap()["native_code"],
+                "network_engine_incompatible"
+            );
+        }
+        require_projection_capability(&[NetworkCapability::ProfileReadProjectionsV1]).unwrap();
     }
     #[test]
     fn unknown_or_foreign_handles_never_launch_a_process() {
