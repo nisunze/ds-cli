@@ -598,10 +598,14 @@ projection authority. No CRS, style, model or report rows are invented.
 
 This mode cannot combine with seeding, delivery/batch selection, room pins,
 context acquisition, force, dry-run or other preview modes. `out-dir` is private
-fresh scratch only; no report delivery/queue is opened. The result uses the
-existing common SVG artifact/expiry owner and original preview answer. Explicit
-`preview-out` copies that same verified artifact to a fresh destination. Account
-or context changes refuse adoption and retain completed artifact/output details.
+fresh scratch only; no report delivery/queue is opened. Its dispatch also skips
+report-publication reconciliation: it does not upload older queued reports or
+download unrelated report artifacts before consuming the held preview. Normal
+delivery and publication retain their existing reconciliation behavior. The
+result uses the existing common SVG artifact/expiry owner and original preview
+answer. Explicit `preview-out` copies that same verified artifact to a fresh
+destination. Account or context changes refuse adoption and retain completed
+artifact/output details.
 Older Core without the new input is incompatible for this mode; Desktop reports
 `core_incompatible`, preserves the snapshot and never falls back to its retired
 local engine or silently refreshes the inputs. Existing export modes and command
