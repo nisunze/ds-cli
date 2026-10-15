@@ -427,3 +427,21 @@ from project denial. Existing kernel receipt validators run before persistence
 and offline reuse, preserving partial totals, cursors and literal-only historical
 notes. Model-reference reads capture graph plus one bounded records page under a single protected authority; the unused generic Context command is retired. Private-note bodies remain a distinct consumer.
 No polling or timer-based freshness policy is introduced.
+
+## Core cache corruption at startup
+
+The canonical native Core queue/history database is a rebuildable cloud cache
+when SQLite positively establishes structural corruption. After the existing
+single-owner transport lock, connection owner and native installation identity
+are verified, Core retains the damaged database and fixed SQLite sidecars with
+digest evidence, then uses the ordinary store owner to create the same canonical
+cache. It does not recover rows, choose another state directory, mint another
+identity, reset credentials/components, or delete authored inputs/outputs.
+
+Previously such structural damage refused `core.serve` until an operator acted.
+The new startup behavior resumes with fresh queue/history metadata; existing
+Desktop and CLI consumers keep their typed commands and require a Core artifact
+containing this owner to receive it. Old metadata is retained diagnostically and
+is not silently imported. Healthy constraint/migration/schema errors and
+permission, authentication, principal, ownership or quarantine failures continue
+to refuse. See [the exact store boundary](ds-sync-store.md#core-cloud-cache-structural-corruption).

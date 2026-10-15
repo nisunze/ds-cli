@@ -14,6 +14,7 @@
 //! strands or erases a queue silently (`ds-headless-application-runtime.md`
 //! §6).
 
+pub mod cache_health;
 mod jobs;
 mod publications;
 mod recovery;

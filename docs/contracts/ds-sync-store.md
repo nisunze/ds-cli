@@ -260,3 +260,32 @@ Recovery uses the explicit `execution_context::SYNC_RECOVERY` operation. The
 headless Server's owner-only local transport binds it without opening a gateway
 session. A committed change wakes the existing common publication pump; the pump
 rechecks authority and bytes through its ordinary publication sequence.
+
+## Core cloud-cache structural corruption
+
+Core startup alone may retire its canonical `store.sqlite` cache after positive
+SQLite structural-corruption evidence. The native store's `cache_health::assess`
+opens read-only, creates no database and migrates no schema. SQLite
+`SQLITE_CORRUPT`/`SQLITE_NOTADB` or the pinned B-tree integrity check's page/tree
+report establish structural damage. A `NOT NULL`/CHECK failure, unknown or newer
+schema, a failed migration, busy/permission/I/O error, or unreadable owner state
+alone never authorizes retirement. Generic `Store::open` and offline status reads
+retain their existing behavior; no other SQLite store receives this policy.
+
+The Core host holds its existing single-owner transport lock and settles the
+protected connection principal and native installation identity before assessing
+this cache, before any worker, session store or publication pump opens it. It
+validates each fixed ordinary owner-only file, retains `store.sqlite` and its
+existing `-wal`, `-shm`, `-journal` members under one unique protected quarantine
+prefix, and writes a size/SHA-256 diagnostic receipt. Sidecars move durably before
+the database so an old journal cannot attach to the new cache. Unsafe paths,
+unconfirmed integrity errors and failed quarantine/durability checks stop startup;
+member-move failures restore original names or report the explicit rollback failure.
+
+The ordinary store owner then creates the canonical cache. Old queue/history
+metadata is not imported or salvaged; the retained original remains diagnostic
+material. Credentials, connection identity, installation ID, component selections,
+project/source/input/output files and retained payload bytes outside this database
+are preserved. Existing governed owners rebuild current cloud/cache facts. This
+source behavior changes no wire schema or artifact admission and does not prove a
+new installed Core release by itself.
