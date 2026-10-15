@@ -282,3 +282,21 @@ owners. The command neither stops nor starts Core. SQLite structural-corruption
 recovery remains separate and cannot reset healthy schema, permission or owner
 errors. Windows source support uses the existing SID/DACL owner; source checks
 alone do not qualify an installed Windows release.
+
+
+Profile callers with process output bounds use optional `--out <absolute-new-file>`
+to receive `ds.core.profile-artifact/v1`. Core writes the exact bounded 72 MiB
+receipt through the existing atomic create-new result owner and returns only
+path, byte count, SHA-256 and the full Profile metadata without payload. Existing
+files, links, invalid parents and oversized results refuse; Windows retains the
+protected SID/DACL parent and opened-file checks. Omission preserves the direct
+CLI result. Native Desktop requires this capability before session creation,
+reads only its own fixed private output path, validates every scope/digest fence
+and cleans its stage. Old Core must be independently updated; the shared 4 MiB
+process stdout limit and unsupported operations remain unchanged.
+
+Output preflight runs before a stateful Profile action. If later output I/O
+fails, `core_profile_output_failed` reports the completed action and exact
+session scope; a newly opened session is closed through its existing owner when
+still authorized. Existing sessions are preserved and cleanup failures remain
+explicit, so callers must inspect completion before retrying.

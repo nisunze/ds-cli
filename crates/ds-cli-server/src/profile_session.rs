@@ -1,20 +1,22 @@
 //! Closed CLI and protected-socket adapter for the retained native Profile owner.
 use crate::{
     host::{App, ProjectQuery},
-    profile_sessions::{Request, Scope, MAX_REQUEST, RECEIPT_SCHEMA},
+    profile_sessions::{MAX_REQUEST, Operation, RECEIPT_SCHEMA, Request, Scope},
 };
 use axum::{
+    Json,
     body::Bytes,
     extract::{Query, State},
     http::StatusCode,
-    Json,
 };
 use ds_cli_contract::{
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
     Context, Failure, Inputs,
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use serde_json::Value;
 use std::io::Read;
+const MAX_RESPONSE: usize = 72 * 1024 * 1024;
+const FILE_SCHEMA: &str = "ds.core.profile-artifact/v1";
 
 pub static COMMAND: Command = Command {
     id: "core.profile-session", path: &["core", "profile-session"], contract: 1,
@@ -22,10 +24,11 @@ pub static COMMAND: Command = Command {
     purpose: "Keep one exact verified .dsgrid package's live Profile with the authenticated Core owner and its independently installed managed Network process. The closed request admits open, snapshot, state, view, scene, checkpoint or close only; handles are fenced to the current account/lane/deployment/install/project/model/history and expire at Core shutdown or opportunistic idle retirement on the next authorized Profile request. Scene executes only the existing native ProfileRuntimeScene protocol with exact history; cached mode never requests engineering calculation. No browser engine, arbitrary RPC, editing, publication or printing acceptance is granted.",
     chapter: Chapter::Design, effect: Effect::LocalFileWrite, authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[crate::STATE_DIR_ARG, crate::LANE_ARG, crate::PROJECT_ARG.required(), Arg::value("request", "<json-file>", "Ordinary file at most 48 MiB containing ds.core.profile-session/v1; open binds at most 32 MiB exact package bytes and SHA-256, other actions bind the captured session/model/history.").required()],
-    output: "ds.core.profile-receipt/v1 with session/model/history, exact package SHA/source revision, managed engine identity and opaque native artifact JSON. This first vertical slice does not expose unsupported operations.",
+    args: &[crate::STATE_DIR_ARG, crate::LANE_ARG, crate::PROJECT_ARG.required(), Arg::value("request", "<json-file>", "Ordinary file at most 48 MiB containing ds.core.profile-session/v1; open binds at most 32 MiB exact package bytes and SHA-256, other actions bind the captured session/model/history.").required(), Arg::value("out", "<absolute-new-json-file>", "Optional fixed native result file, at most 72 MiB; output becomes a small path/size/SHA/scope-bound receipt. Existing files are never replaced.")],
+    output: "ds.core.profile-receipt/v1 with session/model/history, exact package SHA/source revision, managed engine identity and opaque native artifact JSON. With --out, ds.core.profile-artifact/v1 binds the exact receipt bytes, size, SHA-256, native engine and full session scope. This first vertical slice does not expose unsupported operations.",
     examples: &[],
     refusals: &[
+        Refusal {code:"core_profile_output_failed",when:"an admitted Profile action completed but the create-new output failed; detail names the completed action, exact session scope and whether its newly opened process was closed",remedy:"inspect completion and cleanup; reuse or close the exact retained session if cleanup was refused, never repeat an unknown effect blindly"},
         Refusal {code:"core_profile_native_refused",when:"managed native Network refuses the exact Profile contract; detail retains native_code/remedy/detail",remedy:"retain the package and follow the named native refusal; do not substitute another engine or identity"},
         Refusal {code:"core_profile_request_invalid",when:"the closed schema, package bytes/digest or native package identity is invalid or exceeds bounds",remedy:"use the declared exact package/session request and preserve immutable source bytes"},
         Refusal {code:"core_profile_session_unavailable",when:"the handle is absent, expired, closed or belongs to another account/lane/project/model",remedy:"explicitly reopen the exact package through the same Core owner"},
@@ -42,6 +45,10 @@ pub static COMMAND: Command = Command {
 
 pub fn command(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     crate::require_native_host()?;
+    let output = inputs.value("out").map(std::path::PathBuf::from);
+    if let Some(path) = &output {
+        validate_output(path)?;
+    }
     let path = inputs.require("request")?;
     let mut file = read_request_file(std::path::Path::new(path))?;
     let metadata = file.metadata().map_err(crate::failure)?;
@@ -56,14 +63,23 @@ pub fn command(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         .take(MAX_REQUEST as u64 + 1)
         .read_to_end(&mut bytes)
         .map_err(crate::failure)?;
-    Request::parse(&bytes)?;
+    let parsed = Request::parse(&bytes)?;
+    let action = match parsed.operation {
+        Operation::Open { .. } => "open",
+        Operation::Snapshot { .. } => "snapshot",
+        Operation::State { .. } => "state",
+        Operation::Checkpoint { .. } => "checkpoint",
+        Operation::Close { .. } => "close",
+        Operation::View { .. } => "view",
+        Operation::Scene { .. } => "scene",
+    };
     let project = crate::project(inputs)?;
     let response = crate::request_with_timeout(
         inputs,
         "POST",
         &crate::with_project("/v1/profile-session", &project),
         Some(&bytes),
-        72 * 1024 * 1024,
+        MAX_RESPONSE as u64,
         40,
     )?;
     let value: Value = serde_json::from_slice(&response).map_err(crate::failure)?;
@@ -76,7 +92,195 @@ pub fn command(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
             "Core returned a crossed Profile receipt",
         ));
     }
-    Ok(value)
+    match output {
+        Some(path) => finish_output(&path, &response, &value, action, &|| {
+            let close = serde_json::to_vec(&serde_json::json!({"schema":crate::profile_sessions::REQUEST_SCHEMA,"operation":{"action":"close","session_id":value["session_id"],"model_id":value["model_id"],"expected_history":value["history"]}})).map_err(crate::failure)?;
+            let bytes = crate::request_with_timeout(
+                inputs,
+                "POST",
+                &crate::with_project("/v1/profile-session", &project),
+                Some(&close),
+                MAX_RESPONSE as u64,
+                40,
+            )?;
+            let closed: Value = serde_json::from_slice(&bytes).map_err(crate::failure)?;
+            Ok(closed["closed"] == true
+                && closed["session_id"] == value["session_id"]
+                && closed["project"] == project)
+        }),
+        None => Ok(value),
+    }
+}
+
+fn finish_output(
+    path: &std::path::Path,
+    bytes: &[u8],
+    value: &Value,
+    action: &str,
+    close_new: &dyn Fn() -> Result<bool, Failure>,
+) -> Result<Value, Failure> {
+    write_output(path,bytes,value).map_err(|cause| {
+        let cleanup = if action == "open" { Some(close_new()) } else { None };
+        let closed = cleanup.as_ref().is_some_and(|result| matches!(result,Ok(true)));
+        let detail = serde_json::json!({"completed_action":action,"output_error":cause.message(),"new_open_closed":closed,
+            "cleanup_error":cleanup.as_ref().and_then(|r|r.as_ref().err()).map(Failure::code),
+            "profile":{"session_id":value["session_id"],"model_id":value["model_id"],"history":value["history"],"package_sha256":value["package_sha256"],"project":value["project"],"lane":value["lane"],"engine":value["engine"]}});
+        Failure::failed("core_profile_output_failed","Profile action completed but its output file could not be admitted; inspect the scoped completion and cleanup receipt before retrying").detail(detail)
+    })
+}
+
+fn validate_output(path: &std::path::Path) -> Result<(), Failure> {
+    if !path.is_absolute() || std::fs::symlink_metadata(path).is_ok() {
+        return Err(Failure::invalid(
+            "core_profile_request_invalid",
+            "Profile output must be a new absolute file; existing files are never replaced",
+        ));
+    }
+    let parent = path.parent().ok_or_else(|| {
+        Failure::invalid(
+            "core_profile_request_invalid",
+            "Profile output has no parent",
+        )
+    })?;
+    let metadata = std::fs::symlink_metadata(parent).map_err(crate::failure)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(Failure::invalid(
+            "core_profile_request_invalid",
+            "Profile output parent must be an existing ordinary directory",
+        ));
+    }
+    #[cfg(windows)]
+    ds_cli_auth::windows_host::validate_directory(parent).map_err(crate::failure)?;
+    Ok(())
+}
+fn write_output(path: &std::path::Path, bytes: &[u8], value: &Value) -> Result<Value, Failure> {
+    validate_output(path)?;
+    if bytes.len() > MAX_RESPONSE {
+        return Err(Failure::invalid(
+            "core_profile_request_invalid",
+            "Profile output exceeds 72 MiB",
+        ));
+    }
+    let mut metadata = value.clone();
+    metadata
+        .as_object_mut()
+        .ok_or_else(|| {
+            Failure::invalid(
+                "core_profile_request_invalid",
+                "Profile output has no receipt",
+            )
+        })?
+        .remove("payload");
+    let receipt = serde_json::json!({"schema":FILE_SCHEMA,"out":path,"byte_count":bytes.len(),"sha256":ds_compute_runtime::digest(bytes),"profile":metadata});
+    if serde_json::to_vec(&receipt).map_err(crate::failure)?.len() > 64 * 1024 {
+        return Err(Failure::invalid(
+            "core_profile_request_invalid",
+            "Profile metadata receipt exceeds 64 KiB",
+        ));
+    }
+    // Same atomic create-new/no-clobber owner as core.result. Partial staging
+    // stays with that owner; the caller's protected temporary room owns cleanup.
+    ds_design_workspace::write_new(path, bytes).map_err(crate::failure)?;
+    #[cfg(windows)]
+    drop(ds_cli_auth::windows_host::read_file(path).map_err(crate::failure)?);
+    Ok(receipt)
+}
+
+#[cfg(test)]
+mod artifact_tests {
+    use super::*;
+    #[test]
+    fn file_handoff_keeps_exact_large_bytes_and_bounded_scope_receipt() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("profile.json");
+        let value = serde_json::json!({"schema":RECEIPT_SCHEMA,"session_id":"one","project":"fixture-project","lane":"canary","history":{"model_revision":"rev:fixture"},"payload":"x".repeat(5*1024*1024)});
+        let bytes = serde_json::to_vec(&value).unwrap();
+        let receipt = write_output(&path, &bytes, &value).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        assert_eq!(receipt["byte_count"], bytes.len());
+        assert_eq!(receipt["sha256"], ds_compute_runtime::digest(&bytes));
+        assert_eq!(receipt["profile"]["project"], "fixture-project");
+        assert!(receipt["profile"].get("payload").is_none());
+        assert!(serde_json::to_vec(&receipt).unwrap().len() < 4096);
+        assert!(write_output(&path, b"replacement", &value).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+    #[test]
+    fn occupied_output_refuses_before_request_read_or_core_effect() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("occupied.json");
+        std::fs::write(&path, b"original").unwrap();
+        let inputs = ds_cli_contract::args::parse(
+            &COMMAND,
+            &[
+                "--lane".into(),
+                "canary".into(),
+                "--project".into(),
+                "fixture-project".into(),
+                "--request".into(),
+                root.path()
+                    .join("nonexistent-request.json")
+                    .display()
+                    .to_string(),
+                "--out".into(),
+                path.display().to_string(),
+            ],
+        )
+        .unwrap();
+        let context = Context {
+            confirmed: false,
+            output: ds_cli_contract::output::Output::resolve(
+                ds_cli_contract::output::Format::Json,
+                false,
+                true,
+            ),
+        };
+        let refusal = command(&inputs, &context).unwrap_err();
+        assert!(
+            refusal
+                .message()
+                .contains("output must be a new absolute file")
+        );
+        assert_eq!(std::fs::read(path).unwrap(), b"original");
+    }
+    #[test]
+    fn late_output_failure_closes_only_its_new_open_and_reports_completed_scope() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("occupied.json");
+        std::fs::write(&path, b"original").unwrap();
+        let value = serde_json::json!({"session_id":"captured","model_id":"fixture-model","project":"fixture-project","history":{"model_revision":"head"}});
+        let called = std::cell::Cell::new(0);
+        let error = finish_output(&path, b"bytes", &value, "open", &|| {
+            called.set(called.get() + 1);
+            Ok(true)
+        })
+        .unwrap_err();
+        assert_eq!(called.get(), 1);
+        assert_eq!(error.code(), "core_profile_output_failed");
+        assert_eq!(error.detail_value().unwrap()["completed_action"], "open");
+        assert_eq!(error.detail_value().unwrap()["new_open_closed"], true);
+        let error = finish_output(&path, b"bytes", &value, "view", &|| {
+            panic!("An existing session must not be closed by a failed view output")
+        })
+        .unwrap_err();
+        assert_eq!(error.detail_value().unwrap()["completed_action"], "view");
+        assert_eq!(
+            error.detail_value().unwrap()["profile"]["session_id"],
+            "captured"
+        );
+    }
+    #[test]
+    fn relative_or_linked_output_is_not_a_new_native_artifact() {
+        assert!(validate_output(std::path::Path::new("relative.json")).is_err());
+        #[cfg(unix)]
+        {
+            let root = tempfile::tempdir().unwrap();
+            let target = root.path().join("missing");
+            let link = root.path().join("link");
+            std::os::unix::fs::symlink(target, &link).unwrap();
+            assert!(validate_output(&link).is_err());
+        }
+    }
 }
 
 fn read_request_file(path: &std::path::Path) -> Result<std::fs::File, Failure> {

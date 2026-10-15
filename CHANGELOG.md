@@ -218,3 +218,21 @@ qualified and updated; editing, analysis and other unsupported actions refuse.
 Request reads use the opened no-link native file owner, retaining Windows
 SID/DACL checks. Idle retirement is opportunistic on the next authorized
 Profile request, with explicit close and Core shutdown reaping processes.
+
+
+### Native Profile artifact handoff
+
+Large Profile open/view/checkpoint results previously exceeded Desktop's
+4 MiB process discovery output limit. Optional `core.profile-session --out`
+now writes an exact bounded file using the existing create-new Core result
+owner and returns a small path/size/SHA/full-scope receipt. Desktop requires
+that flag's capability before opening a session, verifies the fixed private
+file and keeps all native account/history/source fences. Older Core refuses
+`core_incompatible` before effects and requires its independent qualified
+update. Direct CLI output remains available; global stdout limits, authored
+CRS, credentials and independent component versions are unchanged.
+
+Output paths are admitted before effects. Late file I/O failure reports the
+completed Profile action and scoped cleanup receipt; only a newly opened session
+is closed when authorized. Existing sessions are preserved instead of silently
+repeating or discarding an unknown completed action.
