@@ -31,9 +31,11 @@ if [[ "$action" == status && ( "$component" == core || "$component" == desktop )
 fi
 [[ "$action" == status || "$consent" == --yes ]] || { echo 'confirmation_required' >&2;exit 2; }
 remove_legacy_desktop() {
- local package version
+ local package version status record
  for package in ds-grid-design ds-grid-design-canary;do
-  version=$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null) || continue
+  record=$(dpkg-query -W -f='${Status}\t${Version}' "$package" 2>/dev/null) || continue
+  IFS=$'\t' read -r status version <<<"$record"
+  [[ "$status" == 'install ok installed' && -n "$version" ]] || continue
   dpkg --compare-versions "$version" lt 0.1.7 || continue
   if [[ $EUID -eq 0 ]];then apt-get remove -y --no-auto-remove "$package"
   else sudo -n apt-get remove -y --no-auto-remove "$package";fi

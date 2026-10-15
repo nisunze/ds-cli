@@ -147,7 +147,7 @@ for i,arg in enumerate(args):
  if arg.startswith('-f=') or arg.startswith('--showformat='):format=arg.split('=',1)[1]
  elif arg in ['-f','--showformat']:format=args[i+1]
 if not format:format='${binary:Package}\t${Version}\n'
-for key,value in {'${Version}':os.environ['DS_MANAGER_TEST_VERSION'],'${Status}':'install ok installed','${binary:Package}':package,'${db:Status-Abbrev}':'ii '}.items():format=format.replace(key,value)
+for key,value in {'${Version}':os.environ['DS_MANAGER_TEST_VERSION'],'${Status}':os.environ.get('DS_MANAGER_TEST_STATUS','install ok installed'),'${binary:Package}':package,'${db:Status-Abbrev}':'ii '}.items():format=format.replace(key,value)
 sys.stdout.write(format.replace(chr(92)+'t',chr(9)).replace(chr(92)+'n',chr(10)))
 QUERY
 cat > "$scratch/bin/sudo" <<'SUDO'
@@ -188,6 +188,15 @@ PY
     then pass "legacy Desktop $lane $version boundary"; else fail "legacy Desktop $lane $version boundary"; fi
   done
 done
+for case in absent empty-version;do
+ fixture "legacy-$case"
+ export DS_MANAGER_TEST_PACKAGE=ds-grid-design DS_MANAGER_TEST_VERSION=0.1.6 DS_MANAGER_TEST_STATUS='deinstall ok config-files'
+ [[ "$case" != empty-version ]] || { export DS_MANAGER_TEST_STATUS='install ok installed';export DS_MANAGER_TEST_VERSION=''; }
+ rm -f "$DS_MANAGER_TEST_PACKAGE_LOG"
+ invoke install desktop canary --yes
+ if [[ "$result" -eq 91 && ! -e "$DS_MANAGER_TEST_PACKAGE_LOG" ]];then pass "legacy Desktop $case never invokes removal";else fail "legacy Desktop $case never invokes removal";fi
+done
+unset DS_MANAGER_TEST_STATUS
 # UI install idempotence uses Core's admitted public unit, never only a local
 # version label. Mocks record stage/activation effects in this disposable home.
 for tool in mktemp rm;do ln -s "$(command -v "$tool")" "$scratch/bin/$tool";done
