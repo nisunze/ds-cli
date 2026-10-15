@@ -79,7 +79,7 @@
 
 use crate::compute_jobs::{self, EngineKind, Job};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub const SCHEMA: &str = "ds.execution-context/v1";
 pub const MAX_INPUT_BYTES: usize = 8 * 1024 * 1024;
@@ -130,7 +130,9 @@ pub const REPORT_EXPORT: &str = "report_export";
 pub const LAYER_READ: &str = "layer_read";
 pub const LAYER_WRITE: &str = "layer_write";
 pub const SYNC_RECOVERY: &str = "sync_recovery";
-pub const OPERATIONS: [&str; 7] = [
+/// Retained native Profile sessions carry the same principal/project context.
+pub const PROFILE_SESSION: &str = "profile_session";
+pub const OPERATIONS: [&str; 8] = [
     TRANSFORMER_PROCESSING,
     SOLAR_PROCESSING,
     TILE_PROCESSING,
@@ -138,6 +140,7 @@ pub const OPERATIONS: [&str; 7] = [
     LAYER_READ,
     LAYER_WRITE,
     SYNC_RECOVERY,
+    PROFILE_SESSION,
 ];
 
 // ── The refusal vocabulary (closed) ─────────────────────────────────────
@@ -962,11 +965,7 @@ pub fn capacity(
 /// configuration is a share of exactly 1. So `1/1` is admitted and `2/1` is
 /// not, and from two slots up the share must be strictly smaller.
 const fn divides(share: usize, pool: usize) -> bool {
-    if pool == 1 {
-        share == 1
-    } else {
-        share < pool
-    }
+    if pool == 1 { share == 1 } else { share < pool }
 }
 
 /// Deterministic guidance: one second per unit of work that must go first,
@@ -1351,9 +1350,11 @@ mod tests {
         // look up a constant it does not have.
         let mut wrong_lane = context("project-a");
         wrong_lane.lane = "development".into();
-        assert!(refusal(wrong_lane.validate().unwrap_err())
-            .message
-            .contains("one of stable, canary"));
+        assert!(
+            refusal(wrong_lane.validate().unwrap_err())
+                .message
+                .contains("one of stable, canary")
+        );
         let mut wrong_operation = context("project-a");
         wrong_operation.operation = "everything".into();
         let listed = refusal(wrong_operation.validate().unwrap_err()).message;
@@ -1363,6 +1364,26 @@ mod tests {
         let mut unstamped = context("project-a");
         unstamped.admitted_at_ms = 0;
         assert_eq!(code(&unstamped.validate().unwrap_err()), CONTEXT_CORRUPT);
+    }
+
+    #[test]
+    fn profile_sessions_require_explicit_project_and_keep_native_principal_scope() {
+        let mut input = request();
+        input.operation = PROFILE_SESSION.into();
+        assert_eq!(code(&admit(&input).unwrap_err()), PROJECT_REQUIRED);
+        input.requested_project = Some("profile-fixture".into());
+        let admitted = admit(&input).unwrap();
+        assert_eq!(admitted.context().operation, PROFILE_SESSION);
+        assert_eq!(admitted.context().project, "profile-fixture");
+        assert_eq!(admitted.context().principal_uid, "uid-a");
+        assert_eq!(admitted.context().lane, "canary");
+        let mut crossed = caller();
+        crossed.lane = "stable".into();
+        assert!(!visible(
+            admitted.context(),
+            &crossed,
+            Some("profile-fixture")
+        ));
     }
 
     #[test]
@@ -1757,14 +1778,16 @@ mod tests {
         let idle: Vec<Slot> = vec![];
         assert!(capacity(limits(), Intent::Admit, &idle, &idle, "project-a").is_ok());
         // A full running pool never refuses a submission: it queues.
-        assert!(capacity(
-            limits(),
-            Intent::Admit,
-            &slots(&["project-a"; 4]),
-            &idle,
-            "project-a"
-        )
-        .is_ok());
+        assert!(
+            capacity(
+                limits(),
+                Intent::Admit,
+                &slots(&["project-a"; 4]),
+                &idle,
+                "project-a"
+            )
+            .is_ok()
+        );
         let refused = refusal(
             capacity(
                 limits(),
@@ -1779,14 +1802,16 @@ mod tests {
         assert_eq!(refused.scope, Some("project"));
         assert_eq!(refused.retry_after_ms, Some(4_000));
         // …and another project is still admitted while A is saturated.
-        assert!(capacity(
-            limits(),
-            Intent::Admit,
-            &idle,
-            &slots(&["project-a", "project-a", "project-a"]),
-            "project-b"
-        )
-        .is_ok());
+        assert!(
+            capacity(
+                limits(),
+                Intent::Admit,
+                &idle,
+                &slots(&["project-a", "project-a", "project-a"]),
+                "project-b"
+            )
+            .is_ok()
+        );
         let global = refusal(
             capacity(
                 limits(),
@@ -1819,14 +1844,16 @@ mod tests {
     fn a_claim_shares_the_running_pool_only_while_another_project_waits() {
         let idle: Vec<Slot> = vec![];
         // Over its share, with nothing else waiting: the machine is used.
-        assert!(capacity(
-            limits(),
-            Intent::Claim,
-            &slots(&["project-a", "project-a", "project-a"]),
-            &slots(&["project-a"]),
-            "project-a"
-        )
-        .is_ok());
+        assert!(
+            capacity(
+                limits(),
+                Intent::Claim,
+                &slots(&["project-a", "project-a", "project-a"]),
+                &slots(&["project-a"]),
+                "project-a"
+            )
+            .is_ok()
+        );
         // Over its share while another project waits: fairness refuses.
         let refused = refusal(
             capacity(
@@ -1847,14 +1874,16 @@ mod tests {
             refused.message
         );
         // The waiting project claims freely.
-        assert!(capacity(
-            limits(),
-            Intent::Claim,
-            &slots(&["project-a", "project-a"]),
-            &slots(&["project-b"]),
-            "project-b"
-        )
-        .is_ok());
+        assert!(
+            capacity(
+                limits(),
+                Intent::Claim,
+                &slots(&["project-a", "project-a"]),
+                &slots(&["project-b"]),
+                "project-b"
+            )
+            .is_ok()
+        );
         // Global exhaustion refuses every project, fairly or not.
         let global = refusal(
             capacity(
@@ -1900,14 +1929,16 @@ mod tests {
             assert_eq!(refused.scope, Some("project"), "{project}");
             assert_eq!(refused.retry_after_ms, Some(2_000), "{project}");
         }
-        assert!(capacity(
-            roomy,
-            Intent::Claim,
-            &both_at_share,
-            &third_waiting,
-            "project-c"
-        )
-        .is_ok());
+        assert!(
+            capacity(
+                roomy,
+                Intent::Claim,
+                &both_at_share,
+                &third_waiting,
+                "project-c"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -2302,14 +2333,18 @@ mod tests {
                 .is_err()
         );
         // Every op's body is closed.
-        assert!(wire(json!({
-            "kind": "retain", "context": context("project-a"), "event": "retry", "surprise": 1
-        }))
-        .is_err());
-        assert!(wire(json!({
-            "kind": "retain", "context": context("project-a"), "event": "reassign_project"
-        }))
-        .is_err());
+        assert!(
+            wire(json!({
+                "kind": "retain", "context": context("project-a"), "event": "retry", "surprise": 1
+            }))
+            .is_err()
+        );
+        assert!(
+            wire(json!({
+                "kind": "retain", "context": context("project-a"), "event": "reassign_project"
+            }))
+            .is_err()
+        );
         assert!(wire(json!({"kind": "visible", "caller": caller()})).is_err());
         assert!(evaluate(&vec![b' '; MAX_INPUT_BYTES + 1]).is_err());
     }
@@ -2339,7 +2374,7 @@ mod tests {
         assert_eq!(REFUSALS.len(), 9);
         let unique: std::collections::BTreeSet<&str> = REFUSALS.into_iter().collect();
         assert_eq!(unique.len(), REFUSALS.len(), "a code is listed twice");
-        assert_eq!(OPERATIONS.len(), 7);
+        assert_eq!(OPERATIONS.len(), 8);
         assert!(OPERATIONS.contains(&SYNC_RECOVERY));
     }
 }

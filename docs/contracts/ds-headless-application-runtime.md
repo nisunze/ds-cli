@@ -445,3 +445,18 @@ containing this owner to receive it. Old metadata is retained diagnostically and
 is not silently imported. Healthy constraint/migration/schema errors and
 permission, authentication, principal, ownership or quarantine failures continue
 to refuse. See [the exact store boundary](ds-sync-store.md#core-cloud-cache-structural-corruption).
+
+## Native retained Profile sessions
+
+The protected Core host admits `profile_session` through the existing execution
+context owner. Each session is fenced to its captured native principal, lane,
+deployment, install and explicit project; the package SHA, model and exact
+history bind its retained managed Network process. Opening a package verifies
+the existing exchange manifest/members/library pins and captures the existing
+Profile seed; it never restores an embedded engineering engine to Desktop.
+Opaque session handles are process-lifetime addresses, never authorization.
+Closing, bounded idle retirement and Core shutdown reap the supervised worker.
+An independently installed older Core without the closed command refuses with
+`core_incompatible`; Desktop must request a qualified Core update. Unsupported
+Profile operations remain explicit refusals. Package opening and native scene
+proof do not alone establish editing, publication or print acceptance.
