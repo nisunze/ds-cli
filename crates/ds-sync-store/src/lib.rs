@@ -17,6 +17,10 @@
 pub mod cache_health;
 mod jobs;
 mod publications;
+mod profile_sources;
+pub use profile_sources::{
+    ProfileSourceHeader, ProfileSourceScope, MAX_PROFILE_SOURCE_BYTES, MAX_PROFILE_SOURCES,
+};
 mod recovery;
 pub use publications::{PublicationBytes, PublicationPayload};
 

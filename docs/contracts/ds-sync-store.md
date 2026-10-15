@@ -289,3 +289,34 @@ project/source/input/output files and retained payload bytes outside this databa
 are preserved. Existing governed owners rebuild current cloud/cache facts. This
 source behavior changes no wire schema or artifact admission and does not prove a
 new installed Core release by itself.
+
+## Bounded readonly Profile originals
+
+The native Store's optional `profile_sources` auxiliary table shares the existing
+protected canonical SQLite file and schema-2 opener, like native job/payload tables.
+It contains no publication, queue, credential or browser model records. Its closed
+`ds.core.profile-source/v1` metadata binds an opaque handle to the complete native
+account/lane/deployment/install/project scope, exact original package SHA/size,
+model/source revision/declared CRS, full initial history and managed engine pin.
+Original bytes are at most 32 MiB; metadata at most 64 KiB. SQL bounds raw reads
+before allocation. Unknown row schemas, changed bytes/history or invalidated
+original-only eligibility refuse; no row is repaired or inferred.
+
+At most eight originals (256 MiB) are retained per canonical owner across projects.
+Only intentional Open may evict the oldest dormant eligible original; active,
+invalidated or corrupt sources cannot be evicted. An all-protected cache refuses
+capacity. Exact replay cannot overwrite a source. Rebind verifies the source again
+with a short CAS transaction after native admission; no SQLite transaction spans
+a process launch. Close removes the exact admitted source. Any future authored
+mutation must invalidate original-only eligibility before dispatch, including a
+lost response; an original must never replace edited or uncertain history.
+
+Before this addition, native Profile source disappeared with its retired process.
+Core can now recover only its unchanged readonly initial head on an intentional
+request after worker retirement, without a second database, retained RAM package,
+background scan or publication. This is original-only recovery, not recovery of
+a checkpoint or authored edits. Older schema-2 Store readers ignore the auxiliary
+table; old Core has no rebind behavior and still refuses an expired handle.
+Canonical account-cache retirement archives this same SQLite file and sidecars;
+other accounts/projects cannot adopt its sources. Browser model persistence is not
+migrated by this handoff.
