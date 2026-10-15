@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install the shared Linux tiling toolchain when compatible system commands are
-# absent. DS Server and Linux Desktop both consume these ordinary host tools.
+# absent. DS Core and Linux Desktop both consume these ordinary host tools.
 set -euo pipefail
 
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -39,28 +39,51 @@ fi
 for tool in curl install sha256sum tar; do
 	command -v "$tool" >/dev/null 2>&1 || die "$tool is required to install shared tiling tools."
 done
-if [[ $EUID -ne 0 ]]; then
-	command -v sudo >/dev/null 2>&1 || die 'Administrator access through sudo or root is required.'
-	sudo_noninteractive="${DS_GRIDDESIGN_SUDO_NONINTERACTIVE:-0}"
-	[[ "$sudo_noninteractive" == 0 || "$sudo_noninteractive" == 1 ]] \
-		|| die 'DS_GRIDDESIGN_SUDO_NONINTERACTIVE must be 0 or 1.'
-	admin=(sudo)
-	[[ "$sudo_noninteractive" == 0 ]] || admin+=(-n)
-else
-	admin=()
+# Package installation and file installation have different authorities. An
+# explicit writable prefix can be populated by this account even when sudo
+# grants only apt-get. Do not probe that grant with sudo -v or sudo true.
+local_install=0
+if [[ -n "${DS_TILING_INSTALL_PREFIX:-}" ]]; then
+	prefix_parent="$PREFIX"
+	while [[ ! -e "$prefix_parent" ]]; do
+		prefix_parent="${prefix_parent%/*}"
+		[[ -n "$prefix_parent" ]] || prefix_parent=/
+	done
+	if [[ -d "$prefix_parent" && -w "$prefix_parent" && -x "$prefix_parent" ]]; then
+		local_install=1
+	fi
 fi
-run_admin() { "${admin[@]}" "$@"; }
-refresh_admin() {
-	((${#admin[@]} == 0)) || "${admin[@]}" -v
+run_admin() {
+	if [[ $EUID -eq 0 ]]; then
+		"$@"
+	else
+		command -v sudo >/dev/null 2>&1 || die 'Administrator access through sudo or root is required.'
+		local sudo_noninteractive="${DS_GRIDDESIGN_SUDO_NONINTERACTIVE:-0}"
+		[[ "$sudo_noninteractive" == 0 || "$sudo_noninteractive" == 1 ]] \
+			|| die 'DS_GRIDDESIGN_SUDO_NONINTERACTIVE must be 0 or 1.'
+		local admin=(sudo)
+		[[ "$sudo_noninteractive" == 0 ]] || admin+=(-n)
+		"${admin[@]}" "$@"
+	fi
+}
+run_install() {
+	if ((local_install)); then install "$@"; else run_admin install "$@"; fi
 }
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 if ((!tip_ready)); then
-	command -v apt-get >/dev/null 2>&1 || die 'apt-get is required to install the Tippecanoe build prerequisites.'
-	run_admin apt-get -o "DPkg::Lock::Timeout=$LOCK_TIMEOUT" install -y \
-		build-essential libsqlite3-dev zlib1g-dev
+	prerequisites_ready=1
+	for package in build-essential libsqlite3-dev zlib1g-dev; do
+		[[ "$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)" == 'install ok installed' ]] \
+			|| prerequisites_ready=0
+	done
+	if ((!prerequisites_ready)); then
+		command -v apt-get >/dev/null 2>&1 || die 'apt-get is required to install the Tippecanoe build prerequisites.'
+		run_admin apt-get -o "DPkg::Lock::Timeout=$LOCK_TIMEOUT" install -y \
+			build-essential libsqlite3-dev zlib1g-dev
+	fi
 	tip_archive="$tmp/tippecanoe.tar.gz"
 	curl --proto '=https' --proto-redir '=https' --fail --location --retry 3 \
 		--output "$tip_archive" "https://codeload.github.com/felt/tippecanoe/tar.gz/$TIP_REV"
@@ -86,17 +109,15 @@ if ((!pm_ready)); then
 		|| die 'Downloaded PMTiles executable does not match the pinned SHA-256.'
 fi
 
-# Source compilation can outlive sudo's timestamp. Acquire or refresh
-# elevation only after every artifact is ready, then perform the short owned
-# installation as one contiguous step.
-refresh_admin
-run_admin install -d -m 0755 "$PREFIX/bin" "$PREFIX/share/doc/tippecanoe" "$PREFIX/share/doc/pmtiles"
+# Run only the commands that need elevation; command-specific sudo grants do
+# not imply permission to refresh a general authentication timestamp.
+run_install -d -m 0755 "$PREFIX/bin" "$PREFIX/share/doc/tippecanoe" "$PREFIX/share/doc/pmtiles"
 if ((!tip_ready)); then
-	run_admin install -m 0755 "$tmp/tippecanoe/tippecanoe" "$PREFIX/bin/tippecanoe"
-	run_admin install -m 0644 "$tmp/tippecanoe/LICENSE.md" "$PREFIX/share/doc/tippecanoe/LICENSE.md"
+	run_install -m 0755 "$tmp/tippecanoe/tippecanoe" "$PREFIX/bin/tippecanoe"
+	run_install -m 0644 "$tmp/tippecanoe/LICENSE.md" "$PREFIX/share/doc/tippecanoe/LICENSE.md"
 fi
 if ((!pm_ready)); then
-	run_admin install -m 0755 "$pm_binary" "$PREFIX/bin/pmtiles"
+	run_install -m 0755 "$pm_binary" "$PREFIX/bin/pmtiles"
 fi
 
 final_tip_path="$tip_path"
