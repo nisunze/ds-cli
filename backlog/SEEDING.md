@@ -17,7 +17,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Deployment and template rollout](#1-deployment-and-template-rollout) | 16 |
-| [2. Release acceptance](#2-release-acceptance) | 3 |
+| [2. Release acceptance](#2-release-acceptance) | 4 |
 | [3. Template projects](#3-template-projects) | 6 |
 | [4. Print templates, styles and seed](#4-print-templates-styles-and-seed) | 6 |
 | [5. Print sheet content and legibility](#5-print-sheet-content-and-legibility) | 6 |
@@ -74,6 +74,8 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 - **Template rollout**: rerun the project census, seed any newly created projects, deploy matching locally built consumers and prove exact-revision report styles. Retire the old `eds_networks`/`eds_solar` roots only through the digest-fenced migration after verifying `~/ds-backups/global-templates-2026-10-06/`; inventory other legacy collections separately.
 
 ## 2. Release acceptance
+
+- **Linux background Core is blocked by the existing account store's SQLite corruption** (2026-10-15): Core startup refuses `NOT NULL constraint failed: artifacts.account`; read-only integrity diagnosis reports `Tree 7 page 7 cell 88: Rowid 4566 out of order`, with tree 7 belonging to `heads`. Recover the same retained store through its supported owner before claiming background execution or server readiness. Preserve the existing account, credentials, queue, heads and artifacts; do not delete/reset the database, run a live SQL workaround or create another identity/store to make acceptance pass. Evidence: `.verification/linux-manager-independent-core-20261015T092731Z/core-native-runtime-proof.json` at the workspace root.
 
 - **Independent Reporter/Solar rollout and measured release acceptance — target by 2026-10-31** (latest owner scope, 2026-10-10): after each [owning implementation vertical](OPEN.md#1-source-integration-and-release-code) is proven, locally build and publish that engine's immutable artifact and update installed Windows Desktop and Linux Server. This entry covers only Reporter and Solar. Network/Profile remains coupled in that current implementation; the owner separately requested [the next Network modularization plan](DS-NETWORK-MODULARIZATION.md) on 2026-10-13, with authoring on ds-server and Windows source checkouts pull-only. Network installed acceptance follows its owning code vertical and does not inherit this October target. Whole-kernel extraction is not included. Retain the unchanged host/frontend and unrelated component digests. Prove the owning CLI/MCP operation and matching UI/native result and exact report artifact parity where promised. Reject incompatible protocols before work starts; prove a compatible older/newer component mix. Complete unchanged-addon reuse proof on Windows and the remaining Cloud/native paths without invoking their builds; changed engine dependency closures must still trigger the relevant build. No owner hand-testing substitutes for owning tests and real native artifacts.
 
@@ -419,7 +421,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 
 - **Windows MCP acceptance**: prove startup timing, native server transport and package validation on the Windows host before publication.
 
-- **Windows Server package acceptance**: build the clean exact-source Windows artifact locally with matching profile catalogue, skills and engine binaries. Verify extraction bounds/digests, named-pipe startup, native identity and installation on the actual Windows host before publishing a completed release target. Preserve other Desktop/Server targets and installed data.
+- **Clean Windows manager installation and Core background acceptance**: start from the public Canary manager download after the verified replacement artifacts are ready, remove the reviewed existing Canary installation/cache through its native owners, then download/install Desktop 0.2.0, independent Core, Interactions and UI Kernel without a checkout or preinstalled component. Preserve Stable Core/Network/Solar, credentials and user data. Prove the final installed shell's missing-Core/UI Download/Modules recovery, actual UI/worker execution, and exact per-artifact receipts; then connect the Canary native account and prove Core contract-2 named-pipe startup, peer/account/SID/DACL and single-owner fences. Activate the qualified independent Reporter only through that running Core and execute its installed smoke case. An installed package, a signed-out refusal or source tests alone do not establish complete runtime acceptance.
 
 - **Final Windows native gates**: rerun the full current pinned CLI suite, strict Clippy, formatting, skill content and installer checks on Windows. Earlier Windows-only fixture/path and artifact-lock assumptions had source fixes applied; remove this acceptance task when the final rerun passes, and promote only reproduced remaining source failures to `OPEN.md`.
 
