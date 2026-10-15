@@ -11,7 +11,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 6 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 7 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 8 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
@@ -102,6 +102,8 @@ is ruled in the sync contract: simple local clean and recompute.
   proof requires the strict command to pass without lint suppression.
 
 ## 2. Green `run` and release gates
+
+- **Native Network feature-code fixture disagrees with engineering numbering** (2026-10-15): the locally captured Network `3bc5f907` workspace gate fails `feature_codes.rs:110`; actual structures carry `engineering_number: Some("1")`, `Some("2")`, etc., while the expected structures carry `None`. Reconcile the owning numbering contract, implementation and fixture, then prove the same native gate; do not silently revert intended behavior or claim qualification by skipping the assertion. The Hosting attempt executed 423 passing cases, one failure and five existing ignores before later suites remained unrun; its mounted-Drive fixture took 896.98 seconds and passed. Evidence: `ds-web/.verification/hosting-manager-canary-20261015T111708Z/deploy.log`. This failure does not qualify a new native Network artifact; the separate manager-only Hosting attempt uses its existing declared native-test compatibility path and retains Web/browser-WASM gates.
 
 - **Reporter strict production Clippy has 14 existing diagnostics.**
   `cargo clippy --locked --no-default-features --lib --no-deps -- -D warnings`
