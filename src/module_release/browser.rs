@@ -351,6 +351,23 @@ fn validate_installation(
     Ok(())
 }
 
+/// Admit a retained receipt against this host's declared lane and authority.
+/// This is offline validation; it grants no acquisition or computation authority.
+pub fn admit_retained(
+    receipt: &InstalledBrowserModule,
+    channel: &str,
+    gateway_origin: &str,
+) -> Result<InstalledBrowserModule, ModuleReleaseError> {
+    validate_installation(receipt, channel)?;
+    if receipt.authority.gateway_origin != gateway_origin {
+        return fail(
+            "module_receipt_invalid",
+            "Retained browser authority differs from this host",
+        );
+    }
+    Ok(receipt.clone())
+}
+
 /// Verify every member before executing even the JavaScript identity adapter.
 /// Hosts supply hashes and sizes computed from acquired bytes, never catalog facts.
 pub fn verify_files(
@@ -615,6 +632,11 @@ pub fn rollback(
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
+    Installation {
+        receipt: Box<InstalledBrowserModule>,
+        channel: String,
+        gateway_origin: String,
+    },
     VerifyFiles {
         unit: Box<BrowserUnit>,
         verified: Vec<VerifiedFile>,
@@ -672,6 +694,12 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     })?;
     let result: Result<Value, ModuleReleaseError> = (|| {
         Ok(match request {
+            Request::Installation {
+                receipt,
+                channel,
+                gateway_origin,
+            } => serde_json::to_value(admit_retained(&receipt, &channel, &gateway_origin)?)
+                .expect("typed retained receipt"),
             Request::VerifyFiles { unit, verified } => {
                 verify_files(&unit, &verified)?;
                 Value::Null
@@ -952,6 +980,20 @@ mod tests {
                 .code,
             "module_release_withdrawn"
         );
+    }
+    #[test]
+    fn retained_receipt_requires_this_hosts_exact_lane_and_authority() {
+        let receipt = ready();
+        assert_eq!(
+            admit_retained(&receipt, "canary", "https://gateway.example").unwrap(),
+            receipt
+        );
+        assert!(admit_retained(&receipt, "stable", "https://gateway.example").is_err());
+        assert!(admit_retained(&receipt, "canary", "https://other.example").is_err());
+        let wire = serde_json::to_vec(&json!({"kind":"installation","receipt":receipt,"channel":"canary","gateway_origin":"https://gateway.example"})).unwrap();
+        let result: InstalledBrowserModule =
+            serde_json::from_str(&evaluate(&wire).unwrap()).unwrap();
+        assert_eq!(result, receipt);
     }
     #[test]
     fn byte_verification_precedes_loaded_identity_and_rejects_tampered_units() {
