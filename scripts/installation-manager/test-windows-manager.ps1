@@ -150,6 +150,8 @@ public static class FixtureUninstaller {
   # Latest catalog can carry an older independently qualified Windows pair.
   return [pscustomobject]@{schema='ds.module-release/v1';component='core';runtime='native';channel='canary';status='active';product_id='rw.datasolutions.core.canary';protocol='ds.core-release/v1';version='0.1.0-r2';assets=$assets}
  }
+ $native=FreshCoreRelease;$native.PSObject.Properties.Remove('runtime');foreach($asset in $native.assets){$asset.PSObject.Properties.Remove('engines')}
+ Check ((CoreAssets $native).version -eq '0.1.0') 'Existing native wire omission was rejected'
  $admitted=CoreAssets (FreshCoreRelease)
  Check ($admitted.version -eq '0.1.0' -and $admitted.zip.kind -eq 'core-zip') 'Carried independently released Core pair was rejected'
  function RefuseCore($Release){$refused=$false;try{$null=CoreAssets $Release}catch{$refused=$_.Exception.Message.Contains('core_publication_')};Check $refused 'Malformed Core publication was admitted'}

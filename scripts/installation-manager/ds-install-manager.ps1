@@ -151,8 +151,10 @@ function RemoveLegacyDesktop {
  }
 }
 function CoreAssets([object]$Release) {
+ $runtimeField=$Release.PSObject.Properties['runtime']
+ $runtime=if($runtimeField){$runtimeField.Value}else{'native'}
  $product=if($Channel -eq 'canary'){'rw.datasolutions.core.canary'}else{'rw.datasolutions.core'}
- if($Release.schema -ne 'ds.module-release/v1' -or $Release.component -ne 'core' -or $Release.runtime -ne 'native' -or $Release.channel -ne $Channel -or $Release.status -ne 'active' -or $Release.product_id -ne $product -or $Release.protocol -ne 'ds.core-release/v1' -or $Release.version -notmatch '^\d+\.\d+\.\d+-r[1-9]\d*$'){Fail 'core_publication_invalid' 'Core requires its independent active native release identity'}
+ if($Release.schema -ne 'ds.module-release/v1' -or $Release.component -ne 'core' -or $runtime -ne 'native' -or $Release.channel -ne $Channel -or $Release.status -ne 'active' -or $Release.product_id -ne $product -or $Release.protocol -ne 'ds.core-release/v1' -or $Release.version -notmatch '^\d+\.\d+\.\d+-r[1-9]\d*$'){Fail 'core_publication_invalid' 'Core requires its independent active native release identity'}
  $assets=@($Release.assets | Where-Object {$_.platform -eq 'windows' -and $_.arch -eq 'x86_64'})
  if($assets.Count -ne 2){Fail 'core_publication_unavailable' 'No complete Windows Core ZIP and receipt are published'}
  $zip=@($assets | Where-Object {$_.kind -eq 'core-zip'})
@@ -166,7 +168,7 @@ function CoreAssets([object]$Release) {
   $filename=if($asset.kind -eq 'core-zip'){"ds-core-windows-$Channel.zip"}else{'artifact.receipt.json'}
   $expected="https://storage.googleapis.com/electrification-rural-desktop-releases/core/$Channel/$folder/$filename"
   $bound=if($asset.kind -eq 'core-zip'){536870912}else{2097152}
-  if($asset.protocol -ne 'ds.core-release/v1' -or $asset.url -cne $expected -or $asset.sha256 -notmatch '^[a-f0-9]{64}$' -or $asset.size_bytes -lt 1 -or $asset.size_bytes -gt $bound -or $asset.source_sha -notmatch '^[a-f0-9]{40}$' -or @($asset.engines).Count -ne 0 -or @($asset.source_revisions.PSObject.Properties).Count -ne $sources.Count){Fail 'core_publication_invalid' 'Core publication crosses its fixed artifact, digest or source fences'}
+  if($asset.protocol -ne 'ds.core-release/v1' -or $asset.url -cne $expected -or $asset.sha256 -notmatch '^[a-f0-9]{64}$' -or $asset.size_bytes -lt 1 -or $asset.size_bytes -gt $bound -or $asset.source_sha -notmatch '^[a-f0-9]{40}$' -or ($asset.PSObject.Properties['engines'] -and @($asset.PSObject.Properties['engines'].Value).Count -ne 0) -or @($asset.source_revisions.PSObject.Properties).Count -ne $sources.Count){Fail 'core_publication_invalid' 'Core publication crosses its fixed artifact, digest or source fences'}
   foreach($source in $sources){if($asset.source_revisions.$source -notmatch '^[a-f0-9]{40}$' -or $asset.source_revisions.$source -cne $zip[0].source_revisions.$source){Fail 'core_publication_invalid' 'Core ZIP and receipt have different source closures'}}
   if($asset.source_sha -cne $asset.source_revisions.'ds-cli' -or $asset.built_at -cne $zip[0].built_at){Fail 'core_publication_invalid' 'Core producing identity differs across package members'}
  }
