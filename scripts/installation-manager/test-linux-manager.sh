@@ -25,6 +25,7 @@ fixture() {
     cat > "$package/$member" <<'OWNER'
 #!/usr/bin/env bash
 printf '%s\n' 'unexpected owning installer execution' >> "$DS_MANAGER_TEST_OWNER_LOG"
+if [[ "${0##*/}" == install-core.sh && "${DS_GRIDDESIGN_CORE_CATALOG:-}" != independent ]];then exit 92;fi
 exit 91
 OWNER
   done
@@ -125,6 +126,9 @@ package="$XDG_DATA_HOME/ds-installation-manager/canary"
 invoke status core canary
 if [[ "$result" -eq 0 ]]; then pass 'installed disposable manager runs with Core absent'; else fail 'installed disposable manager runs with Core absent'; fi
 if [[ ! -e "$DS_MANAGER_TEST_OWNER_LOG" ]]; then pass 'no owning installer or component execution'; else result=91; fail 'no owning installer or component execution'; fi
+fixture independent-core-receiver
+invoke install core canary --yes
+if [[ "$result" -eq 91 ]];then pass 'Core receiver delegates independent catalog to existing installer owner';else fail 'Core receiver delegates independent catalog to existing installer owner';fi
 # Legacy Desktop tests stop at a fixture installer, before Core/UI acquisition.
 # Mock package commands record effects; none can invoke the real package manager.
 ln -s "$(command -v dpkg)" "$scratch/bin/dpkg"

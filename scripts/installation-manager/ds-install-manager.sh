@@ -42,7 +42,7 @@ remove_legacy_desktop() {
 if [[ "$component" == core || "$component" == desktop ]];then
  [[ "$action" == install || "$action" == update ]] || { echo 'component_lifecycle_unavailable: use the qualified platform owner' >&2;exit 2; }
  if [[ "$component" == desktop ]];then remove_legacy_desktop;DS_GRIDDESIGN_CHANNEL="$channel" bash "$root/install-desktop.sh";fi
- DS_GRIDDESIGN_CHANNEL="$channel" bash "$root/install-core.sh"
+ DS_GRIDDESIGN_CORE_CATALOG=independent DS_GRIDDESIGN_CHANNEL="$channel" bash "$root/install-core.sh"
  [[ "$component" != desktop ]] || { bash "$0" install interactions "$channel" --yes;bash "$0" install command-kernel "$channel" --yes; }
  exit 0
 fi
