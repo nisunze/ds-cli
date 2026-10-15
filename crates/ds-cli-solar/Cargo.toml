@@ -22,6 +22,7 @@ ds-cli-report = { workspace = true }
 ds-cli-server = { workspace = true }
 ds-command-kernel = { workspace = true }
 ds-solar-contracts = { workspace = true }
+ds-solar-project = { path = "../../../ds-solar/crates/ds-solar-project", default-features = false }
 ds-compute-runtime = { path = "../../../ds-command-kernel/crates/ds-compute-runtime" }
 libc = { workspace = true }
 serde = { workspace = true }

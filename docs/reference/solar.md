@@ -351,14 +351,19 @@ native user and captures explicit project, account, lane and credential audience
 `desktop_snapshot` request for that city. It rechecks authority after the read, leaves saved selection unchanged and accepts no root, endpoint,
 token, receipt or generic request override.
 
-The bounded response is streamed directly to the pinned `ds-solar intake
---snapshot - --out <fresh-file>` owner contract. Short-lived media download
-URLs therefore exist only in protected memory and the stdin pipe: they are
-never written to an intermediate snapshot file, argv, stdout or the resulting
-governed intake. Before the authenticated read, `ds` requires the installed
-owner's machine-readable build identity to advertise
-`ds-solar.governed-city-intake/v1`; a mismatched package refuses safely rather
-than attempting an unversioned handoff.
+The bounded response enters the linked engine-free `ds-solar-project::intake`
+owner without normalization of the captured Go bytes. Short-lived media
+download URLs exist only in protected memory: they are never written to an
+intermediate snapshot file, argv, stdout or the resulting governed intake.
+The owner verifies the original fingerprint and exact project/city before
+writing; no retired application executable is probed or launched.
+
+`solar.input.capture` contract **3** replaces contract 2's process handoff.
+CLI/MCP consumers must admit contract 3 and the `bounded-owner-intake` handoff
+value; output remains `ds-solar.governed-city-intake/v1`. Existing verified
+intakes retain explicit read compatibility. Missing, malformed, crossed or
+expired authority refuses before output publication; no old executable fallback
+or project retargeting is permitted.
 
 The owner creates the output with create-new semantics. `ds` then opens that
 exact regular file without following symlinks, performs a bounded read, and
@@ -639,7 +644,9 @@ the source city's media grants.
 Discover an explicit project's city ids with `ds solar cities --project <id>`; use those exact ids for capture and preparation.
 
 Discover `solar.reference.plan` and `solar.reference.import` for local preparation
-after capturing and seeding a workspace. The native plan exports the complete
+after capturing and seeding a workspace. These controls link the native local
+project owner and need no retired `ds-solar` application executable. The native
+plan exports the complete
 selected-city request and its input digest; an optional external reference
 producer seals the four files. Import preserves the explicit local project and
 expected city digest, verifies bytes/site/equipment, and commits/readbacks the

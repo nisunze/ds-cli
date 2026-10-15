@@ -16,8 +16,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-/// Acquisition runs only on a cache miss. It holds captured native authority,
-/// accepts no caller credentials and checks the Server owner before each fetch.
+/// Governed snapshot/media reads hold captured native authority and check the
+/// Server owner before each fetch. References use the verified local cache.
 struct NativeReferences {
     lane: String,
     project: String,
@@ -55,33 +55,6 @@ impl NativeReferences {
             return Err("Server owner changed during Solar acquisition".into());
         }
         Ok(receipt)
-    }
-}
-impl ds_solar_native::ReferenceBundleProvider for NativeReferences {
-    fn fetch(
-        &self,
-        request: &ds_solar_native::ReferenceRequest,
-    ) -> ds_solar_native::SolarResult<ds_solar_native::BundleBytes> {
-        let invalid = |message: String| {
-            ds_solar_native::SolarError::new(
-                ds_solar_native::SolarErrorCode::ReferenceUnitInvalid,
-                message,
-            )
-        };
-        let receipt = self
-            .execute(&ds_cli_auth::SolarProjectCommand::Reference {
-                request: request.clone(),
-            })
-            .map_err(invalid)?;
-        if let Some(error) = receipt.get("reference_error") {
-            return Err(invalid(
-                error["message"]
-                    .as_str()
-                    .unwrap_or("Solar reference producer refused acquisition")
-                    .into(),
-            ));
-        }
-        ds_solar_native::bundle_from_delivery(&self.project, &receipt)
     }
 }
 impl ds_solar_native::MediaProvider for NativeReferences {
@@ -249,7 +222,6 @@ pub(crate) async fn invoke(
             .with_engine_lane(&app.connection.lane)
             .map_err(|e| Failure::failed("server_refused", e))?
             .with_report_renderer(renderer)
-            .with_reference_provider(producer.clone())
             .with_media_provider(producer.clone())
             .with_publication_provider(Arc::new(retention(
                 app.auth.clone(),

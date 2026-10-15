@@ -1,14 +1,9 @@
 //! File-only adapters to the Solar-owned offline project lifecycle.
-use crate::{DISCOVERY_TIMEOUT, DS_SOLAR, RUN_TIMEOUT};
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
-use std::{
-    ffi::OsString,
-    io::{Read, Write},
-};
 
 const WORKSPACE: Arg = Arg::value(
     "workspace",
@@ -50,16 +45,6 @@ const fn command(
         examples: &[],
         refusals: &[
             Refusal {
-                code: "solar_project_schema_unavailable",
-                when: "the packaged Solar owner lacks the workspace schema",
-                remedy: "install matching ds and ds-solar releases",
-            },
-            Refusal {
-                code: "solar_project_io",
-                when: "a bounded owner request or receipt file cannot be handled",
-                remedy: "verify private writable directories and matching Solar releases",
-            },
-            Refusal {
                 code: "solar_project_inputs",
                 when: "a seed carries no --input, or more than 64",
                 remedy: "pass one --input per city, 1 through 64",
@@ -97,7 +82,7 @@ const fn command(
     }
 }
 pub(crate) fn availability() -> Availability {
-    DS_SOLAR.availability()
+    Availability::Available
 }
 pub static INIT: Command = command(
     "solar.project.init",
@@ -314,74 +299,9 @@ pub fn clean(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 
 pub(crate) fn invoke(request: Value) -> Result<Value, Failure> {
-    let result_limit = 32 * 1024 * 1024;
-    let identity = DS_SOLAR.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
-    if !identity["schemas"]
-        .as_array()
-        .is_some_and(|a| a.iter().any(|s| s == "ds-solar.project-workspace/v1"))
-    {
-        return Err(Failure::unavailable(
-            "solar_project_schema_unavailable",
-            "install matching ds and ds-solar with the offline project contract",
-        ));
-    }
-    let temp = tempfile::Builder::new()
-        .prefix("ds-solar-project-")
-        .tempdir()
-        .map_err(io_error)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(temp.path(), std::fs::Permissions::from_mode(0o700))
-            .map_err(io_error)?;
-    }
-    let input = temp.path().join("request.json");
-    let output = temp.path().join("result.json");
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    options
-        .open(&input)
-        .map_err(io_error)?
-        .write_all(&serde_json::to_vec(&request).map_err(io_error)?)
-        .map_err(io_error)?;
-    let result = DS_SOLAR.call(
-        "project",
-        &[
-            OsString::from("--request"),
-            input.into_os_string(),
-            OsString::from("--result"),
-            output.clone().into_os_string(),
-        ],
-        RUN_TIMEOUT,
-    )?;
-    if !result.succeeded() {
-        return Err(DS_SOLAR.failure_from(&result, "project"));
-    }
-    let meta = std::fs::symlink_metadata(&output).map_err(io_error)?;
-    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > result_limit {
-        return Err(io_error("invalid owner result file"));
-    }
-    let mut bytes = Vec::new();
-    std::fs::File::open(output)
-        .map_err(io_error)?
-        .take(result_limit + 1)
-        .read_to_end(&mut bytes)
-        .map_err(io_error)?;
-    if bytes.len() as u64 > result_limit {
-        return Err(io_error("owner result exceeds bound"));
-    }
-    serde_json::from_slice(&bytes).map_err(io_error)
-}
-fn io_error(error: impl std::fmt::Display) -> Failure {
-    Failure::failed(
-        "solar_project_io",
-        format!("Solar local IO failed: {error}"),
-    )
+    ds_solar_project::control::execute(request)
+        .map_err(|error| Failure::failed("engine_refused", error.to_string())
+            .remedy("inspect the owner refusal; use exact local project inputs and a verified reference cache; run calculations through solar.application"))
 }
 pub fn render(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_default()
@@ -482,6 +402,72 @@ mod tests {
     use super::*;
 
     #[test]
+    fn linked_local_controls_prepare_reference_without_legacy_executable() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = directory.path().join("project");
+        let cache = directory.path().join("cache");
+        let request_file = directory.path().join("reference-request.json");
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../ds-solar/fixtures/city/aderm_bere.snapshot.json");
+        assert_eq!(availability(), Availability::Available);
+        invoke(json!({"operation":"initialize","workspace":workspace,
+            "identity":{"project_id":"p","root":"eds_project/p/eds_solar"}}))
+        .unwrap();
+        invoke(
+            json!({"operation":"city_create","workspace":workspace,"city":"aderm_bere",
+            "display_name":"Bere","input":fixture}),
+        )
+        .unwrap();
+        let planned = invoke(
+            json!({"operation":"reference_plan_file","workspace":workspace,
+            "project":"p","city":"aderm_bere","cache":cache,"out":request_file}),
+        )
+        .unwrap();
+        assert_eq!(planned["ready"], false);
+        assert!(request_file.is_file());
+        assert!(
+            !cache.exists(),
+            "planning does not create/acquire reference data"
+        );
+        let wrong_project = invoke(
+            json!({"operation":"reference_import_files","workspace":workspace,
+            "project":"other","city":"aderm_bere","cache":cache,
+            "expected":planned["input_digest"],"bundle":directory.path().join("missing")}),
+        )
+        .unwrap_err();
+        assert_eq!(wrong_project.code(), "engine_refused");
+        assert!(wrong_project.message().contains("another project"));
+        assert!(
+            !cache.exists(),
+            "project refusal precedes bundle reads/cache writes"
+        );
+        let bundle = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../ds-solar/fixtures/reference/aderm_bere");
+        let import_request = json!({"operation":"reference_import_files","workspace":workspace,
+            "project":"p","city":"aderm_bere","cache":cache,
+            "expected":planned["input_digest"],"bundle":bundle});
+        let imported = invoke(import_request.clone()).unwrap();
+        assert_eq!(imported["ready"], true);
+        let reused = invoke(import_request).unwrap();
+        assert_eq!(reused["reused"], true);
+        assert_eq!(reused["acquired"], false);
+        assert_eq!(
+            reused["prepared_input_digest"],
+            imported["prepared_input_digest"]
+        );
+        let rejected = directory.path().join("must-not-exist");
+        assert!(
+            invoke(json!({"operation":"initialize","workspace":rejected,
+            "identity":{"project_id":"p","root":"eds_project/p/eds_solar"},"unknown":true}))
+            .is_err()
+        );
+        assert!(
+            !rejected.exists(),
+            "closed request admission precedes owner effects"
+        );
+    }
+
+    #[test]
     fn run_declares_its_required_city_selection() {
         let city = RUN.args.iter().find(|arg| arg.name == "city").unwrap();
         assert!(city.required);
@@ -516,11 +502,8 @@ mod tests {
     }
 
     // These call the handlers directly on purpose. Dispatch applies the
-    // availability gate first, so an end-to-end `ds solar project seed` on a
-    // box without ds-solar refuses as unavailable and never reaches the
-    // bound. Reaching it here also proves the refusal arrives before
-    // `invoke`, which is the whole point: no request file, no engine process,
-    // no `engine_refused` carrying the owner's prose.
+    // owner is now linked directly. Reaching these bounds here proves each
+    // refusal arrives before local owner effects.
     #[test]
     fn seed_refuses_an_empty_input_set_before_reaching_the_owner() {
         let error = seed(&inputs(&SEED, &workspace()), &context())

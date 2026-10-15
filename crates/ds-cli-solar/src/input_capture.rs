@@ -1,6 +1,5 @@
 //! `ds solar input capture` — explicit-project snapshot to native owner intake.
 
-use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -13,10 +12,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::{DISCOVERY_TIMEOUT, DS_SOLAR};
-
 const GOVERNED_INTAKE_SCHEMA: &str = "ds-solar.governed-city-intake/v1";
-const INTAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 const MAX_INTAKE_BYTES: u64 = 32 * 1024 * 1024;
 
 const CITY: Arg = Arg::value(
@@ -53,9 +49,9 @@ macro_rules! refusal {
 pub static COMMAND: Command = Command {
     id: "solar.input.capture",
     path: &["solar", "input", "capture"],
-    contract: 2,
+    contract: 3,
     summary: "Capture one governed project Solar city for native preparation.",
-    purpose: "Preflights the installed ds-solar governed-intake schema before any authenticated read, restores the native user, captures the explicit project and derives eds_project/<project>/eds_solar inside the fixed client call, requests only desktop_snapshot for one canonical city, and streams the exact bounded data object directly to `ds-solar intake --snapshot -`. The owner writes one fresh governed intake. Short-lived media download URLs exist only in private bounded memory and the stdin pipe: they never enter argv, stdout, a temporary file, or the resulting intake. Authority is rechecked after the read. There is no root override, generic API call or Desktop dependency.",
+    purpose: "Restores the native user, captures the explicit project and derives eds_project/<project>/eds_solar inside the fixed client call, and requests only desktop_snapshot for one canonical city. The linked engine-free Solar owner validates the exact bounded data object, fences project and city, and writes one fresh private governed intake. Short-lived media download URLs exist only in private bounded memory: they never enter argv, stdout, a temporary file, or the resulting intake. Authority is rechecked after the read. There is no root override, generic API call or Desktop dependency.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -150,16 +146,6 @@ pub static COMMAND: Command = Command {
             "pass one exact live city id from that project"
         ),
         refusal!(
-            "solar_engine_missing",
-            "the packaged ds-solar owner is absent",
-            "reinstall the complete ds release"
-        ),
-        refusal!(
-            "solar_intake_stdin_unavailable",
-            "ds-solar does not advertise the governed stdin-intake schema",
-            "install a ds-solar build that supports intake --snapshot - and ds-solar.governed-city-intake/v1"
-        ),
-        refusal!(
             "solar_intake_output_exists",
             "--out already exists",
             "choose a fresh path; capture never overwrites"
@@ -170,34 +156,9 @@ pub static COMMAND: Command = Command {
             "choose a safe writable fresh path and retry"
         ),
         refusal!(
-            "callee_contract_mismatch",
-            "ds-solar build-info is not its JSON identity",
-            "update ds and ds-solar to matching releases"
-        ),
-        refusal!(
-            "callee_input_bounded",
-            "the typed stdin document is empty or exceeds 32 MiB",
-            "report the governed response; do not bypass the bound"
-        ),
-        refusal!(
-            "callee_stdin_failed",
-            "ds-solar did not consume the complete typed stdin document",
-            "update ds and ds-solar to matching releases"
-        ),
-        refusal!(
-            "callee_timed_out",
-            "ds-solar did not finish intake within five minutes",
-            "investigate the owner process before retrying"
-        ),
-        refusal!(
-            "callee_wait_failed",
-            "the ds-solar child could not be observed",
-            "investigate the local process environment"
-        ),
-        refusal!(
-            "engine_refused",
-            "ds-solar rejected the governed snapshot",
-            "read the bounded engine detail and repair the governed input"
+            "solar_intake_refused",
+            "the Solar owner rejects the bounded snapshot or explicit identity",
+            "capture the exact city again and repair invalid governed inputs"
         ),
     ],
     reference: Some("docs/reference/solar.md"),
@@ -207,33 +168,24 @@ pub static COMMAND: Command = Command {
 };
 
 fn availability() -> Availability {
-    match ds_cli_auth::native_availability() {
-        Availability::Available => DS_SOLAR.availability(),
-        unavailable => unavailable,
-    }
+    ds_cli_auth::native_availability()
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let output = PathBuf::from(inputs.require("out")?);
-    ensure_absent(&output)?;
-    preflight_owner_intake()?;
-
-    let snapshot = ds_cli_auth::solar_snapshot_for_project(
-        inputs.require("lane")?,
+    let snapshot = capture_with(
+        &output,
         inputs.require("project")?,
         inputs.require("city")?,
+        || {
+            ds_cli_auth::solar_snapshot_for_project(
+                inputs.require("lane")?,
+                inputs.require("project")?,
+                inputs.require("city")?,
+            )
+        },
+        |snapshot| snapshot.intake_bytes(),
     )?;
-    let args = [
-        OsString::from("--snapshot"),
-        OsString::from("-"),
-        OsString::from("--out"),
-        output.as_os_str().to_owned(),
-    ];
-    let completed =
-        DS_SOLAR.call_with_stdin("intake", &args, snapshot.intake_bytes(), INTAKE_TIMEOUT)?;
-    if !completed.succeeded() {
-        return Err(DS_SOLAR.failure_from(&completed, "intake"));
-    }
     let expected = ExpectedIntake {
         ds_project: snapshot.ds_project().to_owned(),
         city: snapshot.template_id().to_owned(),
@@ -273,33 +225,37 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "source_document_count": snapshot.source_document_count(),
             "media_download_count": snapshot.media_download_count(),
         },
-        "handoff": "bounded-owner-stdin",
+        "handoff": "bounded-owner-intake",
     }))
 }
 
-fn preflight_owner_intake() -> Result<(), Failure> {
-    let identity = DS_SOLAR.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
-    let supports = identity
-        .as_object()
-        .filter(|object| object.get("name").and_then(Value::as_str) == Some("ds-solar-engine"))
-        .and_then(|object| object.get("schemas"))
-        .and_then(Value::as_array)
-        .is_some_and(|schemas| {
-            schemas
-                .iter()
-                .any(|schema| schema.as_str() == Some(GOVERNED_INTAKE_SCHEMA))
-        });
-    if supports {
-        Ok(())
-    } else {
-        Err(Failure::unavailable(
-            "solar_intake_stdin_unavailable",
-            "the installed ds-solar does not advertise its governed stdin-intake contract",
+// One intentional authenticated read; neither owner admission nor private
+// publication can acquire more data. Output refusal precedes that read.
+fn capture_with<S>(
+    output: &Path,
+    project: &str,
+    city: &str,
+    acquire: impl FnOnce() -> Result<S, Failure>,
+    bytes: impl FnOnce(&S) -> &[u8],
+) -> Result<S, Failure> {
+    ensure_absent(output)?;
+    let snapshot = acquire()?;
+    ds_solar_project::intake::capture(
+        ds_solar_project::intake::CaptureRequest {
+            project_id: project,
+            city_id: city,
+            snapshot_bytes: bytes(&snapshot),
+        },
+        output,
+    )
+    .map_err(|_| {
+        Failure::failed(
+            "solar_intake_refused",
+            "the Solar owner rejected the governed snapshot or could not commit its private intake",
         )
-        .remedy(
-            "install a ds-solar build that supports intake --snapshot - and ds-solar.governed-city-intake/v1",
-        ))
-    }
+        .remedy("capture the exact city again and choose a safe writable fresh --out path")
+    })?;
+    Ok(snapshot)
 }
 
 fn ensure_absent(path: &Path) -> Result<(), Failure> {
@@ -542,7 +498,7 @@ fn same_utc_rfc3339_spelling(left: &str, right: &str) -> bool {
 fn unsafe_output() -> Failure {
     Failure::failed(
         "solar_intake_output_unsafe",
-        "ds-solar did not create one safe bounded governed-intake file",
+        "the Solar owner did not create one safe bounded governed-intake file",
     )
     .remedy("choose a safe writable fresh --out path and retry")
 }
@@ -579,8 +535,110 @@ mod tests {
                     .all(|argument| argument.name != forbidden)
             );
         }
-        assert!(COMMAND.purpose.contains("stdin"));
+        assert!(COMMAND.purpose.contains("linked engine-free Solar owner"));
         assert!(COMMAND.purpose.contains("never enter argv"));
+    }
+
+    fn real_snapshot_bytes() -> Vec<u8> {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../ds-solar/fixtures/city/aderm_bere.snapshot.json");
+        let mut snapshot: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        snapshot["_config"] =
+            json!({"paths": {"root": "eds_project/project-1/eds_solar/aderm_bere"}});
+        let input_base = json!({
+            "_root": snapshot["_root"], "_config": snapshot["_config"],
+            "00_templates": snapshot["00_templates"], "01_city_inputs": snapshot["01_city_inputs"],
+        });
+        let fingerprint = ds_solar_contracts::digest::hex_sha256(
+            &ds_solar_contracts::digest::canonical_json_bytes(&input_base).unwrap(),
+        );
+        snapshot["_provenance"] = json!({
+            "schema": 3,
+            "source_kind": "authenticated ds-brain desktop snapshot",
+            "root": "eds_project/project-1/eds_solar",
+            "context": "aderm_bere",
+            "demand_noise_seed": ds_solar_contracts::digest::demand_noise_seed("aderm_bere").unwrap(),
+            "input_base_fingerprint": fingerprint,
+        });
+        let snapshot_json =
+            String::from_utf8(ds_solar_contracts::digest::canonical_json_bytes(&snapshot).unwrap())
+                .unwrap();
+        serde_json::to_vec(&json!({
+            "snapshot_sha256": ds_solar_contracts::digest::hex_sha256(snapshot_json.as_bytes()),
+            "snapshot_bytes": snapshot_json.len(),
+            "snapshot_json": snapshot_json,
+            "input_base_fingerprint": fingerprint,
+            "media_downloads": [],
+            "source_document_count": 12,
+            "firestore_read_time": "2026-08-30T00:00:00Z",
+            "snapshot_receipt_id": "21c655a1-1037-52ce-a601-e9c7e3734d53",
+            "snapshot_receipt_expires_at": "2099-08-30T00:00:00Z",
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn linked_capture_admits_real_fixture_with_one_read_and_refuses_without_extra_reads() {
+        use std::cell::Cell;
+        let root = tempfile::tempdir().unwrap();
+        let output = root.path().join("capture.json");
+        let reads = Cell::new(0);
+        let acquire = || {
+            reads.set(reads.get() + 1);
+            Ok(real_snapshot_bytes())
+        };
+        let exact =
+            capture_with(&output, "project-1", "aderm_bere", acquire, Vec::as_slice).unwrap();
+        assert_eq!(reads.get(), 1);
+        let intake: ds_solar_project::intake::GovernedCityIntake =
+            serde_json::from_slice(&fs::read(&output).unwrap()).unwrap();
+        intake.city_input.validate().unwrap();
+        assert_eq!(intake.city_input.identity.project_id, "project-1");
+        assert_eq!(intake.city_input.identity.city_id, "aderm_bere");
+        assert_eq!(
+            intake.city_input.revision.revision.as_deref(),
+            Some(intake.authority.input_base_fingerprint.as_str())
+        );
+        assert!(!exact.is_empty());
+        assert_eq!(
+            capture_with(&output, "project-1", "aderm_bere", acquire, Vec::as_slice)
+                .unwrap_err()
+                .code(),
+            "solar_intake_output_exists"
+        );
+        assert_eq!(reads.get(), 1);
+        let refused = root.path().join("refused.json");
+        assert_eq!(
+            capture_with(
+                &refused,
+                "other-project",
+                "aderm_bere",
+                acquire,
+                Vec::as_slice
+            )
+            .unwrap_err()
+            .code(),
+            "solar_intake_refused"
+        );
+        assert_eq!(reads.get(), 2);
+        assert!(!refused.exists());
+        assert_eq!(
+            capture_with(
+                &refused,
+                "project-1",
+                "aderm_bere",
+                || {
+                    reads.set(reads.get() + 1);
+                    Ok(b"malformed".to_vec())
+                },
+                Vec::as_slice
+            )
+            .unwrap_err()
+            .code(),
+            "solar_intake_refused"
+        );
+        assert_eq!(reads.get(), 3);
+        assert!(!refused.exists());
     }
 
     #[test]

@@ -74,7 +74,7 @@ pub static COMMAND: Command = Command {
     availability,
 };
 fn availability() -> Availability {
-    crate::DS_SOLAR.availability()
+    crate::project::availability()
 }
 pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let project = i.require("project")?;

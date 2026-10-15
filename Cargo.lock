@@ -1355,6 +1355,7 @@ dependencies = [
  "ds-command-kernel",
  "ds-compute-runtime",
  "ds-solar-contracts",
+ "ds-solar-project",
  "fs2",
  "libc",
  "serde",

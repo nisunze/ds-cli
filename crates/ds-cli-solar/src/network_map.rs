@@ -43,7 +43,7 @@ pub static COMMAND: Command = Command {
     reference: Some("docs/reference/solar.md"),
     search: &[],
     requires: Requires::Server,
-    availability: || crate::DS_SOLAR.availability(),
+    availability: crate::project::availability,
 };
 pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let held = crate::project::invoke(

@@ -94,28 +94,11 @@ pub fn render(v: &Value) -> String {
     serde_json::to_string_pretty(v).unwrap_or_default()
 }
 
-const REFUSALS: &[Refusal] = &[
-    Refusal {
-        code: "solar_engine_missing",
-        when: "the compatible Solar owner is absent",
-        remedy: "install the complete matching ds release",
-    },
-    Refusal {
-        code: "solar_project_schema_unavailable",
-        when: "the Solar owner lacks the local workspace contract",
-        remedy: "install matching ds and ds-solar releases",
-    },
-    Refusal {
-        code: "solar_project_io",
-        when: "private owner request or receipt IO failed",
-        remedy: "verify writable private directories and matching releases",
-    },
-    Refusal {
-        code: "engine_refused",
-        when: "project, city revision, artifact, path or cache admission refused",
-        remedy: "read owner detail; preserve the source bytes and current city, then plan again or correct the named input",
-    },
-];
+const REFUSALS: &[Refusal] = &[Refusal {
+    code: "engine_refused",
+    when: "project, city revision, artifact, path or cache admission refused",
+    remedy: "read owner detail; preserve the source bytes and current city, then plan again or correct the named input",
+}];
 
 #[cfg(test)]
 mod tests {

@@ -22,6 +22,11 @@ process contracts exist today, each designed as one:
 | `solar` | `ds-solar/apps/solar` | fixed build identity and sealed prepared-calculation file task; no acquisition |
 | `ds-solar` | `ds-solar/apps/ds-solar-cli` | `prepare` may reach the network, `run` may not |
 
+Local `solar.project` and `solar.reference` controls link the engine-free
+`ds-solar-project` owner directly. They do not discover or launch the retired
+`ds-solar` application executable; native application calculation remains with
+`solar.application` and its separate prepared-input engine.
+
 `solar` is the independent engine addon. `DS_SOLAR_ENGINE_BIN` selects it for
 development. The application tool `ds-solar` and its `DS_SOLAR_BIN` override
 remain separate while native batch and portfolio orchestration are extracted;
@@ -47,9 +52,10 @@ For an owner contract whose typed document must not be persisted before the
 owner seals it, `External::call_with_stdin` keeps the same static subcommand and
 closed argv rules and accepts one caller-owned byte slice bounded to 32 MiB.
 It drains output and writes stdin concurrently, so a child that stops reading
-cannot deadlock the caller. The one current use is the fixed `ds-solar intake
---snapshot - --out <fresh-file>` handoff: its snapshot contains short-lived
-download authority and must never cross a temporary-file boundary.
+cannot deadlock the caller. Governed Solar capture now calls the linked
+engine-free intake owner instead of launching a child. Its snapshot contains
+short-lived download authority and remains in bounded private memory until the
+owner strips that authority and seals the intake; no intermediate file exists.
 
 `External::capture` resolves an admitted executable to its canonical version
 path without starting a process. The Reporter host captures it once per batch
