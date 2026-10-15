@@ -20,6 +20,11 @@ ds-canvas.workspace = true
 ds-canvas-graph.workspace = true
 ds-geo-lite = { path = "../../../ds-command-kernel/crates/ds-geo-lite", features = ["projection", "geojson"] }
 
+[build-dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
 

@@ -68,3 +68,37 @@ with the real permanent units. These narrow gates do not replace the advertised
 frontend/global gates. Node/WASM or jsdom pointer execution is distinct from
 Chrome or installed WebView acceptance, and an isolated consumer is distinct from
 full application startup with retained layers, tables and edit sessions.
+
+## UI build facts
+
+The Interactions WASM export `uiEngineBuildIdentity()` returns JSON with exactly
+the following fields: `schema` (`ds.ui-engine-build/v1`), `component`
+(`interactions`), `protocol` (`ds.ui-wasm/v1`), integer `ui_contract` (`1`),
+`source_sha`, `cargo_lock_sha256`, `rustc`, `target`, `profile`, and
+`config_sha256`. These identify the producer; they grant no installation or
+activation authority and contain no Core or engineering version requirement.
+The receipt's manifest digest is SHA256 of the ten-key object encoded as compact
+UTF-8 JSON with alphabetically sorted keys and no trailing newline.
+
+Release compilation requires `DS_INTERACTIONS_SOURCE_SHA` as an exact lowercase
+40-character committed Git SHA. As with the engine producers, the release driver
+must verify that the supplied revision describes the source being built. The
+adapter does not infer a sibling revision or verify a release checkout. Unstamped
+debug builds report `development`, which is outside the installable exact-SHA
+contract. A supplied malformed SHA refuses even in debug builds.
+
+`cargo_lock_sha256` hashes the workspace's actual lock bytes. `rustc` records
+`rustc -vV`; `target` and `profile` are Cargo's build facts. `config_sha256` hashes
+the build script's named workspace and crate manifests, build metadata sources,
+optional Cargo configuration and toolchain files (including declared absence),
+Cargo's encoded Rust flags, feature environment, optimization level and debug
+setting. Its framing is versioned and distinguishes an absent input from empty
+bytes. It contains no timestamp, installation identity or ambient sibling HEAD.
+The external neutral `ds-geo-lite` path source remains a release-driver input;
+the lock digest does not pretend to pin its source bytes. WASM packaging tools and
+final artifact digests belong to the release receipt, outside this Rust identity.
+
+The component's committed `release/ui-wasm-source.json` pins its external neutral
+geometry source. The producer admits its exact normal/build closure, captures
+compiler and Cargo configuration, injects that configuration digest, and compares
+the actual WASM export before minting a publication receipt.

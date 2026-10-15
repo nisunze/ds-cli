@@ -2,6 +2,9 @@
 use ds_geo_lite::projection as core_projection;
 use wasm_bindgen::prelude::*;
 
+mod build_identity;
+pub use build_identity::ui_engine_build_identity;
+
 mod map_geometry;
 mod polygon_edge_hit;
 pub use polygon_edge_hit::polygon_edge_hit;
