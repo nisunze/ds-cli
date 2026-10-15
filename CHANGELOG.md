@@ -21,7 +21,10 @@ is connected; it is never reported as a successful update without mutation.
 Automatic legacy removal applies strictly to Desktop versions below 0.1.7,
 using its existing data-preserving uninstaller. Current Desktop, Core, addons
 and user data remain retained. Partial installation reports the completed
-phases and exact blocked component; it does not claim workspace readiness.
+phases and exact blocked component; it does not claim workspace readiness. A completed
+Desktop phase records the verified installer/source and installed executable
+digests; retries reuse only that exact phase and continue with missing components.
+Changed publication or executable bytes return to the existing installer owner.
 Windows platform discovery uses the native Windows API and supports Windows
 PowerShell 5.1 without requiring RuntimeInformation.OSArchitecture reflection.
 

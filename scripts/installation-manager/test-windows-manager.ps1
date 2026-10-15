@@ -109,6 +109,19 @@ public static class FixtureUninstaller {
  Check (Test-Path -LiteralPath (Join-Path $fixtureLocal 'DS GridDesign\ds-web-desktop.exe')) '0.2.0 Stable was removed'
  Check (!(Test-Path -LiteralPath (Join-Path $fixtureLocal 'DS GridDesign Canary\ds-web-desktop-canary.exe'))) '0.1.6 Canary was retained'
  foreach($path in $before.Keys){Check ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ceq $before[$path]) 'Core, component or data sentinel was changed'}
+ # A completed exact shell phase is reusable; a new publication or changed
+ # installed image must return to the existing installer owner.
+ $script:Cache=Join-Path $fixtureLocal 'manager-cache';PrivateDirectory $script:Cache
+ $asset=[pscustomobject]@{sha256=('a'*64);source_sha=('b'*40)}
+ FixtureDesktop 'DS GridDesign Canary' '0.2.0'
+ Check (!(DesktopMatches $asset)) 'An unrecorded shell was treated as digest-verified'
+ RecordDesktop $asset
+ Check (DesktopMatches $asset) 'Verified completed shell phase was not reused'
+ $different=[pscustomobject]@{sha256=('c'*64);source_sha=('b'*40)}
+ Check (!(DesktopMatches $different)) 'A newer installer identity was silently skipped'
+ $image=DesktopPath;[IO.File]::AppendAllText($image,'changed fixture image')
+ Check (!(DesktopMatches $asset)) 'A changed installed image reused an old receipt'
+ FixtureDesktop 'DS GridDesign Canary' '0.2.0'
  # Execute the real native UI constructor: defaults and required dependency
  # state must survive callback invocation after its constructor returns.
  Check ([DsInstallationManagerPlatform]::IsX64()) 'Native Windows architecture discovery failed'

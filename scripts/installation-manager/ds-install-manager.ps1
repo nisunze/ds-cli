@@ -115,6 +115,28 @@ function Download([object]$Asset,[string]$Path,[long]$Max=536870912) {
  if((Get-Item -LiteralPath $partial).Length -ne $Asset.size_bytes -or (Digest $partial) -cne $Asset.sha256) { Fail 'manager_digest_mismatch' 'Downloaded bytes differ; nothing was installed' }
  Move-Item -LiteralPath $partial -Destination $Path -Force
 }
+function DesktopPath {
+ $name=if($Channel -eq 'canary'){'DS GridDesign Canary'}else{'DS GridDesign'}
+ $binary=if($Channel -eq 'canary'){'ds-web-desktop-canary.exe'}else{'ds-web-desktop.exe'}
+ return Join-Path $script:Local "$name\$binary"
+}
+function DesktopMatches([object]$Asset) {
+ $exe=DesktopPath
+ $receiptPath=Join-Path $script:Cache "desktop-$Channel-installation.json"
+ if(!(Test-Path -LiteralPath $exe -PathType Leaf) -or !(Test-Path -LiteralPath $receiptPath -PathType Leaf)){return $false}
+ $receipt=ReadJson $receiptPath 65536
+ if($receipt.schema -ne 'ds.installation-manager-desktop/v1' -or $receipt.channel -ne $Channel -or $receipt.installer_sha256 -cne $Asset.sha256 -or $receipt.source_sha -cne $Asset.source_sha -or $receipt.executable_sha256 -notmatch '^[a-f0-9]{64}$'){return $false}
+ $null=Ordinary $exe
+ return (Digest $exe) -ceq $receipt.executable_sha256
+}
+function RecordDesktop([object]$Asset) {
+ $exe=DesktopPath
+ $null=Ordinary $exe
+ $receipt=[ordered]@{schema='ds.installation-manager-desktop/v1';channel=$Channel;installer_sha256=$Asset.sha256;source_sha=$Asset.source_sha;executable_sha256=(Digest $exe);version=(Get-Item -LiteralPath $exe).VersionInfo.ProductVersion;verified_at=[DateTime]::UtcNow.ToString('o')}
+ $path=Join-Path $script:Cache "desktop-$Channel-installation.json"
+ [IO.File]::WriteAllText("$path.pending",($receipt|ConvertTo-Json),(New-Object Text.UTF8Encoding($false)))
+ Move-Item -LiteralPath "$path.pending" -Destination $path -Force
+}
 function RemoveLegacyDesktop {
  foreach($product in @(@('DS GridDesign','ds-web-desktop.exe'),@('DS GridDesign Canary','ds-web-desktop-canary.exe'))) {
   $root=Join-Path $script:Local $product[0]; $exe=Join-Path $root $product[1]
@@ -258,10 +280,14 @@ try {
   if($release.product_id -ne $product){Fail 'manager_asset_invalid' 'Desktop release crosses product identity'}
   $assets=@($release.assets | Where-Object {$_.platform -eq 'windows' -and $_.arch -eq 'x86_64' -and $_.kind -eq 'nsis'})
   if($assets.Count -ne 1){Fail 'desktop_publication_unavailable' 'No unique Windows Desktop installer is published'}
-  $path=Join-Path $script:Cache "$($assets[0].sha256)-setup.exe"; Download $assets[0] $path
-  RemoveLegacyDesktop
-  $setup=Start-Process -FilePath $path -ArgumentList '/S' -WindowStyle Hidden -PassThru -Wait
-  if($setup.ExitCode -ne 0){Fail 'desktop_install_failed' "The owning installer exited $($setup.ExitCode)"}
+  if(!(DesktopMatches $assets[0])){
+   $path=Join-Path $script:Cache "$($assets[0].sha256)-setup.exe"; Download $assets[0] $path
+   RemoveLegacyDesktop
+   $setup=Start-Process -FilePath $path -ArgumentList '/S' -WindowStyle Hidden -PassThru -Wait
+   if($setup.ExitCode -eq 2){Fail 'desktop_busy' 'The existing Desktop installer refused replacement while the application is running; close DS Desktop and retry, preserving current data'}
+   if($setup.ExitCode -ne 0){Fail 'desktop_install_failed' "The owning installer exited $($setup.ExitCode)"}
+   RecordDesktop $assets[0]
+  }
   $script:Completed+=@('Desktop'); $script:CurrentComponent='Core'
   $null=InstallCore; $script:Completed+=@('Core'); $script:CurrentComponent='interactions'
   $null=ComponentAction interactions Install; $script:Completed+=@('interactions'); $script:CurrentComponent='command-kernel'
