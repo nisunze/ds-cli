@@ -1986,7 +1986,9 @@ mod tests {
     #[test]
     fn every_command_that_names_a_job_or_a_project_declares_project() {
         for command in DOMAIN.commands {
-            if command.authority == Authority::None || matches!(command.id, "core.serve" | "core.cache.retire") {
+            if command.authority == Authority::None
+                || matches!(command.id, "core.serve" | "core.cache.retire")
+            {
                 continue;
             }
             assert!(

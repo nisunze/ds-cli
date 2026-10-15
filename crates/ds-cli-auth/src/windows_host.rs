@@ -246,7 +246,9 @@ pub fn replace_file(staging: &Path, destination: &Path) -> Result<(), String> {
 /// Retain a private file without replacing an existing destination. The native
 /// move is atomic and write-through; a racing destination makes it refuse.
 pub fn move_file_no_replace(source: &Path, destination: &Path) -> Result<(), String> {
-    if source.parent() != destination.parent() { return Err(error()); }
+    if source.parent() != destination.parent() {
+        return Err(error());
+    }
     drop(read_file(source)?);
     crate::state_windows::move_no_replace(source, destination).map_err(|_| error())?;
     drop(read_file(destination)?);
