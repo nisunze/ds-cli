@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 fn main() {
     let scratch = std::env::args().nth(1).expect("private fixture path");
-    let model = ds_grid_exchange::blank_model::create_blank_model(
+    let fixture_model = ds_grid_exchange::blank_model::create_blank_model(
         &ds_grid_exchange::blank_model::BlankModelRequest {
             model_id: Some("native-profile-fixture"),
             coordinate_system: Some("EPSG:3395"),
@@ -14,7 +14,11 @@ fn main() {
         },
     )
     .unwrap();
-    let digest = format!("{:x}", Sha256::digest(&model.bytes));
+    let model_bytes = std::env::args().nth(2).map(|path|std::fs::read(path).unwrap()).unwrap_or(fixture_model.bytes);
+    let package = ds_grid_exchange::package::unpack(&model_bytes).unwrap();
+    let expected_model = package.manifest.model.model_id.as_str().to_owned();
+    let expected_crs = package.manifest.model.coordinate_system.as_str().to_owned();
+    let digest = format!("{:x}", Sha256::digest(&model_bytes));
     let scope = Scope {
         principal: "synthetic-fixture-owner".into(),
         lane: "canary".into(),
@@ -31,14 +35,14 @@ fn main() {
             Request {
                 schema: REQUEST_SCHEMA.into(),
                 operation: Operation::Open {
-                    package_base64: STANDARD.encode(&model.bytes),
+                    package_base64: STANDARD.encode(&model_bytes),
                     package_sha256: digest.clone(),
                 },
             },
             &|| Ok(()),
         )
         .unwrap();
-    assert_eq!(open["model_id"], "native-profile-fixture");
+    assert_eq!(open["model_id"], expected_model);
     assert_eq!(open["package_sha256"], digest);
     assert_eq!(open["payload"]["schema"], "ds.network.profile-snapshot/v1");
     let presentation: Value =
@@ -123,6 +127,18 @@ fn main() {
     assert_eq!(cached["payload"]["scene_json"], view["payload"]["scene_json"]);
     assert_eq!(cached["history"], history);
     checks.push("cached-native-view-identical");
+    let gis = sessions.execute(scope.clone(), std::path::Path::new(&scratch), Request {
+        schema: REQUEST_SCHEMA.into(), operation: Operation::GisProjection {
+            session_id:id.clone(), model_id:model_id.clone(), expected_history:history.clone(),
+            label_fields:vec!["number".into(),"station".into()],
+        },
+    }, &||Ok(())).unwrap();
+    assert_eq!(gis["history"],history);
+    assert_eq!(gis["payload"]["type"],"FeatureCollection");
+    assert_eq!(gis["payload"]["crs"],expected_crs);
+    assert_eq!(gis["payload"]["revision"],history["model_revision"]);
+    assert_eq!(gis["engine"],open["engine"]);
+    checks.push("retained-gis-projection-exact-history-crs-engine");
     let checkpoint = sessions
         .execute(
             scope.clone(),

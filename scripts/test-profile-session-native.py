@@ -3,6 +3,7 @@ import argparse, json, pathlib, subprocess
 parser=argparse.ArgumentParser(description='Qualify closed native Core Profile source and actual installed Canary Network using a synthetic private package; no Core transport or UI acceptance claim.')
 parser.add_argument('--deps',required=True,type=pathlib.Path)
 parser.add_argument('--out',required=True,type=pathlib.Path)
+parser.add_argument('--package',type=pathlib.Path,help='Optional exact read-only package proof; no payload is logged')
 args=parser.parse_args()
 cli=pathlib.Path(__file__).resolve().parents[1]
 deps=args.deps.resolve(strict=True); fp=deps.parent/'.fingerprint'; out=args.out.resolve(); out.mkdir(parents=True,exist_ok=True)
@@ -38,5 +39,5 @@ command=[str(pathlib.Path.home()/'.cargo/bin/rustc'),'--edition=2021',str(fixtur
 for name,lib in roots.items(): command+=['--extern',f'{name}={lib}']
 subprocess.run(command,check=True)
 scratch=out/'scratch';scratch.mkdir(mode=0o700,exist_ok=True)
-with (out/'native-process-proof.json').open('w') as log: subprocess.run([str(out/'native-fixture'),str(scratch)],stdout=log,check=True)
+with (out/'native-process-proof.json').open('w') as log: subprocess.run([str(out/'native-fixture'),str(scratch)]+([str(args.package.resolve(strict=True))] if args.package else []),stdout=log,check=True)
 print((out/'native-process-proof.json').read_text())

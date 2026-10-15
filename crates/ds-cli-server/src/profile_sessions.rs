@@ -1,6 +1,6 @@
 //! Process-lifetime Profile ownership. Parsing/engineering stay in their existing
 //! Grid exchange and managed Network owners; no browser, SDK or caller argv.
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use ds_cli_contract::Failure;
 use ds_grid_exchange::profile_session::ProfileSessionSeed;
 use ds_network_client::{CapturedNetworkClient, NetworkFailure, ProfileSession};
@@ -9,7 +9,7 @@ use ds_network_contracts::profile::{
     NativeProfileOpenV1, NativeProfileOperationV1, PROFILE_OPEN_SCHEMA,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
@@ -70,6 +70,12 @@ pub enum Operation {
         patch: Value,
         style_document: Value,
         cached: bool,
+    },
+    GisProjection {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        label_fields: Vec<String>,
     },
     Scene {
         session_id: String,
@@ -290,6 +296,40 @@ impl Sessions {
                 }
                 Ok(receipt)
             }
+            Operation::GisProjection {
+                session_id,
+                model_id,
+                expected_history,
+                label_fields,
+            } => {
+                validate_label_fields(&label_fields)?;
+                let value = owned(&mut held, &scope, &session_id, &model_id, &expected_history)?;
+                let checkpoint = value
+                    .session
+                    .request_at(
+                        NativeProfileOperationV1::Checkpoint,
+                        Some(expected_history.clone()),
+                        DEADLINE,
+                        &|| false,
+                    )
+                    .map_err(native)?;
+                authorized()?;
+                let projected = project_checkpoint(
+                    &checkpoint.bytes,
+                    &model_id,
+                    &expected_history,
+                    &value.coordinate_system,
+                    &label_fields,
+                )?;
+                authorized()?;
+                value.touched = Instant::now();
+                receipt(
+                    &session_id,
+                    value,
+                    &serde_json::to_vec(&projected).map_err(invalid)?,
+                    false,
+                )
+            }
             Operation::View {
                 session_id,
                 model_id,
@@ -422,7 +462,9 @@ impl Sessions {
                             cached,
                         },
                     ),
-                    Operation::Open { .. } | Operation::View { .. } => unreachable!(),
+                    Operation::Open { .. }
+                    | Operation::View { .. }
+                    | Operation::GisProjection { .. } => unreachable!(),
                 };
                 let session = owned(&mut held, &scope, &id, &model, &expected)?;
                 let result = session
@@ -440,6 +482,68 @@ impl Sessions {
             }
         }
     }
+}
+fn validate_label_fields(fields: &[String]) -> Result<(), Failure> {
+    if fields.len() > 64
+        || fields.iter().any(|field| {
+            !matches!(
+                field.as_str(),
+                "number"
+                    | "station"
+                    | "type"
+                    | "height"
+                    | "alignment"
+                    | "comment1"
+                    | "comment2"
+                    | "comment3"
+            )
+        })
+    {
+        return Err(invalid(
+            "Use at most 64 existing StructureLabelField values",
+        ));
+    }
+    Ok(())
+}
+/// Read-only projection of the exact worker-owned head. The existing seed owner
+/// verifies all assets and replays its authored journal/history; no package,
+/// calculated result or cached coordinates replace the retained head.
+fn project_checkpoint(
+    bytes: &[u8],
+    model: &str,
+    history: &Value,
+    crs: &str,
+    fields: &[String],
+) -> Result<Value, Failure> {
+    validate_label_fields(fields)?;
+    if bytes.len() > 64 * 1024 * 1024 {
+        return Err(invalid("Native checkpoint exceeds its bound"));
+    }
+    let checkpoint: NativeProfileOpenV1 = serde_json::from_slice(bytes).map_err(invalid)?;
+    if checkpoint.schema != PROFILE_OPEN_SCHEMA {
+        return Err(invalid("Native checkpoint schema changed"));
+    }
+    let seed: ProfileSessionSeed = serde_json::from_str(&checkpoint.seed_json).map_err(invalid)?;
+    if seed.model_id.as_str() != model
+        || serde_json::to_value(&seed.history).map_err(invalid)? != *history
+    {
+        return Err(invalid(
+            "Native checkpoint differs from retained model/history",
+        ));
+    }
+    let initialized = seed.open().map_err(invalid)?;
+    let mut labels = initialized
+        .presentation
+        .effective_profile_structure_labels();
+    labels.fields = serde_json::from_value(json!(fields)).map_err(invalid)?;
+    let projection =
+        ds_grid_exchange::gis::application_projection(&initialized.session, crs, &labels);
+    if projection["revision"] != history["model_revision"] || projection["crs"] != crs {
+        return Err(invalid(
+            "GIS projection differs from retained revision/declared CRS",
+        ));
+    }
+    Ok(projection)
 }
 fn owned<'a>(
     held: &'a mut BTreeMap<String, Held>,
@@ -504,6 +608,14 @@ mod tests {
         }
     }
     #[test]
+    fn gis_labels_are_closed_and_bounded() {
+        assert!(
+            validate_label_fields(&["station".into(), "number".into(), "number".into()]).is_ok()
+        );
+        assert!(validate_label_fields(&["arbitrary".into()]).is_err());
+        assert!(validate_label_fields(&vec!["number".into(); 65]).is_err());
+    }
+    #[test]
     fn package_digest_is_exact_before_decode_or_process() {
         let bytes = b"synthetic package bytes";
         assert_eq!(
@@ -513,6 +625,55 @@ mod tests {
         assert!(decode_package(&STANDARD.encode(bytes), &"0".repeat(64)).is_err());
         assert!(decode_package("!", &"0".repeat(64)).is_err());
         assert!(package_open(bytes).is_err());
+    }
+    #[test]
+    fn gis_checkpoint_requires_exact_model_history_and_declared_crs() {
+        let package = ds_grid_exchange::blank_model::create_blank_model(
+            &ds_grid_exchange::blank_model::BlankModelRequest {
+                model_id: Some("projection-fixture"),
+                coordinate_system: Some("EPSG:32735"),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let (checkpoint, _, crs) = package_open(&package.bytes).unwrap();
+        let seed: ProfileSessionSeed = serde_json::from_str(&checkpoint.seed_json).unwrap();
+        let history = serde_json::to_value(&seed.history).unwrap();
+        let bytes = serde_json::to_vec(&checkpoint).unwrap();
+        let projected = project_checkpoint(
+            &bytes,
+            "projection-fixture",
+            &history,
+            &crs,
+            &["number".into()],
+        )
+        .unwrap();
+        assert_eq!(projected["crs"], "EPSG:32735");
+        assert_eq!(projected["revision"], history["model_revision"]);
+        assert!(project_checkpoint(&bytes, "foreign", &history, &crs, &[]).is_err());
+        assert!(project_checkpoint(&bytes, "projection-fixture", &json!({}), &crs, &[]).is_err());
+        assert!(
+            project_checkpoint(
+                &bytes,
+                "projection-fixture",
+                &history,
+                &crs,
+                &["arbitrary".into()]
+            )
+            .is_err()
+        );
+        let mut crossed: Value = serde_json::from_slice(&bytes).unwrap();
+        crossed["schema"] = json!("wrong");
+        assert!(
+            project_checkpoint(
+                &serde_json::to_vec(&crossed).unwrap(),
+                "projection-fixture",
+                &history,
+                &crs,
+                &[]
+            )
+            .is_err()
+        );
     }
     #[test]
     fn unknown_or_foreign_handles_never_launch_a_process() {

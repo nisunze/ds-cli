@@ -21,7 +21,7 @@ const FILE_SCHEMA: &str = "ds.core.profile-artifact/v1";
 pub static COMMAND: Command = Command {
     id: "core.profile-session", path: &["core", "profile-session"], contract: 1,
     summary: "Open, read or close a retained native Grid Profile session.",
-    purpose: "Keep one exact verified .dsgrid package's live Profile with the authenticated Core owner and its independently installed managed Network process. The closed request admits open, snapshot, state, view, scene, checkpoint or close only; handles are fenced to the current account/lane/deployment/install/project/model/history and expire at Core shutdown or opportunistic idle retirement on the next authorized Profile request. Scene executes only the existing native ProfileRuntimeScene protocol with exact history; cached mode never requests engineering calculation. No browser engine, arbitrary RPC, editing, publication or printing acceptance is granted.",
+    purpose: "Keep one exact verified .dsgrid package's live Profile with the authenticated Core owner and its independently installed managed Network process. The closed request admits open, snapshot, state, view, scene, gis_projection, checkpoint or close only; handles are fenced to the current account/lane/deployment/install/project/model/history and expire at Core shutdown or opportunistic idle retirement on the next authorized Profile request. GIS presentation reopens only the exact managed checkpoint through its existing seed/history owner and forwards bounded ordered StructureLabelField values to the shared native/WASM projection, preserving declared CRS. Scene executes only the existing native ProfileRuntimeScene protocol with exact history; cached mode never requests engineering calculation. No browser engine, arbitrary RPC, editing, publication or printing acceptance is granted.",
     chapter: Chapter::Design, effect: Effect::LocalFileWrite, authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[crate::STATE_DIR_ARG, crate::LANE_ARG, crate::PROJECT_ARG.required(), Arg::value("request", "<json-file>", "Ordinary file at most 48 MiB containing ds.core.profile-session/v1; open binds at most 32 MiB exact package bytes and SHA-256, other actions bind the captured session/model/history.").required(), Arg::value("out", "<absolute-new-json-file>", "Optional fixed native result file, at most 72 MiB; output becomes a small path/size/SHA/scope-bound receipt. Existing files are never replaced.")],
@@ -72,6 +72,7 @@ pub fn command(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         Operation::Close { .. } => "close",
         Operation::View { .. } => "view",
         Operation::Scene { .. } => "scene",
+        Operation::GisProjection { .. } => "gis_projection",
     };
     let project = crate::project(inputs)?;
     let response = crate::request_with_timeout(

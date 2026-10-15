@@ -236,3 +236,12 @@ Output paths are admitted before effects. Late file I/O failure reports the
 completed Profile action and scoped cleanup receipt; only a newly opened session
 is closed when authorized. Existing sessions are preserved instead of silently
 repeating or discarding an unknown completed action.
+
+- Retained Profile GIS reads: the former unsupported `gisProjectionJson` Desktop
+  call now maps to `core.profile-session` contract 1 action `gis_projection`.
+  Profile/map consumers forward ordered label fields and exact retained
+  model/history. Existing checkpoint/seed admission and the shared native/WASM
+  projection retain source CRS and labels. Older Core versions explicitly
+  refuse the action and require a qualified independent Core update; arbitrary
+  operations, foreign scope and stale history remain refused. No new dependency
+  edge, native engine protocol or Desktop engine prerequisite is introduced.

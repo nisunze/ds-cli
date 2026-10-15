@@ -300,3 +300,22 @@ fails, `core_profile_output_failed` reports the completed action and exact
 session scope; a newly opened session is closed through its existing owner when
 still authorized. Existing sessions are preserved and cleanup failures remain
 explicit, so callers must inspect completion before retrying.
+
+#### Retained GIS presentation
+
+`core.profile-session` contract 1 additionally admits `gis_projection` with
+`session_id`, `model_id`, `expected_history` and `label_fields` (at most 64
+ordered existing `StructureLabelField` strings). Core requests the exact
+retained Network checkpoint, verifies model/full history, reopens it through
+the existing seed/asset owner, and calls the single application GIS projection
+owner. Output is the existing FeatureCollection with authored revision,
+original declared model CRS and requested Rust-composed labels; it does not
+calculate, edit, publish or transform coordinates to another CRS.
+
+Previously installed Desktop GIS consumers refused this read as
+`core_profile_operation_unavailable`. They now use this closed action and must
+retain their exact session/account/project/lane/source/history fences. Older
+Core request parsers refuse the new action explicitly; consumers must update
+Core to a qualified artifact containing the action, without requiring a
+matching Desktop or Network version. Unknown label fields, excessive controls,
+foreign handles and stale history refuse; no browser-engine fallback exists.
