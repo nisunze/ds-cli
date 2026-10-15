@@ -446,6 +446,27 @@ is not silently imported. Healthy constraint/migration/schema errors and
 permission, authentication, principal, ownership or quarantine failures continue
 to refuse. See [the exact store boundary](ds-sync-store.md#core-cloud-cache-structural-corruption).
 
+## Deliberate native account cache transition
+
+Ordinary Core startup continues to refuse another principal's connection and
+cache. After an intentional account change, the Core-owned `core cache retire`
+command requires a stopped owner, a protected current native credential and an
+explicit preview digest plus canonical confirmation. The digest binds the
+resolved canonical state path, lane, previous/current account fences and exact
+connection/SQLite/sidecar bytes. It retains one old epoch with immutable receipts;
+it never imports that account's rows or rewrites credentials, installation identity,
+components or authored files. Existing protected native lock and filesystem
+owners govern both Linux and Windows; unsupported platforms remain unavailable.
+
+A pending retirement journal fences startup before connection/database creation.
+Atomic evidence publication and native no-replace moves admit explicit same-plan
+continuation after interruption; failures attempt exact old-epoch restoration.
+This deliberate operation is separate from positive SQLite-corruption recovery.
+Permission, lane, account, stale digest and active-owner failures remain refusals.
+Source support is not installed platform acceptance. The live command and
+[Core reference](../../../ds-cli/docs/reference/core.md#deliberate-account-cache-retirement)
+own operator inputs, effects, refusal remedies and migration behavior.
+
 ## Native retained Profile sessions
 
 The protected Core host admits `profile_session` through the existing execution
