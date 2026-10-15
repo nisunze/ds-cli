@@ -460,3 +460,12 @@ An independently installed older Core without the closed command refuses with
 `core_incompatible`; Desktop must request a qualified Core update. Unsupported
 Profile operations remain explicit refusals. Package opening and native scene
 proof do not alone establish editing, publication or print acceptance.
+
+Core's retained Profile view composes only the existing managed Network
+RuntimeScene and the existing `ds-profile-runtime` pure display projection.
+`native_projection::prepare` retains DisplayState patch/style/options/label
+refusals; `native_projection::project` accepts only a scene whose revision
+exactly matches the retained native history. The helper opens no GridSession,
+performs no engineering calculation, and creates no second live Runtime.
+Desktop renders that owner's complete scene/display result through a closed
+adapter; browser Grid availability cannot qualify a native shell release.

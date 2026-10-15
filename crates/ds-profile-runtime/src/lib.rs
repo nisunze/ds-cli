@@ -7,6 +7,8 @@ use ds_command_kernel::profile_encoding::{
     review_status_colors,
 };
 mod authored_display;
+/// Pure display policy for scenes admitted by Core-owned managed Network.
+pub mod native_projection;
 mod command_view;
 mod decorations;
 mod label_lanes;
