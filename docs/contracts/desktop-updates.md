@@ -61,6 +61,14 @@ not declared. A completed explicit activation refreshes only that module's local
 inventory against held metadata, with no release freshness read. Publication
 version/build/release date belong only to a matching active executable receipt.
 
+Desktop Modules manages native components through these internal controls on
+both Windows and Linux; it does not link engine assets as external downloads.
+Only an active artifact for the current host enables Install/Update. Unsupported
+publications remain unavailable, and opening/subscribing never starts a transfer.
+The public Download page presents the Installation Manager and its equivalent
+shell commands, while component identities remain inspectable in Modules and
+Governance. This presentation does not declare automatic activation.
+
 The opaque UI store keeps the same four-member, generation-fenced lifecycle on
 Linux and Windows. Windows is unavailable until the native host registers the
 existing protected-state SID/DACL owner. Registration creates no identity or
