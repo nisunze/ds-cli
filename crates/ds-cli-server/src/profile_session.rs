@@ -19,7 +19,7 @@ use std::io::Read;
 pub static COMMAND: Command = Command {
     id: "core.profile-session", path: &["core", "profile-session"], contract: 1,
     summary: "Open, read or close a retained native Grid Profile session.",
-    purpose: "Keep one exact verified .dsgrid package's live Profile with the authenticated Core owner and its independently installed managed Network process. The closed request admits open, snapshot, state, scene, checkpoint or close only; handles are fenced to the current account/lane/deployment/install/project/model/history and expire at Core shutdown or bounded idle retirement. Scene executes only the existing native ProfileRuntimeScene protocol with exact history; cached mode never requests engineering calculation. No browser engine, arbitrary RPC, editing, publication or printing acceptance is granted.",
+    purpose: "Keep one exact verified .dsgrid package's live Profile with the authenticated Core owner and its independently installed managed Network process. The closed request admits open, snapshot, state, view, scene, checkpoint or close only; handles are fenced to the current account/lane/deployment/install/project/model/history and expire at Core shutdown or opportunistic idle retirement on the next authorized Profile request. Scene executes only the existing native ProfileRuntimeScene protocol with exact history; cached mode never requests engineering calculation. No browser engine, arbitrary RPC, editing, publication or printing acceptance is granted.",
     chapter: Chapter::Design, effect: Effect::LocalFileWrite, authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[crate::STATE_DIR_ARG, crate::LANE_ARG, crate::PROJECT_ARG.required(), Arg::value("request", "<json-file>", "Ordinary file at most 48 MiB containing ds.core.profile-session/v1; open binds at most 32 MiB exact package bytes and SHA-256, other actions bind the captured session/model/history.").required()],
@@ -43,20 +43,16 @@ pub static COMMAND: Command = Command {
 pub fn command(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     crate::require_native_host()?;
     let path = inputs.require("request")?;
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|e| Failure::invalid("core_profile_request_invalid", e.to_string()))?;
-    if !metadata.is_file()
-        || metadata.file_type().is_symlink()
-        || metadata.len() > MAX_REQUEST as u64
-    {
+    let mut file = read_request_file(std::path::Path::new(path))?;
+    let metadata = file.metadata().map_err(crate::failure)?;
+    if !metadata.is_file() || metadata.len() > MAX_REQUEST as u64 {
         return Err(Failure::invalid(
             "core_profile_request_invalid",
-            "Profile request must be a bounded ordinary file",
+            "Profile request must be a bounded ordinary opened file",
         ));
     }
     let mut bytes = Vec::new();
-    std::fs::File::open(path)
-        .map_err(crate::failure)?
+    file.by_ref()
         .take(MAX_REQUEST as u64 + 1)
         .read_to_end(&mut bytes)
         .map_err(crate::failure)?;
@@ -81,6 +77,27 @@ pub fn command(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         ));
     }
     Ok(value)
+}
+
+fn read_request_file(path: &std::path::Path) -> Result<std::fs::File, Failure> {
+    #[cfg(windows)]
+    {
+        return ds_cli_auth::windows_host::read_file(path)
+            .map_err(|e| Failure::invalid("core_profile_request_invalid", e));
+    }
+    #[cfg(not(windows))]
+    {
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NOFOLLOW);
+        }
+        options
+            .open(path)
+            .map_err(|e| Failure::invalid("core_profile_request_invalid", e.to_string()))
+    }
 }
 
 pub(crate) async fn invoke(

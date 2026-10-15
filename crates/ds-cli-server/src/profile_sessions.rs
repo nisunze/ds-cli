@@ -62,6 +62,15 @@ pub enum Operation {
         model_id: String,
         expected_history: Value,
     },
+    View {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        options: Value,
+        patch: Value,
+        style_document: Value,
+        cached: bool,
+    },
     Scene {
         session_id: String,
         model_id: String,
@@ -169,6 +178,9 @@ struct Held {
     package_sha256: String,
     source_revision: u64,
     coordinate_system: String,
+    presentation: Value,
+    retained_asset_count: usize,
+    display_state: ds_command_kernel::profile_display::DisplayState,
     touched: Instant,
     session: ProfileSession,
 }
@@ -257,6 +269,15 @@ impl Sessions {
                     package_sha256,
                     source_revision,
                     coordinate_system,
+                    presentation: serde_json::from_str::<Value>(&open.seed_json)
+                        .map_err(|_| invalid("Admitted seed changed"))?["presentation"]
+                        .clone(),
+                    retained_asset_count: serde_json::from_slice::<Value>(&result.bytes)
+                        .map_err(|_| invalid("Native snapshot changed"))?["retained_asset_count"]
+                        .as_u64()
+                        .ok_or_else(|| invalid("Native snapshot has no asset count"))?
+                        as usize,
+                    display_state: Default::default(),
                     touched: Instant::now(),
                     session,
                 };
@@ -268,6 +289,77 @@ impl Sessions {
                     ));
                 }
                 Ok(receipt)
+            }
+            Operation::View {
+                session_id,
+                model_id,
+                expected_history,
+                options,
+                patch,
+                style_document,
+                cached,
+            } => {
+                let value = owned(&mut held, &scope, &session_id, &model_id, &expected_history)?;
+                let options = serde_json::from_value(options)
+                    .map_err(|_| invalid("Use existing native ProfileAtlasOptions"))?;
+                let patch = serde_json::from_value(patch)
+                    .map_err(|_| invalid("Use existing native DisplayPatch"))?;
+                let presentation = serde_json::from_value(value.presentation.clone())
+                    .map_err(|_| invalid("Admitted package presentation changed"))?;
+                let prepared = ds_profile_runtime::native_projection::prepare(
+                    &value.display_state,
+                    options,
+                    &patch,
+                    style_document,
+                    &presentation,
+                )
+                .map_err(invalid)?;
+                let operation = NativeProfileOperationV1::RuntimeScene {
+                    options: serde_json::to_value(&prepared.options).map_err(invalid)?,
+                    label_policy: serde_json::to_value(&prepared.labels).map_err(invalid)?,
+                    grid_ink: serde_json::from_value(prepared.grid_ink.clone()).map_err(invalid)?,
+                    cached,
+                };
+                let result = value
+                    .session
+                    .request_at(operation, Some(expected_history.clone()), DEADLINE, &|| {
+                        false
+                    })
+                    .map_err(native)?;
+                authorized()?;
+                let scene: ds_network_contracts::profile::NativeProfileRuntimeSceneV1 =
+                    serde_json::from_slice(&result.bytes).map_err(invalid)?;
+                let snapshot = value
+                    .session
+                    .request_at(
+                        NativeProfileOperationV1::State,
+                        Some(expected_history.clone()),
+                        DEADLINE,
+                        &|| false,
+                    )
+                    .map_err(native)?;
+                let state: Value = serde_json::from_slice(&snapshot.bytes).map_err(invalid)?;
+                let has_structures = state["table_counts"]["structures"]
+                    .as_u64()
+                    .is_some_and(|n| n > 0);
+                let (display, projection) = ds_profile_runtime::native_projection::project(
+                    prepared,
+                    &model_id,
+                    &expected_history,
+                    value.retained_asset_count,
+                    has_structures,
+                    &scene.scene_json,
+                )
+                .map_err(invalid)?;
+                authorized()?;
+                value.display_state = display;
+                value.touched = Instant::now();
+                receipt(
+                    &session_id,
+                    value,
+                    &serde_json::to_vec(&projection).map_err(invalid)?,
+                    false,
+                )
             }
             operation => {
                 let (id, model, expected, native_op) = match operation {
@@ -330,27 +422,9 @@ impl Sessions {
                             cached,
                         },
                     ),
-                    Operation::Open { .. } => unreachable!(),
+                    Operation::Open { .. } | Operation::View { .. } => unreachable!(),
                 };
-                let session = held
-                    .get_mut(&id)
-                    .filter(|v| v.scope == scope && v.session.model_id() == model)
-                    .ok_or_else(|| {
-                        Failure::unavailable(
-                            "core_profile_session_unavailable",
-                            "No retained Profile belongs to this exact account/lane/project/model",
-                        )
-                        .remedy("Explicitly reopen the exact package through the same Core owner")
-                    })?;
-                if session.session.history() != &expected {
-                    return Err(Failure::conflict(
-                        "core_profile_history_conflict",
-                        "Profile history changed before the request",
-                    )
-                    .remedy(
-                        "Read the retained session head and submit the intended operation again",
-                    ));
-                }
+                let session = owned(&mut held, &scope, &id, &model, &expected)?;
                 let result = session
                     .session
                     .request_at(native_op, Some(expected), DEADLINE, &|| false)
@@ -367,6 +441,32 @@ impl Sessions {
         }
     }
 }
+fn owned<'a>(
+    held: &'a mut BTreeMap<String, Held>,
+    scope: &Scope,
+    id: &str,
+    model: &str,
+    expected: &Value,
+) -> Result<&'a mut Held, Failure> {
+    let value = held
+        .get_mut(id)
+        .filter(|v| &v.scope == scope && v.session.model_id() == model)
+        .ok_or_else(|| {
+            Failure::unavailable(
+                "core_profile_session_unavailable",
+                "No retained Profile belongs to this exact account/lane/project/model",
+            )
+            .remedy("Explicitly reopen the exact package through the same Core owner")
+        })?;
+    if value.session.history() != expected {
+        return Err(Failure::conflict(
+            "core_profile_history_conflict",
+            "Profile history changed before the request",
+        )
+        .remedy("Read the retained session head and submit the intended operation again"));
+    }
+    Ok(value)
+}
 fn receipt(id: &str, held: &Held, bytes: &[u8], closed: bool) -> Result<Value, Failure> {
     if bytes.len() > 64 * 1024 * 1024 {
         return Err(invalid(
@@ -374,12 +474,16 @@ fn receipt(id: &str, held: &Held, bytes: &[u8], closed: bool) -> Result<Value, F
         ));
     }
     // Exact native JSON strings inside snapshot/checkpoint stay opaque text.
-    let payload: Value = if bytes.is_empty() {
+    let mut payload: Value = if bytes.is_empty() {
         Value::Null
     } else {
         serde_json::from_slice(bytes)
             .map_err(|_| invalid("Native Profile artifact is not its declared JSON"))?
     };
+    if payload["table_counts"].is_object() && payload["revision"].is_object() {
+        payload["model_revision"] = json!(held.source_revision);
+        payload["coordinate_system"] = json!(held.coordinate_system);
+    }
     Ok(
         json!({"schema":RECEIPT_SCHEMA,"session_id":id,"project":held.scope.project,
         "lane":held.scope.lane,"package_sha256":held.package_sha256,"source_revision":held.source_revision,"coordinate_system":held.coordinate_system,

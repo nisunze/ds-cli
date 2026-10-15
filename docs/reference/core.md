@@ -231,11 +231,15 @@ artifact for this behavior; updating Desktop alone does not update Core.
 `core.profile-session` contract 1 forwards one bounded closed request through
 the existing protected Core transport. Open binds exact `.dsgrid` bytes/SHA-256
 and verifies the owning package manifest, member digests and library pins. Core
-captures a managed same-lane Network process; subsequent state, snapshot, scene,
+captures a managed same-lane Network process; subsequent state, snapshot, view, scene,
 checkpoint and close requests bind its opaque handle, model and full authored
 history to the native principal/lane/deployment/install/project context. Scene
 uses the existing native RuntimeScene DTO; unsupported actions refuse, and
-cached observation never requests engineering calculation. No arbitrary RPC,
+cached observation never requests engineering calculation. `view` prepares the existing
+Profile display policy around the admitted native scene and returns its scene JSON,
+display state and command view; it never reports an analysis run. Request files
+are read through the opened no-link native file owner, with Windows SID/DACL
+validation retained. No arbitrary RPC,
 argv, paths, alternate credentials or browser engine is exposed.
 
 Previous Desktop package opening required the unavailable browser `openDsgrid`

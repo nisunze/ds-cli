@@ -17,22 +17,14 @@ def dep(g,name):
    if not lib.exists(): lib=deps/f'lib{name}.rlib'
    if lib.exists(): return lib,json.loads(p.with_suffix('.json').read_text())
  raise RuntimeError(name)
-exchange=max(deps.glob('libds_grid_exchange-*.rlib'),key=lambda p:p.stat().st_mtime_ns); eg=graph(exchange)
-jsonlib,jg=dep(eg,'serde_json'); serdelib,_=dep(eg,'serde')
-def matching(name):
- for lib in sorted(deps.glob('lib'+name+'-*.rlib'),key=lambda p:p.stat().st_mtime_ns,reverse=True):
-  g=graph(lib)
-  try:
-   j,_=dep(g,'serde_json')
-   if j==jsonlib: return lib,g
-  except (StopIteration,RuntimeError): continue
- raise RuntimeError('matching '+name)
-network,ng=matching('ds_network_client'); contract,cg=matching('ds_cli_contract')
-roots={'ds_grid_exchange':exchange,'ds_network_client':network,'ds_cli_contract':contract,'serde':serdelib,'serde_json':jsonlib}
-for name in ['ds_grid_engine','sha2','base64']: roots[name]=dep(eg,name)[0]
-roots['ds_network_contracts']=dep(ng,'ds_network_contracts')[0]
-server,sg=matching('ds_cli_server')
-roots['getrandom']=dep(sg,'getrandom')[0]
+# Follow one compiled server closure, including its exact Kernel and display
+# runtime. Choosing newest independent libraries can cross an unsuffixed Kernel
+# ABI after an independent captured build; no sibling HEAD substitutes qualify.
+servers=sorted(deps.glob('libds_cli_server-*.rlib'),key=lambda p:p.stat().st_mtime_ns,reverse=True)
+server=next((p for p in servers if any(x[1]=='ds_profile_runtime' for x in graph(p)['deps'])),None)
+if server is None: raise RuntimeError('Compile the qualified Profile View server source before this native fixture; retained old server closure has no display owner')
+sg=graph(server)
+roots={name:dep(sg,name)[0] for name in ['ds_grid_exchange','ds_network_client','ds_cli_contract','serde','serde_json','ds_grid_engine','sha2','base64','ds_network_contracts','getrandom','ds_profile_runtime','ds_command_kernel']}
 src=cli/'crates/ds-cli-server/src/profile_sessions.rs'
 command=[str(pathlib.Path.home()/'.cargo/bin/rustc'),'--edition=2024','--test',str(src),'-Ldependency='+str(deps),'-Ccodegen-units=1','-o',str(out/'profile-owner-tests')]
 for name,lib in roots.items(): command+=['--extern',f'{name}={lib}']

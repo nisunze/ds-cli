@@ -1303,6 +1303,7 @@ dependencies = [
  "ds-layer-store",
  "ds-network-client",
  "ds-network-contracts",
+ "ds-profile-runtime",
  "ds-report-artifacts",
  "ds-solar-contracts",
  "ds-solar-native",
@@ -1840,6 +1841,19 @@ name = "ds-profile-grid"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "ds-profile-runtime"
+version = "0.1.0"
+dependencies = [
+ "ds-command-kernel",
+ "ds-grid-engine",
+ "ds-grid-exchange",
+ "ds-grid-model",
+ "ds-grid-physics",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

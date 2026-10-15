@@ -190,3 +190,15 @@ paired `dsgrid.profile.open` semantics remain unchanged. Unsupported actions,
 crossed identity/history and altered package digests refuse; no generic RPC,
 embedded Desktop Grid engine, silent package migration or full editing/printing
 acceptance is introduced. Shell remains 0.2.0.
+
+### Native Profile display projection
+
+The closed `core.profile-session` request now admits `view`, preparing the
+existing Profile display controls around the managed Network scene. Desktop
+Profile opening uses this native view instead of the retired embedded Grid
+transport; the response preserves full authored history and never claims an
+analysis run. Old Core remains explicitly incompatible until independently
+qualified and updated; editing, analysis and other unsupported actions refuse.
+Request reads use the opened no-link native file owner, retaining Windows
+SID/DACL checks. Idle retirement is opportunistic on the next authorized
+Profile request, with explicit close and Core shutdown reaping processes.
