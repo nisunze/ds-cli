@@ -124,9 +124,10 @@ project?, project_independent}`.
 
 The rules, in order:
 
-1. **Compatible** means same lane, same uid, same credential audience. A
-   development-lane instance and an instance signed in as another account are
-   not candidates for this caller's work — and are not disclosed to it either.
+1. **Compatible** means same lane, same uid, same credential audience for
+   automatic selection and provisioned instances. A development-lane instance
+   is never automatically eligible; another account is never eligible. The
+   explicit Local development scope below is the sole host-lane exception.
 2. **An explicit target wins and never falls through.** Not among the live
    candidates → `desktop_target_not_live`, *even when exactly one other
    instance would have been the automatic answer*. Live but incompatible →
@@ -143,6 +144,27 @@ The rules, in order:
    as the session's project or in one of their windows — are eligible. None →
    `desktop_project_not_open`, naming every compatible instance that *does* hold
    it, with the explicit switch as the remedy. Several → `desktop_ambiguous`.
+
+### Explicit Local development pairing
+
+Old routing refused an explicitly named `local` development window whenever
+its real native credential was Canary or Stable, even with the same UID and
+credential audience. New native clients use `project_context::route_paired`
+and `PairedHostScope::ExplicitLocalDevelopment` only after the caller names
+`--target desktop:<exact observed local instance id>`. The native credential
+lane is captured separately from protected native authentication; it must be
+Stable or Canary and must match that captured principal. The observed window
+keeps its actual `local` host lane. UID, credential audience and applicable
+project rules remain exact; the original window/session revision and context
+generation fence travels unchanged to IPC. Only the explicit switch operation
+may move the selected window's project.
+
+Automatic Local selection, a different target, a foreign UID/audience, and
+provisioned Stable/Canary crossings still refuse. Existing `route` remains
+strict. This additive native API changes the CLI pairing consumer only; older
+CLI builds keep refusing this Local/native combination and require a qualified
+CLI update. The Desktop wire contract and installed UI units do not change,
+and no credential, project cache or user data migration is needed.
 
 `Route { instance_id, window }` names the selected candidate by its own
 identity, so the answer is the same under every permutation and the host looks
@@ -301,7 +323,9 @@ result.
 6. **A candidate's lane is open text; the requirement's is closed.** A
    development build publishes `local` and must still enumerate honestly, so
    `Candidate.lane` admits any bounded value and compatibility filters it, while
-   `Requirement.lane` is `stable | canary` and anything else is a host bug. This
+   `Requirement.lane` is `stable | canary` and anything else is a host bug.
+   Explicit Local pairing uses the separately typed scope above; it does not
+   widen automatic candidate compatibility or relabel either lane. This
    replaces `desktop_operation_unsupported` for the selection path.
 7. **`bounded()` is repeated here rather than shared.** The predicate is four
    lines and `execution_context`'s copy is private to that module; the *bounds*

@@ -72,6 +72,17 @@ pub enum Switch {
     Explicit,
 }
 
+/// How a verified paired window was named. Its host lane remains unchanged;
+/// a Local development window is not a provisioned credential lane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PairedHostScope<'a> {
+    Provisioned,
+    ExplicitLocalDevelopment {
+        target_instance: &'a str,
+        native_credential_lane: &'a str,
+    },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Route<'a> {
     CurrentDesktop,
@@ -115,6 +126,48 @@ pub fn route<'a>(
     if !cli.same_identity(desktop) {
         return Err(Refusal::IdentityMismatch);
     }
+    project_route(requirement, switch, cli, desktop)
+}
+
+/// Explicit Local development pairing with a separately captured native
+/// credential lane. Only an exact named, observed Local instance may use this
+/// scope; automatic routing and provisioned lanes retain `route` unchanged.
+pub fn route_paired<'a>(
+    requirement: Requirement,
+    switch: Switch,
+    cli: Option<Context<'a>>,
+    desktop: Context<'a>,
+    scope: PairedHostScope<'a>,
+) -> Result<Route<'a>, Refusal<'a>> {
+    let PairedHostScope::ExplicitLocalDevelopment {
+        target_instance,
+        native_credential_lane,
+    } = scope
+    else {
+        return route(requirement, switch, cli, desktop);
+    };
+    let Some(cli) = cli else {
+        return Err(Refusal::IdentityMismatch);
+    };
+    if desktop.lane != "local"
+        || desktop.instance != Some(target_instance)
+        || target_instance.is_empty()
+        || !matches!(native_credential_lane, "stable" | "canary")
+        || cli.lane != native_credential_lane
+        || cli.uid != desktop.uid
+        || cli.audience != desktop.audience
+    {
+        return Err(Refusal::IdentityMismatch);
+    }
+    project_route(requirement, switch, cli, desktop)
+}
+
+fn project_route<'a>(
+    requirement: Requirement,
+    switch: Switch,
+    cli: Context<'a>,
+    desktop: Context<'a>,
+) -> Result<Route<'a>, Refusal<'a>> {
     if requirement == Requirement::MapProject {
         if let Some(project) = cli.project {
             if desktop.project != Some(project) {
@@ -236,6 +289,133 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn explicit_local_pairing_keeps_host_and_credential_scopes_distinct() {
+        let caller = Context {
+            lane: "canary",
+            ..cli(Some("project"))
+        };
+        let local = Context {
+            lane: "local",
+            ..context(Some("project"))
+        };
+        let scope = PairedHostScope::ExplicitLocalDevelopment {
+            target_instance: INSTANCE,
+            native_credential_lane: "canary",
+        };
+        assert_eq!(
+            route(Requirement::MapProject, Switch::Never, Some(caller), local),
+            Err(Refusal::IdentityMismatch)
+        );
+        assert_eq!(
+            route_paired(
+                Requirement::MapProject,
+                Switch::Never,
+                Some(caller),
+                local,
+                scope
+            ),
+            Ok(Route::CurrentDesktop)
+        );
+        assert_eq!(local.lane, "local");
+        for (changed, scope) in [
+            (
+                Context {
+                    uid: "foreign",
+                    ..local
+                },
+                scope,
+            ),
+            (
+                Context {
+                    audience: "foreign",
+                    ..local
+                },
+                scope,
+            ),
+            (
+                Context {
+                    lane: "stable",
+                    ..local
+                },
+                scope,
+            ),
+            (
+                local,
+                PairedHostScope::ExplicitLocalDevelopment {
+                    target_instance: "another-instance",
+                    native_credential_lane: "canary",
+                },
+            ),
+            (
+                local,
+                PairedHostScope::ExplicitLocalDevelopment {
+                    target_instance: INSTANCE,
+                    native_credential_lane: "stable",
+                },
+            ),
+            (
+                local,
+                PairedHostScope::ExplicitLocalDevelopment {
+                    target_instance: INSTANCE,
+                    native_credential_lane: "local",
+                },
+            ),
+        ] {
+            assert_eq!(
+                route_paired(
+                    Requirement::MapProject,
+                    Switch::Explicit,
+                    Some(caller),
+                    changed,
+                    scope
+                ),
+                Err(Refusal::IdentityMismatch)
+            );
+        }
+        assert_eq!(
+            route_paired(Requirement::MapProject, Switch::Never, None, local, scope),
+            Err(Refusal::IdentityMismatch)
+        );
+        let elsewhere = Context {
+            project: Some("other"),
+            ..local
+        };
+        assert_eq!(
+            route_paired(
+                Requirement::MapProject,
+                Switch::Never,
+                Some(caller),
+                elsewhere,
+                scope
+            ),
+            Err(Refusal::ProjectNotOpen { project: "project" })
+        );
+        assert_eq!(
+            route_paired(
+                Requirement::MapProject,
+                Switch::Explicit,
+                Some(caller),
+                elsewhere,
+                scope
+            ),
+            Ok(Route::SwitchDesktop { project: "project" })
+        );
+        assert_eq!(
+            route_paired(
+                Requirement::MapProject,
+                Switch::Never,
+                Some(caller),
+                Context {
+                    lane: "stable",
+                    ..local
+                },
+                PairedHostScope::Provisioned
+            ),
+            Err(Refusal::IdentityMismatch)
+        );
     }
 
     #[test]
