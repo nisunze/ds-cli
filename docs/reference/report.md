@@ -588,6 +588,10 @@ Published setup reads use Brain; a held layout/render file prints offline.
 `report.layout.render --request render.json --preview --project <exact-id>
 --lane canary` previews one inline captured page through the same native
 `ds.print-preview-artifact/v1` file owner as MV, LV and saved A4 previews.
+Use explicit `--target core` when an ambient `DS_TARGET` is set; it selects the
+native account and takes precedence over that session default. Historical
+`<server|desktop|desktop:instance>` descriptor text was stale: the owning parser
+already refuses `--target server` as `unknown_target`. No alias is restored.
 The native account admits the project/lane/audience namespace before reading
 the local capture. Source JSON grants no authority; a captured project CRS
 must match that context. The fixed renderer retains the exact authored page,

@@ -502,7 +502,7 @@ pub static RENDER: Command = Command {
     path: &["report", "layout", "render"],
     contract: 1,
     summary: "Print captured maps with collision and clipping diagnostics.",
-    purpose: "Render ds.print-layout-export/v1 as PDF/PNG/SVG/JPEG. --preview returns a common retained SVG or PDF file. Default server uses the native account; explicit --target desktop uses the paired window's published account/project/lane. No provider, freshness, model or publication reads. Delivery out_dir must be fresh. Capture saved static pages with report.layout.edit capture_project_layout_preview; task schema: report tasks --task render_print_layout.",
+    purpose: "Render ds.print-layout-export/v1 as PDF/PNG/SVG/JPEG. --preview returns a common retained SVG or PDF file. Default Core uses the native account; explicit --target desktop uses the paired window's published account/project/lane. No provider, freshness, model or publication reads. Delivery out_dir must be fresh. Capture saved static pages with report.layout.edit capture_project_layout_preview; task schema: report tasks --task render_print_layout.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -532,8 +532,8 @@ pub static RENDER: Command = Command {
         ),
         Arg::value(
             "target",
-            "<server|desktop|desktop:instance>",
-            "Preview host; default server. DS_TARGET supplies a session default.",
+            "<core|desktop|desktop:instance>",
+            "Preview host; default Core. Explicit core uses the native account and overrides DS_TARGET; retired server is refused.",
         ),
         ds_cli_desktop::ops::DESCRIPTOR_ARG,
         LANE.summary("Headless credential lane; paired preview uses its published window lane."),
@@ -1284,6 +1284,23 @@ pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn render_target_descriptor_matches_canonical_owner_parser() {
+        let target = RENDER.args.iter().find(|arg| arg.name == "target").unwrap();
+        assert_eq!(target.value, "<core|desktop|desktop:instance>");
+        assert!(matches!(
+            ds_cli_desktop::ops::host(Some("core")).unwrap(),
+            ds_cli_desktop::ops::Host::Server
+        ));
+        assert_eq!(
+            ds_cli_desktop::ops::host(Some("server"))
+                .unwrap_err()
+                .code(),
+            "unknown_target"
+        );
+        assert!(target.summary.contains("overrides DS_TARGET"));
+    }
 
     fn listed() -> Value {
         json!({"setups": [

@@ -1,5 +1,18 @@
 # Release notes
 
+## Unreleased: captured-layout Core target discovery
+
+Old discovery text for `report.layout.render` advertised `--target server`,
+which the existing parser already refused as `unknown_target`. New discovery
+names `--target core`, matching the current native-account owner; paired
+`desktop` and exact `desktop:instance` targets are unchanged. CLI/MCP consumers
+must use explicit `core` to override an ambient `DS_TARGET` when requesting a
+native-account preview. Command contract 1 and execution behavior are unchanged;
+this corrects discovery and does not restore Server/headless aliases. Existing
+installed Core already accepts `core`, so no Core update qualifies the Desktop
+adapter merely for this correction.
+
+
 ## Unreleased: independent Desktop manager updates
 
 Old behavior: Windows Desktop Update inherited Core Update and could replace
