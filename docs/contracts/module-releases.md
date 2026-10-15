@@ -203,8 +203,21 @@ implied. A host must serialize and atomically persist the returned transition,
 reverify retained bytes, and admit its current authority before use. The wire
 cannot substitute caller assertions for a protected host lifecycle observation.
 
-The browser host, existing update/notification integration, durable cache,
-worker capture, and principal/project/revision result fences remain required
-before deployed processing can be enabled. These decision and CLI tests do not
-prove a governed browser installation or qualify an unadmitted engine. Hosting
-must retain its explicit unavailable processing state until those consumers pass.
+`capture` admits only an installed active selection against the compiled lane
+and gateway, returning its exact receipt and selection generation. Missing or
+removed components refuse without acquisition or fallback. The host verifies all
+four retained members under the selection lock and transfers owned JS/WASM bytes
+to its existing supervised worker. `loaded` re-admits the complete unit, actual
+executable byte hashes and loaded identity inside that worker. A worker keeps one
+unit; subsequent updates/removal affect new captures, never already captured
+jobs. Cancellation terminates the assigned worker; idle incompatible instances
+are reclaimed, and same-unit workers remain reusable. Capture is not project
+authorization, an execution-context fence or permission to apply a late result.
+
+The browser host, existing update/notification integration and durable cache
+have matching browser installation acceptance. Worker capture is a separate
+execution seam; the principal/project/edit-session/revision fence must also reach
+the actual cache and apply consumers before deployed processing can be enabled.
+Source decision, pool and loader checks alone do not prove governed processing
+or qualify an unadmitted engine. Hosting retains its explicit unavailable
+processing state until those consumers pass.

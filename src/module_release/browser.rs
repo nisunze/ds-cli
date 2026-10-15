@@ -84,6 +84,65 @@ pub struct BrowserSelection {
     pub selection: BrowserSelectionState,
 }
 
+/// A job keeps this exact unit even if the host's selection changes later.
+/// Capturing a component does not grant principal/project or write authority.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BrowserCapture {
+    pub generation: u64,
+    pub receipt: InstalledBrowserModule,
+}
+
+pub fn capture(
+    current: Option<&BrowserSelection>,
+    lane: &str,
+    gateway_origin: &str,
+) -> Result<BrowserCapture, ModuleReleaseError> {
+    channel(lane)?;
+    let selected = current.ok_or_else(|| {
+        refuse(
+            "module_not_installed",
+            "Install and activate Network before processing",
+        )
+    })?;
+    validate_selection(selected, lane)?;
+    let BrowserSelectionState::Installed { active, .. } = &selected.selection else {
+        return fail(
+            "module_removed",
+            "Network was explicitly removed; restore it before processing",
+        );
+    };
+    let receipt = admit_retained(active, lane, gateway_origin)?;
+    Ok(BrowserCapture {
+        generation: selected.generation,
+        receipt,
+    })
+}
+
+/// Re-admit the bytes and identity loaded inside a captured worker. Selection
+/// changes cannot retarget a captured job, and this does not grant write authority.
+pub fn admit_loaded(
+    captured: &BrowserCapture,
+    verified: &[VerifiedFile],
+    identity: &Value,
+) -> Result<(), ModuleReleaseError> {
+    if captured.generation == 0 || captured.generation > MAX_GENERATION {
+        return fail(
+            "module_receipt_invalid",
+            "Invalid captured browser generation",
+        );
+    }
+    validate_installation(&captured.receipt, &captured.receipt.unit.release.channel)?;
+    verify_files(&captured.receipt.unit, verified)?;
+    if *identity != captured.receipt.engine_identity {
+        return fail(
+            "module_engine_incompatible",
+            "Loaded browser identity differs from the captured installation",
+        );
+    }
+    Ok(())
+}
+
 fn refuse(code: &'static str, message: &str) -> ModuleReleaseError {
     ModuleReleaseError {
         code,
@@ -632,6 +691,16 @@ pub fn rollback(
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
+    Loaded {
+        captured: Box<BrowserCapture>,
+        verified: Vec<VerifiedFile>,
+        identity: Value,
+    },
+    Capture {
+        current: Option<Box<BrowserSelection>>,
+        channel: String,
+        gateway_origin: String,
+    },
     Installation {
         receipt: Box<InstalledBrowserModule>,
         channel: String,
@@ -694,6 +763,20 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     })?;
     let result: Result<Value, ModuleReleaseError> = (|| {
         Ok(match request {
+            Request::Loaded {
+                captured,
+                verified,
+                identity,
+            } => {
+                admit_loaded(&captured, &verified, &identity)?;
+                Value::Null
+            }
+            Request::Capture {
+                current,
+                channel,
+                gateway_origin,
+            } => serde_json::to_value(capture(current.as_deref(), &channel, &gateway_origin)?)
+                .expect("typed browser capture"),
             Request::Installation {
                 receipt,
                 channel,
@@ -822,6 +905,72 @@ mod tests {
             true,
         )
         .unwrap()
+    }
+    #[test]
+    fn captures_only_an_active_admitted_unit_and_keeps_it_across_removal() {
+        let receipt = ready();
+        let guard = ActivationGuard {
+            unsaved_edits: false,
+            uncaptured_sessions: 0,
+            host_restart_required: false,
+        };
+        assert_eq!(
+            capture(None, "canary", &receipt.authority.gateway_origin)
+                .unwrap_err()
+                .code,
+            "module_not_installed"
+        );
+        let selected = activate(None, receipt.clone(), 0, true, guard).unwrap();
+        let captured =
+            capture(Some(&selected), "canary", &receipt.authority.gateway_origin).unwrap();
+        assert_eq!(captured.generation, 1);
+        assert_eq!(captured.receipt, receipt);
+        assert!(capture(Some(&selected), "stable", &receipt.authority.gateway_origin).is_err());
+        assert!(capture(Some(&selected), "canary", "https://other.example").is_err());
+        let removed = remove(&selected, 1, true).unwrap();
+        assert_eq!(
+            capture(Some(&removed), "canary", &receipt.authority.gateway_origin)
+                .unwrap_err()
+                .code,
+            "module_removed"
+        );
+        let verified = receipt
+            .unit
+            .release
+            .assets
+            .iter()
+            .map(|asset| VerifiedFile {
+                filename: filename(asset).unwrap(),
+                sha256: asset.sha256.clone(),
+                size_bytes: asset.size_bytes,
+            })
+            .collect::<Vec<_>>();
+        // Already captured jobs keep their unit. New jobs see the removed state.
+        admit_loaded(&captured, &verified, &receipt.engine_identity).unwrap();
+        let mut corrupt = verified.clone();
+        corrupt[0].sha256 = "0".repeat(64);
+        assert_eq!(
+            admit_loaded(&captured, &corrupt, &receipt.engine_identity)
+                .unwrap_err()
+                .code,
+            "module_artifact_invalid"
+        );
+        let mut wrong_identity = receipt.engine_identity.clone();
+        wrong_identity["sourceSha"] = json!("0".repeat(40));
+        assert_eq!(
+            admit_loaded(&captured, &verified, &wrong_identity)
+                .unwrap_err()
+                .code,
+            "module_engine_incompatible"
+        );
+        let mut bad_generation = captured;
+        bad_generation.generation = 0;
+        assert_eq!(
+            admit_loaded(&bad_generation, &verified, &receipt.engine_identity)
+                .unwrap_err()
+                .code,
+            "module_receipt_invalid"
+        );
     }
     #[test]
     fn published_complete_unit_has_stable_identity_without_reinterpreting_native_catalogs() {
