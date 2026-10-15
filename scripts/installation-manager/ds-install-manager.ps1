@@ -210,7 +210,7 @@ function ComponentAction([string]$Name,[string]$Verb) {
   $sha=$admitted.unit_sha256
   # Admit the current public identity even when installation is already done.
   # Preserve the active generation and captured workers for an exact unit.
-  if($selection -and $selection.state -eq 'installed' -and $selection.active.unit.unit_sha256 -ceq $sha){return $selection}
+  if($selection -and $selection.selection -and $selection.selection.state -eq 'installed' -and $selection.selection.active.unit.unit_sha256 -ceq $sha){return $selection}
  }else{
   $assets=@($release.assets | Where-Object {$_.platform -eq 'windows' -and $_.arch -eq 'x86_64'})
   if($assets.Count -ne 1){Fail 'component_platform_unavailable' 'No unique Windows executable is published'}

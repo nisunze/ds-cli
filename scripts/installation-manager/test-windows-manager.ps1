@@ -171,7 +171,7 @@ public static class FixtureUninstaller {
  function Release([string]$Name,[string]$Runtime='native'){return [pscustomobject]@{component=$Name;runtime=$Runtime}}
  function InvokeCore([string[]]$Arguments){
   $verb=$Arguments[1];$script:EnsureCalls+=@(($Arguments -join ' '))
-  if($verb -eq 'component' -and $Arguments[2] -eq 'selection'){return [pscustomobject]@{generation=7;state='installed';active=[pscustomobject]@{unit=[pscustomobject]@{unit_sha256=$script:EnsureSha}}}}
+  if($verb -eq 'component' -and $Arguments[2] -eq 'selection'){return [pscustomobject]@{schema='ds.ui-module-selection/v1';generation=7;selection=[pscustomobject]@{state='installed';active=[pscustomobject]@{unit=[pscustomobject]@{unit_sha256=$script:EnsureSha}}}}}
   if($verb -eq 'module-release'){return [pscustomobject]@{unit_sha256=$script:AdmittedSha}}
   if($verb -eq 'module-stage'){return [pscustomobject]@{receiptId='fixture-receipt'}}
   if($verb -eq 'component' -and $Arguments[2] -eq 'activate'){return [pscustomobject]@{generation=8}}
