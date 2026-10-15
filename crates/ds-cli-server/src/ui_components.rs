@@ -37,6 +37,8 @@ fn selected(inputs: &Inputs) -> Result<(UiComponent, &str), Failure> {
             "module_release_component_invalid: this operation selects UI WASM only".into(),
         ));
     }
+    #[cfg(windows)]
+    ds_cli_auth::windows_host::register_ui_store_owner().map_err(owner_failure)?;
     ds_update_runtime::modules::ui::ui_platform().map_err(owner_failure)?;
     let component = UiComponent::parse(inputs.require("component")?)
         .map_err(|e| owner_failure(e.to_string()))?;
@@ -146,12 +148,20 @@ pub fn rollback(inputs: &Inputs) -> Result<Value, Failure> {
 }
 
 fn ui_availability() -> ds_cli_contract::spec::Availability {
+    #[cfg(windows)]
+    if let Err(reason) = ds_cli_auth::windows_host::register_ui_store_owner() {
+        return ds_cli_contract::spec::Availability::unavailable(
+            "ui_component_platform_unavailable",
+            reason,
+            "use the qualified Windows SID/DACL owner",
+        );
+    }
     match ds_update_runtime::modules::ui::ui_platform() {
         Ok(()) => ds_cli_contract::spec::Availability::Available,
         Err(reason) => ds_cli_contract::spec::Availability::unavailable(
             "ui_component_platform_unavailable",
             reason,
-            "use the qualified Linux x86_64 private UI store",
+            "use qualified Linux x86_64 storage or the Windows x86_64 SID/DACL owner",
         ),
     }
 }
