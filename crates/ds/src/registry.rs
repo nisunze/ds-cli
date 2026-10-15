@@ -4257,6 +4257,15 @@ fn scope_headless_identity(
     command: &Command,
     inputs: &Inputs,
 ) -> Result<ds_cli_desktop::ops::HeadlessIdentityGuard, Failure> {
+    let core_lane = std::env::var_os("DS_CORE_LANE");
+    scope_headless_identity_selected(command, inputs, core_lane.as_deref())
+}
+
+fn scope_headless_identity_selected(
+    command: &Command,
+    inputs: &Inputs,
+    core_lane: Option<&std::ffi::OsStr>,
+) -> Result<ds_cli_desktop::ops::HeadlessIdentityGuard, Failure> {
     // Pure backend commands carry this observation through dispatch without
     // probing or requiring Desktop. If (and only if) a handler reaches the
     // shared typed bridge seam, `ops::invoke` snapshots the map, arbitrates,
@@ -4287,9 +4296,9 @@ fn scope_headless_identity(
     {
         return Ok(ds_cli_desktop::ops::scope_headless_identity(None));
     }
-    let core_lane = std::env::var_os("DS_CORE_LANE");
-    let lane = paired_auth_lane(inputs.value("lane"), core_lane.as_deref())?;
-    let observed = match ds_cli_auth::probe_headless_identity(lane.token()) {
+    let observed = match paired_auth_lane(inputs.value("lane"), core_lane)
+        .and_then(|lane| ds_cli_auth::probe_headless_identity(lane.token()))
+    {
         Ok(observed) => observed,
         Err(error) if headless_probe_means_absent(&error) || enumeration => None,
         Err(error) => return Err(error),
@@ -4400,6 +4409,23 @@ mod identity_preflight_tests {
         }
     }
 
+    #[test]
+    fn enumeration_survives_invalid_selection_but_scoped_map_work_refuses() {
+        let list = &ds_cli_desktop::list::COMMAND;
+        let listing = ds_cli_contract::parse(list, &[]).unwrap();
+        let open = &ds_cli_map::design::open::COMMAND;
+        let opening =
+            ds_cli_contract::parse(open, &["--transformer".into(), "sample".into()]).unwrap();
+        for invalid in ["", "local", "invalid"] {
+            let selected = Some(std::ffi::OsStr::new(invalid));
+            assert!(scope_headless_identity_selected(list, &listing, selected).is_ok());
+            let failure = scope_headless_identity_selected(open, &opening, selected)
+                .err()
+                .unwrap();
+            assert_eq!(failure.code(), "invalid_lane");
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn selected_non_unicode_core_lane_refuses_without_affecting_declared_lane() {
@@ -4413,6 +4439,9 @@ mod identity_preflight_tests {
             paired_auth_lane(Some("canary"), Some(lane)).unwrap(),
             ds_cli_auth::Lane::Canary
         );
+        let list = &ds_cli_desktop::list::COMMAND;
+        let inputs = ds_cli_contract::parse(list, &[]).unwrap();
+        assert!(scope_headless_identity_selected(list, &inputs, Some(lane)).is_ok());
     }
 
     #[test]

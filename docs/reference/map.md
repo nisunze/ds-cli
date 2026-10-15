@@ -121,8 +121,9 @@ destination `--project` both explicit (`migration.md`).
 Map commands without a declared `--lane` use an explicit `DS_CORE_LANE=stable`
 or `DS_CORE_LANE=canary` for native identity preflight; without that selection
 they retain the Stable default. A command's declared lane and its declared
-default take precedence. Invalid, empty, Local or non-Unicode selected values
-refuse `invalid_lane`; they never fall back to another identity. The original
+default take precedence. Scoped Map commands refuse invalid, empty, Local or
+non-Unicode selected values with `invalid_lane`; they never fall back to another identity. Desktop enumeration remains available
+when the selected lane cannot be probed. The original
 Local development window identity remains Local. Explicit instance selection,
 UID, credential audience, project and late session fences remain required.
 
