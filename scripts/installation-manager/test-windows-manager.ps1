@@ -109,6 +109,47 @@ public static class FixtureUninstaller {
  Check (Test-Path -LiteralPath (Join-Path $fixtureLocal 'DS GridDesign\ds-web-desktop.exe')) '0.2.0 Stable was removed'
  Check (!(Test-Path -LiteralPath (Join-Path $fixtureLocal 'DS GridDesign Canary\ds-web-desktop-canary.exe'))) '0.1.6 Canary was retained'
  foreach($path in $before.Keys){Check ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ceq $before[$path]) 'Core, component or data sentinel was changed'}
+ # Execute the real native UI constructor: defaults and required dependency
+ # state must survive callback invocation after its constructor returns.
+ Check ([DsInstallationManagerPlatform]::IsX64()) 'Native Windows architecture discovery failed'
+ $form=ManagerForm
+ try {
+  $formChecks=@($form.Controls | Where-Object {$_ -is [Windows.Forms.CheckBox]})
+  Check ($formChecks.Count -eq 4) 'Manager does not show the four declared product choices'
+  $coreChoice=@($formChecks | Where-Object {$_.Text -like 'DS Core*'})[0]
+  $desktopChoice=@($formChecks | Where-Object {$_.Text -eq 'DS Desktop'})[0]
+  $uiChoices=@($formChecks | Where-Object {$_.Text -match 'required by Desktop'})
+  Check ($coreChoice.Checked -and !$coreChoice.Enabled) 'Core is not a checked read-only dependency'
+  Check ($desktopChoice.Checked -and $desktopChoice.Enabled) 'Desktop is not selected by default'
+  Check ($uiChoices.Count -eq 2 -and @($uiChoices | Where-Object {!$_.Checked -or $_.Enabled}).Count -eq 0) 'Desktop UI requirements are not checked read-only choices'
+  $desktopChoice.Checked=$false
+  Check (@($uiChoices | Where-Object {$_.Checked}).Count -eq 0 -and $coreChoice.Checked) 'Core-only choice did not clear only the visual requirements'
+  $desktopChoice.Checked=$true
+  Check (@($uiChoices | Where-Object {!$_.Checked}).Count -eq 0) 'Restoring Desktop did not restore UI requirements'
+ }finally{$form.Dispose()}
+ function FreshCoreRelease {
+  $sources=[ordered]@{};foreach($name in @('ds-web','ds-cli','ds-network','ds-command-kernel','ds-solar','ds-network-reporter')){$sources[$name]='c'*40}
+  $assets=@()
+  foreach($kind in @('core-zip','core-artifact-receipt')){
+   $filename=if($kind -eq 'core-zip'){'ds-core-windows-canary.zip'}else{'artifact.receipt.json'}
+   $assets += [pscustomobject]@{platform='windows';arch='x86_64';kind=$kind;protocol='ds.core-release/v1';url="https://storage.googleapis.com/electrification-rural-desktop-releases/core/canary/0.1.0-r1/$filename";sha256=('d'*64);size_bytes=1024;source_sha=('c'*40);source_revisions=[pscustomobject]$sources;built_at='2026-10-15T00:00:00Z';engines=@()}
+  }
+  # Latest catalog can carry an older independently qualified Windows pair.
+  return [pscustomobject]@{schema='ds.module-release/v1';component='core';runtime='native';channel='canary';status='active';product_id='rw.datasolutions.core.canary';protocol='ds.core-release/v1';version='0.1.0-r2';assets=$assets}
+ }
+ $admitted=CoreAssets (FreshCoreRelease)
+ Check ($admitted.version -eq '0.1.0' -and $admitted.zip.kind -eq 'core-zip') 'Carried independently released Core pair was rejected'
+ function RefuseCore($Release){$refused=$false;try{$null=CoreAssets $Release}catch{$refused=$_.Exception.Message.Contains('core_publication_')};Check $refused 'Malformed Core publication was admitted'}
+ $r=FreshCoreRelease;$r.channel='stable';RefuseCore $r
+ $r=FreshCoreRelease;$r.product_id='rw.datasolutions.desktop.canary';RefuseCore $r
+ $r=FreshCoreRelease;$r.runtime='wasm';RefuseCore $r
+ $r=FreshCoreRelease;$r.assets[1].url=$r.assets[1].url.Replace('0.1.0-r1','0.1.0-r2');RefuseCore $r
+ $r=FreshCoreRelease;$r.assets[1].size_bytes=2097153;RefuseCore $r
+ $r=FreshCoreRelease;$r.assets[1].kind='core-zip';RefuseCore $r
+ $r=FreshCoreRelease;$r.assets[1].source_revisions.'ds-cli'='e'*40;RefuseCore $r
+ $r=FreshCoreRelease;$r.assets[1].url=$r.assets[1].url+'?token=mutable';RefuseCore $r
+ $r=FreshCoreRelease;$r.assets[1].built_at='2026-10-15T01:00:00Z';RefuseCore $r
+ $r=FreshCoreRelease;$r.assets=@($r.assets[0]);RefuseCore $r
  Write-Output "Native Windows manager checks: $script:Checks passed"
 } finally {
  # Bounded disposable test cleanup, never a product or caller supplied path.

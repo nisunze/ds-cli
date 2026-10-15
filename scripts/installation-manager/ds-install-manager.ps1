@@ -7,8 +7,28 @@ param(
  [switch]$Yes, [switch]$UI
 )
 $ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
 Set-StrictMode -Version 2
 function Fail([string]$Code,[string]$Message) { throw "$Code`: $Message" }
+function AssertWindowsX64 {
+ if($env:OS -ne 'Windows_NT' -or ![Environment]::Is64BitProcess){Fail 'manager_platform_unavailable' 'Use native 64-bit Windows PowerShell'}
+ if(-not ('DsInstallationManagerPlatform' -as [type])){
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class DsInstallationManagerPlatform {
+ [StructLayout(LayoutKind.Sequential)] private struct Info {
+  public ushort arch, reserved; public uint page;
+  public IntPtr minimum, maximum; public UIntPtr mask;
+  public uint processors, type, granularity; public ushort level, revision;
+ }
+ [DllImport("kernel32.dll")] private static extern void GetNativeSystemInfo(out Info info);
+ public static bool IsX64() { Info info; GetNativeSystemInfo(out info); return info.arch == 9; }
+}
+'@
+ }
+ if(![DsInstallationManagerPlatform]::IsX64()){Fail 'manager_platform_unavailable' 'Native Windows x86_64 is required'}
+}
 function Digest([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 function Ordinary([string]$Path,[bool]$Directory=$false) {
  $item=Get-Item -LiteralPath $Path -Force
@@ -85,9 +105,9 @@ function Release([string]$Name,[string]$Runtime='native') {
  if(!$body.success -or !$body.release -or $body.release.channel -ne $Channel -or $body.release.status -ne 'active') { Fail 'component_unpublished' 'No active release is available for this selection' }
  return $body.release
 }
-function Download([object]$Asset,[string]$Path) {
+function Download([object]$Asset,[string]$Path,[long]$Max=536870912) {
  $url=[uri]$Asset.url
- if($url.Scheme -ne 'https' -or $url.Host -ne 'storage.googleapis.com' -or $url.UserInfo -or $url.Query -or $Asset.sha256 -notmatch '^[a-f0-9]{64}$' -or $Asset.size_bytes -lt 1 -or $Asset.size_bytes -gt 536870912) { Fail 'manager_asset_invalid' 'A bounded immutable release asset is required' }
+ if($url.Scheme -ne 'https' -or $url.Host -ne 'storage.googleapis.com' -or $url.UserInfo -or $url.Query -or $Asset.sha256 -notmatch '^[a-f0-9]{64}$' -or $Asset.size_bytes -lt 1 -or $Asset.size_bytes -gt $Max) { Fail 'manager_asset_invalid' 'A bounded immutable release asset is required' }
  if(Test-Path -LiteralPath $Path) { $null=Ordinary $Path; if((Get-Item -LiteralPath $Path).Length -eq $Asset.size_bytes -and (Digest $Path) -ceq $Asset.sha256){return} }
  $partial="$Path.partial"
  Invoke-WebRequest -UseBasicParsing -Uri $url.AbsoluteUri -MaximumRedirection 0 -TimeoutSec 7200 -OutFile $partial
@@ -108,9 +128,45 @@ function RemoveLegacyDesktop {
   if($process.ExitCode -ne 0 -or (Test-Path -LiteralPath $exe)){Fail 'legacy_desktop_uninstall_failed' 'The old Desktop uninstaller did not finish; no replacement was installed'}
  }
 }
+function CoreAssets([object]$Release) {
+ $product=if($Channel -eq 'canary'){'rw.datasolutions.core.canary'}else{'rw.datasolutions.core'}
+ if($Release.schema -ne 'ds.module-release/v1' -or $Release.component -ne 'core' -or $Release.runtime -ne 'native' -or $Release.channel -ne $Channel -or $Release.status -ne 'active' -or $Release.product_id -ne $product -or $Release.protocol -ne 'ds.core-release/v1' -or $Release.version -notmatch '^\d+\.\d+\.\d+-r[1-9]\d*$'){Fail 'core_publication_invalid' 'Core requires its independent active native release identity'}
+ $assets=@($Release.assets | Where-Object {$_.platform -eq 'windows' -and $_.arch -eq 'x86_64'})
+ if($assets.Count -ne 2){Fail 'core_publication_unavailable' 'No complete Windows Core ZIP and receipt are published'}
+ $zip=@($assets | Where-Object {$_.kind -eq 'core-zip'})
+ $receipt=@($assets | Where-Object {$_.kind -eq 'core-artifact-receipt'})
+ if($zip.Count -ne 1 -or $receipt.Count -ne 1){Fail 'core_publication_invalid' 'Core requires exactly one Windows ZIP and its artifact receipt'}
+ $zipUrl=[uri]$zip[0].url
+ $folder=($zipUrl.AbsolutePath -split '/')[-2]
+ if($folder -notmatch '^\d+\.\d+\.\d+-r[1-9]\d*$'){Fail 'core_publication_invalid' 'Core requires an immutable producing release folder'}
+ $sources=@('ds-web','ds-cli','ds-network','ds-command-kernel','ds-solar','ds-network-reporter')
+ foreach($asset in $assets){
+  $filename=if($asset.kind -eq 'core-zip'){"ds-core-windows-$Channel.zip"}else{'artifact.receipt.json'}
+  $expected="https://storage.googleapis.com/electrification-rural-desktop-releases/core/$Channel/$folder/$filename"
+  $bound=if($asset.kind -eq 'core-zip'){536870912}else{2097152}
+  if($asset.protocol -ne 'ds.core-release/v1' -or $asset.url -cne $expected -or $asset.sha256 -notmatch '^[a-f0-9]{64}$' -or $asset.size_bytes -lt 1 -or $asset.size_bytes -gt $bound -or $asset.source_sha -notmatch '^[a-f0-9]{40}$' -or @($asset.engines).Count -ne 0 -or @($asset.source_revisions.PSObject.Properties).Count -ne $sources.Count){Fail 'core_publication_invalid' 'Core publication crosses its fixed artifact, digest or source fences'}
+  foreach($source in $sources){if($asset.source_revisions.$source -notmatch '^[a-f0-9]{40}$' -or $asset.source_revisions.$source -cne $zip[0].source_revisions.$source){Fail 'core_publication_invalid' 'Core ZIP and receipt have different source closures'}}
+  if($asset.source_sha -cne $asset.source_revisions.'ds-cli' -or $asset.built_at -cne $zip[0].built_at){Fail 'core_publication_invalid' 'Core producing identity differs across package members'}
+ }
+ return @{zip=$zip[0];receipt=$receipt[0];version=($folder -replace '-r[1-9]\d*$','')}
+}
 function InstallCore {
- if(Test-Path -LiteralPath (CorePath)) { return InvokeCore -Arguments @('version') }
- if(!$CoreArtifact -or !$CoreReceipt -or $CoreSha256 -notmatch '^[a-f0-9]{64}$') { Fail 'core_publication_unavailable' 'Windows Core automatic download is unavailable until its qualified package is published; a qualified local package, receipt and digest can be supplied' }
+ if(Test-Path -LiteralPath (CorePath)) {
+  if($Action -eq 'Update'){Fail 'core_update_unavailable' 'Existing Core is preserved until its qualified replacement owner is available'}
+  return InvokeCore -Arguments @('version')
+ }
+ if($CoreArtifact -or $CoreReceipt -or $CoreSha256){
+  if(!$CoreArtifact -or !$CoreReceipt -or $CoreSha256 -notmatch '^[a-f0-9]{64}$'){Fail 'core_package_incomplete' 'Supply the qualified local ZIP, artifact receipt and ZIP digest together'}
+ }else{
+  $assets=CoreAssets (Release core)
+  $CoreArtifact=Join-Path $script:Cache "$($assets.zip.sha256)-core.zip"
+  $CoreReceipt=Join-Path $script:Cache "$($assets.receipt.sha256)-core-receipt.json"
+  Download $assets.zip $CoreArtifact
+  Download $assets.receipt $CoreReceipt 2097152
+  $CoreSha256=$assets.zip.sha256
+  $receipt=ReadJson $CoreReceipt 2097152
+  if($receipt.version -cne $assets.version -or $receipt.lane -ne $Channel -or $receipt.sha256 -cne $CoreSha256 -or $receipt.size_bytes -ne $assets.zip.size_bytes){Fail 'core_publication_invalid' 'Downloaded Core artifact receipt crosses lane or package identity'}
+ }
  & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'install-ds-core-windows.ps1') -Artifact $CoreArtifact -Receipt $CoreReceipt -Sha256 $CoreSha256
  if($LASTEXITCODE -ne 0) { Fail 'core_install_failed' 'The owning Core installer refused; existing installations were preserved' }
  return InvokeCore -Arguments @('version')
@@ -162,20 +218,30 @@ function Setup {
  $link.TargetPath=Join-Path $PSHOME 'powershell.exe'; $link.Arguments="-NoProfile -ExecutionPolicy Bypass -File `"$installed`" -Channel $Channel -UI"; $link.Save()
  return $receipt
 }
-function ShowManager {
+function ManagerForm {
  Add-Type -AssemblyName System.Windows.Forms
  Add-Type -AssemblyName System.Drawing
- $form=New-Object Windows.Forms.Form; $form.Text="DS Installation Manager - $Channel"; $form.ClientSize=New-Object Drawing.Size(520,250); $form.StartPosition='CenterScreen'
- $label=New-Object Windows.Forms.Label; $label.Text='Install Core only, or the DS Desktop application.'; $label.SetBounds(20,20,480,30); $form.Controls.Add($label)
- $choice=New-Object Windows.Forms.ComboBox; $choice.DropDownStyle='DropDownList'; $choice.Items.AddRange(@('Core only','DS Desktop')); $choice.SelectedIndex=0; $choice.SetBounds(20,60,300,30); $form.Controls.Add($choice)
- $facts=New-Object Windows.Forms.Label; $facts.Text=((Status | ConvertTo-Json) -join "`n"); $facts.SetBounds(20,105,480,100); $form.Controls.Add($facts)
- $install=New-Object Windows.Forms.Button; $install.Text='Install'; $install.SetBounds(340,60,140,30); $form.Controls.Add($install)
- $install.Add_Click({$selected=if($choice.SelectedIndex -eq 0){'Core'}else{'Desktop'}; $launchArgs="-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Action Install -Component $selected -Channel $Channel -Yes"; if($CoreArtifact -and $CoreReceipt -and $CoreSha256){$launchArgs+=" -CoreArtifact `"$CoreArtifact`" -CoreReceipt `"$CoreReceipt`" -CoreSha256 $CoreSha256"}; Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $launchArgs | Out-Null})
- [void]$form.ShowDialog()
+ $form=New-Object Windows.Forms.Form; $form.Text="DS Installation Manager - $Channel"; $form.ClientSize=New-Object Drawing.Size(560,355); $form.StartPosition='CenterScreen'
+ $label=New-Object Windows.Forms.Label; $label.Text='Choose what to install.'; $label.SetBounds(20,20,520,25); $form.Controls.Add($label)
+ $core=New-Object Windows.Forms.CheckBox; $core.Text='DS Core (includes native Kernel)'; $core.Checked=$true; $core.Enabled=$false; $core.SetBounds(20,55,500,25); $form.Controls.Add($core)
+ $desktop=New-Object Windows.Forms.CheckBox; $desktop.Text='DS Desktop'; $desktop.Checked=$true; $desktop.SetBounds(20,90,500,25); $form.Controls.Add($desktop)
+ $interactions=New-Object Windows.Forms.CheckBox; $interactions.Text='Interactions - required by Desktop'; $interactions.Checked=$true; $interactions.Enabled=$false; $interactions.SetBounds(40,125,480,25); $form.Controls.Add($interactions)
+ $kernel=New-Object Windows.Forms.CheckBox; $kernel.Text='UI Kernel - required by Desktop'; $kernel.Checked=$true; $kernel.Enabled=$false; $kernel.SetBounds(40,160,480,25); $form.Controls.Add($kernel)
+ $desktop.Add_CheckedChanged({$interactions.Checked=$desktop.Checked; $kernel.Checked=$desktop.Checked}.GetNewClosure())
+ $note=New-Object Windows.Forms.Label; $note.Text='Core contains the native Kernel; UI Kernel is its separate visual component. Updates keep each component independent.'; $note.SetBounds(20,200,520,45); $form.Controls.Add($note)
+ $facts=New-Object Windows.Forms.Label; $current=Status; $facts.Text="Installed: Core $($current.core_installed); Desktop $($current.desktop_installed)."; $facts.SetBounds(20,255,520,30); $form.Controls.Add($facts)
+ $install=New-Object Windows.Forms.Button; $install.Text='Install selected'; $install.SetBounds(370,300,170,32); $form.Controls.Add($install)
+ $managerScript=$PSCommandPath
+ $install.Add_Click({$selected=if($desktop.Checked){'Desktop'}else{'Core'}; $launchArgs="-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$managerScript`" -Action Install -Component $selected -Channel $Channel -Yes"; if($CoreArtifact -and $CoreReceipt -and $CoreSha256){$launchArgs+=" -CoreArtifact `"$CoreArtifact`" -CoreReceipt `"$CoreReceipt`" -CoreSha256 $CoreSha256"}; Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $launchArgs | Out-Null}.GetNewClosure())
+ return $form
+}
+function ShowManager {
+ $form=ManagerForm
+ try {[void]$form.ShowDialog()} finally {$form.Dispose()}
 }
 $script:Completed=@(); $script:CurrentComponent=$Component
 try {
- if($env:OS -ne 'Windows_NT' -or ![Environment]::Is64BitProcess -or [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() -ne 'X64'){Fail 'manager_platform_unavailable' 'Use native 64-bit Windows PowerShell'}
+ AssertWindowsX64
  $script:Sid=[Security.Principal.WindowsIdentity]::GetCurrent().User
  $script:Local=[Environment]::GetFolderPath('LocalApplicationData')
  $script:Manifest=Package

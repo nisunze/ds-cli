@@ -1,5 +1,30 @@
 # Release notes
 
+## Unreleased: DS Installation Manager
+
+`scripts/installation-manager/ds-install-manager.ps1` adds the Windows
+`Setup`, `Status`, `Install`, `Update`, `Remove` and `Rollback` operator entry
+with explicit component, lane and mutation consent. Its native UI selects
+Desktop by default; Core is a read-only requirement, and selecting Desktop
+also selects its independent Interactions and UI Kernel requirements. Core
+already contains the native Kernel; UI Kernel is a separate visual artifact.
+Linux uses the sibling Bash entry and the same Core/component owners.
+
+Distribution consumers must use the package's exact fixed member receipt and
+source closure. Windows Core acquisition uses the independent `component=core`,
+`runtime=native` publication, admitting its ZIP/receipt pair and exact immutable
+producing folder before the existing Core installer. No Desktop package is
+accepted as Core and no shell version pins Core or an engine. Existing Core
+replacement remains explicitly unavailable until the qualified update owner
+is connected; it is never reported as a successful update without mutation.
+
+Automatic legacy removal applies strictly to Desktop versions below 0.1.7,
+using its existing data-preserving uninstaller. Current Desktop, Core, addons
+and user data remain retained. Partial installation reports the completed
+phases and exact blocked component; it does not claim workspace readiness.
+Windows platform discovery uses the native Windows API and supports Windows
+PowerShell 5.1 without requiring RuntimeInformation.OSArchitecture reflection.
+
 ## Unreleased: independently installed UI units
 
 Component metadata, staging, selection, activation, removal and rollback move
