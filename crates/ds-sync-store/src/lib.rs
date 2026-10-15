@@ -16,10 +16,10 @@
 
 pub mod cache_health;
 mod jobs;
-mod publications;
 mod profile_sources;
+mod publications;
 pub use profile_sources::{
-    ProfileSourceHeader, ProfileSourceScope, MAX_PROFILE_SOURCE_BYTES, MAX_PROFILE_SOURCES,
+    ProfileSourceHeader, ProfileSourceScope, MAX_PROFILE_SOURCES, MAX_PROFILE_SOURCE_BYTES,
 };
 mod recovery;
 pub use publications::{PublicationBytes, PublicationPayload};
@@ -226,40 +226,110 @@ fn scope_key(scope: &Scope) -> String {
 
 /// The store holds signed work grants and queued user data, so its directory
 /// is created `0700` and the database file is `0600` before SQLite opens it
-/// (SQLite creates `-wal`/`-shm` with the database's mode; ones left from
-/// before are tightened, best effort — a volume without unix modes refuses
-/// `chmod` and must not stop the store opening). Owner rule:
-/// `ds_layer_store::private`, applied inline because this crate does not
-/// depend on it. Unix only.
+/// (SQLite creates `-wal`/`-shm` with the database's mode). Existing Unix
+/// files are tightened through metadata/path operations, never a raw file
+/// descriptor; unsafe ownership, links, parent write permissions or failed
+/// privacy admission refuse. No additional storage owner or dependency.
+#[cfg(unix)]
+fn preparation_guard() -> std::io::Result<std::sync::MutexGuard<'static, ()>> {
+    static PREPARING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    PREPARING
+        .lock()
+        .map_err(|_| std::io::Error::other("private Store file preparation lock is poisoned"))
+}
+
 fn prepare_private(path: &Path) -> std::io::Result<()> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty());
     #[cfg(unix)]
     {
-        use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+        // POSIX record locks belong to a process: closing ANY descriptor for
+        // an existing SQLite inode cancels that process's SQLite locks. Only
+        // initial creation may use a Rust descriptor, and all same-process
+        // Store preparers must wait until that fresh descriptor is closed.
+        let _preparing = preparation_guard()?;
         if let Some(parent) = parent {
             std::fs::DirBuilder::new()
                 .recursive(true)
                 .mode(0o700)
                 .create(parent)?;
         }
+        let parent_metadata = std::fs::symlink_metadata(parent.unwrap_or_else(|| Path::new(".")))?;
+        if !parent_metadata.is_dir()
+            || parent_metadata.file_type().is_symlink()
+            || parent_metadata.permissions().mode() & 0o022 != 0
+        {
+            return Err(std::io::Error::other(
+                "Store parent must be an ordinary owner-controlled directory",
+            ));
+        }
         let private = std::fs::Permissions::from_mode(0o600);
-        let file = std::fs::OpenOptions::new()
+        match std::fs::OpenOptions::new()
             .write(true)
-            .create(true)
-            .truncate(false)
+            .create_new(true)
             .mode(0o600)
-            .open(path)?;
-        let _ = file.set_permissions(private.clone());
+            .open(path)
+        {
+            Ok(file) => {
+                file.set_permissions(private.clone())?;
+                drop(file); // No other Store preparer may reach SQLite yet.
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error),
+        }
+        // Metadata/chmod do not open or close a descriptor for the existing
+        // database. SQLite's VFS remains its sole descriptor/lock owner.
+        let metadata = std::fs::symlink_metadata(path)?;
+        if !metadata.is_file()
+            || metadata.file_type().is_symlink()
+            || metadata.nlink() != 1
+            || metadata.uid() != parent_metadata.uid()
+        {
+            return Err(std::io::Error::other(
+                "Store must be an ordinary single-link file owned by its private directory owner",
+            ));
+        }
+        std::fs::set_permissions(path, private.clone())?;
+        let after = std::fs::symlink_metadata(path)?;
+        let parent_after = std::fs::symlink_metadata(parent.unwrap_or_else(|| Path::new(".")))?;
+        if !after.is_file()
+            || after.file_type().is_symlink()
+            || after.nlink() != 1
+            || after.uid() != metadata.uid()
+            || after.ino() != metadata.ino()
+            || after.dev() != metadata.dev()
+            || after.permissions().mode() & 0o077 != 0
+            || parent_after.ino() != parent_metadata.ino()
+            || parent_after.dev() != parent_metadata.dev()
+            || parent_after.uid() != parent_metadata.uid()
+            || !parent_after.is_dir()
+            || parent_after.file_type().is_symlink()
+            || parent_after.permissions().mode() & 0o022 != 0
+        {
+            return Err(std::io::Error::other(
+                "Store identity or owner-controlled parent changed during metadata preparation",
+            ));
+        }
         for suffix in ["-wal", "-shm", "-journal"] {
             let mut sidecar = path.as_os_str().to_owned();
             sidecar.push(suffix);
             match std::fs::symlink_metadata(&sidecar) {
-                Ok(meta) if meta.is_file() && meta.permissions().mode() & 0o077 != 0 => {
-                    let _ = std::fs::set_permissions(&sidecar, private.clone());
+                Ok(meta) => {
+                    if !meta.is_file()
+                        || meta.file_type().is_symlink()
+                        || meta.nlink() != 1
+                        || meta.uid() != parent_metadata.uid()
+                    {
+                        return Err(std::io::Error::other("Store sidecar must be an ordinary single-link file with the same private owner"));
+                    }
+                    if meta.permissions().mode() & 0o077 != 0 {
+                        std::fs::set_permissions(&sidecar, private.clone())?;
+                    }
                 }
-                _ => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
             }
         }
     }
@@ -275,8 +345,11 @@ impl Store {
     /// refused, never rewritten.
     pub fn open(path: &Path) -> Result<Self> {
         prepare_private(path).map_err(|error| Error::Open(error.to_string()))?;
-        let mut connection =
-            Connection::open(path).map_err(|error| Error::Open(error.to_string()))?;
+        let flags = OpenFlags::default();
+        #[cfg(unix)]
+        let flags = flags | OpenFlags::SQLITE_OPEN_NOFOLLOW;
+        let mut connection = Connection::open_with_flags(path, flags)
+            .map_err(|error| Error::Open(error.to_string()))?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         // The power-loss guarantee, decided (owner, 2026-09-20, after a
@@ -336,6 +409,8 @@ impl Store {
     /// This is what a status command uses: it must answer on a machine with
     /// no session and no running host, and it must not leave state behind.
     pub fn open_read_only(path: &Path) -> Result<Option<Self>> {
+        #[cfg(unix)]
+        let preparing = preparation_guard().map_err(|error| Error::Open(error.to_string()))?;
         if !path.is_file() {
             return Ok(None);
         }
@@ -344,6 +419,8 @@ impl Store {
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )
         .map_err(|error| Error::Open(error.to_string()))?;
+        #[cfg(unix)]
+        drop(preparing); // Any fresh creator descriptor closed before SQLite opened.
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         let has_meta: Option<i64> = connection
             .query_row(
@@ -915,4 +992,40 @@ fn upsert_head(tx: &rusqlite::Transaction<'_>, fence: &Fence, head: &HeadRow) ->
         ],
     )?;
     Ok(())
+}
+
+#[cfg(all(test, unix))]
+mod preparation_tests {
+    #[test]
+    fn read_only_open_waits_until_fresh_creator_descriptor_is_closed() {
+        use std::os::unix::fs::OpenOptionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("fresh.sqlite");
+        let guard = super::preparation_guard().unwrap();
+        let fresh = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+            .unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            done_tx
+                .send(super::Store::open_read_only(&path).unwrap().is_none())
+                .unwrap();
+        });
+        started_rx.recv().unwrap();
+        assert!(matches!(
+            done_rx.recv_timeout(std::time::Duration::from_millis(50)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        drop(fresh);
+        drop(guard);
+        assert!(done_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap());
+        reader.join().unwrap();
+    }
 }

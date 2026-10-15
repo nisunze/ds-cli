@@ -148,6 +148,35 @@ session, no schema write and no lease.
 
 ## 7. Power loss
 
+On Unix, SQLite's VFS is the sole opener of an existing database inode. Store
+preparation must not open/close an ordinary file descriptor for an already-open
+SQLite file: POSIX closing any same-process descriptor cancels that process's
+record locks, allowing another connection to detach WAL/SHM beneath a retained
+worker ([SQLite lock guidance](https://sqlite.org/howtocorrupt.html#_posix_advisory_locks_canceled_by_a_separate_thread_doing_close_)). Old preparation did exactly that before every writable open; the revised
+owner uses guarded create-new `0600` only for an absent file and metadata/chmod
+for an existing file. Writable and readonly entrypoints share that brief creation
+guard so a reader cannot race the fresh creator descriptor's close.
+
+Database and sidecars must remain ordinary single-link files with the same UID
+as their ordinary parent during writable preparation; group/other-writable
+parents, symlinks and foreign owner/link identities refuse. Older writable opens
+accepted these unsafe paths. Hosts using them must explicitly protect the
+intended owner directory (the owner explicitly removes group/other write access,
+for example `chmod go-w` on that intended directory) or use their existing
+protected canonical Store owner; shared/project directories must not be silently
+changed. Store never silently relocates a queue, changes a shared parent's permissions,
+relabels rows or deletes data. Newly absent parent directories are still created
+`0700` by the existing owner independently of a permissive host umask. Existing owned `0755` parents with `0600` data stay
+supported; Core's protected `0700` canonical parent stays unchanged. Database
+identity/private mode and parent identity/write protection are rechecked around
+chmod, without opening an existing database descriptor. Writable SQLite opens
+with its no-follow flag; readonly status keeps its existing no-creation/schema
+behavior and shares the creation guard. This changes no row schema, transaction/lease policy, queue,
+credential, cache root or source pin. Consumers require a qualified successor
+Store/Core for the fix; detached live sidecars are evidence to preserve before
+graceful shutdown, never files to restore beneath a running owner. A raw byte
+snapshot is not a coherent SQLite backup or recovered queue acceptance.
+
 The store runs `journal_mode=WAL` with `synchronous=FULL`: every acknowledged
 transition — a seal's row, a commit receipt, a lease — is fsynced before the
 caller is told. The trade is one fsync per transition against the loss of an
