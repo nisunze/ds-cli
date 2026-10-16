@@ -166,6 +166,21 @@ CLI builds keep refusing this Local/native combination and require a qualified
 CLI update. The Desktop wire contract and installed UI units do not change,
 and no credential, project cache or user data migration is needed.
 
+Native discovery now applies this same `PairedHostScope` during instance
+selection through `select_paired`, before an ordinary lane comparison can reject
+the named Local window. The existing wire `select` remains provisioned and
+unchanged; automatic selection does not acquire the Local exception.
+
+When no native caller identity is configured, an explicit target is resolved
+before unrelated candidates' identities are compared. `select_observed_target`
+uses only that validated application's actual identity and existing instance and
+window checks. It invents no native credential lane and does not choose an
+unrelated account. Without a target, conflicting identities remain ambiguous.
+Older CLI discovery can refuse the correct explicit instance as a lane mismatch
+or multi-account ambiguity; update the CLI with its required committed Kernel
+source. This repair adds no Desktop wire operation, credential migration or
+installed component version requirement.
+
 `Route { instance_id, window }` names the selected candidate by its own
 identity, so the answer is the same under every permutation and the host looks
 the descriptor back up by id.

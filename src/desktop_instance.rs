@@ -704,6 +704,22 @@ pub fn select(
     target: Option<&Target>,
     requirement: &Requirement,
 ) -> Result<Route, Fault> {
+    select_paired(
+        candidates,
+        target,
+        requirement,
+        crate::project_context::PairedHostScope::Provisioned,
+    )
+}
+
+/// Native selection with the existing explicit Local pairing scope. The wire
+/// `select` operation and automatic selection retain provisioned compatibility.
+pub fn select_paired(
+    candidates: &[Candidate],
+    target: Option<&Target>,
+    requirement: &Requirement,
+    scope: crate::project_context::PairedHostScope<'_>,
+) -> Result<Route, Fault> {
     requirement.validate()?;
     let candidates = validated(candidates)?;
     let compatible: Vec<&Candidate> = candidates
@@ -713,7 +729,7 @@ pub fn select(
         .collect();
 
     if let Some(target) = target {
-        return select_target(&candidates, &compatible, target, requirement);
+        return select_target(&candidates, &compatible, target, requirement, scope);
     }
     if compatible.is_empty() {
         return Err(not_paired());
@@ -732,12 +748,30 @@ pub fn select(
     route_one(&opening)
 }
 
-fn select_target(
-    candidates: &[&Candidate],
-    compatible: &[&Candidate],
-    target: &Target,
-    requirement: &Requirement,
-) -> Result<Route, Fault> {
+/// An identity-free caller explicitly names one observed paired application.
+/// Adopt only that validated candidate's actual identity, never an unrelated
+/// session's native lane or the identity of whichever candidate sorted first.
+/// This is a native Rust seam; the closed `select` wire request is unchanged.
+pub fn select_observed_target(candidates: &[Candidate], target: &Target) -> Result<Route, Fault> {
+    let candidates = validated(candidates)?;
+    let named = named_target(&candidates, target)?;
+    let requirement = Requirement {
+        lane: named.lane.clone(),
+        uid: named.uid.clone(),
+        audience_sha256: named.audience_sha256.clone(),
+        project: None,
+        project_independent: true,
+    };
+    select_target(
+        &candidates,
+        &[named],
+        target,
+        &requirement,
+        crate::project_context::PairedHostScope::Provisioned,
+    )
+}
+
+fn named_target<'a>(candidates: &[&'a Candidate], target: &Target) -> Result<&'a Candidate, Fault> {
     if !instance_id_valid(&target.instance_id) {
         return Err(target_mismatch(
             &target.instance_id,
@@ -766,7 +800,42 @@ fn select_target(
             json!({ "target": echo(&target.instance_id) }),
         ));
     };
-    if let Some(reason) = requirement.mismatch(named) {
+    Ok(named)
+}
+
+fn select_target(
+    candidates: &[&Candidate],
+    compatible: &[&Candidate],
+    target: &Target,
+    requirement: &Requirement,
+    scope: crate::project_context::PairedHostScope<'_>,
+) -> Result<Route, Fault> {
+    let named = named_target(candidates, target)?;
+    let mismatch = match scope {
+        crate::project_context::PairedHostScope::ExplicitLocalDevelopment {
+            target_instance,
+            ..
+        } if named.lane == "local" && target_instance == target.instance_id => {
+            let cli = crate::project_context::Context {
+                uid: &requirement.uid,
+                lane: &requirement.lane,
+                audience: &requirement.audience_sha256,
+                project: requirement.project.as_deref(),
+                instance: None,
+            };
+            crate::project_context::route_paired(
+                crate::project_context::Requirement::DesktopUser,
+                crate::project_context::Switch::Never,
+                Some(cli),
+                crate::project_context::Context::of(named),
+                scope,
+            )
+            .err()
+            .map(|_| requirement.mismatch(named).unwrap_or("lane"))
+        }
+        _ => requirement.mismatch(named),
+    };
+    if let Some(reason) = mismatch {
         return Err(target_mismatch(
             &target.instance_id,
             reason,
@@ -1884,5 +1953,172 @@ mod tests {
         .into_iter()
         .collect();
         assert_eq!(raised, REFUSALS.into_iter().collect());
+    }
+
+    #[test]
+    fn explicit_native_local_selection_reuses_pairing_and_keeps_every_other_fence() {
+        use crate::project_context::PairedHostScope;
+        let mut local = candidate(ONE, Some("project-a"));
+        local.lane = "local".into();
+        local.windows = serde_json::from_value(json!([
+            {"label":"main", "project":"project-a", "generation":2}
+        ]))
+        .unwrap();
+        let native = candidate(TWO, Some("project-a"));
+        let scope = PairedHostScope::ExplicitLocalDevelopment {
+            target_instance: ONE,
+            native_credential_lane: "canary",
+        };
+        let exact = Target {
+            instance_id: ONE.into(),
+            window: Some("main".into()),
+        };
+        let required = requirement(Some("project-a"));
+        assert_eq!(
+            select_paired(
+                &[local.clone(), native.clone()],
+                Some(&exact),
+                &required,
+                scope
+            ),
+            Ok(Route {
+                instance_id: ONE.into(),
+                window: Some("main".into())
+            })
+        );
+        assert_eq!(
+            refusal(select(&[local.clone()], Some(&exact), &required).unwrap_err()).code,
+            DESKTOP_TARGET_MISMATCH,
+            "existing wire selection remains provisioned"
+        );
+        assert_eq!(
+            select_paired(&[local.clone(), native], None, &required, scope),
+            Ok(Route {
+                instance_id: TWO.into(),
+                window: None
+            }),
+            "automatic choice never adds Local"
+        );
+        assert_eq!(
+            refusal(select_paired(&[local.clone()], None, &required, scope).unwrap_err()).code,
+            DESKTOP_NOT_PAIRED
+        );
+        for changed in [
+            Candidate {
+                uid: "foreign".into(),
+                ..local.clone()
+            },
+            Candidate {
+                audience_sha256: OTHER_AUDIENCE.into(),
+                ..local.clone()
+            },
+            Candidate {
+                lane: "stable".into(),
+                ..local.clone()
+            },
+        ] {
+            assert_eq!(
+                refusal(select_paired(&[changed], Some(&exact), &required, scope).unwrap_err())
+                    .code,
+                DESKTOP_TARGET_MISMATCH
+            );
+        }
+        for bad_scope in [
+            PairedHostScope::ExplicitLocalDevelopment {
+                target_instance: TWO,
+                native_credential_lane: "canary",
+            },
+            PairedHostScope::ExplicitLocalDevelopment {
+                target_instance: ONE,
+                native_credential_lane: "stable",
+            },
+        ] {
+            assert_eq!(
+                refusal(
+                    select_paired(&[local.clone()], Some(&exact), &required, bad_scope)
+                        .unwrap_err()
+                )
+                .code,
+                DESKTOP_TARGET_MISMATCH
+            );
+        }
+        assert_eq!(
+            refusal(
+                select_paired(
+                    &[local.clone()],
+                    Some(&exact),
+                    &requirement(Some("project-b")),
+                    scope
+                )
+                .unwrap_err()
+            )
+            .code,
+            DESKTOP_PROJECT_NOT_OPEN
+        );
+        let missing_window = Target {
+            window: Some("absent".into()),
+            ..exact
+        };
+        let denied =
+            refusal(select_paired(&[local], Some(&missing_window), &required, scope).unwrap_err());
+        assert_eq!(denied.code, DESKTOP_TARGET_MISMATCH);
+        assert_eq!(denied.detail.unwrap()["reason"], "window");
+    }
+
+    #[test]
+    fn observed_target_uses_only_its_actual_identity_and_keeps_target_window_validation() {
+        let mut local = candidate(ONE, Some("project-a"));
+        local.lane = "local".into();
+        local.windows = serde_json::from_value(json!([
+            {"label":"main", "project":"project-a", "generation":2}
+        ]))
+        .unwrap();
+        let foreign = Candidate {
+            uid: "another-account".into(),
+            ..candidate(TWO, None)
+        };
+        let exact = Target {
+            instance_id: ONE.into(),
+            window: Some("main".into()),
+        };
+        for set in permutations(&[local.clone(), foreign]) {
+            assert_eq!(
+                select_observed_target(&set, &exact),
+                Ok(Route {
+                    instance_id: ONE.into(),
+                    window: Some("main".into())
+                })
+            );
+        }
+        assert_eq!(
+            refusal(select_observed_target(&[local.clone()], &target(THREE)).unwrap_err()).code,
+            DESKTOP_TARGET_NOT_LIVE
+        );
+        assert_eq!(
+            refusal(
+                select_observed_target(
+                    &[local.clone()],
+                    &Target {
+                        instance_id: "invalid".into(),
+                        window: None
+                    }
+                )
+                .unwrap_err()
+            )
+            .code,
+            DESKTOP_TARGET_MISMATCH
+        );
+        let denied = refusal(
+            select_observed_target(
+                &[local],
+                &Target {
+                    window: Some("absent".into()),
+                    ..exact
+                },
+            )
+            .unwrap_err(),
+        );
+        assert_eq!(denied.code, DESKTOP_TARGET_MISMATCH);
+        assert_eq!(denied.detail.unwrap()["reason"], "window");
     }
 }
