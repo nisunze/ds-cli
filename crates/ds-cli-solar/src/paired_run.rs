@@ -224,7 +224,7 @@ pub static READ_COMMAND: Command = Command {
     ],
     output: "A bounded result projection with its run id, city context and digest.",
     examples: &[Example {
-        command: "ds solar result read --run-id solar-run-123 --city kigali --path annual --output json",
+        command: "ds solar result read --run-id solar-run-123 --city kigali --path plant_summary --output json",
         note: "Reads one selected projection from one city's result.",
         runnable: false,
     }],
