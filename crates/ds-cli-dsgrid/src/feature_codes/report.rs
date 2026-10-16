@@ -5,14 +5,24 @@
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Requires,
+    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::feature_code_report;
+use ds_network_client::{CapturedNetworkClient, NetworkFailure};
+use ds_network_contracts::engine::NetworkCapability;
+use ds_network_contracts::grid::{
+    NATIVE_GRID_QUERY_SCHEMA_V1, NativeGridQueryRequestV1, NativeGridQuerySourcePin,
+};
+use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
-use crate::mutation;
 use crate::package;
+use crate::{mutation, native};
+
+const REFUSALS: &[Refusal] = &native::extend_refusals::<
+    { super::READ_REFUSALS.len() + native::REFUSALS.len() },
+>(super::READ_REFUSALS);
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.feature-codes.report",
@@ -61,7 +71,7 @@ names any list shortened by --limit.",
             runnable: false,
         },
     ],
-    refusals: super::READ_REFUSALS,
+    refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &[
         "feature code",
@@ -79,14 +89,118 @@ fn available() -> Availability {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    run_with_capture(inputs, native::capture)
+}
+
+fn run_with_capture(
+    inputs: &Inputs,
+    capture: impl FnOnce() -> Result<CapturedNetworkClient, Failure>,
+) -> Result<Value, Failure> {
     let limit = package::parse_limit(inputs.value("limit"))?;
-    let (target, opened) = super::open_read_only(inputs)?;
-    let report = feature_code_report(opened.session.snapshot());
+    let path = mutation::Target::resolve(inputs, false)?.path();
+    let bytes = package::read_bytes(&path)?;
+    let request = NativeGridQueryRequestV1 {
+        schema: NATIVE_GRID_QUERY_SCHEMA_V1.into(),
+        source: NativeGridQuerySourcePin {
+            package_sha256: format!("{:x}", Sha256::digest(&bytes)),
+            expected_revision: inputs
+                .value("revision")
+                .map(|value| value.trim().to_owned()),
+            engineering_input_root: None,
+        },
+        operation_id: "feature_code_table_report".into(),
+        params: json!({}),
+    };
+    // One immutable capture owns admission, decoding and the complete report.
+    let client = capture()?;
+    if !client
+        .identity()
+        .capabilities
+        .contains(&NetworkCapability::GridFeatureCodeTableReportV1)
+    {
+        return Err(Failure::unavailable(
+            "network_engine_incompatible",
+            "the captured Network engine does not support the feature-code table report",
+        )
+        .remedy("select a Network engine with grid_feature_code_table_report_v1"));
+    }
+    let scratch = native::scratch()?;
+    let query = client
+        .grid_query(&request, &bytes, scratch.path(), &|| false)
+        .map_err(|error| query_failure(&path, error))?
+        .result;
+    let target = json!({
+        "path": path,
+        "model_id": query.source.model_id.as_str(),
+        "package_revision": query.model_revision,
+        "authored_revision": query.source.expected_revision,
+    });
+    project(target, query.engine_version, query.result, limit)
+}
+
+fn query_failure(path: &str, error: NetworkFailure) -> Failure {
+    match error.owner_code() {
+        Some("package_refused") => Failure::failed(
+            "package_decode_failed",
+            format!("`{path}` did not decode"),
+        )
+        .remedy("the canonical reader accepts current schema only; retain the original and use `ds dsgrid package migrate --path <source> --expected-source-sha256 <capture> --dry-run`, then open the saved current package")
+        .detail(json!({ "detail": error.to_string() })),
+        Some("stale_revision") => {
+            let mut failure = Failure::conflict(
+                "revision_conflict",
+                "the head moved since the revision you observed",
+            )
+            .remedy("re-read the head and decide again against it");
+            if let Some(detail) = error.owner_detail {
+                failure = failure.detail(*detail);
+            }
+            failure
+        }
+        _ => native::map_failure(error),
+    }
+}
+
+// Only the bounded CLI projection is interpreted here. Rows remain complete
+// owner JSON, including optional/future facts and their original ordering.
+#[derive(Deserialize)]
+struct Report {
+    codes: Vec<serde_json::Map<String, Value>>,
+    code_count: usize,
+    with_clearance_count: usize,
+    assumed_count: usize,
+    voltage_classes: Vec<String>,
+    namespaces: Vec<String>,
+    resolved_token_count: usize,
+    unresolved_tokens: Vec<serde_json::Map<String, Value>>,
+    unresolved_token_count: usize,
+    unresolved_row_count: u64,
+    unknown_code_rows: u64,
+    terrain_point_count: usize,
+    breakline_count: usize,
+    crossing_count: usize,
+}
+
+fn project(target: Value, engine: String, result: Value, limit: usize) -> Result<Value, Failure> {
+    let report: Report = serde_json::from_value(result).map_err(|_| {
+        Failure::failed(
+            "network_result_invalid",
+            "Network returned a malformed feature-code report",
+        )
+    })?;
+    if report.code_count != report.codes.len()
+        || report.unresolved_token_count != report.unresolved_tokens.len()
+    {
+        return Err(Failure::failed(
+            "network_result_invalid",
+            "Network feature-code report counts differ from its complete lists",
+        ));
+    }
     let (codes, codes_withheld) = package::take(report.codes.clone(), limit);
     let (unresolved, unresolved_withheld) = package::take(report.unresolved_tokens.clone(), limit);
     let mut answer = json!({
         "target": target,
-        "engine": ds_grid_engine::ENGINE_VERSION,
+        "engine": engine,
         "code_count": report.code_count,
         "with_clearance_count": report.with_clearance_count,
         "assumed_count": report.assumed_count,
@@ -188,3 +302,7 @@ pub fn render(data: &Value) -> String {
     }
     out
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/feature_codes_report.rs"]
+mod tests;

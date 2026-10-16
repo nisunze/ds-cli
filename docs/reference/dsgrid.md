@@ -579,6 +579,15 @@ local-…`, revised in place) or an immutable package (`--package … --out …`
 through the same plumbing as every typed mutation: `--revision` pin,
 `--dry-run` xor `--yes`, one receipt shape.
 
+`feature-codes report` is read-only. It captures the installed lane's Network
+component once and sends opaque package bytes to its `grid-query` operation
+`feature_code_table_report`, admitted only by the captured
+`grid_feature_code_table_report_v1` capability. Network owns decoding, counts, row ordering and engine
+version; Core keeps local target selection and the declared output limits.
+Missing or incompatible Network refuses without a linked calculation fallback.
+The report leaves the package and local catalogue unchanged and returns
+`staged: false`, `persisted: false`.
+
 ```bash
 ds dsgrid feature-codes report  --model local-<id> --output json
 ds dsgrid feature-codes import  --model local-<id> --standard pls-feature-codes.v1.json --voltage-class MV --yes
@@ -658,7 +667,8 @@ identity still reaches it without loading exchange planning.
 | `report structures` | `ds_grid_engine::report_structures` (+ `structure_rules::load_standard`), `ds_io::layers_to_xlsx` |
 | `report staking` | `ds_grid_exchange::staking_table::build_staking_table`, `ds_io::table_to_xlsx` |
 | `publish-version` | paired Desktop `dsgrid.model.publish`, composing its existing project version flow |
-| `feature-codes report/import/migrate` | `ds_grid_engine::feature_code_ops` over `ds_grid_engine::feature_code_standard` (the bundled standard and its classifier) |
+| `feature-codes report` | Captured Network `grid-query` / `feature_code_table_report`; host target selection and output bounds only |
+| `feature-codes import/migrate` | `ds_grid_engine::feature_code_ops` over `ds_grid_engine::feature_code_standard` (the bundled standard and its classifier) |
 | `feature-codes export` | `ds_grid_exchange::feature_code_fea::export_fea`, `ds_io::pls_cadd_fea::write_fea` |
 | `criteria show`, `criteria clearance set` | `ds_grid_engine::clearance_criteria` |
 | `analyse clearance` | `ds_grid_engine::clearance_report` (engine operation `clearance_report`) |
