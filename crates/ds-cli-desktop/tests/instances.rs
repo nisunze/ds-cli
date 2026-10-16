@@ -1035,3 +1035,110 @@ fn navigation_contracts_declare_lane_without_changing_stable_default() {
         assert!(ds_cli_contract::parse(command, &explicit).is_err());
     }
 }
+
+#[test]
+fn explicit_local_printing_read_uses_captured_native_identity_beside_another_account() {
+    let machine = Machine::new();
+    let local = Bridge::start(ALPHA, Some("project-a"), SHARED_NAME);
+    local.publish_identity("local", fixtures::UID, fixtures::AUDIENCE);
+    let other = Bridge::start(BETA, Some("project-b"), SHARED_NAME);
+    other.publish_identity("canary", "another-account", fixtures::AUDIENCE);
+    machine.publish(&local);
+    machine.publish(&other);
+    let result = Invocation::signed_in()
+        .run(
+            &ds_cli_desktop::custom_print::LIST_COMMAND,
+            ds_cli_desktop::custom_print::list,
+            &["--project", "project-a", "--target", &target(ALPHA)],
+        )
+        .expect("the real printing-map read handler reaches the exact Local window");
+    assert_eq!(result["servedBy"], ALPHA);
+    assert_eq!(local.invoked(), vec!["printing.map.list"]);
+    assert_eq!(local.fence(0)["lane"], "local");
+    assert_eq!(local.fence(0)["uid"], fixtures::UID);
+    assert_eq!(local.fence(0)["project"], "project-a");
+    assert_eq!(local.fence(0)["session_revision"], 3);
+    assert!(other.invoked().is_empty());
+}
+
+#[test]
+fn explicit_local_selection_keeps_native_identity_project_and_automatic_refusals() {
+    let machine = Machine::new();
+    let local = Bridge::start(ALPHA, Some("project-a"), SHARED_NAME);
+    local.publish_identity("local", fixtures::UID, fixtures::AUDIENCE);
+    let other = Bridge::start(BETA, Some("project-b"), SHARED_NAME);
+    other.publish_identity("canary", "another-account", fixtures::AUDIENCE);
+    machine.publish(&local);
+    machine.publish(&other);
+    assert!(
+        Invocation::on_project("project-a")
+            .invoke(None, &PROJECT_OP, json!({}))
+            .is_err()
+    );
+    untouched(&[&local, &other]);
+    let mismatch = refused(
+        Invocation::on_project("project-z").invoke(Some(&target(ALPHA)), &PROJECT_OP, json!({})),
+        "a named Local window never switches project",
+    );
+    assert_eq!(mismatch.code(), "desktop_project_not_open");
+    for (uid, audience) in [
+        ("another-account", fixtures::AUDIENCE),
+        (
+            fixtures::UID,
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        ),
+    ] {
+        local.publish_identity("local", uid, audience);
+        let denied = refused(
+            Invocation::on_project("project-a").invoke(
+                Some(&target(ALPHA)),
+                &PROJECT_OP,
+                json!({}),
+            ),
+            "explicit Local target is not foreign authority",
+        );
+        assert_eq!(denied.code(), "desktop_target_mismatch");
+    }
+    local.publish_identity("local", fixtures::UID, fixtures::AUDIENCE);
+    other.publish_identity("canary", fixtures::UID, fixtures::AUDIENCE);
+    let denied = refused(
+        Invocation::signed_in().in_lane("stable").invoke(
+            Some(&target(BETA)),
+            &PROJECT_OP,
+            json!({}),
+        ),
+        "Stable cannot borrow provisioned Canary",
+    );
+    assert_eq!(denied.code(), "desktop_target_mismatch");
+    untouched(&[&local, &other]);
+}
+
+#[test]
+fn unprovisioned_explicit_local_target_precedes_unrelated_account_adoption() {
+    let machine = Machine::new();
+    let local = Bridge::start(ALPHA, Some("project-a"), SHARED_NAME);
+    local.publish_identity("local", fixtures::UID, fixtures::AUDIENCE);
+    let other = Bridge::start(BETA, Some("project-b"), SHARED_NAME);
+    other.publish_identity("canary", "another-account", fixtures::AUDIENCE);
+    machine.publish(&local);
+    machine.publish(&other);
+    let result = Invocation::unprovisioned()
+        .invoke(Some(&target(ALPHA)), &PROJECT_OP, json!({}))
+        .expect("explicit paired application authority does not adopt the unrelated session");
+    assert_eq!(result["servedBy"], ALPHA);
+    assert_eq!(local.fence(0)["lane"], "local");
+    assert_eq!(local.fence(0)["uid"], fixtures::UID);
+    assert!(other.invoked().is_empty());
+    local.forget();
+    let denied = refused(
+        Invocation::unprovisioned().invoke(None, &PROJECT_OP, json!({})),
+        "automatic unrelated identities remain ambiguous",
+    );
+    assert_eq!(denied.code(), "desktop_ambiguous");
+    let absent = refused(
+        Invocation::unprovisioned().invoke(Some(&target(DEAD)), &PROJECT_OP, json!({})),
+        "explicit missing target cannot fall through",
+    );
+    assert_eq!(absent.code(), "desktop_target_not_live");
+    untouched(&[&local, &other]);
+}

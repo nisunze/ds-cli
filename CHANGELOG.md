@@ -397,3 +397,16 @@ native facade refused these Properties-selection consumers. Existing source,
 asset, account/project/lane, executable and late-owner fences remain; older
 workers/parsers explicitly refuse and require the matching independent owner
 update. This adds no editing, calculation, save or publication authority.
+
+
+## Unreleased: explicit Local instance discovery
+
+Paired CLI/MCP reads previously applied strict lane selection before the existing
+explicit Local development pairing policy, or compared unrelated signed-in
+identities before honoring an explicit target for a caller without native
+identity. Discovery now uses the same scoped Kernel selection and the exact
+observed target respectively. Local stays Local; captured native UID/audience,
+project/window and late IPC fences stay exact. Automatic selection and installed
+Stable/Canary crossings remain strict. Old lane-mismatch/ambiguity refusals require
+a CLI update with the committed Kernel successor; no Desktop wire operation,
+credential copy, data migration or installation-wide pin is added.

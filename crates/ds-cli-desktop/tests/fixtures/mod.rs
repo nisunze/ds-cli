@@ -389,6 +389,14 @@ impl Bridge {
         self.log.lock().expect("log").clear();
     }
 
+    /// Publish a synthetic identity for exact lane/principal/audience controls.
+    pub fn publish_identity(&self, lane: &str, uid: &str, audience: &str) {
+        let mut session = self.session.lock().expect("session");
+        session["lane"] = json!(lane);
+        session["uid"] = json!(uid);
+        session["credential_audience_sha256"] = json!(audience);
+    }
+
     /// The native caller may remain signed in while this Desktop signs out.
     pub fn sign_out(&self) {
         let mut session = self.session.lock().expect("session");

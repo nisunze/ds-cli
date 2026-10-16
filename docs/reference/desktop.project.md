@@ -43,3 +43,16 @@ Stable/Canary crossings remain refused. Existing project, session revision and
 window generation fences still apply. Older CLI builds refuse this combination
 with `auth_context_mismatch`; update the CLI, without copying credentials or
 changing the development profile.
+
+
+Instance discovery applies the explicit Local pairing scope before its lane
+comparison. When a command has no native caller identity, naming a target also
+precedes identity adoption: only the exact observed application's identity is
+used, even beside another signed-in account. Automatic multi-account selection
+remains ambiguous, and no native lane is invented. Captured native callers still
+require exact UID/audience and applicable project/window fences; installed
+Stable/Canary crossings refuse. Older discovery builds may report
+`desktop_target_mismatch` with reason `lane`, or `desktop_ambiguous`, for this
+otherwise admitted explicit Local pairing. A CLI update with its committed
+Kernel dependency repairs discovery; no Desktop protocol or data migration is
+required. See the [owning selection contract](../../../ds-command-kernel/docs/contracts/ds-desktop-instance.md#explicit-local-development-pairing).

@@ -509,7 +509,11 @@ pub fn choose(
     requirement: Option<&Requirement>,
 ) -> Result<Found, Failure> {
     let candidates = enumeration.candidates();
-    if is_sole_development_runtime(&enumeration) {
+    if let (Some(target), None) = (target, requirement) {
+        let route = kernel::select_observed_target(&candidates, target).map_err(relay)?;
+        return found_for_route(enumeration, route);
+    }
+    if requirement.is_none() && is_sole_development_runtime(&enumeration) {
         let named_elsewhere =
             target.is_some_and(|target| target.instance_id != candidates[0].instance_id);
         if named_elsewhere {
@@ -542,24 +546,38 @@ pub fn choose(
             &owned
         }
     };
-    let route = kernel::select(&candidates, target, requirement).map_err(|fault| {
-        let failure = relay(fault);
-        // Nothing compatible is live, and this caller's own session is a
-        // development build. That is a real, common answer with its own
-        // remedy, and it is the caller's own instance being named — not
-        // another account's.
-        if failure.code() == kernel::DESKTOP_NOT_PAIRED
-            && enumeration.live.iter().any(|live| {
-                live.candidate().is_some_and(|candidate| {
-                    candidate.uid == requirement.uid && candidate.lane == "local"
-                })
-            })
-        {
-            return crate::ops::unprovisioned_lane();
+    let scope = match target {
+        Some(target) => {
+            ds_command_kernel::project_context::PairedHostScope::ExplicitLocalDevelopment {
+                target_instance: &target.instance_id,
+                native_credential_lane: &requirement.lane,
+            }
         }
-        failure
-    })?;
+        None => ds_command_kernel::project_context::PairedHostScope::Provisioned,
+    };
+    let route =
+        kernel::select_paired(&candidates, target, requirement, scope).map_err(|fault| {
+            let failure = relay(fault);
+            // Nothing compatible is live, and this caller's own session is a
+            // development build. That is a real, common answer with its own
+            // remedy, and it is the caller's own instance being named — not
+            // another account's.
+            if failure.code() == kernel::DESKTOP_NOT_PAIRED
+                && enumeration.live.iter().any(|live| {
+                    live.candidate().is_some_and(|candidate| {
+                        candidate.uid == requirement.uid && candidate.lane == "local"
+                    })
+                })
+            {
+                return crate::ops::unprovisioned_lane();
+            }
+            failure
+        })?;
 
+    found_for_route(enumeration, route)
+}
+
+fn found_for_route(enumeration: Enumeration, route: kernel::Route) -> Result<Found, Failure> {
     let mut found = enumeration
         .live
         .into_iter()
