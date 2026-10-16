@@ -1300,8 +1300,6 @@ dependencies = [
  "ds-command-kernel",
  "ds-compute-runtime",
  "ds-design-workspace",
- "ds-grid-engine",
- "ds-grid-exchange",
  "ds-layer-ops",
  "ds-layer-store",
  "ds-network-client",

@@ -2,14 +2,12 @@
 //! Grid exchange and managed Network owners; no browser, SDK or caller argv.
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ds_cli_contract::Failure;
-use ds_grid_exchange::profile_session::ProfileSessionSeed;
 use ds_network_client::{CapturedNetworkClient, NetworkFailure, ProfileSession};
 use ds_network_contracts::engine::NetworkCapability;
 use ds_network_contracts::profile::NativeProfileGridInkV1;
 use ds_network_contracts::profile::{
-    NativeProfileEngineeringTableV1, NativeProfileOpenV1, NativeProfileOperationV1,
-    NativeProfilePickRequestV1, NativeProfileSelectionRangeRequestV1, NativeProfileViewInputV1,
-    PROFILE_OPEN_SCHEMA, PROFILE_VIEW_INPUT_SCHEMA,
+    NativeProfileEngineeringTableV1, NativeProfileOperationV1, NativeProfilePickRequestV1,
+    NativeProfileSelectionRangeRequestV1, NativeProfileViewInputV1, PROFILE_VIEW_INPUT_SCHEMA,
 };
 use ds_sync_store::{ProfileSourceHeader, ProfileSourceScope, Store};
 use serde::{Deserialize, Serialize};
@@ -25,7 +23,7 @@ use std::{
 pub const REQUEST_SCHEMA: &str = "ds.core.profile-session/v1";
 pub const RECEIPT_SCHEMA: &str = "ds.core.profile-receipt/v1";
 pub const MAX_REQUEST: usize = 48 * 1024 * 1024;
-pub const MAX_PACKAGE: usize = 32 * 1024 * 1024;
+pub const MAX_PACKAGE: usize = ds_network_contracts::profile::MAX_PROFILE_PACKAGE_BYTES;
 const MAX_SESSIONS: usize = 8;
 const IDLE: Duration = Duration::from_secs(15 * 60);
 const DEADLINE: Duration = Duration::from_secs(30);
@@ -145,6 +143,15 @@ fn invalid(message: impl ToString) -> Failure {
     Failure::invalid("core_profile_request_invalid", message.to_string())
         .remedy("Use core.profile-session contract 1 with an exact package SHA or captured session/model/history")
 }
+fn package_native(error: NetworkFailure) -> Failure {
+    if error.code() == "network_engine_refused"
+        && error.owner_code() == Some("profile_package_invalid")
+    {
+        invalid(error.message)
+    } else {
+        native(error)
+    }
+}
 fn view_native(error: NetworkFailure) -> Failure {
     if error.code() == "network_engine_refused"
         && error.owner_code() == Some("profile_view_invalid")
@@ -184,43 +191,6 @@ fn decode_package(encoded: &str, expected: &str) -> Result<Vec<u8>, Failure> {
         return Err(invalid("Package bytes differ from their exact SHA-256"));
     }
     Ok(bytes)
-}
-/// Admit the existing package owner, including every member/library pin. This
-/// source conversion does not solve/recalculate: the process owns live state.
-fn package_open(bytes: &[u8]) -> Result<(NativeProfileOpenV1, u64, String), Failure> {
-    let package = ds_grid_exchange::package::unpack(bytes).map_err(|e| invalid(e.to_string()))?;
-    let manifest = package.manifest.model;
-    let protection = ds_grid_exchange::linked_models::protection_from_assets(
-        manifest.model_id.as_str(),
-        &package.assets,
-    );
-    let session = ds_grid_engine::GridSession::open_model(
-        package.snapshot,
-        manifest.model_id.as_str(),
-        protection,
-    );
-    if !session.is_valid() {
-        return Err(invalid("Package cannot establish a valid Profile session"));
-    }
-    let seed = ProfileSessionSeed::capture(
-        &session,
-        manifest.model_id,
-        manifest.presentation,
-        &package.assets,
-    );
-    let seed_json = serde_json::to_string(&seed)
-        .map_err(|_| invalid("Cannot encode the admitted Profile seed"))?;
-    Ok((
-        NativeProfileOpenV1 {
-            schema: PROFILE_OPEN_SCHEMA.into(),
-            seed_json,
-            binding_history: Some(vec![package.exchange_bindings]),
-            calculated: None,
-            analysis: None,
-        },
-        manifest.model_revision,
-        manifest.coordinate_system.as_str().to_owned(),
-    ))
 }
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -319,9 +289,6 @@ fn open_original(
     authorized: &dyn Fn() -> Result<(), Failure>,
     required_capability: Option<NetworkCapability>,
 ) -> Result<(Held, Vec<u8>), Failure> {
-    let (open, source_revision, coordinate_system) = package_open(bytes)?;
-    let input =
-        serde_json::to_vec(&open).map_err(|_| invalid("Cannot encode native Profile opening"))?;
     let workers = std::thread::available_parallelism()
         .map_or(1, usize::from)
         .min(2);
@@ -331,6 +298,22 @@ fn open_original(
     if let Some(required) = required_capability {
         require_read_capability(&client.identity().capabilities, required)?;
     }
+    require_read_capability(
+        &client.identity().capabilities,
+        NetworkCapability::ProfilePackageOpenV1,
+    )?;
+    require_read_capability(
+        &client.identity().capabilities,
+        NetworkCapability::ProfileSessionV1,
+    )?;
+    let prepared = client
+        .prepare_profile_open(bytes, scratch, DEADLINE, &|| false)
+        .map_err(package_native)?;
+    authorized()?;
+    let prepared = prepared.result;
+    let source_revision = prepared.source_revision;
+    let coordinate_system = prepared.coordinate_system;
+    let input = serde_json::to_vec(&prepared.open).map_err(invalid)?;
     let mut session = client
         .open_profile_session_with_timeout(&input, scratch, DEADLINE, &|| false)
         .map_err(native)?;
@@ -562,11 +545,15 @@ impl Sessions {
                         authorized()?;
                         return Ok(closed_source_receipt(&scope, &header));
                     }
+                    let pin: ds_network_client::NetworkEnginePin =
+                        serde_json::from_value(header.engine.clone()).map_err(invalid)?;
+                    require_read_capability(
+                        &pin.identity.capabilities,
+                        NetworkCapability::ProfilePackageOpenV1,
+                    )?;
                     if let Some(required) = required_capability.clone() {
                         // Source identity is admitted before staging/recreating any
                         // worker; a newer current executable cannot substitute for it.
-                        let pin: ds_network_client::NetworkEnginePin =
-                            serde_json::from_value(header.engine.clone()).map_err(invalid)?;
                         require_read_capability(&pin.identity.capabilities, required)?;
                     }
                     if held.len() >= MAX_SESSIONS {
@@ -714,8 +701,9 @@ impl Sessions {
                     &value.session.pin().identity.capabilities,
                     NetworkCapability::ProfileViewV1,
                 )?;
-                let options: ds_grid_engine::ProfileAtlasOptions = serde_json::from_value(options)
-                    .map_err(|_| invalid("Use existing native ProfileAtlasOptions"))?;
+                let options: ds_network_contracts::profile_scene::ProfileAtlasOptions =
+                    serde_json::from_value(options)
+                        .map_err(|_| invalid("Use existing native ProfileAtlasOptions"))?;
                 let patch: ds_command_kernel::profile_display::DisplayPatch =
                     serde_json::from_value(patch)
                         .map_err(|_| invalid("Use existing native DisplayPatch"))?;
@@ -1623,7 +1611,6 @@ mod tests {
         );
         assert!(decode_package(&STANDARD.encode(bytes), &"0".repeat(64)).is_err());
         assert!(decode_package("!", &"0".repeat(64)).is_err());
-        assert!(package_open(bytes).is_err());
     }
     #[test]
     fn read_projection_actions_are_closed_typed_and_preserve_ordered_label_fields() {
@@ -1908,3 +1895,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "profile_sessions_package_tests.rs"]
+mod package_tests;

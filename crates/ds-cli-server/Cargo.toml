@@ -8,8 +8,6 @@ ds-report-artifacts = { path = "../../../ds-command-kernel/crates/ds-report-arti
 ds-cli-contract.workspace = true
 ds-network-client.workspace = true
 ds-network-contracts.workspace = true
-ds-grid-engine.workspace = true
-ds-grid-exchange.workspace = true
 ds-cli-exec.workspace = true
 ds-update-runtime = { path = "../../../ds-command-kernel/crates/ds-update-runtime" }
 ds-solar-process = { path = "../../../ds-solar/crates/ds-solar-process" }
