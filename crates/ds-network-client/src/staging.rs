@@ -37,8 +37,44 @@ pub fn private_disk_stage() -> Result<tempfile::TempDir, NetworkFailure> {
             "staging root must be an ordinary directory",
         ));
     }
-    tempfile::Builder::new()
-        .prefix("ds-network-host-")
+    create_stage(&root)
+}
+
+fn create_stage(root: &std::path::Path) -> Result<tempfile::TempDir, NetworkFailure> {
+    let mut builder = tempfile::Builder::new();
+    builder.prefix("ds-network-host-");
+    // tempfile directories otherwise inherit 0777 masked by the caller's
+    // umask. Restrict at creation, before a request or result can enter it.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(fs::Permissions::from_mode(0o700));
+    }
+    builder
         .tempdir_in(root)
         .map_err(|error| NetworkFailure::new("network_scratch_invalid", error.to_string()))
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::MetadataExt;
+
+    #[test]
+    fn stage_under_shared_parent_is_private_and_cleans_up() {
+        use std::os::unix::fs::PermissionsExt;
+        let parent = tempfile::tempdir().unwrap();
+        fs::set_permissions(parent.path(), fs::Permissions::from_mode(0o755)).unwrap();
+        let path = {
+            let stage = create_stage(parent.path()).unwrap();
+            let metadata = fs::symlink_metadata(stage.path()).unwrap();
+            assert!(metadata.is_dir() && !metadata.file_type().is_symlink());
+            assert_eq!(metadata.uid(), unsafe { libc::geteuid() });
+            assert_eq!(metadata.mode() & 0o777, 0o700);
+            fs::write(stage.path().join("request.json"), b"{}").unwrap();
+            stage.path().to_owned()
+        };
+        assert!(!path.exists());
+        assert!(parent.path().is_dir());
+    }
 }
