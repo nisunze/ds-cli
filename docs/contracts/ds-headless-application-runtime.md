@@ -477,9 +477,15 @@ own operator inputs, effects, refusal remedies and migration behavior.
 The protected Core host admits `profile_session` through the existing execution
 context owner. Each session is fenced to its captured native principal, lane,
 deployment, install and explicit project; the package SHA, model and exact
-history bind its retained managed Network process. Opening a package verifies
-the existing exchange manifest/members/library pins and captures the existing
-Profile seed; it never restores an embedded engineering engine to Desktop.
+history bind its retained managed Network process. Opening requires captured
+`profile_package_open_v1` and `profile_session_v1` capabilities before staging.
+Network verifies exchange manifest/members/library pins and prepares the existing
+Profile seed, protection, assets and bindings; Core opens the retained worker
+through that same captured executable. Core retains encoding/32 MiB/SHA checks,
+authorization, capacity and the exact original in scoped SQLite. A missing or
+incompatible engine refuses before archive decoding; compatible package-invalid
+refusals keep `core_profile_request_invalid`. It never restores an embedded
+engineering engine to Desktop.
 Opaque session handles are process-lifetime addresses, never authorization.
 Closing, bounded idle retirement and Core shutdown reap the supervised worker.
 An independently installed older Core without the closed command refuses with
@@ -499,8 +505,8 @@ and patched display state before adoption. Network prepares and encodes the
 complete projection before replacing its retained calculation; malformed style
 or projection failures cannot partially adopt a calculation. Cached views never
 calculate engineering, including after a checkpoint restart. Older engines
-refuse without a linked or browser fallback. Package opening and other Core
-consumers still link Grid owners; this view cut alone does not qualify an
-engine-free Core release.
+refuse without a linked or browser fallback. Profile package opening and views
+no longer directly link Grid engines from `ds-cli-server`; other Core consumers
+still link Grid owners, so these cuts do not qualify an engine-free Core release.
 Desktop renders the complete owner result through a closed adapter; browser
 Grid availability cannot qualify a native shell release.

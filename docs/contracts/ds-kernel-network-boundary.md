@@ -48,8 +48,13 @@ leaf for symbols, labels, display controls and complete scene projection. The
 legacy native runtime reexports and uses that one implementation. Core's
 retained View uses the managed `profile_view_v1` process capability and no longer
 links the legacy runtime. Core retains authorization and display state; Network
-returns one complete projection. Other Core Grid consumers remain linked, so
-this view cut alone does not qualify standalone Core.
+returns one complete projection. Profile package admission likewise runs through
+`profile_package_open_v1` on the same captured executable used for the retained
+session; Core keeps exact-byte, scope, authorization and SQLite retention checks.
+`ProfileAtlasOptions` is a neutral contracts DTO with its old engine path
+reexported. `ds-cli-server` no longer directly depends on Grid engine/exchange.
+Other Core Grid consumers remain linked, so these cuts do not qualify standalone
+Core.
 
 ### The question to ask of every piece of logic
 

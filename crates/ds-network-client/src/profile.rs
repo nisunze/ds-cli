@@ -38,6 +38,74 @@ pub struct ProfileSession {
     closed: bool,
 }
 impl CapturedNetworkClient {
+    /// Admit an exact package through this same captured executable before opening
+    /// its retained worker. Missing capability refuses before any input staging.
+    pub fn prepare_profile_open(
+        &self,
+        package: &[u8],
+        scratch: &Path,
+        timeout: Duration,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<crate::GridOutcome<NativeProfilePreparedOpenV1>, NetworkFailure> {
+        if !self
+            .identity
+            .capabilities
+            .contains(&NetworkCapability::ProfilePackageOpenV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "captured Network has no Profile package admission capability",
+            ));
+        }
+        if package.is_empty() || package.len() > MAX_PROFILE_PACKAGE_BYTES {
+            return Err(NetworkFailure::new(
+                "profile_package_invalid",
+                "Profile package exceeds its 32 MiB bound",
+            ));
+        }
+        let result = self.grid_artifact_with_timeout::<NativeProfilePreparedOpenV1>(
+            "profile-prepare-open",
+            NetworkCapability::ProfilePackageOpenV1,
+            None,
+            Some(package),
+            scratch,
+            cancel,
+            PROFILE_PREPARED_OPEN_ARTIFACT,
+            PROFILE_PREPARED_OPEN_SCHEMA,
+            MAX_PROFILE_PREPARED_OPEN_BYTES,
+            None,
+            false,
+            timeout,
+        )?;
+        let prepared = &result.result;
+        if prepared.schema != PROFILE_PREPARED_OPEN_SCHEMA
+            || prepared.package_sha256 != digest_bytes(package)
+            || prepared.coordinate_system.is_empty()
+            || prepared
+                .open
+                .binding_history
+                .as_ref()
+                .is_none_or(|history| history.len() != 1)
+            || prepared.open.calculated.is_some()
+            || prepared.open.analysis.is_some()
+        {
+            return Err(invalid(
+                "Prepared Profile differs from its package or initial state",
+            ));
+        }
+        let (_, history) =
+            open_fence(&serde_json::to_vec(&prepared.open).map_err(|e| invalid(e.to_string()))?)?;
+        if history["undo_depth"] != 0
+            || history["redo_depth"] != 0
+            || history["initial_revision"] != history["model_revision"]
+        {
+            return Err(invalid(
+                "Prepared Profile must start at the exact initial history",
+            ));
+        }
+        Ok(result)
+    }
+
     pub fn open_profile_session(
         &self,
         input: &[u8],

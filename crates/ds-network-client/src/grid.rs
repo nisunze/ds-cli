@@ -258,6 +258,44 @@ impl CapturedNetworkClient {
         progress: Option<ProgressObserver<'_>>,
         retain_staging: bool,
     ) -> Result<GridOutcome<T>, NetworkFailure> {
+        self.grid_artifact_with_timeout(
+            task,
+            capability,
+            request,
+            model,
+            scratch,
+            cancel,
+            artifact_name,
+            artifact_schema,
+            maximum,
+            progress,
+            retain_staging,
+            TASK_TIMEOUT,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn grid_artifact_with_timeout<T: DeserializeOwned>(
+        &self,
+        task: &'static str,
+        capability: NetworkCapability,
+        request: Option<&[u8]>,
+        model: Option<&[u8]>,
+        scratch: &Path,
+        cancel: &dyn Fn() -> bool,
+        artifact_name: &'static str,
+        artifact_schema: &'static str,
+        maximum: usize,
+        progress: Option<ProgressObserver<'_>>,
+        retain_staging: bool,
+        timeout: Duration,
+    ) -> Result<GridOutcome<T>, NetworkFailure> {
+        if timeout.is_zero() || timeout > TASK_TIMEOUT {
+            return Err(NetworkFailure::new(
+                "network_task_deadline_invalid",
+                "Use a positive bounded native task deadline",
+            ));
+        }
         if !self.identity.capabilities.contains(&capability) {
             return Err(NetworkFailure::new(
                 "network_engine_incompatible",
@@ -359,7 +397,7 @@ impl CapturedNetworkClient {
         };
         let completed = self
             .engine
-            .call_cancelled_observed(task, &args, TASK_TIMEOUT, width, cancel, &observe)
+            .call_cancelled_observed(task, &args, timeout, width, cancel, &observe)
             .map_err(|e| NetworkFailure::new(static_code(e.code()), e.to_string()))?;
         if completed.truncated || completed.stdout.len() > MAX_IDENTITY_BYTES {
             return Err(NetworkFailure::new(
