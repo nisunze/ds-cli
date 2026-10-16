@@ -4,6 +4,22 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use profile_sessions::*;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+fn staged_files(root: &std::path::Path) -> Vec<(std::path::PathBuf, u64)> {
+    let mut result = Vec::new();
+    for entry in std::fs::read_dir(root).unwrap() {
+        let entry = entry.unwrap();
+        let meta = entry.path().symlink_metadata().unwrap();
+        assert!(!meta.file_type().is_symlink());
+        if meta.is_dir() {
+            result.extend(staged_files(&entry.path()));
+        } else {
+            result.push((entry.path(), meta.len()));
+        }
+    }
+    result.sort();
+    result
+}
+
 fn main() {
     let scratch = std::env::args().nth(1).expect("private fixture path");
     let fixture_model = ds_grid_exchange::blank_model::create_blank_model(
@@ -19,6 +35,18 @@ fn main() {
         .map(|path| std::fs::read(path).unwrap())
         .unwrap_or(fixture_model.bytes);
     let package = ds_grid_exchange::package::unpack(&model_bytes).unwrap();
+    let property_entity = package
+        .snapshot
+        .structures
+        .first()
+        .map(|row| row.id.as_str().to_owned())
+        .or_else(|| {
+            package
+                .snapshot
+                .alignments
+                .first()
+                .map(|row| row.id.as_str().to_owned())
+        });
     let expected_model = package.manifest.model.model_id.as_str().to_owned();
     let expected_crs = package.manifest.model.coordinate_system.as_str().to_owned();
     let digest = format!("{:x}", Sha256::digest(&model_bytes));
@@ -339,21 +367,6 @@ fn main() {
         checks
             .push("same-managed-worker-feature-codes-engineering-tables-and-gis-exact-history-crs");
     } else {
-        fn staged_files(root: &std::path::Path) -> Vec<(std::path::PathBuf, u64)> {
-            let mut result = Vec::new();
-            for entry in std::fs::read_dir(root).unwrap() {
-                let entry = entry.unwrap();
-                let meta = entry.path().symlink_metadata().unwrap();
-                assert!(!meta.file_type().is_symlink());
-                if meta.is_dir() {
-                    result.extend(staged_files(&entry.path()));
-                } else {
-                    result.push((entry.path(), meta.len()));
-                }
-            }
-            result.sort();
-            result
-        }
         let before = staged_files(std::path::Path::new(&scratch));
         for operation in projection_requests() {
             let error = sessions
@@ -378,6 +391,98 @@ fn main() {
         assert_eq!(sessions.held_count_for_test(), 1);
         checks
             .push("old-managed-engine-projection-capability-refuses-before-staging-or-new-worker");
+    }
+    let properties_capable = open["engine"]["identity"]["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|cap| cap == "profile_properties_v1");
+    let property_request = |entity: &str| Request {
+        schema: REQUEST_SCHEMA.into(),
+        operation: Operation::Properties {
+            session_id: id.clone(),
+            model_id: model_id.clone(),
+            expected_history: history.clone(),
+            entity_id: entity.into(),
+        },
+    };
+    if properties_capable {
+        let entity = property_entity.as_ref().expect("Properties-capable fixture requires an explicitly supplied package with an observed canonical entity; an empty blank is not positive qualification");
+        {
+            let source_before = stored_original(&id);
+            let result = sessions
+                .execute(
+                    scope.clone(),
+                    std::path::Path::new(&scratch),
+                    &database,
+                    property_request(entity),
+                    &|| Ok(()),
+                )
+                .unwrap();
+            assert_eq!(result["history"], history);
+            assert_eq!(result["engine"], open["engine"]);
+            assert_eq!(result["payload"]["schema_version"], 1);
+            assert_eq!(result["payload"]["entity_id"], *entity);
+            assert_eq!(result["payload"]["revision"], history["model_revision"]);
+            assert!(!result["payload"]["groups"].as_array().unwrap().is_empty());
+            assert_eq!(stored_original(&id), source_before);
+            let attempts = std::sync::atomic::AtomicUsize::new(0);
+            let error = sessions
+                .execute(
+                    scope.clone(),
+                    std::path::Path::new(&scratch),
+                    &database,
+                    property_request(entity),
+                    &|| {
+                        if attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 1 {
+                            Err(ds_cli_contract::Failure::unauthorized(
+                                "server_owner_changed",
+                                "synthetic late Properties owner change",
+                            ))
+                        } else {
+                            Ok(())
+                        }
+                    },
+                )
+                .unwrap_err();
+            assert_eq!(error.code(), "server_owner_changed");
+            assert_eq!(stored_original(&id), source_before);
+            checks.push("same-worker-properties-exact-entity-history-and-late-owner-refusal");
+        }
+        let missing = sessions
+            .execute(
+                scope.clone(),
+                std::path::Path::new(&scratch),
+                &database,
+                property_request("missing-native-property-entity"),
+                &|| Ok(()),
+            )
+            .unwrap_err();
+        assert_eq!(
+            missing.detail_value().unwrap()["native_code"],
+            "profile_entity_not_found"
+        );
+        checks.push("properties-missing-entity-refuses-without-empty-sheet");
+    } else {
+        let files_before = staged_files(std::path::Path::new(&scratch));
+        let source_before = stored_original(&id);
+        let error = sessions
+            .execute(
+                scope.clone(),
+                std::path::Path::new(&scratch),
+                &database,
+                property_request("missing-native-property-entity"),
+                &|| Ok(()),
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.detail_value().unwrap()["required_capability"],
+            "profile_properties_v1"
+        );
+        assert_eq!(files_before, staged_files(std::path::Path::new(&scratch)));
+        assert_eq!(stored_original(&id), source_before);
+        assert_eq!(sessions.held_count_for_test(), 1);
+        checks.push("old-engine-properties-cap-refuses-active-before-staging-or-request");
     }
     let checkpoint = sessions
         .execute(
@@ -459,6 +564,27 @@ fn main() {
         }
         assert_eq!(stored_original(&id), before);
         checks.push("expired-old-cap-source-refuses-before-candidate-launch-or-source-adoption");
+    }
+    if !properties_capable {
+        let files_before = staged_files(std::path::Path::new(&scratch));
+        let source_before = stored_original(&id);
+        let error = sessions
+            .execute(
+                scope.clone(),
+                std::path::Path::new(&scratch),
+                &database,
+                property_request("missing-native-property-entity"),
+                &|| Ok(()),
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.detail_value().unwrap()["required_capability"],
+            "profile_properties_v1"
+        );
+        assert_eq!(files_before, staged_files(std::path::Path::new(&scratch)));
+        assert_eq!(stored_original(&id), source_before);
+        assert_eq!(sessions.held_count_for_test(), 1);
+        checks.push("expired-old-properties-cap-refuses-before-candidate-launch-or-adoption");
     }
     let attempts = std::sync::atomic::AtomicUsize::new(0);
     let refused = sessions
@@ -570,8 +696,10 @@ fn main() {
         "core_profile_session_unavailable"
     );
     checks.push("close-and-reopen-required");
+    let properties_positive_qualified =
+        checks.contains(&"same-worker-properties-exact-entity-history-and-late-owner-refusal");
     println!(
         "{}",
-        json!({"schema":"ds.profile-owner-native-fixture-proof/v1","checks":checks,"package_sha256":digest,"model_id":model_id,"history":history,"projection_capability_present":projection_capable,"engine_executable":open["engine"]["executable"],"engine_sha256":open["engine"]["executable_sha256"],"engine_source":open["engine"]["identity"]["sourceSha"],"engine_dependency_closure_sha256":open["engine"]["identity"]["dependencyClosureSha256"],"engine_protocol":[open["engine"]["identity"]["protocolMajor"],open["engine"]["identity"]["protocolMinor"]],"idle_control":"private clock-age seam exercises production fifteen-minute retirement; not an elapsed fifteen-minute runtime claim","core_transport_qualified":false,"user_project_effects":false})
+        json!({"schema":"ds.profile-owner-native-fixture-proof/v1","checks":checks,"package_sha256":digest,"model_id":model_id,"history":history,"projection_capability_present":projection_capable,"properties_capability_present":properties_capable,"properties_positive_qualified":properties_positive_qualified,"engine_executable":open["engine"]["executable"],"engine_sha256":open["engine"]["executable_sha256"],"engine_source":open["engine"]["identity"]["sourceSha"],"engine_dependency_closure_sha256":open["engine"]["identity"]["dependencyClosureSha256"],"engine_protocol":[open["engine"]["identity"]["protocolMajor"],open["engine"]["identity"]["protocolMinor"]],"idle_control":"private clock-age seam exercises production fifteen-minute retirement; not an elapsed fifteen-minute runtime claim","core_transport_qualified":false,"user_project_effects":false})
     );
 }

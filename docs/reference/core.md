@@ -385,3 +385,25 @@ successor documents continue to be admitted as supplied and clear an older
 null-demand capture only after successful View; malformed failures preserve the
 prior capture. Closing or rehydrating
 a worker drops its captured style, and the next null demand observes anew.
+
+### Retained Profile Properties
+
+The closed `properties` control takes the captured `session_id`, `model_id`,
+complete `expected_history`, and one `entity_id`: 1..128 UTF-8 bytes, without
+control characters or edge whitespace. Core admits the same canonical native
+EntityId before source lookup/rebind. This read requires the captured worker's
+`profile_properties_v1` capability, distinct from `profile_read_projections_v1`,
+before request or expired-source candidate launch. Older managed engines refuse
+`core_profile_native_refused` with `network_engine_incompatible`; explicitly
+install a compatible same-lane engine and reopen the exact original. There is no
+browser fallback or second Grid session.
+
+The existing WASM `profilePropertiesJson` owner now serves the same retained
+worker's facts and engineering-attribute evidence. Its complete schema-1
+ModelPropertySheet preserves fields, groups, editor metadata and authored values.
+Core verifies exact entity, revision and schema after the native reply and late
+authority fence, before receipt adoption. Missing entities retain
+`profile_entity_not_found`. Editability metadata does not admit editing: the
+Core interface remains readonly, preserving package/history/CRS/assets and
+independent engine identity. This source migration is not an artifact or GUI
+acceptance claim.

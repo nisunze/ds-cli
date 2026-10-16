@@ -1,3 +1,15 @@
+## Unreleased: retained native Profile Properties
+
+Desktop Properties previously refused `profilePropertiesJson` at the retained
+native boundary. Closed `core.profile-session` action `properties` now forwards
+one canonical entity ID to the same managed Network worker and unchanged
+Properties owner. Exact history, retained asset evidence, entity/revision/schema
+and late account/lane/project/engine fences precede receipt adoption. The new
+`profile_properties_v1` capability is required before request or expired-source
+launch; older engines, including ones supporting table/GIS reads, explicitly
+refuse until independently updated and the original is reopened. Field editability
+metadata grants no authored mutation. No fallback, second engine or global pin.
+
 # Release notes
 
 ## Unreleased: retained Network worker presentation reads

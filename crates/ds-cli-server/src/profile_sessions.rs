@@ -79,6 +79,12 @@ pub enum Operation {
         model_id: String,
         expected_history: Value,
     },
+    Properties {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        entity_id: String,
+    },
     EngineeringAttributes {
         session_id: String,
         model_id: String,
@@ -256,6 +262,12 @@ fn operation_owner(operation: &Operation) -> Option<(&str, &str, &Value)> {
             model_id,
             expected_history,
         }
+        | Operation::Properties {
+            session_id,
+            model_id,
+            expected_history,
+            ..
+        }
         | Operation::EngineeringAttributes {
             session_id,
             model_id,
@@ -270,7 +282,7 @@ fn open_original(
     bytes: &[u8],
     id: &str,
     authorized: &dyn Fn() -> Result<(), Failure>,
-    projection_required: bool,
+    required_capability: Option<NetworkCapability>,
 ) -> Result<(Held, Vec<u8>), Failure> {
     let (open, source_revision, coordinate_system) = package_open(bytes)?;
     let input =
@@ -281,8 +293,8 @@ fn open_original(
     let client =
         CapturedNetworkClient::capture_for_lane(&scope.lane, workers, &|| false).map_err(native)?;
     authorized()?;
-    if projection_required {
-        require_projection_capability(&client.identity().capabilities)?;
+    if let Some(required) = required_capability {
+        require_read_capability(&client.identity().capabilities, required)?;
     }
     let mut session = client
         .open_profile_session_with_timeout(&input, scratch, DEADLINE, &|| false)
@@ -475,14 +487,11 @@ impl Sessions {
                 "Profile needs a captured native account/lane/deployment/install/project",
             ));
         }
-        let projection_required = matches!(
-            &request.operation,
-            Operation::FeatureCodes { .. }
-                | Operation::EngineeringAttributes { .. }
-                | Operation::GisProjection { .. }
-        );
-        if let Operation::GisProjection { label_fields, .. } = &request.operation {
-            validate_label_fields(label_fields)?;
+        let required_capability = read_capability(&request.operation);
+        if required_capability.is_some() {
+            // Admit all typed arguments before retained lookup/rebind can stage
+            // or launch a worker. CRS is supplied only by the held original.
+            let _ = read_projection_operation(&request.operation, "")?;
         }
         let mut held = self.held.lock().map_err(|_| {
             Failure::internal(
@@ -522,12 +531,12 @@ impl Sessions {
                         authorized()?;
                         return Ok(closed_source_receipt(&scope, &header));
                     }
-                    if projection_required {
+                    if let Some(required) = required_capability.clone() {
                         // Source identity is admitted before staging/recreating any
                         // worker; a newer current executable cannot substitute for it.
                         let pin: ds_network_client::NetworkEnginePin =
                             serde_json::from_value(header.engine.clone()).map_err(invalid)?;
-                        require_projection_capability(&pin.identity.capabilities)?;
+                        require_read_capability(&pin.identity.capabilities, required)?;
                     }
                     if held.len() >= MAX_SESSIONS {
                         return Err(Failure::unavailable(
@@ -541,7 +550,7 @@ impl Sessions {
                         &bytes,
                         id,
                         authorized,
-                        projection_required,
+                        required_capability.clone(),
                     )?;
                     if value.source != header {
                         return Err(Failure::conflict(
@@ -591,7 +600,7 @@ impl Sessions {
                     ));
                 }
                 let (value, snapshot) =
-                    open_original(scope.clone(), scratch, &bytes, &id, authorized, false)?;
+                    open_original(scope.clone(), scratch, &bytes, &id, authorized, None)?;
                 authorized()?;
                 let active: Vec<_> = held.keys().cloned().collect();
                 Store::open(database)
@@ -611,14 +620,22 @@ impl Sessions {
             }
             operation @ (Operation::FeatureCodes { .. }
             | Operation::EngineeringAttributes { .. }
-            | Operation::GisProjection { .. }) => {
+            | Operation::GisProjection { .. }
+            | Operation::Properties { .. }) => {
                 let (id, model, expected) =
                     operation_owner(&operation).expect("Closed read projection owner");
                 let session = owned(&mut held, &scope, id, model, expected)?;
-                require_projection_capability(&session.session.pin().identity.capabilities)?;
+                require_read_capability(
+                    &session.session.pin().identity.capabilities,
+                    read_capability(&operation).expect("Closed read capability"),
+                )?;
                 let native_op = read_projection_operation(&operation, &session.coordinate_system)?
                     .expect("Closed read projection");
                 let is_gis = matches!(&native_op, NativeProfileOperationV1::GisProjection { .. });
+                let property_entity = match &operation {
+                    Operation::Properties { entity_id, .. } => Some(entity_id.as_str()),
+                    _ => None,
+                };
                 let result = session
                     .session
                     .request_at(native_op, Some(expected.clone()), DEADLINE, &|| false)
@@ -634,6 +651,13 @@ impl Sessions {
                             "Native GIS projection differs from retained revision/declared CRS",
                         ));
                     }
+                }
+                if let Some(entity_id) = property_entity {
+                    validate_properties_payload(
+                        &result.bytes,
+                        entity_id,
+                        &session.session.history()["model_revision"],
+                    )?;
                 }
                 session.touched = Instant::now();
                 receipt(id, session, &result.bytes, false)
@@ -798,7 +822,8 @@ impl Sessions {
                     | Operation::View { .. }
                     | Operation::FeatureCodes { .. }
                     | Operation::EngineeringAttributes { .. }
-                    | Operation::GisProjection { .. } => unreachable!(),
+                    | Operation::GisProjection { .. }
+                    | Operation::Properties { .. } => unreachable!(),
                 };
                 let session = owned(&mut held, &scope, &id, &model, &expected)?;
                 if matches!(&native_op, NativeProfileOperationV1::Close) {
@@ -870,12 +895,41 @@ fn validate_label_fields(fields: &[String]) -> Result<(), Failure> {
     }
     Ok(())
 }
-fn require_projection_capability(capabilities: &[NetworkCapability]) -> Result<(), Failure> {
-    if !capabilities.contains(&NetworkCapability::ProfileReadProjectionsV1) {
+fn read_capability(operation: &Operation) -> Option<NetworkCapability> {
+    match operation {
+        Operation::Properties { .. } => Some(NetworkCapability::ProfilePropertiesV1),
+        Operation::FeatureCodes { .. }
+        | Operation::EngineeringAttributes { .. }
+        | Operation::GisProjection { .. } => Some(NetworkCapability::ProfileReadProjectionsV1),
+        _ => None,
+    }
+}
+fn require_read_capability(
+    capabilities: &[NetworkCapability],
+    required: NetworkCapability,
+) -> Result<(), Failure> {
+    if !capabilities.contains(&required) {
+        let token: String = required.into();
         return Err(Failure::unavailable("core_profile_native_refused",
-            "The captured Network worker has no profile_read_projections_v1 capability")
+            format!("The captured Network worker has no {token} capability"))
             .remedy("Install an admitted compatible same-lane Network component and explicitly reopen the exact original; no Core/browser projection fallback exists")
-            .detail(json!({"native_code":"network_engine_incompatible","required_capability":"profile_read_projections_v1"})));
+            .detail(json!({"native_code":"network_engine_incompatible","required_capability":token})));
+    }
+    Ok(())
+}
+fn validate_properties_payload(
+    bytes: &[u8],
+    entity_id: &str,
+    revision: &Value,
+) -> Result<(), Failure> {
+    let sheet: Value = serde_json::from_slice(bytes).map_err(invalid)?;
+    if sheet["schema_version"] != 1
+        || sheet["entity_id"] != entity_id
+        || &sheet["revision"] != revision
+    {
+        return Err(invalid(
+            "Native Properties differ from retained entity/revision/schema",
+        ));
     }
     Ok(())
 }
@@ -885,6 +939,10 @@ fn read_projection_operation(
 ) -> Result<Option<NativeProfileOperationV1>, Failure> {
     Ok(match operation {
         Operation::FeatureCodes { .. } => Some(NativeProfileOperationV1::FeatureCodes {}),
+        Operation::Properties { entity_id, .. } => Some(
+            serde_json::from_value(json!({"action":"properties","entity_id":entity_id}))
+                .map_err(|_| invalid("Use the exact canonical entity ID (1..128 UTF-8 bytes, no controls or edge whitespace)"))?,
+        ),
         Operation::EngineeringAttributes { table, .. } => {
             Some(NativeProfileOperationV1::EngineeringAttributes {
                 table: table.clone(),
@@ -1426,14 +1484,111 @@ mod tests {
             ],
             vec![NetworkCapability::Unknown("unrelated".into())],
         ] {
-            let error = require_projection_capability(&capabilities).unwrap_err();
+            let error =
+                require_read_capability(&capabilities, NetworkCapability::ProfileReadProjectionsV1)
+                    .unwrap_err();
             assert_eq!(error.code(), "core_profile_native_refused");
             assert_eq!(
                 error.detail_value().unwrap()["native_code"],
                 "network_engine_incompatible"
             );
         }
-        require_projection_capability(&[NetworkCapability::ProfileReadProjectionsV1]).unwrap();
+        require_read_capability(
+            &[NetworkCapability::ProfileReadProjectionsV1],
+            NetworkCapability::ProfileReadProjectionsV1,
+        )
+        .unwrap();
+    }
+    #[test]
+    fn properties_is_closed_canonical_and_requires_its_distinct_capability() {
+        let base = |entity: Value| json!({"schema":REQUEST_SCHEMA,"operation":{"action":"properties","session_id":"captured","model_id":"fixture-model","expected_history":{"model_revision":"head"},"entity_id":entity}});
+        let request = Request::parse(&serde_json::to_vec(&base(json!("str-1"))).unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_value(
+                read_projection_operation(&request.operation, "ignored")
+                    .unwrap()
+                    .unwrap()
+            )
+            .unwrap(),
+            json!({"action":"properties","entity_id":"str-1"})
+        );
+        assert_eq!(
+            read_capability(&request.operation),
+            Some(NetworkCapability::ProfilePropertiesV1)
+        );
+        for id in [
+            "".to_owned(),
+            " str-1".into(),
+            "str-1 ".into(),
+            "str\n1".into(),
+            "a".repeat(129),
+            "é".repeat(65),
+        ] {
+            let parsed = Request::parse(&serde_json::to_vec(&base(json!(id))).unwrap()).unwrap();
+            assert!(read_projection_operation(&parsed.operation, "").is_err());
+        }
+        let mut extra = base(json!("str-1"));
+        extra["operation"]["mutate"] = json!(true);
+        assert!(Request::parse(&serde_json::to_vec(&extra).unwrap()).is_err());
+        assert!(Request::parse(&serde_json::to_vec(&base(json!(1))).unwrap()).is_err());
+        for caps in [vec![], vec![NetworkCapability::ProfileReadProjectionsV1]] {
+            let error =
+                require_read_capability(&caps, NetworkCapability::ProfilePropertiesV1).unwrap_err();
+            assert_eq!(
+                error.detail_value().unwrap()["required_capability"],
+                "profile_properties_v1"
+            );
+        }
+        require_read_capability(
+            &[NetworkCapability::ProfilePropertiesV1],
+            NetworkCapability::ProfilePropertiesV1,
+        )
+        .unwrap();
+    }
+    #[test]
+    fn invalid_properties_entity_refuses_before_store_or_worker_lookup() {
+        let sessions = Sessions::default();
+        let error = sessions
+            .execute(
+                style_scope(),
+                Path::new("/absent-properties-fixture"),
+                Path::new("/absent-properties-fixture/store.sqlite"),
+                Request {
+                    schema: REQUEST_SCHEMA.into(),
+                    operation: Operation::Properties {
+                        session_id: "not-a-session".into(),
+                        model_id: "fixture-model".into(),
+                        expected_history: json!({}),
+                        entity_id: " invalid".into(),
+                    },
+                },
+                &|| Ok(()),
+            )
+            .unwrap_err();
+        assert_eq!(error.code(), "core_profile_request_invalid");
+        assert_eq!(sessions.held_count_for_test(), 0);
+    }
+    #[test]
+    fn properties_reject_crossed_native_entity_revision_and_schema_before_adoption() {
+        let good = json!({"schema_version":1,"entity_id":"str-1","revision":"head","groups":[]});
+        validate_properties_payload(&serde_json::to_vec(&good).unwrap(), "str-1", &json!("head"))
+            .unwrap();
+        for (field, value) in [
+            ("schema_version", json!(2)),
+            ("entity_id", json!("other")),
+            ("revision", json!("old")),
+        ] {
+            let mut bad = good.clone();
+            bad[field] = value;
+            assert!(
+                validate_properties_payload(
+                    &serde_json::to_vec(&bad).unwrap(),
+                    "str-1",
+                    &json!("head")
+                )
+                .is_err()
+            );
+        }
     }
     #[test]
     fn unknown_or_foreign_handles_never_launch_a_process() {
