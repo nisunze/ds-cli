@@ -957,6 +957,7 @@ dependencies = [
  "ds-network",
  "ds-report-artifacts",
  "ds-solar-contracts",
+ "ds-solar-io",
  "ds-sync-store",
  "rusqlite",
  "serde",

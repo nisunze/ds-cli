@@ -411,8 +411,8 @@ bounded provenance and a SHA-256 of the receipt id. The raw actor-bound receipt
 id remains solely inside the deliberate authority-bearing intake.
 
 `ds solar input prepare --intake <file> --cache <dir> --out <fresh-dir>`
-continues that handoff without a Desktop session. It calls only the fixed
-native governed-intake preparation operation, against an existing verified
+continues that handoff without a Desktop session. It calls the linked engine-free
+`ds-solar-project::preparation` owner against an existing verified
 `ds-solar` reference cache. There is deliberately no provider URL, weather
 token, API key, project/root override, fixture mode, overwrite, or generic
 engine argument. A missing exact weather/reference bundle is therefore a
@@ -420,19 +420,23 @@ refusal, not an implicit network request.
 
 The command accepts one private, bounded, non-symlinked governed intake and a
 real local cache directory. It creates `--out` itself with private permissions
-on Unix, then requires the owner to emit exactly one matching
-`<city>.prepared.json` and
-`<city>.prepared-publication-claim.json` pair. Its receipt carries only paths,
-sizes, SHA-256 digests and immutable engine identity; the actor-bound claim and
-cache contents remain on disk. The prepared directory can then be passed
-unchanged to `ds solar run --prepared`.
+on Unix and writes the unchanged `<city>.prepared.json` and
+`<city>.prepared-publication-claim.json` pair plus the validated
+`<city>.server-submission.json` envelope. All three artifact roles, paths, byte
+counts and SHA-256 digests remain in the receipt, with `network: false` and
+`cache_mode: verified-local-only`. Contract 2 replaces `engine` with
+`preparation_owner`: `name: ds-solar-project`, `source_sha` (null for an unstamped
+development build), and `contracts_build_manifest_sha256`. This identifies the
+linked preparation source and contracts, not a selected calculation addon.
+Descriptors and success/error envelopes advertise contract 2 so consumers can
+refuse an unsupported receipt version before adoption.
+The actor-bound claim and cache contents remain on disk. The prepared directory
+can then be passed unchanged to `ds solar run --prepared`.
 
-This closes cache-hit preparation, not fresh-server reference acquisition.
-Until DS exposes a governed reference-cache acquisition contract, populate the
-exact cache through the reviewed paired product route. Do not compensate with
-raw `ds-solar` provider URLs or credentials. That remaining gap is explicit so
-a Linux host is never described as end-to-end headless when it lacks reference
-data.
+A cache miss remains a refusal from this local operation. Populate the exact
+site/equipment reference cache through an explicitly authorized acquisition or
+sealed-reference import operation, then retry. This command never contacts a
+provider or substitutes development fixture data.
 
 `ds solar run --prepared <dir> --out <dir>` remains a separate, reproducible
 offline adapter over the external `ds-solar run` process contract. It accepts
@@ -552,7 +556,7 @@ bridge seeding is no longer the CLI transport.
 | CLI command | paired operation | effect | result |
 |---|---|---|---|
 | `solar input capture` | fixed native `desktop_snapshot` + governed owner stdin | local file write | verified governed city intake |
-| `solar input prepare` | fixed native cache-only `prepare` | local file write | private prepared input and publication-claim pair |
+| `solar input prepare` | linked cache-only preparation owner | local file write | prepared input, exact publication claim and Server submission (contract 2) |
 | `solar prepare` | `solar.prepare` | local file write | completed preparation receipt |
 | `solar run start` | `solar.run.start` | local file write | launch receipt with a run id that outlives the session; the compute itself is owned by the paired application and ends with it |
 | `solar run progress` | `solar.run.progress` | read only | bounded progress receipt |
@@ -581,7 +585,7 @@ set of product actions and never a generic desktop RPC.
 | Command | Timeout | Why |
 |---|---:|---|
 | `solar input capture` | 120 s request + 5 min owner intake | bounded explicit-project capture and create-new sealing |
-| `solar input prepare` | 30 min | cache-only native preparation of one governed intake |
+| `solar input prepare` | synchronous local preparation | intake bounded to 32 MiB; each output artifact bounded to 128 MiB; no process or provider |
 | `solar prepare` | 30 min | cache capture or authenticated refresh across selected cities |
 | `solar run start` | 30 s | creates a local run receipt; compute continues inside the paired application for as long as it runs — closing DS GridDesign ends the run and later reads settle it as abandoned |
 | lifecycle reads / cancel | 30 s | bounded local bridge replies |
@@ -604,9 +608,10 @@ launches; the assumption and report flags apply only to portfolio launches.
 
 `ds solar engine` and `solar calculate-prepared` use the standalone `solar`
 addon selection described by their native lane contract. `solar input capture`
-calls the linked engine-free intake owner. `solar input prepare` and the
-headless artifact runner still resolve the `ds-solar` sibling packaged with
-`ds`; `DS_SOLAR_BIN` remains their explicit development override.
+and `solar input prepare` call their linked engine-free project owners. Neither
+uses addon selection, `DS_SOLAR_BIN`, a sibling executable or PATH. The
+headless artifact runner still resolves the `ds-solar` sibling packaged with
+`ds`; `DS_SOLAR_BIN` remains its explicit development override.
 
 `solar verify-weather` and `solar result compare` call the pure
 `ds-solar-contracts` owner directly. They require neither a Solar executable nor

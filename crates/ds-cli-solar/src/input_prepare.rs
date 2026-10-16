@@ -1,6 +1,5 @@
 //! `ds solar input prepare` — governed intake to native prepared artifacts.
 
-use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -12,19 +11,17 @@ use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::{DISCOVERY_TIMEOUT, DS_SOLAR, PREPARE_TIMEOUT};
-
-const GOVERNED_INTAKE_SCHEMA: &str = "ds-solar.governed-city-intake/v1";
-const PREPARED_INPUT_SCHEMA: &str = "ds-solar.prepared-city-input/v1";
+use ds_solar_contracts::EngineIdentity;
+use ds_solar_project::{intake::GovernedCityIntake, preparation::prepare_cached};
 const MAX_INTAKE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_ARTIFACT_BYTES: u64 = 128 * 1024 * 1024;
 
 pub static COMMAND: Command = Command {
     id: "solar.input.prepare",
     path: &["solar", "input", "prepare"],
-    contract: 1,
+    contract: 2,
     summary: "Prepare one governed Solar intake from a verified local cache.",
-    purpose: "Runs `ds-solar prepare --governed-intake` for one intake and one populated local reference cache. The fresh private directory contains the prepared city input, its publication handoff claim, and a validated Server submission envelope. Submit the returned server_submission path with server solar submit. This is headless, cache-only preparation: it has no Desktop dependency, project override, provider URL, token, API key, overwrite, fixture, or generic engine argument. A cache miss refuses instead of reaching the network.",
+    purpose: "Calls the linked engine-free ds-solar-project preparation owner for one intake and one populated local reference cache. The fresh private directory contains the prepared city input, its publication handoff claim, and a validated Server submission envelope. Submit the returned server_submission path with server solar submit. This is headless, cache-only preparation: it has no Desktop dependency, project override, provider URL, token, API key, overwrite, fixture, or generic engine argument. A cache miss refuses instead of reaching the network.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -49,23 +46,13 @@ pub static COMMAND: Command = Command {
         )
         .required(),
     ],
-    output: "The city id, fresh private output directory, exact prepared-input, publication-claim and Server-submission paths, byte counts and SHA-256 digests, plus the immutable ds-solar build manifest digest. Intake contents, receipt authority, cache records and owner stdout are never emitted.",
+    output: "The city id, fresh private output directory, exact prepared-input, publication-claim and Server-submission paths, byte counts and SHA-256 digests, plus preparation_owner with name ds-solar-project, source_sha (null for an unstamped development build), and contracts_build_manifest_sha256. This is linked preparation provenance, never a selected calculation addon identity. Intake contents, receipt authority and cache records are never emitted.",
     examples: &[Example {
         command: "ds solar input prepare --intake ./pala.intake.json --cache ./solar-reference-cache --out ./pala-prepared --output json",
         note: "Prepare one captured city without Desktop or a network call.",
         runnable: false,
     }],
     refusals: &[
-        Refusal {
-            code: "solar_engine_missing",
-            when: "the packaged ds-solar owner is absent",
-            remedy: "reinstall the complete ds release",
-        },
-        Refusal {
-            code: "solar_prepare_schema_unavailable",
-            when: "ds-solar does not advertise governed-intake and prepared-input schemas",
-            remedy: "install matching ds and ds-solar releases",
-        },
         Refusal {
             code: "solar_prepare_intake_unsafe",
             when: "--intake is missing, symlinked, non-file, public on Unix, empty, or above 32 MiB",
@@ -84,27 +71,12 @@ pub static COMMAND: Command = Command {
         Refusal {
             code: "solar_prepare_output_unsafe",
             when: "the private output directory cannot be created or the owner emits anything except one safe prepared input, one claim, or a valid generated Server envelope",
-            remedy: "choose a safe writable fresh directory and install matching ds and ds-solar releases",
+            remedy: "choose a safe writable fresh directory and use the matching ds release",
         },
         Refusal {
             code: "engine_refused",
-            when: "ds-solar rejects the governed intake or the verified cache has no exact reference bundle",
+            when: "the linked preparation owner rejects the governed intake or the verified cache has no exact reference bundle",
             remedy: "read detail.engine; acquire the governed reference cache through a reviewed DS route, then retry unchanged",
-        },
-        Refusal {
-            code: "callee_contract_mismatch",
-            when: "ds-solar build-info is not its JSON identity",
-            remedy: "update ds and ds-solar to matching releases",
-        },
-        Refusal {
-            code: "callee_timed_out",
-            when: "preparation exceeds the thirty-minute bound",
-            remedy: "investigate the local cache and owner process before retrying",
-        },
-        Refusal {
-            code: "callee_wait_failed",
-            when: "the ds-solar child cannot be observed",
-            remedy: "investigate the local process environment",
         },
     ],
     reference: Some("docs/reference/solar.md"),
@@ -114,7 +86,7 @@ pub static COMMAND: Command = Command {
 };
 
 fn availability() -> Availability {
-    DS_SOLAR.availability()
+    Availability::Available
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -125,23 +97,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     validate_intake(&intake)?;
     validate_cache(&cache)?;
     ensure_absent(&out)?;
-    let engine = preflight_owner_prepare()?;
+    let intake = read_intake(&intake)?;
+    let (input, claim) = prepare_cached(intake, &cache).map_err(owner_refused)?;
     create_private_output(&out)?;
-
-    let args = [
-        OsString::from("--governed-intake"),
-        intake.as_os_str().to_owned(),
-        OsString::from("--cache"),
-        cache.as_os_str().to_owned(),
-        OsString::from("--out"),
-        out.as_os_str().to_owned(),
-    ];
-    let completed = DS_SOLAR.call("prepare", &args, PREPARE_TIMEOUT)?;
-    if !completed.succeeded() {
-        return Err(DS_SOLAR.failure_from(&completed, "prepare").remedy(
-            "this command is cache-only; acquire the governed reference cache through a reviewed DS route before retrying a cache miss",
-        ));
-    }
+    let city = &input.city.identity.city_id;
+    write_json_new(&out.join(format!("{city}.prepared.json")), &input)?;
+    write_json_new(
+        &out.join(format!("{city}.prepared-publication-claim.json")),
+        &claim,
+    )?;
 
     let prepared = verify_output(&out)?;
     let mut input_bytes = Vec::new();
@@ -193,40 +157,71 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "bytes": submission.bytes, "sha256": submission.sha256,
             }
         ],
-        "engine": {
-            "source_sha": engine.get("source_sha"),
-            "build_manifest_sha256": engine.get("build_manifest_sha256"),
-        },
+        "preparation_owner": preparation_owner(),
         "network": false,
         "cache_mode": "verified-local-only",
     }))
 }
 
-fn preflight_owner_prepare() -> Result<Value, Failure> {
-    let identity = DS_SOLAR.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
-    let supports = identity
-        .as_object()
-        .filter(|object| object.get("name").and_then(Value::as_str) == Some("ds-solar-engine"))
-        .and_then(|object| object.get("schemas"))
-        .and_then(Value::as_array)
-        .is_some_and(|schemas| {
-            [GOVERNED_INTAKE_SCHEMA, PREPARED_INPUT_SCHEMA]
-                .iter()
-                .all(|expected| {
-                    schemas
-                        .iter()
-                        .any(|schema| schema.as_str() == Some(expected))
-                })
-        });
-    if supports {
-        Ok(identity)
-    } else {
-        Err(Failure::unavailable(
-            "solar_prepare_schema_unavailable",
-            "the installed ds-solar does not advertise the governed preparation schemas",
-        )
-        .remedy("install matching ds and ds-solar releases"))
+fn preparation_owner() -> Value {
+    let identity = EngineIdentity::current();
+    json!({
+        "name": "ds-solar-project",
+        "source_sha": (!identity.source_sha.is_empty()).then_some(identity.source_sha),
+        "contracts_build_manifest_sha256": EngineIdentity::publication_manifest_sha256(),
+    })
+}
+
+fn owner_refused(error: impl std::fmt::Display) -> Failure {
+    let message = error
+        .to_string()
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .take(6)
+        .map(|line| line.chars().take(200).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n");
+    Failure::failed("engine_refused", "governed Solar cache-only preparation did not complete")
+        .remedy("read detail.engine; retain the unchanged intake and acquire its exact reference cache through a reviewed DS route before retrying a cache miss")
+        .detail(json!({"owner":"ds-solar-project","operation":"prepare_cached","engine":message}))
+}
+
+fn read_intake(path: &Path) -> Result<GovernedCityIntake, Failure> {
+    let file = open_no_follow(path).map_err(|_| unsafe_intake())?;
+    let metadata = file.metadata().map_err(|_| unsafe_intake())?;
+    if !metadata.is_file()
+        || !private_metadata(&metadata)
+        || metadata.len() == 0
+        || metadata.len() > MAX_INTAKE_BYTES
+    {
+        return Err(unsafe_intake());
     }
+    same_file_identity(path, &metadata).map_err(|_| unsafe_intake())?;
+    let mut bytes = Vec::new();
+    file.take(MAX_INTAKE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| unsafe_intake())?;
+    if bytes.len() as u64 != metadata.len() || bytes.len() as u64 > MAX_INTAKE_BYTES {
+        return Err(unsafe_intake());
+    }
+    same_file_identity(path, &metadata).map_err(|_| unsafe_intake())?;
+    serde_json::from_slice(&bytes).map_err(owner_refused)
+}
+
+fn write_json_new(path: &Path, value: &impl serde::Serialize) -> Result<(), Failure> {
+    let mut bytes = serde_json::to_vec_pretty(value).map_err(|_| unsafe_output())?;
+    bytes.push(b'\n');
+    if bytes.len() as u64 > MAX_ARTIFACT_BYTES {
+        return Err(unsafe_output());
+    }
+    let parent = path.parent().ok_or_else(unsafe_output)?;
+    let mut stage = tempfile::NamedTempFile::new_in(parent).map_err(|_| unsafe_output())?;
+    stage
+        .write_all(&bytes)
+        .and_then(|_| stage.as_file().sync_all())
+        .map_err(|_| unsafe_output())?;
+    stage.persist_noclobber(path).map_err(|_| unsafe_output())?;
+    ds_solar_project::files::sync_dir(parent).map_err(|_| unsafe_output())
 }
 
 fn validate_intake(path: &Path) -> Result<(), Failure> {
@@ -436,7 +431,7 @@ fn unsafe_output() -> Failure {
         "solar_prepare_output_unsafe",
         "the headless Solar prepared output is not one safe private two-artifact directory",
     )
-    .remedy("choose a safe writable fresh --out directory and install matching ds and ds-solar releases")
+    .remedy("choose a safe writable fresh --out directory and use the matching ds release")
 }
 
 pub fn render(value: &Value) -> String {
@@ -465,6 +460,8 @@ mod tests {
 
     #[test]
     fn contract_is_cache_only_and_has_no_authority_escape() {
+        assert_eq!(COMMAND.contract, 2);
+        assert_eq!(availability(), Availability::Available);
         assert_eq!(COMMAND.authority, Authority::None);
         assert_eq!(COMMAND.effect, Effect::LocalFileWrite);
         assert_eq!(COMMAND.path, ["solar", "input", "prepare"]);
