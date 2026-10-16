@@ -360,3 +360,11 @@ authority or output creation. This adds no new storage or command owner.
   Constructor failure, abandoned handoff, Close, cancellation and Drop remain
   bounded. Update the independently qualified Core artifact for this fix;
   no matching Desktop/Network version or engine rebuild is required.
+
+Retained Profile readonly selection now forwards fixed Pick/Range requests to
+the same managed Network worker under `profile_selection_v1`, sharing the WASM
+geometry/ranking/range owner and exact scene axis/full history. Previously the
+native facade refused these Properties-selection consumers. Existing source,
+asset, account/project/lane, executable and late-owner fences remain; older
+workers/parsers explicitly refuse and require the matching independent owner
+update. This adds no editing, calculation, save or publication authority.

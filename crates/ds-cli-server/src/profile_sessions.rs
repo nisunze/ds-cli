@@ -8,7 +8,7 @@ use ds_network_contracts::engine::NetworkCapability;
 use ds_network_contracts::profile::NativeProfileGridInkV1;
 use ds_network_contracts::profile::{
     NativeProfileEngineeringTableV1, NativeProfileOpenV1, NativeProfileOperationV1,
-    PROFILE_OPEN_SCHEMA,
+    NativeProfilePickRequestV1, NativeProfileSelectionRangeRequestV1, PROFILE_OPEN_SCHEMA,
 };
 use ds_sync_store::{ProfileSourceHeader, ProfileSourceScope, Store};
 use serde::{Deserialize, Serialize};
@@ -78,6 +78,18 @@ pub enum Operation {
         session_id: String,
         model_id: String,
         expected_history: Value,
+    },
+    Pick {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        request: NativeProfilePickRequestV1,
+    },
+    SelectionRange {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        request: NativeProfileSelectionRangeRequestV1,
     },
     Properties {
         session_id: String,
@@ -261,6 +273,18 @@ fn operation_owner(operation: &Operation) -> Option<(&str, &str, &Value)> {
             session_id,
             model_id,
             expected_history,
+        }
+        | Operation::Pick {
+            session_id,
+            model_id,
+            expected_history,
+            ..
+        }
+        | Operation::SelectionRange {
+            session_id,
+            model_id,
+            expected_history,
+            ..
         }
         | Operation::Properties {
             session_id,
@@ -621,7 +645,9 @@ impl Sessions {
             operation @ (Operation::FeatureCodes { .. }
             | Operation::EngineeringAttributes { .. }
             | Operation::GisProjection { .. }
-            | Operation::Properties { .. }) => {
+            | Operation::Properties { .. }
+            | Operation::Pick { .. }
+            | Operation::SelectionRange { .. }) => {
                 let (id, model, expected) =
                     operation_owner(&operation).expect("Closed read projection owner");
                 let session = owned(&mut held, &scope, id, model, expected)?;
@@ -641,6 +667,11 @@ impl Sessions {
                     .request_at(native_op, Some(expected.clone()), DEADLINE, &|| false)
                     .map_err(native)?;
                 authorized()?;
+                validate_selection_payload(
+                    &operation,
+                    &result.bytes,
+                    &session.session.history()["model_revision"],
+                )?;
                 if is_gis {
                     let projected: Value =
                         serde_json::from_slice(&result.bytes).map_err(invalid)?;
@@ -823,7 +854,9 @@ impl Sessions {
                     | Operation::FeatureCodes { .. }
                     | Operation::EngineeringAttributes { .. }
                     | Operation::GisProjection { .. }
-                    | Operation::Properties { .. } => unreachable!(),
+                    | Operation::Properties { .. }
+                    | Operation::Pick { .. }
+                    | Operation::SelectionRange { .. } => unreachable!(),
                 };
                 let session = owned(&mut held, &scope, &id, &model, &expected)?;
                 if matches!(&native_op, NativeProfileOperationV1::Close) {
@@ -898,6 +931,9 @@ fn validate_label_fields(fields: &[String]) -> Result<(), Failure> {
 fn read_capability(operation: &Operation) -> Option<NetworkCapability> {
     match operation {
         Operation::Properties { .. } => Some(NetworkCapability::ProfilePropertiesV1),
+        Operation::Pick { .. } | Operation::SelectionRange { .. } => {
+            Some(NetworkCapability::ProfileSelectionV1)
+        }
         Operation::FeatureCodes { .. }
         | Operation::EngineeringAttributes { .. }
         | Operation::GisProjection { .. } => Some(NetworkCapability::ProfileReadProjectionsV1),
@@ -914,6 +950,33 @@ fn require_read_capability(
             format!("The captured Network worker has no {token} capability"))
             .remedy("Install an admitted compatible same-lane Network component and explicitly reopen the exact original; no Core/browser projection fallback exists")
             .detail(json!({"native_code":"network_engine_incompatible","required_capability":token})));
+    }
+    Ok(())
+}
+fn validate_selection_payload(
+    operation: &Operation,
+    bytes: &[u8],
+    revision: &Value,
+) -> Result<(), Failure> {
+    let (axis, pick) = match operation {
+        Operation::Pick { request, .. } => (request.axis_pin_digest.as_str(), true),
+        Operation::SelectionRange { request, .. } => (request.axis_pin_digest.as_str(), false),
+        _ => return Ok(()),
+    };
+    let value: Value = serde_json::from_slice(bytes).map_err(invalid)?;
+    if &value["model_revision"] != revision
+        || value["axis_pin_digest"] != axis
+        || if pick {
+            !value["candidates"].is_array()
+        } else {
+            !value["entity_ids"]
+                .as_array()
+                .is_some_and(|v| v.iter().all(Value::is_string))
+        }
+    {
+        return Err(invalid(
+            "Native Profile selection crossed its retained revision/axis or result shape",
+        ));
     }
     Ok(())
 }
@@ -937,8 +1000,47 @@ fn read_projection_operation(
     operation: &Operation,
     coordinate_system: &str,
 ) -> Result<Option<NativeProfileOperationV1>, Failure> {
+    match operation {
+        Operation::Pick {
+            request,
+            expected_history,
+            ..
+        } => {
+            if expected_history["model_revision"].as_str() != Some(request.model_revision.as_str())
+                || request.axis_pin_digest.is_empty()
+                || !request.scene_x.is_finite()
+                || !request.scene_y.is_finite()
+                || !request.tolerance_scene_units.is_finite()
+                || request.tolerance_scene_units < 0.
+                || !request.scene_units_per_px.is_finite()
+                || request.scene_units_per_px <= 0.
+            {
+                return Err(invalid(
+                    "Use retained revision/axis and finite Profile pick geometry",
+                ));
+            }
+        }
+        Operation::SelectionRange {
+            request,
+            expected_history,
+            ..
+        } => {
+            if expected_history["model_revision"].as_str() != Some(request.model_revision.as_str())
+                || request.axis_pin_digest.is_empty()
+                || request.from_entity_id.is_empty()
+                || request.to_entity_id.is_empty()
+            {
+                return Err(invalid(
+                    "Use retained revision/axis and exact range endpoints",
+                ));
+            }
+        }
+        _ => {}
+    }
     Ok(match operation {
         Operation::FeatureCodes { .. } => Some(NativeProfileOperationV1::FeatureCodes {}),
+        Operation::Pick { request,.. } => Some(NativeProfileOperationV1::Pick{request:request.clone()}),
+        Operation::SelectionRange { request,.. } => Some(NativeProfileOperationV1::SelectionRange{request:request.clone()}),
         Operation::Properties { entity_id, .. } => Some(
             serde_json::from_value(json!({"action":"properties","entity_id":entity_id}))
                 .map_err(|_| invalid("Use the exact canonical entity ID (1..128 UTF-8 bytes, no controls or edge whitespace)"))?,
@@ -1618,5 +1720,92 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(refused.code(), "core_profile_session_unavailable");
+    }
+    #[test]
+    fn selection_is_closed_distinct_cap_and_preserves_exact_requests() {
+        let pick = json!({"model_revision":"head","axis_pin_digest":"axis","scene_x":1.,"scene_y":2.,"tolerance_scene_units":3.,"scene_units_per_px":1.,"visibility":{"showGround":true,"showTerrainPoints":true,"showStructures":true,"showWire":false,"showAttachments":false}});
+        let range = json!({"model_revision":"head","axis_pin_digest":"axis","from_entity_id":"a","to_entity_id":"b"});
+        for (action, query) in [("pick", pick.clone()), ("selection_range", range)] {
+            let value = json!({"schema":REQUEST_SCHEMA,"operation":{"action":action,"session_id":"captured","model_id":"model","expected_history":{"model_revision":"head"},"request":query}});
+            let parsed = Request::parse(&serde_json::to_vec(&value).unwrap()).unwrap();
+            assert_eq!(
+                read_capability(&parsed.operation),
+                Some(NetworkCapability::ProfileSelectionV1)
+            );
+            assert_eq!(
+                serde_json::to_value(
+                    read_projection_operation(&parsed.operation, "")
+                        .unwrap()
+                        .unwrap()
+                )
+                .unwrap(),
+                json!({"action":action,"request":query})
+            );
+            let mut invalid = value;
+            invalid["operation"]["request"]["mutate"] = json!(true);
+            assert!(Request::parse(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        }
+        for caps in [
+            vec![],
+            vec![
+                NetworkCapability::ProfileReadProjectionsV1,
+                NetworkCapability::ProfilePropertiesV1,
+            ],
+        ] {
+            let error =
+                require_read_capability(&caps, NetworkCapability::ProfileSelectionV1).unwrap_err();
+            assert_eq!(
+                error.detail_value().unwrap()["required_capability"],
+                "profile_selection_v1"
+            );
+        }
+        for field in [
+            "scene_x",
+            "scene_y",
+            "tolerance_scene_units",
+            "scene_units_per_px",
+        ] {
+            let mut invalid = pick.clone();
+            invalid[field] = Value::Null;
+            assert!(Request::parse(&serde_json::to_vec(&json!({"schema":REQUEST_SCHEMA,"operation":{"action":"pick","session_id":"captured","model_id":"model","expected_history":{"model_revision":"head"},"request":invalid}})).unwrap()).is_err());
+        }
+    }
+    #[test]
+    fn selection_rejects_crossed_worker_axis_revision_and_result_before_adoption() {
+        let operation = Operation::SelectionRange {
+            session_id: "captured".into(),
+            model_id: "model".into(),
+            expected_history: json!({"model_revision":"head"}),
+            request: NativeProfileSelectionRangeRequestV1 {
+                model_revision: "head".into(),
+                axis_pin_digest: "axis".into(),
+                from_entity_id: "a".into(),
+                to_entity_id: "b".into(),
+            },
+        };
+        let expected =
+            json!({"model_revision":"head","axis_pin_digest":"axis","entity_ids":["a","b"]});
+        validate_selection_payload(
+            &operation,
+            &serde_json::to_vec(&expected).unwrap(),
+            &json!("head"),
+        )
+        .unwrap();
+        for (field, value) in [
+            ("model_revision", json!("other")),
+            ("axis_pin_digest", json!("other")),
+            ("entity_ids", json!([1])),
+        ] {
+            let mut invalid = expected.clone();
+            invalid[field] = value;
+            assert!(
+                validate_selection_payload(
+                    &operation,
+                    &serde_json::to_vec(&invalid).unwrap(),
+                    &json!("head")
+                )
+                .is_err()
+            );
+        }
     }
 }

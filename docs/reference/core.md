@@ -420,3 +420,17 @@ authority fence, before receipt adoption. Missing entities retain
 Core interface remains readonly, preserving package/history/CRS/assets and
 independent engine identity. This source migration is not an artifact or GUI
 acceptance claim.
+
+Retained Profile selection additionally admits `pick` and `selection_range`
+under captured Network `profile_selection_v1`. Both actions keep the existing
+session/model/full `expected_history` and add one closed `request` with exact
+`model_revision` and `axis_pin_digest`. Pick uses finite `scene_x`, `scene_y`,
+nonnegative `tolerance_scene_units`, positive `scene_units_per_px` and existing
+camel-case visibility booleans; Range uses exact `from_entity_id` and
+`to_entity_id`. They return the existing native candidates or canonical family
+range from the same worker and already admitted scene, without calculation or
+model mutation. Missing capability refuses before staging/rebind; stale
+history/axis and unknown/cross-family endpoints preserve their typed refusal.
+Older Core parsers refuse these additive closed actions; update the matching
+Core adapter and independently qualified Network component, with no fallback
+or installation-wide version pin. Selection alone grants no edit authority.

@@ -1,8 +1,8 @@
 #[path = "../../crates/ds-cli-server/src/profile_sessions.rs"]
 mod profile_sessions;
-use base64::{Engine, engine::general_purpose::STANDARD};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use profile_sessions::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 fn staged_files(root: &std::path::Path) -> Vec<(std::path::PathBuf, u64)> {
     let mut result = Vec::new();
@@ -484,6 +484,124 @@ fn main() {
         assert_eq!(sessions.held_count_for_test(), 1);
         checks.push("old-engine-properties-cap-refuses-active-before-staging-or-request");
     }
+    let selection_capable = open["engine"]["identity"]["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v == "profile_selection_v1");
+    // A capability-negative fixture needs valid closed arguments even when its
+    // blank original has no rendered structure. Positive selection always uses
+    // the real scene below and must produce nonempty owner results.
+    let selection_axis = if selection_capable {
+        scene["axis_pin"]["digest"]
+            .as_str()
+            .expect("real selection axis")
+    } else {
+        "capability-negative-axis"
+    };
+    let selection_entity = if selection_capable {
+        scene["bands"][0]["structures"][0]["entity_id"]
+            .as_str()
+            .expect("nonempty selection source")
+    } else {
+        "capability-negative-entity"
+    };
+    let selection_query = |action: &str| {
+        let request = if action == "pick" {
+            let (x, y) = if selection_capable {
+                (
+                    scene["bands"][0]["structures"][0]["ground"]["scene_x"]
+                        .as_f64()
+                        .expect("real selection x"),
+                    scene["bands"][0]["structures"][0]["ground"]["scene_y"]
+                        .as_f64()
+                        .expect("real selection y"),
+                )
+            } else {
+                (0., 0.)
+            };
+            json!({"model_revision":history["model_revision"],"axis_pin_digest":selection_axis,"scene_x":x,"scene_y":y,"tolerance_scene_units":3.,"scene_units_per_px":1.,"visibility":{"showGround":true,"showTerrainPoints":true,"showStructures":true,"showWire":true,"showAttachments":true}})
+        } else {
+            json!({"model_revision":history["model_revision"],"axis_pin_digest":selection_axis,"from_entity_id":selection_entity,"to_entity_id":selection_entity})
+        };
+        Request::parse(&serde_json::to_vec(&json!({"schema":REQUEST_SCHEMA,"operation":{"action":action,"session_id":id,"model_id":model_id,"expected_history":history,"request":request}})).unwrap()).unwrap()
+    };
+    if selection_capable {
+        for action in ["pick", "selection_range"] {
+            let before = stored_original(&id);
+            let result = sessions
+                .execute(
+                    scope.clone(),
+                    std::path::Path::new(&scratch),
+                    &database,
+                    selection_query(action),
+                    &|| Ok(()),
+                )
+                .unwrap();
+            assert_eq!(result["history"], history);
+            assert_eq!(
+                result["payload"]["model_revision"],
+                history["model_revision"]
+            );
+            assert_eq!(
+                result["payload"]["axis_pin_digest"],
+                scene["axis_pin"]["digest"]
+            );
+            assert!(!result["payload"][if action == "pick" {
+                "candidates"
+            } else {
+                "entity_ids"
+            }]
+            .as_array()
+            .unwrap()
+            .is_empty());
+            assert_eq!(stored_original(&id), before);
+            let calls = std::cell::Cell::new(0);
+            let error = sessions
+                .execute(
+                    scope.clone(),
+                    std::path::Path::new(&scratch),
+                    &database,
+                    selection_query(action),
+                    &|| {
+                        calls.set(calls.get() + 1);
+                        if calls.get() >= 2 {
+                            Err(ds_cli_contract::Failure::unavailable(
+                                "late_selection_owner_changed",
+                                "fixture only",
+                            ))
+                        } else {
+                            Ok(())
+                        }
+                    },
+                )
+                .unwrap_err();
+            assert_eq!(error.code(), "late_selection_owner_changed");
+            assert_eq!(stored_original(&id), before);
+        }
+        checks.push("same-worker-selection-nonempty-exact-axis-history-late-owner-no-adoption");
+    } else {
+        for action in ["pick", "selection_range"] {
+            let before = stored_original(&id);
+            let files_before = staged_files(std::path::Path::new(&scratch));
+            let error = sessions
+                .execute(
+                    scope.clone(),
+                    std::path::Path::new(&scratch),
+                    &database,
+                    selection_query(action),
+                    &|| Ok(()),
+                )
+                .unwrap_err();
+            assert_eq!(
+                error.detail_value().unwrap()["required_capability"],
+                "profile_selection_v1"
+            );
+            assert_eq!(stored_original(&id), before);
+            assert_eq!(staged_files(std::path::Path::new(&scratch)), files_before);
+        }
+        checks.push("old-engine-selection-cap-refuses-active-before-staging-or-request");
+    }
     let checkpoint = sessions
         .execute(
             scope.clone(),
@@ -585,6 +703,29 @@ fn main() {
         assert_eq!(stored_original(&id), source_before);
         assert_eq!(sessions.held_count_for_test(), 1);
         checks.push("expired-old-properties-cap-refuses-before-candidate-launch-or-adoption");
+    }
+    if !selection_capable {
+        for action in ["pick", "selection_range"] {
+            let before = stored_original(&id);
+            let files_before = staged_files(std::path::Path::new(&scratch));
+            let error = sessions
+                .execute(
+                    scope.clone(),
+                    std::path::Path::new(&scratch),
+                    &database,
+                    selection_query(action),
+                    &|| Ok(()),
+                )
+                .unwrap_err();
+            assert_eq!(
+                error.detail_value().unwrap()["required_capability"],
+                "profile_selection_v1"
+            );
+            assert_eq!(stored_original(&id), before);
+            assert_eq!(staged_files(std::path::Path::new(&scratch)), files_before);
+            assert_eq!(sessions.held_count_for_test(), 1);
+        }
+        checks.push("expired-old-selection-cap-refuses-before-candidate-launch-or-adoption");
     }
     let attempts = std::sync::atomic::AtomicUsize::new(0);
     let refused = sessions
@@ -700,6 +841,6 @@ fn main() {
         checks.contains(&"same-worker-properties-exact-entity-history-and-late-owner-refusal");
     println!(
         "{}",
-        json!({"schema":"ds.profile-owner-native-fixture-proof/v1","checks":checks,"package_sha256":digest,"model_id":model_id,"history":history,"projection_capability_present":projection_capable,"properties_capability_present":properties_capable,"properties_positive_qualified":properties_positive_qualified,"engine_executable":open["engine"]["executable"],"engine_sha256":open["engine"]["executable_sha256"],"engine_source":open["engine"]["identity"]["sourceSha"],"engine_dependency_closure_sha256":open["engine"]["identity"]["dependencyClosureSha256"],"engine_protocol":[open["engine"]["identity"]["protocolMajor"],open["engine"]["identity"]["protocolMinor"]],"idle_control":"private clock-age seam exercises production fifteen-minute retirement; not an elapsed fifteen-minute runtime claim","core_transport_qualified":false,"user_project_effects":false})
+        json!({"schema":"ds.profile-owner-native-fixture-proof/v1","checks":checks,"package_sha256":digest,"model_id":model_id,"history":history,"projection_capability_present":projection_capable,"properties_capability_present":properties_capable,"properties_positive_qualified":properties_positive_qualified,"selection_capability_present":selection_capable,"selection_positive_qualified":selection_capable,"engine_executable":open["engine"]["executable"],"engine_sha256":open["engine"]["executable_sha256"],"engine_source":open["engine"]["identity"]["sourceSha"],"engine_dependency_closure_sha256":open["engine"]["identity"]["dependencyClosureSha256"],"engine_protocol":[open["engine"]["identity"]["protocolMajor"],open["engine"]["identity"]["protocolMinor"]],"idle_control":"private clock-age seam exercises production fifteen-minute retirement; not an elapsed fifteen-minute runtime claim","core_transport_qualified":false,"user_project_effects":false})
     );
 }
