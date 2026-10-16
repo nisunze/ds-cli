@@ -11,6 +11,24 @@ This path needs authenticated native DS Core, with no paired Desktop,
 browser, Svelte or WASM. Core captures the authorized project and keeps
 its workspace authority and jobs separate from other projects and accounts.
 
+Add `--out <absolute-new-json-file>` for large application receipts. The output
+parent must already be private and have no linked ancestors; Core never replaces
+an existing file. The file contains the exact complete
+`ds-solar.application-receipt/v1` JSON. Stdout returns only
+`ds-solar.application-artifact/v1` with `out`, `byte_count`, `sha256`,
+`project_id`, `root` and `lane`. Consumers verify those facts and the file bytes
+before adopting its value. The file response limit is 257 MiB: the existing
+64 MiB artifact limit expanded to a compact JSON byte array, plus 1 MiB for its
+envelope. Without `--out`, the existing 32 MiB response limit and JSON output
+remain unchanged; the general process stdout limit is not increased.
+
+Destination admission happens before the Core request. Typed Core refusals pass
+through unchanged and create no result. If an action completed but file output
+failed, `server_refused` explicitly reports completion, operation, scope, exact
+response size/digest and a bounded original completion value where available.
+Inspect those details before retrying; output failure does not undo or cancel
+completed work. This additive option retains application contract 1.
+
 The current native workspace selection belongs to Core's existing protected
 SQLite Store, not browser preferences. Discover `workspace_selection_read`;
 it returns null for absence or `{workspace_handle, dir, origin, generation}`

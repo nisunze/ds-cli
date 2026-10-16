@@ -36,8 +36,13 @@ pub static COMMAND: Command = Command {
             "Closed native Solar application request, maximum 32 MiB.",
         )
         .required(),
+        Arg::value(
+            "out",
+            "<absolute-new-json-file>",
+            "Optional create-new receipt file in an existing private directory, maximum 257 MiB. Returns a small path/size/SHA/project/root/lane receipt; existing files are never replaced.",
+        ),
     ],
-    output: "Project-pinned ds-solar.application-receipt/v1. Launch receipts describe continuing native work; read its progress until done.",
+    output: "Project-pinned ds-solar.application-receipt/v1. With --out, exact complete JSON is written privately and stdout returns ds-solar.application-artifact/v1: out, byte_count, sha256, project_id, root, lane. A post-effect output failure retains server_refused with completed operation/scope and bounded completion details; inspect those before retrying. Launch receipts describe continuing native work; read its progress until done.",
     examples: &[],
     refusals: ds_cli_server::STATUS.refusals,
     reference: Some("docs/reference/solar.md"),

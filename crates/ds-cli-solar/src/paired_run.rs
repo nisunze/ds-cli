@@ -160,7 +160,7 @@ pub static RESULT_COMMAND: Command = Command {
         crate::paired::TARGET_ARG,
         crate::paired::DESCRIPTOR_ARG,
     ],
-    output: "The paired application's bounded public result receipt for the requested run. A portfolio run that sealed its result but could not queue its governed publication stays `succeeded` and carries `publication` with the state, the application's reason and the remedy; that intent never reached the outbox, so `solar sync status` has no row for it. No `publication` means the application stated nothing about one.",
+    output: "The paired application's bounded public result receipt for the requested run. A portfolio run that sealed its result but could not queue its governed publication stays `succeeded` and carries `publication` with the state, the application's reason and the remedy; that intent never reached the outbox, so `solar sync status` has no row for it. No `publication` means the application stated nothing about one. When present, `dashboard_handoff` reports pending/succeeded/failed dashboard and draft ingestion separately from calculation status, with a bounded error for failure. Its absence makes no handoff claim; this read never retries ingestion.",
     examples: &[Example {
         command: "ds solar run result --run-id solar-run-123 --output json",
         note: "Reads a completed run's public receipt.",

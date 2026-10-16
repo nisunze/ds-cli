@@ -1,5 +1,7 @@
 //! Server effect adapter for the Solar-owned native application. Each
 //! authorized owner/project has an independent state and workspace authority.
+mod output;
+pub(crate) use output::command;
 use crate::host::{App, ProjectQuery};
 use axum::{
     Json,
