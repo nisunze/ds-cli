@@ -9,31 +9,70 @@
 //! upgrade — is ds-network's (`process_lv_transformer_with_voltage_drop`);
 //! this command reads the file, writes the run's scenario (`--year`,
 //! `--outlook`, `--no-outlook`, `--load`, `--set`) into the in-memory request,
-//! runs the jobs in input order and writes one result document it never
+//! captures one admitted Network executable for the batch and writes one result document it never
 //! overwrites. Nothing here reaches a project.
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
+use ds_network_contracts::lv::LvProcessOutput;
 use ds_network_contracts::lv_processing::{
-    MAX_NATIVE_LV_OUTPUT_BYTES, NativeLvError, NativeLvJobV1, decode_native_lv_request,
+    MAX_NATIVE_LV_OUTPUT_BYTES, NativeLvError, NativeLvJobResultV1, NativeLvJobV1,
+    decode_native_lv_request,
 };
-use ds_network::network::lv_processing::native_lv_job_input;
-use ds_network::network::process_lv_transformer_with_voltage_drop;
-use ds_network::network::voltage_drop::params::METHOD;
-use ds_network::network::voltage_drop::{VoltageDropAnalysis, VoltageDropRun};
+use ds_network_contracts::voltage_drop::{AnalysisStatus, VOLTAGE_DROP_METHOD as METHOD};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use super::artifact::{VOLTAGE_DROP_RESULT, ensure_absent, sha256, write_new};
-use super::process::{bounded_read, map_owner_error};
+use super::process::{bounded_read, map_network_error, map_owner_error};
 use super::scenario::Scenario;
 
 /// The schema of the document written to `--out`.
 pub const RESULT_SCHEMA: &str = "ds.lv-voltage-drop.result/v1";
+
+// Inherit the process owner's complete refusal vocabulary without a second list.
+const SCENARIO_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "vd_scenario_invalid",
+        when: "a scenario flag is malformed or outside its bound",
+        remedy: "the refusal names the flag and its accepted form",
+    },
+    Refusal {
+        code: "vd_scenario_setting_refused",
+        when: "--set names a non-vd_* setting or one a flag owns",
+        remedy: "--set only vd_* settings; the refusal names the flag",
+    },
+    Refusal {
+        code: "vd_scenario_conflict",
+        when: "an override is repeated, or --outlook meets --no-outlook",
+        remedy: "give each override once",
+    },
+    Refusal {
+        code: "vd_scenario_category_unknown",
+        when: "--load names a category no job's cust_category defines",
+        remedy: "use a clean_name the refusal lists",
+    },
+];
+const REFUSALS: [Refusal; SCENARIO_REFUSALS.len() + super::process::COMMAND.refusals.len()] = {
+    let mut result =
+        [SCENARIO_REFUSALS[0]; SCENARIO_REFUSALS.len() + super::process::COMMAND.refusals.len()];
+    let mut index = 0;
+    while index < SCENARIO_REFUSALS.len() {
+        result[index] = SCENARIO_REFUSALS[index];
+        index += 1;
+    }
+    let mut process_index = 0;
+    while process_index < super::process::COMMAND.refusals.len() {
+        result[index] = super::process::COMMAND.refusals[process_index];
+        index += 1;
+        process_index += 1;
+    }
+    result
+};
 
 pub static COMMAND: Command = Command {
     id: "design.lv.voltage-drop",
@@ -83,7 +122,7 @@ pub static COMMAND: Command = Command {
             "Another vd_* project setting, e.g. vd_limit_pct=8; up to 32. Default: the project's. Other names are refused.",
         ),
     ],
-    output: "`out`, digests, byte count, engine version, method, counts, `scenario` (every override), and one row per job: calculated status, customers, failing customers, worst drop %, limit %, compliance, transformer loading %, stage-2 status, changes, transformer change, infeasible, added cost and basis, design year, first failing year and the engine's outlook schedule; or reserved status, nature and calculation reason. Layers and diagnostics go only to `out`.",
+    output: "`out`, digests, byte count, captured engine version/identity/executable digest and development-override status, method, counts, `scenario` (every override), and one row per job: calculated status, customers, failing customers, worst drop %, limit %, compliance, transformer loading %, stage-2 status, changes, transformer change, infeasible, added cost and basis, design year, first failing year and the engine's outlook schedule; or reserved status, nature and calculation reason. Layers and diagnostics go only to `out`.",
     examples: &[
         Example {
             command: "ds design lv voltage-drop --input ./T-1042.fast-lv.json --out ./T-1042.vd.json --output json",
@@ -96,73 +135,7 @@ pub static COMMAND: Command = Command {
             runnable: true,
         },
     ],
-    refusals: &[
-        Refusal {
-            code: "vd_scenario_invalid",
-            when: "a scenario flag is malformed or outside its bound",
-            remedy: "the refusal names the flag and its accepted form",
-        },
-        Refusal {
-            code: "vd_scenario_setting_refused",
-            when: "--set names a non-vd_* setting or one a flag owns",
-            remedy: "--set only vd_* settings; the refusal names the flag",
-        },
-        Refusal {
-            code: "vd_scenario_conflict",
-            when: "an override is repeated, or --outlook meets --no-outlook",
-            remedy: "give each override once",
-        },
-        Refusal {
-            code: "vd_scenario_category_unknown",
-            when: "--load names a category no job's cust_category defines",
-            remedy: "use a clean_name the refusal lists",
-        },
-        Refusal {
-            code: "fast_lv_source_not_found",
-            when: "--input is absent, not a regular file, or cannot be read",
-            remedy: "pass a readable local ds.fast-lv.request/v1 file",
-        },
-        Refusal {
-            code: "fast_lv_input_too_large",
-            when: "the request file exceeds 64 MiB",
-            remedy: "split the work into smaller closed batches",
-        },
-        Refusal {
-            code: "fast_lv_input_invalid",
-            when: "the request is malformed, has unknown fields/settings, or a layer is not a FeatureCollection",
-            remedy: "write the exact ds.fast-lv.request/v1 shape shown in the design reference",
-        },
-        Refusal {
-            code: "fast_lv_schema_unsupported",
-            when: "the request schema is not ds.fast-lv.request/v1",
-            remedy: "migrate the request to the supported v1 schema",
-        },
-        Refusal {
-            code: "fast_lv_bound_refused",
-            when: "job, feature, layer, config-sheet, name, or uniqueness bounds are exceeded",
-            remedy: "split the batch or shorten the named field reported by the refusal",
-        },
-        Refusal {
-            code: "fast_lv_output_exists",
-            when: "--out already exists",
-            remedy: "choose a new result path; this command never overwrites",
-        },
-        Refusal {
-            code: "fast_lv_output_write_failed",
-            when: "the result cannot be durably written at --out",
-            remedy: "choose a writable absent path and retry from the unchanged input",
-        },
-        Refusal {
-            code: "fast_lv_output_too_large",
-            when: "the complete result exceeds 256 MiB",
-            remedy: "split the request into smaller batches; results are never truncated",
-        },
-        Refusal {
-            code: "fast_lv_result_encoding_failed",
-            when: "the voltage-drop result cannot be encoded as its v1 document",
-            remedy: "keep the input unchanged and report this internal encoding failure",
-        },
-    ],
+    refusals: &REFUSALS,
     reference: Some("docs/reference/design.md"),
     search: &[
         "undervoltage",
@@ -175,23 +148,15 @@ pub static COMMAND: Command = Command {
         "reinforcement",
     ],
     requires: Requires::Server,
-    availability: || Availability::Available,
+    availability: || ds_network_client::available(),
 };
 
 /// One transformer's outcome: processed layers, an optional calculation and
 /// the producer's analysis envelope. A reserved nature has layers with
 /// `tr.vd_summary` and no calculation.
-type SolveOutcome = Result<
-    (
-        Map<String, Value>,
-        Option<VoltageDropRun>,
-        Option<VoltageDropAnalysis>,
-    ),
-    String,
->;
 struct Solved {
     transformer_name: String,
-    outcome: SolveOutcome,
+    outcome: Result<LvProcessOutput, String>,
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -209,16 +174,59 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // the project keep their own settings and loads.
     let rewritten = scenario.apply(&mut request.jobs)?;
 
-    // Input order is the result order; each job is independent, so one that
-    // fails or panics is reported in its row and never stops the rest.
-    let solved: Vec<Solved> = request.jobs.into_iter().map(solve).collect();
+    // The existing Network process owns ordered partial failure and complete
+    // engineering results. Private staging stays on the output volume.
+    #[derive(Serialize)]
+    struct RequestWire<'a> {
+        schema: &'a str,
+        jobs: &'a [NativeLvJobV1],
+    }
+    let request_bytes = serde_json::to_vec(&RequestWire {
+        schema: &request.schema,
+        jobs: &request.jobs,
+    })
+    .map_err(|error| map_owner_error(NativeLvError::InvalidDocument(error.to_string())))?;
+    let scratch = std::fs::canonicalize(
+        output_path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or(Path::new(".")),
+    )
+    .map_err(|error| {
+        Failure::failed(
+            "fast_lv_output_write_failed",
+            format!("Could not resolve the LV result directory: {error}"),
+        )
+    })?;
+    let outcome = ds_network_client::process_lv_with_order(
+        &request_bytes,
+        std::thread::available_parallelism().map_or(1, usize::from),
+        &scratch,
+        &|| false,
+        ds_network_contracts::engine::JsonObjectOrder::Insertion,
+    )
+    .map_err(map_network_error)?;
+    if outcome.cancelled {
+        return Err(Failure::failed(
+            "network_task_cancelled",
+            "The Network engine did not complete the voltage-drop batch.",
+        )
+        .remedy("Retry the unchanged input at a new output path."));
+    }
+    let engine_core_version = outcome.result.engine_core_version;
+    let solved = outcome
+        .result
+        .jobs
+        .into_iter()
+        .map(admit_job)
+        .collect::<Result<Vec<_>, _>>()?;
     let scenario = scenario.echo(&rewritten);
-    let rows: Vec<Value> = solved.iter().map(row).collect();
+    let rows = solved.iter().map(row).collect::<Result<Vec<_>, _>>()?;
     let jobs = rows.len();
     let succeeded = solved.iter().filter(|job| job.outcome.is_ok()).count();
     let compliant = rows.iter().filter(|row| row["compliant"] == true).count();
 
-    let output = encode(solved, &scenario)?;
+    let output = encode(solved, &scenario, &engine_core_version)?;
     let result_sha256 = sha256(&output);
     write_new(&output_path, &output, &VOLTAGE_DROP_RESULT)?;
 
@@ -227,7 +235,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "input_sha256": input_sha256,
         "result_sha256": result_sha256,
         "byte_count": output.len(),
-        "engine_core_version": ds_network::CORE_VERSION,
+        "engine_core_version": engine_core_version,
+        "engine_identity": outcome.identity,
+        "executable_sha256": outcome.executable_sha256,
+        "development_override": outcome.development_override,
         "method": METHOD,
         "scenario": scenario,
         "jobs": jobs,
@@ -461,47 +472,167 @@ fn amount(value: f64) -> String {
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
-fn solve(job: NativeLvJobV1) -> Solved {
-    let transformer_name = job.transformer_name.clone();
-    let input = native_lv_job_input(job);
-    // The same containment the batch kernel gives `design.lv.process`: a
-    // panicking job is that job's failure, not the command's.
-    let outcome = match catch_unwind(AssertUnwindSafe(|| {
-        process_lv_transformer_with_voltage_drop(input)
-    })) {
-        Ok(Ok((output, run))) => Ok((output.gdfs, run, output.voltage_drop)),
-        Ok(Err(error)) => Err(error.to_string()),
-        Err(_) => Err("local processing panicked".to_string()),
+fn invalid_result() -> Failure {
+    Failure::failed(
+        "network_result_invalid",
+        "The Network voltage-drop result is incomplete or has incompatible fields.",
+    )
+    .remedy("Retain the unchanged input and use an intact compatible Network component.")
+}
+
+fn admit_job(job: NativeLvJobResultV1) -> Result<Solved, Failure> {
+    let outcome = if job.ok {
+        let output = job.output.ok_or_else(invalid_result)?;
+        let analysis = output.voltage_drop.as_ref().ok_or_else(invalid_result)?;
+        if analysis.schema != ds_network_contracts::voltage_drop::VOLTAGE_DROP_ANALYSIS_SCHEMA_V1
+            || analysis.method != METHOD
+            || (analysis.status == AnalysisStatus::Reserved) != analysis.run.is_none()
+        {
+            return Err(invalid_result());
+        }
+        Ok(output)
+    } else {
+        Err(job.error.ok_or_else(invalid_result)?)
     };
-    Solved {
-        transformer_name,
+    Ok(Solved {
+        transformer_name: job.transformer_name,
         outcome,
+    })
+}
+
+// These private readers project only the existing bounded receipt. The full
+// owner report/sizing documents below are retained without reserialization
+// through these subsets, so customers, sections and future additive facts stay.
+#[derive(Deserialize)]
+struct RunReceipt {
+    report: ReportReceipt,
+    sizing: SizingReceipt,
+}
+#[derive(Deserialize)]
+struct ReportReceipt {
+    status: String,
+    summary: SummaryReceipt,
+    #[serde(deserialize_with = "required_nullable")]
+    parameters: Option<ParametersReceipt>,
+    #[serde(deserialize_with = "required_nullable")]
+    transformer: Option<TransformerReceipt>,
+}
+#[derive(Deserialize)]
+struct SummaryReceipt {
+    customers: usize,
+    customers_failing: usize,
+    #[serde(deserialize_with = "required_nullable")]
+    worst_vd_pct: Option<f64>,
+    compliant: bool,
+}
+#[derive(Deserialize)]
+struct ParametersReceipt {
+    voltage_limit_pct: f64,
+    growth_years: u32,
+}
+#[derive(Deserialize)]
+struct TransformerReceipt {
+    #[serde(deserialize_with = "required_nullable")]
+    loading_pct: Option<f64>,
+}
+#[derive(Deserialize)]
+struct TransformerChangeReceipt {
+    #[serde(deserialize_with = "required_nullable")]
+    from_kva: Option<f64>,
+    to_kva: f64,
+}
+#[derive(Deserialize)]
+struct SizingReceipt {
+    status: String,
+    changes: Vec<Map<String, Value>>,
+    #[serde(deserialize_with = "required_nullable")]
+    transformer_change: Option<TransformerChangeReceipt>,
+    infeasible: Vec<Map<String, Value>>,
+    total_added_cost: f64,
+    cost_basis: String,
+    #[serde(deserialize_with = "required_nullable")]
+    first_failing_year: Option<u32>,
+    #[serde(deserialize_with = "read_schedule")]
+    schedule: Vec<Value>,
+}
+#[derive(Deserialize)]
+struct ReservedReceipt {
+    status: String,
+    transformer_nature: String,
+    calculation: String,
+}
+// Preserve every schedule field while checking the fields the text receipt
+// consumes; a missing year/cost/verdict must never turn into a zero or success.
+fn read_schedule<'de, D>(deserializer: D) -> Result<Vec<Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct YearState {
+        #[serde(rename = "worst_vd_pct", deserialize_with = "required_nullable")]
+        _worst_vd_pct: Option<f64>,
+        #[serde(rename = "customers_failing")]
+        _customers_failing: u64,
     }
+    #[derive(Deserialize)]
+    struct Change {
+        #[serde(rename = "kind")]
+        _kind: String,
+    }
+    #[derive(Deserialize)]
+    struct Year {
+        #[serde(rename = "year")]
+        _year: u32,
+        #[serde(rename = "as_drawn")]
+        _as_drawn: YearState,
+        #[serde(rename = "changes")]
+        _changes: Vec<Change>,
+        #[serde(rename = "transformer_to_kva", deserialize_with = "required_nullable")]
+        _transformer_to_kva: Option<f64>,
+        #[serde(rename = "added_cost")]
+        _added_cost: f64,
+    }
+    let schedule = Vec::<Value>::deserialize(deserializer)?;
+    for value in &schedule {
+        Year::deserialize(value).map_err(serde::de::Error::custom)?;
+    }
+    Ok(schedule)
+}
+
+fn required_nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
 }
 
 /// The receipt row: the verdict, what stage 2 asks for and the engine's
 /// outlook schedule, never the layers, the per-customer results or an error
 /// text.
-fn row(job: &Solved) -> Value {
-    let Ok((layers, run, _)) = &job.outcome else {
-        return json!({ "transformer_name": job.transformer_name, "ok": false });
+fn row(job: &Solved) -> Result<Value, Failure> {
+    let Ok(output) = &job.outcome else {
+        return Ok(json!({ "transformer_name": job.transformer_name, "ok": false }));
     };
-    let Some(run) = run else {
-        let summary = &layers["tr"]["features"][0]["properties"]["vd_summary"];
-        return json!({
+    let analysis = output.voltage_drop.as_ref().ok_or_else(invalid_result)?;
+    let Some(run) = &analysis.run else {
+        let summary: ReservedReceipt =
+            Deserialize::deserialize(&analysis.summary).map_err(|_| invalid_result())?;
+        return Ok(json!({
             "transformer_name": job.transformer_name,
             "ok": true,
-            "status": summary["status"],
+            "status": summary.status,
             "sizing_status": "not_calculated",
-            "transformer_nature": summary["transformer_nature"],
-            "calculation": summary["calculation"],
+            "transformer_nature": summary.transformer_nature,
+            "calculation": summary.calculation,
             "compliant": null,
-        });
+        }));
     };
+    let run: RunReceipt = Deserialize::deserialize(run).map_err(|_| invalid_result())?;
     let summary = &run.report.summary;
     let parameters = run.report.parameters.as_ref();
     let sizing = &run.sizing;
-    json!({
+    Ok(json!({
         "transformer_name": job.transformer_name,
         "ok": true,
         "status": run.report.status,
@@ -523,11 +654,15 @@ fn row(job: &Solved) -> Value {
         "design_year": parameters.map(|parameters| parameters.growth_years),
         "first_failing_year": sizing.first_failing_year,
         "schedule": sizing.schedule,
-    })
+    }))
 }
 
 /// The complete result document, or a refusal. It is never truncated.
-fn encode(solved: Vec<Solved>, scenario: &Value) -> Result<Vec<u8>, Failure> {
+fn encode(
+    solved: Vec<Solved>,
+    scenario: &Value,
+    engine_core_version: &str,
+) -> Result<Vec<u8>, Failure> {
     let encoding = |error: serde_json::Error| {
         map_owner_error(NativeLvError::ResultEncoding(error.to_string()))
     };
@@ -541,27 +676,26 @@ fn encode(solved: Vec<Solved>, scenario: &Value) -> Result<Vec<u8>, Failure> {
             Value::String(job.transformer_name),
         );
         entry.insert("ok".into(), Value::Bool(job.outcome.is_ok()));
-        if let Ok((_, _, Some(analysis))) = &job.outcome {
-            // The producer's exact envelope: the same three binding digests a
-            // process save stores, so this result and the saved analysis name
-            // one input digest for a report to bind.
-            entry.insert(
-                "analysis".into(),
-                serde_json::to_value(analysis).map_err(encoding)?,
-            );
-        }
         match job.outcome {
-            Ok((layers, Some(run), _)) => {
-                let report = serde_json::to_value(&run.report).map_err(encoding)?;
-                let sizing = serde_json::to_value(&run.sizing).map_err(encoding)?;
-                entry.insert("report".into(), report);
-                entry.insert("sizing".into(), sizing);
-                entry.insert("layers".into(), Value::Object(layers));
-            }
-            Ok((layers, None, _)) => {
-                let summary = layers["tr"]["features"][0]["properties"]["vd_summary"].clone();
-                entry.insert("vd_summary".into(), summary);
-                entry.insert("layers".into(), Value::Object(layers));
+            Ok(output) => {
+                let analysis = output.voltage_drop.ok_or_else(invalid_result)?;
+                entry.insert(
+                    "analysis".into(),
+                    serde_json::to_value(&analysis).map_err(encoding)?,
+                );
+                match analysis.run {
+                    Some(Value::Object(mut run)) => {
+                        let report = run.remove("report").ok_or_else(invalid_result)?;
+                        let sizing = run.remove("sizing").ok_or_else(invalid_result)?;
+                        entry.insert("report".into(), report);
+                        entry.insert("sizing".into(), sizing);
+                    }
+                    None => {
+                        entry.insert("vd_summary".into(), analysis.summary);
+                    }
+                    Some(_) => return Err(invalid_result()),
+                }
+                entry.insert("layers".into(), Value::Object(output.gdfs));
             }
             Err(error) => {
                 entry.insert("error".into(), Value::String(error));
@@ -572,10 +706,7 @@ fn encode(solved: Vec<Solved>, scenario: &Value) -> Result<Vec<u8>, Failure> {
     let mut document = Map::new();
     document.insert("schema".into(), RESULT_SCHEMA.into());
     document.insert("method".into(), METHOD.into());
-    document.insert(
-        "engine_core_version".into(),
-        ds_network::CORE_VERSION.into(),
-    );
+    document.insert("engine_core_version".into(), engine_core_version.into());
     document.insert("scenario".into(), scenario.clone());
     document.insert("jobs".into(), Value::Array(jobs));
     let bytes = serde_json::to_vec(&document).map_err(encoding)?;
@@ -592,6 +723,157 @@ fn encode(solved: Vec<Solved>, scenario: &Value) -> Result<Vec<u8>, Failure> {
 mod tests {
     use super::*;
     use ds_cli_contract::{Format, Output};
+
+    // All successful actual-process cases compare every full result field to
+    // the former linked owner, including scenario and preserved topology.
+    fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+        let receipt = super::run(inputs, context)?;
+        let bytes = std::fs::read(inputs.require("input")?).unwrap();
+        let mut request = decode_native_lv_request(&bytes).unwrap();
+        Scenario::parse(inputs)
+            .unwrap()
+            .apply(&mut request.jobs)
+            .unwrap();
+        let actual = document(Path::new(inputs.require("out")?));
+        for (source, actual) in request
+            .jobs
+            .into_iter()
+            .zip(actual["jobs"].as_array().unwrap())
+        {
+            let name = source.transformer_name.clone();
+            let expected = ds_network::network::process_lv_transformer_with_voltage_drop(
+                ds_network::network::lv_processing::native_lv_job_input(source),
+            );
+            assert_eq!(actual["transformer_name"], name);
+            match expected {
+                Ok((output, run)) => {
+                    assert_eq!(actual["ok"], true);
+                    assert_eq!(actual["layers"], serde_json::to_value(output.gdfs).unwrap());
+                    assert_eq!(
+                        actual["analysis"],
+                        serde_json::to_value(output.voltage_drop).unwrap()
+                    );
+                    if let Some(run) = run {
+                        assert_eq!(actual["report"], serde_json::to_value(run.report).unwrap());
+                        assert_eq!(actual["sizing"], serde_json::to_value(run.sizing).unwrap());
+                    }
+                }
+                Err(error) => {
+                    assert_eq!(actual["ok"], false);
+                    assert_eq!(actual["error"], error.to_string());
+                }
+            }
+        }
+        assert_eq!(receipt["engine_identity"]["jsonObjectOrder"], "insertion");
+        assert_eq!(
+            receipt["engine_core_version"],
+            receipt["engine_identity"]["coreVersion"]
+        );
+        let executable = std::fs::read(
+            std::env::var_os("DS_NETWORK_ENGINE_BIN").expect("explicit actual engine"),
+        )
+        .unwrap();
+        assert_eq!(receipt["executable_sha256"], sha256(&executable));
+        Ok(receipt)
+    }
+
+    #[test]
+    fn receipt_projection_refuses_missing_and_mistyped_owner_fields() {
+        let native = || {
+            ds_network::network::lv_processing::process_native_lv(
+                decode_native_lv_request(&request(vec![job("projection", 1)])).unwrap(),
+            )
+            .unwrap()
+            .jobs
+            .remove(0)
+        };
+        let good = native();
+        let mut document = serde_json::to_value(&good).unwrap();
+        let expected_run = document["output"]["voltage_drop"]["run"].clone();
+        let mut solved = admit_job(good).unwrap();
+        let extra = json!({"future_customer_evidence":[1,2,3]});
+        solved
+            .outcome
+            .as_mut()
+            .unwrap()
+            .voltage_drop
+            .as_mut()
+            .unwrap()
+            .run
+            .as_mut()
+            .unwrap()["report"]["additional_evidence"] = extra.clone();
+        assert!(row(&solved).is_ok());
+        let encoded: Value =
+            serde_json::from_slice(&encode(vec![solved], &json!({}), "captured-version").unwrap())
+                .unwrap();
+        assert_eq!(encoded["engine_core_version"], "captured-version");
+        assert_eq!(encoded["jobs"][0]["report"]["additional_evidence"], extra);
+        assert_eq!(encoded["jobs"][0]["sizing"], expected_run["sizing"]);
+        document["output"]["voltage_drop"]["run"]["report"]
+            .as_object_mut()
+            .unwrap()
+            .remove("parameters");
+        let broken = admit_job(serde_json::from_value(document).unwrap()).unwrap();
+        assert_eq!(row(&broken).unwrap_err().code(), "network_result_invalid");
+        let mut malformed = native();
+        malformed
+            .output
+            .as_mut()
+            .unwrap()
+            .voltage_drop
+            .as_mut()
+            .unwrap()
+            .run
+            .as_mut()
+            .unwrap()["sizing"]["changes"] = json!("not an array");
+        let malformed = admit_job(malformed).unwrap();
+        assert_eq!(
+            row(&malformed).unwrap_err().code(),
+            "network_result_invalid"
+        );
+        let mut malformed_schedule = native();
+        malformed_schedule
+            .output
+            .as_mut()
+            .unwrap()
+            .voltage_drop
+            .as_mut()
+            .unwrap()
+            .run
+            .as_mut()
+            .unwrap()["sizing"]["schedule"] = json!([{
+            "year": 5,
+            "as_drawn": {"worst_vd_pct": null, "customers_failing": 0},
+            "changes": [],
+            "transformer_to_kva": null
+        }]);
+        let malformed_schedule = admit_job(malformed_schedule).unwrap();
+        assert_eq!(
+            row(&malformed_schedule).unwrap_err().code(),
+            "network_result_invalid"
+        );
+        let mut missing = native();
+        missing.output.as_mut().unwrap().voltage_drop = None;
+        assert_eq!(
+            admit_job(missing).err().unwrap().code(),
+            "network_result_invalid"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires DS_NETWORK_ENGINE_BIN to name an absent explicit executable"]
+    fn actual_missing_network_refuses_without_output_or_fallback() {
+        let selected = std::env::var_os("DS_NETWORK_ENGINE_BIN").expect("explicit absent engine");
+        assert!(!Path::new(&selected).exists());
+        let root = tempfile::tempdir().unwrap();
+        let input = root.path().join("request.json");
+        let output = root.path().join("result.json");
+        std::fs::write(&input, request(vec![job("missing-engine", 1)])).unwrap();
+        let error = super::run(&inputs(&input, &output), &context()).unwrap_err();
+        assert_eq!(error.code(), "network_engine_missing");
+        assert!(!output.exists());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    }
 
     fn context() -> Context {
         Context {
@@ -716,6 +998,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires an explicitly selected compatible Network executable"]
     fn a_request_is_solved_in_input_order_into_one_result_document() {
         let root = tempfile::tempdir().expect("temp dir");
         let input = root.path().join("request.json");
@@ -808,6 +1091,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires an explicitly selected compatible Network executable"]
     fn reserved_natures_are_successful_not_calculated_answers() {
         let root = tempfile::tempdir().expect("temp dir");
         let input = root.path().join("request.json");
@@ -922,6 +1206,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires an explicitly selected compatible Network executable"]
     fn a_failed_job_keeps_its_row_and_its_reason_stays_in_the_document() {
         let root = tempfile::tempdir().expect("temp dir");
         let input = root.path().join("request.json");
@@ -966,6 +1251,7 @@ mod tests {
     /// customer and complies at 100 W; at commissioning (year 0, 60 W) it
     /// complies too. Each scenario is echoed and the request is untouched.
     #[test]
+    #[ignore = "requires an explicitly selected compatible Network executable"]
     fn a_scenario_changes_what_the_method_checks_and_is_echoed() {
         let root = tempfile::tempdir().expect("temp dir");
         let input = root.path().join("request.json");
@@ -1263,6 +1549,7 @@ mod tests {
         output
     }
     #[test]
+    #[ignore = "requires an explicitly selected compatible Network executable"]
     fn native_saved_topology_complete_and_missing_ids_keep_source_design_cells() {
         let job = saved_topology_job();
         let output = saved_command(&job);
@@ -1306,6 +1593,7 @@ mod tests {
         assert_eq!(output["report"]["sections"][0]["length_m"], 100.0);
     }
     #[test]
+    #[ignore = "requires an explicitly selected compatible Network executable"]
     fn native_saved_topology_partial_unreached_and_ambiguous_never_claim_compliance() {
         for case in 0..3 {
             let mut job = saved_topology_job();

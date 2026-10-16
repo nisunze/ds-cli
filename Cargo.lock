@@ -1074,6 +1074,7 @@ dependencies = [
  "ds-network-client",
  "ds-network-contracts",
  "lopdf",
+ "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
