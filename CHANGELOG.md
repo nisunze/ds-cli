@@ -193,6 +193,16 @@ permissions, owner/auth changes and failed quarantine continue to refuse.
 Desktop remains 0.2.0; no shared installation version or component pin is added.
 
 
+## Unreleased: Windows manager native-only Core compatibility
+
+Before: Windows manager component actions always passed `--runtime native`, which
+older installed native-only Core contracts rejected with `unknown_flag` before
+any component effect. Now: native Network, Solar and Reporter actions use Core's
+existing native default; Interactions and UI Kernel retain explicit
+`--runtime wasm`. Update to the newly verified manager package; no Core upgrade,
+component/data migration or installation-wide pin is required. A refused stage
+never activates a component. Unsupported UI or publication targets remain refusals.
+
 ## Unreleased: DS Installation Manager
 
 `scripts/installation-manager/ds-install-manager.ps1` adds the Windows

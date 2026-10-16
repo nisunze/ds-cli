@@ -152,6 +152,19 @@ reuse. OS MD5 metadata or an unanchored hash/version does not remove that fence.
 This limitation is explicit; the current unchanged admitted Linux Core remains
 usable without replacement.
 
+## Installation Manager native component compatibility
+
+Windows component Status, Install, Update, Remove and Rollback omit the optional
+`--runtime native` argument when calling Core. Native is already the default on
+current Core and older native-only contracts; those older executables reject
+`--runtime` as `unknown_flag`. Interactions and UI Kernel continue to send explicit
+`--runtime wasm`, so an older Core still refuses unsupported UI installation.
+
+Consumers need the newly digest-verified manager package. Core, component
+selections, receipt/digest admission, generation fences and local data need no
+migration or replacement. A staging or compatibility refusal remains an error
+and never advances activation.
+
 ## UI component installation before sign-in
 
 `core.module-release`, `core.module-stage`, `core.component.selection`,

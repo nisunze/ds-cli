@@ -198,7 +198,10 @@ function InstallCore([ValidateSet('Install','Update')][string]$Verb='Install') {
 }
 function ComponentAction([string]$Name,[string]$Verb,[switch]$PreserveInstalled) {
  $runtime=if($Name -in @('interactions','command-kernel')){'wasm'}else{'native'}
- $commandArgs=@('core','component','selection','--component',$Name,'--channel',$Channel,'--runtime',$runtime)
+ # Native is the default on current and older native-only Core contracts.
+ # Only UI units require the explicit WASM selector.
+ $runtimeArgs=@();if($runtime -eq 'wasm'){$runtimeArgs=@('--runtime','wasm')}
+ $commandArgs=@('core','component','selection','--component',$Name,'--channel',$Channel) + $runtimeArgs
  $selection=InvokeCore -Arguments $commandArgs
  $generation=if($null -eq $selection){0}else{$selection.generation}
  if($Verb -eq 'Status'){return $selection}
@@ -214,11 +217,11 @@ function ComponentAction([string]$Name,[string]$Verb,[switch]$PreserveInstalled)
   }
   if($selection.selection.state -ne 'removed'){Fail 'component_selection_invalid' 'An unknown installed UI state cannot be treated as missing'}
  }
- if($Verb -in @('Remove','Rollback')) { return InvokeCore -Arguments @('core','component',$Verb.ToLowerInvariant(),'--component',$Name,'--channel',$Channel,'--runtime',$runtime,'--expected-generation',"$generation",'--yes') }
+ if($Verb -in @('Remove','Rollback')) { return InvokeCore -Arguments (@('core','component',$Verb.ToLowerInvariant(),'--component',$Name,'--channel',$Channel) + $runtimeArgs + @('--expected-generation',"$generation",'--yes')) }
  $release=Release $Name $runtime
  $path=Join-Path $script:Cache "$Name-release.json"
  [IO.File]::WriteAllText($path,($release | ConvertTo-Json -Depth 30),(New-Object Text.UTF8Encoding($false)))
- $admitted=InvokeCore -Arguments @('core','module-release','--component',$Name,'--channel',$Channel,'--runtime',$runtime,'--file',$path)
+ $admitted=InvokeCore -Arguments (@('core','module-release','--component',$Name,'--channel',$Channel) + $runtimeArgs + @('--file',$path))
  if($runtime -eq 'wasm'){
   $sha=$admitted.unit_sha256
   # Admit the current public identity even when installation is already done.
@@ -229,8 +232,8 @@ function ComponentAction([string]$Name,[string]$Verb,[switch]$PreserveInstalled)
   if($assets.Count -ne 1){Fail 'component_platform_unavailable' 'No unique Windows executable is published'}
   $sha=$assets[0].sha256
  }
- $ready=InvokeCore -Arguments @('core','module-stage','--component',$Name,'--channel',$Channel,'--runtime',$runtime,'--sha256',$sha,'--yes')
- return InvokeCore -Arguments @('core','component','activate','--component',$Name,'--channel',$Channel,'--runtime',$runtime,'--receipt-id',$ready.receiptId,'--expected-generation',"$generation",'--yes')
+ $ready=InvokeCore -Arguments (@('core','module-stage','--component',$Name,'--channel',$Channel) + $runtimeArgs + @('--sha256',$sha,'--yes'))
+ return InvokeCore -Arguments (@('core','component','activate','--component',$Name,'--channel',$Channel) + $runtimeArgs + @('--receipt-id',$ready.receiptId,'--expected-generation',"$generation",'--yes'))
 }
 function EnsureDesktopRequirements {
  $script:CurrentComponent='Core'

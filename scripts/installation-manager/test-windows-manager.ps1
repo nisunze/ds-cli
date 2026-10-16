@@ -167,12 +167,16 @@ public static class FixtureUninstaller {
  $r=FreshCoreRelease;$r.assets=@($r.assets[0]);RefuseCore $r
  # Execute the actual ensure path with a bounded native-owner fixture.
  # Matching units must still admit public metadata, without restaging workers.
+ $script:NativeOnly=$false;$script:StageRefused=$false
  $script:EnsureCalls=@();$script:EnsureSha='a'*64;$script:AdmittedSha='a'*64;$script:SelectionState='installed';$script:CaptureSha='a'*64;$script:CaptureGeneration=7;$script:CaptureRefused=$false;$script:CoreAvailable=$true
  function Release([string]$Name,[string]$Runtime='native'){return [pscustomobject]@{component=$Name;runtime=$Runtime}}
  function InvokeCore([string[]]$Arguments,[string]$ExpectedCommand,[int]$ExpectedContract=0){
   if($Arguments[0] -eq 'version'){$script:EnsureCalls+=@('version');return [pscustomobject]@{version='0.1.0'}}
   if($Arguments[0] -eq 'capabilities'){$script:EnsureCalls+=@('capabilities');return [pscustomobject]@{command=[pscustomobject]@{id='core.serve';contract=2;availability=$(if($script:CoreAvailable){'available'}else{'unavailable'})}}}
   $verb=$Arguments[1];$script:EnsureCalls+=@(($Arguments -join ' '))
+  if($script:NativeOnly -and $Arguments -contains '--runtime'){throw 'unknown_flag: --runtime'}
+  if($script:StageRefused -and $verb -eq 'module-stage'){throw 'module_artifact_invalid: native stage refused'}
+  if($verb -eq 'component' -and $Arguments[2] -in @('remove','rollback')){return [pscustomobject]@{generation=8}}
   if($verb -eq 'component' -and $Arguments[2] -eq 'selection'){return [pscustomobject]@{schema='ds.ui-module-selection/v1';generation=7;selection=[pscustomobject]@{state=$script:SelectionState;active=[pscustomobject]@{unit=[pscustomobject]@{unit_sha256=$script:EnsureSha}}}}}
   if($verb -eq 'component' -and $Arguments[2] -eq 'capture'){
    if($script:CaptureRefused){throw 'module_artifact_invalid: native capture refused corrupt bytes'}
@@ -214,6 +218,45 @@ public static class FixtureUninstaller {
  $missing=ComponentAction interactions Install -PreserveInstalled
  Check ($missing.generation -eq 8 -and $script:EnsureCalls.Count -eq 4) 'Removed required UI did not use normal public admission/stage/activation'
  Check ($script:EnsureCalls[3] -like '*--expected-generation 7*') 'Required UI installation lost its existing generation fence'
+ # Older installed Core admits native modules but has no --runtime flag.
+ # New Core has the same native default. Exercise the real manager workflow
+ # against both contracts; UI units must retain their explicit WASM routing.
+ function Release([string]$Name,[string]$Runtime='native'){
+  return [pscustomobject]@{component=$Name;runtime=$Runtime;assets=@([pscustomobject]@{platform='windows';arch='x86_64';sha256=('f'*64)})}
+ }
+ foreach($legacy in @($true,$false)){
+  $script:NativeOnly=$legacy
+  foreach($name in @('network','solar','reporter')){
+   foreach($verb in @('Status','Install','Update','Remove','Rollback')){
+    $script:EnsureCalls=@()
+    $result=ComponentAction $name $verb
+    Check (@($script:EnsureCalls | Where-Object {$_ -match '--runtime'}).Count -eq 0) 'Native component required a runtime flag unsupported by installed Core'
+    Check ($script:EnsureCalls[0] -ceq "core component selection --component $name --channel canary") 'Native selection crossed its component or channel'
+    if($verb -eq 'Status'){
+     Check ($script:EnsureCalls.Count -eq 1 -and $result.generation -eq 7) 'Native Status performed an installation effect'
+    }elseif($verb -in @('Remove','Rollback')){
+     Check ($script:EnsureCalls.Count -eq 2 -and $result.generation -eq 8) 'Native lifecycle used an unexpected owner'
+     Check ($script:EnsureCalls[1] -ceq "core component $($verb.ToLowerInvariant()) --component $name --channel canary --expected-generation 7 --yes") 'Native lifecycle lost its generation or confirmation fence'
+    }else{
+     Check ($script:EnsureCalls.Count -eq 4 -and $result.generation -eq 8) 'Native installation skipped admission, staging or activation'
+     Check ($script:EnsureCalls[1] -like "core module-release --component $name --channel canary --file *") 'Native release did not use the owning admission command'
+     Check ($script:EnsureCalls[2] -ceq "core module-stage --component $name --channel canary --sha256 $('f'*64) --yes") 'Native staging crossed the published artifact digest'
+     Check ($script:EnsureCalls[3] -ceq "core component activate --component $name --channel canary --receipt-id fixture-receipt --expected-generation 7 --yes") 'Native activation lost its receipt or generation fence'
+    }
+   }
+  }
+ }
+ $script:NativeOnly=$true;$script:StageRefused=$true;$script:EnsureCalls=@();$refused=$false
+ try{$null=ComponentAction reporter Update}catch{$refused=$_.Exception.Message.Contains('module_artifact_invalid')}
+ Check $refused 'A refused native stage was hidden'
+ Check (@($script:EnsureCalls | Where-Object {$_ -like '*activate*'}).Count -eq 0) 'Native stage refusal still activated a component'
+ $script:NativeOnly=$false;$script:StageRefused=$false
+ foreach($name in @('interactions','command-kernel')){
+  foreach($verb in @('Remove','Rollback')){
+   $script:EnsureCalls=@();$null=ComponentAction $name $verb
+   Check ($script:EnsureCalls.Count -eq 2 -and @($script:EnsureCalls | Where-Object {$_ -notmatch '--runtime wasm'}).Count -eq 0) 'UI lifecycle lost explicit WASM routing'
+  }
+ }
  Write-Output "Native Windows manager checks: $script:Checks passed"
 } finally {
  # Bounded disposable test cleanup, never a product or caller supplied path.
