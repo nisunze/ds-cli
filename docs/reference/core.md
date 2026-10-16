@@ -434,3 +434,18 @@ history/axis and unknown/cross-family endpoints preserve their typed refusal.
 Older Core parsers refuse these additive closed actions; update the matching
 Core adapter and independently qualified Network component, with no fallback
 or installation-wide version pin. Selection alone grants no edit authority.
+
+## Installed module inventory lane
+
+`core.modules` contract 1 adds optional `--lane stable|canary` for exact
+managed selection reads. Omission retains the compiled release lane and the
+existing unmanaged local-development inventory. Previously a debug Core always
+inspected unmanaged executables, even when its Desktop selected Canary, and
+could falsely report a valid managed component missing. Explicit lane inspection
+uses the existing receipt, executable digest and build-identity owner; it creates
+no selection and installs nothing. Invalid lanes refuse before executable probes.
+
+Native Desktop requires the declared input before sending the exact lane.
+A Core without it refuses `core_incompatible` before inventory or engine probes;
+update Core independently. There is no default-path compatibility branch, engine
+PATH override, installation-wide pin, credential or data migration.

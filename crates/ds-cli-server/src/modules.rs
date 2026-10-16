@@ -21,7 +21,9 @@ pub static INVENTORY: Command = Command {
         "<solar|reporter|network>",
         "Inspect only this consumed addon; omit for all three.",
     )
-    .choices(&["solar", "reporter", "network"])],
+    .choices(&["solar", "reporter", "network"]),
+    Arg::value("lane", "<stable|canary>", "Inspect this exact installed lane; omit to retain the compiled release lane or local development inventory.")
+        .choices(&["stable", "canary"])],
     output: "ds.module-inventory/v1 with Solar, Reporter and Network rows, or exactly the selected component: available, missing or refused, captured path, identity and capabilities or a named remedy. Development provenance remains explicit.",
     examples: &[],
     refusals: &[],
@@ -96,7 +98,12 @@ pub fn inventory(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
                 "Select a declared module component",
             )
         })?;
-    inventory_for_release_lane(component, ds_cli_auth::reliability::release_lane())
+    inventory_for_release_lane(
+        component,
+        inputs
+            .value("lane")
+            .unwrap_or(ds_cli_auth::reliability::release_lane()),
+    )
 }
 
 fn inventory_for_release_lane(
@@ -314,6 +321,38 @@ mod inventory_tests {
             "invalid_choice"
         );
     }
+    #[test]
+    fn inventory_explicit_lane_is_optional_and_closed() {
+        for lane in ["stable", "canary"] {
+            let inputs = ds_cli_contract::parse(
+                &INVENTORY,
+                &[
+                    "--lane".into(),
+                    lane.into(),
+                    "--component".into(),
+                    "solar".into(),
+                ],
+            )
+            .unwrap();
+            assert_eq!(inputs.value("lane"), Some(lane));
+            assert_eq!(inputs.value("component"), Some("solar"));
+        }
+        assert!(
+            ds_cli_contract::parse(&INVENTORY, &[])
+                .unwrap()
+                .value("lane")
+                .is_none()
+        );
+        for lane in ["local", "server", "other"] {
+            assert_eq!(
+                ds_cli_contract::parse(&INVENTORY, &["--lane".into(), lane.into()])
+                    .unwrap_err()
+                    .code(),
+                "invalid_choice"
+            );
+        }
+    }
+
     #[test]
     fn unsupported_release_lane_refuses_before_any_addon_probe() {
         let error = inventory_for_release_lane(

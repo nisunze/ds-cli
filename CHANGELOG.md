@@ -1,3 +1,15 @@
+## Unreleased: exact-lane native module inventory
+
+`ds core modules [--component ...]` now also accepts optional
+`--lane stable|canary` under contract 1. Existing omission behavior is retained.
+Desktop development previously inherited Core's compiled `local` inventory and
+reported managed Canary engines missing. Updated native adapters discover the
+optional input and inspect their captured Core lane. A Core without the input
+refuses `core_incompatible` before inventory, requiring an independent Core
+update. No installed-path compatibility branch is retained.
+Managed receipts, source/protocol/digest checks and explicit development
+provenance are unchanged; no install, data migration, global pin or engine fallback.
+
 ## Unreleased: retained native Profile Properties
 
 Desktop Properties previously refused `profilePropertiesJson` at the retained
