@@ -644,7 +644,7 @@
         "outcome": "refused",
         "refusal": {
           "code": "context_corrupt",
-          "message": "execution context field operation is not valid: one of transformer_processing, solar_processing, tile_processing, report_export, layer_read, layer_write, sync_recovery"
+          "message": "execution context field operation is not valid: one of transformer_processing, solar_processing, tile_processing, report_export, layer_read, layer_write, sync_recovery, profile_session"
         }
       }
     },
@@ -2879,6 +2879,42 @@
       },
       "expected": {
         "error": "unsupported execution context schema; expected ds.execution-context/v1"
+      }
+    },
+    {
+      "id": "admit-retained-native-profile-session",
+      "why": "Retained native Profile work is admitted under its sealed project and exact authenticated principal, lane, deployment and install scope, without any saved project selection.",
+      "request": {
+        "kind": "admit",
+        "now_ms": 2000,
+        "principal": {
+          "uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1"
+        },
+        "client": "cli:4711",
+        "operation": "profile_session",
+        "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "idempotency_key": "key-a",
+        "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sealed_project": "project-b"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "context": {
+          "principal_uid": "uid-a",
+          "lane": "canary",
+          "deployment": "https://gateway.example",
+          "install_id": "install-1",
+          "project": "project-b",
+          "client": "cli:4711",
+          "operation": "profile_session",
+          "job_id": "1111111111111111111111111111111111111111111111111111111111111111",
+          "idempotency_key": "key-a",
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "admitted_at_ms": 2000
+        }
       }
     }
   ]

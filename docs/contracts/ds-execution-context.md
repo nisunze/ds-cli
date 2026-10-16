@@ -55,7 +55,8 @@ ExecutionContext { principal_uid, lane, deployment, install_id, // the connectio
 ```
 
 `operation` is closed: `transformer_processing`, `solar_processing`,
-`tile_processing`, `report_export`, `layer_read`, `layer_write`, `sync_recovery`;
+`tile_processing`, `report_export`, `layer_read`, `layer_write`, `sync_recovery`,
+`profile_session`;
 `lane` is `stable` or `canary`;
 `input_sha256` is a 64-character lowercase digest. Every text field is
 non-empty, trimmed, control-free and bounded (`client` ≤ 120, `idempotency_key`
