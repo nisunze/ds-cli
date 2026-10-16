@@ -19,37 +19,12 @@ pub enum Mode {
     Remove,
     Intersect,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Family {
-    Structures,
-    TerrainPoints,
-    Alignments,
-    TensionSections,
-    AttachmentPoints,
-}
+pub use ds_profile_policy::profile_selection::{profile_families, Family};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Space {
     Plan,
     Profile,
-}
-pub fn profile_families(state: &crate::profile_display::DisplayState) -> Vec<Family> {
-    use crate::profile_display::DisplayOption as O;
-    let mut families = Vec::new();
-    if state.visibility[&O::Structures] {
-        families.extend([Family::Structures, Family::AttachmentPoints]);
-    }
-    if state.visibility[&O::TerrainPoints] {
-        families.push(Family::TerrainPoints);
-    }
-    if state.visibility[&O::Ground] {
-        families.push(Family::Alignments);
-    }
-    if state.visibility[&O::Wire] {
-        families.push(Family::TensionSections);
-    }
-    families
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct State {

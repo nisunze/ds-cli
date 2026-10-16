@@ -39,6 +39,13 @@ crate has no application-kernel or Network dependency. Its types, six primitive
 modules, and buffer/sample/crossing operations replace the Network copies;
 the remaining identity/comparison snapshots keep their separate drift fence.
 
+Profile display state, governed pens, control groups and display-governed
+selection families live once in `crates/ds-profile-policy`. The application
+kernel reexports their existing public paths. This neutral leaf depends only
+on serde, JSON and schema primitives; selection admission and application
+state remain in the kernel. Moving these policies does not itself move native
+scene production or qualify the standalone Core release.
+
 ### The question to ask of every piece of logic
 
 > Would we expect this capability to work on an Android or iOS field device

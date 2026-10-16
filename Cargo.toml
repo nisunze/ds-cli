@@ -13,7 +13,7 @@ publish = false
 # dependencies said. It carries its own [workspace] table at an unchanged path.
 # See docs/contracts/ds-portable-geometry.md §4.
 [workspace]
-members = ["crates/ds-template-test-support", "crates/ds-kml", "crates/ds-geo-lite", "crates/ds-profile-grid", "crates/ds-sync-store"]
+members = ["crates/ds-template-test-support", "crates/ds-kml", "crates/ds-geo-lite", "crates/ds-profile-grid", "crates/ds-profile-policy", "crates/ds-sync-store"]
 resolver = "2"
 
 [lib]
@@ -24,6 +24,7 @@ default = []
 wasm = ["dep:wasm-bindgen"]
 
 [dependencies]
+ds-profile-policy = { path = "crates/ds-profile-policy" }
 ds-kml = { path = "crates/ds-kml" }
 ryu = "1"
 schemars = "1.2.2"

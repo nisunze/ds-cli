@@ -262,6 +262,7 @@ dependencies = [
  "csv",
  "ds-geo-lite",
  "ds-kml",
+ "ds-profile-policy",
  "ds-solar-contracts",
  "ds-template-test-support",
  "image",
@@ -316,6 +317,15 @@ name = "ds-profile-grid"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "ds-profile-policy"
+version = "0.1.0"
+dependencies = [
+ "schemars",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
