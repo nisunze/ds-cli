@@ -235,36 +235,146 @@ fn qualified_addons_capture_exact_lane_and_keep_old_program_without_task_or_netw
     }
 }
 
-#[test]
-fn solar_native_absent_managed_selection_keeps_sibling_only_policy() {
-    let directory = tempfile::tempdir().unwrap();
-    if std::env::var_os("DS_ADDON_PATH_ONLY_CHECK").is_some() {
-        assert!(std::env::var_os("DS_SOLAR_ENGINE_BIN").is_none());
-        let host = ds_solar_native::NativeHost::headless(directory.path().join("native"))
-            .unwrap()
-            .with_engine_lane("canary")
-            .unwrap();
-        assert!(
-            host.selected_engine_path_in(directory.path())
-                .unwrap_err()
-                .starts_with("solar_engine_unavailable")
-        );
-        return;
-    }
+fn isolated_solar_host(override_path: Option<&Path>) {
+    let root = tempfile::tempdir().unwrap();
+    let child = root.path().join("host-selection-test");
+    fs::hard_link(std::env::current_exe().unwrap(), &child).unwrap();
     use std::os::unix::fs::PermissionsExt;
-    let path = directory.path().join("solar");
-    fs::write(&path, b"#!/bin/sh\nexit 99\n").unwrap();
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
-    let status = std::process::Command::new(std::env::current_exe().unwrap())
+    for name in ["solar", "ds-solar"] {
+        let trap = root.path().join(name);
+        fs::write(
+            &trap,
+            format!(
+                "#!/bin/sh\necho called > '{}'\nexit 99\n",
+                root.path().join("called").display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(trap, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let mut command = std::process::Command::new(&child);
+    command
         .args([
             "--exact",
-            "solar_native_absent_managed_selection_keeps_sibling_only_policy",
+            "solar_native_selection_child",
+            "--ignored",
             "--nocapture",
         ])
-        .env("DS_ADDON_PATH_ONLY_CHECK", "1")
-        .env("PATH", directory.path())
-        .env_remove("DS_SOLAR_ENGINE_BIN")
-        .status()
+        .env("DS_SOLAR_SELECTION_ROOT", root.path())
+        .env("PATH", root.path())
+        .env_remove("DS_SOLAR_ENGINE_BIN");
+    if let Some(path) = override_path {
+        command.env("DS_SOLAR_ENGINE_BIN", path);
+    }
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!root.path().join("called").exists());
+}
+
+#[test]
+fn solar_native_missing_and_corrupt_selection_refuse_sibling_and_path_traps() {
+    isolated_solar_host(None);
+}
+
+#[test]
+#[ignore = "isolated native selection control"]
+fn solar_native_selection_child() {
+    let root = PathBuf::from(std::env::var_os("DS_SOLAR_SELECTION_ROOT").unwrap());
+    let base = root.join("addons");
+    let data = root.join("native");
+    let host = ds_solar_native::NativeHost::headless(data.clone())
+        .unwrap()
+        .with_engine_lane("canary")
         .unwrap();
-    assert!(status.success());
+    if let Some(path) = std::env::var_os("DS_SOLAR_ENGINE_BIN") {
+        fs::create_dir_all(base.join("solar/canary")).unwrap();
+        fs::write(base.join("solar/canary/selection.json"), b"{torn").unwrap();
+        assert_eq!(
+            host.selected_engine_path_in(&base).unwrap(),
+            fs::canonicalize(path).unwrap()
+        );
+    } else {
+        assert!(
+            host.selected_engine_path_in(&base)
+                .unwrap_err()
+                .starts_with("solar_engine_missing")
+        );
+        fs::create_dir_all(base.join("solar/canary")).unwrap();
+        fs::write(base.join("solar/canary/selection.json"), b"{torn").unwrap();
+        assert!(
+            host.selected_engine_path_in(&base)
+                .unwrap_err()
+                .starts_with("module_receipt_invalid")
+        );
+        // The deliberately unmanaged development host retains its old sibling policy.
+        let unmanaged = ds_solar_native::NativeHost::headless(root.join("unmanaged")).unwrap();
+        assert_eq!(
+            unmanaged.selected_engine_path_in(&base).unwrap(),
+            root.join("solar")
+        );
+    }
+    assert!(!data.join("solar-jobs").exists());
+    assert!(!root.join("called").exists());
+}
+
+#[test]
+#[ignore = "requires an explicitly qualified retained Solar executable"]
+fn solar_native_managed_and_explicit_override_selection_preserve_exact_program() {
+    assert!(std::env::var_os("DS_SOLAR_ENGINE_BIN").is_none());
+    let binary = PathBuf::from(std::env::var_os("DS_MODULE_TEST_SOLAR_BIN").unwrap());
+    let info = probe(&addons::SOLAR, &binary);
+    let root = tempfile::tempdir().unwrap();
+    let base = root.path().join("addons");
+    let host = ds_solar_native::NativeHost::headless(root.path().join("native"))
+        .unwrap()
+        .with_engine_lane("canary")
+        .unwrap();
+    select(
+        &base,
+        ModuleComponent::Solar,
+        "stable",
+        &binary,
+        &info,
+        1,
+        b"",
+    );
+    assert!(
+        host.selected_engine_path_in(&base)
+            .unwrap_err()
+            .starts_with("solar_engine_missing")
+    );
+    let first = select(
+        &base,
+        ModuleComponent::Solar,
+        "canary",
+        &binary,
+        &info,
+        1,
+        b"",
+    );
+    let retained = host.selected_engine_path_in(&base).unwrap();
+    assert_eq!(retained, first);
+    let second = select(
+        &base,
+        ModuleComponent::Solar,
+        "canary",
+        &binary,
+        &info,
+        2,
+        b"\nselection-control\n",
+    );
+    assert_eq!(host.selected_engine_path_in(&base).unwrap(), second);
+    fs::write(base.join("solar/canary/selection.json"), b"{torn").unwrap();
+    assert!(
+        host.selected_engine_path_in(&base)
+            .unwrap_err()
+            .starts_with("module_receipt_invalid")
+    );
+    assert_eq!(probe(&addons::SOLAR, &retained), info);
+    isolated_solar_host(Some(&binary));
 }
