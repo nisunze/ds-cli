@@ -45,9 +45,11 @@ kernel reexports their existing public paths. This neutral leaf depends only
 on serde, JSON and schema primitives; selection admission and application
 state remain in the kernel. Network's `ds-profile-presentation` consumes this
 leaf for symbols, labels, display controls and complete scene projection. The
-legacy native runtime reexports and uses that one implementation. Core still
-links the legacy runtime until its retained View moves fully behind the Network
-process boundary; this relocation alone does not qualify standalone Core.
+legacy native runtime reexports and uses that one implementation. Core's
+retained View uses the managed `profile_view_v1` process capability and no longer
+links the legacy runtime. Core retains authorization and display state; Network
+returns one complete projection. Other Core Grid consumers remain linked, so
+this view cut alone does not qualify standalone Core.
 
 ### The question to ask of every piece of logic
 

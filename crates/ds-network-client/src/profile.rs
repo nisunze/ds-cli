@@ -249,6 +249,90 @@ impl ProfileSession {
         }
         result
     }
+    /// Stage one complete view without expanding the retained control frame.
+    /// Capability admission precedes serialization/staging; exact bytes are checked
+    /// again after the process reply, including refusals.
+    pub fn view_at(
+        &mut self,
+        input: &NativeProfileViewInputV1,
+        cached: bool,
+        expected_history: Value,
+        timeout: Duration,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<ProfileOutcome, NetworkFailure> {
+        if self.closed {
+            return Err(NetworkFailure::new(
+                "profile_session_closed",
+                "Profile session is closed",
+            ));
+        }
+        if self.sequence >= MAX_PROFILE_REQUESTS {
+            return Err(NetworkFailure::new(
+                "profile_session_capacity",
+                "Profile request capacity reached",
+            ));
+        }
+        if !self
+            .pin
+            .identity
+            .capabilities
+            .contains(&NetworkCapability::ProfileViewV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "captured Network has no complete Profile view capability",
+            ));
+        }
+        if input.schema != PROFILE_VIEW_INPUT_SCHEMA || !valid_history(&expected_history) {
+            return Err(NetworkFailure::new(
+                "profile_view_input_invalid",
+                "complete Profile view needs its exact schema and retained history",
+            ));
+        }
+        let bytes = serde_json::to_vec(input).map_err(|e| invalid(e.to_string()))?;
+        if bytes.len() > MAX_PROFILE_VIEW_INPUT_BYTES {
+            return Err(NetworkFailure::new(
+                "profile_view_input_invalid",
+                "complete Profile view exceeds its input bound",
+            ));
+        }
+        let file = format!("profile-input-{:010}.json", self.sequence + 1);
+        let path = self.run.path().join(&file);
+        if let Err(error) = write_request(&path, &bytes) {
+            // create_new/write may have left an incomplete fixed-sequence file.
+            // Retire this worker; its private TempDir cleans up on owner drop.
+            self.abort();
+            return Err(error);
+        }
+        let result = self.request_at(
+            NativeProfileOperationV1::View {
+                input: ArtifactReceipt {
+                    file,
+                    byte_count: bytes.len(),
+                    sha256: digest_bytes(&bytes),
+                    schema: PROFILE_VIEW_INPUT_SCHEMA.into(),
+                },
+                cached,
+            },
+            Some(expected_history),
+            timeout,
+            cancel,
+        );
+        let retained = read_regular(
+            &path,
+            MAX_PROFILE_VIEW_INPUT_BYTES,
+            "network_request_changed",
+        );
+        let cleanup = fs::remove_file(&path);
+        if !matches!(retained, Ok(ref value) if value == &bytes) || cleanup.is_err() {
+            self.abort();
+            return Err(NetworkFailure::new(
+                "network_request_changed",
+                "staged Profile view changed during execution",
+            ));
+        }
+        result
+    }
     pub fn request_at(
         &mut self,
         operation: NativeProfileOperationV1,
@@ -276,6 +360,18 @@ impl ProfileSession {
                 "captured Network has no exact Profile authored-facts capability",
             ));
         }
+        if matches!(operation, NativeProfileOperationV1::View { .. })
+            && !self
+                .pin
+                .identity
+                .capabilities
+                .contains(&NetworkCapability::ProfileViewV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "captured Network has no complete Profile view capability",
+            ));
+        }
         if self.sequence >= MAX_PROFILE_REQUESTS {
             return Err(NetworkFailure::new(
                 "profile_session_capacity",
@@ -289,31 +385,49 @@ impl ProfileSession {
             expected_history,
             operation,
         };
-        if let NativeProfileOperationV1::ReconcileJournal {
-            journal,
-            target_history,
-        } = &request.operation
-        {
-            if journal.file != format!("profile-input-{:010}.json", request.sequence)
-                || journal.schema != PROFILE_JOURNAL_SCHEMA
-                || journal.byte_count > MAX_PROFILE_JOURNAL_BYTES
-                || !valid_hex(&journal.sha256, 64)
-                || !valid_history(target_history)
+        let input_contract = match &request.operation {
+            NativeProfileOperationV1::ReconcileJournal {
+                journal,
+                target_history,
+            } => {
+                if !valid_history(target_history) {
+                    return Err(NetworkFailure::new(
+                        "profile_replay_input_invalid",
+                        "exact target history is required",
+                    ));
+                }
+                Some((
+                    journal,
+                    PROFILE_JOURNAL_SCHEMA,
+                    MAX_PROFILE_JOURNAL_BYTES,
+                    "profile_replay_input_invalid",
+                ))
+            }
+            NativeProfileOperationV1::View { input, .. } => Some((
+                input,
+                PROFILE_VIEW_INPUT_SCHEMA,
+                MAX_PROFILE_VIEW_INPUT_BYTES,
+                "profile_view_input_invalid",
+            )),
+            _ => None,
+        };
+        if let Some((receipt, schema, limit, code)) = input_contract {
+            if receipt.file != format!("profile-input-{:010}.json", request.sequence)
+                || receipt.schema != schema
+                || receipt.byte_count == 0
+                || receipt.byte_count > limit
+                || !valid_hex(&receipt.sha256, 64)
             {
                 return Err(NetworkFailure::new(
-                    "profile_replay_input_invalid",
-                    "journal must name the fixed-sequence private staged input",
+                    code,
+                    "Profile input must name the fixed-sequence bounded private artifact",
                 ));
             }
-            let bytes = read_regular(
-                &self.run.path().join(&journal.file),
-                MAX_PROFILE_JOURNAL_BYTES,
-                "profile_replay_input_invalid",
-            )?;
-            if bytes.len() != journal.byte_count || digest_bytes(&bytes) != journal.sha256 {
+            let bytes = read_regular(&self.run.path().join(&receipt.file), limit, code)?;
+            if bytes.len() != receipt.byte_count || digest_bytes(&bytes) != receipt.sha256 {
                 return Err(NetworkFailure::new(
-                    "profile_replay_input_invalid",
-                    "staged journal differs from its receipt",
+                    code,
+                    "staged Profile input differs from its receipt",
                 ));
             }
         }
@@ -488,6 +602,19 @@ impl ProfileSession {
         } else {
             let _: Box<serde_json::value::RawValue> =
                 serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+            if matches!(&request.operation, NativeProfileOperationV1::View { .. }) {
+                let view: Value =
+                    serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
+                if view["model_id"] != self.model_id
+                    || view["history"] != reply.history
+                    || view["model_revision"] != reply.history["model_revision"]
+                    || !validate_profile_view_shape(&view)
+                {
+                    return Err(invalid(
+                        "Profile view differs from its retained model, history or complete result",
+                    ));
+                }
+            }
             let snapshot = match &request.operation {
                 NativeProfileOperationV1::Snapshot => Some(
                     serde_json::from_slice::<NativeProfileSnapshotV1>(&bytes)

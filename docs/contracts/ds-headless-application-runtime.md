@@ -482,14 +482,20 @@ An independently installed older Core without the closed command refuses with
 Profile operations remain explicit refusals. Package opening and native scene
 proof do not alone establish editing, publication or print acceptance.
 
-Core's retained Profile view composes only the existing managed Network
-RuntimeScene and Network's `ds-profile-presentation` display projection, consumed
-through the existing `ds-profile-runtime` reexport. This shared implementation
-serves the legacy runtime too; Core's linked runtime dependency remains until the
-complete view crosses the process boundary.
-`native_projection::prepare` retains DisplayState patch/style/options/label
-refusals; `native_projection::project` accepts only a scene whose revision
-exactly matches the retained native history. The helper opens no GridSession,
-performs no engineering calculation, and creates no second live Runtime.
-Desktop renders that owner's complete scene/display result through a closed
-adapter; browser Grid availability cannot qualify a native shell release.
+Core's retained Profile view requires the captured Network `profile_view_v1`
+capability before style acquisition, staging or rebind. It sends one bounded,
+digest-pinned `ds.network.profile-view-input/v1` file through the retained
+process. Network uses its existing scene owner and `ds-profile-presentation` to
+return the complete scene/display projection; Core no longer links
+`ds-profile-runtime`. Legacy runtime consumers use that same projection owner.
+Core retains authored-style acquisition, authorization, display state and late
+style-adoption checks. It verifies the returned model, history, retained assets
+and patched display state before adoption. Network prepares and encodes the
+complete projection before replacing its retained calculation; malformed style
+or projection failures cannot partially adopt a calculation. Cached views never
+calculate engineering, including after a checkpoint restart. Older engines
+refuse without a linked or browser fallback. Package opening and other Core
+consumers still link Grid owners; this view cut alone does not qualify an
+engine-free Core release.
+Desktop renders the complete owner result through a closed adapter; browser
+Grid availability cannot qualify a native shell release.
