@@ -349,3 +349,37 @@ table; old Core has no rebind behavior and still refuses an expired handle.
 Canonical account-cache retirement archives this same SQLite file and sidecars;
 other accounts/projects cannot adopt its sources. Browser model persistence is not
 migrated by this handoff.
+
+## Core Solar workspace selection
+
+The optional `solar_workspace_selections` table retains one closed approved
+workspace selection per captured Core owner hash, lane and explicit project in
+this same protected schema-2 Store. It contains only opaque workspace handle,
+validated directory, approved/default origin and monotonic generation, under
+`ds.core.solar-workspace-selection/v1`; it is not a path approval, credential,
+city store, result cache or generic settings/SQL interface. Rows are at most
+8 KiB, bounded by SQL before allocation. Unknown/corrupt metadata refuses and
+remains untouched. At most 64 project selections are retained per native owner,
+matching the existing Solar application's 64-context operational bound; there
+is no eviction, polling or future bulk-migration policy.
+
+A read creates neither the table nor a default selection. Core's Solar owner
+reopens the exact current-host approved receipt and validates zero-city readonly
+Readiness before returning it. Missing or changed selected receipts refuse;
+they never authorize default creation, another path, reapproval or a browser
+cache lookup. Set persists only the Solar owner's already validated choice.
+Its short IMMEDIATE transaction compares the expected generation; null is
+create-only. A stale default/custom intent cannot overwrite another choice.
+Explicit default choice uses the existing approved-default workspace owner.
+No filesystem validation or process launch occurs within the SQLite transaction.
+
+Previously native Desktop kept runtime workspace selection in IndexedDB and
+could reuse a handle belonging to another Core context. The new consumer uses
+one declared Core selection read/set/default path, with late native authority
+and exact-result checks. Existing approved Core custom workspaces remain
+selectable; old browser preferences do not establish authority and are not an
+ongoing compatibility reader or automatic migration source. No city inputs,
+pending work, workspace directories or browser records are deleted. Matching
+qualified Core/native consumers are required; old artifacts explicitly refuse
+unknown operations. Schema-2 older readers ignore this auxiliary table. This
+source slice alone is not live migrated-Desktop acceptance.

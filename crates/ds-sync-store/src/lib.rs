@@ -17,6 +17,11 @@
 pub mod cache_health;
 mod jobs;
 mod profile_sources;
+mod solar_workspaces;
+pub use solar_workspaces::{
+    SolarWorkspaceChoice, SolarWorkspaceOrigin, SolarWorkspaceScope, SolarWorkspaceSelection,
+    MAX_SOLAR_WORKSPACE_SELECTIONS,
+};
 mod publications;
 pub use profile_sources::{
     ProfileSourceHeader, ProfileSourceScope, MAX_PROFILE_SOURCES, MAX_PROFILE_SOURCE_BYTES,
