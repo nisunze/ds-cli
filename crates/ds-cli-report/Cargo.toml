@@ -14,8 +14,8 @@ publish.workspace = true
 ds-cli-auth = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
-# Native selection of held plan/profile publication geometry.
-ds-grid-engine = { workspace = true }
+# Select already-derived publication bands without linking Grid computation.
+ds-network-contracts = { workspace = true }
 ds-cli-exec = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
@@ -56,5 +56,7 @@ ds-cli-workstation = { path = "../ds-cli-workstation" }
 lopdf = { version = "0.45", default-features = false }
 
 [dev-dependencies]
+# Actual engine scenes prove the transport-only publication selection.
+ds-grid-engine = { workspace = true }
 base64.workspace = true
 ds-grid-exchange = { workspace = true }

@@ -757,10 +757,11 @@ fn stage_selected_scene(
     }
     let bytes = std::fs::read(scene_path)
         .map_err(|e| Failure::invalid("alignment_selection_invalid", e.to_string()))?;
-    let scene: ds_grid_engine::ProfileAtlasScene = serde_json::from_slice(&bytes)
+    let scene: ds_network_contracts::ProfileAtlasScene = serde_json::from_slice(&bytes)
         .map_err(|e| Failure::invalid("alignment_selection_invalid", e.to_string()))?;
-    let selected = ds_grid_engine::publication_scope::select_publication_alignments(&scene, ids)
-        .map_err(|e| Failure::invalid("alignment_selection_invalid", e.to_string()))?;
+    let selected =
+        ds_network_contracts::publication_scope::select_publication_alignments(&scene, ids)
+            .map_err(|e| Failure::invalid("alignment_selection_invalid", e.to_string()))?;
     let receipt = json!({"source_scene_path":scene_path,"source_scene_sha256":format!("sha256:{:x}",Sha256::digest(&bytes)),"alignment_ids":selected.bands.iter().map(|band| band.alignment_id.as_str()).collect::<Vec<_>>()});
     let mut file = tempfile::Builder::new()
         .prefix("ds-grid-print-scene-")
@@ -989,10 +990,19 @@ mod tests {
             .unwrap()
             .unwrap();
         let staged = selected.file.path().to_owned();
-        let decoded: ds_grid_engine::ProfileAtlasScene =
+        let decoded: ds_network_contracts::ProfileAtlasScene =
             serde_json::from_slice(&std::fs::read(&staged).unwrap()).unwrap();
         assert_eq!(decoded.bands, vec![scene.bands[0].clone()]);
-        assert_eq!(decoded.model_revision, scene.model_revision);
+        assert_eq!(decoded.model_revision, scene.model_revision.as_str());
+        let engine_selected = ds_grid_engine::publication_scope::select_publication_alignments(
+            &scene,
+            &[id.clone(), id.clone()],
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read(&staged).unwrap(),
+            serde_json::to_vec(&engine_selected).unwrap()
+        );
         assert_eq!(selected.receipt["alignment_ids"], json!([id]));
         assert_eq!(
             selected.receipt["source_scene_sha256"],
