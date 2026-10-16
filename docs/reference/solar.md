@@ -438,17 +438,44 @@ site/equipment reference cache through an explicitly authorized acquisition or
 sealed-reference import operation, then retry. This command never contacts a
 provider or substitutes development fixture data.
 
-`ds solar run --prepared <dir> --out <dir>` remains a separate, reproducible
-offline adapter over the external `ds-solar run` process contract. It accepts
-an already prepared city-artifact directory, performs no intake or network
-call, and writes only that city batch under `--out`.
+`ds solar run --prepared <dir> --out <dir>` contract **3** captures one
+standalone Solar addon from `--lane stable|canary` (stable by default), without
+reading account or project state. A missing or corrupt managed selection refuses;
+there is no packaged `ds-solar` or PATH fallback. `DS_SOLAR_ENGINE_BIN` remains an
+explicit development selection. All selected inputs pass the existing local
+readiness checks before execution; publication claims are not consumed.
 
-The resulting `batch.json` inventory can contain committed city results,
-reports, optional Word documents and charts. The CLI reads at most 16 MiB,
-requires the native v1 schema, run/city identity and declared artifact shape,
-recomputes the manifest's batch digest and digest-derived id, and returns at
-most 500 artifact descriptors with an explicit `more.artifacts_omitted` count.
-It does not re-read each artifact file to verify its declared content digest.
+Contract 3 also adopts the existing fixed-task admission: at most 512 cities,
+256 UTF-8 bytes per project/root/city/run identity, 64 MiB per prepared JSON file
+and 512 MiB for the exact serialized request. Request admission runs before
+engine selection and returns `prepared_batch_invalid`; local unreadable,
+oversized or unready prepared files retain `engine_refused`. Closed task output
+is bounded to 64 MiB per file and 4 GiB total. These explicit bounds replace the
+legacy batch receipt's 512-byte identity and 128 MiB artifact allowance; formerly
+oversized inputs/outputs now refuse without truncation or engine fallback.
+Output bounds are verified after calculation, before local commitment. The
+512-city transport limit does not widen the calculation owner's existing
+200-city admission; its typed refusal remains authoritative.
+
+The fixed `calculate-batch` owner runs offline with the existing concurrency
+(default 10), chart switch and document defaults. The four-hour deadline includes
+local admission and capture; only its remainder reaches the bounded worker wait
+and calculation. Retained managed executable checks run before and after the
+native collector, including a failed task. Calculation never acquires references.
+
+The local owner verifies and commits the exact closed city artifacts, batch,
+sync intent, failures and raw progress events without replacing existing output.
+Task-only daily frames are not added to this legacy local layout. Failed cities
+retain successful local artifacts before `engine_refused`; completion details
+identify the committed scope. A publication collision retains its verified
+candidate. Inspect these paths before explicitly retrying.
+
+The receipt retains the existing fields, bounded 16 MiB batch manifest and at
+most 500 artifact descriptors with `more.artifacts_omitted`. Its `engine` field
+now contains the actual typed engine identity, replacing stdout summary lines.
+`engine_path`, `lane`, `network: false`, `request_sha256` and
+`completion_build_manifest_sha256` identify the captured task. Descriptors and
+success/error envelopes advertise contract 3. All artifact bytes are verified.
 This command does not invoke the owner binary's separate portfolio subcommand
 and does not produce or claim a portfolio result. Use the paired governed
 portfolio lifecycle above when a portfolio deliverable is required.
@@ -606,12 +633,11 @@ launches; the assumption and report flags apply only to portfolio launches.
 
 ## Engine identity
 
-`ds solar engine` and `solar calculate-prepared` use the standalone `solar`
-addon selection described by their native lane contract. `solar input capture`
+`ds solar engine`, `solar calculate-prepared` and `solar run --prepared` use
+the standalone `solar` addon selection described by their native lane contract. `solar input capture`
 and `solar input prepare` call their linked engine-free project owners. Neither
-uses addon selection, `DS_SOLAR_BIN`, a sibling executable or PATH. The
-headless artifact runner still resolves the `ds-solar` sibling packaged with
-`ds`; `DS_SOLAR_BIN` remains its explicit development override.
+uses addon selection, `DS_SOLAR_BIN`, a sibling executable or PATH.
+The local Solar commands no longer consume the legacy bundled `ds-solar`.
 
 `solar verify-weather` and `solar result compare` call the pure
 `ds-solar-contracts` owner directly. They require neither a Solar executable nor

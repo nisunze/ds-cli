@@ -10,7 +10,13 @@ use std::{fs, path::Path, path::PathBuf};
 #[path = "../../../../ds-command-kernel/crates/ds-compute-runtime/tests/common/mod.rs"]
 mod prepared_fixture;
 
-fn select(base: &Path, lane: &str, binary: &Path, identity: &Value, trailer: &[u8]) -> PathBuf {
+pub(super) fn select(
+    base: &Path,
+    lane: &str,
+    binary: &Path,
+    identity: &Value,
+    trailer: &[u8],
+) -> PathBuf {
     let mut bytes = fs::read(binary).unwrap();
     bytes.extend_from_slice(trailer);
     let sha256 = ds_solar_contracts::digest::hex_sha256(&bytes);

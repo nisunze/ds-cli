@@ -50,12 +50,7 @@ fn ds(args: &[&str]) -> (Value, i32) {
 /// `current_exe()`, which inside a test binary is `target/debug/deps/…` rather
 /// than the `ds` under test. So the sibling step anchors on `CARGO_BIN_EXE_ds`
 /// instead, which is the executable this suite actually spawns.
-///
-/// One lookup, used both to decide whether a check can run and to invoke the
-/// engine. There were two, and they disagreed: the availability check asked
-/// `ds`, while `engine_help` knew only override and `PATH`, so a machine
-/// carrying nothing but a packaged sibling engine panicked instead of running
-/// the check.
+
 fn engine(name: &str, env_override: &str) -> Option<PathBuf> {
     let file_name = if cfg!(windows) {
         format!("{name}.exe")
@@ -241,77 +236,6 @@ fn report_export_writes_only_fields_the_engine_declares() {
              it worked."
         );
     }
-}
-
-fn solar_available() -> bool {
-    available("solar.run", SOLAR)
-}
-
-#[test]
-fn solar_engine_flags_are_real() {
-    // The headless artifact commands translate their own flags into
-    // `ds-solar`'s. Those names are a hand copy, and a hand copy nobody checks
-    // drifts silently: the flag keeps working, the engine stops receiving it,
-    // and the failure surfaces months later as a confusing refusal. The first
-    // version of `ds solar verify-weather` sent `--dataset` to an engine that
-    // only accepts `--file`.
-    //
-    // So every flag `ds` forwards is checked against the engine's own help, at
-    // the version actually installed.
-    if !solar_available() {
-        skip(
-            SOLAR,
-            "This check proves every flag `ds solar` forwards is one the installed engine accepts.",
-        );
-        return;
-    }
-
-    // The flag names `ds` actually forwards, per subcommand. Deliberately a
-    // hand list rather than derived from the Command spec: `ds`'s own flag
-    // names and the engine's are allowed to differ, and this is the table that
-    // records which pairs are intended.
-    let forwarded: &[(&str, &[&str])] = &[(
-        "run",
-        &[
-            "--prepared",
-            "--out",
-            "--city",
-            "--concurrency",
-            "--run-id",
-            "--charts",
-        ],
-    )];
-
-    for (subcommand, flags) in forwarded {
-        let help = engine_help(subcommand);
-        for flag in *flags {
-            assert!(
-                help.contains(flag),
-                "`ds solar` forwards `{flag}` to `ds-solar {subcommand}`, but the \
-                 installed engine's help does not mention it.\n\
-                 Either the engine renamed it, or the mapping was a guess.\n\
-                 Engine help:\n{help}"
-            );
-        }
-    }
-}
-
-/// One `ds-solar` subcommand's help, from the engine `ds` itself resolves.
-///
-/// The same [`engine`] lookup the availability check used, so this can only
-/// run against the binary `ds` would have called.
-fn engine_help(subcommand: &str) -> String {
-    let binary = engine(SOLAR.0, SOLAR.1)
-        .expect("solar_available() resolved the engine before this was called");
-    let output = Command::new(binary)
-        .args([subcommand, "--help"])
-        .output()
-        .expect("the solar engine runs");
-    format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    )
 }
 
 #[test]

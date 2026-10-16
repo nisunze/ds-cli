@@ -103,6 +103,20 @@ impl CapturedExternal {
         self.verify_managed()?;
         Ok(result)
     }
+    /// Run one native owner's fixed process collector against this captured path.
+    /// The retained managed receipt is checked before and after the collector,
+    /// including when its return value is an error. No selection is resolved again.
+    /// Do not publish local effects inside this scope: a failed postcheck refuses
+    /// acceptance of the already-completed computation.
+    pub fn with_verified_executable<T>(&self, call: impl FnOnce(&Path) -> T) -> Result<T, Failure> {
+        self.verify_managed()?;
+        let result = call(&self.executable);
+        self.verify_managed().map_err(|failure| {
+            failure.remedy("the native task may have completed; its output was not accepted; inspect retained scope before explicitly retrying, and repair the selected engine without fallback")
+        })?;
+        Ok(result)
+    }
+
     /// Canonical executable captured for this accepted run. Native hosts may
     /// reuse their bounded process collectors without resolving an active module
     /// pointer again or requiring the module in their application bundle.
@@ -1787,5 +1801,68 @@ mod supervised_tests {
         assert!(std::env::var_os("GOOGLE_APPLICATION_CREDENTIALS").is_none());
         assert!(std::env::var_os("LD_PRELOAD").is_none());
         println!("worker-width={width}");
+    }
+}
+
+#[cfg(test)]
+mod verified_owner_tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+    static OWNER: External = External {
+        name: "guard-fixture",
+        env_override: "DS_GUARD_UNUSED",
+        owner: "fixture",
+        remedy: "repair fixture",
+        missing_code: "fixture_missing",
+    };
+    #[test]
+    fn fixed_owner_scope_checks_before_and_after_success_and_error() {
+        let root = std::env::temp_dir().join(format!("ds-verified-owner-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let executable = root.join("engine");
+        let bytes = b"captured fixture bytes";
+        let captured = CapturedExternal {
+            owner: &OWNER,
+            executable: executable.clone(),
+            managed_identity: Some(managed_modules::ManagedIdentity {
+                size: bytes.len() as u64,
+                sha256: format!("{:x}", Sha256::digest(bytes)),
+            }),
+        };
+        std::fs::write(&executable, bytes).unwrap();
+        assert_eq!(
+            captured
+                .with_verified_executable(|path| {
+                    assert_eq!(path, executable);
+                    42
+                })
+                .unwrap(),
+            42
+        );
+        assert_eq!(
+            captured
+                .with_verified_executable(|_| Err::<(), _>("task refusal"))
+                .unwrap(),
+            Err("task refusal")
+        );
+        for task_ok in [true, false] {
+            std::fs::write(&executable, bytes).unwrap();
+            let failure = captured
+                .with_verified_executable(|path| {
+                    std::fs::write(path, b"changed fixture bytes!").unwrap();
+                    if task_ok { Ok(()) } else { Err("task refusal") }
+                })
+                .unwrap_err();
+            assert_eq!(failure.code(), "module_receipt_invalid");
+        }
+        assert_eq!(
+            captured
+                .with_verified_executable(|_| panic!("tampered executable ran"))
+                .unwrap_err()
+                .code(),
+            "module_receipt_invalid"
+        );
+        std::fs::remove_file(executable).unwrap();
+        std::fs::remove_dir(root).unwrap();
     }
 }

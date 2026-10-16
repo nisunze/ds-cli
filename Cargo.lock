@@ -1363,6 +1363,8 @@ dependencies = [
  "ds-command-kernel",
  "ds-compute-runtime",
  "ds-solar-contracts",
+ "ds-solar-io",
+ "ds-solar-process",
  "ds-solar-project",
  "fs2",
  "libc",
