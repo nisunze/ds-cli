@@ -666,3 +666,119 @@ fn solar_managed_pin_and_explicit_override_survive_unavailable_current_selection
     );
     isolated_solar_admission(Some(&binary));
 }
+
+fn solar_integrity_wrapper(root: &Path, binary: &Path, mutate_probe: bool) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = root.join("solar-wrapper");
+    fs::write(&path, format!(
+        "#!/usr/bin/python3\nimport os, subprocess, sys\nwith open({calls:?}, 'a') as f: f.write(sys.argv[1] + '\\n')\nresult = subprocess.run([{binary:?}] + sys.argv[1:])\nif (sys.argv[1] == 'build-info') == {probe}:\n s = os.stat(__file__)\n data = open(__file__, 'rb').read()\n open(__file__, 'wb').write(data[:-2] + b'1\\n')\n os.utime(__file__, ns=(s.st_atime_ns, s.st_mtime_ns))\n if sys.argv[1] != 'build-info': open({complete:?}, 'w').write(str(result.returncode))\nsys.exit(result.returncode)\n# stamp:0\n",
+        calls=root.join("calls").to_str().unwrap(), binary=binary.to_str().unwrap(),
+        probe=if mutate_probe { "True" } else { "False" },
+        complete=root.join("completed").to_str().unwrap()
+    )).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+    path
+}
+
+#[test]
+#[ignore = "requires DS_PIN_SOLAR_BIN qualified exact producer executable"]
+fn solar_receipt_capture_and_execution_tamper_never_adopt_a_job_result() {
+    assert!(std::env::var_os("DS_SOLAR_ENGINE_BIN").is_none());
+    let binary = required("DS_PIN_SOLAR_BIN");
+    let info = probe(&addons::SOLAR, &binary);
+    for stage in ["capture", "queued", "execution"] {
+        let root = solar_selection_directory();
+        let wrapper = solar_integrity_wrapper(root.path(), &binary, stage == "capture");
+        let base = root.path().join("addons");
+        let executable = select(
+            &base,
+            ModuleComponent::Solar,
+            "canary",
+            &wrapper,
+            &info,
+            1,
+            b"",
+        );
+        let before = fs::metadata(&executable).unwrap();
+        let database = root.path().join("store.sqlite");
+        let host = identity();
+        let input = common::prepared_solar_request();
+        let admitted = runtime::submit_solar_with_module_base(
+            &database,
+            &admission(&host, stage, "durable-server-test"),
+            &input,
+            Some(&base),
+        );
+        if stage == "capture" {
+            let error = admitted.unwrap_err();
+            assert!(format!("{error:?}").contains("module_"), "{error:?}");
+            assert!(runtime::open(&database)
+                .unwrap()
+                .jobs(&host.caller(None), 10)
+                .unwrap()
+                .is_empty());
+        } else {
+            let job = admitted.unwrap();
+            let calls_before = fs::read(root.path().join("calls")).unwrap();
+            fs::write(base.join("solar/canary/selection.json"), b"{torn").unwrap();
+            if stage == "queued" {
+                let mut bytes = fs::read(&executable).unwrap();
+                let last = bytes.len() - 2;
+                bytes[last] = b'1';
+                fs::write(&executable, bytes).unwrap();
+                fs::File::options()
+                    .write(true)
+                    .open(&executable)
+                    .unwrap()
+                    .set_times(fs::FileTimes::new().set_modified(before.modified().unwrap()))
+                    .unwrap();
+            }
+            let context = WorkerContext {
+                path: database.clone(),
+                identity: host.clone(),
+                limits: limits(),
+                auth: Arc::new(Allowed),
+                observer: None,
+            };
+            assert!(runtime::run_one(&context, "integrity-worker").unwrap());
+            let store = runtime::open(&database).unwrap();
+            let retained = store.job(&host.caller(None), &job.id).unwrap().unwrap();
+            assert_eq!(retained.phase, Phase::Failed, "{:?}", retained.error);
+            let expected = if stage == "queued" {
+                "compute_engine_pin_changed"
+            } else {
+                "solar_engine_changed_during_job"
+            };
+            assert!(
+                retained.error.as_deref().unwrap().contains(expected),
+                "{:?}",
+                retained.error
+            );
+            assert_eq!(retained.engine_pin, job.engine_pin);
+            assert_eq!(
+                store
+                    .job_input(&host.caller(None), &job.id)
+                    .unwrap()
+                    .unwrap(),
+                input
+            );
+            assert!(store
+                .job_result(&host.caller(None), &job.id)
+                .unwrap()
+                .is_none());
+            if stage == "queued" {
+                assert_eq!(fs::read(root.path().join("calls")).unwrap(), calls_before);
+                assert!(!root.path().join("completed").exists());
+            } else {
+                assert_eq!(
+                    fs::read_to_string(root.path().join("completed")).unwrap(),
+                    "0",
+                    "real engine succeeded before the postcheck refused adoption"
+                );
+            }
+        }
+        let after = fs::metadata(&executable).unwrap();
+        assert_eq!(before.len(), after.len());
+        assert_eq!(before.modified().unwrap(), after.modified().unwrap());
+    }
+}

@@ -64,28 +64,35 @@ pub(crate) fn capture(
         EngineKind::SolarPrepared => {
             // Preserve Solar's established owner limit in the admitted width.
             workers = workers.min(ds_solar_io::compute_parallelism());
-            let executable = if std::env::var_os("DS_SOLAR_ENGINE_BIN").is_some() {
-                ds_solar_process::installed_engine_path()?
+            let development_override = std::env::var_os("DS_SOLAR_ENGINE_BIN").is_some();
+            let selected = if development_override {
+                ds_cli_exec::addons::SOLAR
+                    .capture_pinned(&ds_solar_process::installed_engine_path()?)
             } else {
-                let selected = match module_base {
+                match module_base {
                     Some(base) => ds_cli_exec::addons::SOLAR.capture_for_lane_in(&job.lane, base),
                     None => ds_cli_exec::addons::SOLAR.capture_for_lane(&job.lane),
                 }
-                .map_err(|error| format!("{}: {error}", error.code()))?;
-                selected.executable().to_path_buf()
-            };
-            let sha = sha256_file(&executable)?;
-            let identity = ds_solar_process::selected_engine_identity(&executable)
-                .map_err(|e| e.to_string())?;
-            if sha256_file(&executable)? != sha {
-                return Err("compute_engine_changed_during_capture".into());
             }
-            (
-                executable,
-                sha,
-                serde_json::to_value(identity).map_err(|e| e.to_string())?,
-                std::env::var_os("DS_SOLAR_ENGINE_BIN").is_some(),
-            )
+            .map_err(|error| format!("{}: {error}", error.code()))?;
+            // The admitted pin must still match the retained selection receipt
+            // after probing. Do not re-read the active lane pointer here.
+            selected
+                .with_verified_executable(|executable| -> Result<_, String> {
+                    let sha = sha256_file(executable)?;
+                    let identity = ds_solar_process::selected_engine_identity(executable)
+                        .map_err(|e| e.to_string())?;
+                    if sha256_file(executable)? != sha {
+                        return Err("compute_engine_changed_during_capture".into());
+                    }
+                    Ok((
+                        executable.to_path_buf(),
+                        sha,
+                        serde_json::to_value(identity).map_err(|e| e.to_string())?,
+                        development_override,
+                    ))
+                })
+                .map_err(|error| format!("{}: {error}", error.code()))??
         }
         EngineKind::TilesPrepared => unreachable!(),
     };
