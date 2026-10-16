@@ -1,6 +1,5 @@
 //! `ds solar result compare` — validate and compare two sealed local results.
 
-use std::ffi::OsString;
 use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
@@ -10,7 +9,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value};
 
-use crate::{DISCOVERY_TIMEOUT, DS_SOLAR};
+use crate::local_artifact;
+use ds_solar_contracts::{SolarCalculationResult, result_comparison::comparison_receipt};
 
 const RESULT_SCHEMA: &str = "ds-solar.result/v1";
 const COMPARISON_SCHEMA: &str = "ds-solar.result-comparison/v1";
@@ -22,10 +22,11 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Compare two sealed native Solar results headlessly.",
     purpose: "\
-Validates both complete result documents through the native Solar authority, \
+Validates both complete result documents through the shared pure Solar owner, \
 then compares their canonical result digests and returns a bounded provenance \
 receipt. This is local artifact equality only: it grants no project membership, \
-publication or mutation authority and does not contact the desktop or network.",
+publication or mutation authority and does not contact the desktop or network. \
+No Solar executable or installed addon is required.",
     chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -52,11 +53,6 @@ publication or mutation authority and does not contact the desktop or network.",
     }],
     refusals: &[
         Refusal {
-            code: "solar_engine_missing",
-            when: "the packaged `ds-solar` sidecar cannot be found",
-            remedy: "reinstall the complete ds release, or set DS_SOLAR_BIN for development",
-        },
-        Refusal {
             code: "left_result_not_found",
             when: "--left does not name a file",
             remedy: "supply a sealed ds-solar result document",
@@ -73,13 +69,8 @@ publication or mutation authority and does not contact the desktop or network.",
         },
         Refusal {
             code: "callee_contract_mismatch",
-            when: "the packaged engine does not return the closed comparison receipt",
-            remedy: "update ds and DS GridDesign to one matching release",
-        },
-        Refusal {
-            code: "callee_timed_out",
-            when: "the native comparison does not finish within 20 seconds",
-            remedy: "retry on local storage or inspect the Solar engine",
+            when: "the validated result cannot produce the closed comparison receipt",
+            remedy: "retain the artifacts and update ds to compatible Solar contracts",
         },
     ],
     reference: Some("docs/reference/solar.md"),
@@ -89,7 +80,7 @@ publication or mutation authority and does not contact the desktop or network.",
 };
 
 fn availability() -> Availability {
-    DS_SOLAR.availability()
+    Availability::Available
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -98,14 +89,10 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     require_file(left, "left_result_not_found", "--left")?;
     require_file(right, "right_result_not_found", "--right")?;
 
-    let args = vec![
-        OsString::from("--left"),
-        OsString::from(left),
-        OsString::from("--right"),
-        OsString::from(right),
-        OsString::from("--json"),
-    ];
-    let receipt = DS_SOLAR.call_json("compare", &args, DISCOVERY_TIMEOUT)?;
+    let left: SolarCalculationResult = local_artifact::read(Path::new(left), "compare")?;
+    let right: SolarCalculationResult = local_artifact::read(Path::new(right), "compare")?;
+    let receipt = comparison_receipt(&left, &right)
+        .map_err(|error| local_artifact::refused("compare", error))?;
     validate_receipt(&receipt)?;
     Ok(receipt)
 }
@@ -120,7 +107,7 @@ fn require_file(value: &str, code: &'static str, flag: &str) -> Result<(), Failu
 
 fn mismatch(detail: impl Into<String>) -> Failure {
     Failure::failed("callee_contract_mismatch", detail)
-        .remedy("update ds and DS GridDesign to one matching release")
+        .remedy("retain the artifacts and update ds to compatible Solar contracts")
 }
 
 fn validate_receipt(receipt: &Value) -> Result<(), Failure> {

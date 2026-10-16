@@ -244,7 +244,7 @@ fn report_export_writes_only_fields_the_engine_declares() {
 }
 
 fn solar_available() -> bool {
-    available("solar.engine", SOLAR)
+    available("solar.run", SOLAR)
 }
 
 #[test]
@@ -270,21 +270,17 @@ fn solar_engine_flags_are_real() {
     // hand list rather than derived from the Command spec: `ds`'s own flag
     // names and the engine's are allowed to differ, and this is the table that
     // records which pairs are intended.
-    let forwarded: &[(&str, &[&str])] = &[
-        (
-            "run",
-            &[
-                "--prepared",
-                "--out",
-                "--city",
-                "--concurrency",
-                "--run-id",
-                "--charts",
-            ],
-        ),
-        ("compare", &["--left", "--right", "--json"]),
-        ("verify-weather", &["--file"]),
-    ];
+    let forwarded: &[(&str, &[&str])] = &[(
+        "run",
+        &[
+            "--prepared",
+            "--out",
+            "--city",
+            "--concurrency",
+            "--run-id",
+            "--charts",
+        ],
+    )];
 
     for (subcommand, flags) in forwarded {
         let help = engine_help(subcommand);

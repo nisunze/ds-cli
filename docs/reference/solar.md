@@ -590,7 +590,8 @@ set of product actions and never a generic desktop RPC.
 | final import | 10 min | bounded source validation and exact-byte local import |
 | final submit | 30 s | exact imported-final lookup and publication enqueue |
 | headless `solar run` | 4 h | offline compute over a caller-supplied prepared batch |
-| `solar engine`, `solar verify-weather`, `solar result compare` | 20 s | external engine discovery or bounded verification |
+| `solar engine` | 20 s | external engine discovery |
+| `solar verify-weather`, `solar result compare` | synchronous local validation | each regular input file is bounded to 64 MiB; no engine process |
 
 `--concurrency` on `solar run start` is constrained to 1 through 32. This is a
 bounded native worker pool, not one WASM instance per city. `--serial`
@@ -601,23 +602,29 @@ launches; the assumption and report flags apply only to portfolio launches.
 
 ## Engine identity
 
-`ds solar engine`, `solar input capture`, `solar input prepare`, the headless artifact runner,
-`solar verify-weather` and `solar result compare`
-resolve the `ds-solar` sibling packaged with `ds`. `DS_SOLAR_BIN` is an
-explicit development override and wins when set. The paired product lifecycle
-uses the same release-pinned Solar source linked into DS GridDesign rather than
-starting the sidecar.
+`ds solar engine` and `solar calculate-prepared` use the standalone `solar`
+addon selection described by their native lane contract. `solar input capture`
+calls the linked engine-free intake owner. `solar input prepare` and the
+headless artifact runner still resolve the `ds-solar` sibling packaged with
+`ds`; `DS_SOLAR_BIN` remains their explicit development override.
 
-`ds-solar build-info` publishes the immutable `ds.engine-build/v1` identity:
+`solar verify-weather` and `solar result compare` call the pure
+`ds-solar-contracts` owner directly. They require neither a Solar executable nor
+an addon selection, account, project or Desktop. Each input remains a bounded
+64 MiB regular JSON file. Invalid schemas, altered digests and oversized files
+retain `engine_refused` with bounded owner detail; missing paths retain their
+specific missing-file refusal. Weather success retains the existing `dataset`,
+`verified` and `engine` fields, with the same validated weather report text.
+
+`solar build-info` publishes the immutable `ds.engine-build/v1` identity:
 engine name and version, exact source SHA, Cargo.lock digest, features, target,
 profile, supported schemas and a canonical manifest digest. `ds solar engine`
-returns that document with the resolved executable path, so headless results
-can be tied to the same exact Solar source revision as its desktop or headless
-ds release.
+returns the selected addon's identity with its resolved executable path; the
+addon has its own source revision, independently of the consuming `ds` release.
 
 `ds solar result compare` validates both complete `ds-solar.result/v1`
-documents in that native engine, including recomputing each canonical digest,
-then returns the closed `ds-solar.result-comparison/v1` equality receipt with
+documents through the same pure owner used by the legacy tool, including
+recomputing each canonical digest, then returns the closed `ds-solar.result-comparison/v1` equality receipt with
 project/city, input, weather and engine provenance. A valid difference is data (`equal: false`), not a
 failure. The operation reads local artifacts only; it neither proves current
 project membership nor authorizes publication or mutation.

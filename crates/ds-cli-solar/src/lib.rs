@@ -8,6 +8,8 @@
 //! `run --prepared ... --out ...` invokes the separate offline city-artifact
 //! process contract for already prepared inputs. All routes call Rust owners.
 
+mod local_artifact;
+
 pub mod application;
 pub mod calculate_prepared;
 pub mod cities;
