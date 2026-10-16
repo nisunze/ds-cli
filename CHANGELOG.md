@@ -1,3 +1,20 @@
+## Unreleased: Core-owned Solar workspace selection
+
+Native Desktop previously retained Solar workspace selection in IndexedDB and
+could reuse an opaque handle from another Core context. The existing
+`solar.application` adds closed `workspace_selection_read`,
+`workspace_selection_set` and explicit `workspace_selection_default` operations.
+Core retains only validated handle/directory/origin/generation metadata in its
+existing protected SQLite Store, under native owner/lane/project. Generation
+comparison prevents late custom/default intents replacing another selection;
+null means create-only. Missing or invalid selected receipts refuse and preserve
+the row, with no default-on-refusal, reapproval or ongoing IndexedDB compatibility
+reader. Old browser preferences are not authority. Existing approved Core custom
+workspaces remain selectable; inputs, pending work, results and directories are
+not deleted. Matching Core and native Shell/client updates are required; older
+unknown-operation refusals stay explicit. The independent Solar engine and its
+calculation/provenance remain unchanged; no protocol bump or global pin is added.
+
 ## Unreleased: exact-lane native module inventory
 
 `ds core modules [--component ...]` now also accepts optional

@@ -148,6 +148,82 @@ fn retention(
     }
 }
 
+/// Closed selection persistence under this existing canonical Store. The
+/// callback is the same protected native authority owner used by this endpoint.
+struct WorkspaceSelections {
+    database: PathBuf,
+    scope: ds_sync_store::SolarWorkspaceScope,
+    authorize: Arc<dyn Fn() -> Result<(), String> + Send + Sync>,
+}
+impl WorkspaceSelections {
+    fn check(&self, project: &str) -> Result<(), String> {
+        if project != self.scope.project {
+            return Err("Solar workspace selection belongs to another project".into());
+        }
+        (self.authorize)()
+    }
+    fn project(
+        row: ds_sync_store::SolarWorkspaceSelection,
+    ) -> ds_solar_native::workspace_selection::Selection {
+        ds_solar_native::workspace_selection::Selection {
+            workspace_handle: row.workspace.workspace_handle,
+            dir: row.workspace.dir,
+            origin: match row.workspace.origin {
+                ds_sync_store::SolarWorkspaceOrigin::Approved => {
+                    ds_solar_native::workspace_selection::Origin::Approved
+                }
+                ds_sync_store::SolarWorkspaceOrigin::Default => {
+                    ds_solar_native::workspace_selection::Origin::Default
+                }
+            },
+            generation: row.generation,
+        }
+    }
+}
+impl ds_solar_native::workspace_selection::Provider for WorkspaceSelections {
+    fn read(
+        &self,
+        project: &str,
+    ) -> Result<Option<ds_solar_native::workspace_selection::Selection>, String> {
+        self.check(project)?;
+        let row = ds_sync_store::Store::open_read_only(&self.database)
+            .map_err(|e| e.to_string())?
+            .map(|store| store.solar_workspace_selection(&self.scope))
+            .transpose()
+            .map_err(|e| e.to_string())?
+            .flatten();
+        self.check(project)?;
+        Ok(row.map(Self::project))
+    }
+    fn compare_set(
+        &self,
+        project: &str,
+        expected_generation: Option<u64>,
+        workspace: &ds_solar_native::workspace::NativeSolarWorkspace,
+        origin: ds_solar_native::workspace_selection::Origin,
+    ) -> Result<ds_solar_native::workspace_selection::Selection, String> {
+        self.check(project)?;
+        let choice = ds_sync_store::SolarWorkspaceChoice {
+            workspace_handle: workspace.workspace_handle.clone(),
+            dir: workspace.dir.clone(),
+            origin: match origin {
+                ds_solar_native::workspace_selection::Origin::Approved => {
+                    ds_sync_store::SolarWorkspaceOrigin::Approved
+                }
+                ds_solar_native::workspace_selection::Origin::Default => {
+                    ds_sync_store::SolarWorkspaceOrigin::Default
+                }
+            },
+        };
+        let row = ds_sync_store::Store::open(&self.database)
+            .map_err(|e| e.to_string())?
+            .set_solar_workspace_selection(&self.scope, &choice, expected_generation)
+            .map_err(|e| e.to_string())?;
+        self.check(project)?; // A late refusal must not adopt an old owner's result.
+        Ok(Self::project(row))
+    }
+}
+
 #[derive(Default)]
 pub struct Applications {
     hosts: Mutex<BTreeMap<PathBuf, NativeHost>>,
@@ -210,6 +286,24 @@ pub(crate) async fn invoke(
             session: Mutex::new(None),
         });
         let application_directory = parent.join("solar-application").join(identity);
+        let selection_owner = app.connection.owner.clone();
+        let selection_lane = app.connection.lane.clone();
+        let selection_auth = app.auth.clone();
+        let selection = Arc::new(WorkspaceSelections {
+            database: app.database.clone(),
+            scope: ds_sync_store::SolarWorkspaceScope {
+                owner: selection_owner.clone(),
+                lane: selection_lane.clone(),
+                project: context.project.clone(),
+            },
+            authorize: Arc::new(move || {
+                selection_auth.authorize(&selection_owner)?;
+                if crate::auth::owner_fence(&selection_lane)? != selection_owner {
+                    return Err("Server owner changed during Solar workspace selection".into());
+                }
+                Ok(())
+            }),
+        });
         let renderer = Arc::new(crate::solar_documents::NativeDocuments {
             directory: application_directory.join("document-tools"),
             owner: app.connection.owner.clone(),
@@ -221,6 +315,7 @@ pub(crate) async fn invoke(
             .host(application_directory)?
             .with_engine_lane(&app.connection.lane)
             .map_err(|e| Failure::failed("server_refused", e))?
+            .with_workspace_selection_provider(selection)
             .with_report_renderer(renderer)
             .with_media_provider(producer.clone())
             .with_publication_provider(Arc::new(retention(
@@ -352,5 +447,330 @@ mod publication_tests {
                 .contains("captured owner")
         );
         assert!(!path.exists());
+    }
+}
+
+#[cfg(test)]
+mod workspace_selection_tests {
+    use super::*;
+    use ds_solar_native::workspace_selection::{Origin, Provider};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    fn provider(
+        path: PathBuf,
+        authorize: Arc<dyn Fn() -> Result<(), String> + Send + Sync>,
+    ) -> WorkspaceSelections {
+        WorkspaceSelections {
+            database: path,
+            scope: ds_sync_store::SolarWorkspaceScope {
+                owner: "a".repeat(64),
+                lane: "canary".into(),
+                project: "project-a".into(),
+            },
+            authorize,
+        }
+    }
+    #[test]
+    fn actual_solar_application_selection_reopens_the_same_sqlite_custom_receipt() {
+        let temp = tempfile::tempdir().unwrap();
+        let database = temp.path().join("core.sqlite");
+        let data = temp.path().join("application");
+        let effects = Arc::new(provider(database.clone(), Arc::new(|| Ok(()))));
+        let host = NativeHost::headless(data.clone())
+            .unwrap()
+            .with_workspace_selection_provider(effects.clone());
+        let custom = temp.path().join("approved");
+        std::fs::create_dir(&custom).unwrap();
+        let approved =
+            ds_solar_native::workspace::solar_native_choose_workspace(host.clone(), custom.clone())
+                .unwrap();
+        let request=serde_json::to_vec(&serde_json::json!({"operation":"workspace_selection_set","workspace_handle":approved.workspace_handle,"expected_generation":null})).unwrap();
+        let written = ds_solar_native::application::execute(host, "project-a", &request).unwrap();
+        assert_eq!(written["value"]["origin"], "approved");
+        assert_eq!(written["value"]["generation"], 1);
+        let reopened = NativeHost::headless(data)
+            .unwrap()
+            .with_workspace_selection_provider(Arc::new(provider(database, Arc::new(|| Ok(())))));
+        let read = ds_solar_native::application::execute(
+            reopened,
+            "project-a",
+            br#"{"operation":"workspace_selection_read"}"#,
+        )
+        .unwrap();
+        assert_eq!(read["value"], written["value"]);
+        assert!(!custom.join("solar-rust").exists());
+    }
+    #[test]
+    fn missing_selection_read_and_foreign_or_signed_out_scope_create_no_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("core.sqlite");
+        let allowed = provider(path.clone(), Arc::new(|| Ok(())));
+        assert!(allowed.read("project-a").unwrap().is_none());
+        assert!(allowed.read("project-b").is_err());
+        assert!(!path.exists());
+        let denied = provider(path.clone(), Arc::new(|| Err("owner changed".into())));
+        assert!(denied.read("project-a").is_err());
+        assert!(!path.exists());
+    }
+    #[test]
+    fn late_owner_refusal_does_not_adopt_another_scopes_selection() {
+        let temp = tempfile::tempdir().unwrap();
+        let allowed = Arc::new(AtomicBool::new(true));
+        let current = allowed.clone();
+        let effects = provider(
+            temp.path().join("core.sqlite"),
+            Arc::new(move || {
+                if current.swap(false, Ordering::SeqCst) {
+                    Ok(())
+                } else {
+                    Err("owner changed".into())
+                }
+            }),
+        );
+        assert!(effects.read("project-a").is_err());
+        assert!(!effects.database.exists());
+        let path = temp.path().join("retained.sqlite");
+        let seeded = provider(path.clone(), Arc::new(|| Ok(())));
+        let workspace = ds_solar_native::workspace::NativeSolarWorkspace {
+            workspace_handle: format!("solar-workspace-{}", "b".repeat(32)),
+            dir: "/approved/custom".into(),
+        };
+        let initial = seeded
+            .compare_set("project-a", None, &workspace, Origin::Approved)
+            .unwrap();
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let held = count.clone();
+        let refusing = provider(
+            path,
+            Arc::new(move || {
+                if held.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Ok(())
+                } else {
+                    Err("owner changed".into())
+                }
+            }),
+        );
+        assert!(refusing.read("project-a").is_err());
+        assert_eq!(seeded.read("project-a").unwrap(), Some(initial));
+    }
+
+    fn approved_host() -> (
+        tempfile::TempDir,
+        NativeHost,
+        Arc<WorkspaceSelections>,
+        ds_solar_native::workspace::NativeSolarWorkspace,
+    ) {
+        let temp = tempfile::tempdir().unwrap();
+        let effects = Arc::new(provider(
+            temp.path().join("core.sqlite"),
+            Arc::new(|| Ok(())),
+        ));
+        let host = NativeHost::headless(temp.path().join("native"))
+            .unwrap()
+            .with_workspace_selection_provider(effects.clone());
+        let custom = temp.path().join("custom");
+        std::fs::create_dir(&custom).unwrap();
+        let approval =
+            ds_solar_native::workspace::solar_native_choose_workspace(host.clone(), custom)
+                .unwrap();
+        (temp, host, effects, approval)
+    }
+    #[test]
+    fn native_selection_absence_and_closed_requests_have_no_default_or_sqlite_effect() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("core.sqlite");
+        let effects = Arc::new(provider(path.clone(), Arc::new(|| Ok(()))));
+        let host = NativeHost::headless(temp.path().join("native"))
+            .unwrap()
+            .with_workspace_selection_provider(effects);
+        let reply = ds_solar_native::application::execute(
+            host,
+            "project-a",
+            br#"{"operation":"workspace_selection_read"}"#,
+        )
+        .unwrap();
+        assert!(reply["value"].is_null());
+        assert!(!path.exists());
+        assert!(!temp.path().join("native/solar-workspaces").exists());
+        for request in [
+            serde_json::json!({"operation":"workspace_selection_read","owner":"foreign"}),
+            serde_json::json!({"operation":"workspace_selection_set","workspace_handle":"approval","expected_generation":null,"dir":"/foreign"}),
+            serde_json::json!({"operation":"workspace_selection_default","expected_generation":null,"sql":"no"}),
+        ] {
+            assert!(
+                serde_json::from_value::<ds_solar_native::application::Request>(request).is_err()
+            );
+        }
+        for operation in [
+            "workspace_selection_read",
+            "workspace_selection_set",
+            "workspace_selection_default",
+        ] {
+            assert!(ds_solar_native::application::schema(Some(operation)).is_ok());
+        }
+    }
+    #[test]
+    fn missing_selected_receipt_preserves_sqlite_choice_and_never_chooses_a_default() {
+        let (temp, host, effects, approval) = approved_host();
+        let selected = ds_solar_native::workspace_selection::select(
+            &host,
+            "project-a",
+            approval.workspace_handle,
+            None,
+        )
+        .unwrap();
+        std::fs::remove_file(
+            temp.path()
+                .join("native/solar-workspaces")
+                .join(format!("{}.json", selected.workspace_handle)),
+        )
+        .unwrap();
+        assert!(ds_solar_native::workspace_selection::read(&host, "project-a").is_err());
+        assert_eq!(effects.read("project-a").unwrap(), Some(selected));
+        assert!(
+            !temp
+                .path()
+                .join("native/solar-workspaces/workspace")
+                .exists()
+        );
+        assert!(!PathBuf::from(approval.dir).join("solar-rust").exists());
+    }
+    #[test]
+    fn stale_default_refuses_before_creation_but_deliberate_default_preserves_custom_inputs() {
+        let (temp, host, effects, approval) = approved_host();
+        let custom = PathBuf::from(&approval.dir);
+        std::fs::write(custom.join("authored-input"), b"keep these exact inputs").unwrap();
+        let selected = ds_solar_native::workspace_selection::select(
+            &host,
+            "project-a",
+            approval.workspace_handle,
+            None,
+        )
+        .unwrap();
+        assert!(
+            ds_solar_native::workspace_selection::select_default(&host, "project-a", None).is_err()
+        );
+        assert!(
+            !temp
+                .path()
+                .join("native/solar-workspaces/workspace")
+                .exists()
+        );
+        assert_eq!(effects.read("project-a").unwrap(), Some(selected.clone()));
+        let successor = ds_solar_native::workspace_selection::select_default(
+            &host,
+            "project-a",
+            Some(selected.generation),
+        )
+        .unwrap();
+        assert_eq!(successor.origin, Origin::Default);
+        assert_eq!(successor.generation, 2);
+        assert_eq!(
+            ds_solar_native::workspace_selection::read(&host, "project-a").unwrap(),
+            Some(successor)
+        );
+        assert_eq!(
+            std::fs::read(custom.join("authored-input")).unwrap(),
+            b"keep these exact inputs"
+        );
+        assert!(!custom.join("solar-rust").exists());
+    }
+    #[test]
+    fn native_zero_city_readiness_is_readonly_and_crossed_project_cannot_select() {
+        let (_temp, host, effects, approval) = approved_host();
+        let directory = PathBuf::from(&approval.dir);
+        #[cfg(unix)]
+        let before = {
+            use std::os::unix::fs::MetadataExt;
+            let m = std::fs::metadata(&directory).unwrap();
+            (m.mode(), m.ctime(), m.ctime_nsec())
+        };
+        let readiness = ds_solar_native::native::solar_native_readiness(
+            host.clone(),
+            ds_solar_native::native::ReadinessCommand {
+                workspace_handle: approval.workspace_handle.clone(),
+                root: "eds_project/project-a/eds_solar".into(),
+                city_ids: Vec::new(),
+            },
+        )
+        .unwrap();
+        assert!(readiness.is_empty());
+        assert!(!directory.join("solar-rust").exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let m = std::fs::metadata(&directory).unwrap();
+            assert_eq!((m.mode(), m.ctime(), m.ctime_nsec()), before);
+        }
+        assert!(
+            ds_solar_native::workspace_selection::select(
+                &host,
+                "project-b",
+                approval.workspace_handle,
+                None
+            )
+            .is_err()
+        );
+        assert!(effects.read("project-a").unwrap().is_none());
+        assert!(!effects.database.exists());
+    }
+    #[test]
+    fn native_rejects_false_origin_directory_handle_or_generation_before_adopting_receipt() {
+        struct Crossed {
+            inner: Arc<WorkspaceSelections>,
+            field: &'static str,
+        }
+        impl Provider for Crossed {
+            fn read(
+                &self,
+                project: &str,
+            ) -> Result<Option<ds_solar_native::workspace_selection::Selection>, String>
+            {
+                self.inner.read(project)
+            }
+            fn compare_set(
+                &self,
+                project: &str,
+                expected: Option<u64>,
+                workspace: &ds_solar_native::workspace::NativeSolarWorkspace,
+                origin: Origin,
+            ) -> Result<ds_solar_native::workspace_selection::Selection, String> {
+                let mut row = self
+                    .inner
+                    .compare_set(project, expected, workspace, origin)?;
+                match self.field {
+                    "origin" => row.origin = Origin::Default,
+                    "dir" => row.dir = "/foreign/directory".into(),
+                    "handle" => {
+                        row.workspace_handle = format!("solar-workspace-{}", "c".repeat(32))
+                    }
+                    "generation" => row.generation += 1,
+                    _ => unreachable!(),
+                };
+                Ok(row)
+            }
+        }
+        for field in ["origin", "dir", "handle", "generation"] {
+            let (_temp, host, effects, approval) = approved_host();
+            let host = host.with_workspace_selection_provider(Arc::new(Crossed {
+                inner: effects.clone(),
+                field,
+            }));
+            assert!(
+                ds_solar_native::workspace_selection::select(
+                    &host,
+                    "project-a",
+                    approval.workspace_handle.clone(),
+                    None
+                )
+                .unwrap_err()
+                .contains("exact approved intent"),
+                "{field}"
+            );
+            let retained = effects.read("project-a").unwrap().unwrap();
+            assert_eq!(retained.workspace_handle, approval.workspace_handle);
+            assert_eq!(retained.dir, approval.dir);
+            assert_eq!(retained.origin, Origin::Approved);
+            assert_eq!(retained.generation, 1);
+        }
     }
 }

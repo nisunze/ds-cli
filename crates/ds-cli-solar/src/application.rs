@@ -1,4 +1,4 @@
-//! CLI/MCP transport for the closed Server-owned Solar application surface.
+//! CLI/MCP transport for the closed Core-owned Solar application surface.
 use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires},
@@ -8,8 +8,8 @@ pub static COMMAND: Command = Command {
     id: "solar.application",
     path: &["solar", "application"],
     contract: 1,
-    summary: "Execute one closed native Solar application request on Server.",
-    purpose: "The Rust Server owns Solar workspace authority, input capture/preparation, city and portfolio runs, progress/cancellation, sealed artifacts, final import, report bundles, DOCX/PDF finishing and portfolio publication. Automated delivery ends at prompting drafts; composing a final requires close human supervision. Execute one schema-discovered native request with an explicit project. The host captures account, lane and project; it needs no browser, WASM or paired Desktop. Use project commands for city editing/publication and portfolio commands for membership edits.",
+    summary: "Execute one closed native Solar application request through DS Core.",
+    purpose: "DS Core owns Solar workspace authority and retained selection, input capture/preparation, city and portfolio runs, progress/cancellation, sealed artifacts, final import, report bundles, DOCX/PDF finishing and portfolio publication. Automated delivery ends at prompting drafts; composing a final requires close human supervision. Workspace selection uses a current read, approved-handle set or explicit default choice with generation comparison. Execute one schema-discovered native request with an explicit project. The host captures account, lane and project; it needs no browser, WASM or paired Desktop. Use project commands for city editing/publication and portfolio commands for membership edits.",
     chapter: Chapter::Solar,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
@@ -22,13 +22,13 @@ pub static COMMAND: Command = Command {
         )
         .required(),
         ds_cli_contract::spec::Arg {
-            summary: "Native Server authority lane.",
+            summary: "Native Core authority lane.",
             ..ds_cli_contract::spec::LANE
         },
         Arg::value(
             "state-dir",
             "<absolute-path>",
-            "Protected native Server state directory.",
+            "Protected native Core state directory.",
         ),
         Arg::value(
             "request",

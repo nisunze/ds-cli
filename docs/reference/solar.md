@@ -2,14 +2,33 @@
 
 Tier-4 reference. `ds solar <command> --help` is the executable contract.
 
-## Native Server application
+## Native Core application
 
 `solar application schema` lists the native operations. Select an operation
 to discover its closed request schema, then execute that request with
 `solar application --project <exact-project> --lane <lane> --request <file>`.
-This path needs an authenticated native Server, with no paired Desktop,
-browser, Svelte or WASM. The Server captures the authorized project and keeps
+This path needs authenticated native DS Core, with no paired Desktop,
+browser, Svelte or WASM. Core captures the authorized project and keeps
 its workspace authority and jobs separate from other projects and accounts.
+
+The current native workspace selection belongs to Core's existing protected
+SQLite Store, not browser preferences. Discover `workspace_selection_read`;
+it returns null for absence or `{workspace_handle, dir, origin, generation}`
+after validating the exact current-host approved receipt. Select an existing
+approved handle with `workspace_selection_set`, or explicitly choose the owning
+default with `workspace_selection_default`. Both take `expected_generation`:
+null creates only when absent; a returned generation is required to replace it.
+Set never accepts a frontend directory as authority. Core verifies account,
+lane, project, the actual directory and late result identity. Rows are bounded
+to 8 KiB and 64 project selections per owner; they contain no city/results data.
+
+An invalid or missing selected receipt refuses and preserves the row; it never
+falls back to a default, reapproval or old browser cache. Existing approved
+custom directories and all inputs, pending work and results files stay intact.
+Matching Core and native Desktop/client consumers are required for these three
+closed operations; older unknown-operation refusals remain explicit. Independent
+Solar engine identities and calculation behavior are unchanged. The operation
+schemas come only from the same owning Rust request declaration.
 
 The native owner supports workspace approval, prepared-input import with
 digest-pinned replacement, preparation, readiness, annual generation profiles,
