@@ -68,16 +68,11 @@ pub(crate) fn capture(
                 ds_solar_process::installed_engine_path()?
             } else {
                 let selected = match module_base {
-                    Some(base) => {
-                        ds_cli_exec::addons::SOLAR.capture_managed_for_lane_in(&job.lane, base)
-                    }
-                    None => ds_cli_exec::addons::SOLAR.capture_managed_for_lane(&job.lane),
+                    Some(base) => ds_cli_exec::addons::SOLAR.capture_for_lane_in(&job.lane, base),
+                    None => ds_cli_exec::addons::SOLAR.capture_for_lane(&job.lane),
                 }
                 .map_err(|error| format!("{}: {error}", error.code()))?;
-                match selected {
-                    Some(selected) => selected.executable().to_path_buf(),
-                    None => ds_solar_process::installed_engine_path()?,
-                }
+                selected.executable().to_path_buf()
             };
             let sha = sha256_file(&executable)?;
             let identity = ds_solar_process::selected_engine_identity(&executable)

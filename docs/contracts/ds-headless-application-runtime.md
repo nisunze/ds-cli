@@ -206,6 +206,11 @@ program and identity; they do not resolve the active lane pointer or executable
 override again. Solar's existing owner worker limit also bounds its admitted
 share. A reduced host or owner share refuses execution instead of changing the
 captured width. Completed idempotent reads need no addon or freshness probe.
+Lane-bound Solar native hosts and durable admissions refuse missing or corrupt
+managed selection before reserving work; they do not borrow a sibling executable,
+PATH or another lane. An explicitly configured `DS_SOLAR_ENGINE_BIN` retains its
+existing development override behavior. Standalone native development hosts with
+no captured lane retain their existing override-or-sibling policy.
 
 Historical or misbound addon pins are excluded from claims and capacity census
 without deleting their rows or blocking valid jobs. Their status and input remain

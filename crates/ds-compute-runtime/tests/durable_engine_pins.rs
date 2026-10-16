@@ -490,3 +490,179 @@ fn retained_worker_child() {
     assert!(runtime::run_one(&context, "restarted-2").unwrap());
     assert!(!runtime::run_one(&context, "completed-no-demand").unwrap());
 }
+
+fn solar_selection_directory() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    root
+}
+
+fn isolated_solar_admission(override_path: Option<&Path>) {
+    let root = solar_selection_directory();
+    let child = root.path().join("admission-selection-test");
+    fs::hard_link(std::env::current_exe().unwrap(), &child).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    for name in ["solar", "ds-solar"] {
+        let trap = root.path().join(name);
+        fs::write(
+            &trap,
+            format!(
+                "#!/bin/sh\necho called > '{}'\nexit 99\n",
+                root.path().join("called").display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(trap, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let mut command = Command::new(child);
+    command
+        .args([
+            "--exact",
+            "solar_admission_selection_child",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env("DS_SOLAR_SELECTION_ROOT", root.path())
+        .env("PATH", root.path())
+        .env_remove("DS_SOLAR_ENGINE_BIN");
+    if let Some(path) = override_path {
+        command.env("DS_SOLAR_ENGINE_BIN", path);
+    }
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!root.path().join("called").exists());
+}
+
+#[test]
+fn missing_and_corrupt_solar_admission_never_reserve_or_probe_sibling_or_path() {
+    isolated_solar_admission(None);
+}
+
+#[test]
+#[ignore = "isolated durable Solar selection control"]
+fn solar_admission_selection_child() {
+    let root = required("DS_SOLAR_SELECTION_ROOT");
+    let base = root.join("addons");
+    let database = root.join("store.sqlite");
+    let host = identity();
+    let input = common::prepared_solar_request();
+    if let Some(path) = std::env::var_os("DS_SOLAR_ENGINE_BIN") {
+        fs::create_dir_all(base.join("solar/canary")).unwrap();
+        fs::write(base.join("solar/canary/selection.json"), b"{torn").unwrap();
+        let job = submit(&database, &base, &host, "explicit-override", true, &input);
+        let pin = job.engine_pin.as_ref().unwrap();
+        assert!(pin.development_override);
+        assert_eq!(Path::new(&pin.executable), fs::canonicalize(path).unwrap());
+        let context = WorkerContext {
+            path: database.clone(),
+            identity: host.clone(),
+            limits: limits(),
+            auth: Arc::new(Allowed),
+            observer: None,
+        };
+        assert!(runtime::run_one(&context, "explicit-override-worker").unwrap());
+        assert_eq!(
+            runtime::open(&database)
+                .unwrap()
+                .job(&host.caller(None), &job.id)
+                .unwrap()
+                .unwrap()
+                .phase,
+            Phase::Completed
+        );
+    } else {
+        for (key, expected) in [
+            ("missing", "solar_engine_missing"),
+            ("corrupt", "module_receipt_invalid"),
+        ] {
+            if key == "corrupt" {
+                fs::create_dir_all(base.join("solar/canary")).unwrap();
+                fs::write(base.join("solar/canary/selection.json"), b"{torn").unwrap();
+            }
+            let error = runtime::submit_solar_with_module_base(
+                &database,
+                &admission(&host, key, "durable-server-test"),
+                &input,
+                Some(&base),
+            )
+            .unwrap_err();
+            assert!(format!("{error:?}").contains(expected), "{error:?}");
+            assert!(runtime::open(&database)
+                .unwrap()
+                .jobs(&host.caller(None), 10)
+                .unwrap()
+                .is_empty());
+        }
+    }
+    assert!(!root.join("called").exists());
+}
+
+#[test]
+#[ignore = "requires an explicitly qualified retained Solar executable"]
+fn solar_managed_pin_and_explicit_override_survive_unavailable_current_selection() {
+    assert!(std::env::var_os("DS_SOLAR_ENGINE_BIN").is_none());
+    let binary = required("DS_PIN_SOLAR_BIN");
+    let info = probe(&addons::SOLAR, &binary);
+    let root = solar_selection_directory();
+    let base = root.path().join("addons");
+    let database = root.path().join("store.sqlite");
+    let host = identity();
+    let input = common::prepared_solar_request();
+    let first = select(
+        &base,
+        ModuleComponent::Solar,
+        "canary",
+        &binary,
+        &info,
+        1,
+        b"",
+    );
+    let job = submit(&database, &base, &host, "managed-retained", true, &input);
+    assert_eq!(
+        job.engine_pin.as_ref().unwrap().executable,
+        first.to_str().unwrap()
+    );
+    assert!(!job.engine_pin.as_ref().unwrap().development_override);
+    let next = select(
+        &base,
+        ModuleComponent::Solar,
+        "canary",
+        &binary,
+        &info,
+        2,
+        b"\nselection-control\n",
+    );
+    assert_ne!(first, next);
+    fs::write(base.join("solar/canary/selection.json"), b"{torn").unwrap();
+    let context = WorkerContext {
+        path: database.clone(),
+        identity: host.clone(),
+        limits: limits(),
+        auth: Arc::new(Allowed),
+        observer: None,
+    };
+    assert!(runtime::run_one(&context, "retained-managed-worker").unwrap());
+    let store = runtime::open(&database).unwrap();
+    let completed = store.job(&host.caller(None), &job.id).unwrap().unwrap();
+    assert_eq!(completed.phase, Phase::Completed, "{:?}", completed.error);
+    assert_eq!(completed.engine_pin, job.engine_pin);
+    let result: Value = serde_json::from_slice(
+        &store
+            .job_result(&host.caller(None), &job.id)
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(result["engine"], job.engine_pin.as_ref().unwrap().identity);
+    assert_eq!(
+        submit(&database, &base, &host, "managed-retained", true, &input),
+        completed
+    );
+    isolated_solar_admission(Some(&binary));
+}
