@@ -8,7 +8,8 @@ use ds_network_contracts::engine::NetworkCapability;
 use ds_network_contracts::profile::NativeProfileGridInkV1;
 use ds_network_contracts::profile::{
     NativeProfileEngineeringTableV1, NativeProfileOpenV1, NativeProfileOperationV1,
-    NativeProfilePickRequestV1, NativeProfileSelectionRangeRequestV1, PROFILE_OPEN_SCHEMA,
+    NativeProfilePickRequestV1, NativeProfileSelectionRangeRequestV1, NativeProfileViewInputV1,
+    PROFILE_OPEN_SCHEMA, PROFILE_VIEW_INPUT_SCHEMA,
 };
 use ds_sync_store::{ProfileSourceHeader, ProfileSourceScope, Store};
 use serde::{Deserialize, Serialize};
@@ -143,6 +144,16 @@ impl Request {
 fn invalid(message: impl ToString) -> Failure {
     Failure::invalid("core_profile_request_invalid", message.to_string())
         .remedy("Use core.profile-session contract 1 with an exact package SHA or captured session/model/history")
+}
+fn view_native(error: NetworkFailure) -> Failure {
+    if error.code() == "network_engine_refused"
+        && error.owner_code() == Some("profile_view_invalid")
+    {
+        // Same prepare/project failure class as the former linked adapter.
+        invalid(error.message)
+    } else {
+        native(error)
+    }
 }
 fn native(error: NetworkFailure) -> Failure {
     let code = error
@@ -349,9 +360,6 @@ fn open_original(
         package_sha256: source.package_sha256.clone(),
         source_revision,
         coordinate_system,
-        presentation: serde_json::from_str::<Value>(&open.seed_json)
-            .map_err(|_| invalid("Admitted seed changed"))?["presentation"]
-            .clone(),
         retained_asset_count: serde_json::from_slice::<Value>(&result.bytes)
             .map_err(|_| invalid("Native snapshot changed"))?["retained_asset_count"]
             .as_u64()
@@ -476,7 +484,6 @@ struct Held {
     package_sha256: String,
     source_revision: u64,
     coordinate_system: String,
-    presentation: Value,
     retained_asset_count: usize,
     display_state: ds_command_kernel::profile_display::DisplayState,
     style: Option<StyleCapture>,
@@ -703,12 +710,16 @@ impl Sessions {
                 cached,
             } => {
                 let value = owned(&mut held, &scope, &session_id, &model_id, &expected_history)?;
-                let options = serde_json::from_value(options)
+                require_read_capability(
+                    &value.session.pin().identity.capabilities,
+                    NetworkCapability::ProfileViewV1,
+                )?;
+                let options: ds_grid_engine::ProfileAtlasOptions = serde_json::from_value(options)
                     .map_err(|_| invalid("Use existing native ProfileAtlasOptions"))?;
-                let patch = serde_json::from_value(patch)
-                    .map_err(|_| invalid("Use existing native DisplayPatch"))?;
-                let presentation = serde_json::from_value(value.presentation.clone())
-                    .map_err(|_| invalid("Admitted package presentation changed"))?;
+                let patch: ds_command_kernel::profile_display::DisplayPatch =
+                    serde_json::from_value(patch)
+                        .map_err(|_| invalid("Use existing native DisplayPatch"))?;
+                let expected_display = value.display_state.patched(&patch).map_err(invalid)?;
                 let native_identity =
                     || ds_cli_auth::headless_identity_for_named_project(&scope.lane);
                 let (style_document, style_capture) = resolve_style(
@@ -727,52 +738,31 @@ impl Sessions {
                         })
                     },
                 )?;
-                let prepared = ds_profile_runtime::native_projection::prepare(
-                    &value.display_state,
-                    options,
-                    &patch,
-                    style_document,
-                    &presentation,
-                )
-                .map_err(invalid)?;
-                let operation = NativeProfileOperationV1::RuntimeScene {
-                    options: serde_json::to_value(&prepared.options).map_err(invalid)?,
-                    label_policy: serde_json::to_value(&prepared.labels).map_err(invalid)?,
-                    grid_ink: serde_json::from_value(prepared.grid_ink.clone()).map_err(invalid)?,
-                    cached,
-                };
                 let result = value
                     .session
-                    .request_at(operation, Some(expected_history.clone()), DEADLINE, &|| {
-                        false
-                    })
-                    .map_err(native)?;
-                authorized()?;
-                let scene: ds_network_contracts::profile::NativeProfileRuntimeSceneV1 =
-                    serde_json::from_slice(&result.bytes).map_err(invalid)?;
-                let snapshot = value
-                    .session
-                    .request_at(
-                        NativeProfileOperationV1::State,
-                        Some(expected_history.clone()),
+                    .view_at(
+                        &NativeProfileViewInputV1 {
+                            schema: PROFILE_VIEW_INPUT_SCHEMA.into(),
+                            display_state: serde_json::to_value(&value.display_state)
+                                .map_err(invalid)?,
+                            options: serde_json::to_value(options).map_err(invalid)?,
+                            patch: serde_json::to_value(patch).map_err(invalid)?,
+                            style_document,
+                        },
+                        cached,
+                        expected_history.clone(),
                         DEADLINE,
                         &|| false,
                     )
-                    .map_err(native)?;
-                let state: Value = serde_json::from_slice(&snapshot.bytes).map_err(invalid)?;
-                let has_structures = state["table_counts"]["structures"]
-                    .as_u64()
-                    .is_some_and(|n| n > 0);
-                let (display, projection) = ds_profile_runtime::native_projection::project(
-                    prepared,
+                    .map_err(view_native)?;
+                authorized()?;
+                let display = validate_view_payload(
+                    &result.bytes,
                     &model_id,
                     &expected_history,
                     value.retained_asset_count,
-                    has_structures,
-                    &scene.scene_json,
-                )
-                .map_err(invalid)?;
-                authorized()?;
+                    &expected_display,
+                )?;
                 adopt_style_capture(
                     &mut value.style,
                     style_capture,
@@ -781,12 +771,7 @@ impl Sessions {
                 )?;
                 value.display_state = display;
                 value.touched = Instant::now();
-                receipt(
-                    &session_id,
-                    value,
-                    &serde_json::to_vec(&projection).map_err(invalid)?,
-                    false,
-                )
+                receipt(&session_id, value, &result.bytes, false)
             }
             operation => {
                 let (id, model, expected, native_op) = match operation {
@@ -930,6 +915,7 @@ fn validate_label_fields(fields: &[String]) -> Result<(), Failure> {
 }
 fn read_capability(operation: &Operation) -> Option<NetworkCapability> {
     match operation {
+        Operation::View { .. } => Some(NetworkCapability::ProfileViewV1),
         Operation::Properties { .. } => Some(NetworkCapability::ProfilePropertiesV1),
         Operation::Pick { .. } | Operation::SelectionRange { .. } => {
             Some(NetworkCapability::ProfileSelectionV1)
@@ -979,6 +965,28 @@ fn validate_selection_payload(
         ));
     }
     Ok(())
+}
+fn validate_view_payload(
+    bytes: &[u8],
+    model_id: &str,
+    history: &Value,
+    retained_asset_count: usize,
+    expected: &ds_command_kernel::profile_display::DisplayState,
+) -> Result<ds_command_kernel::profile_display::DisplayState, Failure> {
+    let projection: Value = serde_json::from_slice(bytes).map_err(invalid)?;
+    let display: ds_command_kernel::profile_display::DisplayState =
+        serde_json::from_value(projection["display_state"].clone()).map_err(invalid)?;
+    if projection["model_id"] != model_id
+        || &projection["history"] != history
+        || projection["model_revision"] != history["model_revision"]
+        || projection["retained_asset_count"] != retained_asset_count
+        || &display != expected
+    {
+        return Err(invalid(
+            "Native view differs from retained model, history, assets or requested display state",
+        ));
+    }
+    Ok(display)
 }
 fn validate_properties_payload(
     bytes: &[u8],
@@ -1156,15 +1164,106 @@ mod tests {
             document: json!({"project_id":"fixture-project","styles":{"ds_grid/profile":document}}),
         }
     }
+    #[test]
+    fn complete_view_requires_its_capability_and_exact_host_adoption_fences() {
+        let history = json!({"model_revision":"revision"});
+        let operation = Operation::View {
+            session_id: "held".into(),
+            model_id: "model".into(),
+            expected_history: history.clone(),
+            options: json!({}),
+            patch: json!({}),
+            style_document: Value::Null,
+            cached: true,
+        };
+        assert_eq!(
+            read_capability(&operation),
+            Some(NetworkCapability::ProfileViewV1)
+        );
+        assert!(
+            require_read_capability(
+                &[NetworkCapability::ProfileRuntimeV1],
+                NetworkCapability::ProfileViewV1
+            )
+            .is_err()
+        );
+        let display: ds_command_kernel::profile_display::DisplayState = Default::default();
+        let good = json!({"model_id":"model","model_revision":"revision","history":history,
+            "retained_asset_count":2,"display_state":display});
+        assert_eq!(
+            validate_view_payload(
+                &serde_json::to_vec(&good).unwrap(),
+                "model",
+                &history,
+                2,
+                &display
+            )
+            .unwrap(),
+            display
+        );
+        for key in [
+            "model_id",
+            "model_revision",
+            "history",
+            "retained_asset_count",
+            "display_state",
+        ] {
+            let mut bad = good.clone();
+            bad[key] = Value::Null;
+            assert!(
+                validate_view_payload(
+                    &serde_json::to_vec(&bad).unwrap(),
+                    "model",
+                    &history,
+                    2,
+                    &display
+                )
+                .is_err(),
+                "{key}"
+            );
+        }
+        let mut bad = good;
+        bad["display_state"]["vertical_exaggeration"] = json!(6.);
+        assert!(
+            validate_view_payload(
+                &serde_json::to_vec(&bad).unwrap(),
+                "model",
+                &history,
+                2,
+                &display
+            )
+            .is_err()
+        );
+    }
+    #[test]
+    fn view_preparation_refusal_preserves_public_invalid_request_code() {
+        let error = |owner: &str| NetworkFailure {
+            code: "network_engine_refused",
+            message: "invalid authored view".into(),
+            owner_error: None,
+            owner_code: Some(owner.into()),
+            owner_detail: None,
+            owner_remedy: None,
+            owner_invalid_input: None,
+        };
+        assert_eq!(
+            view_native(error("profile_view_invalid")).code(),
+            "core_profile_request_invalid"
+        );
+        assert_eq!(
+            view_native(error("profile_scene_unavailable")).code(),
+            "core_profile_native_refused"
+        );
+        assert_eq!(
+            native(error("profile_view_invalid")).code(),
+            "core_profile_native_refused"
+        );
+    }
     fn physical_style(document: Value) -> Result<(), String> {
-        ds_profile_runtime::native_projection::prepare(
-            &Default::default(),
-            Default::default(),
-            &Default::default(),
-            document,
-            &Default::default(),
-        )
-        .map(|_| ())
+        ds_command_kernel::profile_encoding::resolve(&Default::default(), &document)?;
+        ds_command_kernel::profile_encoding::review_status_colors(&document)?;
+        ds_command_kernel::profile_encoding::review_box_ink(&document)?;
+        Ok(())
     }
     #[test]
     fn present_style_never_fetches_or_replaces_malformed_authored_input() {
