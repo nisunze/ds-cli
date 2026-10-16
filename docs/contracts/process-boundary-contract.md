@@ -75,9 +75,12 @@ identity checks remain separate lifecycle guards. Standalone `solar engine` and
 `solar calculate-prepared` declare the native `--lane` (stable by default),
 capture its verified managed selection once and retain that handle through the
 identity/task pair. These local commands read no account/project or release
-catalog. Explicit development override and the existing sibling/PATH fallback
-remain available when no managed selection exists; a corrupt managed receipt
-refuses before spawning. Raw local-file Reporter commands retain their explicit
+catalog. An explicit development override remains available as a deliberate
+route. Missing managed selection or a missing/corrupt selected executable refuses
+before any sibling/PATH lookup or spawn; lane capture never substitutes an
+unmanaged engine. The separately named development `capture` route retains its
+established sibling/PATH lookup, and `capture_pinned` only reopens the retained
+path. Raw local-file Reporter commands retain their explicit
 unmanaged boundary until separately migrated; inventory/selection alone does not
 prove those consumers use a managed receipt.
 

@@ -242,8 +242,9 @@ impl Completed {
 }
 
 impl External {
-    /// Resolve the exact captured native lane's installed addon. A malformed
-    /// managed selection refuses; it never borrows another lane or PATH.
+    /// Resolve the exact captured native lane's installed addon. An absent or
+    /// malformed managed selection refuses; it never borrows a sibling, another
+    /// lane or PATH. An explicit development override remains deliberate.
     pub fn capture_for_lane(&'static self, lane: &str) -> Result<CapturedExternal, Failure> {
         self.capture_for_lane_in(lane, &managed_modules::module_base()?)
     }
@@ -264,7 +265,16 @@ impl External {
             return self.capture();
         }
         self.capture_managed_for_lane_in(lane, base)?
-            .map_or_else(|| self.capture(), Ok)
+            .ok_or_else(|| {
+                Failure::unavailable(
+                    self.missing_code,
+                    format!(
+                        "the managed `{}` executable is not installed for {lane}",
+                        self.name
+                    ),
+                )
+                .remedy(self.remedy)
+            })
     }
 
     /// Resolve only a retained native managed selection. `None` lets an owning
