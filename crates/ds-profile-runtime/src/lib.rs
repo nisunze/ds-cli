@@ -3,16 +3,14 @@
 //! neither refresh nor history navigation writes or packs a package.
 use ds_command_kernel::profile_display::{DisplayPatch, DisplayState};
 use ds_command_kernel::profile_encoding::{
-    DisplayRow, Encoding, clearance_violation_encoding, resolve, review_box_ink,
-    review_status_colors,
+    resolve, review_box_ink, review_status_colors, DisplayRow,
 };
-mod authored_display;
-/// Pure display policy for scenes admitted by Core-owned managed Network.
+use ds_profile_presentation::{
+    authored_display, command_view, decorations, label_fields, project_options,
+};
+pub use ds_profile_presentation::Projection;
+/// Shared Network presentation for admitted native scenes.
 pub mod native_projection;
-mod command_view;
-mod decorations;
-mod label_lanes;
-mod symbols;
 use ds_grid_engine::{GridSession, ProfileAtlasOptions};
 mod analysis;
 mod analysis_retention;
@@ -121,25 +119,6 @@ struct HeldView {
     /// Edits not yet admitted into the calculated base. A complete post-edit
     /// update clears this accumulation; refusals retain it until reconcile.
     calculated_touched: ds_grid_engine::recalculation_scope::RecalculationScope,
-}
-#[derive(Debug, Clone, Serialize)]
-pub struct Projection {
-    pub state: DisplayState,
-    pub rows: Vec<DisplayRow>,
-    pub groups: Vec<ds_command_kernel::profile_controls::ControlGroup>,
-    pub style_controls: Value,
-    pub symbols: Vec<symbols::Symbol>,
-    pub authored_structures: authored_display::Groups,
-    pub selection_families: Vec<ds_command_kernel::grid_selection_controls::Family>,
-    pub legend: Vec<ds_command_kernel::profile_encoding::LegendEntry>,
-    /// One pen per drawn cable engineering name; hosts paint each span with its cable pen.
-    pub cables: Vec<ds_command_kernel::profile_encoding::CablePen>,
-    pub label_fields: Vec<String>,
-    pub scene_options: ProfileAtlasOptions,
-    pub primitives: Vec<decorations::Primitive>,
-    pub clearance_violation_encoding: Encoding,
-    pub review_box_ink: String,
-    pub review_status_colors: BTreeMap<String, String>,
 }
 #[derive(Default)]
 pub struct Runtime {
@@ -454,36 +433,6 @@ impl Runtime {
     }
 }
 
-fn project_options(
-    mut options: ProfileAtlasOptions,
-    state: &DisplayState,
-) -> Result<ProfileAtlasOptions, String> {
-    options.vertical_exaggeration = Some(state.vertical_exaggeration);
-    options.terrain_corridor_half_width_m = Some(state.terrain.corridor_half_width_m);
-    options.terrain_gap_tolerance_m = Some(state.terrain.gap_tolerance_m);
-    options.clearance_ground_offset_m = Some(state.terrain.ground_clearance_offset_m);
-    options.clearance_lowest_wire_drop_m = Some(state.terrain.lowest_wire_drop_m);
-    options.display_case =
-        serde_json::from_value(serde_json::to_value(&state.display_case).unwrap())
-            .map_err(|error| format!("invalid_profile_view: {error}"))?;
-    options.engineering_selection = None;
-    Ok(options)
-}
-
-fn label_fields(state: &DisplayState) -> Vec<String> {
-    use ds_command_kernel::profile_display::DisplayOption;
-    let mut fields = Vec::new();
-    if state.visibility[&DisplayOption::StructureNumbers] {
-        fields.push("number".into());
-    }
-    if state.visibility[&DisplayOption::StructureNames] {
-        fields.push("type".into());
-    }
-    if state.visibility[&DisplayOption::StructureComments] {
-        fields.extend(["comment1".into(), "comment2".into(), "comment3".into()]);
-    }
-    fields
-}
 
 #[cfg(test)]
 #[path = "../../../../ds-network/crates/ds-grid-engine/tests/common/mod.rs"]

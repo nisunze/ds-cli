@@ -483,7 +483,10 @@ Profile operations remain explicit refusals. Package opening and native scene
 proof do not alone establish editing, publication or print acceptance.
 
 Core's retained Profile view composes only the existing managed Network
-RuntimeScene and the existing `ds-profile-runtime` pure display projection.
+RuntimeScene and Network's `ds-profile-presentation` display projection, consumed
+through the existing `ds-profile-runtime` reexport. This shared implementation
+serves the legacy runtime too; Core's linked runtime dependency remains until the
+complete view crosses the process boundary.
 `native_projection::prepare` retains DisplayState patch/style/options/label
 refusals; `native_projection::project` accepts only a scene whose revision
 exactly matches the retained native history. The helper opens no GridSession,

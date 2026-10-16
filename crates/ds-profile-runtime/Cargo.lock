@@ -570,6 +570,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-profile-presentation"
+version = "0.1.0"
+dependencies = [
+ "ds-grid-engine",
+ "ds-grid-model",
+ "ds-profile-policy",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ds-profile-runtime"
 version = "0.1.0"
 dependencies = [
@@ -578,6 +589,7 @@ dependencies = [
  "ds-grid-exchange",
  "ds-grid-model",
  "ds-grid-physics",
+ "ds-profile-presentation",
  "serde",
  "serde_json",
 ]

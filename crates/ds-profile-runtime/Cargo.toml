@@ -5,6 +5,7 @@ edition = "2021"
 publish = false
 [workspace]
 [dependencies]
+ds-profile-presentation = { path = "../../../ds-network/crates/ds-profile-presentation" }
 ds-command-kernel = { path = "../.." }
 ds-grid-engine = { path = "../../../ds-network/crates/ds-grid-engine" }
 ds-grid-exchange = { path = "../../../ds-network/crates/ds-grid-exchange" }

@@ -43,8 +43,11 @@ Profile display state, governed pens, control groups and display-governed
 selection families live once in `crates/ds-profile-policy`. The application
 kernel reexports their existing public paths. This neutral leaf depends only
 on serde, JSON and schema primitives; selection admission and application
-state remain in the kernel. Moving these policies does not itself move native
-scene production or qualify the standalone Core release.
+state remain in the kernel. Network's `ds-profile-presentation` consumes this
+leaf for symbols, labels, display controls and complete scene projection. The
+legacy native runtime reexports and uses that one implementation. Core still
+links the legacy runtime until its retained View moves fully behind the Network
+process boundary; this relocation alone does not qualify standalone Core.
 
 ### The question to ask of every piece of logic
 
