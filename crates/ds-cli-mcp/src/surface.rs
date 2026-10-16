@@ -1823,15 +1823,8 @@ impl Surface {
             if terms.is_empty() {
                 return Err((-32602, "`query` needs at least one word".to_string()));
             }
-            let mut matches: Vec<(usize, &Tool)> = visible
-                .filter_map(|tool| {
-                    let haystack = format!("{} {}", tool.id, tool.description).to_lowercase();
-                    let score = terms
-                        .iter()
-                        .filter(|term| haystack.contains(term.as_str()))
-                        .count();
-                    (score > 0).then_some((score, tool))
-                })
+            let mut matches: Vec<([usize; 4], &Tool)> = visible
+                .filter_map(|tool| catalog_search_score(tool, &terms).map(|score| (score, tool)))
                 .collect();
             matches.sort_by(|left, right| {
                 right
@@ -1964,6 +1957,35 @@ fn optional_bool(object: &Map<String, Value>, key: &str) -> Result<Option<bool>,
         Some(Value::Bool(value)) => Ok(Some(*value)),
         Some(_) => Err((-32602, format!("`{key}` must be a boolean"))),
     }
+}
+
+/// Search authored command intent, not the generated execution/refusal guidance
+/// shared by unrelated tools. Keep OR matching; prefer ID/summary coverage,
+/// then ID matches, summary matches and purpose-only relevance.
+fn catalog_search_score(tool: &Tool, terms: &[String]) -> Option<[usize; 4]> {
+    let id = tool.id.to_lowercase();
+    let summary = tool
+        .descriptor
+        .get("summary")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_lowercase();
+    let purpose = tool
+        .descriptor
+        .get("purpose")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_lowercase();
+    let mut score = [0; 4];
+    for term in terms {
+        let in_id = id.contains(term.as_str());
+        let in_summary = summary.contains(term.as_str());
+        score[0] += usize::from(in_id || in_summary);
+        score[1] += usize::from(in_id);
+        score[2] += usize::from(in_summary);
+        score[3] += usize::from(purpose.contains(term.as_str()));
+    }
+    score.iter().any(|count| *count > 0).then_some(score)
 }
 
 fn command_summary(tool: &Tool, descriptor: &Value) -> Value {
@@ -3436,6 +3458,184 @@ mod tests {
         assert!(text.contains("gateway said 401"), "{text}");
         assert!(!text.contains("abcdefghijklmnopqrstuvwxyz0123"), "{text}");
         assert!(text.contains(REDACTED), "{text}");
+    }
+
+    fn catalog_fixture(id: &str, chapter: Chapter, summary: &str, purpose: &str) -> Tool {
+        let mut command = tool(id, chapter, false);
+        command.descriptor["summary"] = json!(summary);
+        command.descriptor["purpose"] = json!(purpose);
+        command.description = format!(
+            "{summary}\n\n{purpose}\nUse the profile; Solar workspace and survey refusals require a descriptor."
+        );
+        command
+    }
+
+    fn catalog_query(surface: &Surface, arguments: Value) -> Value {
+        surface
+            .call_catalog(&arguments, &PathBuf::from("/no-executable-for-catalogue"))
+            .expect("descriptor-only catalogue query")["structuredContent"]
+            .clone()
+    }
+
+    #[test]
+    fn catalog_query_excludes_generated_host_guidance() {
+        let surface = Surface::new(
+            Exposure::Chapters,
+            None,
+            vec![
+                catalog_fixture(
+                    "account.status",
+                    Chapter::Operations,
+                    "Read account status",
+                    "Inspect the signed-in account.",
+                ),
+                catalog_fixture(
+                    "assets.list",
+                    Chapter::Assets,
+                    "List documents",
+                    "List held project assets.",
+                ),
+                catalog_fixture(
+                    "map.profile.view",
+                    Chapter::MapPresentation,
+                    "Read Profile view",
+                    "Inspect the mounted scene.",
+                ),
+            ],
+        )
+        .unwrap();
+        let data = catalog_query(&surface, json!({"query":"profile"}));
+        assert_eq!(data["matched"], 1);
+        assert_eq!(data["results"][0]["id"], "map.profile.view");
+        assert_eq!(data["identity"], surface.identity);
+        assert_eq!(
+            data["skill_resources"],
+            surface
+                .identity
+                .get("skills")
+                .cloned()
+                .unwrap_or(Value::Null)
+        );
+    }
+
+    #[test]
+    fn catalog_query_prefers_id_then_summary_over_incidental_purpose() {
+        let surface = Surface::new(
+            Exposure::Chapters,
+            None,
+            vec![
+                catalog_fixture(
+                    "account.inspect",
+                    Chapter::Operations,
+                    "Read account status",
+                    "Inspect the account used by a Profile request.",
+                ),
+                catalog_fixture(
+                    "zz.section",
+                    Chapter::GridModel,
+                    "Read Profile section",
+                    "Read the authored section.",
+                ),
+                catalog_fixture(
+                    "map.profile.view",
+                    Chapter::MapPresentation,
+                    "Read the mounted scene",
+                    "Inspect current presentation.",
+                ),
+            ],
+        )
+        .unwrap();
+        let data = catalog_query(&surface, json!({"query":"PrOfIlE"}));
+        let ids: Vec<_> = data["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, ["map.profile.view", "zz.section", "account.inspect"]);
+    }
+
+    #[test]
+    fn catalog_query_ranks_full_primary_term_coverage_and_keeps_or_matches() {
+        let surface = Surface::new(
+            Exposure::Chapters,
+            None,
+            vec![
+                catalog_fixture(
+                    "core.cancel",
+                    Chapter::Operations,
+                    "Cancel a job",
+                    "Cancel a running request.",
+                ),
+                catalog_fixture(
+                    "solar.cities",
+                    Chapter::Solar,
+                    "Read Solar cities",
+                    "Inspect cities using the workspace.",
+                ),
+                catalog_fixture(
+                    "solar.workspace.read",
+                    Chapter::Solar,
+                    "Read the approved workspace",
+                    "Read the held selection.",
+                ),
+                catalog_fixture(
+                    "data.workspace",
+                    Chapter::Data,
+                    "Read workspace metadata",
+                    "Inspect retained metadata.",
+                ),
+            ],
+        )
+        .unwrap();
+        let data = catalog_query(&surface, json!({"query":"Solar workspace"}));
+        assert_eq!(data["matched"], 3);
+        assert_eq!(data["results"][0]["id"], "solar.workspace.read");
+        assert!(
+            data["results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|row| row["id"] == "data.workspace")
+        );
+        let scoped = catalog_query(
+            &surface,
+            json!({"query":"Solar workspace","chapter":"solar"}),
+        );
+        assert_eq!(scoped["matched"], 2);
+        assert_eq!(scoped["results"][0]["id"], "solar.workspace.read");
+    }
+
+    #[test]
+    fn catalog_query_keeps_ten_result_bound_ties_and_exact_command_routing() {
+        let commands = (0..12)
+            .rev()
+            .map(|n| {
+                catalog_fixture(
+                    &format!("survey.read.{n:02}"),
+                    Chapter::Survey,
+                    "Read entries",
+                    "Read retained entries.",
+                )
+            })
+            .collect();
+        let surface = Surface::new(Exposure::Chapters, None, commands).unwrap();
+        let data = catalog_query(&surface, json!({"query":"survey"}));
+        assert_eq!(data["matched"], 12);
+        assert_eq!(data["results"].as_array().unwrap().len(), 10);
+        assert_eq!(data["results"][0]["id"], "survey.read.00");
+        assert_eq!(data["results"][9]["id"], "survey.read.09");
+        let exact = catalog_query(&surface, json!({"command":"survey.read.11"}));
+        assert_eq!(exact["command"]["id"], "survey.read.11");
+        assert_eq!(exact["next"]["tool"], "ds_survey");
+        assert!(
+            surface
+                .call_catalog(
+                    &json!({"command":"survey.read.11","chapter":"solar"}),
+                    &PathBuf::from("/no-executable")
+                )
+                .is_err()
+        );
     }
 
     #[test]

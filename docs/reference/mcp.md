@@ -43,6 +43,13 @@ same chapter with `operation: "invoke"` and descriptor-conforming `arguments`.
 Unknown and wrong-chapter ids never become argv; the refusal names the correct
 router when one exists.
 
+Catalog queries match words case-insensitively against canonical command IDs,
+authored summaries and purposes. Any matching word retains a result; ID/summary
+coverage ranks first, followed by ID, summary and purpose relevance, with
+canonical ID as the deterministic tie-break. Generated host/authority/refusal
+guidance does not create matches. Chapter filtering, exact-command routing,
+the ten-summary bound and the full matched count are unchanged.
+
 Specialized profiles publish conventional typed leaf tools for one workflow. The larger `grid-local-model` lifecycle instead publishes four tools: `ds_catalog`, `ds_diagnostics`, `ds_grid_model` and `ds_design`. Its exact command allowlist is unchanged; discover one command and load its canonical contract with `operation=describe` before `operation=invoke`. The routers reject commands outside that allowlist even when they share a chapter.
 
 `grid-profile` publishes the retained Profile workflow, including native job
