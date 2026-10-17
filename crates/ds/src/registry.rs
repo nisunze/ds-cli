@@ -3594,6 +3594,49 @@ fn scope_headless_identity_selected(
     inputs: &Inputs,
     core_lane: Option<&std::ffi::OsStr>,
 ) -> Result<ds_cli_desktop::ops::HeadlessIdentityGuard, Failure> {
+    scope_headless_identity_probed(
+        command,
+        inputs,
+        core_lane,
+        ds_cli_auth::probe_headless_identity,
+        ds_cli_auth::probe_headless_identity_for_named_project,
+    )
+}
+
+/// An explicitly pinned window owns context only when this command cannot
+/// name a project itself. Session defaults retain saved-project arbitration.
+fn window_supplies_project(command: &Command, inputs: &Inputs) -> Result<bool, Failure> {
+    use ds_cli_desktop::ops::{DESCRIPTOR_ARG, Host, TARGET_ARG};
+    if command.requires != ds_cli_contract::spec::Requires::Window
+        || command.arg("project").is_some()
+    {
+        return Ok(false);
+    }
+    let named_instance = command
+        .arg(TARGET_ARG.name)
+        .filter(|arg| arg.value == TARGET_ARG.value)
+        .and_then(|arg| inputs.value(arg.name))
+        .map(|target| ds_cli_desktop::ops::host(Some(target)))
+        .transpose()?
+        .is_some_and(|host| matches!(host, Host::Desktop(Some(_))));
+    let named_descriptor = command
+        .arg(DESCRIPTOR_ARG.name)
+        .filter(|arg| arg.value == DESCRIPTOR_ARG.value)
+        .and_then(|arg| inputs.value(arg.name))
+        .is_some();
+    Ok(named_instance || named_descriptor)
+}
+
+fn scope_headless_identity_probed(
+    command: &Command,
+    inputs: &Inputs,
+    core_lane: Option<&std::ffi::OsStr>,
+    selected: impl FnOnce(
+        &str,
+    )
+        -> Result<Option<(ds_cli_auth::ProviderIdentity, Option<String>)>, Failure>,
+    named: impl FnOnce(&str) -> Result<Option<ds_cli_auth::ProviderIdentity>, Failure>,
+) -> Result<ds_cli_desktop::ops::HeadlessIdentityGuard, Failure> {
     // Pure backend commands carry this observation through dispatch without
     // probing or requiring Desktop. If (and only if) a handler reaches the
     // shared typed bridge seam, `ops::invoke` snapshots the map, arbitrates,
@@ -3624,9 +3667,16 @@ fn scope_headless_identity_selected(
     {
         return Ok(ds_cli_desktop::ops::scope_headless_identity(None));
     }
-    let observed = match paired_auth_lane(inputs.value("lane"), core_lane)
-        .and_then(|lane| ds_cli_auth::probe_headless_identity(lane.token()))
-    {
+    let window_project = window_supplies_project(command, inputs)?;
+    let observed = match paired_auth_lane(inputs.value("lane"), core_lane).and_then(|lane| {
+        if window_project {
+            // The window named by the caller supplies its project through the
+            // existing bridge snapshot; never read the unrelated saved address.
+            named(lane.token()).map(|identity| identity.map(|identity| (identity, None)))
+        } else {
+            selected(lane.token())
+        }
+    }) {
         Ok(observed) => observed,
         Err(error) if headless_probe_means_absent(&error) || enumeration => None,
         Err(error) => return Err(error),
@@ -3770,6 +3820,253 @@ mod identity_preflight_tests {
         let list = &ds_cli_desktop::list::COMMAND;
         let inputs = ds_cli_contract::parse(list, &[]).unwrap();
         assert!(scope_headless_identity_selected(list, &inputs, Some(lane)).is_ok());
+    }
+
+    const NAMED_INSTANCE: &str = "11111111111111111111111111111111";
+
+    fn observed_for_window(
+        command: &Command,
+        inputs: &Inputs,
+        window_project: bool,
+    ) -> ds_cli_desktop::ops::HeadlessIdentityGuard {
+        scope_headless_identity_probed(
+            command,
+            inputs,
+            None,
+            |lane| {
+                assert!(
+                    !window_project,
+                    "a named window must not read the saved Core selection"
+                );
+                Ok(Some((
+                    ds_cli_auth::ProviderIdentity::new(lane, &"a".repeat(64), "uid-1")?,
+                    Some("NorthernHub".into()),
+                )))
+            },
+            |lane| {
+                assert!(
+                    window_project,
+                    "the existing default must retain its selected-project probe"
+                );
+                Ok(Some(ds_cli_auth::ProviderIdentity::new(
+                    lane,
+                    &"a".repeat(64),
+                    "uid-1",
+                )?))
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn only_explicit_window_context_without_a_project_input_skips_saved_selection() {
+        let command = &ds_cli_map::design::list::COMMAND;
+        for args in [
+            vec!["--target".into(), format!("desktop:{NAMED_INSTANCE}")],
+            vec!["--desktop-descriptor".into(), "fixture.json".into()],
+        ] {
+            let inputs = ds_cli_contract::parse(command, &args).unwrap();
+            let _guard = observed_for_window(command, &inputs, true);
+            let requirement = ds_cli_desktop::ops::scoped_requirement().unwrap();
+            assert_eq!(requirement.project, None);
+            assert_eq!(requirement.uid, "uid-1");
+            assert_eq!(requirement.lane, "stable");
+            assert_eq!(requirement.audience_sha256, "a".repeat(64));
+            assert!(
+                !requirement.project_independent,
+                "the command still requires the window's project"
+            );
+        }
+        for args in [
+            vec![],
+            vec!["--target".into(), "desktop".into()],
+            vec!["--target".into(), "core".into()],
+        ] {
+            let inputs = ds_cli_contract::parse(command, &args).unwrap();
+            let _guard = observed_for_window(command, &inputs, false);
+            assert_eq!(
+                ds_cli_desktop::ops::scoped_requirement()
+                    .unwrap()
+                    .project
+                    .as_deref(),
+                Some("NorthernHub")
+            );
+        }
+        let switch = &ds_cli_desktop::project::SWITCH_COMMAND;
+        let inputs = ds_cli_contract::parse(
+            switch,
+            &[
+                "--project".into(),
+                "Gisagara".into(),
+                "--target".into(),
+                format!("desktop:{NAMED_INSTANCE}"),
+            ],
+        )
+        .unwrap();
+        let _guard = observed_for_window(switch, &inputs, false);
+        assert_eq!(
+            ds_cli_desktop::ops::scoped_requirement()
+                .unwrap()
+                .project
+                .as_deref(),
+            Some("NorthernHub")
+        );
+        let backend = &ds_cli_server::STATUS;
+        let inputs =
+            ds_cli_contract::parse(backend, &["--project".into(), "Gisagara".into()]).unwrap();
+        let _guard = scope_headless_identity_probed(
+            backend,
+            &inputs,
+            None,
+            |_| panic!("headless path unchanged"),
+            |_| panic!("headless path must not use a window"),
+        )
+        .unwrap();
+        assert!(ds_cli_desktop::ops::scoped_requirement().is_none());
+    }
+
+    /// A real typed bridge transport, with a fake application's session and
+    /// atomic dispatch response. No protected state or live window is touched.
+    fn window_bridge(
+        session: Value,
+        invocations: usize,
+        switched: bool,
+    ) -> (
+        ds_cli_desktop::discover::Descriptor,
+        std::thread::JoinHandle<Vec<Value>>,
+    ) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let worker = std::thread::spawn(move || {
+            let mut posted = Vec::new();
+            for index in 0..=invocations {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(error)
+                            if error.kind() == std::io::ErrorKind::WouldBlock
+                                && std::time::Instant::now() < deadline =>
+                        {
+                            std::thread::sleep(std::time::Duration::from_millis(5))
+                        }
+                        Err(error) => {
+                            panic!("bridge fixture did not receive its expected request: {error}")
+                        }
+                    }
+                };
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                    .unwrap();
+                let mut bytes = Vec::new();
+                let mut buffer = [0u8; 4096];
+                let header_end = loop {
+                    let count = stream.read(&mut buffer).unwrap();
+                    assert!(count > 0);
+                    bytes.extend_from_slice(&buffer[..count]);
+                    if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                        break end + 4;
+                    }
+                };
+                let headers = std::str::from_utf8(&bytes[..header_end]).unwrap();
+                let size = headers
+                    .lines()
+                    .filter_map(|line| line.split_once(':'))
+                    .find_map(|(name, value)| {
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap_or(0);
+                while bytes.len() < header_end + size {
+                    let count = stream.read(&mut buffer).unwrap();
+                    assert!(count > 0);
+                    bytes.extend_from_slice(&buffer[..count]);
+                }
+                let (status, response) = if index == 0 {
+                    (200, session.clone())
+                } else {
+                    let request: Value =
+                        serde_json::from_slice(&bytes[header_end..header_end + size]).unwrap();
+                    // The view switched after its session snapshot. The app
+                    // refuses the old project/revision instead of dispatching.
+                    let response = if switched {
+                        assert_eq!(request["identity_fence"]["project"], "Gisagara");
+                        (
+                            409,
+                            serde_json::json!({"error":{"class":"conflict","code":"context_generation_stale","message":"window project changed before dispatch","remedy":"retry the intended view"}}),
+                        )
+                    } else {
+                        (200, serde_json::json!({"project":"Gisagara"}))
+                    };
+                    posted.push(request);
+                    response
+                };
+                let body = serde_json::to_vec(&response).unwrap();
+                write!(stream,"HTTP/1.1 {status} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",if status==200{"OK"}else{"Conflict"},body.len()).unwrap();
+                stream.write_all(&body).unwrap();
+            }
+            posted
+        });
+        let descriptor = ds_cli_desktop::discover::Descriptor {
+            url: format!("http://{address}"),
+            token: "fixture-only".into(),
+            pid: std::process::id(),
+            instance_id: NAMED_INSTANCE.into(),
+            identity: ds_command_kernel::desktop_instance::Identity::Minted,
+            profile: Some("stable".into()),
+            path: "fixture-only.json".into(),
+            window: None,
+        };
+        (descriptor, worker)
+    }
+
+    #[test]
+    fn named_window_project_keeps_identity_and_atomic_window_fences() {
+        use serde_json::json;
+        let command = &ds_cli_map::design::list::COMMAND;
+        for case in ["same", "uid", "lane", "audience", "switched", "default"] {
+            let explicit = case != "default";
+            let args = if explicit {
+                vec!["--target".into(), format!("desktop:{NAMED_INSTANCE}")]
+            } else {
+                vec![]
+            };
+            let inputs = ds_cli_contract::parse(command, &args).unwrap();
+            let _identity = observed_for_window(command, &inputs, explicit);
+            let _target = ds_cli_desktop::ops::scope_target(
+                explicit.then(|| format!("desktop:{NAMED_INSTANCE}")),
+            );
+            let mut session = json!({"uid":"uid-1","lane":"stable","credential_audience_sha256":"a".repeat(64),"project":"Gisagara","session_revision":7,"windows":[{"label":ds_cli_desktop::discover::OWNER_WINDOW_LABEL,"project":"Gisagara","generation":3}]});
+            match case {
+                "uid" => session["uid"] = json!("other-account"),
+                "lane" => session["lane"] = json!("canary"),
+                "audience" => session["credential_audience_sha256"] = json!("b".repeat(64)),
+                _ => {}
+            }
+            let invokes = usize::from(matches!(case, "same" | "switched"));
+            let (descriptor, worker) = window_bridge(session, invokes, case == "switched");
+            let response = ds_cli_desktop::ops::invoke(
+                &descriptor,
+                &ds_cli_map::DESIGN_LIST,
+                json!({}),
+                std::time::Duration::from_secs(2),
+            );
+            let posted = worker.join().unwrap();
+            match case {
+                "same" => {
+                    assert_eq!(response.unwrap()["project"], "Gisagara");
+                    assert_eq!(posted[0]["identity_fence"]["project"], "Gisagara");
+                    assert_eq!(posted[0]["identity_fence"]["session_revision"], 7);
+                    assert_eq!(posted[0]["identity_fence"]["context_generation"], 3);
+                    assert!(posted[0]["arguments"].get("identity_fence").is_none());
+                }
+                "switched" => assert_eq!(response.unwrap_err().code(), "context_generation_stale"),
+                "default" => assert_eq!(response.unwrap_err().code(), "desktop_project_not_open"),
+                _ => assert_eq!(response.unwrap_err().code(), "auth_context_mismatch"),
+            }
+        }
     }
 
     #[test]

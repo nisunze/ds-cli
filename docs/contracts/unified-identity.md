@@ -194,15 +194,21 @@ never steals or limits an explicit headless operation.
 Map and headless project selections remain separate. For a map-attached
 operation, an exact-identity map may supply its own active project when the
 headless provider has no selected project; the CLI must not force `auth project
-use` first. When both selections exist and differ, a legacy `Project` command
-switches the current UI to the CLI's selected project through the existing
-`project.switch` operation before doing its map work. The switch verifies
-visible-project access and retains local rooms under their project keys.
-A fresh session observation must prove the same UID/lane/audience and the
-exact target project; its revision fences the subsequent operation. Refused
-or interrupted switches stop the command. A `HeadlessProject` operation uses its own
-selected project independently and must not attach to or mutate a different
-open map.
+use` first. An explicitly named `desktop:<instance_id>` or explicit
+`--desktop-descriptor` also supplies the window's project for a `Requires::Window`
+command that declares no `--project` input. Registry dispatch observes the same
+protected UID/lane/audience without reading the saved Core project. The existing
+bridge snapshots the actual window project and revision and carries its atomic
+invocation fence. Another account, lane or audience, or an in-flight window
+context change, still refuses. Environment defaults retain saved-project routing.
+
+Otherwise a legacy `Project` command whose saved project differs from the window
+refuses `desktop_project_not_open`; only an explicit `desktop project switch`
+may move that window. The switch verifies visible-project access and retains
+local rooms under their project keys. A fresh session observation proves the
+same UID/lane/audience and exact target project; its revision fences the next
+operation. A `HeadlessProject` operation retains its own project context and must
+not attach to or mutate a different open map.
 
 `map survey download` retains legacy `Project` authority while it applies the
 window's Working Area (the Desktop reads the core's held survey copy; a
