@@ -3307,14 +3307,8 @@ mod tests {
             document["engineering_preflight"]
         );
         let mut with_network = document.clone();
-        with_network["engineering_preflight"]["network_engineering"] = json!([{
-            "executable_sha256":"a".repeat(64),"development_override":false,
-            "receipt":{"schema":"ds.network.task-result/v1","outcome":"completed",
-                "inputSha256":"b".repeat(64),
-                "engineIdentity":{"schema":"ds.network-engine/v1","owner_addition":"retained"},
-                "artifact":{"file":"result.json","byteCount":42,"sha256":"c".repeat(64),
-                    "schema":"ds.network.report-engineering.result/v1"}}
-        }]);
+        with_network["engineering_preflight"]["network_engineering"] =
+            json!([engineering::tests::evidence()]);
         assert_eq!(
             serde_json::to_value(
                 verify(&with_network)

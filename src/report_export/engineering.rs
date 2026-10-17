@@ -177,12 +177,20 @@ fn valid_network_engineering(value: &Value) -> bool {
         && identity["schema"] == "ds.network-engine/v1"
         && artifact.is_object()
         && sha(&artifact["sha256"])
-        && artifact["file"] == "result.json"
-        && artifact["schema"] == "ds.network.report-engineering.result/v1"
+        && matches!(
+            (artifact["file"].as_str(), artifact["schema"].as_str()),
+            (
+                Some("engineering.json"),
+                Some("ds.network.report-engineering.result/v1")
+            ) | (
+                Some("mv-report.json"),
+                Some("ds.network.mv-report-result/v1")
+            )
+        )
         && artifact["byteCount"]
             .as_u64()
             .is_some_and(|bytes| bytes > 0)
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
