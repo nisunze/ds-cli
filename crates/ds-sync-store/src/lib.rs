@@ -15,6 +15,8 @@
 //! §6).
 
 pub mod cache_health;
+pub mod survey_entries;
+pub use survey_entries::{SurveyEntryImportReceipt, SurveyEntryScope};
 mod jobs;
 mod profile_sources;
 mod solar_workspaces;
