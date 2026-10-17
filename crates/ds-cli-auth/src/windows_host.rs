@@ -4,10 +4,12 @@ use std::ffi::c_void;
 use std::fs::{self, File, OpenOptions};
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
-use std::os::windows::io::AsRawHandle;
+use std::os::windows::io::{AsRawHandle, FromRawHandle};
 use std::path::Path;
 use std::ptr::{addr_of, null_mut};
-use windows_sys::Win32::Foundation::{CloseHandle, GENERIC_ALL, LocalFree};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, GENERIC_ALL, GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE, LocalFree,
+};
 use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, GetSecurityInfo,
     SE_FILE_OBJECT,
@@ -17,8 +19,8 @@ use windows_sys::Win32::Security::{
     OWNER_SECURITY_INFORMATION, PSID, SECURITY_ATTRIBUTES,
 };
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateDirectoryW, FILE_ALL_ACCESS, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
-    FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    CREATE_NEW, CreateDirectoryW, CreateFileW, FILE_ALL_ACCESS, FILE_ATTRIBUTE_REPARSE_POINT,
+    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ, FILE_SHARE_WRITE,
 };
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
@@ -227,6 +229,36 @@ pub fn read_file(path: &Path) -> Result<File, String> {
 pub fn create_file(path: &Path) -> Result<File, String> {
     validate_directory(path.parent().ok_or_else(error)?)?;
     let file = crate::state_windows::create_new(path).map_err(|_| error())?;
+    validate_private(&file)?;
+    Ok(file)
+}
+/// Create a new owner-only output in an ordinary safe per-user directory.
+/// The parent is validated without changing its ACL; the protected descriptor
+/// applies at atomic creation, before a caller can write any plaintext.
+pub fn create_private_output_file(path: &Path) -> Result<File, String> {
+    no_reparse_ancestors(path)?;
+    crate::state_windows::validate_directory(path.parent().ok_or_else(error)?)
+        .map_err(|_| error())?;
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let file = with_owner_security(|attributes| {
+        let handle = unsafe {
+            CreateFileW(
+                wide.as_ptr(),
+                GENERIC_READ | GENERIC_WRITE,
+                0,
+                attributes.cast(),
+                CREATE_NEW,
+                FILE_FLAG_OPEN_REPARSE_POINT,
+                null_mut(),
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            return Err(error());
+        }
+        // The successful native handle is now owned and closed by File.
+        Ok(unsafe { File::from_raw_handle(handle.cast()) })
+    })?;
+    crate::state_windows::validate_file(&file).map_err(|_| error())?;
     validate_private(&file)?;
     Ok(file)
 }
@@ -481,5 +513,95 @@ mod ui_store_tests {
         assert!(reopened.capture(&|| false).is_err());
         fs::write(&member, original).unwrap();
         reopened.capture(&|| false).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod private_output_tests {
+    use super::*;
+    use std::io::Write;
+
+    struct FixtureDirectory(std::path::PathBuf);
+    impl FixtureDirectory {
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+    impl Drop for FixtureDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    fn ordinary_fixture() -> FixtureDirectory {
+        static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let sequence = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // Managed TEMP can grant foreign SIDs writes. Create an ordinary
+        // inherited directory in the safe current-user known folder instead.
+        let directory = FixtureDirectory(local_application_data().unwrap().join(format!(
+            "ds-private-output-test-{}-{nonce}-{sequence}",
+            std::process::id()
+        )));
+        fs::create_dir(directory.path()).unwrap();
+        grant(directory.path(), "*S-1-1-0:(R)");
+        crate::state_windows::validate_directory(directory.path()).unwrap();
+        assert!(validate_directory(directory.path()).is_err());
+        directory
+    }
+    fn grant(path: &Path, access: &str) {
+        let result = std::process::Command::new("icacls.exe")
+            .arg(path)
+            .args(["/grant", access])
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "native ACL fixture failed");
+    }
+    fn acl(path: &Path) -> Vec<u8> {
+        let result = std::process::Command::new("icacls.exe")
+            .arg(path)
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "native ACL inspection failed");
+        result.stdout
+    }
+    #[test]
+    fn windows_private_output_is_owner_only_without_changing_ordinary_parent() {
+        let directory = ordinary_fixture();
+        let before = acl(directory.path());
+        let path = directory.path().join("output.json");
+        let mut file = create_private_output_file(&path).unwrap();
+        crate::state_windows::validate_file(&file).unwrap();
+        validate_private(&file).unwrap();
+        file.write_all(b"private output").unwrap();
+        drop(file);
+        assert_eq!(fs::read(&path).unwrap(), b"private output");
+        assert_eq!(acl(directory.path()), before);
+        assert!(validate_directory(directory.path()).is_err());
+    }
+    #[test]
+    fn windows_private_output_preserves_existing_file() {
+        let directory = ordinary_fixture();
+        let before = acl(directory.path());
+        let path = directory.path().join("occupied.json");
+        fs::write(&path, b"retained original bytes").unwrap();
+        let file_acl = acl(&path);
+        assert!(create_private_output_file(&path).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"retained original bytes");
+        assert_eq!(acl(&path), file_acl);
+        assert_eq!(acl(directory.path()), before);
+    }
+    #[test]
+    fn windows_private_output_refuses_foreign_writable_parent_before_creation() {
+        let directory = ordinary_fixture();
+        grant(directory.path(), "*S-1-1-0:(W)");
+        let before = acl(directory.path());
+        assert!(crate::state_windows::validate_directory(directory.path()).is_err());
+        let path = directory.path().join("must-not-exist.json");
+        assert!(create_private_output_file(&path).is_err());
+        assert!(!path.exists());
+        assert_eq!(acl(directory.path()), before);
     }
 }

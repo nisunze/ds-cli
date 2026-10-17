@@ -186,7 +186,7 @@ impl Write for BoundedBytes {
 fn create_private(path: &Path) -> Result<fs::File, Failure> {
     #[cfg(windows)]
     {
-        ds_cli_auth::windows_host::create_file(path).map_err(|e| failure(OUTPUT, e))
+        ds_cli_auth::windows_host::create_private_output_file(path).map_err(|e| failure(OUTPUT, e))
     }
     #[cfg(unix)]
     {
@@ -267,6 +267,34 @@ pub fn read(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 mod tests {
     use super::*;
     use std::cell::Cell;
+    #[cfg(windows)]
+    struct FixtureDirectory(PathBuf);
+    #[cfg(windows)]
+    impl FixtureDirectory {
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+    #[cfg(windows)]
+    impl Drop for FixtureDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    #[cfg(windows)]
+    fn private_temp() -> FixtureDirectory {
+        let mut nonce = [0u8; 16];
+        getrandom::getrandom(&mut nonce).unwrap();
+        let nonce = nonce.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        // Retained stores still require a private parent; managed TEMP may
+        // have foreign writers, so use the native current-user known folder.
+        let path = ds_cli_auth::windows_host::local_application_data()
+            .unwrap()
+            .join(format!("ds-sync-read-test-{}-{nonce}", std::process::id()));
+        ds_cli_auth::windows_host::prepare_directory(&path).unwrap();
+        FixtureDirectory(path)
+    }
+    #[cfg(not(windows))]
     fn private_temp() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         #[cfg(unix)]

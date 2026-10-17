@@ -494,10 +494,13 @@ fn classify_device_refresh_error(error: ds_cli_contract::Failure) -> GatewayErro
     }
 }
 fn native_device() -> Result<&'static str, String> {
-    if cfg!(target_os = "linux") {
-        Ok("linux")
-    } else {
-        Err("native Sync Center server requires Linux".into())
+    native_device_for_os(std::env::consts::OS)
+}
+fn native_device_for_os(os: &str) -> Result<&'static str, String> {
+    match os {
+        "linux" => Ok("linux"),
+        "windows" => Ok("windows"),
+        _ => Err("native Sync Center server requires Linux or Windows".into()),
     }
 }
 fn native_arch() -> Result<&'static str, String> {
@@ -569,6 +572,29 @@ fn pins(lane: Lane) -> Result<AuthorityPins, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_device_selector_admits_linux_and_windows_only() {
+        assert_eq!(native_device_for_os("linux"), Ok("linux"));
+        assert_eq!(native_device_for_os("windows"), Ok("windows"));
+        for os in ["macos", "freebsd", ""] {
+            assert_eq!(
+                native_device_for_os(os),
+                Err("native Sync Center server requires Linux or Windows".into())
+            );
+        }
+    }
+
+    #[test]
+    fn native_device_matches_the_compile_target() {
+        if cfg!(target_os = "linux") {
+            assert_eq!(native_device(), Ok("linux"));
+        } else if cfg!(target_os = "windows") {
+            assert_eq!(native_device(), Ok("windows"));
+        } else {
+            assert!(native_device().is_err());
+        }
+    }
 
     #[test]
     fn release_pins_and_application_version_are_sealed_build_inputs() {
