@@ -26,7 +26,9 @@ Engineering, Solar and report algorithms remain with their respective owners.
 - Compatibility/schema changes need explicit consumer/migration evidence. Do not
   re-pin a test or weaken an integrity fence merely to bless a breaking change.
 - Unfinished code, owner decisions and seeding/operational acceptance use the three
-  owning backlog files; no model-specific handover or completed-work archive.
+  owning backlog files, except component-decoupling work uses the canonical
+  [Architecture queue](../ds-architecture/backlog/DECOUPLING.md). All unrelated
+  backlog work remains here; no model-specific handover or completed-work archive.
 
 ## Route the task
 
@@ -38,6 +40,7 @@ Engineering, Solar and report algorithms remain with their respective owners.
 | Network boundary | [Kernel/network boundary](docs/contracts/ds-kernel-network-boundary.md) |
 | Transport and held models | [Transport authority](docs/contracts/ds-transport-authority.md), [held models](docs/contracts/desktop-held-models.md) |
 | Portable geometry | [Portable geometry](docs/contracts/ds-portable-geometry.md) |
+| Component decoupling and independent release acceptance | [Architecture queue](../ds-architecture/backlog/DECOUPLING.md), [Network guide](../ds-architecture/backlog/DS-NETWORK-MODULARIZATION.md) |
 | Open work and governing principles | [Principles](backlog/PRINCIPLES.md), [code](backlog/OPEN.md), [owner decisions](backlog/OPEN-X.md), [seeding](backlog/SEEDING.md) |
 
 ## Checks and workspaces

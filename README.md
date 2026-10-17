@@ -1,5 +1,9 @@
 # ds-command-kernel
 
+Component-decoupling work and release acceptance use the
+[Architecture queue](../ds-architecture/backlog/DECOUPLING.md). Other unfinished
+work remains in the local backlogs; implementation contracts and tests stay here.
+
 Shared deterministic command and state transitions used by native DS clients
 and browser WASM. Svelte remains the presentation owner; hosts retain network,
 credential storage, IndexedDB, OS, and rendering effects.

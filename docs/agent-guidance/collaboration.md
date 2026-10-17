@@ -36,6 +36,7 @@ instruction file.
 
 | Repository | Owns | Boundary |
 | --- | --- | --- |
+| ds-architecture | Cross-repository architecture and canonical component-decoupling queue | Product code/contracts/evidence and unrelated backlogs retain their owners |
 | ds-command-kernel | Shared command decisions, state transitions and named native application owners | Hosts execute effects; kernel semantics do not fork by host |
 | ds-network | LV/MV engineering, model facts, geometry, exchange and design-session behavior | Thin native/WASM adapters; no duplicate gateway policy |
 | ds-interactions | Transient pointer, map and canvas interaction algorithms | UI-only; no Kernel/engineering dependencies and no CLI/Server implementation edge |
@@ -108,7 +109,11 @@ instruction filename, private memory index or handover alongside code.
 - `backlog/OPEN-X.md`: the exact unresolved owner decision/authority boundary.
 - `backlog/SEEDING.md`: tuning, templates/libraries, seeding and operational acceptance.
 
-These are in ds-command-kernel. Split mixed obligations and continue independent
+These remain in ds-command-kernel for unrelated work. New and migrated
+component-decoupling code, decisions and operational acceptance use
+[ds-architecture/backlog/DECOUPLING.md](../../../ds-architecture/backlog/DECOUPLING.md).
+Only its named entries have moved; do not relocate other hard problems, feedback
+or evidence. Split mixed obligations and continue independent
 work. Routine implementation, a difficult test or an admitted control is not an
 owner question. Delete fulfilled entries after proof; contracts/tests retain the
 durable evidence. Coding sessions fix findings or use these backlogs, never submit
