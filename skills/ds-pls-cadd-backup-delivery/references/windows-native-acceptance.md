@@ -6,7 +6,7 @@ behavior; it is not a generic Windows automation recipe.
 
 ## Safe ownership boundary
 
-- `ds` owns workspace closure, exact-byte backup framing, canonical import,
+- The independent engineering owner supplies workspace closure, exact-byte backup framing, canonical import,
   model validation and count evidence.
 - PLS-CADD owns Restore, reopen, solver behavior and native acceptance.
 - The engineer owns engineering approval.
@@ -30,8 +30,8 @@ driver into this skill or relax PowerShell execution policy to run it.
 4. Close and reopen the restored project with the required PLS-CADD version.
 5. Record the restored tree and compare expected project/core members and
    model counts.
-6. Run `ds pls reference-closure` on the restored workspace and require zero
-   unresolved references.
+6. Require the engineering owner to verify restored workspace closure and
+   report zero unresolved references. Core has no closure command.
 7. State native acceptance separately from deterministic DS validation and
    engineering approval.
 

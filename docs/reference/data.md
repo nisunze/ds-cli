@@ -32,7 +32,7 @@ contract. Network's portable Vector owner and its WASM consumers remain intact.
 
 `data mv-lv-orphans` joins MV lines to transformers within `--tolerance-m`,
 offline and with no project. `--mv` takes GeoJSON lines (repeat per file, for
-example the files `ds dsgrid project geojson` writes); `--transformers` takes
+example verified GeoJSON supplied by the independent model owner); `--transformers` takes
 named GeoJSON points or the JSON `ds design status --output json` wrote, whose
 individual rows carry `metadata.spatial.representative_point` (a row without
 one is skipped as `no_location`; a point taken from the room extent rather than

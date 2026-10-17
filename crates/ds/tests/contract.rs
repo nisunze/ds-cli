@@ -87,8 +87,6 @@ const CHAPTERS: &[&str] = &[
     // `project`, because an agent asked for a contract, a preview or a folder
     // is not asking about the plan, and the family is nine commands wide.
     "assets",
-    "grid-model",
-    "pls-cadd",
     "survey",
     "design",
     "map-presentation",
@@ -605,8 +603,6 @@ fn chapters_follow_intent_where_it_parts_from_the_domain() {
 
     // 2. `library` joins `pls`: resolving a pinned native asset is part of one
     //    PLS-CADD delivery workflow, not a chapter of its own.
-    assert_eq!(chapter_of("library.resolve-native"), "pls-cadd");
-    assert_eq!(chapter_of("pls.reference-closure"), "pls-cadd");
 
     // 3. Styling a layer is not regenerating the tile archive under it, so
     //    presentation and tiles stay separate concerns.

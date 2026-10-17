@@ -57,8 +57,8 @@ only when required. Setup and typed profiles: `ds-mcp-host`.
 
 Name the boundary and return its result:
 
-- Native PLS-CADD — for model solving or acceptance, edit in DS Grid, export
-  and let PLS-CADD verify; `ds` never drives that UI.
+- Native PLS-CADD — an engineering owner supplies the exact candidate; the
+  operator performs solver and native acceptance. Core has no PLS automation.
 - A document renderer — a reviewed draft must become DOCX/PDF: `ds` authors
   and lints the text, installed document tools typeset it.
 - Desktop and screen recorders — for interactive geometry or motion;
@@ -79,9 +79,8 @@ Rule out a stop, try other vocabulary, then report. You may filter/compare
 - Maps — `ds-map-composition`, `ds-map-local-data`, `ds-style-composite`.
 - Geometry and terrain — `ds-terrain-sampling`,
   `ds-mv-corridor-ground`.
-- Design and delivery — `ds-grid-spotting`, `ds-lv-design-revision`,
-  `ds-lv-voltage-drop`, `ds-pls-cadd-terrain-roundtrip`,
-  `ds-pls-cadd-backup-delivery`, `ds-pls-cadd-native-dialogs`,
+- Design and delivery — `ds-lv-design-revision`,
+  `ds-lv-voltage-drop`, `ds-pls-cadd-backup-delivery`, `ds-pls-cadd-native-dialogs`,
   `ds-report-consumption`, `ds-boq-staking-table`, `ds-boq-combined-report`.
 - Surface and backlog — `ds-mcp-host`, `ds-workstation-setup`,
   `ds-feedback-triage`.

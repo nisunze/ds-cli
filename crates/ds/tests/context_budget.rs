@@ -16,9 +16,9 @@
 //! proportional to the number of *domains*, never to the number of commands.
 //! That is what makes the whole stack fit behind one executable.
 
-use serde_json::Value;
-
 mod common;
+
+use serde_json::Value;
 
 fn ds(args: &[&str]) -> (String, String, i32) {
     let run = common::invoke(args);
@@ -392,14 +392,7 @@ fn errors_are_short() {
     // A refusal has to carry a code, a remedy and a next step — and stop
     // there. An agent that has to read a paragraph to learn a file was
     // missing has lost more context than the failure was worth.
-    let (stdout, _, _) = ds(&[
-        "dsgrid",
-        "inspect",
-        "--model",
-        "/definitely/not/here.dsgrid",
-        "--output",
-        "json",
-    ]);
+    let (stdout, _, _) = ds(&["map", "zoom", "--output", "json"]);
     assert!(
         stdout.len() <= 800,
         "error envelope is {} bytes, over its 800-byte budget: {stdout}",
@@ -411,12 +404,11 @@ fn errors_are_short() {
 fn default_results_are_bounded() {
     // The default projection of a command over a real model must stay small.
     // Everything larger is opt-in through an explicit projection.
-    let model = common::fixture();
-    let (stdout, stderr, code) = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);
-    assert_eq!(code, 0, "inspect failed: {stdout}{stderr}");
+    let (stdout, stderr, code) = ds(&["version", "--output", "json"]);
+    assert_eq!(code, 0, "version failed: {stdout}{stderr}");
     assert!(
         stdout.len() <= 1_500,
-        "default inspect result is {} bytes, over its 1500-byte budget",
+        "default version result is {} bytes, over its 1500-byte budget",
         stdout.len()
     );
 }

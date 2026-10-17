@@ -1816,12 +1816,19 @@ mod tests {
             json!({ "source_sha": "a", "dirty": false, "profile": "release" }),
             Some("a".to_string()),
             crate::surface::Exposure::Commands,
-            Some(crate::surface::Profile::Pls),
+            Some(crate::surface::Profile::GridProfile),
         );
         let entry = server_entry(adapter("claude-code").unwrap(), &descriptor);
         assert_eq!(
             entry_server(&entry, "claude-code")["args"],
-            json!(["mcp", "serve", "--exposure", "commands", "--profile", "pls"])
+            json!([
+                "mcp",
+                "serve",
+                "--exposure",
+                "commands",
+                "--profile",
+                "grid-profile"
+            ])
         );
     }
 

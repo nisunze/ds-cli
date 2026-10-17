@@ -73,17 +73,8 @@ pub const PROFILE_IDS: &[&str] = &[
     "auth-context",
     "admin-bounds",
     "datasets",
-    "grid",
-    "grid-native",
-    "grid-corrections",
     "printing",
     "printing-maps",
-    "grid-local-model",
-    "clearance",
-    "pls",
-    "pls-desktop",
-    "pls-library",
-    "library-governance",
     "survey",
     "form-factory",
     "survey-projects",
@@ -143,17 +134,8 @@ pub enum Profile {
     AdminBounds,
     Datasets,
     Installations,
-    Grid,
-    GridNative,
-    GridCorrections,
     Printing,
     PrintingMaps,
-    GridLocalModel,
-    GridClearance,
-    Pls,
-    PlsDesktop,
-    PlsLibrary,
-    LibraryGovernance,
     Survey,
     FormFactory,
     SurveyProjects,
@@ -191,17 +173,8 @@ impl Profile {
             "admin-bounds" => Some(Self::AdminBounds),
             "datasets" => Some(Self::Datasets),
             "installations" => Some(Self::Installations),
-            "grid" => Some(Self::Grid),
-            "grid-native" => Some(Self::GridNative),
-            "grid-corrections" => Some(Self::GridCorrections),
             "printing" => Some(Self::Printing),
             "printing-maps" => Some(Self::PrintingMaps),
-            "grid-local-model" => Some(Self::GridLocalModel),
-            "clearance" => Some(Self::GridClearance),
-            "pls" => Some(Self::Pls),
-            "pls-desktop" => Some(Self::PlsDesktop),
-            "pls-library" => Some(Self::PlsLibrary),
-            "library-governance" => Some(Self::LibraryGovernance),
             "survey" => Some(Self::Survey),
             "form-factory" => Some(Self::FormFactory),
             "survey-projects" => Some(Self::SurveyProjects),
@@ -240,17 +213,8 @@ impl Profile {
             Self::AdminBounds => "admin-bounds",
             Self::Datasets => "datasets",
             Self::Installations => "installations",
-            Self::Grid => "grid",
-            Self::GridNative => "grid-native",
-            Self::GridCorrections => "grid-corrections",
             Self::Printing => "printing",
             Self::PrintingMaps => "printing-maps",
-            Self::GridLocalModel => "grid-local-model",
-            Self::GridClearance => "clearance",
-            Self::Pls => "pls",
-            Self::PlsDesktop => "pls-desktop",
-            Self::PlsLibrary => "pls-library",
-            Self::LibraryGovernance => "library-governance",
             Self::Survey => "survey",
             Self::FormFactory => "form-factory",
             Self::SurveyProjects => "survey-projects",
@@ -284,40 +248,6 @@ impl Profile {
 
     const fn tool_limit(self) -> usize {
         match self {
-            // The broad Grid chapter router now also carries the paired
-            // application's local model lifecycle and its one project
-            // publication. Native `dsgrid.create` adds the missing entry into
-            // file editing: eighteen leaves plus bootstrap, one more than the
-            // previous budget. Focused callers use `grid-native` (file work)
-            // or `grid-local-model` (paired lifecycle).
-            // Project list/download add two native asset reads to this
-            // model workflow; no arbitrary download route is exposed.
-            // 2026-09-20 (contract 02): three more leaves — `dsgrid model
-            // show|link` and `dsgrid-exchange sync` — the working copy's
-            // record, its pin to a live PLS-CADD workspace, and the write
-            // back into that workspace. Without them the broad router could
-            // import from PLS-CADD but never deliver to it.
-            // Reviewed batch corrections and native sync now have separate
-            // routes, keeping this broad typed profile within its budget.
-            // Raised to 29 on 2026-09-25 for `dsgrid replace-structure`, the
-            // file-in/file-out sibling of `import-structure` that sits beside
-            // it: a router that can add a definition but not replace one
-            // leaves raised allowable tables to post-export patches.
-            // Raised to 31 on 2026-09-27 for `dsgrid spotting
-            // preview-receipt`: `ds-grid-spotting` names this profile, and
-            // a router that plans whole-model spotting but cannot show a
-            // receipt whose rejected rows were truncated leaves that
-            // proposal unviewable.
-            // Thirty report/model leaves plus both bootstrap tools. The
-            // installed canary already publishes this exact 32-tool set:
-            // report.engine is the reporter identity needed to prove a
-            // local export, while the new deprecated ZIP alias is excluded.
-            // Exact retained-source cable reconciliation adds one file-authoring leaf.
-            // 2026-10-09: `dsgrid spotting apply-receipt` lands a complete
-            // whole-model spotting receipt beside the preview of a truncated
-            // one; without it a valid proposal whose diagnostics exceed the
-            // 16 MiB params bound had no apply path in this profile.
-            Self::Grid => 34,
             // The two reference-form commands add manual/shared seeding to
             // this input workflow; the legacy planner remains discoverable.
             // City creation adds the missing editable draft entry point,
@@ -404,43 +334,12 @@ impl Profile {
             // WHERE, and reading which work links a model is the same lane.
             // Thirteen task leaves plus two bootstrap tools; detach retains files.
             Self::ProjectTaskOperations => 15,
-            // Seventeen working-copy leaves plus both bootstrap tools. Raised
-            // from the default on 2026-09-22 when the four 2026-09-21 leaves
-            // (`dsgrid model forget`, `dsgrid structure admin-refresh`,
-            // `dsgrid profile labels set|show`) were routed here from the
-            // broad `grid` router they had pushed past its own budget. Raised
-            // to 22 on 2026-09-24 for the governed head's versions, retire and
-            // restore, routed here for the same reason (e62edf85).
-            // Exact project-model GeoJSON export is the read half of the
-            // governed head workflow and keeps its source revision attached.
-            // The project list is the bounded entry to each model's separate
-            // version history; without it the profile cannot choose an ID.
-            // Raised on 2026-09-25 for the six package-asset leaves (`dsgrid asset
-            // list|extract|attach|detach`, `dsgrid project asset
-            // list|extract`): a version's original PLS-CADD upload and its
-            // delivered backup belong with the version lifecycle, and the
-            // broad `grid` router cannot absorb six more.
-            // Alignment gap show and set join the same working-copy edits.
-            // Versions and submissions add the head, revisions, exports, governance,
-            // and pinned attachments to this same model workflow.
-            // The integrated profile contains 55 lifecycle leaves and two
-            // bootstrap tools; each leaf belongs to this model workflow.
-            // Combined-model verbs remain in the exact lifecycle allowlist.
-            // This profile loads their contracts lazily through two scoped
-            // chapter routers instead of widening its 57-tool ceiling.
-            Self::GridLocalModel => 57,
             // Seventeen geospatial leaves plus bootstrap: the same answer
             // can be kept as GeoJSON or converted to the analytical
             // GeoParquet format without switching MCP profiles.
             // Native terrain sampling (describe + sample) prepares model ground
             // from the same governed sources: two more leaves, same workflow.
             Self::Datasets => 24,
-            // The file-in/file-out engine workflow: sixteen leaves plus both
-            // bootstrap tools. `dsgrid replace-structure` belongs beside
-            // `import-structure`; `dsgrid.backup.preview` inspects the native
-            // package before the same file workflow imports or restores it.
-            // Exact retained-source cable reconciliation adds one native package leaf.
-            Self::GridNative => 19,
             // Eleven existing guided leaves, eleven primary/zoom/preset/JSON
             // leaves and nine resolver/catalogue leaves make the closed
             // authoring and governance workflow (31 leaves plus bootstrap).
@@ -453,7 +352,6 @@ impl Profile {
     /// The command allowlist below remains its complete authority boundary.
     fn router_chapters(self) -> &'static [Chapter] {
         match self {
-            Self::GridLocalModel => &[Chapter::GridModel, Chapter::Design],
             _ => &[],
         }
     }
@@ -464,95 +362,9 @@ impl Profile {
             Self::AdminBounds => ADMIN_BOUNDS_COMMANDS.contains(&tool.id.as_str()),
             Self::Datasets => DATASET_COMMANDS.contains(&tool.id.as_str()),
             Self::Installations => INSTALLATION_COMMANDS.contains(&tool.id.as_str()),
-            Self::GridNative => {
-                tool.authority == ds_cli_contract::spec::Authority::None
-                    && (tool.id.starts_with("dsgrid.") || tool.id.starts_with("dsgrid-exchange."))
-                    // Reviewed corrections have their own mandatory-guard
-                    // profile. Native sync is an exchange delivery act, not
-                    // part of the bounded native-model reading/editing set.
-                    && !matches!(tool.id.as_str(),
-                        "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync" | "dsgrid.reconcile-cable-source")
-                    // A visualization-only view of a truncated spotting
-                    // receipt is the spotting workflow's, published by the
-                    // `grid` profile `ds-grid-spotting` names; it is not a
-                    // native-model read or edit.
-                    && tool.id != "dsgrid.spotting.preview-receipt"
-                    && tool.id != "dsgrid.spotting.apply-receipt"
-                    // The working-copy family became authority-free on
-                    // 2026-09-18 when it stopped asking an application for
-                    // this machine's catalogue. It is still a different job
-                    // from the file-in/file-out engine workflow, and it keeps
-                    // its own profile.
-                    && !GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str())
-                    // The feature-code and clearance workflow (program
-                    // contract 03) is one operator job over a working copy
-                    // and keeps its own profile, like the local-model family.
-                    && !GRID_CLEARANCE_COMMANDS.contains(&tool.id.as_str())
-            }
-            Self::GridCorrections => GRID_CORRECTION_COMMANDS.contains(&tool.id.as_str()),
             Self::GridProfile => GRID_PROFILE_COMMANDS.contains(&tool.id.as_str()),
-            Self::Grid => {
-                matches!(tool.chapter, Chapter::GridModel | Chapter::Reports)
-                    // Model library adoption belongs to the scoped lifecycle
-                    // router, never to the bounded spotting/report profile.
-                    && !tool.id.starts_with("library.model.")
-                    && !matches!(tool.id.as_str(),
-                        "dsgrid.apply-batch" | "dsgrid.apply-correction" | "dsgrid-exchange.sync")
-                    && tool.id != "dsgrid.reconcile-cable-source"
-                    // File-template compilation and application belong to
-                    // `grid-native`; keep this whole family out of the broad
-                    // model/report workflow instead of expanding its budget.
-                    && !tool.id.starts_with("dsgrid.template.")
-                    && !PROJECT_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
-                    && tool.id != "report.spatial.workbook"
-                    // Printing has its own workflow profile and Reports router;
-                    // changing that profile must not expand the Grid surface.
-                    && !PRINTING_COMMANDS.contains(&tool.id.as_str())
-                    && !REPORT_CONFIGURATION_COMMANDS.contains(&tool.id.as_str())
-                    && !tool.id.starts_with("desktop.printing.")
-                    && !tool.id.starts_with("report.layout.")
-                    // The governed standard and A4 print documents are
-                    // printing reads, never Grid leaves.
-                    && !tool.id.starts_with("report.standard.")
-                    // Project head preparation (this machine's working copies
-                    // against the governed heads) belongs to the focused model
-                    // lifecycle surface. Keeping it out of this broad router
-                    // preserves the profile's bounded tool budget.
-                    && tool.id != "dsgrid.model.prepare-project"
-                    // So do the working copy's typed edits and its structure
-                    // list (`grid-local-model`, 2026-09-20).
-                    && !GRID_LOCAL_MODEL_TYPED_EDITS.contains(&tool.id.as_str())
-                    // And the feature-code / clearance workflow (program
-                    // contract 03, 2026-09-20): its own profile, `clearance`.
-                    && !GRID_CLEARANCE_COMMANDS.contains(&tool.id.as_str())
-                    // Deleted LV snapshot recovery is an Assets workflow,
-                    // outside this engineering-model profile. The global
-                    // catalogue and Grid Model chapter retain its command.
-                    && tool.id != "dsgrid.backup.preview"
-                    // The governed head lifecycle (versions, retire, restore,
-                    // show, compare, exports) lives with publication in
-                    // `grid-local-model`; list and download stay here.
-                    && !(tool.id.starts_with("dsgrid.project.")
-                        && GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()))
-            }
             Self::Printing => PRINTING_COMMANDS.contains(&tool.id.as_str()),
             Self::PrintingMaps => PRINTING_MAP_COMMANDS.contains(&tool.id.as_str()),
-            Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS.contains(&tool.id.as_str()),
-            Self::GridClearance => GRID_CLEARANCE_COMMANDS.contains(&tool.id.as_str()),
-            // The file-task family. `ds pls desktop …` drives PLS-CADD itself on
-            // its Windows desktop for hours at a time — a different job on a
-            // different host — and has its own profile, which also keeps this
-            // one inside its default budget (2026-09-25).
-            Self::Pls => {
-                tool.chapter == Chapter::PlsCadd
-                    && tool.id.starts_with("pls.")
-                    && !tool.id.starts_with("pls.desktop.")
-            }
-            Self::PlsDesktop => {
-                tool.chapter == Chapter::PlsCadd && tool.id.starts_with("pls.desktop.")
-            }
-            Self::PlsLibrary => PLS_LIBRARY_COMMANDS.contains(&tool.id.as_str()),
-            Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS.contains(&tool.id.as_str()),
             Self::Survey => SURVEY_MAP_COMMANDS.contains(&tool.id.as_str()),
             Self::FormFactory => FORM_FACTORY_COMMANDS.contains(&tool.id.as_str()),
             Self::SurveyProjects => SURVEY_PROJECT_COMMANDS.contains(&tool.id.as_str()),
@@ -625,9 +437,6 @@ impl Profile {
             Self::Installations => INSTALLATION_COMMANDS,
             Self::Printing => PRINTING_COMMANDS,
             Self::PrintingMaps => PRINTING_MAP_COMMANDS,
-            Self::GridLocalModel => GRID_LOCAL_MODEL_COMMANDS,
-            Self::GridClearance => GRID_CLEARANCE_COMMANDS,
-            Self::GridCorrections => GRID_CORRECTION_COMMANDS,
             Self::GridProfile => GRID_PROFILE_COMMANDS,
             Self::Survey => SURVEY_MAP_COMMANDS,
             Self::FormFactory => FORM_FACTORY_COMMANDS,
@@ -647,21 +456,11 @@ impl Profile {
             Self::SolarApplication => SOLAR_APPLICATION_COMMANDS,
             Self::SolarDelivery => SOLAR_DELIVERY_COMMANDS,
             Self::SolarPortfolioBatch => SOLAR_PORTFOLIO_BATCH_COMMANDS,
-            Self::PlsLibrary => PLS_LIBRARY_COMMANDS,
-            Self::LibraryGovernance => LIBRARY_GOVERNANCE_COMMANDS,
             Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS,
             Self::ProjectTaskOperations => PROJECT_TASK_OPERATIONS_COMMANDS,
             Self::ProjectChecklists => PROJECT_CHECKLIST_COMMANDS,
             Self::Correspondence => CORRESPONDENCE_COMMANDS,
-            Self::Grid
-            | Self::GridNative
-            | Self::Pls
-            | Self::PlsDesktop
-            | Self::Map
-            | Self::Tiling
-            | Self::Project
-            | Self::Messaging
-            | Self::Operations => &[],
+            Self::Map | Self::Tiling | Self::Project | Self::Messaging | Self::Operations => &[],
         }
     }
 
@@ -675,19 +474,10 @@ impl Profile {
                 Chapter::Data | Chapter::GridModel | Chapter::MapPresentation | Chapter::Reports
             ),
             Self::Installations => chapter == Chapter::Operations,
-            Self::Grid => matches!(chapter, Chapter::GridModel | Chapter::Reports),
-            Self::GridNative => chapter == Chapter::GridModel,
             Self::Printing | Self::PrintingMaps => {
                 matches!(chapter, Chapter::Reports | Chapter::MapPresentation)
             }
-            // Version attachments are Design commands carried by this model
-            // lifecycle profile beside publication.
-            Self::GridLocalModel => matches!(chapter, Chapter::GridModel | Chapter::Design),
-            Self::GridClearance | Self::GridCorrections => chapter == Chapter::GridModel,
             Self::GridProfile => matches!(chapter, Chapter::GridModel | Chapter::MapPresentation),
-            Self::Pls | Self::PlsDesktop | Self::PlsLibrary | Self::LibraryGovernance => {
-                chapter == Chapter::PlsCadd
-            }
             Self::Survey
             | Self::FormFactory
             | Self::SurveyProjects
@@ -757,7 +547,6 @@ const ADMIN_BOUNDS_COMMANDS: &[&str] = &[
 // The retained Profile workflow includes its own explicit native job tickets.
 // Keep the existing general map profile within its unchanged 16-tool bound.
 const GRID_PROFILE_COMMANDS: &[&str] = &[
-    "dsgrid.profile.open",
     "map.profile.view",
     "map.profile.set",
     "map.profile.select",
@@ -790,7 +579,6 @@ const DATASET_COMMANDS: &[&str] = &[
     "data.inspect",
     "data.convert",
     "data.conversion-matrix",
-    "dsgrid.project.geojson",
     "map.local.register",
     "map.local.list",
     "report.spatial.workbook",
@@ -852,198 +640,6 @@ const PRINT_STYLE_COMMANDS: &[&str] = &[
     "style.print.versions.read",
     "style.print.versions.compare",
     "style.print.versions.restore",
-];
-
-// DS Grid working copies and governed project model lifecycle. Discover every
-// project model by opaque ID before asking for that model's versions; display
-// names are not identifiers and do not encode version numbers.
-const GRID_LOCAL_MODEL_COMMANDS: &[&str] = &[
-    "library.model.create",
-    "library.model.attach",
-    "library.model.detach",
-    "library.model.clone",
-    "library.model.show",
-    "library.model.match",
-    "library.model.impact-plan",
-    "library.model.impact-apply",
-    "dsgrid.model.list",
-    "dsgrid.model.show",
-    "dsgrid.model.create-local",
-    "dsgrid.model.import-external",
-    // The link to a live PLS-CADD workspace is a fact about this machine's
-    // working copy, so it lives with the copy's lifecycle; the sync that
-    // uses it is file-in/file-out engine work and stays native.
-    "dsgrid.model.link",
-    "dsgrid.model.set-active",
-    // The paired application shows a working copy in Profile (2026-09-20):
-    // the one door from this machine's catalogue into the window.
-    "dsgrid.profile.open",
-    "dsgrid.model.prepare-project",
-    "dsgrid.project.list",
-    "dsgrid.publish-version",
-    // The typed edits of a working copy and its structure list (program
-    // contract 01 §2, 2026-09-20) are the working-copy workflow: read the
-    // head, describe, retype, list. They live here beside the copy they edit
-    // rather than widening the broad `grid` router past its budget, exactly
-    // as `prepare-project` does; the chapter router carries them regardless.
-    "dsgrid.structure.describe",
-    "dsgrid.structure.retype",
-    "dsgrid.structure.staking-enrich",
-    "dsgrid.report.structures",
-    // 2026-09-21 landings that widened the broad `grid` router past its
-    // budget (31 tools against 27) without a profile decision: forgetting a
-    // working copy, its village facts and its Profile labels are the same
-    // working-copy workflow as the typed edits above and live here.
-    "dsgrid.model.forget",
-    "dsgrid.structure.admin-refresh",
-    "dsgrid.profile.labels.set",
-    // The governed head's own lifecycle beside its publication (2026-09-24):
-    // `dsgrid project versions|retire|restore` (918a3b6) pushed the broad
-    // `grid` router to 31 against 28; they live here with `publish-version`
-    // and `prepare-project`, and the chapter router carries them regardless.
-    "dsgrid.project.versions",
-    "dsgrid.project.geojson",
-    "dsgrid.project.retire",
-    "dsgrid.project.restore",
-    "dsgrid.profile.labels.show",
-    // A version's package assets (2026-09-25): the original PLS-CADD upload
-    // it carries, and the delivered backup attached to the snapshot it
-    // describes, for a local package or an exact governed revision.
-    "dsgrid.asset.list",
-    "dsgrid.asset.extract",
-    "dsgrid.asset.attach",
-    "dsgrid.asset.detach",
-    "dsgrid.project.asset.list",
-    "dsgrid.project.asset.extract",
-    // The multiple-alignment gap (2026-09-25) is a typed edit of the working
-    // copy, read and set like its Profile labels.
-    "dsgrid.alignment.gap.show",
-    "dsgrid.alignment.gap.set",
-    // Versions and submissions (2026-09-25): one workflow from saving a
-    // revision to marking the submitted version and reading back what it
-    // carries — the head and a revision without bytes, a revision diff, the
-    // revision's exports, the working copy's PLS-CADD unlink, the MV
-    // governance vN and the attachments pinned to a content revision.
-    "dsgrid.project.show",
-    "dsgrid.project.compare",
-    "dsgrid.project.exports.list",
-    "dsgrid.project.exports.publish",
-    "dsgrid.project.exports.download",
-    "dsgrid.project.bump-version",
-    "dsgrid.project.update",
-    "dsgrid.project.set-approval",
-    "dsgrid.project.backup.download",
-    "dsgrid.model.unlink",
-    "design.version.import-prepare",
-    "design.version.import",
-    "design.version.catalog",
-    "design.version.revision.show",
-    "design.version.revision.publish",
-    "design.version.renumber",
-    "design.version.revision.bind",
-    "design.version.revision.promote",
-    "design.version.revision.compare",
-    "design.version.list",
-    "design.version.status",
-    "design.version.show",
-    "design.version.compare",
-    "design.version.begin",
-    "design.version.begin-batch",
-    "design.version.summaries",
-    "design.attachment.list",
-    "design.attachment.publish",
-    "design.attachment.download",
-    "design.attachment.list-project",
-    "design.attachment.show",
-    "design.attachment.versions",
-    "design.attachment.set-latest",
-    "design.attachment.retire",
-    // Deliberate editable snapshot composition belongs to model lifecycle.
-    "dsgrid.model.combine",
-];
-
-/// The members of `grid-local-model` that the broad `grid` router leaves to
-/// it (its budget holds the file-in/file-out engine workflow).
-const GRID_LOCAL_MODEL_TYPED_EDITS: &[&str] = &[
-    "dsgrid.model.show",
-    "dsgrid.profile.open",
-    "dsgrid.structure.describe",
-    "dsgrid.structure.retype",
-    "dsgrid.structure.staking-enrich",
-    "dsgrid.report.structures",
-    "dsgrid.model.forget",
-    "dsgrid.structure.admin-refresh",
-    "dsgrid.profile.labels.set",
-    "dsgrid.profile.labels.show",
-    "dsgrid.asset.list",
-    "dsgrid.asset.extract",
-    "dsgrid.asset.attach",
-    "dsgrid.asset.detach",
-    "dsgrid.project.asset.list",
-    "dsgrid.project.asset.extract",
-    "dsgrid.alignment.gap.show",
-    "dsgrid.alignment.gap.set",
-    "dsgrid.model.unlink",
-    "dsgrid.model.combine",
-];
-
-// Program contract 03: feature codes and clearance across the PLS-CADD
-// boundary — the table report, the standard import, the migration of survey
-// tokens, the FEA export, the clearance criteria (set and show) and the
-// clearance report. One operator workflow over one working copy, from the
-// consultant's "clearances not configured" to the list of violations by
-// feature code; the surrounding file workflow stays in `grid-native`.
-const GRID_CLEARANCE_COMMANDS: &[&str] = &[
-    "dsgrid.feature-codes.report",
-    "dsgrid.feature-codes.cleared-forest-offset.set",
-    "dsgrid.feature-codes.import",
-    "dsgrid.feature-codes.migrate",
-    "dsgrid.feature-codes.export",
-    "dsgrid.criteria.show",
-    "dsgrid.criteria.clearance.set",
-    "dsgrid.analyse.clearance",
-];
-
-/// One spotted-model correction workflow, kept below the typed MCP tool
-/// ceiling even when the broad grid profiles grow. Native sync and final PLS
-/// acceptance remain separate operator steps.
-const GRID_CORRECTION_COMMANDS: &[&str] = &[
-    "dsgrid-exchange.inspect",
-    "dsgrid-exchange.plan",
-    "dsgrid-exchange.convert",
-    "dsgrid.inspect",
-    "dsgrid.validate",
-    "dsgrid.describe",
-    "dsgrid.run",
-    "dsgrid.report.structures",
-    "dsgrid.analyse.clearance",
-    "dsgrid.apply-correction",
-    // Source-attested cable mechanics are an exact package correction, not
-    // part of the broad grid discovery router.
-    "dsgrid.reconcile-cable-source",
-];
-
-const PLS_LIBRARY_COMMANDS: &[&str] = &[
-    "library.verify",
-    "library.open",
-    "library.catalog",
-    "library.pack",
-    "library.prepare-publication",
-    "library.unpack",
-    "library.seed",
-    "library.resolve-native",
-];
-
-const LIBRARY_GOVERNANCE_COMMANDS: &[&str] = &[
-    "library.global.download",
-    "library.global.resolve-member",
-    "library.global.read",
-    "library.global.fork-example",
-    "library.global.upload",
-    "library.global.publish-library",
-    "library.global.publish-example",
-    "library.global.library-lifecycle",
-    "library.global.example-lifecycle",
 ];
 
 const SURVEY_MAP_COMMANDS: &[&str] = &[
@@ -1215,7 +811,6 @@ const PROJECT_TASK_OPERATIONS_COMMANDS: &[&str] = &[
     "pm.task.decline",
     "pm.task.log-hours",
     "pm.task.geometry.read",
-    "pm.task.geometry.set",
     "pm.task.geometry.clear",
     "pm.model-link.add",
     "pm.model-link.remove",
@@ -1251,12 +846,6 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
 
 /// Project printing configuration belongs to `printing`, but stays outside
 /// the broad Grid router, whose chapter selection also includes Reports.
-const REPORT_CONFIGURATION_COMMANDS: &[&str] = &[
-    "report.project.settings",
-    "report.project.outputs.set",
-    "report.project.mv-setup.set",
-    "report.project.mv-setup.resolve",
-];
 
 const DESIGN_RUN_COMMANDS: &[&str] = &[
     "design.intake.upload",
@@ -1358,7 +947,7 @@ const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
     "solar.portfolio.export",
 ];
 
-/// Every chapter except `Catalog`, which is the index rather than a routed
+/// Every retained shipping chapter except `Catalog`, which is the index rather than a routed
 /// destination. Held to `Chapter::ALL` by
 /// `every_declared_chapter_except_the_catalog_is_routed`: without that, a
 /// new chapter would leave its commands unreachable through MCP while every
@@ -1367,8 +956,6 @@ const ROUTED_CHAPTERS: &[Chapter] = &[
     Chapter::Data,
     Chapter::Project,
     Chapter::Assets,
-    Chapter::GridModel,
-    Chapter::PlsCadd,
     Chapter::Survey,
     Chapter::Design,
     Chapter::MapPresentation,
@@ -2906,7 +2493,7 @@ mod tests {
         let surface = Surface::new(
             Exposure::Chapters,
             None,
-            vec![tool("pls.reference-closure", Chapter::PlsCadd, false)],
+            vec![tool("map.profile.view", Chapter::MapPresentation, false)],
         )
         .expect("surface");
         let names = surface
@@ -2929,7 +2516,7 @@ mod tests {
     #[test]
     fn every_declared_chapter_except_the_catalog_is_routed() {
         // F36: `ROUTED_CHAPTERS` is hand-maintained beside a declaration that
-        // already enumerates every chapter. Adding a chapter and forgetting
+        // already enumerates each shipping chapter. Adding a chapter and forgetting
         // this list makes its commands unreachable through MCP with nothing
         // failing, because the surface's own count matches the list, not the
         // registry.
@@ -2948,133 +2535,24 @@ mod tests {
     #[test]
     fn profiles_are_typed_filtered_views_and_require_command_exposure() {
         let tools = vec![
-            tool("pls.reference-closure", Chapter::PlsCadd, false),
-            tool("pls.desktop.deliver", Chapter::PlsCadd, false),
-            tool("library.resolve-native", Chapter::PlsCadd, false),
+            tool("map.profile.view", Chapter::MapPresentation, false),
             tool("tile.generate", Chapter::VectorTiles, true),
         ];
-        let profile =
-            Surface::new(Exposure::Commands, Some(Profile::Pls), tools.clone()).expect("profile");
+        let profile = Surface::new(
+            Exposure::Commands,
+            Some(Profile::GridProfile),
+            tools.clone(),
+        )
+        .expect("profile");
         let names = profile
             .tool_list()
             .into_iter()
             .map(|value| value["name"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
-        assert_eq!(
-            names,
-            ["ds_catalog", "ds_diagnostics", "pls_reference-closure"]
-        );
-        let library = Surface::new(Exposure::Commands, Some(Profile::PlsLibrary), tools.clone())
-            .expect("library profile");
-        let names = library
-            .tool_list()
-            .into_iter()
-            .map(|value| value["name"].as_str().unwrap().to_string())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            names,
-            ["ds_catalog", "ds_diagnostics", "library_resolve-native"]
-        );
-        let desktop = Surface::new(Exposure::Commands, Some(Profile::PlsDesktop), tools.clone())
-            .expect("desktop profile");
-        let names = desktop
-            .tool_list()
-            .into_iter()
-            .map(|value| value["name"].as_str().unwrap().to_string())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            names,
-            ["ds_catalog", "ds_diagnostics", "pls_desktop_deliver"]
-        );
-        let error = Surface::new(Exposure::Chapters, Some(Profile::Pls), tools).unwrap_err();
+        assert_eq!(names, ["ds_catalog", "ds_diagnostics", "map_profile_view"]);
+        let error =
+            Surface::new(Exposure::Chapters, Some(Profile::GridProfile), tools).unwrap_err();
         assert_eq!(error.code(), "mcp_profile_exposure_invalid");
-    }
-
-    #[test]
-    fn local_model_profile_is_four_scoped_tools_with_exact_catalogue_fences() {
-        let surface = Surface::new(
-            Exposure::Commands,
-            Some(Profile::GridLocalModel),
-            vec![
-                tool("dsgrid.model.list", Chapter::GridModel, false),
-                tool("dsgrid.model.combine", Chapter::GridModel, false),
-                tool("design.version.list", Chapter::Design, false),
-                tool("dsgrid.inspect", Chapter::GridModel, false),
-                tool("design.lv.process", Chapter::Design, true),
-            ],
-        )
-        .unwrap();
-        let names: Vec<_> = surface
-            .tool_list()
-            .iter()
-            .map(|tool| tool["name"].as_str().unwrap().to_owned())
-            .collect();
-        assert_eq!(
-            names,
-            ["ds_catalog", "ds_diagnostics", "ds_grid_model", "ds_design"]
-        );
-        assert_eq!(surface.published_count(), 4);
-        let executable = PathBuf::from("unused-catalogue-does-not-spawn");
-        for (command, router) in [
-            ("dsgrid.model.combine", "ds_grid_model"),
-            ("design.version.list", "ds_design"),
-        ] {
-            let result = surface
-                .call("ds_catalog", &json!({"command": command}), &executable)
-                .unwrap();
-            assert_eq!(result["structuredContent"]["next"]["tool"], router);
-        }
-        for command in ["dsgrid.inspect", "design.lv.process"] {
-            assert!(
-                surface
-                    .call("ds_catalog", &json!({"command": command}), &executable)
-                    .is_err()
-            );
-            assert!(
-                surface
-                    .call(
-                        "ds_grid_model",
-                        &json!({"operation":"invoke", "command":command}),
-                        &executable
-                    )
-                    .is_err()
-            );
-        }
-        assert!(
-            surface
-                .call("dsgrid_model_combine", &json!({}), &executable)
-                .is_err()
-        );
-        assert!(surface.call("ds_reports", &json!({}), &executable).is_err());
-    }
-
-    #[test]
-    fn correction_profile_exposes_guarded_batch_and_review_reads_only() {
-        let tools = vec![
-            tool("dsgrid.inspect", Chapter::GridModel, false),
-            tool("dsgrid.run", Chapter::GridModel, false),
-            tool("dsgrid.apply-correction", Chapter::GridModel, false),
-            tool("dsgrid.apply-batch", Chapter::GridModel, false),
-            tool("dsgrid.apply", Chapter::GridModel, false),
-            tool("dsgrid-exchange.sync", Chapter::GridModel, false),
-        ];
-        let surface = Surface::new(Exposure::Commands, Some(Profile::GridCorrections), tools)
-            .expect("bounded correction profile");
-        let names: Vec<_> = surface
-            .tool_list()
-            .into_iter()
-            .map(|value| value["name"].as_str().unwrap().to_string())
-            .collect();
-        assert_eq!(
-            names,
-            [
-                "ds_catalog",
-                "ds_diagnostics",
-                "dsgrid_apply-correction",
-                "dsgrid_inspect",
-                "dsgrid_run"
-            ]
-        );
     }
 
     #[test]

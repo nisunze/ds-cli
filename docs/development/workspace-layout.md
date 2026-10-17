@@ -40,9 +40,9 @@ top-level checkout can differ from an older namesake in the historical stack.
 ## Reuse the knowledge already maintained by its owner
 
 The Huye investigations must not become a second PLS implementation. Use the
-[terrain workflow](../../skills/ds-pls-cadd-terrain-roundtrip/SKILL.md),
+[native engineering contract](../../../ds-network/docs/contracts/pls-cadd-native-failure-modes.md),
 [backup delivery workflow](../../skills/ds-pls-cadd-backup-delivery/SKILL.md),
-[library provenance workflow](../../skills/ds-library-seeding/SKILL.md), and
+[library availability boundary](../reference/library.md), and
 [PLS owner reference](../reference/pls.md). They preserve the durable boundaries:
 exact native bytes and digest-pinned resources, closed workspaces, characterized
 writers, explicit operator-owned alignment scope, and native Restore/reopen

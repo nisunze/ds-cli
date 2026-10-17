@@ -70,8 +70,8 @@ pub static COMMAND: Command = Command {
             runnable: false,
         },
         Example {
-            command: "ds mcp serve --exposure commands --profile pls",
-            note: "Typed PLS profile.",
+            command: "ds mcp serve --exposure commands --profile grid-profile",
+            note: "Typed native Profile controls.",
             runnable: false,
         },
     ],

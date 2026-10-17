@@ -1,11 +1,5 @@
 //! `ds pm task create` — add one work item to the plan.
 //!
-//! With `--geometry-from` the item is created carrying WHERE: the geometry
-//! of the DS Grid structures a comment names and one `ds_object` link per
-//! structure, in the same revision (task-geometry-from-objects.md). The
-//! person or agent supplies the typed reference; the kernel resolves it;
-//! `--dry-run` shows that proposal and creates nothing.
-
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -15,7 +9,7 @@ use ds_command_kernel::project_management::writes::{self, CreateKind, CreateTask
 use serde_json::{Map, Value, json};
 
 use crate::LANE_ARG;
-use crate::geometry::{BUFFER_ARG, DRY_RUN_ARG, GEOMETRY_FROM_ARG, PACKAGE_ARG, PROPOSAL_REFUSALS};
+const DRY_RUN_ARG: Arg = Arg::switch("dry-run", "Preview the prepared task without creating it.");
 
 const ATTACH_ARG: Arg = Arg {
     name: "attach",
@@ -124,22 +118,13 @@ pub const INVALID_TASK_SHAPE: Refusal = Refusal {
     remedy: "use --parent only with --kind child or milestone, and give a milestone one date",
 };
 
-/// This command's own refusals: the create's three, then everything a
-/// `--geometry-from` proposal can refuse.
-const REFUSALS: [Refusal; 22] = {
-    let mut out = [crate::INVALID_DATE; 22];
-    out[0] = crate::INVALID_DATE;
-    out[1] = crate::INVALID_VALUE;
-    out[2] = INVALID_TASK_SHAPE;
-    out[20] = super::attach::FILE_INVALID;
-    out[21] = ATTACH_PARTIAL;
-    let mut i = 0;
-    while i < PROPOSAL_REFUSALS.len() {
-        out[3 + i] = PROPOSAL_REFUSALS[i];
-        i += 1;
-    }
-    out
-};
+const REFUSALS: [Refusal; 5] = [
+    crate::INVALID_DATE,
+    crate::INVALID_VALUE,
+    INVALID_TASK_SHAPE,
+    super::attach::FILE_INVALID,
+    ATTACH_PARTIAL,
+];
 
 pub static COMMAND: Command = Command {
     id: "pm.task.create",
@@ -152,11 +137,7 @@ so it lands with the sort key, schedule state and duration the surface would \
 have given it. A retry that passes the same --id is refused rather than \
 duplicated, which is what makes this safe to run again after a lost answer. \
 Headless: commits to the named project of the signed-in native credential, \
-no window. With --geometry-from the item is created carrying WHERE: the \
-geometry of the named DS Grid structures (an area around several, a point for \
-one, a line for an alignment or span range) and one ds_object link per \
-structure, in the same revision; --dry-run answers that proposal and creates \
-nothing. With repeatable --attach, the native PM owner creates the task \
+no window. --dry-run previews the task and creates nothing. With repeatable --attach, the native PM owner creates the task \
 then verifies each task-owned upload. The task remains durable if an upload \
 fails; the refusal carries its taskId and verified ready receipts. Do not \
 repeat task creation to recover an attachment.",
@@ -175,9 +156,6 @@ repeat task creation to recover an attachment.",
         FROM_RECORD_ARG,
         ID_ARG,
         ATTACH_ARG,
-        GEOMETRY_FROM_ARG,
-        PACKAGE_ARG,
-        BUFFER_ARG,
         DRY_RUN_ARG,
         LANE_ARG,
         crate::PROJECT_ARG,
@@ -185,8 +163,7 @@ repeat task creation to recover an attachment.",
     output: "\
 The project, the minted `taskId`, the `committedRevision` the plan moved to, \
 any `warnings` the engine returned, and `link` — the deep link that opens the \
-new item in the app. With --geometry-from, `proposal` (geometry, rule, \
-objects, links, sources); with --dry-run, only the proposal and no task. With --attach, attachments contains server-verified ready rows and exact local bytes/SHA; an incomplete upload returns task_attachments_incomplete with the committed task and ready receipts.",
+new item in the app. With --dry-run, the prepared command and no task. With --attach, attachments contains server-verified ready rows and exact local bytes/SHA; an incomplete upload returns task_attachments_incomplete with the committed task and ready receipts.",
     examples: &[
         Example {
             command: "ds pm task create --project <exact-id> --kind inbox --title \"Review crossing\" --attach ./source.eml --attach ./drawing.pdf --yes --output json",
@@ -198,26 +175,11 @@ objects, links, sources); with --dry-run, only the proposal and no task. With --
             note: "Without --yes dispatch refuses before anything is sent.",
             runnable: false,
         },
-        Example {
-            command: "ds pm task create --title \"Swamp crossing at 74/76/77\" --kind inbox --geometry-from dsgrid:local-<id>:structure:74,76,77 --dry-run --output json --project <exact-id>",
-            note: "The proposal a person confirms: an area around the three structures and three links; re-run with --yes to create.",
-            runnable: false,
-        },
     ],
-    refusals: &crate::write_refusals::<44>(&REFUSALS),
+    refusals: &crate::write_refusals::<27>(&REFUSALS),
     reference: Some("docs/reference/pm.md"),
     search: &[
-        "subtask",
-        "sub-task",
-        "deadline",
-        "due",
-        "date",
-        "backlog",
-        "wbs",
-        "schedule",
-        "task geometry",
-        "attach structures",
-        "swamp",
+        "subtask", "sub-task", "deadline", "due", "date", "backlog", "wbs", "schedule",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
@@ -260,10 +222,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let finish_date = finish
         .map(|value| crate::date(value, "finish"))
         .transpose()?;
-    let references = inputs.repeated("geometry-from");
-    if !references.is_empty() {
-        crate::geometry::check(inputs, references)?;
-    }
     // The id is minted HERE when the caller supplied none: the engine takes
     // identity from the caller, the kernel has no entropy, and a retry that
     // repeats the same --id is what makes a create safe to run again.
@@ -274,18 +232,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let lane = inputs.value("lane").unwrap_or("stable");
     let read = crate::graph(lane, inputs.require("project")?)?;
-    // WHERE the work is, resolved before the create is prepared so a
-    // reference that does not resolve refuses the whole create by name.
-    let proposal = if references.is_empty() {
-        None
-    } else {
-        Some(crate::geometry::proposal_json(&crate::geometry::propose(
-            inputs,
-            references,
-            &read,
-            &[],
-        )?))
-    };
     let prepared = writes::create_task(
         &read.graph,
         &CreateTask {
@@ -298,11 +244,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             discipline: inputs.value("discipline").map(str::to_owned),
             start_date,
             finish_date,
-            geometry: proposal.as_ref().map(|p| p["geometry"].clone()),
-            links: proposal
-                .as_ref()
-                .and_then(|p| p["links"].as_array().cloned())
-                .unwrap_or_default(),
+            geometry: None,
+            links: Vec::new(),
         },
     )
     .map_err(crate::refused)?;
@@ -314,7 +257,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "kind": kind.token(),
             "revision": read.graph.revision,
             "command": prepared.command,
-            "proposal": proposal,
             "committedRevision": Value::Null,
         }));
     }
@@ -354,10 +296,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(attachments) = attachments {
         extra.insert("attachments".into(), attachments);
     }
-    if let Some(proposal) = proposal {
-        extra.insert("dry_run".into(), json!(false));
-        extra.insert("proposal".into(), proposal);
-    }
     Ok(writes::write_outcome(&read.project_id, &id, &result, extra))
 }
 
@@ -380,9 +318,6 @@ pub fn render(data: &Value) -> String {
             data["committedRevision"].as_u64().unwrap_or(0),
         )
     };
-    if data["proposal"].is_object() {
-        out.push_str(&crate::geometry::render_proposal(&data["proposal"]));
-    }
     out.push_str(&super::warnings(data));
     if let Some(link) = data["link"].as_str() {
         out.push_str(&format!("  {link}\n"));

@@ -116,7 +116,6 @@ pub static DOMAIN: Domain = Domain {
         &task::proposals::DECLINE,
         &task::proposals::LOG_HOURS,
         &geometry::read::COMMAND,
-        &geometry::set::COMMAND,
         &geometry::clear::COMMAND,
         &model_link::ADD,
         &model_link::REMOVE,

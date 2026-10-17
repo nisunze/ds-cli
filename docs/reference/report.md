@@ -34,10 +34,8 @@ That is a deliberate ownership boundary, not an accident of packaging. So
 document that comes back. It links none of the reporter's library and
 reimplements none of it.
 
-Contrast `ds dsgrid`, which *links* `ds-grid-model` and `ds-grid-exchange`
-directly — those are pure libraries with a clean boundary and no such
-contract. Both routes are legitimate; which one applies is decided by the
-owning workspace, not by convenience.
+Core no longer links the Grid engineering command adapters. Its retained native
+Profile and reporting controls use their independent process owners.
 
 ## Two engine rules that shape every command here
 
@@ -1081,7 +1079,7 @@ preview changes no recipe, room or output, `svg` is never a deliverable
 selection, and the run cannot publish.
 
 A selected `project_dsgrid_mv` context now reads the native project's complete
-MV catalog and verifies each exact current head through `dsgrid.project`'s
+MV catalog and verifies each exact current head through the project model owner's
 existing authority. Model decoding, engineering projection and CRS conversion
 use the native model owners. Preparation holds bounded projected geometry for
 the batch; each sheet selects nearby features through the kernel and records

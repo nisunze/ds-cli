@@ -1303,9 +1303,9 @@ one read; a per-object read failure is that row's `error`, not the call's. Both
 need the native client profile that declares `create_versions` and
 `list_version_summaries` (schema v30).
 
-MV versions are the governance half of a submission; the content half — the
-revisions, their versions and what each carries — is `ds dsgrid project`. See
-[`dsgrid.md` § Versions and submissions](dsgrid.md#versions-and-submissions).
+MV versions are the governance half of a submission. Core no longer exposes
+the `dsgrid project` content workflow; see [its availability boundary](dsgrid.md).
+The existing Design governance and attachment commands remain available.
 
 `ds design conflict list --project <id>` and `ds design conflict check --project <id> --transformer <name>`
 answer overwrite admissibility. `list` applies the kernel's detection rule —

@@ -3,7 +3,7 @@ name: ds-report-consumption
 description: Obtain DS report workbooks through `ds` and read sheets, units, existing/new rows, and dirty categories.
 metadata:
   ds-chapters: reports
-  ds-mcp-profile: grid
+  ds-mcp-profile: project-operations
 ---
 
 # Consume a delivered report workbook

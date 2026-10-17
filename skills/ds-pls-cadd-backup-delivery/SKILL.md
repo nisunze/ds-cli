@@ -1,8 +1,6 @@
 ---
 name: ds-pls-cadd-backup-delivery
-description: Create a complete exact-byte PLS-CADD .bak from a closed reference-ready workspace, prove canonical contents and counts, and require fresh native Restore/reopen before submission. For backup recovery and portability acceptance, not terrain or alignment editing.
-metadata:
-  ds-chapters: grid-model, pls-cadd
+description: Hand an independently prepared PLS-CADD backup to the operator for fresh native Restore/reopen acceptance before submission. Core backup construction and conversion commands are unavailable.
 ---
 
 # Deliver a complete PLS-CADD backup
@@ -16,52 +14,17 @@ The backup is one item of the MV submission set; read
 [MV submission deliverables](../ds-project-work/references/mv-submission-deliverables.md)
 for the rest (staking stays XLSX, a dated folder holds only today's artifacts).
 
-## Create and prove the candidate
+## Require a prepared candidate
 
-Discover each live contract before invoking it:
+The independent engineering owner must provide the candidate backup, its exact
+SHA-256, source closure evidence, declared CRS, canonical validation, and
+expected model counts. Core no longer exposes `pls`, `dsgrid`, or
+`dsgrid-exchange` commands to construct or validate that candidate. Do not
+substitute hand-edited native files or claim missing evidence was produced.
 
-```text
-ds capabilities pls.reference-closure --output json
-ds capabilities pls.backup-create --output json
-ds capabilities dsgrid-exchange.inspect --output json
-ds capabilities dsgrid-exchange.plan --output json
-ds capabilities dsgrid-exchange.convert --output json
-ds capabilities dsgrid.inspect --output json
-ds capabilities dsgrid.validate --output json
-```
-
-Require `pls.reference-closure` to report zero unresolved references and a
-handover-ready workspace. Then create the backup outside the workspace:
-
-```text
-ds pls backup-create --workspace <closed-workspace> --out <new.bak> --yes --output json
-```
-
-The receipt must report every source file framed, exact member-byte
-preservation, no path healing, a source snapshot digest and a backup SHA-256.
-It must also report `native_restore_reopen_accepted: false`; this deterministic
-step cannot award native acceptance.
-
-Inspect the `.bak`, plan and convert it to a new `.dsgrid` using the declared
-source CRS, validate that package, and inspect its table counts. Compare
-alignments, structures, tension sections, supports and terrain points with the
-delivery's expected counts. No-loss DS conversion proves canonical readability
-and engineering projection, not PLS-CADD Restore.
-
-## Structures are PLS-CADD immutables
-
-Design edits happen in DS Grid; PLS-CADD verifies the exported model as the
-authority and is not where a design is patched. DS never authors, rewrites or
-relabels a PLS-CADD structure file, and structures come only from the
-project's approved canonical library: a missing structure is modelled into
-that library and reviewed before use. Plan the native export before
-converting: a structure whose capacity block names no native loads source
-blocks the plan. Replace it with its native PLS-POLE file from the library
-(`dsgrid.replace-structure`, or `pls.structure-substitute` on the backup) and
-plan again. Deliver stick models
-by substituting the stick library members of the same names. A structure that
-fails strength in PLS-CADD gets a stronger native member or a reported gap
-(`ds feedback submit`), never an edited file.
+Design edits and native member replacement belong to the engineering owner.
+A missing or unsuitable canonical library member remains an engineering gap.
+The operator's native acceptance below cannot establish absent source evidence.
 
 ## Native acceptance is a separate gate
 
@@ -70,15 +33,11 @@ short path, close it, reopen the restored project, then run reference closure
 and the count checks against the restored result. Do not call the backup
 submittable until all of those pass.
 
-On the Windows desktop with PLS-CADD 16.81, `ds pls desktop qualify --bak
-<new.bak> --out <new folder>` runs that gate: two fresh native Restores
-around a PLS File > Backup, every restored file verified, no save. When
-native acceptance is requested or fails, read
+The Core `pls desktop` controller is unavailable. Hand the exact fresh
+Restore/reopen action to the PLS-CADD operator. Read
 [references/windows-native-acceptance.md](references/windows-native-acceptance.md)
-and apply the `ds-pls-cadd-native-dialogs` skill to every native prompt.
-If that controller is unavailable, stop at the
-validated candidate and give the operator the exact Restore/reopen action;
-never replace the missing controller with coordinate clicks, arbitrary
+and use `ds-pls-cadd-native-dialogs` for the observed native transition.
+Do not replace the missing controller with coordinate clicks, arbitrary
 keystrokes, or an ad hoc Win32 driver.
 
 Keep these verdicts separate in the final receipt:
@@ -92,6 +51,5 @@ Keep these verdicts separate in the final receipt:
 
 No lower verdict implies a higher one.
 
-Stops at: native Restore — the fresh Restore and reopen run in PLS-CADD itself,
-through `ds pls desktop qualify` on the desktop or by the operator; the
-backup-create receipt never substitutes for them.
+Stops at: the PLS-CADD operator performs fresh native Restore and reopen;
+source and canonical evidence come from the independent engineering owner.

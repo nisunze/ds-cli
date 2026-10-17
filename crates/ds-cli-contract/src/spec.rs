@@ -594,13 +594,13 @@ pub enum Chapter {
 }
 
 impl Chapter {
+    /// Retained shipping chapter catalogue. Independent owner variants may remain
+    /// outside this public Core surface.
     pub const ALL: &[Self] = &[
         Self::Catalog,
         Self::Data,
         Self::Project,
         Self::Assets,
-        Self::GridModel,
-        Self::PlsCadd,
         Self::Survey,
         Self::Design,
         Self::MapPresentation,
@@ -823,7 +823,7 @@ mod tests {
 
     #[test]
     fn chapter_tokens_are_unique_stable_and_round_trip() {
-        assert_eq!(Chapter::ALL.len(), 14);
+        assert_eq!(Chapter::ALL.len(), 12);
         for (index, chapter) in Chapter::ALL.iter().enumerate() {
             let token = chapter.token();
             assert_eq!(Chapter::from_token(token), Some(*chapter));

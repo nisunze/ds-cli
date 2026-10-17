@@ -26,9 +26,9 @@ declared once on every canonical command and appears in its live descriptor.
 
 ## Exposure modes
 
-The default broad server publishes fifteen stable tools: `ds_catalog`, the
+The default broad server publishes thirteen stable tools: `ds_catalog`, the
 bounded `ds_diagnostics` bootstrap, plus one router per non-catalogue chapter —
-`ds_data`, `ds_project`, `ds_assets`, `ds_grid_model`, `ds_pls_cadd`,
+`ds_data`, `ds_project`, `ds_assets`,
 `ds_survey`, `ds_design`, `ds_map_presentation`, `ds_vector_tiles`,
 `ds_solar`, `ds_reports`, `ds_operations` and `ds_workstation`. Adding a
 command does not enlarge this list.
@@ -50,46 +50,27 @@ canonical ID as the deterministic tie-break. Generated host/authority/refusal
 guidance does not create matches. Chapter filtering, exact-command routing,
 the ten-summary bound and the full matched count are unchanged.
 
-Specialized profiles publish conventional typed leaf tools for one workflow. The larger `grid-local-model` lifecycle instead publishes four tools: `ds_catalog`, `ds_diagnostics`, `ds_grid_model` and `ds_design`. Its exact command allowlist is unchanged; discover one command and load its canonical contract with `operation=describe` before `operation=invoke`. The routers reject commands outside that allowlist even when they share a chapter.
+Specialized profiles publish bounded typed leaf tools for one workflow.
 
 `grid-profile` publishes the retained Profile workflow, including native job
 tickets and cached results. Its ten command leaves plus two bootstrap tools
 stay within the unchanged 16-tool bound. The general `map` profile retains its
 existing navigation controls; use `grid-profile` for direct calculation tickets.
-`vector` publishes descriptor discovery and all seven available vector runners,
-using the same `--request` JSON and dry-run previews as the web. The established
-`datasets` profile retains its four geometry primitives and its existing budget:
-
-```sh
-ds mcp serve --exposure commands --profile vector
-```
-
 For example:
 
 ```text
-ds mcp serve --exposure commands --profile pls
+ds mcp serve --exposure commands --profile grid-profile
 ```
 
-Profiles include `auth-context`, `datasets`, `vector`, `grid`, `grid-native`, `grid-corrections`, `pls`, `pls-desktop`, `pls-library`, `library-governance`, `survey`,
-`form-factory`, `survey-projects`, `survey-media`, `survey-migration`, `design-edit`, `design-run`, `map`, `printing-maps`, `layers`,
-`tiling`, `project`, `project-task-operations`, `correspondence`, `solar-input`, `solar-application`, `solar-run`, `solar-dashboard`, `solar-delivery`,
-`solar-portfolio-batch`, `solar-migration`, `design-migration`,
-`operations`, and `project-operations`. `project` owns the plan and general
-task workflow; `project-task-operations` owns typed task geometry and
-admission steps. Task creation stays in both profiles. `datasets` groups
-catalog discovery, held-layer GeoJSON, planned
-BigQuery geography, model-line export, local-layer registration and sector
-workbook delivery. `vector` provides portable descriptor discovery and seven Rust
-vector primitives; it needs no project or Desktop. General workflow execution
-has been removed. The datasets profile retains
-its existing four vector primitives. `printing` owns report production and output selection;
-`printing-maps` owns map composition and publication. Public city input acquisition
-uses the Data chapter or `ds data city-vectors`, outside the bounded printing
-profile; project-cache seeding remains in printing. `project-operations` owns
-published report artifact removal; `grid-native` owns DS Grid file-template
-inspection, compilation and application; `print-styles` includes catalogue migration
-and binding alongside print-style creation and history. Each headless read names
-its authorized project.
+Read the current profile choices from `ds capabilities mcp.serve --output json`.
+`project` owns the plan and ordinary task workflow; `project-task-operations`
+retains task geometry read/clear and admission steps. Task creation stays in
+both. `datasets` groups catalog discovery, held-layer GeoJSON, planned BigQuery
+geography, local-layer registration and sector workbook delivery. `printing`
+owns report production and output selection; `printing-maps` owns map composition
+and publication. `print-styles` includes catalogue migration and binding alongside
+print-style creation and history. Each headless read names its authorized project.
+
 `correspondence` owns the parties, the records and threads and the
 task blockers (`pm.party.*`, `pm.record.*`, `pm.task.block|unblock`) with the
 plan for their vocabularies — filing letters and scheduling tasks are two
@@ -126,22 +107,10 @@ commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
 all-command publication temporarily for compatibility.
 
-`grid-native` contains only native `.dsgrid` file creation, inspection,
-validation, command discovery, reads/solves, revision-gated edits and exchange.
-Its command leaves require no desktop, TypeScript runtime or signed-in
-project. `grid-local-model` retains the paired application lifecycle,
-project publication, the governed head's lifecycle (`dsgrid project
-versions|retire|restore`) and a version's package assets (`dsgrid asset
-list|extract|attach|detach`, `dsgrid project asset list|extract`); `clearance` is the feature-code and clearance
-workflow over one working copy (`dsgrid feature-codes report|import|migrate|
-export`, `dsgrid criteria show|clearance set`, `dsgrid analyse clearance`);
-the broad `grid` router keeps its budget and leaves the typed edits and the
-clearance workflow to those two profiles. `grid-corrections` is the bounded
-typed surface for review comments on an already spotted model: exact package
-inspection, command discovery, graph and report reads, clearance analysis,
-mandatory-guard `dsgrid.apply-correction`, and exact retained-source cable
-reconciliation. It admits native conversion into a `.dsgrid` working copy,
-while native PLS-CADD delivery remains the owner's separate gate.
+Grid file authoring, clearance, exchange, PLS-CADD, and engineering library
+profiles are absent from Core. `grid-profile` retains the admitted native Profile
+controls; it does not restore those command domains. See the
+[restoration boundary](dsgrid.md).
 
 The `design-edit` profile includes the same canonical `map.design.open`,
 map-owned `map.design.pin` Working-set operation, and
@@ -176,19 +145,10 @@ explicit source, project, batch run and city attribution and never publishes fil
 alongside the paired historical batch lifecycle. These calculation/publication
 leaves moved from `solar-delivery` to keep that profile within its tool budget.
 
-PLS and its libraries are split by operator workflow: `pls` contains workspace
-backup, closure, terrain and diagnostics; `pls-desktop` contains the verbs that
-drive PLS-CADD itself on its Windows desktop (`ds pls desktop …`); `pls-library` contains local
-immutable-library verification, packing, seeding and native resolution; and
-`library-governance` contains global library/example upload, publication and
-lifecycle. Their union is the PLS-CADD chapter, but each typed tool surface
-stays below the host's context limit.
-
 ## How a command becomes a tool
 
-Audited 2026-09-25 against the live registry: 516 registered commands in 24
-domains. Every one is a tool or a named exclusion, and nothing here names a
-command: a verb registered later is published with no edit to this crate.
+Every registered command is a tool or a named exclusion. A new registered verb
+is projected without a second schema in this crate.
 
 ### Coverage
 
@@ -200,33 +160,6 @@ through the CLI. Build identity also comes from this executable's native owner. 
 the `mcp` domain itself, and `tools::NEVER_TOOLS`, each with its reason —
 `auth.login` (a password at a trusted terminal), `auth.link.approve` (the
 signed-in Desktop's act) and `server.serve` (a foreground host never answers).
-
-| Domain | Verbs | Typed tools | Excluded | `confirm` gated | Desktop gate |
-|---|---:|---:|---:|---:|---:|
-| `server` | 10 | 9 | 1 | 0 | 0 |
-| `dsgrid` | 42 | 42 | 0 | 3 | 2 |
-| `dsgrid-exchange` | 4 | 4 | 0 | 0 | 0 |
-| `library` | 16 | 16 | 0 | 9 | 0 |
-| `pls` | 11 | 11 | 0 | 1 | 0 |
-| `solar` | 55 | 55 | 0 | 13 | 16 |
-| `report` | 35 | 35 | 0 | 11 | 0 |
-| `survey` | 33 | 33 | 0 | 12 | 0 |
-| `map` | 59 | 59 | 0 | 9 | 39 |
-| `pm` | 26 | 26 | 0 | 18 | 0 |
-| `assets` | 14 | 14 | 0 | 6 | 0 |
-| `design` | 97 | 97 | 0 | 37 | 0 |
-| `install` | 4 | 4 | 0 | 2 | 0 |
-| `sre` | 2 | 2 | 0 | 0 | 0 |
-| `style` | 15 | 15 | 0 | 7 | 0 |
-| `tile` | 12 | 12 | 0 | 5 | 0 |
-| `data` | 19 | 19 | 0 | 1 | 4 |
-| `feedback` | 4 | 4 | 0 | 3 | 0 |
-| `desktop` | 29 | 29 | 0 | 8 | 26 |
-| `shell` | 3 | 3 | 0 | 0 | 0 |
-| `workstation` | 8 | 8 | 0 | 3 | 0 |
-| `mcp` | 2 | 0 | 2 | — | — |
-| `account` | 1 | 1 | 0 | 0 | 0 |
-| `auth` | 15 | 13 | 2 | 3 | 0 |
 
 The per-verb table — command, typed tool, chapter router, effect, hints,
 confirmation shape, desktop gate and status — is
@@ -506,13 +439,10 @@ confirmation; otherwise the effect class decides. Read-only commands and
 previews reject confirmation rather than forwarding it. Without confirmation,
 the CLI's typed `confirmation_required` refusal returns unchanged.
 
-Two command-owned inputs share a spelling with this machinery and stay the
-command's own: `design.force-gate.check --confirm <code>` is a string input,
-and the typed `.dsgrid` mutations (`dsgrid structure retype|describe|…`)
-declare their own `--yes` switch that writes the revision. Neither command is
-behind the central gate. A gated command that declared either would let an
-ordinary input confirm it, so such a descriptor stops the server from
-starting rather than being published.
+The command-owned `design.force-gate.check --confirm <code>` input remains a
+string and is outside the central confirmation gate. A gated command cannot
+reuse a confirmation input as ordinary data: such a descriptor prevents server
+startup rather than being published.
 
 ## Reading a result
 
@@ -530,7 +460,7 @@ ds mcp install --output json                # supported hosts plus the default V
 ds mcp install --host claude-desktop --output json # Windows Claude Desktop proposal
 ds mcp install --write --yes                # merge it into the VS Code user profile
 ds mcp install --host claude-code           # also cursor, codex, Gemini CLI, Antigravity, Windsurf, Copilot, generic
-ds mcp install --host claude-code --exposure commands --profile pls --write --yes
+ds mcp install --host claude-code --exposure commands --profile grid-profile --write --yes
 ds mcp install --host codex --write --yes   # losslessly add its derived mcp_servers table
 ds mcp install --host gemini-cli --write --yes
 ds mcp install --host antigravity --write --yes
@@ -609,7 +539,7 @@ business logic, or UI behavior is introduced by this server change.
 ## Verifying
 
 `ds doctor` reports the executable and skills. In the broad server, confirm
-`tools/list` returns 15 tools, call `ds_diagnostics` for identity, use
+`tools/list` returns 13 tools, call `ds_diagnostics` for identity, use
 `resources/list` then read `ds` and `ds-mcp-host`, and use `ds_catalog` to
 route one command. A paired-desktop command can then prove its lazy pairing
 refusal without affecting a later diagnostics call. In a typed profile, verify

@@ -1,13 +1,11 @@
 ---
 name: ds-pls-cadd-native-dialogs
 description: Classify PLS-CADD 16.81 native dialogs during an authorized Restore, reopen, backup, or report run. Wait for transient/progress windows, act only through a characterized workflow driver, and retain evidence for unknown prompts.
-metadata:
-  ds-chapters: pls-cadd
 ---
 
 # Handle PLS-CADD native dialogs
 
-Use the `ds` skill to discover and run the DS half of the workflow. This
+Use the `ds` skill for the installed surface. Core has no PLS-CADD controller. This
 skill governs the Windows PLS-CADD 16.81 handoff only; the DS model and its
 receipts remain on ds-server. Read the host's supported native controller
 contract before launching a run. The active operation and its expected next
@@ -40,8 +38,8 @@ Once the characterized native operation has completed, the supported driver
 closes its owned session without saving before offline artifact verification.
 A later content/count mismatch preserves the evidence and backup; it does not
 require leaving an otherwise idle native session open. For a session an older
-qualifier left open after completed Backup, discover `pls.desktop.close` and
-use its receipt-pinned no-save recovery. It refuses unknown native stops.
+qualifier left open, hand its receipt and observed state to the operator for
+no-save recovery. Core exposes no session-close command.
 
 ## Insufficient strength criteria
 
@@ -56,7 +54,7 @@ suppressed repeats. A report's violation count alone does not establish
 coverage. Record these placements as **strength not checked** and keep
 engineering acceptance incomplete.
 
-Repair a separate candidate through the supported DS controls using exact
+Have the independent engineering owner repair a separate candidate using exact
 reviewed native library members and their compatible criteria, loads, factors
 and dependencies. Check provenance: analytical-scaffold capacity tables and
 same-name members are not proof of native strength authority. Never invent
@@ -96,26 +94,19 @@ into reasons to leave the Yes dialog stacked. No (ID 7) is only for an explicit
 workflow that deliberately leaves the project unopened. A dialog reporting
 skipped files or another project is a refusal.
 
-The supported native controller is `ds pls desktop` on the Windows desktop:
-`check`, `restore`, `qualify`, `deliver`, `autosag`, `reports` and
-`sheets-pdf` run the characterized drivers embedded in `ds`, and
-`ds pls desktop dialogs` lists every catalogued decision. An unknown dialog
-stops those runs with `unknown_dialog`; PLS-CADD stays open for inspection.
-If the controller is unavailable, preserve the dialog and hand the exact
-observation to the operator; do not improvise a Win32 message driver. The
-generic posted button click was observed to leave this modal stacked, so do
-not repeat that ineffective action.
+Core no longer ships the `pls desktop` controller or its dialog catalogue
+command. Preserve the dialog and hand its exact observation to the operator;
+do not improvise a Win32 message driver. The generic posted button click was
+observed to leave this modal stacked, so do not repeat that ineffective action.
 
 A dialog that initially looks blocking may be only a draw/transition state.
 A dialog that disappears may also hide a failed restore. The evidence is the
 state transition, native artifacts and log, not the visual impression of a
 message.
 
-Do not add a prompt to the catalogue (`pls-dialog-catalog.psd1`, embedded in
-`ds` with a pinned digest) until its title, body, stage, controls and safe
-outcome have been reproduced with a pinned PLS version. Windows
-runs only the supported native controller on the transferred workspace; it
-does not become the application-code authority.
+Do not add a prompt to the catalogue in the independent PLS adapter until its title, body, stage, controls and safe
+outcome have been reproduced with a pinned PLS version. The operator works on the transferred workspace; that machine does not become
+the application-code authority.
 
 Stops at: the native PLS-CADD operator's decision to complete or refuse the
 characterized dialog; hand over the pinned workspace and observed controls.

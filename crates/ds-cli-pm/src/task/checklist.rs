@@ -41,19 +41,14 @@ const READ_UNREADABLE: Refusal = Refusal {
     remedy: "retry the task read; report a repeated server projection mismatch",
 };
 
-const fn edit_refusals() -> [Refusal; 44] {
-    let mut own = [INVALID; 22];
-    own[0] = INVALID;
-    own[1] = INPUT_UNREADABLE;
-    own[2] = crate::INVALID_NUMBER;
-    own[3] = super::proposals::INVALID_COMMAND_ID;
-    own[4] = super::subdivision::RESPONSE_UNREADABLE;
-    let mut index = 0;
-    while index < crate::geometry::PROPOSAL_REFUSALS.len() {
-        own[5 + index] = crate::geometry::PROPOSAL_REFUSALS[index];
-        index += 1;
-    }
-    crate::write_refusals::<44>(&own)
+const fn edit_refusals() -> [Refusal; 27] {
+    crate::write_refusals::<27>(&[
+        INVALID,
+        INPUT_UNREADABLE,
+        crate::INVALID_NUMBER,
+        super::proposals::INVALID_COMMAND_ID,
+        super::subdivision::RESPONSE_UNREADABLE,
+    ])
 }
 
 pub static READ: Command = Command {
@@ -98,7 +93,7 @@ pub static EDIT: Command = Command {
     path: &["pm", "task", "checklist", "edit"],
     contract: 1,
     summary: "Add, edit, answer, move or remove one task or milestone checklist item.",
-    purpose: "Apply one closed JSON edit to one stable task or milestone checklist item through the existing project command. The input contains action add|edit|check|uncheck|move|remove and item_id; optional checklist_kind, text, body, answer, geometry, clear_geometry, links, attachment_ids and zero-based index. Omitted fields stay unchanged. attachment_ids reference assets already held by this task; no upload, ownership transfer or project-wide overwrite occurs. Optional --geometry-from resolves DS objects through the existing native geometry owner and scopes its geometry/links to this item. Preserve --id, --base-revision and the exact authored input for retries. Permissions, list state, attachment authority and promotion fences are checked by the server.",
+    purpose: "Apply one closed JSON edit to one stable task or milestone checklist item through the existing project command. The input contains action add|edit|check|uncheck|move|remove and item_id; optional checklist_kind, text, body, answer, geometry, clear_geometry, links, attachment_ids and zero-based index. Omitted fields stay unchanged. attachment_ids reference assets already held by this task; no upload, ownership transfer or project-wide overwrite occurs. Preserve --id, --base-revision and the exact authored input for retries. Permissions, list state, attachment authority and promotion fences are checked by the server.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -113,9 +108,6 @@ pub static EDIT: Command = Command {
         .required(),
         ID,
         REVISION,
-        crate::geometry::GEOMETRY_FROM_ARG,
-        crate::geometry::PACKAGE_ARG,
-        crate::geometry::BUFFER_ARG,
         LANE_ARG,
         PROJECT_ARG,
     ],
@@ -267,71 +259,12 @@ pub fn read(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 
 pub fn edit(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let (id, revision) = envelope(inputs)?;
-    let mut edit = read_edit(inputs.require("input")?)?;
+    let edit = read_edit(inputs.require("input")?)?;
     let task = inputs.require("task")?;
-    let refs = inputs.repeated("geometry-from");
-    if !refs.is_empty() {
-        if !matches!(
-            edit.action,
-            checklist::EditAction::Add | checklist::EditAction::Edit
-        ) {
-            return Err(invalid("geometry-from belongs only to add or edit"));
-        }
-        if edit.geometry.is_some() || edit.clear_geometry {
-            return Err(invalid(
-                "geometry-from cannot accompany geometry or clear_geometry in the edit",
-            ));
-        }
-        crate::geometry::check(inputs, refs)?;
-        let report = crate::correspondence(
-            inputs.value("lane").unwrap_or("stable"),
-            inputs.require("project")?,
-            &Action::TaskRead {
-                task_id: task.to_owned(),
-                timeline: false,
-            },
-        )?;
-        let scope = ds_command_kernel::local_models::Scope {
-            lane: report.lane().to_owned(),
-            uid: report.identity().uid().to_owned(),
-        };
-        let project = report.project_id().to_owned();
-        let raw = report.into_result();
-        if raw["revision"].as_i64() != Some(revision) {
-            return Err(Failure::conflict(
-                crate::CONFLICT.code,
-                "plan revision moved before checklist geometry proposal",
-            )
-            .remedy(crate::CONFLICT.remedy));
-        }
-        let existing = edit
-            .links
-            .clone()
-            .unwrap_or_else(|| item_links(&raw["task"], &edit.item_id));
-        let proposal = crate::geometry::propose_scoped(inputs, refs, &project, &scope, &existing)?;
-        let proposal = crate::geometry::proposal_json(&proposal);
-        edit.geometry = Some(proposal["geometry"].clone());
-        let mut links: Vec<Value> = existing.iter().map(crate::geometry::wire_link).collect();
-        links.extend(proposal["links"].as_array().into_iter().flatten().cloned());
-        edit.links = Some(links);
-    }
     let command = edit.command(task, &id, revision).map_err(invalid)?;
     let mut outcome = super::subdivision::send(inputs, &command, task, &id, revision)?;
     outcome["itemId"] = json!(edit.item_id);
     Ok(outcome)
-}
-fn item_links(task: &Value, item: &str) -> Vec<Value> {
-    let items = task
-        .get("checklist")
-        .or_else(|| task.get("data").and_then(|data| data.get("checklist")));
-    items
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .find(|row| row["id"].as_str() == Some(item))
-        .and_then(|row| row["links"].as_array())
-        .cloned()
-        .unwrap_or_default()
 }
 fn promotion(
     inputs: &Inputs,
@@ -465,13 +398,5 @@ mod tests {
         assert_eq!(command["kind"], "promote_checklist_item");
         assert_eq!(command["promote_checklist_item"]["task_id"], "parent");
         assert_eq!(command["promote_checklist_item"]["item_id"], "i");
-    }
-    #[test]
-    fn geometry_uses_only_selected_items_links() {
-        let row = json!({"links":[{"kind":"other","target_id":"task-link"}],"data":{"checklist":[{"id":"i1","links":[{"kind":"ds_object","target_id":"first"}]},{"id":"i2","links":[{"kind":"ds_object","target_id":"second"}]}]}});
-        assert_eq!(
-            item_links(&row, "i2"),
-            vec![json!({"kind":"ds_object","target_id":"second"})]
-        );
     }
 }

@@ -64,72 +64,6 @@ fn report_inventory_uses_identical_cli_chapter_and_typed_profile_projection() {
     assert_eq!(expected["data"]["outputs"].as_array().unwrap().len(), 6);
 }
 
-#[test]
-fn exact_global_member_is_discovered_and_invoked_as_the_same_cli_contract() {
-    let id = "library.global.resolve-member";
-    let direct = cli(&["capabilities", id, "--output", "json"]);
-    let (messages, stderr) = mcp(
-        &["--exposure", "chapters"],
-        &[
-            json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
-            "name": "ds_catalog", "arguments": {"command": id}}}),
-            json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
-            "name": "ds_pls_cadd", "arguments": {"operation": "describe", "command": id}}}),
-            json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
-            "name": "ds_pls_cadd", "arguments": {"operation": "invoke", "command": id,
-                "arguments": {"library-id": "library_1", "release-id": "release_1",
-                    "relative-path": "pls-cadd/criteria/Base.CRI", "expected-digest": "invalid"}}}}),
-        ],
-    );
-    assert!(stderr.contains("serving"), "{stderr}");
-    assert_eq!(
-        response(&messages, 1)["result"]["structuredContent"]["next"]["tool"],
-        "ds_pls_cadd"
-    );
-    assert_eq!(
-        response(&messages, 2)["result"]["structuredContent"],
-        direct
-    );
-    let expected = cli_envelope(&[
-        "library",
-        "global",
-        "resolve-member",
-        "--library-id",
-        "library_1",
-        "--release-id",
-        "release_1",
-        "--relative-path",
-        "pls-cadd/criteria/Base.CRI",
-        "--expected-digest",
-        "invalid",
-        "--output",
-        "json",
-    ]);
-    assert_eq!(
-        response(&messages, 3)["result"]["structuredContent"],
-        expected
-    );
-    assert_eq!(expected["error"]["code"], "catalog_member_pin_invalid");
-    let (typed, _) = mcp(
-        &["--exposure", "commands", "--profile", "library-governance"],
-        &[json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})],
-    );
-    let tools = response(&typed, 1)["result"]["tools"].as_array().unwrap();
-    let member = tools
-        .iter()
-        .find(|tool| tool["name"] == "library_global_resolve-member")
-        .expect("typed member tool");
-    assert_eq!(
-        member["inputSchema"]["required"],
-        json!([
-            "library-id",
-            "release-id",
-            "relative-path",
-            "expected-digest"
-        ])
-    );
-}
-
 struct TestDir(PathBuf);
 
 impl TestDir {
@@ -1920,77 +1854,6 @@ fn chapter_routing_refuses_escape_and_confirmation_misuse() {
 }
 
 #[test]
-fn local_model_scoped_routers_reach_every_allowed_verb_and_preserve_refusals() {
-    use ds_cli_mcp::surface::{Profile, chapter_tool_name};
-    let mut calls = vec![
-        json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"ds_catalog", "arguments":{"chapter":"grid-model"}}}),
-        json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"name":"ds_catalog", "arguments":{"chapter":"design"}}}),
-    ];
-    let allowed = Profile::GridLocalModel.command_ids();
-    for (index, id) in allowed.iter().enumerate() {
-        let descriptor = cli(&["capabilities", id, "--output", "json"]);
-        let chapter = ds_cli_contract::spec::Chapter::from_token(
-            descriptor["data"]["command"]["chapter"].as_str().unwrap(),
-        )
-        .unwrap();
-        calls.push(json!({"jsonrpc":"2.0", "id":index+10, "method":"tools/call", "params":{"name":chapter_tool_name(chapter), "arguments":{"operation":"describe", "command":id}}}));
-    }
-    calls.extend([
-        json!({"jsonrpc":"2.0", "id":1000, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.inspect", "arguments":{}}}}),
-        json!({"jsonrpc":"2.0", "id":1001, "method":"tools/call", "params":{"name":"ds_design", "arguments":{"operation":"invoke", "command":"dsgrid.model.list", "arguments":{}}}}),
-        json!({"jsonrpc":"2.0", "id":1002, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.model.combine", "arguments":{"undeclared-privilege":true}}}}),
-        json!({"jsonrpc":"2.0", "id":1003, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.project.retire", "arguments":{"project":"not-authority", "model":"m", "expected-head":"rev", "expected-digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "reason":"unconfirmed control"}}}}),
-        json!({"jsonrpc":"2.0", "id":1004, "method":"tools/call", "params":{"name":"dsgrid_model_list", "arguments":{}}}),
-        json!({"jsonrpc":"2.0", "id":1005, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.model.list", "arguments":{"account":"scope-only", "lane":"stable", "project":"not-authority"}}}}),
-    ]);
-    let (messages, _) = mcp(
-        &["--exposure", "commands", "--profile", "grid-local-model"],
-        &calls,
-    );
-    let discovered: BTreeSet<_> = [1, 2]
-        .into_iter()
-        .flat_map(|id| {
-            response(&messages, id)["result"]["structuredContent"]["commands"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|row| row["id"].as_str().unwrap().to_owned())
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    assert_eq!(
-        discovered,
-        allowed.iter().map(|id| id.to_string()).collect()
-    );
-    assert_eq!(
-        allowed.len(),
-        64, // Five provider-neutral model-library lifecycle verbs, then exact
-        // membership (match) and the explicit update plan and apply.
-        "review every added lifecycle verb; do not hide it from disclosure"
-    );
-    for (index, id) in allowed.iter().enumerate() {
-        assert_eq!(
-            response(&messages, index as i64 + 10)["result"]["structuredContent"],
-            cli(&["capabilities", id, "--output", "json"]),
-            "{id} changed its canonical descriptor"
-        );
-    }
-    for id in [1000, 1001, 1004] {
-        assert_eq!(response(&messages, id)["error"]["code"], -32602);
-    }
-    for id in [1002, 1005] {
-        assert_eq!(
-            response(&messages, id)["result"]["structuredContent"]["error"]["code"],
-            "mcp_arguments_invalid"
-        );
-    }
-    assert_eq!(
-        response(&messages, 1003)["result"]["structuredContent"]["error"]["code"],
-        "confirmation_required"
-    );
-}
-
-#[test]
 fn printing_profile_exposes_one_bounded_live_preview_without_export_options() {
     let (responses, _) = mcp(
         &["--exposure", "commands", "--profile", "printing"],
@@ -2070,15 +1933,6 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "auth-context",
         "printing",
         "printing-maps",
-        "grid",
-        "grid-native",
-        "grid-corrections",
-        "grid-local-model",
-        "clearance",
-        "pls",
-        "pls-desktop",
-        "pls-library",
-        "library-governance",
         "survey",
         "form-factory",
         "survey-projects",
@@ -2116,59 +1970,6 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             .as_array()
             .expect("tools");
         let maximum = match profile {
-            // The broad Grid profile carries the existing file/report tools
-            // plus the existing local-lifecycle/publication leaves. Agents that
-            // need only that workflow use `grid-local-model` below.
-            // Project cache preparation stays in the narrower
-            // grid-local-model profile so this broad router remains bounded.
-            // Native creation completes the file workflow: one new bounded
-            // leaf. Focused clients can use grid-native or grid-local-model.
-            // Native project list/download complete the same model workflow.
-            // 2026-09-20 (contract 02): `dsgrid model show|link` and
-            // `dsgrid-exchange sync` — the working copy's record, its pin to a
-            // live PLS-CADD workspace, and the write back into it. A router
-            // that imports from PLS-CADD and cannot deliver to it is half a
-            // workflow.
-            // 2026-09-21: native structure import and atomic batch editing
-            // add two file-authoring leaves; see the profile's matching limit.
-            // 2026-09-25: `dsgrid replace-structure` and the combined schema
-            // workflow bring the reviewed broad profile to 30 tools.
-            // 2026-09-27: `dsgrid spotting preview-receipt` joins `dsgrid
-            // run` in the profile `ds-grid-spotting` names, so a truncated
-            // whole-model spotting receipt stays viewable. The installed
-            // canary exposes 30 leaves plus two bootstrap tools; reporter
-            // engine identity remains beside export so a delivery can name
-            // the binary that produced it.
-            // One retained-source cable reconciliation leaf.
-            // 2026-10-09: `dsgrid spotting apply-receipt` lands a complete
-            // whole-model spotting receipt; its truncated sibling only previews.
-            "grid" => 34,
-            // Seventeen working-copy leaves plus bootstrap: the four
-            // 2026-09-21 leaves (`dsgrid model forget`, `dsgrid structure
-            // admin-refresh`, `dsgrid profile labels set|show`) were routed
-            // here on 2026-09-22 from the broad `grid` router they had pushed
-            // past its budget. The governed head's versions, retire and
-            // restore joined on 2026-09-24 for the same reason (e62edf85).
-            // Include project model enumeration beside per-model versions;
-            // otherwise this profile cannot discover which IDs to inspect.
-            // The six package-asset leaves (a version's original PLS-CADD
-            // upload and its delivered backup) joined on 2026-09-25.
-            // `dsgrid alignment gap show|set` joined on 2026-09-25.
-            // 2026-09-25, versions and submissions (+21): `dsgrid project
-            // show|compare|exports list|publish|download|bump-version|update|
-            // set-approval|backup download`, `dsgrid model unlink`, the seven
-            // MV governance `design version` leaves and
-            // the four `design attachment` leaves an MV revision carries — the
-            // owner's order is that versioning and its attachments have no
-            // missing verb, and they are one workflow with publication.
-            // Four more attachment actions complete that workflow. The bound
-            // includes both bootstrap tools.
-            "grid-local-model" => 57,
-            // Sixteen file-in/file-out leaves plus bootstrap. Native backup
-            // preview belongs before import and restore in this workflow;
-            // the installed canary already advertises all eighteen tools.
-            // One retained-source cable reconciliation leaf.
-            "grid-native" => 19,
             // Shared/manual form resolve and save belong to city input work.
             // Editable city creation completes the no-GIS entry point.
             "solar-input" => 18,
@@ -2263,19 +2064,9 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(published["printing"].contains("report_plan"));
     for leaf in ["report_project_crs", "report_voltage-drop-combined"] {
         assert!(published["printing"].contains(leaf), "{leaf}");
-        assert!(!published["grid"].contains(leaf), "{leaf}");
     }
     assert!(published["printing-maps"].contains("assets_map_publish"));
-    for leaf in [
-        "dsgrid_template_inspect",
-        "dsgrid_template_compile",
-        "dsgrid_template_apply",
-    ] {
-        assert!(published["grid-native"].contains(leaf), "{leaf}");
-        assert!(!published["grid"].contains(leaf), "{leaf}");
-    }
     assert!(published["project-operations"].contains("report_artifact_remove"));
-    assert!(published["library-governance"].contains("library_global_download"));
     assert!(!published["printing"].contains("report_artifact_remove"));
     // The headless production loop is reachable through the printing profile.
     for headless in [
@@ -2292,9 +2083,6 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             "the printing profile must project the headless loop: {headless}"
         );
     }
-    assert!(!published["grid"].contains("report_transformers"));
-    assert!(!published["grid"].contains("report_plan"));
-    assert!(!published["grid"].contains("dsgrid_backup_preview"));
     for configured in [
         "report_project_settings",
         "report_project_outputs_set",
@@ -2303,61 +2091,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     ] {
         assert!(!published["project-operations"].contains(configured));
     }
-    let (backup, _) = mcp(
-        &["--exposure", "chapters"],
-        &[
-            json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "command": "dsgrid.backup.preview" } } }),
-            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_grid_model", "arguments": { "operation": "describe", "command": "dsgrid.backup.preview" } } }),
-        ],
-    );
-    assert_eq!(
-        response(&backup, 1)["result"]["structuredContent"]["next"]["tool"],
-        "ds_grid_model"
-    );
-    let global = cli(&["capabilities", "dsgrid.backup.preview", "--output", "json"]);
-    assert_eq!(global["data"]["command"]["availability"], "available");
-    assert_eq!(response(&backup, 2)["result"]["structuredContent"], global);
-    for native in [
-        "dsgrid_create",
-        "dsgrid_inspect",
-        "dsgrid_validate",
-        "dsgrid_describe",
-        "dsgrid_run",
-        "dsgrid_apply",
-        "dsgrid-exchange_inspect",
-        "dsgrid-exchange_plan",
-        "dsgrid-exchange_convert",
-    ] {
-        assert!(
-            published["grid-native"].contains(native),
-            "native grid workflow is missing {native}"
-        );
-    }
-    assert!(!published["grid-native"].contains("dsgrid_model_create-local"));
-    assert!(!published["grid-native"].contains("dsgrid_publish-version"));
-    assert!(!published["grid-native"].contains("dsgrid_apply-batch"));
-    assert!(!published["grid-native"].contains("dsgrid-exchange_sync"));
-    assert!(published["grid-corrections"].contains("dsgrid_apply-correction"));
-    assert!(published["grid-corrections"].contains("dsgrid_reconcile-cable-source"));
-    assert!(published["project-task-operations"].contains("pm_task_geometry_set"));
+    assert!(!published["project-task-operations"].contains("pm_task_geometry_set"));
+    assert!(published["project-task-operations"].contains("pm_task_geometry_read"));
+    assert!(published["project-task-operations"].contains("pm_task_geometry_clear"));
     assert!(published["project-task-operations"].contains("pm_task_create"));
-    assert!(!published["project"].contains("pm_task_geometry_set"));
-    assert!(published["project"].contains("pm_task_create"));
-    assert!(!published["grid-corrections"].contains("dsgrid_apply-batch"));
-    assert_eq!(
-        published["grid-local-model"],
-        BTreeSet::from(["ds_grid_model".to_owned(), "ds_design".to_owned(),]),
-        "the complete local lifecycle loads contracts through its scoped routers"
-    );
-    // Package assets live with the version lifecycle alone: neither the broad
-    // `grid` router nor the file-in/file-out `grid-native` one carries them.
-    for leaf in ["dsgrid_asset_list", "dsgrid_project_asset_list"] {
-        assert!(!published["grid"].contains(leaf), "{leaf} widened `grid`");
-        assert!(
-            !published["grid-native"].contains(leaf),
-            "{leaf} widened `grid-native`"
-        );
-    }
     // The correspondence workflow is its own profile (2026-09-20): the
     // letters an agent files and the tasks it schedules are two jobs, and
     // one bounded project profile could not carry both.
@@ -2381,27 +2118,6 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     assert!(
         !published["project"].contains("pm_record_create"),
         "filing a letter is the correspondence profile's job"
-    );
-    assert!(
-        published["clearance"].contains("dsgrid_feature-codes_report")
-            && published["clearance"].contains("dsgrid_feature-codes_import")
-            && published["clearance"].contains("dsgrid_feature-codes_migrate")
-            && published["clearance"].contains("dsgrid_feature-codes_export")
-            && published["clearance"].contains("dsgrid_criteria_show")
-            && published["clearance"].contains("dsgrid_criteria_clearance_set")
-            && published["clearance"].contains("dsgrid_analyse_clearance"),
-        "the grid-clearance profile must project the whole feature-code and clearance workflow"
-    );
-    assert!(!published["grid-native"].contains("dsgrid_analyse_clearance"));
-    assert!(
-        published["pls"].contains("pls_backup-create"),
-        "the PLS profile must expose the live backup command without a second MCP schema"
-    );
-    assert!(
-        published["pls-desktop"].contains("pls_desktop_deliver")
-            && published["pls-desktop"].contains("pls_desktop_dialogs")
-            && !published["pls"].contains("pls_desktop_deliver"),
-        "the PLS-CADD desktop verbs are their own profile, projected from the live registry"
     );
     assert!(
         published["design-edit"].contains("map_design_open"),
@@ -2513,10 +2229,6 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                 "solar-dashboard",
             ][..],
         ),
-        (
-            "pls_",
-            &["pls", "pls-desktop", "pls-library", "library-governance"][..],
-        ),
     ] {
         let expected = all
             .iter()
@@ -2533,9 +2245,6 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
                                 | "design_lv_process"
                                 | "design_lv_voltage-drop"
                         ))
-                    || (prefix == "pls_"
-                        && name.starts_with("library_")
-                        && !name.starts_with("library_model_"))
             })
             .cloned()
             .collect::<BTreeSet<_>>();
@@ -2561,7 +2270,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
     }
 
     let (responses, _) = mcp(
-        &["--exposure", "commands", "--profile", "pls"],
+        &["--exposure", "commands", "--profile", "grid-profile"],
         &[
             json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "tile_generate", "arguments": {} } }),
             json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "ds_catalog", "arguments": { "command": "tile.generate" } } }),
@@ -2733,8 +2442,6 @@ fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
     const NOT_A_HOST: &[&str] = &[
         "map.ui.open",
         "design.config.rule-set.duplicate",
-        "dsgrid-exchange.plan",
-        "dsgrid-exchange.convert",
         "workstation.plan",
         "workstation.configure",
         // The resolver's screen/print cartographic target is a dimension of
@@ -3114,30 +2821,12 @@ fn typed_schemas_are_generated_from_the_live_descriptors() {
         }
     }
 
-    let inspect = leaf(&tools, "dsgrid.inspect");
-    let include = &inspect["inputSchema"]["properties"]["include"];
-    assert_eq!(include["type"], "array");
-    assert!(
-        include["items"]["enum"]
-            .as_array()
-            .is_some_and(|choices| !choices.is_empty())
-    );
-
     // `design.force-gate.check` owns a string input named `confirm`.
     let gate = leaf(&tools, "design.force-gate.check");
     assert_eq!(
         gate["inputSchema"]["properties"]["confirm"]["type"],
         "string"
     );
-
-    // The typed dsgrid mutations own a `--yes` switch that writes their
-    // revision; they are not behind the CLI's central gate.
-    let retype = leaf(&tools, "dsgrid.structure.retype");
-    assert_eq!(
-        retype["inputSchema"]["properties"]["yes"]["type"],
-        "boolean"
-    );
-    assert!(retype["inputSchema"]["properties"].get("confirm").is_none());
 
     // A preview-capable global write says how to preview without confirming.
     let task = leaf(&tools, "pm.task.create");
@@ -3715,31 +3404,6 @@ fn retired_general_workflow_commands_are_absent_from_mcp_discovery_and_routing()
 }
 
 #[test]
-fn mcp_grid_describe_preserves_inline_authoring_schemas() {
-    let ids = [
-        "create_route_node",
-        "create_structure",
-        "author_terrain_source",
-        "create_tension_section_set_path",
-    ];
-    let requests: Vec<Value> = ids.iter().enumerate().map(|(index, id)| json!({
-        "jsonrpc":"2.0", "id":index + 1, "method":"tools/call", "params":{
-            "name":ds_cli_mcp::surface::chapter_tool_name(Chapter::GridModel),
-            "arguments":{"operation":"invoke","command":"dsgrid.describe","arguments":{"kind":"commands","id":id}}
-        }
-    })).collect();
-    let (responses, _) = mcp(&["--exposure", "chapters"], &requests);
-    for (index, id) in ids.iter().enumerate() {
-        let result = &response(&responses, (index + 1) as i64)["result"];
-        let direct = cli(&[
-            "dsgrid", "describe", "--kind", "commands", "--id", id, "--output", "json",
-        ]);
-        assert_eq!(result["structuredContent"], direct);
-        assert!(result.to_string().len() < ds_cli_mcp::surface::MAX_RESULT_BYTES);
-    }
-}
-
-#[test]
 fn messaging_profile_uses_descriptor_inputs_and_confirmation() {
     let requests = [
         json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
@@ -3780,29 +3444,6 @@ fn messaging_profile_uses_descriptor_inputs_and_confirmation() {
     assert_eq!(
         response(&messages, 2)["result"]["structuredContent"]["error"]["code"],
         "confirmation_required"
-    );
-}
-
-#[test]
-fn manual_combination_projects_the_same_preview_through_mcp() {
-    let fixture = common::fixture();
-    let (messages, _) = mcp(
-        &["--exposure", "commands", "--profile", "grid-local-model"],
-        &[
-            json!({"jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"describe", "command":"dsgrid.model.combine"}}}),
-            json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"name":"ds_grid_model", "arguments":{"operation":"invoke", "command":"dsgrid.model.combine", "arguments":{"source":[fixture,fixture]}}}}),
-        ],
-    );
-    assert_eq!(
-        response(&messages, 1)["result"]["structuredContent"],
-        cli(&["capabilities", "dsgrid.model.combine", "--output", "json"])
-    );
-    assert_eq!(
-        response(&messages, 2)["result"]["structuredContent"],
-        cli(&[
-            "dsgrid", "model", "combine", "--source", &fixture, "--source", &fixture, "--output",
-            "json"
-        ])
     );
 }
 

@@ -56,10 +56,9 @@ not approved defaults; inspect the current user direction and accepted previews.
 
 - Design: the union of the staged transformer documents (`report project export` with
   `DS_REPORT_HOST_KEEP_STAGING=1` keeps `transformer.json`/`print-context.json` per run) plus
-  the MV model projected natively: `ds dsgrid run --model <.dsgrid> --operation project_plan
-  --limit 5000` gives route nodes (angle points = role `intermediate`) and route edges per
-  alignment; the model CRS is in `ds dsgrid inspect`. MV quantities (routes, km, angle
-  points, ends) go into a `mv_quantities` layer of table rows; declare its columns in the
+  an MV projection supplied by the independent engineering owner with its exact
+  model revision and CRS. Core has no Grid file projection command. MV quantities
+  belong in a `mv_quantities` layer of table rows; declare its columns in the
   config's `know_columns` sheet or the column policy empties them.
 - The engine stamps every design feature's `transfo` with the request identity, so the
   governed transformer label reads one name on a merged sheet: hide it and carry `NAME · kVA`

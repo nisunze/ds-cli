@@ -233,58 +233,19 @@ There is no automatic rebase. Promotion creates the explicit child and retains
 the item's evidence and location atomically. `--request <email>` uses existing
 assignment requests and may be repeated.
 
-On add/edit, `--geometry-from` uses the same native DS object resolver as task
-geometry. It reads only the named task to pin its revision and preserve that
-item's links, then writes the geometry and links in the same item command.
-The task's own geometry, links and other items are unaffected.
+## Existing task geometry
 
-## Where the work is: task geometry from DS objects
+A task may carry stored WGS84 geometry and typed object links. Discover
+`pm.task.geometry.read` to inspect them and `pm.task.geometry.clear` for an
+explicitly confirmed removal. Clear preserves links unrelated to the stored
+Grid geometry. Ordinary task creation, dry-run preview, and checklist operations
+remain available with their existing project authority and revision fences.
 
-A task carries one optional top-level WGS84 geometry (Point, LineString or
-Polygon) and typed links. Nobody draws it from the CLI: the person or agent
-that read a comment naming DS Grid structures supplies **typed references**,
-the kernel resolves them deterministically against the model and shapes the
-geometry, `--dry-run` shows the proposal, `--yes` writes it. Nothing parses
-prose anywhere in the stack. The contract is
-`ds-command-kernel/docs/contracts/task-geometry-from-objects.md`.
-
-```bash
-ds pm task create --title "Swamp crossing at 74/76/77" --kind inbox \
-   --geometry-from dsgrid:local-<id>:structure:74,76,77 --dry-run --output json   # proposal, nothing written
-ds pm task create --title "Swamp crossing at 74/76/77" --kind inbox \
-   --geometry-from dsgrid:local-<id>:structure:74,76,77 --yes                     # task + geometry + 3 links, one revision
-ds pm task geometry read  --task T4 --output json                                 # geometry, objectLinks[], subject_state
-ds pm task geometry set   --task T4 --from dsgrid:local-<id>:alignment:aln-1:74..77 --dry-run
-ds pm task geometry clear --task T4 --yes
-```
-
-| Reference | Resolves to |
-|---|---|
-| `dsgrid:local-<id>:structure:74,76,77` | structures by engineering number (then by id) of the working copy `<id>` in this machine's catalogue (`ds dsgrid model list`, the session's lane and account) |
-| `dsgrid:package:structure:74` with `--package <path>` | the same, from a `.dsgrid` file — e.g. a head taken with `ds dsgrid project download` |
-| `dsgrid:<src>:alignment:<id-or-label>` | the alignment's whole route |
-| `dsgrid:<src>:alignment:<aln>:74..77` | the route between the two structures, by station |
-
-| Resolved | Shape |
-|---|---|
-| one structure | `Point` |
-| several structures | `Polygon` — their convex hull buffered by `--buffer-m` (default 25, 1..500) |
-| an alignment / a range | `LineString` |
-
-Every resolved object becomes one `ds_object` link (`object_type`
-`dsgrid_structure` / `dsgrid_alignment`, `entity_id` `<model id>:<object id>`,
-`object_revision` the package revision and fingerprint it was read from), so
-the plan says which structures the area came from. `set` keeps the task's
-other links; `clear` removes the geometry and only the DS Grid object links.
-
-A transformer is linked as a typed subject through the work-template flow and
-a survey entry through a `survey_entry` link; neither is shaped into the
-task's geometry, by the links contract — a `transformer:` or `survey:`
-reference is refused as `reference_invalid` and says so.
-
-The write is the ordinary `create_task` / `update_task_fields` command every
-other `ds pm` write sends, against the revision it read, through the same
-headless door.
+Core no longer exposes geometry authoring from model objects:
+`pm.task.geometry.set` and the `--geometry-from`, `--package`, and `--buffer-m`
+inputs on task creation/checklist editing are absent. The
+[restoration backlog](../../../ds-architecture/backlog/DECOUPLING.md#decoupling-004--restore-pm-geometry-authoring)
+names the independent owner boundary required to restore that workflow.
 
 ## Which model version: exact DS Grid model links
 
@@ -297,7 +258,6 @@ The contract is ds-brain
 `docs/contracts/work-links-and-spatial-anchors.md` (DS Grid model versions).
 
 ```bash
-ds dsgrid project versions --model <model-id> --output json                       # revisions grouped by version
 ds pm model-link add    --task T4 --model <model-id> --version 3 --yes            # pins version 3's newest revision now
 ds pm model-link add    --note N1 --model <model-id> --revision <revision-id> --yes
 ds pm model-link list   --task T4 --output json                                   # links[]: model_id, revision_id, model_version, model_digest, attached_by/at
@@ -314,7 +274,7 @@ ds pm model-link remove --task T4 --model <model-id> --revision <revision-id> --
 - A link outlives retirement of its model: it can still be read and removed,
   but a retired model cannot be newly linked.
 - Task geometry links (`dsgrid_structure`, `dsgrid_alignment`) are separate
-  and untouched; `ds pm task geometry set` keeps model links on the task.
+  and untouched by model-link operations.
 - Linking freezes nothing. This is not the design-version `vN` marker, and an
   immutable external submission stays a Project Work record.
 - `list --model` reads project notes from the bounded context page;
@@ -387,11 +347,6 @@ what a person may set is a waiver, with a reason, and it is not withdrawn.
 | `invalid_assignment` | `--request`, `--owner` and `--withdraw` are three different intents |
 | `invalid_date` | a schedule flag that is not `YYYY-MM-DD` |
 | `invalid_task_shape` | a child/root/milestone was given contradictory parent or date flags |
-| `reference_invalid` | a `--from` / `--geometry-from` is not `dsgrid:<local-<id>\|package>:structure:…` or `:alignment:…`; `detail.part` names the piece |
-| `model_unknown` | the working copy is not in this machine's catalogue, or `package` was referenced without `--package` |
-| `object_unresolved` / `object_ambiguous` | a number, id or label is not in the model, or names two objects (`detail` lists them) |
-| `references_incompatible` | structures and an alignment, or two alignments, in one proposal |
-| `too_many_objects` / `geometry_too_large` / `links_bound_exceeded` / `buffer_out_of_range` | a bound, with its number |
 | `model_link_source_invalid` | `model-link` needs exactly one `--task` or `--note`, and a note must be a project note |
 | `model_link_invalid` | a model or revision id is not an exact catalog id, neither `--revision` nor `--version` was given, or the item holds 128 links |
 | `model_version_not_found` | the project's catalog has no such model, revision or version |

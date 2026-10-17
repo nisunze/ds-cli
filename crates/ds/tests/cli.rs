@@ -1,10 +1,4 @@
-//! End-to-end invocation: exit codes, envelope stability, build identity, and
-//! the vertical command against real domain data.
-//!
-//! The semantic assertions here bind to the actual `.dsgrid` fixture in
-//! `ds-network`, not to a mock. A mock would prove only that this crate's
-//! adapter talks to itself; the point of the vertical slice is that `ds`
-//! reaches the authoritative engine and reports what the engine says.
+//! End-to-end invocation: exit codes, envelope stability, build identity, and retained command routing.
 
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -14,7 +8,6 @@ use serde_json::Value;
 
 #[path = "../build_pin.rs"]
 mod build_pin;
-mod common;
 
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -54,45 +47,34 @@ fn ds(args: &[&str]) -> Run {
 
 #[test]
 fn exit_codes_map_to_their_classes() {
-    let model = common::fixture();
     let cases: &[(&str, i32, &[&str])] = &[
-        ("success", 0, &["dsgrid", "inspect", "--model", "MODEL"]),
+        ("success", 0, &["version"]),
         ("unknown domain", 2, &["nosuchdomain"]),
-        ("unknown command", 2, &["dsgrid", "nosuchcommand"]),
-        ("unknown flag", 2, &["dsgrid", "inspect", "--nope", "x"]),
-        ("missing required input", 2, &["dsgrid", "inspect"]),
-        ("missing value", 2, &["dsgrid", "inspect", "--model"]),
+        ("unknown command", 2, &["map", "nosuchcommand"]),
+        ("unknown flag", 2, &["map", "zoom", "--nope", "x"]),
+        ("missing required input", 2, &["pm", "task", "create"]),
+        ("missing value", 2, &["pm", "task", "create", "--title"]),
         (
             "invalid choice",
             2,
-            &["dsgrid", "inspect", "--model", "MODEL", "--include", "nope"],
-        ),
-        (
-            "file not found",
-            2,
-            &["dsgrid", "inspect", "--model", "/no/such/file.dsgrid"],
+            &[
+                "pm",
+                "task",
+                "create",
+                "--title",
+                "t",
+                "--kind",
+                "nope",
+                "--project",
+                "p",
+            ],
         ),
     ];
-
     for (label, expected, args) in cases {
-        let args: Vec<String> = args
-            .iter()
-            .map(|arg| {
-                if *arg == "MODEL" {
-                    model.clone()
-                } else {
-                    (*arg).to_string()
-                }
-            })
-            .chain(["--output".into(), "json".into()])
-            .collect();
-        let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
-        let run = ds(&borrowed);
-        assert_eq!(
-            run.code, *expected,
-            "{label}: expected exit {expected}, got {}: {}{}",
-            run.code, run.stdout, run.stderr
-        );
+        let mut args = args.to_vec();
+        args.extend(["--output", "json"]);
+        let run = ds(&args);
+        assert_eq!(run.code, *expected, "{label}: {}{}", run.stdout, run.stderr);
     }
 }
 
@@ -102,8 +84,8 @@ fn exit_code_and_envelope_class_always_agree() {
     // `error.class` must never reach different conclusions.
     let cases: &[&[&str]] = &[
         &["nosuchdomain"],
-        &["dsgrid", "inspect"],
-        &["dsgrid", "inspect", "--model", "/no/such/file.dsgrid"],
+        &["map", "zoom"],
+        &["pm", "task", "create"],
         &["capabilities", "nosuchselector"],
     ];
     let expected = [
@@ -161,13 +143,12 @@ fn every_failure_class_has_its_exact_exit_and_envelope_token() {
 
 #[test]
 fn success_envelope_is_stable() {
-    let model = common::fixture();
-    let run = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);
+    let run = ds(&["version", "--output", "json"]);
     assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
 
     assert_eq!(run.envelope["v"], 1, "envelope version changed");
     assert_eq!(run.envelope["status"], "ok");
-    assert_eq!(run.envelope["command"], "dsgrid.inspect");
+    assert_eq!(run.envelope["command"], "version");
     assert_eq!(run.envelope["contract"], 1);
     assert!(run.envelope["data"].is_object());
     // `more` is absent when there is nothing more to say. Absence is the
@@ -177,20 +158,13 @@ fn success_envelope_is_stable() {
 
 #[test]
 fn error_envelope_is_stable() {
-    let run = ds(&[
-        "dsgrid",
-        "inspect",
-        "--model",
-        "/no/such/file.dsgrid",
-        "--output",
-        "json",
-    ]);
+    let run = ds(&["map", "zoom", "--output", "json"]);
     assert_eq!(run.envelope["v"], 1);
     assert_eq!(run.envelope["status"], "error");
-    assert_eq!(run.envelope["command"], "dsgrid.inspect");
+    assert_eq!(run.envelope["command"], "map.zoom");
     let error = &run.envelope["error"];
     assert_eq!(error["class"], "invalid_input");
-    assert_eq!(error["code"], "model_not_found");
+    assert_eq!(error["code"], "zoom_target");
     assert_eq!(error["retryable"], false);
     assert!(
         error["remedy"].is_string(),
@@ -227,8 +201,7 @@ fn a_declared_refusal_leaves_with_the_remedy_its_help_promises() {
 
 #[test]
 fn machine_output_is_stdout_and_diagnostics_are_stderr() {
-    let model = common::fixture();
-    let run = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);
+    let run = ds(&["version", "--output", "json"]);
     assert!(
         run.stderr.is_empty(),
         "success wrote to stderr: {}",
@@ -238,12 +211,12 @@ fn machine_output_is_stdout_and_diagnostics_are_stderr() {
 
     // A refusal in JSON mode is a result a caller must parse, so it goes to
     // stdout too — stdout stays parseable in every outcome.
-    let failed = ds(&["dsgrid", "inspect", "--model", "/nope", "--output", "json"]);
+    let failed = ds(&["map", "zoom", "--output", "json"]);
     serde_json::from_str::<Value>(&failed.stdout).expect("refusal is on stdout as JSON");
 
     // In human mode the same refusal goes to stderr, so a person piping
     // stdout gets only answers.
-    let human = ds(&["dsgrid", "inspect", "--model", "/nope"]);
+    let human = ds(&["map", "zoom"]);
     assert!(
         human.stdout.is_empty(),
         "human-mode refusal polluted stdout"
@@ -392,7 +365,7 @@ fn a_command_scoped_version_value_never_answers_with_the_release_envelope() {
     }
 
     // A command with no `version` input of its own keeps the flag's old reach.
-    let inherited = ds(&["dsgrid", "inspect", "--version", "--output", "json"]);
+    let inherited = ds(&["map", "zoom", "--version", "--output", "json"]);
     assert_eq!(inherited.code, 0);
     assert_eq!(inherited.envelope["data"], release);
 }
@@ -429,162 +402,24 @@ fn ds_network_release_pin_validation_is_closed_and_development_is_explicit() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn inspect_reports_the_engine_s_own_identity() {
-    let model = common::fixture();
-    let run = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);
-    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
-    let data = &run.envelope["data"];
-
-    // These are the fixture's real values, produced by ds-grid-exchange. They
-    // are asserted verbatim so a change in the engine's answer is a visible
-    // test failure rather than a silent change in what `ds` reports.
-    assert_eq!(data["format"], "dsgrid");
-    assert_eq!(data["model"]["crs"], "EPSG:32735");
-    assert_eq!(data["model"]["schema_version"], 5);
-    assert_eq!(data["model"]["format_version"], 1);
-    // Canonical ds-network granular-tag schema regenerated this self-authored fixture.
-    // Regenerated again on 2026-09-20 when the FEA member became engineering
-    // (program contract 03): the fixture carries its feature-code definition
-    // and its survey points resolve by number.
-    // Native axis normalization and the spotting-warnings schema re-emitted
-    // the fixture on 2026-09-21 and 2026-09-22, respectively; on 2026-09-26
-    // its cables were re-read in the units PLS-CADD's Cable Data Report prints.
-    // On 2026-10-04 ds-network re-emitted it at strict schema 4 (all 47 current
-    // tables; ds-network 5b86e73e), which moved its fingerprint.
-    // The test-local native schema-5 migration now preserves those source
-    // identities while adding the explicit ground-profile basis table. The
-    // committed predecessor remains unchanged and its receipt is retained.
-    // Keep the source fingerprint and its derived model id coupled: changing
-    // one while leaving the other stale would conceal an identity drift.
-    const HUMBLE_FINGERPRINT: &str = "fnv1a64:fc2cb1fa44bb0d96";
-    assert_eq!(data["model"]["fingerprint"], HUMBLE_FINGERPRINT);
-    assert_eq!(
-        data["model"]["id"],
-        format!(
-            "pls-import-fnv1a64:{}",
-            HUMBLE_FINGERPRINT
-                .strip_prefix("fnv1a64:")
-                .expect("fixture fingerprint prefix")
-                .get(..8)
-                .expect("fingerprint has the id digest prefix")
-        )
-    );
-
-    // The default answer decodes nothing. This is the cost contract, not a
-    // detail: it is why calling inspect first is cheap.
-    assert_eq!(data["decoded"], false);
-    assert!(
-        data.get("tables").is_none(),
-        "default answer carried a projection"
-    );
-    assert!(
-        data.get("library").is_none(),
-        "default answer carried a projection"
-    );
-}
-
-#[test]
-fn projections_are_opt_in_and_report_their_cost() {
-    let model = common::fixture();
-
-    let manifest_only = ds(&[
-        "dsgrid",
-        "inspect",
-        "--model",
-        &model,
-        "--include",
-        "tables",
-        "--output",
-        "json",
-    ]);
-    assert_eq!(manifest_only.code, 0);
-    assert_eq!(
-        manifest_only.envelope["data"]["decoded"], false,
-        "the tables projection is answerable from the manifest and must not decode"
-    );
-    assert!(manifest_only.envelope["data"]["tables"].is_object());
-
-    let decoded = ds(&[
-        "dsgrid",
-        "inspect",
-        "--model",
-        &model,
-        "--include",
-        "library",
-        "--output",
-        "json",
-    ]);
-    assert_eq!(decoded.code, 0);
-    assert_eq!(
-        decoded.envelope["data"]["decoded"], true,
-        "the library projection needs the tables and must say so"
-    );
-    let library = &decoded.envelope["data"]["library"];
-    assert!(
-        !library["structure_types"]
-            .as_array()
-            .expect("structure types")
-            .is_empty()
-    );
-    assert!(!library["cables"].as_array().expect("cables").is_empty());
-}
-
-#[test]
-fn truncation_is_always_visible() {
-    // A silently shortened list reads as a complete one. Ask for a limit
-    // below the real count and the response must say what it withheld.
-    let model = common::fixture();
-    let run = ds(&[
-        "dsgrid",
-        "inspect",
-        "--model",
-        &model,
-        "--include",
-        "tables",
-        "--limit",
-        "2",
-        "--output",
-        "json",
-    ]);
-    assert_eq!(run.code, 0);
-    let tables = run.envelope["data"]["tables"].as_object().expect("tables");
-    assert_eq!(tables.len(), 2, "limit was not applied");
-
-    let truncated = run.envelope["data"]["more"]["truncated"]
-        .as_array()
-        .expect("truncation must be reported");
-    let entry = truncated.iter().find(|entry| entry["field"] == "tables");
-    let entry = entry.expect("the truncated tables projection must be named");
-    assert!(entry["withheld"].as_u64().expect("withheld count") > 0);
-}
-
-#[test]
-fn continuation_names_what_else_exists() {
-    // The response tells a caller what it did not ask for, so discovering the
-    // rest never costs another round-trip through help.
-    let model = common::fixture();
-    let run = ds(&["dsgrid", "inspect", "--model", &model, "--output", "json"]);
-    let available = run.envelope["data"]["more"]["available_projections"]
-        .as_array()
-        .expect("unrequested projections are named");
-    let names: Vec<&str> = available.iter().filter_map(Value::as_str).collect();
-    assert!(names.contains(&"tables"));
-    assert!(names.contains(&"library"));
-}
-
-#[test]
 fn bounds_are_enforced_not_merely_documented() {
-    let model = common::fixture();
-    for (limit, code) in [("0", 2), ("abc", 2), ("999999", 2)] {
+    for padding in ["-1", "abc", "241", "NaN"] {
         let run = ds(&[
-            "dsgrid", "inspect", "--model", &model, "--limit", limit, "--output", "json",
+            "map",
+            "zoom",
+            "--bbox",
+            "29.9,-2.1,30.2,-1.85",
+            "--padding",
+            padding,
+            "--output",
+            "json",
         ]);
         assert_eq!(
-            run.code, code,
-            "--limit {limit} was not rejected: {}",
-            run.stdout
+            run.code, 2,
+            "--padding {padding}: {}{}",
+            run.stdout, run.stderr
         );
-        assert_eq!(run.envelope["error"]["code"], "invalid_limit");
+        assert_eq!(run.envelope["error"]["code"], "invalid_number");
     }
 }
 
@@ -593,7 +428,7 @@ fn bounds_are_enforced_not_merely_documented() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn unavailable_refusals_carry_a_remedy_and_a_next_step() {
+fn desktop_status_is_actionable_in_every_machine_state() {
     // `desktop status` reaches the real world. Whatever this machine's state,
     // the answer must be actionable: either a report, or a refusal naming a
     // remedy.
@@ -622,6 +457,24 @@ fn unavailable_refusals_carry_a_remedy_and_a_next_step() {
         return;
     }
     let error = &run.envelope["error"];
+    if error["code"] == "desktop_ambiguous" {
+        assert_eq!(error["class"], "invalid_input");
+        assert_eq!(error["retryable"], false);
+        assert!(
+            error["remedy"]
+                .as_str()
+                .expect("ambiguity remedy")
+                .contains("--target desktop:<instance_id>")
+        );
+        assert!(
+            error["next"]
+                .as_array()
+                .expect("ambiguity next steps")
+                .iter()
+                .any(|step| step == "ds desktop list")
+        );
+        return;
+    }
     assert_eq!(error["class"], "unavailable");
     assert!(
         error["remedy"].is_string(),
@@ -663,7 +516,21 @@ fn an_explicit_stale_descriptor_never_leaks_its_secret() {
         run.code, 3,
         "a stale descriptor is an unavailable, not a crash"
     );
-    assert_eq!(run.envelope["error"]["code"], "desktop_unreachable");
+    let error = &run.envelope["error"];
+    assert_eq!(error["code"], "desktop_unreachable");
+    assert!(
+        !error["remedy"]
+            .as_str()
+            .expect("unavailable remedy")
+            .is_empty()
+    );
+    assert!(
+        !error["next"]
+            .as_array()
+            .expect("unavailable next steps")
+            .is_empty()
+    );
+    assert_eq!(error["retryable"], true);
     assert!(
         !run.stdout.contains("s3cr3t-pairing-value")
             && !run.stderr.contains("s3cr3t-pairing-value"),
@@ -675,23 +542,23 @@ fn an_explicit_stale_descriptor_never_leaks_its_secret() {
 fn near_misses_are_suggested() {
     // An agent that guessed a name should be corrected, not sent back to
     // help. This is the cheapest possible recovery.
-    let run = ds(&["dsgrd", "--output", "json"]);
+    let run = ds(&["maap", "--output", "json"]);
     assert_eq!(run.envelope["error"]["code"], "unknown_domain");
     assert!(
         run.envelope["error"]["remedy"]
             .as_str()
             .expect("remedy")
-            .contains("dsgrid"),
+            .contains("map"),
         "no suggestion offered for a one-character typo"
     );
 
-    let run = ds(&["dsgrid", "inspct", "--output", "json"]);
+    let run = ds(&["map", "zom", "--output", "json"]);
     assert_eq!(run.envelope["error"]["code"], "unknown_command");
     assert!(
         run.envelope["error"]["remedy"]
             .as_str()
             .expect("remedy")
-            .contains("inspect")
+            .contains("zoom")
     );
 
     // An unknown leaf of a real group names the leaf and the group. It said
@@ -729,11 +596,11 @@ fn help_is_reachable_by_every_spelling_an_agent_will_try() {
     let spellings: &[&[&str]] = &[
         &["--help"],
         &["help"],
-        &["dsgrid", "--help"],
-        &["help", "dsgrid"],
-        &["dsgrid", "inspect", "--help"],
-        &["help", "dsgrid", "inspect"],
-        &["dsgrid"],
+        &["map", "--help"],
+        &["help", "map"],
+        &["map", "zoom", "--help"],
+        &["help", "map", "zoom"],
+        &["map"],
         &[],
     ];
     for args in spellings {
@@ -756,46 +623,30 @@ fn help_is_reachable_by_every_spelling_an_agent_will_try() {
 #[test]
 fn command_help_in_json_is_the_machine_descriptor() {
     // A caller wanting a schema must never have to parse a help screen.
-    let run = ds(&["dsgrid", "inspect", "--help", "--output", "json"]);
+    let run = ds(&["map", "zoom", "--help", "--output", "json"]);
     assert_eq!(run.code, 0);
     assert_eq!(run.envelope["status"], "ok");
-    assert_eq!(run.envelope["data"]["id"], "dsgrid.inspect");
+    assert_eq!(run.envelope["data"]["id"], "map.zoom");
     assert!(run.envelope["data"]["inputs"].is_array());
     assert!(run.envelope["data"]["refusals"].is_array());
 }
 
 #[test]
 fn output_format_is_validated() {
-    let run = ds(&["--output", "yaml", "dsgrid", "inspect"]);
+    let run = ds(&["--output", "yaml", "map", "zoom"]);
     assert_eq!(run.code, 2);
     assert!(run.stderr.contains("human") && run.stderr.contains("json"));
 }
 
 #[test]
 fn output_is_byte_identical_across_runs() {
-    // Determinism is part of the contract: a caller may hash a result, diff
-    // two runs, or cache on the bytes. Map keys are ordered because
-    // `serde_json` uses a sorted map by default, and every collection this
-    // CLI emits is either in the domain's canonical order or lexical.
-    let model = common::fixture();
-    let args = [
-        "dsgrid",
-        "inspect",
-        "--model",
-        &model,
-        "--include",
-        "tables",
-        "--include",
-        "library",
-        "--output",
-        "json",
-    ];
+    let args = ["capabilities", "map.zoom", "--output", "json"];
     let first = ds(&args);
     let second = ds(&args);
     assert_eq!(first.code, 0, "{}{}", first.stdout, first.stderr);
     assert_eq!(
         first.stdout, second.stdout,
-        "two runs over the same input produced different bytes"
+        "descriptor bytes changed across identical reads"
     );
 }
 

@@ -43,12 +43,6 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
          held there by ds-cli-design's own unit test",
     ),
     (
-        "task_geometry_unmapped",
-        "raised only if the kernel's closed task-geometry refusal vocabulary \
-         gained a code this build does not map — a defect in ds, held to the \
-         vocabulary by ds-cli-pm's own unit test",
-    ),
-    (
         "clean_store_unhandled",
         "raised only if the kernel's local-data clean plan names a cleanable \
          store this host has no remover for — the roster and the removers are \
@@ -179,19 +173,6 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
          `every_reachable_preview_code_is_documented` iterates it against the \
          command's refusal roster, so a code the kernel gains still cannot \
          ship undeclared",
-    ),
-    (
-        "ds-cli-library/src/lib.rs",
-        "`engine_failure` is a shared wrapper; each of its call sites passes a \
-         literal code",
-    ),
-    (
-        "ds-cli-pls/src/deviation_labels.rs",
-        "the code is chosen with its remedy by a match above the constructor",
-    ),
-    (
-        "ds-cli-pls/src/terrain_reconcile.rs",
-        "the code is chosen with its remedy by a match above the constructor",
     ),
     (
         "ds-cli-server/src/sessions.rs",
@@ -827,10 +808,6 @@ fn every_constructible_refusal_code_is_documented() {
         // --geometry-from` resolves against (task-geometry-from-objects.md);
         // the reprojection refusal that read can raise is declared by the pm
         // commands that reach it.
-        ("ds-cli-dsgrid", &["dsgrid", "pm"]),
-        ("ds-cli-dsgrid-exchange", &["dsgrid-exchange"]),
-        ("ds-cli-library", &["library"]),
-        ("ds-cli-pls", &["pls"]),
         ("ds-cli-report", &["report"]),
         // Two surfaces, and it is the same crate on purpose. `ds server …` is
         // host administration, and this crate also owns the owner-only socket
@@ -891,6 +868,30 @@ fn every_constructible_refusal_code_is_documented() {
     for entry in std::fs::read_dir(&root).expect("read crates dir").flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         if name == "ds" || name == "ds-cli-contract" || !entry.path().is_dir() {
+            continue;
+        }
+        // These independent crates have no public Core command registrations or normal dependency.
+        if [
+            "ds-cli-dsgrid",
+            "ds-cli-dsgrid-exchange",
+            "ds-cli-library",
+            "ds-cli-pls",
+        ]
+        .contains(&name.as_str())
+        {
+            let manifest = std::fs::read_to_string(root.join("ds/Cargo.toml")).unwrap();
+            let normal = manifest
+                .split("[dependencies]")
+                .nth(1)
+                .unwrap()
+                .split("[dev-dependencies]")
+                .next()
+                .unwrap();
+            assert!(
+                !normal
+                    .lines()
+                    .any(|line| line.starts_with(&format!("{name}.")))
+            );
             continue;
         }
         assert!(

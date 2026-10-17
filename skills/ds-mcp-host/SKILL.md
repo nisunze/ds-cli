@@ -12,7 +12,7 @@ no identity, project state, command schema, or authority.
 ## Choose one installation shape
 
 For a general agent, install the broad default. It advertises `ds_catalog` and
-`ds_diagnostics` plus thirteen operator-intent chapter routers (15 tools total),
+`ds_diagnostics` plus eleven operator-intent chapter routers (13 tools total),
 even as commands grow:
 
 ```text
@@ -27,14 +27,13 @@ The first command is a read-only proposal and also reports `supported_hosts`.
 For a narrow role, explicitly install one typed profile:
 
 ```text
-ds mcp install --host claude-code --exposure commands --profile pls --write --yes
+ds mcp install --host claude-code --exposure commands --profile grid-profile --write --yes
 ```
 
-Profiles are `datasets`, `grid`, `pls`, `pls-desktop`, `pls-library`, `library-governance`, `survey`,
-`form-factory`, `survey-projects`, `survey-migration`, `design-edit`,
-`design-run`, `map`, `layers`, `tiling`, `project`, `solar-input`, `solar-run`,
-`solar-delivery`, and `operations`. `datasets` groups bounded geospatial
-planning, query, GeoJSON and sector workbook tools; `survey` retains the map/local-data workflow;
+Read the installed profile choices from `ds capabilities mcp.serve --output
+json`. `grid-profile` owns retained native Profile controls; `datasets` groups
+bounded geospatial planning, query, GeoJSON and sector workbook tools;
+`survey` retains the map/local-data workflow;
 `form-factory` owns global schemas and `survey-projects` owns governed
 aggregate/spatial reads, project-form settings, reusable templates, and
 create-from-template. `survey-migration` isolates governed bulk import and
@@ -44,15 +43,10 @@ both bootstrap tools, `ds_catalog` and `ds_diagnostics`, plus bounded
 typed leaves. Do not install every profile: that duplicates discovery and
 recreates selection ambiguity.
 
-Use `pls` for backup recovery, workspace diagnostics and native delivery; use
-`pls-desktop` on the Windows PLS-CADD desktop for native Restore,
-qualification, AutoSag, reports and sheets; use `pls-library` for local immutable library verification, packing, seeding and
-native resolution; use `library-governance` for global library/example upload,
-publication and lifecycle. The split keeps every surface bounded. They project
-live descriptors and never publish a generic
-filesystem, process, PowerShell, Win32, or PLS-CADD UI escape hatch. Find a
-changed/new operation through `ds_catalog` instead of guessing its generated
-tool name.
+Core no longer exposes Grid file authoring, PLS-CADD automation, or engineering
+library profiles. A profile only projects available commands and cannot enable
+an excluded component. Find a changed operation through `ds_catalog` rather
+than guessing its generated tool name.
 
 The entry belongs in the user profile on the PC where DS GridDesign is
 installed and paired, never a travelling workspace file. Run installation

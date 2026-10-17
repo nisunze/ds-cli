@@ -58,8 +58,6 @@ skill and reference overlaps below remain open. The bullets are the
   ds-network's; `01-server-required.md` has **diverged** from ds-network.
 - `docs/contracts/program/04-structure-rules-spotting.md` differs from
   `dsgrid-authority/04-…` in this same repo.
-- `skills/ds-pls-cadd-terrain-roundtrip/references/native-failure-modes.md`
-  overlaps `ds-network/docs/contracts/pls-cadd-native-failure-modes.md`.
 - `docs/reference/pls.md`, `dsgrid.md`, `dsgrid-exchange.md` overlap the PLS
   skills; keep whichever the discovery gates read, link the rest.
 - Move: keep links to ds-network, delete the copies (mind the discovery-gate

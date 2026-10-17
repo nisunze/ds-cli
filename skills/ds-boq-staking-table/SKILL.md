@@ -3,7 +3,7 @@ name: ds-boq-staking-table
 description: Reconcile LV pole sheets and PLS-CADD MV structure staking tables with an EPC BOQ.
 metadata:
   ds-chapters: reports
-  ds-mcp-profile: grid
+  ds-mcp-profile: project-operations
 ---
 
 # Staking tables against the BOQ
@@ -70,9 +70,9 @@ for: on as-builts roughly one row in eight diverges from the modifier, and
 the divergence is recorded in the structure comment. Count stays from the
 comment or a site column when one exists, never by editing a name — a
 structure name is a library file's identity, and a renamed one references a
-file that does not exist. When the assignment itself is in question, `ds pls
-compare-don` reconciles a DON's structure assignment against an authority;
-read its live contract first.
+file that does not exist. When the assignment itself is in question, require
+the independent engineering owner to reconcile the native assignment against
+its authority; Core has no native comparison command.
 
 MV conductor lengths are not in the LV workbook either. Take them from the
 PLS-CADD section report or the design document the engineer supplies, and
