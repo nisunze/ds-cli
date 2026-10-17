@@ -7,7 +7,9 @@ pub(super) fn admit(inputs: &Inputs) -> Result<(), Failure> {
     if inputs.switch("complete-file")
         && (inputs.value("out").is_none() || inputs.switch("include-deleted"))
     {
-        return Err(invalid("--complete-file requires --out and the admitted held view; --include-deleted is a separate bounded cloud read"));
+        return Err(invalid(
+            "--complete-file requires --out and the admitted held view; --include-deleted is a separate bounded cloud read",
+        ));
     }
     Ok(())
 }
@@ -52,14 +54,21 @@ pub(super) fn write(path: &str, read: &SurveyEntriesRead) -> Result<Value, Failu
             "complete GeoJSON exceeds source-format plus exact header bound",
         ));
     }
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(path).map_err(output)?;
+    #[cfg(windows)]
+    let mut file =
+        ds_cli_auth::windows_host::create_private_output_file(std::path::Path::new(path))
+            .map_err(output)?;
+    #[cfg(not(windows))]
+    let mut file = {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options.open(path).map_err(output)?
+    };
     if let Err(error) = file.write_all(&encoded).and_then(|()| file.sync_all()) {
         drop(file);
         let _ = std::fs::remove_file(path);
@@ -76,7 +85,11 @@ mod tests {
         SurveyEntriesRead {project:"p1".into(),form:"customers".into(),total:count as u64,truncated:false,entries:(0..count).map(|i|SurveyEntry{feature:json!({"type":"Feature","id":i,"geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"exact":"held \n original","index":i}}),media:Vec::new()}).collect(),sync:None}
     }
     fn root() -> std::path::PathBuf {
-        let p = std::env::temp_dir().join(format!(
+        #[cfg(windows)]
+        let base = ds_cli_auth::windows_host::local_application_data().unwrap();
+        #[cfg(not(windows))]
+        let base = std::env::temp_dir();
+        let p = base.join(format!(
             "ds-complete-survey-test-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
@@ -114,6 +127,40 @@ mod tests {
                 <= SURVEY_ENTRIES_READ_RESPONSE_LIMIT
                     + receipt["header_bytes"].as_u64().unwrap() as usize
         );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[cfg(windows)]
+    #[test]
+    fn complete_file_is_readable_by_private_output_consumer_while_inherited_file_is_refused() {
+        use std::io::Read;
+
+        let dir = root();
+        let grant = std::process::Command::new("icacls.exe")
+            .arg(&dir)
+            .args(["/grant", "*S-1-1-0:(OI)(CI)(R)"])
+            .output()
+            .unwrap();
+        assert!(
+            grant.status.success(),
+            "native inherited ACL fixture failed"
+        );
+        let path = dir.join("complete.geojson");
+        let read = fixture(2);
+        let receipt = write(path.to_str().unwrap(), &read).unwrap();
+        let mut bytes = Vec::new();
+        ds_cli_auth::windows_host::read_private_output_file(&path)
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        let doc: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(doc["features"][1], read.entries[1].feature);
+        assert_eq!(receipt["size_bytes"], bytes.len());
+        assert_eq!(receipt["sha256"], format!("{:x}", Sha256::digest(&bytes)));
+
+        let inherited = dir.join("inherited.geojson");
+        std::fs::write(&inherited, &bytes).unwrap();
+        assert!(ds_cli_auth::windows_host::read_private_output_file(&inherited).is_err());
+        assert_eq!(std::fs::read(&inherited).unwrap(), bytes);
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
@@ -177,12 +224,14 @@ mod tests {
                 "survey_entries_invalid"
             );
         }
-        assert!(admit(&super::super::tests::inputs(&[
-            "--project",
-            "p1",
-            "--form",
-            "customers"
-        ]))
-        .is_ok());
+        assert!(
+            admit(&super::super::tests::inputs(&[
+                "--project",
+                "p1",
+                "--form",
+                "customers"
+            ]))
+            .is_ok()
+        );
     }
 }
