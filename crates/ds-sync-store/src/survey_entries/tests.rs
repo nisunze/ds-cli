@@ -98,7 +98,7 @@ fn admission_is_atomic_and_duplicate_create_is_scoped() {
 }
 
 #[test]
-fn admission_refuses_legacy_foreign_invalid_and_cross_project_batches() {
+fn admission_refuses_ownerless_foreign_invalid_and_cross_project_batches() {
     let (_root, mut store) = store();
     let scope = scope();
     for key in ["owner_uid", "generation"] {
@@ -107,14 +107,11 @@ fn admission_refuses_legacy_foreign_invalid_and_cross_project_batches() {
         assert!(store
             .survey_entry_admit_batch(&scope, vec![row.clone()], 20)
             .is_err());
-        assert!(store
-            .survey_entry_import_owned_batch(&scope, vec![row])
-            .is_err());
     }
     let mut foreign = sample("one", "project-a");
     foreign["owner_uid"] = json!("owner-b");
     assert!(store
-        .survey_entry_import_owned_batch(&scope, vec![sample("two", "project-a"), foreign])
+        .survey_entry_admit_batch(&scope, vec![sample("two", "project-a"), foreign], 20)
         .is_err());
     assert!(store.survey_entry_headers(&scope, None).unwrap().is_empty());
     assert!(store
@@ -132,47 +129,43 @@ fn admission_refuses_legacy_foreign_invalid_and_cross_project_batches() {
     let mut row = sample("one", "project-a");
     row["generation"] = json!("not-a-uuid");
     assert!(store
-        .survey_entry_import_owned_batch(&scope, vec![row])
+        .survey_entry_admit_batch(&scope, vec![row], 20)
         .is_err());
     assert!(!has_table(&store.connection).unwrap());
 }
 
 #[test]
-fn import_preserves_exact_bytes_metadata_and_repeats_after_restart() {
+fn admitted_row_and_replay_metadata_survive_restart() {
     let (root, mut store) = store();
     let scope = scope();
     let mut row = sample("one", "project-a");
-    row["status"] = json!("syncing");
-    row["lease"] = json!(42);
-    row["attempts"] = json!(4);
-    row["subeffect_phase"] = json!("refresh_auth");
-    row["error"] = json!("retained error");
-    row["next_attempt_at"] = json!(12345);
-    row["failure_code"] = json!("prior-code");
     row["synced_at"] = json!(777);
     row["payload"]["opaque_float"] = json!(1.25);
-    let receipt = store
-        .survey_entry_import_owned_batch(&scope, vec![row.clone()])
+    store
+        .survey_entry_admit_batch(&scope, vec![row.clone()], 20)
         .unwrap();
-    assert_eq!(receipt[0].stored_json, serde_json::to_string(&row).unwrap());
-    assert_eq!(
-        receipt[0].sha256,
-        sha256_hex(receipt[0].stored_json.as_bytes())
-    );
-    assert_eq!(
-        store.survey_entry_row(&scope, "one").unwrap(),
-        Some(row.clone())
-    );
-    assert_eq!(first(&store, &scope).lease, 42);
+    let before = first(&store, &scope);
+    let mut advanced = before.clone();
+    advanced.status = Status::Syncing;
+    advanced.lease = 42;
+    advanced.attempts = 4;
+    advanced.subeffect_phase = Some(Phase::RefreshAuth);
+    advanced.error = Some("retained error".into());
+    advanced.next_attempt_at = 12345;
+    advanced.failure_code = Some("prior-code".into());
+    assert!(store
+        .survey_entry_cas_apply(&scope, &Fence::from(&before), &advanced, None)
+        .unwrap());
+    let held = store.survey_entry_row(&scope, "one").unwrap().unwrap();
+    assert_eq!(held["payload"], row["payload"]);
+    assert_eq!(held["overlay"], row["overlay"]);
+    assert_eq!(held["synced_at"], 777);
+    assert_eq!(held["created_at"], row["created_at"]);
+    assert_eq!(held["idempotency_key"], row["idempotency_key"]);
     drop(store);
     let mut store = Store::open(&root.path().join("store.sqlite")).unwrap();
-    assert_eq!(
-        store
-            .survey_entry_import_owned_batch(&scope, vec![row.clone()])
-            .unwrap(),
-        receipt
-    );
-    assert_eq!(store.survey_entry_row(&scope, "one").unwrap(), Some(row));
+    assert_eq!(store.survey_entry_row(&scope, "one").unwrap(), Some(held));
+    assert!(header_equal(&first(&store, &scope), &advanced).unwrap());
     assert_eq!(
         crate::schema_version(&store.connection).unwrap(),
         Some(crate::SCHEMA_VERSION)
@@ -189,26 +182,6 @@ fn import_preserves_exact_bytes_metadata_and_repeats_after_restart() {
 }
 
 #[test]
-fn conflicting_import_rolls_back_all_rows_and_preserves_source() {
-    let (_root, mut store) = store();
-    let scope = scope();
-    let original = sample("one", "project-a");
-    store
-        .survey_entry_import_owned_batch(&scope, vec![original.clone()])
-        .unwrap();
-    let mut changed = original.clone();
-    changed["overlay"]["different"] = json!(true);
-    assert!(store
-        .survey_entry_import_owned_batch(&scope, vec![sample("two", "project-a"), changed])
-        .is_err());
-    assert!(store.survey_entry_row(&scope, "two").unwrap().is_none());
-    assert_eq!(
-        store.survey_entry_row(&scope, "one").unwrap(),
-        Some(original)
-    );
-}
-
-#[test]
 fn header_projection_defaults_only_and_does_not_load_payload() {
     let (_root, mut store) = store();
     let scope = scope();
@@ -218,7 +191,7 @@ fn header_projection_defaults_only_and_does_not_load_payload() {
     row["conflict_rebased"] = Value::Null;
     row["legacy_confirmed"] = Value::Null;
     store
-        .survey_entry_import_owned_batch(&scope, vec![row.clone()])
+        .survey_entry_admit_batch(&scope, vec![row.clone()], 20)
         .unwrap();
     let h = first(&store, &scope);
     assert_eq!(h.lease, 0);
@@ -227,7 +200,11 @@ fn header_projection_defaults_only_and_does_not_load_payload() {
     let raw = serde_json::to_value(&h).unwrap();
     assert!(raw.get("payload").is_none());
     assert!(raw.get("overlay").is_none());
-    assert_eq!(store.survey_entry_row(&scope, "one").unwrap(), Some(row));
+    let held = store.survey_entry_row(&scope, "one").unwrap().unwrap();
+    assert_eq!(held["payload"], row["payload"]);
+    assert_eq!(held["overlay"], row["overlay"]);
+    assert_eq!(held["generation"], row["generation"]);
+    assert_eq!(held["synced_at"], row["synced_at"]);
     // Header-only reads still work even when a payload cannot be read/parsed.
     store
         .connection
@@ -500,7 +477,7 @@ fn bounded_inputs_and_oversized_stored_rows_refuse_explicitly() {
     let mut oversized = sample("huge", "project-a");
     oversized["payload"]["large"] = json!("x".repeat(MAX_SURVEY_ENTRY_BYTES));
     assert!(store
-        .survey_entry_import_owned_batch(&scope, vec![oversized])
+        .survey_entry_admit_batch(&scope, vec![oversized], 20)
         .is_err());
     store
         .survey_entry_admit_batch(&scope, vec![sample("one", "project-a")], 20)
@@ -522,32 +499,6 @@ fn bounded_inputs_and_oversized_stored_rows_refuse_explicitly() {
         )
         .unwrap();
     assert!(store.survey_entry_headers(&scope, None).is_err());
-}
-
-#[test]
-fn import_refuses_same_value_with_different_serialized_bytes() {
-    let (_root, mut store) = store();
-    let scope = scope();
-    let original = sample("one", "project-a");
-    store
-        .survey_entry_import_owned_batch(&scope, vec![original.clone()])
-        .unwrap();
-    let mut reordered = original.clone();
-    let object = reordered.as_object_mut().unwrap();
-    let value = object.shift_remove("payload").unwrap();
-    object.insert("payload".into(), value);
-    assert_eq!(original, reordered);
-    assert_ne!(
-        serde_json::to_string(&original).unwrap(),
-        serde_json::to_string(&reordered).unwrap()
-    );
-    assert!(store
-        .survey_entry_import_owned_batch(&scope, vec![reordered])
-        .is_err());
-    assert_eq!(
-        store.survey_entry_row(&scope, "one").unwrap(),
-        Some(original)
-    );
 }
 
 #[test]
@@ -579,136 +530,4 @@ fn capacity_admission_rolls_back_and_headers_never_silently_truncate() {
     );
     store.connection.execute("INSERT INTO survey_entry_outbox SELECT account,deployment,install_id,'overflow',project,form,doc,operation,header,row FROM survey_entry_outbox LIMIT 1",[]).unwrap();
     assert!(store.survey_entry_headers(&scope, None).is_err());
-}
-
-#[test]
-fn repeated_import_after_transition_preserves_current_row_and_original_receipt() {
-    let (root, mut store) = store();
-    let scope = scope();
-    let original = sample("one", "project-a");
-    let receipt = store
-        .survey_entry_import_owned_batch(&scope, vec![original.clone()])
-        .unwrap();
-    schedule(&mut store, &scope);
-    let advanced = store.survey_entry_row(&scope, "one").unwrap().unwrap();
-    assert_eq!(advanced["status"], "syncing");
-    assert_eq!(advanced["lease"], 1);
-    drop(store);
-    let mut store = Store::open(&root.path().join("store.sqlite")).unwrap();
-    assert_eq!(
-        store
-            .survey_entry_import_owned_batch(&scope, vec![original])
-            .unwrap(),
-        receipt
-    );
-    assert_eq!(
-        store.survey_entry_row(&scope, "one").unwrap(),
-        Some(advanced)
-    );
-}
-
-#[test]
-fn repeated_import_after_removal_never_resurrects_and_changed_bytes_refuse() {
-    let (root, mut store) = store();
-    let scope = scope();
-    let original = sample("one", "project-a");
-    let receipt = store
-        .survey_entry_import_owned_batch(&scope, vec![original.clone()])
-        .unwrap();
-    let fence = Fence::from(&first(&store, &scope));
-    assert!(store.survey_entry_cas_remove(&scope, &fence).unwrap());
-    drop(store);
-    let mut store = Store::open(&root.path().join("store.sqlite")).unwrap();
-    assert_eq!(
-        store
-            .survey_entry_import_owned_batch(&scope, vec![original.clone()])
-            .unwrap(),
-        receipt
-    );
-    assert!(store.survey_entry_row(&scope, "one").unwrap().is_none());
-    let mut changed = original;
-    changed["payload"]["answers"]["changed"] = json!(true);
-    assert!(store
-        .survey_entry_import_owned_batch(&scope, vec![changed])
-        .is_err());
-    assert!(store.survey_entry_row(&scope, "one").unwrap().is_none());
-}
-
-#[test]
-fn import_batch_rollback_includes_new_digest_receipts() {
-    let (_root, mut store) = store();
-    let scope = scope();
-    let original = sample("one", "project-a");
-    store
-        .survey_entry_import_owned_batch(&scope, vec![original.clone()])
-        .unwrap();
-    let mut conflict = original;
-    conflict["payload"]["different"] = json!(true);
-    assert!(store
-        .survey_entry_import_owned_batch(&scope, vec![sample("two", "project-a"), conflict])
-        .is_err());
-    assert!(store.survey_entry_row(&scope, "two").unwrap().is_none());
-    assert!(imported_bytes(&store.connection, &scope, "two")
-        .unwrap()
-        .is_none());
-    assert!(imported_bytes(&store.connection, &scope, "one")
-        .unwrap()
-        .is_some());
-    store
-        .survey_entry_import_owned_batch(&scope, vec![sample("two", "project-a")])
-        .unwrap();
-    assert!(imported_bytes(&store.connection, &scope, "two")
-        .unwrap()
-        .is_some());
-}
-
-#[test]
-fn ordinary_admission_creates_no_import_ledger_and_ledger_metadata_is_bounded() {
-    let (_root, mut store) = store();
-    let scope = scope();
-    store
-        .survey_entry_admit_batch(&scope, vec![sample("ordinary", "project-a")], 20)
-        .unwrap();
-    let ledger: Option<i64> = store
-        .connection
-        .query_row(
-            "SELECT 1 FROM sqlite_master WHERE name='survey_entry_import_receipts'",
-            [],
-            |r| r.get(0),
-        )
-        .optional()
-        .unwrap();
-    assert!(ledger.is_none());
-    let original = sample("one", "project-a");
-    let receipt = store
-        .survey_entry_import_owned_batch(&scope, vec![original.clone()])
-        .unwrap();
-    for statement in [
-        "UPDATE survey_entry_import_receipts SET sha256=printf('%.*c',65536,'a')",
-        "UPDATE survey_entry_import_receipts SET sha256=printf('%.*c',64,'g')",
-        "UPDATE survey_entry_import_receipts SET sha256=zeroblob(64)",
-        "UPDATE survey_entry_import_receipts SET byte_length='not an integer'",
-        "UPDATE survey_entry_import_receipts SET byte_length=1.5",
-        "UPDATE survey_entry_import_receipts SET byte_length=0",
-        "UPDATE survey_entry_import_receipts SET byte_length=8388609",
-    ] {
-        store.connection.execute(statement, []).unwrap();
-        assert!(
-            store
-                .survey_entry_import_owned_batch(&scope, vec![original.clone()])
-                .is_err(),
-            "{statement}"
-        );
-        assert_eq!(
-            store.survey_entry_row(&scope, "one").unwrap(),
-            Some(original.clone())
-        );
-        store
-            .connection
-            .execute(
-                "UPDATE survey_entry_import_receipts SET sha256=?1,byte_length=?2",
-                params![receipt[0].sha256, receipt[0].stored_json.len() as i64],
-            )
-            .unwrap();
-    }
 }

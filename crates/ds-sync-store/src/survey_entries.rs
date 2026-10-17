@@ -1,6 +1,5 @@
 //! Durable Survey mutation bytes. The kernel alone owns replay decisions.
 use crate::{Error, Result, Store};
-use ds_command_kernel::report_export::sha256_hex;
 use ds_command_kernel::survey_entry_outbox::{self as kernel, Fence, Header, PayloadPatch};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -20,29 +19,12 @@ const TABLE: &str = "CREATE TABLE IF NOT EXISTS survey_entry_outbox(
  CREATE INDEX IF NOT EXISTS survey_entry_project ON survey_entry_outbox(account,deployment,install_id,project,form,doc);
  CREATE UNIQUE INDEX IF NOT EXISTS survey_entry_create ON survey_entry_outbox(account,deployment,install_id,project,form,doc) WHERE operation='create';";
 
-// Independent of the replay row: a crash before legacy-source deletion must
-// never recreate work that has already transitioned or been delivered.
-const IMPORT_TABLE: &str = "CREATE TABLE IF NOT EXISTS survey_entry_import_receipts(
- account TEXT NOT NULL, deployment TEXT NOT NULL, install_id TEXT NOT NULL,
- id TEXT NOT NULL, sha256 TEXT NOT NULL, byte_length INTEGER NOT NULL,
- PRIMARY KEY(account,deployment,install_id,id));";
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct SurveyEntryScope {
     pub account: String,
     pub deployment: String,
     pub install_id: String,
-}
-
-/// Exact retained JSON and its digest let the importer verify before removing
-/// its legacy source. A successful repeat returns the same receipt.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct SurveyEntryImportReceipt {
-    pub id: String,
-    pub stored_json: String,
-    pub sha256: String,
 }
 
 fn refused(detail: &str) -> Error {
@@ -146,9 +128,7 @@ fn header_equal(left: &Header, right: &Header) -> Result<bool> {
 }
 fn owned(scope: &SurveyEntryScope, header: &Header) -> Result<()> {
     if header.owner_uid.as_deref() != Some(scope.account.as_str()) {
-        return Err(refused(
-            "foreign or ownerless Survey row; explicit legacy recovery is required",
-        ));
+        return Err(refused("foreign or ownerless Survey row"));
     }
     Ok(())
 }
@@ -277,31 +257,6 @@ fn read_row(
     }
     Ok(Some((raw, header)))
 }
-fn imported_bytes(
-    connection: &Connection,
-    scope: &SurveyEntryScope,
-    id: &str,
-) -> Result<Option<(String, i64)>> {
-    let held: Option<(Option<String>, Option<i64>)> = connection.query_row(
-        "SELECT CASE WHEN typeof(sha256)='text' AND length(CAST(sha256 AS BLOB))=64 THEN sha256 END,
-         CASE WHEN typeof(byte_length)='integer' AND byte_length BETWEEN 1 AND 8388608 THEN byte_length END
-         FROM survey_entry_import_receipts WHERE account=?1 AND deployment=?2 AND install_id=?3 AND id=?4",
-        params![scope.account,scope.deployment,scope.install_id,id], |r| Ok((r.get(0)?,r.get(1)?)),
-    ).optional()?;
-    let Some((sha256, byte_length)) = held else {
-        return Ok(None);
-    };
-    let sha256 = sha256.ok_or_else(|| refused("invalid stored Survey import digest"))?;
-    if !sha256
-        .bytes()
-        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
-        return Err(refused("invalid stored Survey import digest"));
-    }
-    let byte_length =
-        byte_length.ok_or_else(|| refused("invalid stored Survey import byte length"))?;
-    Ok(Some((sha256, byte_length)))
-}
 fn matches(header: &Header, expected: &Fence) -> bool {
     header.id == expected.id
         && header.owner_uid == expected.owner_uid
@@ -411,57 +366,6 @@ impl Store {
         capacity(&transaction, scope)?;
         transaction.commit()?;
         Ok(())
-    }
-
-    /// One-shot owned legacy import. The durable digest receipt survives replay
-    /// transitions/removal, so a source-deletion crash cannot resurrect work.
-    /// Conflicting bytes or foreign/ownerless rows roll back the complete batch.
-    pub fn survey_entry_import_owned_batch(
-        &mut self,
-        scope: &SurveyEntryScope,
-        rows: Vec<Value>,
-    ) -> Result<Vec<SurveyEntryImportReceipt>> {
-        let headers = prepare(scope, &rows)?;
-        validate_owned(scope, &headers)?;
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute_batch(TABLE)?;
-        transaction.execute_batch(IMPORT_TABLE)?;
-        let mut receipts = Vec::with_capacity(rows.len());
-        for (row, header) in rows.iter().zip(&headers) {
-            let raw = encode(row)?;
-            let sha256 = sha256_hex(raw.as_bytes());
-            let byte_length = raw.len() as i64;
-            if let Some((held_sha256, held_length)) =
-                imported_bytes(&transaction, scope, &header.id)?
-            {
-                if held_sha256 != sha256 || held_length != byte_length {
-                    return Err(refused(
-                        "Survey import ID already has different original bytes",
-                    ));
-                }
-                // The current replay row may have advanced or been removed. Its
-                // original migration was durable, so leave that state untouched.
-            } else {
-                if let Some((held, _)) = read_row(&transaction, scope, &header.id)? {
-                    if held != raw {
-                        return Err(refused("Survey import ID already has different bytes"));
-                    }
-                } else {
-                    insert(&transaction, scope, header, &raw)?;
-                }
-                transaction.execute("INSERT INTO survey_entry_import_receipts(account,deployment,install_id,id,sha256,byte_length) VALUES (?1,?2,?3,?4,?5,?6)", params![scope.account,scope.deployment,scope.install_id,header.id,sha256,byte_length])?;
-            }
-            receipts.push(SurveyEntryImportReceipt {
-                id: header.id.clone(),
-                sha256,
-                stored_json: raw,
-            });
-        }
-        capacity(&transaction, scope)?;
-        transaction.commit()?;
-        Ok(receipts)
     }
 
     /// Header-only bounded read; never loads payloads or creates a table.

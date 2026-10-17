@@ -22,23 +22,20 @@ replacement must retain this same Kernel authority.
 
 ## Native SQLite queue
 
-`ds-sync-store` retains opaque Survey rows in the existing native SQLite store,
-partitioned by account, deployment and installation, with exact project/form/
-document identity. `core.survey.queue` exposes closed admission, owned legacy
-import, header/row reads and project-scoped transitions through private files.
-It performs no network effects. Each transition evaluates the Kernel and commits
-all fenced persistence atomically before returning dispatch effects. Reads of an
-absent store/table are empty; unsafe or corrupt storage is an error.
+`ds-sync-store` retains newly captured opaque Survey rows in the existing native
+SQLite store, partitioned by account, deployment and installation, with exact
+project/form/document identity. `core.survey.queue` exposes closed admission,
+header/row reads and project-scoped transitions through private files. It performs
+no network effects. Each transition evaluates the Kernel and commits all fenced
+persistence atomically before returning dispatch effects. Reads of an absent
+store/table are empty; unsafe or corrupt storage is an error.
 
-Legacy imports preserve the original row JSON, including payloads, overlays,
-timestamps and idempotency keys. Foreign and ownerless rows refuse without
-assignment. A durable import receipt retains the original digest and byte length:
-repeating an identical import after replay or removal does not overwrite or
-recreate queued work. Different original bytes refuse the whole batch. A device
-importer may delete its legacy source only after exact receipt verification and
-a compare-and-delete of the unchanged source row. Import receipts and queue
-writes commit together; there is no runtime fallback to legacy storage.
+New captures become durable in SQLite before the application reports success.
+Admission retains payloads, overlays, timestamps and idempotency keys, and refuses
+foreign or ownerless rows without assigning ownership. Existing authoritative
+Survey entries repopulate through the declared API read path. Old pending browser
+entries are not carried forward: there is no legacy import, migration bridge or
+runtime fallback to legacy storage.
 
-Native storage acceptance is independent of the Desktop migration rollout.
-Drafts, media, authoritative Survey holdings and browser OPFS storage are not
-migrated by this queue operation.
+Drafts, media, authoritative Survey holdings and browser OPFS storage remain
+outside this queue operation.
