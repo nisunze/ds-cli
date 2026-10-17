@@ -7,14 +7,18 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::{ClearanceCase, ClearanceReportError, ClearanceReportOptions};
 use ds_grid_model::{AlignmentId, CriterionSetId};
+use ds_network_client::{CapturedNetworkClient, NetworkFailure};
+use ds_network_contracts::grid::{
+    NATIVE_GRID_QUERY_SCHEMA_V1, NativeGridQueryRequestV1, NativeGridQuerySourcePin,
+};
+use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
-use crate::criteria::clearance_set::map_error as map_set_error;
 use crate::feature_codes;
 use crate::mutation;
-use crate::package;
+use crate::{native, package};
 
 const OWN: &[Refusal] = &[
     Refusal {
@@ -59,7 +63,9 @@ const OWN: &[Refusal] = &[
     },
 ];
 
-const REFUSALS: &[Refusal; OWN.len() + feature_codes::READ_REFUSALS.len()] = &splice();
+const BASE_REFUSALS: &[Refusal; OWN.len() + feature_codes::READ_REFUSALS.len()] = &splice();
+const REFUSALS: &[Refusal] =
+    &native::extend_refusals::<{ BASE_REFUSALS.len() + native::REFUSALS.len() }>(BASE_REFUSALS);
 const fn splice() -> [Refusal; OWN.len() + feature_codes::READ_REFUSALS.len()] {
     let mut all = [OWN[0]; OWN.len() + feature_codes::READ_REFUSALS.len()];
     let mut index = 0;
@@ -156,12 +162,14 @@ warnings and the sections that could not be solved. `verification_level` is \
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    run_with_capture(inputs, native::capture)
+}
+
+fn run_with_capture(
+    inputs: &Inputs,
+    capture: impl FnOnce() -> Result<CapturedNetworkClient, Failure>,
+) -> Result<Value, Failure> {
     let limit = package::parse_limit(inputs.value("limit"))?;
-    let case = match inputs.value("case").unwrap_or("both") {
-        "vertical" => ClearanceCase::Vertical,
-        "horizontal" => ClearanceCase::Horizontal,
-        _ => ClearanceCase::Both,
-    };
     let alignment_ids = match inputs.value("alignment") {
         Some(raw) => vec![AlignmentId::new(raw.trim()).map_err(|error| {
             Failure::invalid("alignment_not_found", error.to_string())
@@ -181,7 +189,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             raw.trim()
                 .parse::<f64>()
                 .ok()
-                .filter(|v| v.is_finite() && *v > 0.0)
+                .filter(|value| value.is_finite() && *value > 0.0)
                 .ok_or_else(|| {
                     Failure::invalid(
                         "invalid_corridor",
@@ -192,22 +200,90 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ),
         None => None,
     };
-    let (target, opened) = feature_codes::open_read_only(inputs)?;
-    let report = opened
-        .session
-        .clearance_report(&ClearanceReportOptions {
-            alignment_ids,
-            case,
-            criterion_set_id,
-            corridor_half_width_m,
-        })
-        .map_err(map_error)?;
+    let path = mutation::Target::resolve(inputs, false)?.path();
+    let bytes = package::read_bytes(&path)?;
+    let request = NativeGridQueryRequestV1 {
+        schema: NATIVE_GRID_QUERY_SCHEMA_V1.into(),
+        source: NativeGridQuerySourcePin {
+            package_sha256: format!("{:x}", Sha256::digest(&bytes)),
+            expected_revision: inputs
+                .value("revision")
+                .map(|value| value.trim().to_owned()),
+            engineering_input_root: None,
+        },
+        operation_id: "clearance_report".into(),
+        params: json!({
+            "alignment_ids": alignment_ids,
+            "case": inputs.value("case").unwrap_or("both"),
+            "criterion_set_id": criterion_set_id,
+            "corridor_half_width_m": corridor_half_width_m,
+        }),
+    };
+    let client = capture()?;
+    let scratch = native::scratch()?;
+    let query = client
+        .grid_query(&request, &bytes, scratch.path(), &|| false)
+        .map_err(|error| query_failure(&path, error))?
+        .result;
+    let target = json!({
+        "path": path,
+        "model_id": query.source.model_id.as_str(),
+        "package_revision": query.model_revision,
+        "authored_revision": query.source.expected_revision,
+    });
+    project(target, query.engine_version, query.result, limit)
+}
+
+// Decode only the CLI's projection. Complete nested owner evidence stays opaque.
+#[derive(Deserialize)]
+struct Report {
+    schema_version: u32,
+    classification: String,
+    verification_level: String,
+    criterion_set_id: String,
+    clearance_voltage_kv: Option<f64>,
+    #[serde(default)]
+    vertical_case: Value,
+    #[serde(default)]
+    horizontal_case: Value,
+    evaluated_vertical_cases: Vec<Value>,
+    evaluated_horizontal_cases: Vec<Value>,
+    corridor_half_width_m: f64,
+    definitions: serde_json::Map<String, Value>,
+    alignments: Vec<Value>,
+    per_code: Vec<Value>,
+    points_checked: u64,
+    points_unresolved: u64,
+    points_outside_spans: u64,
+    vertical_violations: u64,
+    horizontal_violations: u64,
+    questionable: u64,
+    finding_count: usize,
+    findings: Vec<Value>,
+    warnings: Vec<Value>,
+    sections_evaluated: usize,
+    sections_unavailable: Vec<Value>,
+}
+
+fn project(target: Value, engine: String, result: Value, limit: usize) -> Result<Value, Failure> {
+    let report: Report = serde_json::from_value(result).map_err(|_| {
+        Failure::failed(
+            "network_result_invalid",
+            "Network returned a malformed clearance report",
+        )
+    })?;
+    if report.finding_count != report.findings.len() {
+        return Err(Failure::failed(
+            "network_result_invalid",
+            "Network clearance finding count differs from its complete list",
+        ));
+    }
     let finding_count = report.finding_count;
     let (findings, withheld) = package::take(report.findings.clone(), limit);
     let mut answer = json!({
         "target": target,
-        "engine": ds_grid_engine::ENGINE_VERSION,
-        "operation": { "id": ds_grid_engine::clearance_report::CLEARANCE_REPORT_OPERATION_ID, "schema_version": report.schema_version },
+        "engine": engine,
+        "operation": { "id": "clearance_report", "schema_version": report.schema_version },
         "classification": report.classification,
         "verification_level": report.verification_level,
         "criterion_set_id": report.criterion_set_id,
@@ -248,40 +324,68 @@ fn structure_label(structure: &Value) -> String {
         .to_string()
 }
 
-pub(crate) fn map_error(error: ClearanceReportError) -> Failure {
-    match error {
-        ClearanceReportError::CriterionSet(error) => map_set_error(error),
-        ClearanceReportError::ClearanceCriteriaNotConfigured { criterion_set } => {
-            Failure::invalid(
-                "clearance_criteria_not_configured",
-                format!("criterion set {criterion_set} has no survey-point clearance cases"),
-            )
-            .remedy("run `ds dsgrid criteria clearance set --voltage-class MV --vertical-case <label> --horizontal-case <label> --yes` first")
-            .next("ds dsgrid criteria show")
+fn query_failure(path: &str, error: NetworkFailure) -> Failure {
+    match error.owner_code() {
+        Some("package_refused") => Failure::failed("package_decode_failed",
+            format!("`{path}` did not decode"))
+            .remedy("the canonical reader accepts current schema only; retain the original and use `ds dsgrid package migrate --path <source> --expected-source-sha256 <capture> --dry-run`, then open the saved current package")
+            .detail(json!({ "detail": error.to_string() })),
+        Some("stale_revision") => {
+            let mut failure = Failure::conflict("revision_conflict",
+                "the head moved since the revision you observed")
+                .remedy("re-read the head and decide again against it");
+            if let Some(detail) = error.owner_detail { failure = failure.detail(*detail); }
+            failure
         }
-        error @ ClearanceReportError::BoundCaseReferenceUnresolved { .. } => Failure::invalid(
-            "bound_case_reference_unresolved",
-            error.to_string(),
-        )
-        .remedy("restore the missing analysis case or weather state, or update the named criterion-set binding through `ds dsgrid apply`")
-        .next("ds dsgrid describe --kind operations --id update_criterion_case_binding")
-        .detail(json!({ "refusal": error })),
-        ClearanceReportError::AlignmentNotFound(id) => Failure::invalid(
-            "alignment_not_found",
-            format!("alignment `{id}` is not in the model"),
-        )
-        .remedy("use an alignment id of the model"),
-        ClearanceReportError::AlignmentHasNoRoute(id) => Failure::invalid(
-            "alignment_not_found",
-            format!("alignment `{id}` has no route"),
-        )
-        .remedy("use a routed alignment"),
-        ClearanceReportError::NoFeatureCodeClearances => Failure::invalid(
-            "feature_codes_without_clearances",
-            "no feature code carries clearances",
-        )
-        .remedy("run `ds dsgrid feature-codes import` and `migrate` first"),
+        Some("operation_failed") => {
+            // Match only the owner's serialized refusal variants, never prose
+            // or an engineering condition reconstructed in the host.
+            let detail = error.owner_detail.as_deref();
+            let refusal = detail.and_then(|value| value.get("refusal"));
+            refusal.and_then(|value| project_refusal(value, detail?))
+                .unwrap_or_else(|| native::map_failure(error))
+        }
+        _ => native::map_failure(error),
     }
+}
+
+fn project_refusal(refusal: &Value, owner: &Value) -> Option<Failure> {
+    let detail = &refusal["detail"];
+    Some(match refusal["code"].as_str()? {
+        "criterion_set" => match detail["code"].as_str()? {
+            "criterion_set_missing" => Failure::invalid("criterion_set_missing",
+                "the model has no criterion set")
+                .remedy("convert the workspace with its CRI member first"),
+            "criterion_set_ambiguous" => Failure::invalid("criterion_set_ambiguous",
+                "the model has several criterion sets")
+                .remedy("pass --criterion-set <id>")
+                .detail(json!({"available": detail["detail"]["available"].as_array()?})),
+            "criterion_set_not_found" => Failure::invalid("criterion_set_not_found",
+                format!("criterion set `{}` is not in the model", detail["detail"].as_str()?))
+                .remedy("pass an id from `ds dsgrid criteria show`"),
+            _ => return None,
+        },
+        "clearance_criteria_not_configured" => Failure::invalid(
+            "clearance_criteria_not_configured",
+            format!("criterion set {} has no survey-point clearance cases", detail["criterion_set"].as_str()?))
+            .remedy("run `ds dsgrid criteria clearance set --voltage-class MV --vertical-case <label> --horizontal-case <label> --yes` first")
+            .next("ds dsgrid criteria show"),
+        "bound_case_reference_unresolved" => Failure::invalid("bound_case_reference_unresolved",
+            owner["engine"].as_str()?)
+            .remedy("restore the missing analysis case or weather state, or update the named criterion-set binding through `ds dsgrid apply`")
+            .next("ds dsgrid describe --kind operations --id update_criterion_case_binding")
+            .detail(json!({"refusal": refusal})),
+        "alignment_not_found" => Failure::invalid("alignment_not_found",
+            format!("alignment `{}` is not in the model", detail.as_str()?))
+            .remedy("use an alignment id of the model"),
+        "alignment_has_no_route" => Failure::invalid("alignment_not_found",
+            format!("alignment `{}` has no route", detail.as_str()?))
+            .remedy("use a routed alignment"),
+        "no_feature_code_clearances" => Failure::invalid("feature_codes_without_clearances",
+            "no feature code carries clearances")
+            .remedy("run `ds dsgrid feature-codes import` and `migrate` first"),
+        _ => return None,
+    })
 }
 
 /// The exact cases the report evaluated for one role. The engine's envelope
@@ -447,3 +551,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/clearance_process.rs"]
+mod process_tests;

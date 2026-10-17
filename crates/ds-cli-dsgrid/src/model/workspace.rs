@@ -308,23 +308,38 @@ pub struct PackageIdentity {
 /// copy that claimed a coordinate system its bytes do not declare would be a
 /// catalogue row that lies about the file beside it.
 pub fn identity(bytes: &[u8]) -> Result<PackageIdentity, Failure> {
-    let package = ds_grid_exchange::package::unpack(bytes).map_err(|error| {
-        let message = error.to_string();
-        if message.contains("schema") {
-            Failure::invalid("package_decode_failed", message)
-                .remedy("use ds dsgrid package migrate --path <source> --expected-source-sha256 <capture> --dry-run; local model set-active auto-heals through that same migration")
-        } else {
-            Failure::invalid("not_a_dsgrid_package", message)
-                .remedy("pass a .dsgrid this build's engine can open")
-        }
-    })?;
-    let session = ds_grid_engine::GridSession::open(package.snapshot);
+    identity_with_client(bytes, &crate::native::capture()?)
+}
+
+/// Reuse an invocation's captured owner when identity precedes admission.
+/// Full package decoding and authored revision derivation stay in Network.
+pub(crate) fn identity_with_client(
+    bytes: &[u8],
+    client: &ds_network_client::CapturedNetworkClient,
+) -> Result<PackageIdentity, Failure> {
+    let scratch = crate::native::scratch()?;
+    let inspection = client
+        .grid_inspect(bytes, scratch.path(), &|| false)
+        .map_err(|error| {
+            if error.owner_code() != Some("package_refused") {
+                return crate::native::map_failure(error);
+            }
+            let message = error.to_string();
+            if message.contains("schema") {
+                Failure::invalid("package_decode_failed", message)
+                    .remedy("use ds dsgrid package migrate --path <source> --expected-source-sha256 <capture> --dry-run; local model set-active auto-heals through that same migration")
+            } else {
+                Failure::invalid("not_a_dsgrid_package", message)
+                    .remedy("pass a .dsgrid this build's engine can open")
+            }
+        })?
+        .result;
     Ok(PackageIdentity {
-        crs: package.manifest.model.coordinate_system.to_string(),
-        model_revision: package.manifest.model.model_revision,
-        sha256: format!("{:x}", Sha256::digest(bytes)),
+        crs: inspection.coordinate_system.to_string(),
+        model_revision: inspection.model_revision,
+        sha256: inspection.source.package_sha256,
         bytes: bytes.len() as u64,
-        authored_revision: session.current_revision().revision_id.as_str().to_string(),
+        authored_revision: inspection.source.expected_revision,
     })
 }
 
@@ -562,7 +577,11 @@ mod format_open_tests {
     fn current_named_open_is_noop_and_keeps_original_identity() {
         let root = tempfile::tempdir().unwrap();
         let bytes = current();
-        let revision = identity(&bytes).unwrap().model_revision;
+        let revision = ds_grid_exchange::package::unpack(&bytes)
+            .unwrap()
+            .manifest
+            .model
+            .model_revision;
         let located = held(root.path(), &bytes, revision);
         let before = read_at(root.path(), &located.scope).unwrap();
         assert!(prepare_open_at(root.path(), &located).unwrap().is_none());
@@ -577,7 +596,11 @@ mod format_open_tests {
         let mut located = held(
             root.path(),
             &bytes,
-            identity(&bytes).unwrap().model_revision,
+            ds_grid_exchange::package::unpack(&bytes)
+                .unwrap()
+                .manifest
+                .model
+                .model_revision,
         );
         located.row.sha256 = "a".repeat(64);
         assert!(prepare_open_at(root.path(), &located).is_err());
@@ -681,3 +704,7 @@ mod format_open_tests {
         assert!(!cache.join("migration.receipt.json").exists());
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/workspace_identity.rs"]
+mod identity_process_tests;

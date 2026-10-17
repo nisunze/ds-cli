@@ -145,7 +145,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // The engine decides whether these bytes are a package, and the identity
     // recorded is the one they declare — never the operator's description of
     // them.
-    let identity = workspace::identity(&bytes)?;
+    let client = crate::native::capture()?;
+    let identity = workspace::identity_with_client(&bytes, &client)?;
     let id = workspace::mint_id();
     let name = inputs
         .value("name")
@@ -160,8 +161,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             str::to_owned,
         );
 
-    let outcome = workspace::execute(
-        inputs,
+    let outcome = workspace::execute_in_with_client(
+        &workspace::scope(inputs)?,
         Op::Register {
             id: id.clone(),
             display_name: name,
@@ -177,6 +178,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             activate: false,
         },
         Some(&bytes),
+        Some(&client),
     )?;
     let mut imported = outcome.model.clone().ok_or_else(|| {
         Failure::internal("local_model_store_unavailable", "nothing was imported")
