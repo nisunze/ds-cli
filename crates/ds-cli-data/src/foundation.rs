@@ -58,7 +58,7 @@ const TRANSFORMER_ARG: Arg = Arg::value(
 const BOUNDARY_ARG: Arg = Arg::value(
     "boundary",
     "<path.geojson>",
-    "One WGS84 Polygon or MultiPolygon (bare, a Feature, or a one-feature FeatureCollection) whose envelope is at most 25 km²: a corridor from `ds data vector buffer`, an admin unit, a drawn extent.",
+    "One WGS84 Polygon or MultiPolygon (bare, a Feature, or a one-feature FeatureCollection) whose envelope is at most 25 km²: a supplied reviewed corridor, an admin unit, a drawn extent.",
 );
 const LIMIT_ARG: Arg =
     Arg::value("limit", "<1-5000>", "Most rows to answer; 5000 is the cap.").default("5000");
@@ -247,7 +247,7 @@ pub static QUERY_COMMAND: Command = Command {
         },
         Example {
             command: "ds data customers query --project <id> --boundary ./corridor.geojson --output json",
-            note: "Customers inside a buffered line corridor written by `ds data vector buffer`.",
+            note: "Customers inside a supplied, reviewed corridor polygon.",
             runnable: false,
         },
     ],
@@ -271,7 +271,7 @@ pub static PARCELS_COMMAND: Command = Command {
     path: &["data", "parcels", "query"],
     contract: 1,
     summary: "List UPI parcels in one village, cell, area or transformer extent.",
-    purpose: "Read Rwanda UPI parcels from BigQuery intersecting one village/cell, a rectangle of at most 25 km², a supplied boundary or one transformer's buffered design extent. For corridor crossings, pass the result of `ds data vector buffer` as --boundary. Capped at 5,000 rows; the receipt states rows_total and truncation. Includes UPI, parcel key, administrative names and area. Retain project data with `ds data project-cache seed --dataset rwanda_upi_parcels`; never installs the national dataset.",
+    purpose: "Read Rwanda UPI parcels from BigQuery intersecting one village/cell, a rectangle of at most 25 km², a supplied boundary or one transformer's buffered design extent. For corridor crossings, pass a supplied, reviewed corridor polygon as --boundary. Capped at 5,000 rows; the receipt states rows_total and truncation. Includes UPI, parcel key, administrative names and area. Retain project data with `ds data project-cache seed --dataset rwanda_upi_parcels`; never installs the national dataset.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -290,7 +290,7 @@ pub static PARCELS_COMMAND: Command = Command {
     output: "Dataset (id, layer, source, residency cloud, version), the query bound, rows_cap/rows_returned/rows_total/truncated, counts per cell and the written path when --geometry-out was given.",
     examples: &[
         Example {
-            command: "ds data vector buffer --source ./mv-span.geojson --radius-m 6 --out ./corridor.geojson && ds data parcels query --project <id> --boundary ./corridor.geojson --geometry-out ./crossed-parcels.geojson",
+            command: "ds data parcels query --project <id> --boundary ./corridor.geojson --geometry-out ./crossed-parcels.geojson",
             note: "Parcels crossed by one 6 m MV span corridor, kept as GeoJSON.",
             runnable: false,
         },

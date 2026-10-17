@@ -42,10 +42,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.repair.apply-selected", "local_file_write", "none"),
     ("design.project.repair", "local_file_write", "none"),
     ("design.repair.publish", "global_write", "headless_project"),
-    ("data.vector.collisions", "read_only", "none"),
-    ("data.vector.describe", "read_only", "none"),
-    ("data.vector.outliers", "local_file_write", "none"),
-    ("data.vector.random-points-area", "local_file_write", "none"),
     ("data.mv-lv-orphans", "local_file_write", "none"),
     // Exact effect and authority reviewed from the integrated CLI descriptors.
     ("assets.download", "read_only", "headless_project"),
@@ -339,10 +335,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // geodesic engine on this machine and write a local file, with no
     // project, no window and no network — which is what made them the right
     // answer to an outside agent who has none of those.
-    ("data.vector.measure", "local_file_write", "none"),
-    ("data.vector.buffer", "local_file_write", "none"),
-    ("data.vector.sample", "local_file_write", "none"),
-    ("data.vector.intersect", "local_file_write", "none"),
     ("desktop.project.list", "read_only", "desktop_user"),
     ("desktop.project.switch", "local_ui", "desktop_user"),
     ("desktop.status", "discovery", "none"),

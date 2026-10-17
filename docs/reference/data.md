@@ -21,20 +21,12 @@ work through MCP with no map open.
 inspect → (choose the sheet, layer, or coordinate columns) → convert
 ```
 
-## Native local vector processing
+## Vector processing boundary
 
-`data vector measure`, `buffer`, `sample` and `intersect` call the same compiled
-Rust operations used by the map. They import GeoJSON, KML or Arrow files
-and return JSON receipts with bounded previews. --out exports layer data as
-GeoJSON or Arrow IPC. Read each
-live descriptor for its mutually exclusive inputs and bounds. MCP inline
-documents are strings containing JSON text, not object arguments; all four
-tools are in the `datasets` profile or the broad `ds_data` chapter. Sampling
-returns points along lines and intersection returns line-crossing points;
-neither promises line densification or polygon overlay. Check `skipped`,
-`more` and `note` for eligibility and completeness. An output file includes
-all produced results, but cannot include source features excluded by a bound.
-Use the shipped `ds-vector-tools` skill for this local workflow.
+Core no longer publishes `data vector` commands or the MCP `vector` profile.
+Those command names refuse as unknown; use an external analysis tool for local
+geometry processing and supply its reviewed file through an existing import
+contract. Network's portable Vector owner and its WASM consumers remain intact.
 
 ## `mv-lv-orphans`
 
@@ -465,7 +457,7 @@ never bundled) inside exactly one bound:
   kernel's envelope bound); larger is `bound_exceeded`.
 * `--boundary <path.geojson>` — one WGS84 Polygon or MultiPolygon (bare, a
   Feature, or a one-feature FeatureCollection) whose envelope is at most
-  25 km²: a corridor from `ds data vector buffer`, an admin unit from
+  25 km²: a supplied reviewed corridor, an admin unit from
   `ds data admin-bounds`, a drawn extent. Rows must intersect the polygon,
   not merely its envelope.
 * `--transformer <name>` — the transformer's saved design extent, buffered by
@@ -485,17 +477,15 @@ names — no identity.
 The Rwanda UPI parcels (11.5 million polygons in BigQuery, never bundled)
 that **intersect** exactly one bound — the same five bounds as `customers
 query`, the same cap and receipt. The classic question, *which parcels does
-this line's corridor cross*, is two commands:
+this line's corridor cross*, uses a supplied corridor polygon:
 
 ```
-ds data vector buffer --source ./one-mv-span.geojson --radius-m 6 --out ./corridor.geojson
 ds data parcels query --project <id> --boundary ./corridor.geojson --geometry-out ./crossed.geojson
 ```
 
-The source file must contain the actual line geometry. The buffer command
-creates one polygon per source feature; `parcels query --boundary` takes one
-polygon, so query bounded spans or sections separately and deduplicate UPI
-across responses. The boundary envelope must remain within 25 km².
+Supply one reviewed polygon representing the actual corridor. Query bounded
+spans or sections separately and deduplicate UPI across responses. The boundary
+envelope must remain within 25 square kilometres.
 
 The terminal prints counts per sector/cell and the summed `source_area_m2`;
 `--geometry-out` keeps the polygons (UPI, parcel key, administrative names,
@@ -604,62 +594,6 @@ per cell and no attributes — so it stays a Cloud-Optimized GeoTIFF read by byt
 range or from the verified full Desktop component. `elevation attach` samples
 that surface into a new point artifact; it does not rewrite the DEM.
 
-
-### Shared vector request contract
-
-`ds data vector describe --tool sample --output json` publishes the Rust-owned
-input/output JSON Schemas, defaults, worked request examples, availability and
-named refusals. Omit `--tool` to list all 94 catalogue descriptors plus the
-collision report reader, including roadmap.
-The UI reads the same descriptors through ds-network-wasm.
-A full generated Buffer descriptor is in [vector-buffer.descriptor.json](vector-buffer.descriptor.json).
-
-Every available command (`measure`, `buffer`, `sample`, `intersect`, `outliers`,
-`random-points-area`, `collisions`) accepts `--request <json-text>` as an alternative to its
-source and parameter flags. MCP's vector profile and data router project
-these same command arguments; request is serialized JSON text there too.
-A portable control request names an Arrow/GeoJSON/KML file in `source.file`,
-with optional `source.layer_id` and `source.name` provenance. Intersect also needs
-`against`. Native inline GeoJSON is an explicit import-file boundary; the
-WASM runner receives binary IPC only. Download the web pane's content-named
-Arrow inputs beside the copied request.
-`parameters` follows the selected descriptor; `output` has `limit` (500 by
-default, 1..20000), `projection` (`inline` or `complete`) and optional `name`.
-The kernel applies omitted defaults. `--request` cannot mix with source,
-parameter or limit flags (`vector_input_choice_invalid`). Delivery flags
-`--out` and `--overwrite` are allowed. With explicit `--request`, exports retain
-its Rust-normalized projection and point order. Flag-style `--out` asks for the
-complete produced output, while input admission stays bounded.
-
-`--dry-run` executes the same computation and returns preview counts, fields,
-at most five sample features and warnings. It writes nothing, including when
-`--out` is present. A result limit never claims to restore withheld source
-features; read `more` and preview warnings.
-
-Measure now also returns a derived layer with `length_m`, `area_m2` and
-`vertices`, preserving source properties and ids; existing fields with these
-names are replaced in the derived copy. The report and whole-document totals
-remain available. Sample uses full precision `distance_m`, `source_id` and
-zero-based `part_index`; its default `include_ends` is false. Buffer defaults to
-25 metres and 8 arc segments. Intersect means line crossing points, not polygon
-intersection. Random-area sampling defaults to 50/100 metre spacing, a
-25 metre buffer for non-polygons and reproducible seed 0; spacing is per area.
-Terrain enrichment remains the existing host service workflow. Outlier metrics
-use the existing engine's metre projection for recognized geographic input
-(and source units otherwise), with the 3.5 score threshold.
-
-`vector_request_invalid` names unknown JSON fields, wrong types, enums, ranges,
-missing sources, inverted spacing or all outlier detectors disabled. Follow
-the published schema. `vector_tool_unknown` means no such descriptor exists;
-list describe. `vector_tool_roadmap` means the proposed schema exists but the
-runner is not shipped; choose status `available`. Existing document, eligibility,
-distance, limit and engine refusals retain their codes; parameter remedies now point to the descriptor.
-
-`ds data vector collisions` reads the existing reporter region layer as portable GeoJSON; it does not trigger detection. Its schema includes `loaded`, `computed` and nullable `last_read_computed`. Empty computed collections mean zero; a missing document and a held prior answer remain distinct. This is an additional report contract alongside the 94 geometry catalogue entries.
-
-For random points, optional `sample_elevation: true` requires `elevations_m` in returned point order, with `null` for unavailable terrain. The web acquires terrain, resolves the input pane and then calls the same Rust runner. Copy that resolved JSON to reproduce the exact enriched layer natively. Missing or mismatched readings refuse as `vector_external_data_required`.
-
-Use `ds mcp serve --exposure commands --profile vector` for descriptor discovery and all available vector commands. The existing datasets profile keeps its original four geometry primitives.
 
 KML and KMZ conversion retains shared and inline styles, normal StyleMap entries,
 archive-local style references, and embedded icons. The resulting GeoParquet

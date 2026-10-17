@@ -1073,18 +1073,12 @@ mod tests {
     #[test]
     fn an_outsiders_words_land_on_the_right_command_first() {
         for (query, expected) in [
-            ("buffer", "data.vector.buffer"),
-            ("geoprocessing", "data.vector.buffer"),
-            ("intersect", "data.vector.intersect"),
-            ("overlay", "data.vector.intersect"),
             ("line", "map.line-difference"),
-            ("chainage", "data.vector.sample"),
             // An exact command-name hit owns project CRS discovery; the
             // conversion qualifier still finds the local conversion door.
             ("crs", "report.project.crs"),
             ("convert crs", "data.convert"),
             ("shapefile", "data.convert"),
-            ("length", "data.vector.measure"),
             // Holding the country's data is something an agent should reach
             // for with its own words, on the way to a report, without a human
             // naming the command. Each of these led somewhere else.

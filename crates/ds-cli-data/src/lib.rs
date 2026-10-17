@@ -26,11 +26,10 @@ pub mod point_cloud;
 pub mod project_cache;
 pub mod spatial;
 pub mod terrain_sampling;
-pub mod vector;
 
 pub static DOMAIN: Domain = Domain {
     id: "data",
-    summary: "Local data: inspect, convert, vector geoprocessing, reference fields.",
+    summary: "Local data: inspect, convert and prepare reference fields.",
     commands: &[
         &inspect::COMMAND,
         &convert::COMMAND,
@@ -54,14 +53,6 @@ pub static DOMAIN: Domain = Domain {
         &foundation::PARCELS_COMMAND,
         &spatial::PLAN_COMMAND,
         &spatial::EXECUTE_COMMAND,
-        &vector::MEASURE_COMMAND,
-        &vector::BUFFER_COMMAND,
-        &vector::SAMPLE_COMMAND,
-        &vector::INTERSECT_COMMAND,
-        &vector::DESCRIBE_COMMAND,
-        &vector::OUTLIERS_COMMAND,
-        &vector::RANDOM_COMMAND,
-        &vector::COLLISIONS_COMMAND,
     ],
 };
 

@@ -75,8 +75,7 @@ terrain, and authored breaklines need a surface that supports them.
 Dry-run validates the inputs and query plan; it does not acquire or evaluate
 the provider and cannot report source coverage.
 
-For fixed-distance points without terrain, use `ds-vector-tools`. For changing
-terrain in a design, hand the sampled artifacts and provenance to
+For changing terrain in a design, hand the sampled artifacts and provenance to
 `ds-grid-project-model` and follow that live model's typed contract. Local
 sampling does not authorize a model edit or publication.
 

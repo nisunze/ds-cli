@@ -2243,50 +2243,6 @@ static DATA_ENTRIES: &[Entry] = &[
         handler: ds_cli_data::spatial::run_execute,
         render: ds_cli_data::spatial::render_execute,
     },
-    // Vector processing, in the order a caller meets it: look at the
-    // document first, then act on it. `measure` leads because it is the
-    // command that answers "what is in this file" — the question every
-    // refusal below it would otherwise leave a caller guessing at.
-    Entry {
-        command: &ds_cli_data::vector::DESCRIBE_COMMAND,
-        handler: ds_cli_data::vector::run_describe,
-        render: ds_cli_data::vector::render_describe,
-    },
-    Entry {
-        command: &ds_cli_data::vector::COLLISIONS_COMMAND,
-        handler: ds_cli_data::vector::run_collisions,
-        render: ds_cli_data::vector::render_collisions,
-    },
-    Entry {
-        command: &ds_cli_data::vector::OUTLIERS_COMMAND,
-        handler: ds_cli_data::vector::run_outliers,
-        render: ds_cli_data::vector::render_outliers,
-    },
-    Entry {
-        command: &ds_cli_data::vector::RANDOM_COMMAND,
-        handler: ds_cli_data::vector::run_random,
-        render: ds_cli_data::vector::render_random,
-    },
-    Entry {
-        command: &ds_cli_data::vector::MEASURE_COMMAND,
-        handler: ds_cli_data::vector::run_measure,
-        render: ds_cli_data::vector::render_measure,
-    },
-    Entry {
-        command: &ds_cli_data::vector::BUFFER_COMMAND,
-        handler: ds_cli_data::vector::run_buffer,
-        render: ds_cli_data::vector::render_buffer,
-    },
-    Entry {
-        command: &ds_cli_data::vector::SAMPLE_COMMAND,
-        handler: ds_cli_data::vector::run_sample,
-        render: ds_cli_data::vector::render_sample,
-    },
-    Entry {
-        command: &ds_cli_data::vector::INTERSECT_COMMAND,
-        handler: ds_cli_data::vector::run_intersect,
-        render: ds_cli_data::vector::render_intersect,
-    },
 ];
 
 /// Tiling. Ordered as a session uses it: read the state, look at the

@@ -1053,11 +1053,9 @@ different state from a check that found nothing. `state` is the key an operator
 reads the answer under, `pairs` is the count when one is recorded, and
 `transformers` is how many ordinary transformers a detection run would cover.
 
-`--regions --limit <1-50>` reads bounded saved-region evidence through the
-shared ds-network vector registry. `summary.regions` uses `feature_index`
-references without geometry; `summary.total` counts the complete inventory and
-`summary.more` discloses withheld regions. Contract 2 adds the registry's phase
-copy and replaces the former kernel summary owner.
+Contract 3 retains the collision count and state only. `--regions` and `--limit`
+are removed and refuse as unknown flags before any project read. Ranked region
+evidence is no longer part of this Core command.
 
 This command starts nothing and writes nothing. Detection itself is a separate
 governed action.

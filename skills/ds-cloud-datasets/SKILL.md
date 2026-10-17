@@ -32,7 +32,7 @@ Exactly one bound per call. Prefer the tightest one that states the question:
 
 | Question | Bound |
 |---|---|
-| The parcels a line's corridor crosses | `--boundary <corridor.geojson>` from `ds data vector buffer` |
+| The parcels a line's corridor crosses | `--boundary <corridor.geojson>` from a supplied, reviewed polygon |
 | The customers a transformer would serve | `--transformer <name>` (its buffered design extent) |
 | Everything in one administrative unit | `--village <8-digit>` / `--cell <6-digit>` from `ds data admin-bounds list` |
 | An area the user drew or holds | `--boundary <polygon.geojson>` or `--bbox w,s,e,n` |
@@ -46,16 +46,13 @@ the buffer, never widen the cap.
 ## The corridor read
 
 ```
-ds data vector buffer --source ./one-mv-span.geojson --radius-m 6 --out ./corridor.geojson --output json
 ds data parcels query --project <id> --boundary ./corridor.geojson --geometry-out ./crossed.geojson --output json
 ```
 
-The buffer source is a GeoJSON file containing the actual line geometry.
-`data vector buffer` creates one polygon per source feature, while
-`parcels query --boundary` accepts one polygon per call. Split a longer route
-into bounded spans or sections; retain each bound and deduplicate UPI when
-combining results. A projected continuation or drawing viewport is not a
-line source.
+Supply the reviewed corridor polygon as a local GeoJSON file. The boundary
+must represent the actual corridor and remain within the area bound. Query
+bounded spans or sections separately; retain each bound and deduplicate UPI
+when combining results.
 
 Read `rows_total` and `truncated` before reporting a count. `truncated: true`
 means the bound holds more than the cap answered; narrow the bound and read

@@ -77,7 +77,7 @@ Rule out a stop, try other vocabulary, then report. You may filter/compare
   `ds-survey-lifecycle`, `ds-dirty-categories`, `ds-cloud-datasets` (parcels,
   customers in a boundary).
 - Maps — `ds-map-composition`, `ds-map-local-data`, `ds-style-composite`.
-- Geometry and terrain — `ds-vector-tools`, `ds-terrain-sampling`,
+- Geometry and terrain — `ds-terrain-sampling`,
   `ds-mv-corridor-ground`.
 - Design and delivery — `ds-grid-spotting`, `ds-lv-design-revision`,
   `ds-lv-voltage-drop`, `ds-pls-cadd-terrain-roundtrip`,
