@@ -175,26 +175,71 @@ function CoreAssets([object]$Release) {
  }
  return @{zip=$zip[0];receipt=$receipt[0];version=($folder -replace '-r[1-9]\d*$','')}
 }
-function InstallCore([ValidateSet('Install','Update')][string]$Verb='Install') {
- if(Test-Path -LiteralPath (CorePath)) {
-  if($Verb -eq 'Update'){Fail 'core_update_unavailable' 'Existing Core is preserved until its qualified replacement owner is available'}
-  return InvokeCore -Arguments @('version') -ExpectedCommand version -ExpectedContract 1
+function InvokeCoreInstaller([string[]]$Arguments) {
+ $previousPreference=$ErrorActionPreference
+ try {
+  $ErrorActionPreference='Continue'
+  $output=& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'install-ds-core-windows.ps1') @Arguments 2>&1
+  $code=$LASTEXITCODE
+ } finally {$ErrorActionPreference=$previousPreference}
+ $text=($output|ForEach-Object{$_.ToString()}) -join "`n"
+ if($code -ne 0){Fail 'core_install_failed' ("The protected Core owner refused: $text")}
+ if($text.Length -gt 65536){Fail 'core_install_incompatible' 'Core installer response exceeds its bound'}
+ try {$state=$text|ConvertFrom-Json}catch{Fail 'core_install_incompatible' 'Core installer returned malformed state'}
+ if($state -isnot [pscustomobject] -or (@($state.PSObject.Properties.Name|Sort-Object) -join ',') -cne 'channel,current,pending,previous,schema'){Fail 'core_install_incompatible' 'Core installer returned incomplete state'}
+ if($state.schema -cne 'ds.core-installation-state/v1' -or $state.channel -cne $Channel -or $state.pending -isnot [bool]){Fail 'core_install_incompatible' 'Core installer returned crossed state'}
+ foreach($identity in @($state.current,$state.previous)){
+  if($null -ne $identity -and ($identity -isnot [pscustomobject] -or (@($identity.PSObject.Properties.Name|Sort-Object) -join ',') -cne 'executable_sha256,receipt_sha256')){Fail 'core_install_incompatible' 'Core installer returned incomplete identity'}
+  if($null -ne $identity -and ($identity.receipt_sha256 -cnotmatch '^[a-f0-9]{64}$' -or $identity.executable_sha256 -cnotmatch '^[a-f0-9]{64}$')){Fail 'core_install_incompatible' 'Core installer returned an unbound installation identity'}
  }
+ return $state
+}
+function CoreInstallationState {
+ $state=InvokeCoreInstaller @('-Action','Status','-Channel',$Channel)
+ # Only an explicitly requested mutation recovers a prior admitted transaction.
+ if($state.pending){$state=InvokeCoreInstaller @('-Action','Recover','-Channel',$Channel)}
+ return $state
+}
+function CoreExpectedArguments($State) {
+ $result=@()
+ foreach($entry in @(@('current','Expected'),@('previous','ExpectedPrevious'))){
+  $identity=$State.($entry[0]);$prefix=$entry[1]
+  $receipt=if($null -ne $identity){$identity.receipt_sha256}else{'absent'}
+  $executable=if($null -ne $identity){$identity.executable_sha256}else{'absent'}
+  $result+=@("-$($prefix)ReceiptSha256",$receipt,"-$($prefix)ExecutableSha256",$executable)
+ }
+ return $result
+}
+function InstallCore([ValidateSet('Install','Update')][string]$Verb='Install') {
+ if($Verb -eq 'Install' -and (Test-Path -LiteralPath (CorePath))){return InvokeCore -Arguments @('version') -ExpectedCommand version -ExpectedContract 1}
+ $state=CoreInstallationState
+ $assets=$null
  if($CoreArtifact -or $CoreReceipt -or $CoreSha256){
-  if(!$CoreArtifact -or !$CoreReceipt -or $CoreSha256 -notmatch '^[a-f0-9]{64}$'){Fail 'core_package_incomplete' 'Supply the qualified local ZIP, artifact receipt and ZIP digest together'}
+  if(!$CoreArtifact -or !$CoreReceipt -or $CoreSha256 -cnotmatch '^[a-f0-9]{64}$'){Fail 'core_package_incomplete' 'Supply the qualified local ZIP, artifact receipt and ZIP digest together'}
  }else{
   $assets=CoreAssets (Release core)
   $CoreArtifact=Join-Path $script:Cache "$($assets.zip.sha256)-core.zip"
   $CoreReceipt=Join-Path $script:Cache "$($assets.receipt.sha256)-core-receipt.json"
-  Download $assets.zip $CoreArtifact
-  Download $assets.receipt $CoreReceipt 2097152
+  Download $assets.zip $CoreArtifact;Download $assets.receipt $CoreReceipt 2097152
   $CoreSha256=$assets.zip.sha256
-  $receipt=ReadJson $CoreReceipt 2097152
-  if($receipt.version -cne $assets.version -or $receipt.lane -ne $Channel -or $receipt.sha256 -cne $CoreSha256 -or $receipt.size_bytes -ne $assets.zip.size_bytes){Fail 'core_publication_invalid' 'Downloaded Core artifact receipt crosses lane or package identity'}
  }
- & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'install-ds-core-windows.ps1') -Artifact $CoreArtifact -Receipt $CoreReceipt -Sha256 $CoreSha256
- if($LASTEXITCODE -ne 0) { Fail 'core_install_failed' 'The owning Core installer refused; existing installations were preserved' }
+ $receipt=ReadJson $CoreReceipt 2097152
+ if($receipt.contract -cne 'ds.core-windows-artifact/v1' -or $receipt.lane -cne $Channel -or $receipt.target -cne 'x86_64-pc-windows-msvc' -or $receipt.sha256 -cne $CoreSha256){Fail 'core_publication_invalid' 'Core artifact receipt crosses lane, target or archive identity'}
+ if($null -ne $assets){
+  if($receipt.version -cne $assets.version -or $receipt.size_bytes -ne $assets.zip.size_bytes -or $receipt.built_at -cne $assets.zip.built_at -or $receipt.source_revisions.'ds-cli' -cne $assets.zip.source_sha){Fail 'core_publication_invalid' 'Downloaded Core receipt differs from its admitted publication'}
+  foreach($name in @('ds-web','ds-cli','ds-network','ds-command-kernel','ds-solar','ds-network-reporter')){if($receipt.source_revisions.$name -cne $assets.zip.source_revisions.$name){Fail 'core_publication_invalid' 'Downloaded Core source closure differs from its admitted publication'}}
+ }
+ $operation=if($null -ne $state.current){$Verb}else{'Install'}
+ $arguments=@('-Action',$operation,'-Channel',$Channel,'-Artifact',$CoreArtifact,'-Receipt',$CoreReceipt,'-Sha256',$CoreSha256)
+ if($operation -eq 'Update'){$arguments+=@(CoreExpectedArguments $state)}
+ $null=InvokeCoreInstaller $arguments
  return InvokeCore -Arguments @('version') -ExpectedCommand version -ExpectedContract 1
+}
+function CoreLifecycle([ValidateSet('Remove','Rollback')][string]$Verb) {
+ if($CoreArtifact -or $CoreReceipt -or $CoreSha256){Fail 'core_package_unexpected' 'Removal and rollback use only retained verified installations'}
+ $state=CoreInstallationState
+ $arguments=@('-Action',$Verb,'-Channel',$Channel)+@(CoreExpectedArguments $state)
+ return InvokeCoreInstaller $arguments
 }
 function ComponentAction([string]$Name,[string]$Verb,[switch]$PreserveInstalled) {
  $runtime=if($Name -in @('interactions','command-kernel')){'wasm'}else{'native'}
@@ -304,7 +349,7 @@ try {
  if($Action -eq 'Status') { if($Component -in @('Core','Desktop')){Status | ConvertTo-Json -Depth 12}else{ComponentAction $Component Status | ConvertTo-Json -Depth 30}; return }
  if(!$Yes){Fail 'confirmation_required' 'Use -Yes for the selected installation action'}
  $script:Cache=Join-Path $script:Local 'DS Installation Manager Cache'; PrivateDirectory $script:Cache
- if($Component -eq 'Core') { if($Action -notin @('Install','Update')){Fail 'core_lifecycle_unavailable' 'Core removal and rollback require their qualified owner; no data was changed'}; InstallCore $Action | ConvertTo-Json -Depth 20; return }
+ if($Component -eq 'Core') { if($Action -in @('Install','Update')){InstallCore $Action | ConvertTo-Json -Depth 20}else{CoreLifecycle $Action | ConvertTo-Json -Depth 20}; return }
  if($Component -eq 'Desktop') {
   if($Action -notin @('Install','Update')){Fail 'desktop_lifecycle_unavailable' 'Use the existing Desktop uninstaller with data-preserving semantics'}
   $release=Release Desktop

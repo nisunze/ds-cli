@@ -2,9 +2,11 @@
 # harmless fixture executables; never installs a real product or touches data.
 [CmdletBinding()]
 param(
- [string]$ManagerSource=(Join-Path $PSScriptRoot 'ds-install-manager.ps1'),
- [string]$CoreInstallerSource=(Join-Path $PSScriptRoot '..\..\..\ds-web\scripts\core\install-ds-core-windows.ps1')
+ [string]$ManagerSource,
+ [string]$CoreInstallerSource
 )
+if(!$ManagerSource){$ManagerSource=Join-Path $PSScriptRoot 'ds-install-manager.ps1'}
+if(!$CoreInstallerSource){$CoreInstallerSource=Join-Path $PSScriptRoot '..\..\..\ds-web\scripts\core\install-ds-core-windows.ps1'}
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version 2
 if($env:OS -ne 'Windows_NT' -or ![Environment]::Is64BitProcess){throw 'Native Windows PowerShell is required'}
@@ -202,8 +204,56 @@ public static class FixtureUninstaller {
  EnsureDesktopRequirements
  Check (($script:EnsureCalls -join '|') -eq 'version|capabilities|core component selection --component interactions --channel canary --runtime wasm|core component capture --component interactions --channel canary --runtime wasm|core component selection --component command-kernel --channel canary --runtime wasm|core component capture --component command-kernel --channel canary --runtime wasm') 'Desktop Update advanced independent dependencies or skipped native capture'
  Check (($script:Completed -join ',') -eq 'Core,interactions,command-kernel') 'Desktop requirement completion differs'
- $refused=$false;try{$null=InstallCore Update}catch{$refused=$_.Exception.Message.Contains('core_update_unavailable')}
- Check $refused 'Direct Core Update lost its explicit replacement refusal'
+ # Manager dispatch fixtures retain exact owner state and digests; actual
+ # filesystem/rename/busy behavior is covered by the native protected-owner test.
+ $protectedOwner=Join-Path $packageRoot 'install-ds-core-windows.ps1';$protectedBytes=[IO.File]::ReadAllBytes($protectedOwner)
+ try {
+  foreach($case in @('valid','cross-lane','missing-current','partial-identity','extra-field','wrong-pending')){
+   $response=[ordered]@{schema='ds.core-installation-state/v1';channel='canary';pending=$false;current=[ordered]@{receipt_sha256=('a'*64);executable_sha256=('b'*64)};previous=$null}
+   if($case -eq 'cross-lane'){$response.channel='stable'}
+   if($case -eq 'missing-current'){$response.Remove('current')}
+   if($case -eq 'partial-identity'){$response.current.Remove('executable_sha256')}
+   if($case -eq 'extra-field'){$response.path='unowned'}
+   if($case -eq 'wrong-pending'){$response.pending='false'}
+   $json=($response|ConvertTo-Json -Depth 8 -Compress).Replace("'","''")
+   [IO.File]::WriteAllText($protectedOwner,"param([string]`$Action,[string]`$Channel)`nWrite-Output '$json'`n")
+   $refused=$false;try{$admission=InvokeCoreInstaller @('-Action','Status','-Channel','canary')}catch{$refused=$_.Exception.Message.Contains('core_install_incompatible')}
+   Check ($refused -eq ($case -ne 'valid')) "Protected owner response $case was not admitted/refused exactly"
+  }
+ }finally{[IO.File]::WriteAllBytes($protectedOwner,$protectedBytes)}
+ $script:CoreOwnerCalls=@();$script:CoreOwnerPending=$false;$script:CoreOwnerRefused=$false
+ function InvokeCoreInstaller([string[]]$Arguments){
+  $script:CoreOwnerCalls+=@(($Arguments -join ' '))
+  if($script:CoreOwnerRefused -and $Arguments[1] -ne 'Status'){throw 'core_install_failed: fixture owner refused'}
+  if($Arguments[1] -eq 'Recover'){$script:CoreOwnerPending=$false}
+  return [pscustomobject]@{schema='ds.core-installation-state/v1';channel='canary';pending=$script:CoreOwnerPending;current=[pscustomobject]@{receipt_sha256=('a'*64);executable_sha256=('b'*64)};previous=[pscustomobject]@{receipt_sha256=('c'*64);executable_sha256=('d'*64)}}
+ }
+ $CoreArtifact=Join-Path $testRoot 'core-fixture.zip';[IO.File]::WriteAllText($CoreArtifact,'fixture')
+ $CoreReceipt=Join-Path $testRoot 'core-fixture-receipt.json';$CoreSha256='e'*64
+ $coreMetadata=[ordered]@{contract='ds.core-windows-artifact/v1';lane='canary';target='x86_64-pc-windows-msvc';sha256=$CoreSha256}
+ [IO.File]::WriteAllText($CoreReceipt,($coreMetadata|ConvertTo-Json))
+ $script:EnsureCalls=@();$null=InstallCore Update
+ Check ($script:CoreOwnerCalls.Count -eq 2 -and $script:CoreOwnerCalls[0] -ceq '-Action Status -Channel canary') 'Core update skipped protected state admission'
+ $expected='-ExpectedReceiptSha256 '+('a'*64)+' -ExpectedExecutableSha256 '+('b'*64)+' -ExpectedPreviousReceiptSha256 '+('c'*64)+' -ExpectedPreviousExecutableSha256 '+('d'*64)
+ Check ($script:CoreOwnerCalls[1].StartsWith('-Action Update -Channel canary -Artifact ') -and $script:CoreOwnerCalls[1].EndsWith($expected)) 'Core update lost exact current/retained receipt and executable fences'
+ Check (($script:EnsureCalls -join '|') -ceq 'version') 'Core update used another runtime or started a worker'
+ $script:CoreOwnerCalls=@();$null=InstallCore Install
+ Check ($script:CoreOwnerCalls.Count -eq 0) 'Ordinary install implicitly replaced existing Core'
+ $coreMetadata.lane='stable';[IO.File]::WriteAllText($CoreReceipt,($coreMetadata|ConvertTo-Json));$script:CoreOwnerCalls=@();$refused=$false
+ try{$null=InstallCore Update}catch{$refused=$_.Exception.Message.Contains('core_publication_invalid')}
+ Check ($refused -and $script:CoreOwnerCalls.Count -eq 1) 'Cross-lane local receipt reached the mutation owner'
+ $coreMetadata.lane='canary';[IO.File]::WriteAllText($CoreReceipt,($coreMetadata|ConvertTo-Json))
+ $CoreArtifact='';$CoreReceipt='';$CoreSha256=''
+ foreach($verb in @('Remove','Rollback')){
+  $script:CoreOwnerCalls=@();$script:EnsureCalls=@();$null=CoreLifecycle $verb
+  Check ($script:CoreOwnerCalls.Count -eq 2 -and $script:CoreOwnerCalls[1] -ceq "-Action $verb -Channel canary $expected") 'Core lifecycle crossed its exact retained identity or lane'
+  Check ($script:EnsureCalls.Count -eq 0) 'Core lifecycle executed Core instead of its protected installation owner'
+ }
+ $script:CoreOwnerCalls=@();$script:CoreOwnerPending=$true;$null=CoreLifecycle Rollback
+ Check ($script:CoreOwnerCalls.Count -eq 3 -and $script:CoreOwnerCalls[1] -ceq '-Action Recover -Channel canary') 'Interrupted mutation skipped explicit same-lane owner recovery'
+ $script:CoreOwnerRefused=$true;$refused=$false
+ try{$null=CoreLifecycle Remove}catch{$refused=$_.Exception.Message.Contains('core_install_failed')}
+ Check $refused 'Core lifecycle hid an owning refusal';$script:CoreOwnerRefused=$false
  $script:CoreAvailable=$false;$refused=$false
  try{EnsureDesktopRequirements}catch{$refused=$_.Exception.Message.Contains('core_incompatible')}
  Check $refused 'Incompatible Core was treated as a missing dependency'
