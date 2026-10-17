@@ -88,9 +88,21 @@ pub struct CapturedExternal {
     owner: &'static External,
     executable: PathBuf,
     managed_identity: Option<managed_modules::ManagedIdentity>,
+    // Invocation context belongs to the captured Reporter, never ambient state.
+    reporter_network_lane: Option<&'static str>,
 }
 
 impl CapturedExternal {
+    fn with_reporter_lane(mut self, lane: &str) -> Self {
+        if self.owner.is_reporter() {
+            self.reporter_network_lane = match lane {
+                "stable" => Some("stable"),
+                "canary" => Some("canary"),
+                _ => unreachable!("lane was validated before capture"),
+            };
+        }
+        self
+    }
     fn verify_managed(&self) -> Result<(), Failure> {
         if let Some(identity) = &self.managed_identity {
             managed_modules::verify(&self.executable, identity)?;
@@ -131,8 +143,13 @@ impl CapturedExternal {
         timeout: Duration,
     ) -> Result<Completed, Failure> {
         self.verified(|| {
-            self.owner
-                .call_at(&self.executable, subcommand, args, timeout)
+            self.owner.call_at(
+                &self.executable,
+                subcommand,
+                args,
+                timeout,
+                self.reporter_network_lane,
+            )
         })
     }
 
@@ -160,6 +177,7 @@ impl CapturedExternal {
                 args,
                 timeout,
                 Some(workers),
+                self.reporter_network_lane,
                 cancel,
                 None,
             )
@@ -191,6 +209,7 @@ impl CapturedExternal {
                 args,
                 timeout,
                 Some(workers),
+                self.reporter_network_lane,
                 cancel,
                 Some(stderr_observer),
             )
@@ -216,6 +235,7 @@ impl CapturedExternal {
                 args,
                 timeout,
                 None,
+                self.reporter_network_lane,
                 cancel,
                 Some(stderr_observer),
             )
@@ -256,6 +276,24 @@ impl Completed {
 }
 
 impl External {
+    fn is_reporter(&self) -> bool {
+        self.name == "reporter" && self.owner == "ds-network-reporter"
+    }
+
+    // Fixed native handoff only: no caller-selected environment keys or values.
+    fn configure_reporter_lane(&self, command: &mut Command, lane: Option<&str>) {
+        if self.is_reporter() {
+            match lane {
+                Some(lane) => {
+                    command.env("DS_REPORTER_NETWORK_LANE", lane);
+                }
+                None => {
+                    command.env_remove("DS_REPORTER_NETWORK_LANE");
+                }
+            }
+        }
+    }
+
     /// Resolve the exact captured native lane's installed addon. An absent or
     /// malformed managed selection refuses; it never borrows a sibling, another
     /// lane or PATH. An explicit development override remains deliberate.
@@ -276,7 +314,9 @@ impl External {
             ));
         }
         if std::env::var_os(self.env_override).is_some() {
-            return self.capture();
+            return self
+                .capture()
+                .map(|captured| captured.with_reporter_lane(lane));
         }
         self.capture_managed_for_lane_in(lane, base)?
             .ok_or_else(|| {
@@ -312,7 +352,7 @@ impl External {
             Some((path, identity)) => {
                 let mut captured = self.capture_pinned(&path)?;
                 captured.managed_identity = Some(identity);
-                Ok(Some(captured))
+                Ok(Some(captured.with_reporter_lane(lane)))
             }
             None => Ok(None),
         }
@@ -351,6 +391,7 @@ impl External {
             owner: self,
             executable,
             managed_identity: None,
+            reporter_network_lane: None,
         })
     }
     /// Where the executable is, or nothing.
@@ -434,7 +475,7 @@ impl External {
             )
         })?;
 
-        self.call_at(&executable, subcommand, args, timeout)
+        self.call_at(&executable, subcommand, args, timeout, None)
     }
 
     fn call_at(
@@ -443,8 +484,18 @@ impl External {
         subcommand: &'static str,
         args: &[OsString],
         timeout: Duration,
+        reporter_network_lane: Option<&str>,
     ) -> Result<Completed, Failure> {
-        self.call_at_supervised(executable, subcommand, args, timeout, None, &|| false, None)
+        self.call_at_supervised(
+            executable,
+            subcommand,
+            args,
+            timeout,
+            None,
+            reporter_network_lane,
+            &|| false,
+            None,
+        )
     }
     #[allow(clippy::too_many_arguments)]
     fn call_at_supervised(
@@ -454,6 +505,7 @@ impl External {
         args: &[OsString],
         timeout: Duration,
         workers: Option<usize>,
+        reporter_network_lane: Option<&str>,
         cancel: &dyn Fn() -> bool,
         stderr_observer: Option<StderrObserver<'_>>,
     ) -> Result<Completed, Failure> {
@@ -507,6 +559,7 @@ impl External {
                 command.env(key, &workers);
             }
         }
+        self.configure_reporter_lane(&mut command, reporter_network_lane);
         process_tree::Tree::prepare(&mut command);
         let mut child = command.spawn().map_err(|error| {
             Failure::unavailable(
@@ -678,6 +731,7 @@ impl External {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        self.configure_reporter_lane(&mut command, None);
         process_tree::Tree::prepare(&mut command);
         let mut child = command.spawn().map_err(|error| {
             Failure::unavailable(
@@ -1824,6 +1878,7 @@ mod verified_owner_tests {
         let captured = CapturedExternal {
             owner: &OWNER,
             executable: executable.clone(),
+            reporter_network_lane: None,
             managed_identity: Some(managed_modules::ManagedIdentity {
                 size: bytes.len() as u64,
                 sha256: format!("{:x}", Sha256::digest(bytes)),

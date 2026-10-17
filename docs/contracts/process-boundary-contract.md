@@ -65,6 +65,16 @@ runs only. Version directories must stay immutable and retained while in use;
 capturing a path does not admit an in-place executable replacement or implement
 the signed package updater. Existing identity fences still refuse changed identities.
 
+Lane-aware Reporter captures retain their exact stable/canary lane, including
+explicit development Reporter overrides. Every captured Reporter launch sets
+the fixed child-only `DS_REPORTER_NETWORK_LANE`; raw and pinned captures clear
+it so stale ambient state cannot choose a lane. Other owners retain their
+existing launch environment. Reporter validates this handoff only when its
+lazy report-scoped Network capture is consumed, then uses the existing
+receipt-verified lane capture and retains it across report consumers and
+updates. Invalid lanes refuse without fallback; schema/template-only paths
+acquire no Network. Missing handoff preserves existing standalone/cloud capture.
+
 Native-account Reporter project exports, captured layout/voltage-drop previews
 and MV previews resolve the lane of their already captured native identity with
 `capture_for_lane` before entering the report host. One captured handle serves
