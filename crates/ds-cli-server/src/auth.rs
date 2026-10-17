@@ -19,7 +19,7 @@
 //! failure is logged and nothing else. There is no online/offline conditional
 //! here beyond "refresh if it works".
 
-use ds_compute_runtime::{Authorizer, digest};
+use ds_compute_runtime::Authorizer;
 use std::{
     sync::{
         Arc, Mutex,
@@ -92,9 +92,7 @@ impl OwnerCredential for NativeCredential {
 /// The same three fields the durable rows are fenced by, so the host's own
 /// identity and its jobs' identity cannot drift apart.
 pub(crate) fn fence(uid: &str, lane: &str, audience: &str) -> Result<String, String> {
-    Ok(digest(
-        &serde_json::to_vec(&(uid, lane, audience)).map_err(|error| error.to_string())?,
-    ))
+    ds_cli_auth::job_owner_fence(uid, lane, audience).map_err(|error| error.message().to_owned())
 }
 
 /// Read this machine, with no network.

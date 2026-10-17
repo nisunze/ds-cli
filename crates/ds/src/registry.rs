@@ -3143,6 +3143,11 @@ static SERVER_ENTRIES: &[Entry] = &[
         render: ds_cli_server::render,
     },
     Entry {
+        command: &ds_cli_server::sync_read::READ,
+        handler: ds_cli_server::sync_read::read,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::sync_recovery::STATUS,
         handler: ds_cli_server::sync_recovery::status,
         render: ds_cli_server::render,

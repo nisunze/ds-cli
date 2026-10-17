@@ -35,6 +35,7 @@ mod solar_documents;
 #[doc(hidden)]
 pub mod solar_sync;
 pub mod sync_recovery;
+pub mod sync_read;
 use ds_cli_contract::{
     Context, Failure, Inputs,
     outcome::ExitClass,
@@ -977,6 +978,7 @@ pub static DOMAIN: Domain = Domain {
         &TILE_SUBMIT,
         &STATUS,
         &ACTIVITY,
+        &sync_read::READ,
         &sync_recovery::STATUS,
         &sync_recovery::RETRY,
         &sync_recovery::PREVIEW,

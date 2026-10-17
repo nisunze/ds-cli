@@ -256,12 +256,24 @@ pub fn refresh_runtime_identity(lane_value: &str) -> Result<ProviderIdentity, Fa
 /// saved selection, not even to compare one — so a host can stand up with no
 /// upstream present and on an account that has never selected a project.
 pub struct HeadlessPrincipal {
+    lane: String,
+    audience: String,
     account_uid: String,
     deployment: String,
     install_id: String,
 }
 
+/// The durable compute owner's existing canonical (UID, lane, audience) digest.
+pub fn job_owner_fence(uid: &str, lane: &str, audience: &str) -> Result<String, Failure> {
+    let bytes = serde_json::to_vec(&(uid, lane, audience))
+        .map_err(|error| Failure::failed("headless_owner_unavailable", error.to_string()))?;
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
 impl HeadlessPrincipal {
+    pub fn job_owner(&self) -> Result<String, Failure> {
+        job_owner_fence(&self.account_uid, &self.lane, &self.audience)
+    }
     pub fn account_uid(&self) -> &str {
         &self.account_uid
     }
@@ -295,6 +307,8 @@ pub fn headless_principal(lane_value: &str) -> Result<HeadlessPrincipal, Failure
             .remedy("check the server user's protected DS state root")
     })?;
     Ok(HeadlessPrincipal {
+        lane: lane.token().into(),
+        audience: identity.credential_audience_sha256().into(),
         account_uid: identity.uid().to_owned(),
         deployment: profile.gateway_origin().to_owned(),
         install_id,
@@ -346,6 +360,8 @@ pub fn headless_principal_read_only(lane_value: &str) -> Result<HeadlessPrincipa
         .ok_or_else(|| Failure::unavailable("headless_install_unavailable", "the lane has no existing native install identity")
             .remedy("start the authorized Server once to register its install before inspecting its held artifacts"))?;
     Ok(HeadlessPrincipal {
+        lane: lane.token().into(),
+        audience: identity.credential_audience_sha256().into(),
         account_uid: identity.uid().into(),
         deployment: profile.gateway_origin().into(),
         install_id: install,
