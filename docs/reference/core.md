@@ -449,3 +449,7 @@ Native Desktop requires the declared input before sending the exact lane.
 A Core without it refuses `core_incompatible` before inventory or engine probes;
 update Core independently. There is no default-path compatibility branch, engine
 PATH override, installation-wide pin, credential or data migration.
+
+`core.survey.queue` exposes the retained native Survey queue offline through a
+closed private request file and a new private result file. Discover its command
+contract for actions, identity fences, bounds and mutation completion receipts.

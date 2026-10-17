@@ -34,6 +34,7 @@ pub mod solar_application;
 mod solar_documents;
 #[doc(hidden)]
 pub mod solar_sync;
+pub mod survey_queue;
 pub mod sync_recovery;
 pub mod sync_read;
 use ds_cli_contract::{
@@ -979,6 +980,7 @@ pub static DOMAIN: Domain = Domain {
         &STATUS,
         &ACTIVITY,
         &sync_read::READ,
+        &survey_queue::COMMAND,
         &sync_recovery::STATUS,
         &sync_recovery::RETRY,
         &sync_recovery::PREVIEW,
@@ -1666,7 +1668,7 @@ mod tests {
                 assert!(!refusal.remedy.contains("ds server"));
             }
         }
-        assert_eq!(ids.len(), 28);
+        assert_eq!(ids.len(), 30);
         assert!(ids.contains("core.profile-session"));
         assert!(ids.contains("core.cache.retire"));
         assert!(cache_retire::COMMAND.requires_confirmation());

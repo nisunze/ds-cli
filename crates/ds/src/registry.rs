@@ -3143,6 +3143,11 @@ static SERVER_ENTRIES: &[Entry] = &[
         render: ds_cli_server::render,
     },
     Entry {
+        command: &ds_cli_server::survey_queue::COMMAND,
+        handler: ds_cli_server::survey_queue::command,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::sync_read::READ,
         handler: ds_cli_server::sync_read::read,
         render: ds_cli_server::render,
