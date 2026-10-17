@@ -1506,6 +1506,11 @@ static STYLE_ENTRIES: &[Entry] = &[
 /// first, then convert with what you saw.
 static DATA_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_data::reference::COMMAND,
+        handler: ds_cli_data::reference::run,
+        render: ds_cli_data::reference::render,
+    },
+    Entry {
         command: &ds_cli_data::city_vectors::COMMAND,
         handler: ds_cli_data::city_vectors::run,
         render: ds_cli_data::city_vectors::render,

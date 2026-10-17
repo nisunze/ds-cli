@@ -24,6 +24,7 @@ pub mod inspect;
 pub mod mv_lv_orphans;
 pub mod point_cloud;
 pub mod project_cache;
+pub mod reference;
 pub mod spatial;
 pub mod terrain_sampling;
 
@@ -48,6 +49,7 @@ pub static DOMAIN: Domain = Domain {
         &project_cache::STATUS_COMMAND,
         &project_cache::QUERY_COMMAND,
         &project_cache::SEED_COMMAND,
+        &reference::COMMAND,
         &foundation::LOOKUP_COMMAND,
         &foundation::QUERY_COMMAND,
         &foundation::PARCELS_COMMAND,

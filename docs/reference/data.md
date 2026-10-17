@@ -194,6 +194,17 @@ it is detectable and skippable, and a generated artifact can be matched back to
 what produced it. `skipped_coordinate_rows` reports rows that had no usable
 coordinate and therefore carry no geometry — reported, never silently dropped.
 
+## `reference read`: installed global reference cache
+
+`data.reference.read` reads the configured shared reference cache offline,
+without authentication or a paired Desktop. Its bounded JSON request selects
+only `storage_status`, exact-identity `status`, resource `versions`, or a bounded
+spatial `query`; install, remove and storage-setting actions are refused.
+Responses preserve the storage owner's metadata and query values. An optional
+absolute, new `--out` JSON file carries larger results with its SHA-256 and byte
+count; without it the owner result is returned directly. Discover the command
+for the exact request shapes and bounds.
+
 ## `project-cache status` and `project-cache seed`
 
 A project holds bounded, spatially indexed extracts of the datasets its
