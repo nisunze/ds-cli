@@ -158,6 +158,48 @@ fn admit(room: &Room, capture: &Value) -> Result<printing::Layout, HostFailure> 
     Ok(layout)
 }
 
+// Authoring previews show unresolved authored bindings literally. Only the
+// producer transport changes; the original capture remains the provenance pin.
+fn preserve_static_text_bindings(
+    layout: &printing::Layout,
+    transport: &mut Value,
+) -> Result<(), HostFailure> {
+    let text = transport["render"]
+        .as_object_mut()
+        .expect("admitted render object")
+        .entry("text")
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or_else(|| invalid("print text bindings must be an object"))?;
+    if text.values().any(|value| !value.is_string()) {
+        return Err(invalid("print text bindings must contain strings"));
+    }
+    for element in layout
+        .elements
+        .iter()
+        .filter(|e| e.kind == printing::ElementKind::Text)
+    {
+        let mut rest = element.text.as_str();
+        while let Some(index) = rest.find('{') {
+            let tail = &rest[index + 1..];
+            let end = tail
+                .find('}')
+                .ok_or_else(|| invalid("unclosed print text binding"))?;
+            let key = &tail[..end];
+            if key.is_empty()
+                || key.contains('{')
+                || key.chars().any(|c| c.is_whitespace() || c.is_control())
+            {
+                return Err(invalid("malformed print text binding"));
+            }
+            text.entry(key.to_owned())
+                .or_insert_with(|| json!(format!("{{{key}}}")));
+            rest = &tail[end + 1..];
+        }
+    }
+    Ok(())
+}
+
 pub fn execute(
     engine: &dyn ReportEngine,
     room: &Room,
@@ -220,6 +262,9 @@ pub fn execute_format(
         .as_object_mut()
         .expect("admitted capture")
         .remove("source");
+    if printing::preview::expected_subject(&layout) == printing::preview::SubjectKind::Layout {
+        preserve_static_text_bindings(&layout, &mut semantic)?;
+    }
     let producer_layout_sha256 = sha(&semantic["render"]["layout"])?;
     semantic["out_dir"] = json!(out_dir);
     let request_path = stage_path.join("request.json");
@@ -363,17 +408,19 @@ mod tests {
     use super::*;
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Barrier,
+        Arc, Barrier, Mutex,
     };
     struct Engine {
         renders: AtomicUsize,
         bad_digest: bool,
+        requests: Mutex<Vec<Value>>,
     }
     impl Engine {
         fn new() -> Self {
             Self {
                 renders: AtomicUsize::new(0),
                 bad_digest: false,
+                requests: Mutex::new(Vec::new()),
             }
         }
     }
@@ -400,6 +447,7 @@ mod tests {
         ) -> Result<crate::EngineExit, HostFailure> {
             self.renders.fetch_add(1, Ordering::SeqCst);
             let capture: Value = serde_json::from_slice(&fs::read(request).unwrap()).unwrap();
+            self.requests.lock().unwrap().push(capture.clone());
             let format = capture["formats"][0].as_str().unwrap();
             assert!(matches!(format, "svg" | "pdf"));
             assert!(capture.get("source").is_none());
@@ -462,6 +510,167 @@ mod tests {
                 "project_crs":crs,"text":{"title":"Captured page"},"report_config":{"source_digest_metadata":{"sha256":"c".repeat(64)}}}});
         (room, capture)
     }
+    fn static_fixture(root: &Path, text: &str) -> (Room, Value) {
+        let (room, mut capture) = fixture(root);
+        let mut layout: printing::Layout =
+            serde_json::from_value(capture["render"]["layout"].clone()).unwrap();
+        layout.styles.clear();
+        layout.style_refs.clear();
+        layout.elements.retain(|e| {
+            matches!(
+                e.kind,
+                printing::ElementKind::Text | printing::ElementKind::Rectangle
+            )
+        });
+        layout.classification =
+            Some(serde_json::from_value(json!({"purpose":"front_matter","role":"cover"})).unwrap());
+        layout
+            .elements
+            .iter_mut()
+            .find(|e| e.kind == printing::ElementKind::Text)
+            .unwrap()
+            .text = text.into();
+        capture["render"]["layout"] = json!(layout);
+        capture["source"] = json!({"kind":"project_layout","project_id":room.scope.project,"id":layout.id,
+            "revision_id":"c".repeat(64),"content_sha256":printing::style_capture::layout_digest(&layout).unwrap(),"layout":layout,
+            "receipt":{"id":layout.id,"revision":"c".repeat(64),"name":layout.name,"paper":layout.paper,"classification":layout.classification}});
+        (room, capture)
+    }
+
+    #[test]
+    fn static_authoring_transport_preserves_unresolved_placeholders_and_original_provenance() {
+        let dir = tempfile::tempdir().unwrap();
+        let fields = [
+            "project_title",
+            "model_title",
+            "title_country",
+            "title_employer",
+            "external_version",
+            "issue_date",
+        ];
+        let authored = format!(
+            "{{title}} / {}",
+            fields.map(|key| format!("{{{key}}}")).join(" / ")
+        );
+        let (room, capture) = static_fixture(dir.path(), &authored);
+        let original = capture.clone();
+        let engine = Engine::new();
+        let first = execute(
+            &engine,
+            &room,
+            &capture,
+            preview_artifact::Retention::Hours24,
+            &dir.path().join("scratch"),
+        )
+        .unwrap();
+        let requests = engine.requests.lock().unwrap();
+        let transport = &requests[0];
+        assert_eq!(transport["render"]["text"]["title"], "Captured page");
+        for key in fields {
+            assert_eq!(transport["render"]["text"][key], format!("{{{key}}}"));
+        }
+        assert_eq!(transport["render"]["layout"], original["render"]["layout"]);
+        assert!(transport.get("source").is_none());
+        drop(requests);
+        assert_eq!(capture, original);
+        let layout = admit(&room, &capture).unwrap();
+        let mut semantic = original.clone();
+        semantic.as_object_mut().unwrap().remove("out_dir");
+        semantic["formats"] = json!(["svg"]);
+        let provenance = json!({"subject":"captured-layout","format":Format::Svg,"capture_sha256":sha(&semantic).unwrap(),
+            "layout_sha256":sha(&serde_json::to_value(layout).unwrap()).unwrap(),"engine":crate::engine_identity_now(&engine).unwrap()});
+        preview_artifact::verify(&room, &first.page, &provenance).unwrap();
+        let second = execute(
+            &engine,
+            &room,
+            &capture,
+            preview_artifact::Retention::Hours24,
+            &dir.path().join("scratch"),
+        )
+        .unwrap();
+        assert!(second.preview_cache.reused);
+        assert_eq!(
+            second.preview_cache.input_sha256,
+            first.preview_cache.input_sha256
+        );
+        assert_eq!(engine.renders.load(Ordering::SeqCst), 1);
+        assert_eq!(capture, original);
+    }
+
+    #[test]
+    fn static_authoring_transport_keeps_supplied_values_and_missing_text_default() {
+        for supplied in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let (room, mut capture) = static_fixture(dir.path(), "{project_title}");
+            if supplied {
+                capture["render"]["text"]["project_title"] = json!("Owner supplied project");
+            } else {
+                capture["render"].as_object_mut().unwrap().remove("text");
+            }
+            let original = capture.clone();
+            let engine = Engine::new();
+            execute(
+                &engine,
+                &room,
+                &capture,
+                preview_artifact::Retention::Hours24,
+                &dir.path().join("scratch"),
+            )
+            .unwrap();
+            assert_eq!(
+                engine.requests.lock().unwrap()[0]["render"]["text"]["project_title"],
+                if supplied {
+                    "Owner supplied project"
+                } else {
+                    "{project_title}"
+                }
+            );
+            assert_eq!(capture, original);
+        }
+    }
+
+    #[test]
+    fn malformed_static_bindings_refuse_before_the_producer() {
+        for text in ["{unclosed", "{}", "{{nested}}", "{bad key}", "{bad\nkey}"] {
+            let dir = tempfile::tempdir().unwrap();
+            let (room, capture) = static_fixture(dir.path(), text);
+            let original = capture.clone();
+            let engine = Engine::new();
+            let failure = execute(
+                &engine,
+                &room,
+                &capture,
+                preview_artifact::Retention::Hours24,
+                &dir.path().join("scratch"),
+            )
+            .unwrap_err();
+            assert_eq!(failure.code, crate::CODE_INPUTS_INVALID, "{text}");
+            assert_eq!(engine.renders.load(Ordering::SeqCst), 0);
+            assert_eq!(capture, original);
+        }
+    }
+
+    #[test]
+    fn non_static_preview_transport_does_not_fill_unresolved_bindings() {
+        let dir = tempfile::tempdir().unwrap();
+        let (room, mut capture) = fixture(dir.path());
+        capture["render"]["layout"]["elements"][0]["text"] = json!("{project_title}");
+        let original = capture.clone();
+        let engine = Engine::new();
+        execute(
+            &engine,
+            &room,
+            &capture,
+            preview_artifact::Retention::Hours24,
+            &dir.path().join("scratch"),
+        )
+        .unwrap();
+        let requests = engine.requests.lock().unwrap();
+        assert_eq!(requests[0]["render"], original["render"]);
+        assert!(requests[0]["render"]["text"].get("project_title").is_none());
+        assert_eq!(capture, original);
+    }
+
     #[test]
     fn saved_project_revisions_fence_reuse_and_tampering_refuses_before_render() {
         let dir = tempfile::tempdir().unwrap();
@@ -854,6 +1063,7 @@ mod tests {
         let engine = Engine {
             renders: AtomicUsize::new(0),
             bad_digest: true,
+            requests: Mutex::new(Vec::new()),
         };
         assert_eq!(
             execute(
