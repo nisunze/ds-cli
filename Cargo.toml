@@ -19,6 +19,10 @@ resolver = "2"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "ds-print-layout-validate"
+path = "src/bin/ds-print-layout-validate.rs"
+
 [features]
 default = []
 wasm = ["dep:wasm-bindgen"]

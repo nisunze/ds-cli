@@ -11,6 +11,7 @@ pub mod elements;
 pub mod frames;
 pub mod held_context;
 pub mod inventory;
+pub mod layout_admission;
 pub mod lifecycle;
 pub mod map;
 pub mod map_policy;

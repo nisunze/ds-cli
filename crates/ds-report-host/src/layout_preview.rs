@@ -654,7 +654,15 @@ mod tests {
     fn non_static_preview_transport_does_not_fill_unresolved_bindings() {
         let dir = tempfile::tempdir().unwrap();
         let (room, mut capture) = fixture(dir.path());
-        capture["render"]["layout"]["elements"][0]["text"] = json!("{project_title}");
+        let mut layout: printing::Layout =
+            serde_json::from_value(capture["render"]["layout"].clone()).unwrap();
+        layout
+            .elements
+            .iter_mut()
+            .find(|e| e.kind == printing::ElementKind::Text)
+            .unwrap()
+            .text = "{project_title}".into();
+        capture["render"]["layout"] = json!(layout);
         let original = capture.clone();
         let engine = Engine::new();
         execute(
