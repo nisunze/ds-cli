@@ -24,7 +24,7 @@ pub fn module_base() -> Result<PathBuf, Failure> {
     base.filter(|p| p.is_absolute())
         .ok_or_else(|| invalid("the native addon base is unavailable"))
 }
-fn component(owner: &External) -> Result<ModuleComponent, Failure> {
+pub(super) fn component(owner: &External) -> Result<ModuleComponent, Failure> {
     [
         ModuleComponent::Solar,
         ModuleComponent::Reporter,

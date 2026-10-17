@@ -32,6 +32,7 @@ use ds_cli_contract::spec::Availability;
 use serde_json::json;
 
 pub mod addons;
+mod default_resolution;
 mod managed_modules;
 mod process_tree;
 mod session;
@@ -276,7 +277,7 @@ impl External {
             ));
         }
         if std::env::var_os(self.env_override).is_some() {
-            return self.capture();
+            return self.capture_path(self.locate_for_paths(None, None));
         }
         self.capture_managed_for_lane_in(lane, base)?
             .ok_or_else(|| {
@@ -317,9 +318,19 @@ impl External {
             None => Ok(None),
         }
     }
-    /// Capture by filesystem metadata only; discovery starts no process.
+    /// Capture the packaged lane's managed addon, or the deliberate development
+    /// route for an override/local host. Discovery starts no process.
     pub fn capture(&'static self) -> Result<CapturedExternal, Failure> {
-        self.capture_path(self.locate())
+        self.capture_resolved(self.resolve_default()?)
+    }
+
+    fn capture_resolved(
+        &'static self,
+        resolved: default_resolution::Resolved,
+    ) -> Result<CapturedExternal, Failure> {
+        let mut captured = self.capture_path(Some(resolved.executable))?;
+        captured.managed_identity = resolved.managed_identity;
+        Ok(captured)
     }
 
     /// Reopen an already captured native executable for a retained run.
@@ -353,25 +364,12 @@ impl External {
             managed_identity: None,
         })
     }
-    /// Where the executable is, or nothing.
-    ///
-    /// Order, and the reason for it:
-    ///
-    /// 1. **The environment override.** Explicit beats inferred, always.
-    /// 2. **A sibling of the running `ds`.** This is the deployed case: the
-    ///    desktop installs every sidecar next to the shell's executable, so
-    ///    an installed `ds` finds an installed `ds-report` with no
-    ///    configuration and no `PATH` dependency.
-    /// 3. **`PATH`.** For a developer who put one there.
-    ///
-    /// `PATH` is deliberately last. If it were first, a stale binary earlier
-    /// in someone's `PATH` would silently outrank the one shipped alongside
-    /// the application — and the resulting wrong answer would look like a
-    /// correct one.
+    /// Resolve the same default selection as capture without starting a process.
+    /// A refused managed receipt is unavailable, never a sibling/PATH fallback.
     pub fn locate(&self) -> Option<PathBuf> {
-        let executable = std::env::current_exe().ok();
-        let path = std::env::var_os("PATH");
-        self.locate_for_paths(executable.as_deref(), path.as_deref())
+        self.resolve_default()
+            .ok()
+            .map(|resolved| resolved.executable)
     }
 
     fn locate_for_paths(&self, executable: Option<&Path>, path: Option<&OsStr>) -> Option<PathBuf> {
@@ -405,13 +403,17 @@ impl External {
     /// call it, and a discovery call that spawns processes is a discovery
     /// call nobody can afford to make.
     pub fn availability(&self) -> Availability {
-        match self.locate() {
-            Some(_) => Availability::Available,
-            None => Availability::unavailable(
-                self.missing_code,
-                format!("`{}` was not found", self.name),
-                self.remedy,
-            ),
+        match self.resolve_default() {
+            Ok(_) => Availability::Available,
+            Err(error) => {
+                let code = match error.code() {
+                    "module_receipt_invalid" => "module_receipt_invalid",
+                    "module_removed" => "module_removed",
+                    "module_lane_invalid" => "module_lane_invalid",
+                    _ => self.missing_code,
+                };
+                Availability::unavailable(code, error.to_string(), self.remedy)
+            }
         }
     }
 
@@ -426,15 +428,8 @@ impl External {
         args: &[OsString],
         timeout: Duration,
     ) -> Result<Completed, Failure> {
-        let executable = self.locate().ok_or_else(|| {
-            Failure::unavailable(self.missing_code, format!("`{}` was not found", self.name))
-            .remedy(self.remedy)
-            .detail(
-                json!({ "binary": self.name, "owner": self.owner, "override": self.env_override }),
-            )
-        })?;
-
-        self.call_at(&executable, subcommand, args, timeout)
+        let resolved = self.resolve_default()?;
+        resolved.verified(|| self.call_at(&resolved.executable, subcommand, args, timeout))
     }
 
     fn call_at(
@@ -663,15 +658,21 @@ impl External {
             )
             .remedy("use the owner-supported bounded input contract"));
         }
-        let executable = self.locate().ok_or_else(|| {
-            Failure::unavailable(self.missing_code, format!("`{}` was not found", self.name))
-                .remedy(self.remedy)
-                .detail(
-                    json!({ "binary": self.name, "owner": self.owner, "override": self.env_override }),
-                )
-        })?;
+        let resolved = self.resolve_default()?;
+        resolved.verified(|| {
+            self.call_with_stdin_at(&resolved.executable, subcommand, args, input, timeout)
+        })
+    }
 
-        let mut command = Command::new(&executable);
+    fn call_with_stdin_at(
+        &self,
+        executable: &Path,
+        subcommand: &'static str,
+        args: &[OsString],
+        input: &[u8],
+        timeout: Duration,
+    ) -> Result<Completed, Failure> {
+        let mut command = Command::new(executable);
         command
             .arg(subcommand)
             .args(args)
