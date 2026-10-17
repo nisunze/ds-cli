@@ -10,7 +10,7 @@ captured closure qualification remains required before independent release.
 Discovery reads executable metadata without starting a process. An intentional
 operation captures one executable path, hashes its bounded regular file and
 checks its bounded `build-info` response. The response must name the Network
-protocol, native runtime, required capability, positive bounded CPU budget and
+protocol, native runtime, required capability, at most 64 advertised capabilities, positive bounded CPU budget and
 consistent source/closure pins. An absolute `DS_NETWORK_ENGINE_BIN` override
 admits a development artifact explicitly and labels the result. Self-reported
 source pins and a development override are not installation or signature trust;

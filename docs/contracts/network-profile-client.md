@@ -60,3 +60,29 @@ hung tasks, cancellation and descendant cleanup. Ignored acceptance tests must
 be invoked with their explicit owner/fixture paths; a test run that skips them
 is not execution proof. Owning host traces distinguish characterized anonymous
 Rust exec IPC from outgoing calls and include a socket negative control.
+
+
+## Editing, observation and durable Core recovery
+
+The client requires each additive edit, observation and package-checkpoint
+capability before staging its operation. Full-history control receipts must
+carry exact model/history/revision and atomic native presentation. Previews,
+EditMode, SaveControl and package emission cannot change authored history.
+Ordinary owner refusal consumes only the transport sequence; uncertain transport
+or receipt failure retires the worker and never retries a mutation.
+
+Core retains the exact original plus bounded 64 MiB opaque authored checkpoints
+through the protected [Profile source/draft store](ds-sync-store.md). It commits a
+before-state before authored controls and the acknowledged successor before
+reporting success. Save exclusion is transient, and package emission is not a
+Save acknowledgment. Restart reopens only the stored immutable executable pin
+through `from_pin`; changing the current component selection cannot redirect a
+draft to a new engine. Missing or changed retained executable bytes refuse.
+Close releases the worker and retains dirty recovery; exact initial state may
+be removed. Explicit `open recover:true` resumes only a unique matching draft
+under the same complete owner scope and original package bytes.
+
+ObserveView shares the complete-view staged input collector and result fences.
+Only the explicit owner `profile_edit_reconcile_required` permits the UI to ask
+for an uncached View after rechecking its current owner context. A missing
+capability, stale history or generic transport error has no calculation fallback.

@@ -328,6 +328,39 @@ impl ProfileSession {
         timeout: Duration,
         cancel: &dyn Fn() -> bool,
     ) -> Result<ProfileOutcome, NetworkFailure> {
+        self.view_intent_at(input, cached, false, expected_history, timeout, cancel)
+    }
+    pub fn observe_view_at(
+        &mut self,
+        input: &NativeProfileViewInputV1,
+        expected_history: Value,
+        timeout: Duration,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<ProfileOutcome, NetworkFailure> {
+        self.view_intent_at(input, true, true, expected_history, timeout, cancel)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn view_intent_at(
+        &mut self,
+        input: &NativeProfileViewInputV1,
+        cached: bool,
+        observe: bool,
+        expected_history: Value,
+        timeout: Duration,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<ProfileOutcome, NetworkFailure> {
+        if observe
+            && !self
+                .pin
+                .identity
+                .capabilities
+                .contains(&NetworkCapability::ProfileObserveV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "Captured Network has no profile_observe_v1 capability",
+            ));
+        }
         if self.closed {
             return Err(NetworkFailure::new(
                 "profile_session_closed",
@@ -373,14 +406,18 @@ impl ProfileSession {
             return Err(error);
         }
         let result = self.request_at(
-            NativeProfileOperationV1::View {
-                input: ArtifactReceipt {
+            {
+                let input = ArtifactReceipt {
                     file,
                     byte_count: bytes.len(),
                     sha256: digest_bytes(&bytes),
                     schema: PROFILE_VIEW_INPUT_SCHEMA.into(),
-                },
-                cached,
+                };
+                if observe {
+                    NativeProfileOperationV1::ObserveView { input }
+                } else {
+                    NativeProfileOperationV1::View { input, cached }
+                }
             },
             Some(expected_history),
             timeout,
@@ -428,16 +465,56 @@ impl ProfileSession {
                 "captured Network has no exact Profile authored-facts capability",
             ));
         }
-        if matches!(operation, NativeProfileOperationV1::View { .. })
+        if matches!(operation, NativeProfileOperationV1::PackageCheckpoint)
             && !self
                 .pin
                 .identity
                 .capabilities
-                .contains(&NetworkCapability::ProfileViewV1)
+                .contains(&NetworkCapability::ProfilePackageCheckpointV1)
+        {
+            return Err(NetworkFailure::new("network_engine_incompatible",
+                "Captured Network has no profile_package_checkpoint_v1 capability"));
+        }
+        if matches!(operation, NativeProfileOperationV1::ObserveView { .. })
+            && !self
+                .pin
+                .identity
+                .capabilities
+                .contains(&NetworkCapability::ProfileObserveV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "Captured Network has no profile_observe_v1 capability",
+            ));
+        }
+        if matches!(
+            operation,
+            NativeProfileOperationV1::View { .. } | NativeProfileOperationV1::ObserveView { .. }
+        ) && !self
+            .pin
+            .identity
+            .capabilities
+            .contains(&NetworkCapability::ProfileViewV1)
         {
             return Err(NetworkFailure::new(
                 "network_engine_incompatible",
                 "captured Network has no complete Profile view capability",
+            ));
+        }
+        if matches!(
+            operation,
+            NativeProfileOperationV1::EditMode { .. }
+                | NativeProfileOperationV1::SaveControl { .. }
+                | NativeProfileOperationV1::Discard { .. }
+        ) && !self
+            .pin
+            .identity
+            .capabilities
+            .contains(&NetworkCapability::ProfileEditControlsV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "captured Network has no retained Profile edit-controls capability",
             ));
         }
         if self.sequence >= MAX_PROFILE_REQUESTS {
@@ -471,7 +548,8 @@ impl ProfileSession {
                     "profile_replay_input_invalid",
                 ))
             }
-            NativeProfileOperationV1::View { input, .. } => Some((
+            NativeProfileOperationV1::View { input, .. }
+            | NativeProfileOperationV1::ObserveView { input } => Some((
                 input,
                 PROFILE_VIEW_INPUT_SCHEMA,
                 MAX_PROFILE_VIEW_INPUT_BYTES,
@@ -529,6 +607,7 @@ impl ProfileSession {
             request.operation,
             NativeProfileOperationV1::Control { .. }
                 | NativeProfileOperationV1::ReconcileJournal { .. }
+                | NativeProfileOperationV1::Discard { .. }
         );
         let bytes = self
             .process
@@ -670,7 +749,11 @@ impl ProfileSession {
         } else {
             let _: Box<serde_json::value::RawValue> =
                 serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
-            if matches!(&request.operation, NativeProfileOperationV1::View { .. }) {
+            if matches!(
+                &request.operation,
+                NativeProfileOperationV1::View { .. }
+                    | NativeProfileOperationV1::ObserveView { .. }
+            ) {
                 let view: Value =
                     serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
                 if view["model_id"] != self.model_id
@@ -682,6 +765,20 @@ impl ProfileSession {
                         "Profile view differs from its retained model, history or complete result",
                     ));
                 }
+            }
+            if self
+                .pin
+                .identity
+                .capabilities
+                .contains(&NetworkCapability::ProfileEditControlsV1)
+            {
+                controls::validate_reply(
+                    &request.operation,
+                    &bytes,
+                    &self.model_id,
+                    &self.history,
+                    &reply.history,
+                )?;
             }
             let snapshot = match &request.operation {
                 NativeProfileOperationV1::Snapshot => Some(
@@ -847,3 +944,5 @@ fn valid_history(value: &Value) -> bool {
             .and_then(Value::as_u64)
             .is_some_and(|n| usize::try_from(n).is_ok())
 }
+
+mod controls;
