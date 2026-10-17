@@ -226,6 +226,18 @@ pub fn read_file(path: &Path) -> Result<File, String> {
     validate_private(&file)?;
     Ok(file)
 }
+/// Read an owner-only output created in an ordinary safe per-user directory.
+/// Match `create_private_output_file`'s parent admission without changing ACLs;
+/// the opened ordinary single-link file still requires the exact current SID
+/// and sole-owner DACL, and read-only sharing excludes concurrent writers.
+pub fn read_private_output_file(path: &Path) -> Result<File, String> {
+    no_reparse_ancestors(path)?;
+    crate::state_windows::validate_directory(path.parent().ok_or_else(error)?)
+        .map_err(|_| error())?;
+    let file = crate::state_windows::open_read(path).map_err(|_| error())?;
+    validate_private(&file)?;
+    Ok(file)
+}
 /// Admit an existing private retained store while its SQLite owner is live.
 /// Sharing permits the owner's writer; this handle itself grants only reads.
 pub fn read_live_store_file(path: &Path) -> Result<File, String> {
@@ -611,5 +623,129 @@ mod private_output_tests {
         assert!(create_private_output_file(&path).is_err());
         assert!(!path.exists());
         assert_eq!(acl(directory.path()), before);
+    }
+    #[test]
+    fn windows_private_output_reader_matches_writer_without_repairing_parent() {
+        use std::io::Read;
+        let directory = ordinary_fixture();
+        let before = acl(directory.path());
+        let path = directory.path().join("read-output.json");
+        let mut output = create_private_output_file(&path).unwrap();
+        output.write_all(b"private receipt").unwrap();
+        drop(output);
+        let file_acl = acl(&path);
+        let mut bytes = Vec::new();
+        read_private_output_file(&path)
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(bytes, b"private receipt");
+        assert!(
+            read_file(&path).is_err(),
+            "credential readers keep their strict private-parent contract"
+        );
+        assert_eq!(acl(&path), file_acl);
+        assert_eq!(acl(directory.path()), before);
+    }
+    #[test]
+    fn windows_private_output_reader_refuses_broad_file_acl_without_repair() {
+        let directory = ordinary_fixture();
+        let path = directory.path().join("broad-output.json");
+        let mut output = create_private_output_file(&path).unwrap();
+        output.write_all(b"retained receipt").unwrap();
+        drop(output);
+        grant(&path, "*S-1-1-0:(R)");
+        let file_acl = acl(&path);
+        let parent_acl = acl(directory.path());
+        assert!(read_private_output_file(&path).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"retained receipt");
+        assert_eq!(acl(&path), file_acl);
+        assert_eq!(acl(directory.path()), parent_acl);
+    }
+    #[test]
+    fn windows_private_output_reader_refuses_hardlinks_without_repair() {
+        let directory = ordinary_fixture();
+        let path = directory.path().join("linked-output.json");
+        let mut output = create_private_output_file(&path).unwrap();
+        output.write_all(b"retained linked receipt").unwrap();
+        drop(output);
+        let alias = directory.path().join("hardlink-output.json");
+        fs::hard_link(&path, &alias).unwrap();
+        let file_acl = acl(&path);
+        assert!(read_private_output_file(&path).is_err());
+        assert!(read_private_output_file(&alias).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"retained linked receipt");
+        assert_eq!(fs::read(&alias).unwrap(), b"retained linked receipt");
+        assert_eq!(acl(&path), file_acl);
+    }
+    #[test]
+    fn windows_private_output_reader_refuses_reparse_ancestor_without_repair() {
+        let directory = ordinary_fixture();
+        let target = directory.path().join("target");
+        fs::create_dir(&target).unwrap();
+        let path = target.join("output.json");
+        let mut output = create_private_output_file(&path).unwrap();
+        output.write_all(b"retained target receipt").unwrap();
+        drop(output);
+        let junction = directory.path().join("junction");
+        let result = std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", "mklink", "/J"])
+            .arg(&junction)
+            .arg(&target)
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "native junction fixture failed");
+        let file_acl = acl(&path);
+        let parent_acl = acl(&target);
+        assert!(read_private_output_file(&junction.join("output.json")).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"retained target receipt");
+        assert_eq!(acl(&path), file_acl);
+        assert_eq!(acl(&target), parent_acl);
+        fs::remove_dir(&junction).unwrap();
+    }
+    #[test]
+    fn windows_private_output_reader_refuses_unsafe_parent_without_repair() {
+        let directory = ordinary_fixture();
+        let path = directory.path().join("private-output.json");
+        let mut output = create_private_output_file(&path).unwrap();
+        output.write_all(b"retained private receipt").unwrap();
+        drop(output);
+        grant(directory.path(), "*S-1-1-0:(W)");
+        let parent_acl = acl(directory.path());
+        let file_acl = acl(&path);
+        assert!(read_private_output_file(&path).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"retained private receipt");
+        assert_eq!(acl(&path), file_acl);
+        assert_eq!(acl(directory.path()), parent_acl);
+    }
+    #[test]
+    fn windows_private_output_reader_excludes_concurrent_writers() {
+        let directory = ordinary_fixture();
+        let path = directory.path().join("busy-output.json");
+        let mut output = create_private_output_file(&path).unwrap();
+        output.write_all(b"complete receipt").unwrap();
+        assert!(
+            read_private_output_file(&path).is_err(),
+            "an unfinished writer must exclude the receipt reader"
+        );
+        drop(output);
+        let held = read_private_output_file(&path).unwrap();
+        assert!(
+            OpenOptions::new()
+                .write(true)
+                .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+                .open(&path)
+                .is_err(),
+            "a retained reader must exclude a concurrent writer"
+        );
+        drop(held);
+        drop(
+            OpenOptions::new()
+                .write(true)
+                .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+                .open(&path)
+                .unwrap(),
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"complete receipt");
     }
 }
