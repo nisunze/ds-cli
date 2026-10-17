@@ -15,13 +15,15 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{DS_REPORT, EXPORT_TIMEOUT, capture_engine};
+mod model_mode;
+use model_mode::RenderTask;
 
 pub static COMMAND: Command = Command {
     id: "report.plan-profile",
     path: &["report", "plan-profile"],
-    contract: 7,
-    summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
-    purpose: "Resolve the named project's adopted MV setup and render same-revision projections into its ordered local publication. Exact alignment IDs narrow scope; omitting them prints all. Text, logos, scales, fonts and issue policy inherit that setup; allowed model differences are explicit. Missing inputs refuse before output. --request alone runs a complete native request without project reads. --preview-layout renders a saved or draft template sample into the scoped native disk cache, with exact input/style/engine fences and 24h or 7d retention. Responses contain file receipts and station metadata, never inline SVG. No model, layout, selection or publication is saved by a template preview.",
+    contract: 8,
+    summary: "Render DS Grid plan/profile sheets from a pinned model or scene and plan.",
+    purpose: "Resolve the named project's adopted MV setup and render a digest/revision-pinned model or same-revision projections into its ordered local publication. Exact alignment IDs narrow projection scope; model mode prints the complete model and refuses alignment/template-job preview flags. Text, logos, scales, fonts and issue policy inherit that setup; allowed model differences are explicit. Missing inputs refuse before output. --request alone runs a complete native request without project reads. --preview-layout renders a saved or draft template sample into the scoped native disk cache, with exact input/style/engine fences and 24h or 7d retention. Responses contain file receipts and station metadata, never inline SVG. No model, layout, selection or publication is saved by a template preview.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -67,6 +69,21 @@ pub static COMMAND: Command = Command {
             "Project named for this request; required without --request.",
         ),
         crate::project::LANE_ARG,
+        Arg::value(
+            "model",
+            "<absolute.dsgrid>",
+            "Ordinary absolute model package, at most 512 MiB; replaces --scene and --plan and requires both expected pins.",
+        ),
+        Arg::value(
+            "expected-model-sha256",
+            "<sha256:hex>",
+            "Exact sha256: plus 64 lowercase hexadecimal digits of --model, checked before project reads and rechecked by Reporter.",
+        ),
+        Arg::value(
+            "expected-authored-revision",
+            "<revision>",
+            "Exact authored revision of --model; passed unchanged to Reporter.",
+        ),
         Arg::value(
             "scene",
             "<path>",
@@ -134,13 +151,13 @@ pub static COMMAND: Command = Command {
         ),
         Arg::value("result", "<path>", "Fresh reporter receipt path."),
     ],
-    output: "Exact revision, ordered file paths/digests and station windows. Samples return ds.mv-preview-artifacts/v1. --preview-all/--preview-job return ds.mv-preview-job/v1 progress and ordered ready pages; --preview-page includes its native SVG receipt. Publication includes its layout plan and optional PDF.",
+    output: "Model mode returns source model SHA-256/authored revision, Network projection identity/evidence and nested preview/print receipts. Projection mode returns exact revision, ordered file paths/digests and station windows. Samples return ds.mv-preview-artifacts/v1. --preview-all/--preview-job return ds.mv-preview-job/v1 progress and ordered ready pages; --preview-page includes its native SVG receipt. Publication includes its layout plan and optional PDF.",
     examples: &[Example {
         command: "ds report plan-profile --project gisagara --scene /project/profile.json --plan /project/plan.json --alignment al-main --out-dir /project/gisagara-sheets --output json",
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 25 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 27 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             Refusal {
@@ -159,6 +176,8 @@ pub static COMMAND: Command = Command {
                 remedy: "read project choices online",
             },
             REQUEST_MODE_REFUSAL,
+            model_mode::SOURCE_INVALID,
+            model_mode::SOURCE_CHANGED,
             PREVIEW_LAYOUT_REFUSAL,
             crate::project::export::INPUTS_INVALID,
             crate::project::export::STAGING_FAILED,
@@ -244,8 +263,8 @@ fn availability() -> Availability {
 /// project, geometry or setup flag beside it would be silently ignored.
 const REQUEST_MODE_REFUSAL: Refusal = Refusal {
     code: "request_mode_invalid",
-    when: "--request is mixed with project, geometry or setup flags, or a project render lacks --project, --scene, --plan or --out-dir",
-    remedy: "Pass --request alone, or --project, --scene, --plan and --out-dir together",
+    when: "--request is mixed with project, geometry or setup flags, or a project render mixes/incompletely pins model and projection input modes",
+    remedy: "Pass --request alone; otherwise use --project and --out-dir with either --scene plus --plan, or --model plus both expected pins",
 };
 const PREVIEW_LAYOUT_REFUSAL: Refusal = Refusal {
     code: "preview_layout_invalid",
@@ -261,6 +280,9 @@ const REQUEST_LIMIT: u64 = 32 * 1024 * 1024;
 /// Inputs that only exist so ds can build the request itself.
 const PROJECT_MODE_INPUTS: &[&str] = &[
     "project",
+    "model",
+    "expected-model-sha256",
+    "expected-authored-revision",
     "scene",
     "plan",
     "out-dir",
@@ -287,6 +309,7 @@ fn print_request_invalid(message: String) -> Failure {
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let model = model_mode::admit(inputs)?;
     let page = inputs
         .value("preview-page")
         .map(|page| {
@@ -315,7 +338,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     match inputs.value("request") {
         Some(request) => run_request(inputs, PathBuf::from(request)),
-        None => run_project(inputs),
+        None => run_project(inputs, model),
     }
 }
 
@@ -367,7 +390,7 @@ fn run_request(inputs: &Inputs, request: PathBuf) -> Result<Value, Failure> {
     }
     let staged = Staged::new(inputs.value("result"))?;
     let engine = capture_engine(inputs)?;
-    let mut document = staged.render(&engine, bytes)?;
+    let mut document = staged.render(&engine, bytes, RenderTask::Projection)?;
     if staged.keep {
         document["result_path"] = json!(staged.result_path.display().to_string());
     }
@@ -577,13 +600,21 @@ fn project_input<'a>(inputs: &'a Inputs, name: &str) -> Result<&'a str, Failure>
         .ok_or_else(|| mode_invalid(format!("--{name} is required without --request")))
 }
 
-fn run_project(inputs: &Inputs) -> Result<Value, Failure> {
+fn run_project(inputs: &Inputs, model: Option<model_mode::ModelSource>) -> Result<Value, Failure> {
     let project = project_input(inputs, "project")?;
-    let scene = PathBuf::from(project_input(inputs, "scene")?);
-    let plan = PathBuf::from(project_input(inputs, "plan")?);
+    let (scene, plan) = if model.is_some() {
+        (None, None)
+    } else {
+        (
+            Some(PathBuf::from(project_input(inputs, "scene")?)),
+            Some(PathBuf::from(project_input(inputs, "plan")?)),
+        )
+    };
     let out_dir = PathBuf::from(project_input(inputs, "out-dir")?);
     for (name, path) in [("scene", &scene), ("plan", &plan)] {
-        if !path.is_file() {
+        if let Some(path) = path
+            && !path.is_file()
+        {
             return Err(Failure::invalid(
                 "projection_missing",
                 format!("{name} file does not exist: {}", path.display()),
@@ -613,7 +644,11 @@ fn run_project(inputs: &Inputs) -> Result<Value, Failure> {
         }
     }
     // Validate the held geometry scope before any authenticated setup read.
-    let selected = stage_selected_scene(&scene, inputs.repeated("alignment"))?;
+    let selected = scene
+        .as_deref()
+        .map(|scene| stage_selected_scene(scene, inputs.repeated("alignment")))
+        .transpose()?
+        .flatten();
     let (resolved, style_resolution, renderer_defaults, report_config, project_crs) =
         crate::project::mv_setup::resolve_project_print(inputs.require("lane")?, project, fields)?;
     let read_manifest = |name: &str, empty: Value| -> Result<Value, Failure> {
@@ -651,12 +686,14 @@ fn run_project(inputs: &Inputs) -> Result<Value, Failure> {
     let scene_path = selected
         .as_ref()
         .map(|selection| selection.file.path())
-        .unwrap_or(&scene);
-    let request = json!({"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"style_resolution":style_resolution,"preview_only":inputs.switch("preview-only"),"project_id":project,"scene_path":scene_path,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"structure_descriptions_path":inputs.value("structure-descriptions"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
+        .or(scene.as_deref());
+    let request = json!({"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"style_resolution":style_resolution,"preview_only":inputs.switch("preview-only"),"project_id":project,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"structure_descriptions_path":inputs.value("structure-descriptions"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
+    let (task, request) =
+        model_mode::bind_request(request, model.as_ref(), scene_path, plan.as_deref());
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
     let engine = capture_engine(inputs)?;
-    let mut document = staged.render(&engine, bytes)?;
+    let mut document = staged.render(&engine, bytes, task)?;
     if let Some(selected) = &selected {
         document["alignment_selection"] = selected.receipt.clone();
         if staged.keep {
@@ -714,6 +751,7 @@ impl Staged {
         &self,
         engine: &ds_cli_exec::CapturedExternal,
         bytes: Vec<u8>,
+        task: RenderTask,
     ) -> Result<Value, Failure> {
         ds_layer_store::private::write(&self.request_path, bytes)
             .map_err(|e| Failure::failed("request_write_failed", e.to_string()))?;
@@ -723,7 +761,7 @@ impl Staged {
             OsString::from("--result"),
             self.result_path.clone().into(),
         ];
-        let completed = engine.call("render-grid-plan-profile", &args, EXPORT_TIMEOUT);
+        let completed = engine.call(task.subcommand(), &args, EXPORT_TIMEOUT);
         let _ = std::fs::remove_file(&self.request_path);
         let completed = completed?;
         let document = std::fs::read(&self.result_path)
@@ -733,7 +771,7 @@ impl Staged {
             let _ = std::fs::remove_file(&self.result_path);
         }
         if !completed.succeeded() {
-            return Err(DS_REPORT.failure_from(&completed, "render-grid-plan-profile"));
+            return Err(DS_REPORT.failure_from(&completed, task.subcommand()));
         }
         document
             .ok_or_else(|| Failure::failed("engine_refused", "reporter returned no print receipt"))
@@ -797,6 +835,17 @@ job {}
             "MV preview sheet {} · {}",
             data["sheet"]["source_sheet_number"],
             data["sheet"]["page"]["path"].as_str().unwrap_or("?")
+        );
+    }
+    if data.get("source_model_sha256").is_some() {
+        if let Some(print) = data.get("print").filter(|value| value.is_object()) {
+            return render(print);
+        }
+        return format!(
+            "{} model preview pages / {} alignments\nrevision {}",
+            data["preview"]["page_count"],
+            data["preview"]["alignments"],
+            data["source_authored_revision"].as_str().unwrap_or("?")
         );
     }
     let artifact = data["pdf"]
@@ -884,7 +933,7 @@ mod tests {
 
     #[test]
     fn native_disk_preview_contract_admits_only_explicit_retention_choices() {
-        assert_eq!(COMMAND.contract, 7);
+        assert_eq!(COMMAND.contract, 8);
         let tokens = |retention: &str| {
             [
                 "--preview-layout",
@@ -948,7 +997,7 @@ mod tests {
         ] {
             assert_eq!(refusal(&mixed), "request_mode_invalid", "{mixed:?}");
         }
-        assert_eq!(COMMAND.contract, 7);
+        assert_eq!(COMMAND.contract, 8);
         let outcome = crate::project::export::host_failure(ds_report_host::HostFailure::new(
             "print_preview_job_capacity",
             "busy",

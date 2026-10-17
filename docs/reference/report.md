@@ -1319,6 +1319,23 @@ remains a separate operation. The native room admits two active jobs, preserves
 exact hashes and original 24h/7d expiry, and safely prunes only admitted expired
 owned files while preserving active jobs and foreign bytes.
 
+`report plan-profile --model /project/model.dsgrid --expected-model-sha256 sha256:<64-lowercase-hex> --expected-authored-revision <exact-revision> --project <id> --out-dir /project/fresh-print`
+uses the existing Reporter-owned `render-grid-plan-profile-model` task. All three
+model arguments are required together and replace `--scene` plus `--plan`.
+The CLI verifies an ordinary, unlinked absolute `.dsgrid` source of at most
+512 MiB and its exact digest before authenticated setup reads or output staging.
+Reporter receives both pin strings unchanged and rechecks the source before its
+single captured Network projection/print workflow.
+
+Model mode inherits the same governed MV setup, project CRS, report configuration,
+renderer defaults, styles, model-field allowances and held assets as projection
+mode. It accepts `--preview-only`, `--sample-pages` and ordinary artifact options.
+It refuses `--alignment` and `--preview-layout`, `--preview-all`,
+`--preview-retention`, `--preview-job` or `--preview-page`. `--request` remains the
+projection task and excludes the new model flags. Model results retain the
+Reporter's source digest/revision, Network evidence and nested `preview`/`print`
+receipts; plain output reads the nested receipt.
+
 `report plan-profile --alignment <id>` selects exact `alignment_id` band IDs
 from the held `--scene`; repeat the flag for multiple bands (1..256 IDs).
 Omitting it prints every band. Unknown or malformed IDs return
