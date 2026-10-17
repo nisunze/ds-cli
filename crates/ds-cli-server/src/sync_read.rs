@@ -116,7 +116,11 @@ fn retained(
     // Validate an existing file without tightening modes, repairing or creating it.
     match fs::symlink_metadata(database) {
         Ok(_) => {
-            drop(super::cache_recovery::private_file(database).map_err(|e| failure(STORE, e))?);
+            #[cfg(windows)]
+            let file = ds_cli_auth::windows_host::read_live_store_file(database);
+            #[cfg(not(windows))]
+            let file = super::cache_recovery::private_file(database);
+            drop(file.map_err(|e| failure(STORE, e))?);
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(failure(STORE, error)),
@@ -507,6 +511,98 @@ mod tests {
         run(&db, &out, "store", Some("foreign-account")).unwrap();
         let data: Value = serde_json::from_slice(&fs::read(out).unwrap()).unwrap();
         assert_eq!(data["artifacts"], json!([]));
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_retained_views_coexist_with_live_store_writer() {
+        use ds_sync_runtime::store::{ArtifactRow, Event};
+        let dir = private_temp();
+        let db = dir.path().join("store.sqlite");
+        let mut store = ds_sync_store::Store::open(&db).unwrap();
+        let fence = ds_sync_runtime::solar_producer::fence_of(&owner());
+        let row: ArtifactRow = serde_json::from_value(json!({
+            "scope": {"kind": "project", "project": "project"},
+            "engine": "network_reporter",
+            "operation": "report",
+            "variant": "main",
+            "sha256": "a".repeat(64),
+            "size_bytes": 10,
+            "produced_at_ms": 1,
+            "engine_release": "r",
+            "client_publish_id": "publish",
+            "bytes_locator": "batch:1",
+            "state": "held",
+            "replay_key": "publish",
+            "updated_at_ms": 1,
+            "transfer_state": {}
+        }))
+        .unwrap();
+        store
+            .apply(&fence, 1, Event::LocalProduced { row })
+            .unwrap();
+
+        // The credential reader retains its writer-excluding sharing fence.
+        assert!(ds_cli_auth::windows_host::read_file(&db).is_err());
+        let mut admission = ds_cli_auth::windows_host::read_live_store_file(&db).unwrap();
+        assert!(admission.write_all(b"must not write").is_err());
+        drop(admission);
+
+        let projects_out = dir.path().join("projects.json");
+        run(&db, &projects_out, "projects", None).unwrap();
+        let projects: Value = serde_json::from_slice(&fs::read(projects_out).unwrap()).unwrap();
+        assert_eq!(projects["projects"], json!(["project"]));
+        let store_out = dir.path().join("store.json");
+        run(&db, &store_out, "store", Some("project")).unwrap();
+        let projection: Value = serde_json::from_slice(&fs::read(store_out).unwrap()).unwrap();
+        assert_eq!(projection["project"], "project");
+        assert_eq!(projection["artifacts"].as_array().unwrap().len(), 1);
+
+        // Keep the actual writer connection live throughout both captures.
+        assert_eq!(
+            store.projects_of_fence(&fence).unwrap(),
+            vec!["project".to_string()]
+        );
+        drop(store);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_retained_views_refuse_unsafe_store_files_and_acls_without_repair() {
+        for unsafe_kind in ["hardlink", "file_acl", "parent_acl"] {
+            let dir = private_temp();
+            let db = dir.path().join("store.sqlite");
+            drop(ds_sync_store::Store::open(&db).unwrap());
+            match unsafe_kind {
+                "hardlink" => fs::hard_link(&db, dir.path().join("alias.sqlite")).unwrap(),
+                _ => {
+                    let path = if unsafe_kind == "file_acl" {
+                        db.as_path()
+                    } else {
+                        dir.path()
+                    };
+                    let result = std::process::Command::new("icacls.exe")
+                        .arg(path)
+                        .args(["/grant", "*S-1-1-0:(R)"])
+                        .output()
+                        .unwrap();
+                    assert!(result.status.success(), "native ACL fixture failed");
+                }
+            }
+            let before = fs::read(&db).unwrap();
+            let out = dir.path().join("must-not-exist.json");
+            for (view, project) in [("projects", None), ("store", Some("project"))] {
+                assert_eq!(
+                    run(&db, &out, view, project).unwrap_err().code(),
+                    STORE.code,
+                    "{unsafe_kind}"
+                );
+                assert!(!out.exists());
+                assert_eq!(fs::read(&db).unwrap(), before);
+                assert!(
+                    ds_cli_auth::windows_host::read_live_store_file(&db).is_err(),
+                    "refusal must preserve the unsafe file or ACL"
+                );
+            }
+        }
     }
     #[test]
     fn retained_solar_jobs_are_real_activity_and_install_fenced() {

@@ -226,6 +226,14 @@ pub fn read_file(path: &Path) -> Result<File, String> {
     validate_private(&file)?;
     Ok(file)
 }
+/// Admit an existing private retained store while its SQLite owner is live.
+/// Sharing permits the owner's writer; this handle itself grants only reads.
+pub fn read_live_store_file(path: &Path) -> Result<File, String> {
+    validate_directory(path.parent().ok_or_else(error)?)?;
+    let file = crate::state_windows::open_lock_metadata(path).map_err(|_| error())?;
+    validate_private(&file)?;
+    Ok(file)
+}
 pub fn create_file(path: &Path) -> Result<File, String> {
     validate_directory(path.parent().ok_or_else(error)?)?;
     let file = crate::state_windows::create_new(path).map_err(|_| error())?;
