@@ -351,6 +351,31 @@ principal/project. A preview and its read-only renderer consume held context,
 name missing inputs and never acquire providers. Explicit acquisition retains
 its existing owner and project fences.
 
+### MV geographic context and grid defaults
+
+Owner ruling, 2026-10-17: MV plan/profile printouts carry the relevant global
+geographic layers reduced to the authorized project area, plus building-footprint
+context. National/global holdings are acquisition sources, not an unbounded print
+payload. Retain the project-area mask and source revision/digest when preparing
+project data, then clip the held project context to each sheet's coverage. Preserve
+crossing geometry; context never changes model engineering or report quantities.
+
+Building footprints belong in the standard MV context. Missing, incomplete or
+stale coverage must be reported explicitly; only verified ready-empty coverage
+means there are no features to draw. A successful geometry-only sample is not
+proof of geographic-context readiness. Source/layer inventories, coverage and
+intentional omissions accompany the print receipt. Native project acquisition
+prepares missing holdings explicitly; previews and renderers consume held inputs
+without hidden provider fetches or cloud-compute fallbacks.
+
+Both plan coordinate/metric grids and profile grid lines are **off by default**.
+Keep scale bars, station/elevation labels, engineering geometry and page furniture.
+A deliberately authored template may enable a grid. New standard/adopted revisions
+use the grid-free default; historical immutable template revisions remain
+reproducible. Preview and PDF use the same effective settings and context pins.
+Acceptance includes a real MV sheet with project-clipped global layers and building
+footprints, and checks that an unauthored grid is absent.
+
 The preferred MV reference is the October 1 Nyamagabe Model 1 A3 booklet:
 `Nyamagabe-MV-Model1-Plan-and-Profile-A3.pdf`, 100 A3 landscape pages,
 SHA-256 `13e82d117c84c0b80b2cff271de3927a1ca6335bc09a967a3f7ed7d6c689d9cb`.
