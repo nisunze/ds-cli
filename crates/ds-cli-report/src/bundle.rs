@@ -11,12 +11,12 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DS_REPORT, EXPORT_TIMEOUT};
+use crate::{DS_REPORT, ENGINE_LANE, EXPORT_TIMEOUT, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "report.bundle",
     path: &["report", "bundle"],
-    contract: 1,
+    contract: 2,
     summary: "Package transformer and combined reports into one verified ZIP.",
     purpose: "Calls the reporter's closed local bundle task. Every source is digest-pinned. Optional pdf_collections join existing PDF members in explicit order into multipage A0/A3 drawings, preserving their title blocks and numbering. manifest.json is embedded, no network call is made, and an existing output is never overwritten.",
     chapter: Chapter::Reports,
@@ -24,6 +24,7 @@ pub static COMMAND: Command = Command {
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        ENGINE_LANE,
         Arg::value(
             "request",
             "<path>",
@@ -43,11 +44,8 @@ pub static COMMAND: Command = Command {
         runnable: false,
     }],
     refusals: &[
-        Refusal {
-            code: "reporter_engine_missing",
-            when: "`ds-report` is unavailable",
-            remedy: "set DS_REPORT_BIN to a built ds-report",
-        },
+        crate::ENGINE_MISSING,
+        crate::ENGINE_RECEIPT_INVALID,
         Refusal {
             code: "request_not_found",
             when: "the request file is missing",
@@ -71,7 +69,7 @@ pub static COMMAND: Command = Command {
 };
 
 fn availability() -> Availability {
-    DS_REPORT.availability()
+    Availability::Available
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -92,13 +90,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             format!("`{}` already exists", result.display()),
         ));
     }
+    let engine = capture_engine(inputs)?;
     let args = vec![
         OsString::from("--request"),
         request.into(),
         OsString::from("--result"),
         result.clone().into(),
     ];
-    let completed = DS_REPORT.call("export-compounded-report", &args, EXPORT_TIMEOUT)?;
+    let completed = engine.call("export-compounded-report", &args, EXPORT_TIMEOUT)?;
     let mut document = std::fs::read(&result)
         .ok()
         .and_then(|body| serde_json::from_slice::<Value>(&body).ok());

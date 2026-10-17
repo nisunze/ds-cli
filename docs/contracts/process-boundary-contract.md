@@ -80,9 +80,22 @@ route. Missing managed selection or a missing/corrupt selected executable refuse
 before any sibling/PATH lookup or spawn; lane capture never substitutes an
 unmanaged engine. The separately named development `capture` route retains its
 established sibling/PATH lookup, and `capture_pinned` only reopens the retained
-path. Raw local-file Reporter commands retain their explicit
-unmanaged boundary until separately migrated; inventory/selection alone does not
-prove those consumers use a managed receipt.
+path. Standalone Reporter `engine`, `tasks`, `export`, `bundle`,
+`voltage-drop-combined`, `mv-frontmatter` and `spatial workbook` now declare
+`--lane` (Stable by default) and capture the verified managed selection without
+account/project reads. `plan-profile-config` reuses its existing authorized
+project lane and one handle for every variant. Identity/path and schema/task
+pairs retain that handle across pointer changes; discovery performs no probe.
+Missing selection returns `reporter_engine_missing`, and invalid receipts or
+selected bytes return `module_receipt_invalid`; repair the selected lane without
+fallback. Local layout delivery and non-preview plan/profile rendering pass one
+managed handle into their fixed process call after existing local/project
+validation. Retained A4 Refresh holds that same renderer through schema admission,
+release build-info before/after and rendering; its auth fences, staging,
+sealing/publication and exact cloud readback remain unchanged. Preview paths keep
+their existing managed project owner. The design project's voltage-drop print
+run passes its captured renderer through governed A4 admission and local export;
+obsolete zero-argument preflight wrappers are removed.
 
 `ds-cli-exec` is not, however, the only place a process is created — there are
 named owner classes, and each is audited where it lives:

@@ -136,7 +136,7 @@ pub static READ: Command = Command {
 pub static REFRESH: Command = Command {
     id: "report.preview.refresh",
     path: &["report", "preview", "refresh"],
-    contract: 1,
+    contract: 2,
     summary: "Render and publish a new retained project A4 preview PDF.",
     purpose: "Explicitly refresh one A4 preview from one native session's exact saved voltage-drop JSON, transformer layers, project config, governed A4 document and renderer style policy. The release reporter renders and verifies a PDF, then the shared publication queue uploads it and exact cloud readback proves delivery. Every explicit refresh has a fresh run identity, including unchanged inputs; earlier cloud artifacts remain retained. No analysis is recomputed and no template or style is invented.",
     chapter: Chapter::Reports,
@@ -157,7 +157,10 @@ pub static REFRESH: Command = Command {
         note: "Creates a new immutable rendered revision and downloads those same bytes.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: &crate::project::joined::<{ REFUSALS.len() + 2 }>(&[
+        REFUSALS,
+        &[crate::ENGINE_MISSING, crate::ENGINE_RECEIPT_INVALID],
+    ]),
     reference: Some("docs/reference/report.md"),
     search: &["printing", "refresh preview", "voltage drop"],
     requires: Requires::Server,
@@ -292,8 +295,10 @@ fn binding(capture: &SavedA4Capture, transformer: &str) -> Result<Binding, Failu
     Ok(binding)
 }
 
-fn release_engine() -> Result<report_export::EngineIdentity, Failure> {
-    let raw = crate::DS_REPORT.call_json("build-info", &[], crate::DISCOVERY_TIMEOUT)?;
+fn release_engine(
+    renderer: &ds_cli_exec::CapturedExternal,
+) -> Result<report_export::EngineIdentity, Failure> {
+    let raw = renderer.call_json("build-info", &[], crate::DISCOVERY_TIMEOUT)?;
     let engine = report_export::engine_identity(&raw).map_err(|error| {
         Failure::unavailable(ENGINE_INVALID.code, error).remedy(ENGINE_INVALID.remedy)
     })?;
@@ -329,9 +334,10 @@ pub fn refresh(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let transformer = inputs.require("transformer")?;
     let out = Path::new(inputs.require("out")?);
     let state = inputs.value("core-state-dir");
-    crate::export::voltage_drop_project_a4_preflight()?;
+    let renderer = crate::capture_engine(inputs)?;
+    crate::export::voltage_drop_project_a4_preflight_captured(&renderer)?;
     crate::export::voltage_drop_browser_preflight().map_err(render_failed)?;
-    let engine = release_engine()?;
+    let engine = release_engine(&renderer)?;
     let fence = ds_cli_auth::capture_layer_scope_fence_for_project(lane, project)?;
     let held = ds_cli_auth::saved_owned_a4_for_project(lane, project, transformer)?;
     let guard = || {
@@ -367,7 +373,7 @@ pub fn refresh(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     ds_layer_store::private::write(&request, bytes).map_err(render_failed)?;
     guard()?;
-    let completed = crate::DS_REPORT.call(
+    let completed = renderer.call(
         "render-voltage-drop-result",
         &[
             OsString::from("--request"),
@@ -392,7 +398,7 @@ pub fn refresh(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         held.project_name(),
     )
     .map_err(render_failed)?;
-    if release_engine()? != engine {
+    if release_engine(&renderer)? != engine {
         return Err(Failure::unavailable(
             ENGINE_INVALID.code,
             "The renderer build changed during rendering.",

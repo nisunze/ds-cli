@@ -14,12 +14,12 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::{DS_REPORT, EXPORT_TIMEOUT};
+use crate::{DS_REPORT, EXPORT_TIMEOUT, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "report.plan-profile",
     path: &["report", "plan-profile"],
-    contract: 6,
+    contract: 7,
     summary: "Render DS Grid plan/profile sheets from a pinned scene and plan.",
     purpose: "Resolve the named project's adopted MV setup and render same-revision projections into its ordered local publication. Exact alignment IDs narrow scope; omitting them prints all. Text, logos, scales, fonts and issue policy inherit that setup; allowed model differences are explicit. Missing inputs refuse before output. --request alone runs a complete native request without project reads. --preview-layout renders a saved or draft template sample into the scoped native disk cache, with exact input/style/engine fences and 24h or 7d retention. Responses contain file receipts and station metadata, never inline SVG. No model, layout, selection or publication is saved by a template preview.",
     chapter: Chapter::Reports,
@@ -140,7 +140,7 @@ pub static COMMAND: Command = Command {
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 24 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 25 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             Refusal {
@@ -203,11 +203,8 @@ pub static COMMAND: Command = Command {
                 when: "typed request cannot be written",
                 remedy: "Check temporary storage permissions and free space",
             },
-            Refusal {
-                code: "reporter_engine_missing",
-                when: "reporter is absent",
-                remedy: "Install the matching ds-report",
-            },
+            crate::ENGINE_MISSING,
+            crate::ENGINE_RECEIPT_INVALID,
             Refusal {
                 code: "engine_refused",
                 when: "reporter refuses setup, held assets or geometry pairing",
@@ -369,7 +366,8 @@ fn run_request(inputs: &Inputs, request: PathBuf) -> Result<Value, Failure> {
         ));
     }
     let staged = Staged::new(inputs.value("result"))?;
-    let mut document = staged.render(bytes)?;
+    let engine = capture_engine(inputs)?;
+    let mut document = staged.render(&engine, bytes)?;
     if staged.keep {
         document["result_path"] = json!(staged.result_path.display().to_string());
     }
@@ -657,7 +655,8 @@ fn run_project(inputs: &Inputs) -> Result<Value, Failure> {
     let request = json!({"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"style_resolution":style_resolution,"preview_only":inputs.switch("preview-only"),"project_id":project,"scene_path":scene_path,"plan_path":plan,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"structure_descriptions_path":inputs.value("structure-descriptions"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
-    let mut document = staged.render(bytes)?;
+    let engine = capture_engine(inputs)?;
+    let mut document = staged.render(&engine, bytes)?;
     if let Some(selected) = &selected {
         document["alignment_selection"] = selected.receipt.clone();
         if staged.keep {
@@ -711,7 +710,11 @@ impl Staged {
     }
 
     /// One `render-grid-plan-profile` call over these exact request bytes.
-    fn render(&self, bytes: Vec<u8>) -> Result<Value, Failure> {
+    fn render(
+        &self,
+        engine: &ds_cli_exec::CapturedExternal,
+        bytes: Vec<u8>,
+    ) -> Result<Value, Failure> {
         ds_layer_store::private::write(&self.request_path, bytes)
             .map_err(|e| Failure::failed("request_write_failed", e.to_string()))?;
         let args = vec![
@@ -720,7 +723,7 @@ impl Staged {
             OsString::from("--result"),
             self.result_path.clone().into(),
         ];
-        let completed = DS_REPORT.call("render-grid-plan-profile", &args, EXPORT_TIMEOUT);
+        let completed = engine.call("render-grid-plan-profile", &args, EXPORT_TIMEOUT);
         let _ = std::fs::remove_file(&self.request_path);
         let completed = completed?;
         let document = std::fs::read(&self.result_path)
@@ -881,7 +884,7 @@ mod tests {
 
     #[test]
     fn native_disk_preview_contract_admits_only_explicit_retention_choices() {
-        assert_eq!(COMMAND.contract, 6);
+        assert_eq!(COMMAND.contract, 7);
         let tokens = |retention: &str| {
             [
                 "--preview-layout",
@@ -945,7 +948,7 @@ mod tests {
         ] {
             assert_eq!(refusal(&mixed), "request_mode_invalid", "{mixed:?}");
         }
-        assert_eq!(COMMAND.contract, 6);
+        assert_eq!(COMMAND.contract, 7);
         let outcome = crate::project::export::host_failure(ds_report_host::HostFailure::new(
             "print_preview_job_capacity",
             "busy",

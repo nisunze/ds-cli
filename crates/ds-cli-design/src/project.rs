@@ -270,40 +270,48 @@ pub static OUTBOX: Command = command(
     ],
     Effect::ReadOnly,
 );
-pub static REPORT: Command = command(
-    "design.project.report",
-    &["design", "project", "report"],
-    "Produce offline reports with the mandatory saved voltage-drop JSON.",
-    &[
-        WORKSPACE,
-        RUN_ID,
-        TRANSFORMER,
-        Arg::value(
-            "out-dir",
-            "<dir>",
-            "New directory for pinned inputs, artifacts and reporter receipt.",
-        )
-        .required(),
-        Arg::value(
-            "country",
-            "<name>",
-            "Explicit reporting country; Rwanda needs a verified local admin asset.",
-        )
-        .required(),
-        Arg::repeated(
-            "format",
-            "<name>",
-            "Explicit data or governed pdf__<layout-id> formats; saved voltage-drop JSON is always included.",
-        ),
-        Arg::value("admin-bounds", "<file>", "Local admin-bounds asset."),
-        Arg::value(
-            "admin-bounds-sha256",
-            "<sha256>",
-            "Expected admin asset digest.",
-        ),
-    ],
-    Effect::LocalFileWrite,
-);
+pub static REPORT: Command = {
+    let mut report = command(
+        "design.project.report",
+        &["design", "project", "report"],
+        "Produce offline reports with the mandatory saved voltage-drop JSON.",
+        &[
+            WORKSPACE,
+            RUN_ID,
+            TRANSFORMER,
+            Arg {
+                summary: "Managed Reporter addon lane; stable by default, without account or project reads.",
+                ..ds_cli_contract::spec::LANE
+            },
+            Arg::value(
+                "out-dir",
+                "<dir>",
+                "New directory for pinned inputs, artifacts and reporter receipt.",
+            )
+            .required(),
+            Arg::value(
+                "country",
+                "<name>",
+                "Explicit reporting country; Rwanda needs a verified local admin asset.",
+            )
+            .required(),
+            Arg::repeated(
+                "format",
+                "<name>",
+                "Explicit data or governed pdf__<layout-id> formats; saved voltage-drop JSON is always included.",
+            ),
+            Arg::value("admin-bounds", "<file>", "Local admin-bounds asset."),
+            Arg::value(
+                "admin-bounds-sha256",
+                "<sha256>",
+                "Expected admin asset digest.",
+            ),
+        ],
+        Effect::LocalFileWrite,
+    );
+    report.contract = 2;
+    report
+};
 
 pub fn map_error(e: Error) -> Failure {
     match e {
@@ -479,18 +487,7 @@ pub fn report(i: &Inputs, c: &Context) -> Result<Value, Failure> {
             .map_err(|error| map_error(Error::Invalid(error.to_string())))?,
     )
     .map_err(map_error)?;
-    let args = vec![
-        "--task".into(),
-        "transformer".into(),
-        "--request".into(),
-        request_path.to_string_lossy().into_owned(),
-        "--result".into(),
-        root.join("report-result.json")
-            .to_string_lossy()
-            .into_owned(),
-    ];
-    let inputs = ds_cli_contract::args::parse(&ds_cli_report::export::COMMAND, &args)
-        .map_err(report_error)?;
+    let inputs = report_export_inputs(&request_path, root, i.require("lane")?)?;
     let report = ds_cli_report::export::run(&inputs, c).map_err(report_error)?;
     if report["status"] != "completed" {
         return Ok(json!({"report":report,"publication":"not_queued_partial"}));
@@ -505,6 +502,22 @@ pub fn report(i: &Inputs, c: &Context) -> Result<Value, Failure> {
         .map_err(report_input_error)?;
     Ok(json!({"report":report,"delivery":retained}))
 }
+fn report_export_inputs(request_path: &Path, root: &Path, lane: &str) -> Result<Inputs, Failure> {
+    let args = vec![
+        "--lane".into(),
+        lane.into(),
+        "--task".into(),
+        "transformer".into(),
+        "--request".into(),
+        request_path.to_string_lossy().into_owned(),
+        "--result".into(),
+        root.join("report-result.json")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    ds_cli_contract::args::parse(&ds_cli_report::export::COMMAND, &args).map_err(report_error)
+}
+
 fn report_input_error(error: Error) -> Failure {
     if let Error::Invalid(message) = &error {
         let code = message.split(':').next().unwrap_or("");
@@ -562,6 +575,52 @@ pub fn sources(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 #[cfg(test)]
 mod report_input_error_tests {
     use super::*;
+
+    #[test]
+    fn local_report_defaults_to_stable_and_forwards_requested_addon_lane() {
+        for lane in [None, Some("canary")] {
+            let mut args: Vec<String> = [
+                "--workspace",
+                "offline-workspace",
+                "--run-id",
+                "run-1",
+                "--transformer",
+                "T1",
+                "--out-dir",
+                "delivery",
+                "--country",
+                "Rwanda",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+            if let Some(lane) = lane {
+                args.extend(["--lane".into(), lane.into()]);
+            }
+            let inputs = ds_cli_contract::args::parse(&REPORT, &args).unwrap();
+            let expected = lane.unwrap_or("stable");
+            assert_eq!(inputs.require("lane").unwrap(), expected);
+            let forwarded = report_export_inputs(
+                Path::new("delivery/report-request.json"),
+                Path::new("delivery"),
+                inputs.require("lane").unwrap(),
+            )
+            .unwrap();
+            assert_eq!(forwarded.require("lane").unwrap(), expected);
+            assert_eq!(forwarded.require("task").unwrap(), "transformer");
+            assert_eq!(
+                forwarded.require("request").unwrap(),
+                "delivery/report-request.json"
+            );
+            assert_eq!(
+                Path::new(forwarded.require("result").unwrap()),
+                Path::new("delivery").join("report-result.json")
+            );
+        }
+        assert_eq!(REPORT.authority, Authority::None);
+        assert_eq!(REPORT.contract, 2);
+        assert_eq!(INIT.contract, 1);
+    }
 
     #[test]
     fn saved_analysis_refusals_keep_exact_codes_and_unknown_codes_stay_invalid() {

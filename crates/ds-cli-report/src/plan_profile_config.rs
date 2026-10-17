@@ -15,12 +15,12 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::{DS_REPORT, EXPORT_TIMEOUT};
+use crate::{EXPORT_TIMEOUT, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "report.plan-profile-config",
     path: &["report", "plan-profile-config"],
-    contract: 4,
+    contract: 5,
     summary: "Print an atomic standard MV booklet from project JSON.",
     purpose: "Bind same-revision geometry and held approved assets to the project canonical MV setup, then render into the explicit --out directory. The reusable configuration contains no output destination. All printing furniture inherits the exact adopted revision and fixed version/date. Discover the V3 configuration with report plan-profile-config schema. The complete job commits one fresh output directory only after every booklet, preview and receipt succeeds.",
     chapter: Chapter::Reports,
@@ -54,7 +54,7 @@ pub static COMMAND: Command = Command {
         note: "Render every named variant from one pinned configuration; see docs/reference/report.md for the schema.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 12 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 13 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             crate::project::mv_setup::REFUSAL,
@@ -100,11 +100,8 @@ pub static COMMAND: Command = Command {
                 when: "the Rust reporter rejects a variant's source or settings",
                 remedy: "read the reporter detail and correct the pinned inputs; no part of the job was committed",
             },
-            Refusal {
-                code: "reporter_engine_missing",
-                when: "the Rust reporter is unavailable",
-                remedy: "install the matching ds-report binary",
-            },
+            crate::ENGINE_MISSING,
+            crate::ENGINE_RECEIPT_INVALID,
         ],
     ]),
     reference: Some("docs/reference/report.md"),
@@ -168,7 +165,7 @@ pub fn schema_render(data: &Value) -> String {
 }
 
 fn availability() -> Availability {
-    DS_REPORT.availability()
+    Availability::Available
 }
 
 #[derive(Debug, Deserialize)]
@@ -326,6 +323,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             project,
             config.model_fields.clone(),
         )?;
+    let engine = capture_engine(inputs)?;
     let staging =
         tempfile::tempdir_in(output_root.parent().ok_or_else(|| {
             Failure::invalid("print_config_invalid", "output_root has no parent")
@@ -373,7 +371,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             OsString::from("--result"),
             result_path.clone().into(),
         ];
-        let completed = match DS_REPORT.call("render-grid-plan-profile", &args, EXPORT_TIMEOUT) {
+        let completed = match engine.call("render-grid-plan-profile", &args, EXPORT_TIMEOUT) {
             Ok(completed) => completed,
             Err(error) => {
                 return Err(error.detail(json!({"variant":variant.name,"committed":false})));

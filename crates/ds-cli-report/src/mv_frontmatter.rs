@@ -11,12 +11,12 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, ExitClass, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DS_REPORT, EXPORT_TIMEOUT};
+use crate::{DS_REPORT, ENGINE_LANE, EXPORT_TIMEOUT, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "report.mv-frontmatter",
     path: &["report", "mv-frontmatter"],
-    contract: 1,
+    contract: 2,
     summary: "Render MV front-matter pages from held sources and explicit facts.",
     purpose: "Pass a typed local request to the Rust reporter. It verifies the project-owned HTML, CSS and logo digests, fills only explicitly supplied facts, and prints selected A3 cover or naming pages with Chromium. The receipt pins inputs and PDFs; the existing MV booklet assembler consumes those PDFs. This command does not publish or edit a project.",
     chapter: Chapter::Reports,
@@ -24,6 +24,7 @@ pub static COMMAND: Command = Command {
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        ENGINE_LANE,
         Arg::value(
             "request",
             "<absolute.json>",
@@ -50,11 +51,8 @@ pub static COMMAND: Command = Command {
         },
     ],
     refusals: &[
-        Refusal {
-            code: "reporter_engine_missing",
-            when: "the matching local ds-report process is unavailable",
-            remedy: "install the matching DS reporter or set DS_REPORT_BIN to its built binary",
-        },
+        crate::ENGINE_MISSING,
+        crate::ENGINE_RECEIPT_INVALID,
         Refusal {
             code: "path_not_absolute",
             when: "--request or --result is a relative path",
@@ -83,7 +81,7 @@ pub static COMMAND: Command = Command {
 };
 
 fn availability() -> Availability {
-    DS_REPORT.availability()
+    Availability::Available
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -107,13 +105,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
         .remedy("choose a fresh receipt path"));
     }
+    let engine = capture_engine(inputs)?;
     let args = vec![
         OsString::from("--request"),
         request.into(),
         OsString::from("--result"),
         result.clone().into(),
     ];
-    let completed = DS_REPORT.call("render-mv-frontmatter", &args, EXPORT_TIMEOUT);
+    let completed = engine.call("render-mv-frontmatter", &args, EXPORT_TIMEOUT);
     // Read even after a process-level error: the owner may have written a
     // refusal before the process timed out or could no longer be waited on.
     let document = std::fs::read(&result)

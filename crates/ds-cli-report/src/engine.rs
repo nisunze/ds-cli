@@ -7,12 +7,12 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DISCOVERY_TIMEOUT, DS_REPORT};
+use crate::{DISCOVERY_TIMEOUT, ENGINE_LANE, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "report.engine",
     path: &["report", "engine"],
-    contract: 1,
+    contract: 2,
     summary: "Report the installed reporter engine's identity.",
     purpose: "\
 Returns the release identity of the `reporter` addon this machine will use: \
@@ -23,7 +23,7 @@ and the first thing to compare when two machines disagree.",
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[],
+    args: &[ENGINE_LANE],
     output: "Service and binary name, package version, source SHA, and the combined engine version string.",
     examples: &[Example {
         command: "ds report engine --output json",
@@ -31,11 +31,8 @@ and the first thing to compare when two machines disagree.",
         runnable: true,
     }],
     refusals: &[
-        Refusal {
-            code: "reporter_engine_missing",
-            when: "`reporter` is not installed next to `ds`",
-            remedy: "install the Reporter addon, or set DS_REPORT_BIN to a compatible reporter executable",
-        },
+        crate::ENGINE_MISSING,
+        crate::ENGINE_RECEIPT_INVALID,
         Refusal {
             code: "callee_contract_mismatch",
             when: "the engine answered, but not with the document this build expects",
@@ -49,14 +46,18 @@ and the first thing to compare when two machines disagree.",
 };
 
 fn availability() -> Availability {
-    DS_REPORT.availability()
+    Availability::Available
 }
 
-pub fn run(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let identity = DS_REPORT.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
+pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    run_captured(capture_engine(inputs)?)
+}
+
+pub(crate) fn run_captured(engine: ds_cli_exec::CapturedExternal) -> Result<Value, Failure> {
+    let identity = engine.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
     Ok(json!({
         "binary": "reporter",
-        "path": DS_REPORT.locate().map(|path| path.display().to_string()),
+        "path": engine.executable().display().to_string(),
         "identity": identity,
     }))
 }

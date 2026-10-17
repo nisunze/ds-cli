@@ -121,7 +121,10 @@ ds design project report --workspace ./design-work --run-id draft-1 --transforme
 ```
 
 The reporter consumes the completed run, its captured configuration and exact
-saved producer analysis. Every selection also delivers voltage-drop JSON;
+saved producer analysis. `--lane stable|canary` selects the managed Reporter
+addon (stable by default) without account or project reads. One captured
+Reporter handles identity, rendering and completion checks. Every selection
+also delivers voltage-drop JSON;
 missing sources and invalid envelope/identity/digest bindings refuse before
 staging and never trigger a calculation. The reporter admits deeper saved-run
 content and presentation before complete retention. Use a named print layout held in the captured

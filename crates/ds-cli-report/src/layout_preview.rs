@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 use std::{io::Read, path::PathBuf};
 
 pub(crate) const REFUSALS: &[Refusal] = &[
+    crate::ENGINE_RECEIPT_INVALID,
     ops::NOT_PAIRED,
     ops::AMBIGUOUS,
     ops::UNREACHABLE,

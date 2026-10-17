@@ -158,9 +158,11 @@ requires a new directory. A directory lease prevents concurrent resumes; after
 a crash remove `.run-lock` only once its owning invocation has stopped.
 
 Add `--print-a4` to compute, save, fetch the exact saved analysis and render
-local A4 PDF in the same call. Before effects the CLI discovers the installed
-reporter's `render_voltage_drop_result` task and the verified existing browser
-selection. Configure that selection once with
+local A4 PDF in the same call. Before effects the CLI captures the requested
+lane's managed Reporter once and checks its `render_voltage_drop_result` task
+and the verified existing browser selection. The same Reporter capture is
+retained through rendering; save-only runs do not select or preflight Reporter.
+Configure that selection once with
 `ds workstation configure --component chromium --target reporter --yes` on
 Linux or Windows; no browser installation or window is involved.
 

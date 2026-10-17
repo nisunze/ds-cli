@@ -500,7 +500,7 @@ const STYLE_REFUSALS: &[Refusal] = &[
 pub static RENDER: Command = Command {
     id: "report.layout.render",
     path: &["report", "layout", "render"],
-    contract: 1,
+    contract: 2,
     summary: "Print captured maps with collision and clipping diagnostics.",
     purpose: "Render ds.print-layout-export/v1 as PDF/PNG/SVG/JPEG. --preview returns a common retained SVG or PDF file. Default Core uses the native account; explicit --target desktop uses the paired window's published account/project/lane. No provider, freshness, model or publication reads. Delivery out_dir must be fresh. Capture saved static pages with report.layout.edit capture_project_layout_preview; task schema: report tasks --task render_print_layout.",
     chapter: Chapter::Reports,
@@ -536,7 +536,7 @@ pub static RENDER: Command = Command {
             "Preview host; default Core. Explicit core uses the native account and overrides DS_TARGET; retired server is refused.",
         ),
         ds_cli_desktop::ops::DESCRIPTOR_ARG,
-        LANE.summary("Headless credential lane; paired preview uses its published window lane."),
+        LANE.summary("Local addon lane; native preview uses this credential lane, paired preview uses its published window lane."),
     ],
     output: "Artifacts and bounded collision/clipping diagnostics. Preview returns page (common SVG/PDF file manifest), engine and preview_cache (original expiry/reused); no inline bytes. Mechanical checks are not visual approval.",
     examples: &[Example {
@@ -1252,6 +1252,7 @@ pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     // features. Keep the immutable local request bounded, but large enough for
     // the output of report.project.map-inputs itself.
     let raw = bytes(i.require("request")?, 128 * 1024 * 1024)?;
+    let engine = crate::capture_engine(i)?;
     let scratch = tempfile::tempdir().map_err(invalid)?;
     // Private per the owner rule: the directory 0700 (the engine writes its
     // result inside it) and the request 0600.
@@ -1259,7 +1260,7 @@ pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let request = scratch.path().join("request.json");
     let result = scratch.path().join("result.json");
     ds_layer_store::private::write(&request, raw).map_err(invalid)?;
-    let completed = crate::DS_REPORT.call(
+    let completed = engine.call(
         "render-print-layout",
         &[
             "--request".into(),

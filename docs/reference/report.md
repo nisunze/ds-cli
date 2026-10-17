@@ -37,6 +37,25 @@ reimplements none of it.
 Core no longer links the Grid engineering command adapters. Its retained native
 Profile and reporting controls use their independent process owners.
 
+The standalone consumers `report engine`, `tasks`, `export`, `bundle`,
+`voltage-drop-combined`, `mv-frontmatter` and `spatial workbook` select the
+verified managed Reporter with `--lane stable|canary` (Stable by default).
+They read no account or active project. `plan-profile-config` uses its existing
+project lane and authorization. Each invocation captures once: engine identity
+and path, schema/task checks and every configured variant keep that exact handle
+if the current selection changes. Missing selection returns
+`reporter_engine_missing`; invalid receipt or executable bytes return
+`module_receipt_invalid`. Install, repair or roll back Reporter in the selected
+lane. `DS_REPORT_BIN` remains an explicit development override; managed capture
+does not try siblings, PATH or another lane. Discovery performs no resolution
+or process probe. Local `layout render` delivery and non-preview `plan-profile`
+also retain one managed handle after their existing validation; project setup
+and preview paths keep their existing authorization. `preview refresh` holds the
+same renderer for schema admission, release identity before/after rendering and
+the render call; its sealing, publication and cloud readback remain unchanged.
+The design project's voltage-drop print run likewise retains its captured
+renderer through governed A4 schema admission and local export.
+
 ## Two engine rules that shape every command here
 
 **The result file must not already exist, and there is no `--force`.** The

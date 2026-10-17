@@ -15,7 +15,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DS_REPORT, EXPORT_TIMEOUT};
+use crate::{DS_REPORT, ENGINE_LANE, EXPORT_TIMEOUT, capture_engine};
 
 const SOURCE_MISSING: Refusal = Refusal {
     code: "spatial_receipt_missing",
@@ -41,7 +41,7 @@ const ENGINE_REFUSED: Refusal = Refusal {
 pub static COMMAND: Command = Command {
     id: "report.spatial.workbook",
     path: &["report", "spatial", "workbook"],
-    contract: 1,
+    contract: 2,
     summary: "Create an Excel parcel count by sector from a spatial result.",
     purpose: "Turns one complete `data.spatial.execute` distinct-UPI sector-count JSON receipt into a two-sheet XLSX with counts and query provenance. The reporter verifies the source, project, authority version, plan hash and count semantics. This is local presentation of a prior authorized read; it performs no BigQuery query and reads no active project.",
     chapter: Chapter::Reports,
@@ -49,6 +49,7 @@ pub static COMMAND: Command = Command {
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        ENGINE_LANE,
         Arg::value(
             "project",
             "<exact-id>",
@@ -80,6 +81,8 @@ pub static COMMAND: Command = Command {
         runnable: false,
     }],
     refusals: &[
+        crate::ENGINE_MISSING,
+        crate::ENGINE_RECEIPT_INVALID,
         SOURCE_MISSING,
         OUTPUT_EXISTS,
         REQUEST_FAILED,
@@ -92,7 +95,7 @@ pub static COMMAND: Command = Command {
 };
 
 fn availability() -> Availability {
-    DS_REPORT.availability()
+    Availability::Available
 }
 
 fn absolute(path: &str) -> Result<PathBuf, Failure> {
@@ -127,6 +130,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
         .remedy(OUTPUT_EXISTS.remedy));
     }
+    let engine = capture_engine(inputs)?;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|value| value.as_nanos())
@@ -169,7 +173,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         OsString::from("--result"),
         result_path.clone().into(),
     ];
-    let completed = DS_REPORT.call("export-spatial-sector-counts", &args, EXPORT_TIMEOUT);
+    let completed = engine.call("export-spatial-sector-counts", &args, EXPORT_TIMEOUT);
     let _ = std::fs::remove_file(&request_path);
     let completed = completed?;
     let document = std::fs::read(&result_path)

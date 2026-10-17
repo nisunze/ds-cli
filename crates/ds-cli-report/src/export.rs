@@ -31,7 +31,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DS_REPORT, EXPORT_TIMEOUT};
+use crate::{DS_REPORT, ENGINE_LANE, EXPORT_TIMEOUT, capture_engine};
 
 const TASKS: &[&str] = &["transformer", "combined", "voltage-drop", "lv-standard"];
 const INPUT_SHAPES: &[&str] = &["firestore_rest", "plain_local"];
@@ -46,7 +46,7 @@ const LV_STANDARD_SUBCOMMAND: &str = "export-lv-standard";
 pub static COMMAND: Command = Command {
     id: "report.export",
     path: &["report", "export"],
-    contract: 4,
+    contract: 5,
     summary: "Export governed LV standard sets or local engineering reports.",
     purpose: "Build local reports with ds-report; return results or typed blockers. --request accepts the full typed request; `ds report tasks --task <name>` shows its schema. Omitted transformer formats use this invocation's defaults, independent of saved output sets. LV standard requires the export_lv_standard A0/A3 job; report layout schema describes its governed defaults and overrides. Voltage-drop takes render_voltage_drop_result: A4 prints only calculated analysis without logos or recomputation; other states refuse with voltage_drop_pdf_not_calculated. report.voltage-drop-combined covers reserved/refused on A3. Governed identity supplies title blocks; report_locale overrides captured project/country locale. Combined requests require installed digest-pinned country reference bytes. The kernel owns PDF names. Prints regenerate; partial exports name failed_formats. No network calls.",
     chapter: Chapter::Reports,
@@ -54,6 +54,7 @@ pub static COMMAND: Command = Command {
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        ENGINE_LANE,
         Arg::value("task", "<name>", "Which report to build.")
             .required()
             .choices(TASKS),
@@ -178,11 +179,8 @@ was given.",
             when: "the installed reporter does not publish the selected voltage-drop or LV standard task",
             remedy: "install a reporter exposing the selected task in report tasks; no alternate rendering or recomputation fallback is permitted",
         },
-        Refusal {
-            code: "reporter_engine_missing",
-            when: "`ds-report` is not installed next to `ds`",
-            remedy: "install the headless DS package, or set DS_REPORT_BIN to a built ds-report",
-        },
+        crate::ENGINE_MISSING,
+        crate::ENGINE_RECEIPT_INVALID,
         Refusal {
             code: "conflicting_inputs",
             when: "--request was given alongside a content flag",
@@ -241,7 +239,7 @@ was given.",
 };
 
 fn availability() -> Availability {
-    DS_REPORT.availability()
+    Availability::Available
 }
 
 /// The content flags, so "did the caller mix --request with content" is
@@ -258,15 +256,11 @@ const CONTENT_FLAGS: &[&str] = &[
     "admin-bounds-sha256",
 ];
 
-/// Discover the exact owner task before any project compute/save effect.
-pub fn voltage_drop_preflight() -> Result<(), Failure> {
-    require_task("render_voltage_drop_result", VOLTAGE_DROP_SUBCOMMAND)
-}
-
-/// Project runs require the owner schema's governed project-capture route.
-/// Older reporters expose the task name but can still print a compiled default.
-pub fn voltage_drop_project_a4_preflight() -> Result<(), Failure> {
-    let schemas = crate::tasks::schemas()?;
+/// Check governed A4 admission against the renderer already held by this run.
+pub fn voltage_drop_project_a4_preflight_captured(
+    engine: &ds_cli_exec::CapturedExternal,
+) -> Result<(), Failure> {
+    let schemas = crate::tasks::schemas(engine)?;
     let admitted = schemas["tasks"].as_array().is_some_and(|tasks| {
         tasks.iter().any(|task| {
             task["name"] == "render_voltage_drop_result"
@@ -318,8 +312,12 @@ pub fn voltage_drop_browser_preflight() -> Result<(), String> {
     Ok(())
 }
 
-fn require_task(name: &str, subcommand: &str) -> Result<(), Failure> {
-    let schemas = crate::tasks::schemas()?;
+fn require_task(
+    engine: &ds_cli_exec::CapturedExternal,
+    name: &str,
+    subcommand: &str,
+) -> Result<(), Failure> {
+    let schemas = crate::tasks::schemas(engine)?;
     if !schemas["tasks"].as_array().is_some_and(|tasks| {
         tasks
             .iter()
@@ -375,6 +373,24 @@ pub fn verify_voltage_drop_pdf(
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    run_with_capture(inputs, || capture_engine(inputs))
+}
+
+/// Reuse an already captured renderer through the same validation and cleanup.
+pub fn run_captured(
+    inputs: &Inputs,
+    engine: &ds_cli_exec::CapturedExternal,
+) -> Result<Value, Failure> {
+    run_with_capture(inputs, || Ok(engine))
+}
+
+pub(crate) fn run_with_capture<E>(
+    inputs: &Inputs,
+    capture: impl FnOnce() -> Result<E, Failure>,
+) -> Result<Value, Failure>
+where
+    E: std::borrow::Borrow<ds_cli_exec::CapturedExternal>,
+{
     let task = inputs.require("task")?;
     let subcommand = match task {
         "transformer" => TRANSFORMER_SUBCOMMAND,
@@ -413,19 +429,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .remedy("discover ds report tasks --task export_lv_standard and pass --request"));
     }
 
-    if task == "voltage-drop" {
-        if supplied_request.is_none() {
-            return Err(Failure::invalid(
-                "missing_input",
-                "--task voltage-drop requires --request; content flags cannot supply calculated analysis",
-            )
-            .remedy("discover `ds report tasks --task render_voltage_drop_result` and supply its exact request"));
-        }
-        require_task("render_voltage_drop_result", VOLTAGE_DROP_SUBCOMMAND)?;
-    }
-
-    if task == "lv-standard" {
-        require_task("export_lv_standard", LV_STANDARD_SUBCOMMAND)?;
+    if task == "voltage-drop" && supplied_request.is_none() {
+        return Err(Failure::invalid(
+            "missing_input",
+            "--task voltage-drop requires --request; content flags cannot supply calculated analysis",
+        )
+        .remedy("discover `ds report tasks --task render_voltage_drop_result` and supply its exact request"));
     }
 
     // Where the engine's result document goes. A caller-named path is theirs
@@ -501,7 +510,20 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         result_path.clone().into(),
     ];
 
-    let completed = DS_REPORT.call(subcommand, &args, EXPORT_TIMEOUT);
+    let completed = capture().and_then(|engine| {
+        let engine: &ds_cli_exec::CapturedExternal = std::borrow::Borrow::borrow(&engine);
+        if task == "voltage-drop" {
+            require_task(
+                engine,
+                "render_voltage_drop_result",
+                VOLTAGE_DROP_SUBCOMMAND,
+            )?;
+        }
+        if task == "lv-standard" {
+            require_task(engine, "export_lv_standard", LV_STANDARD_SUBCOMMAND)?;
+        }
+        engine.call(subcommand, &args, EXPORT_TIMEOUT)
+    });
     if !request_owned {
         let _ = std::fs::remove_file(&request_path);
     }

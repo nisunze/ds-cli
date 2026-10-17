@@ -20,12 +20,12 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DISCOVERY_TIMEOUT, DS_REPORT};
+use crate::{DISCOVERY_TIMEOUT, ENGINE_LANE, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "report.tasks",
     path: &["report", "tasks"],
-    contract: 1,
+    contract: 2,
     summary: "List the reporter's tasks, or one task's request schema.",
     purpose: "\
 Reads the task contracts published by the installed engine rather than any \
@@ -37,11 +37,14 @@ is never printed unless asked for.",
     effect: Effect::Discovery,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[Arg::value(
-        "task",
-        "<name>",
-        "Return this one task's full request schema.",
-    )],
+    args: &[
+        ENGINE_LANE,
+        Arg::value(
+            "task",
+            "<name>",
+            "Return this one task's full request schema.",
+        ),
+    ],
     output: "\
 Without --task, one entry per task: name, effect, network class, whether it is \
 idempotent or destructive, and its required fields. With --task, that task's \
@@ -59,11 +62,8 @@ complete JSON Schema.",
         },
     ],
     refusals: &[
-        Refusal {
-            code: "reporter_engine_missing",
-            when: "`ds-report` is not installed next to `ds`",
-            remedy: "install the headless DS package, or set DS_REPORT_BIN to a built ds-report",
-        },
+        crate::ENGINE_MISSING,
+        crate::ENGINE_RECEIPT_INVALID,
         Refusal {
             code: "unknown_task",
             when: "--task names a task this engine does not register",
@@ -77,17 +77,18 @@ complete JSON Schema.",
 };
 
 fn availability() -> Availability {
-    DS_REPORT.availability()
+    Availability::Available
 }
 
 /// Fetch the engine's published schemas. Shared with `ds report export`,
-/// which validates a request against them before writing anything.
-pub fn schemas() -> Result<Value, Failure> {
-    DS_REPORT.call_json("task-schemas", &[] as &[OsString], DISCOVERY_TIMEOUT)
+/// which checks task admission against the same captured engine before rendering.
+pub fn schemas(engine: &ds_cli_exec::CapturedExternal) -> Result<Value, Failure> {
+    engine.call_json("task-schemas", &[] as &[OsString], DISCOVERY_TIMEOUT)
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let document = schemas()?;
+    let engine = capture_engine(inputs)?;
+    let document = schemas(&engine)?;
     let tasks = document["tasks"].as_array().cloned().unwrap_or_default();
 
     let Some(wanted) = inputs.value("task") else {

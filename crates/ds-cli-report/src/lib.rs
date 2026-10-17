@@ -54,6 +54,38 @@ use std::time::Duration;
 use ds_cli_contract::spec::Domain;
 pub use ds_cli_exec::addons::REPORTER as DS_REPORT;
 
+/// Local consumers select a native lane without account/project acquisition.
+const ENGINE_LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE
+    .summary("Native addon lane; stable is the default. No account or project is read.");
+
+const ENGINE_MISSING: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
+    code: "reporter_engine_missing",
+    when: "the selected lane has no managed Reporter addon",
+    remedy: "install Reporter for the selected --lane; use DS_REPORT_BIN only for explicit development",
+};
+const ENGINE_RECEIPT_INVALID: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
+    code: "module_receipt_invalid",
+    when: "the selected lane's managed receipt or executable bytes are invalid",
+    remedy: "repair or roll back Reporter in the selected lane; no alternate engine is substituted",
+};
+
+fn capture_engine(
+    inputs: &ds_cli_contract::Inputs,
+) -> Result<ds_cli_exec::CapturedExternal, ds_cli_contract::Failure> {
+    capture_engine_at(inputs, &ds_cli_exec::addons::managed_module_base()?)
+}
+
+/// Native-owned relocation seam, never a command-supplied artifact path.
+fn capture_engine_at(
+    inputs: &ds_cli_contract::Inputs,
+    base: &std::path::Path,
+) -> Result<ds_cli_exec::CapturedExternal, ds_cli_contract::Failure> {
+    DS_REPORT.capture_for_lane_in(inputs.value("lane").unwrap_or("stable"), base)
+}
+
+#[cfg(test)]
+mod engine_selection_tests;
+
 /// Discovery calls answer immediately or something is wrong.
 pub const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(20);
 

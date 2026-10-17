@@ -158,9 +158,9 @@ const fn refusals() -> [Refusal;
 pub static COMMAND: Command = Command {
     id: "design.lv.project-run",
     path: &["design", "lv", "project-run"],
-    contract: 1,
+    contract: 2,
     summary: "Compute, save and optionally print one LV transformer to A4.",
-    purpose: "Capture the explicit project's currently fenced transformer and configuration through project-export --project-config, process once with ds-network owner defaults, then project-save the exact layers and ds.lv-voltage-drop.analysis/v1 atomically on the working head. Success requires the save owner's fresh verified layer/analysis digests. Retain the bounded output directory; --resume reuses its exact captured source/result and deterministic operation ID, never re-exports or recomputes. Named versions and backups are not changed; no compute artifacts are uploaded. With --print-a4, preflight the installed render_voltage_drop_result task and configured headless browser before effects, then fetch exact saved analysis under all three save pins and call report.export voltage-drop with matching held layers and the same sealed project caption. Missing or mismatched caption refuses printing; a verified earlier ID-caption print is preserved while a fresh attempt corrects it. Print failures retain saved:true/printed:false evidence. --resume --print-a4 retries from the first verified save without saving again; moved heads refuse. Configure an existing browser once with workstation configure --component chromium --target reporter. No Desktop or browser window is opened.",
+    purpose: "Capture the explicit project's currently fenced transformer and configuration through project-export --project-config, process once with ds-network owner defaults, then project-save the exact layers and ds.lv-voltage-drop.analysis/v1 atomically on the working head. Success requires the save owner's fresh verified layer/analysis digests. Retain the bounded output directory; --resume reuses its exact captured source/result and deterministic operation ID, never re-exports or recomputes. Named versions and backups are not changed; no compute artifacts are uploaded. With --print-a4, capture the requested lane's managed Reporter once and preflight its render_voltage_drop_result task and configured headless browser before effects, retaining that Reporter through rendering, then fetch exact saved analysis under all three save pins and call report.export voltage-drop with matching held layers and the same sealed project caption. Missing or mismatched caption refuses printing; a verified earlier ID-caption print is preserved while a fresh attempt corrects it. Print failures retain saved:true/printed:false evidence. --resume --print-a4 retries from the first verified save without saving again; moved heads refuse. Configure an existing browser once with workstation configure --component chromium --target reporter. No Desktop or browser window is opened.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -264,10 +264,10 @@ struct Owners {
     export: Handler,
     process: Handler,
     save: fn(&Inputs, &Context, &str) -> Result<Value, Failure>,
-    preflight: fn() -> Result<(), Failure>,
+    preflight: fn(&str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure>,
     analysis: SavedAnalysisRead,
     renderer_policy: fn(&str, &str) -> Result<Value, Failure>,
-    print: Handler,
+    print: fn(&Inputs, &Context, Option<&ds_cli_exec::CapturedExternal>) -> Result<Value, Failure>,
 }
 const OWNERS: Owners = Owners {
     export: project_export::run,
@@ -276,7 +276,7 @@ const OWNERS: Owners = Owners {
     preflight: print_preflight,
     analysis: ds_cli_auth::transformer_analysis_for_project,
     renderer_policy,
-    print: ds_cli_report::export::run,
+    print: print_captured,
 };
 
 fn renderer_policy(lane: &str, project: &str) -> Result<Value, Failure> {
@@ -310,11 +310,24 @@ fn require_owned_a4(config: &Value, project: &str) -> Result<(), Failure> {
     Ok(())
 }
 
-fn print_preflight() -> Result<(), Failure> {
-    ds_cli_report::export::voltage_drop_project_a4_preflight()?;
+fn print_preflight(lane: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
+    let engine = ds_cli_report::DS_REPORT
+        .capture_for_lane_in(lane, &ds_cli_exec::addons::managed_module_base()?)?;
+    ds_cli_report::export::voltage_drop_project_a4_preflight_captured(&engine)?;
     ds_cli_report::export::voltage_drop_browser_preflight().map_err(|message| {
         Failure::unavailable("reporter_browser_missing", message).remedy(PRINT_REFUSALS[0].remedy)
-    })
+    })?;
+    Ok(Some(engine))
+}
+
+fn print_captured(
+    inputs: &Inputs,
+    _: &Context,
+    engine: Option<&ds_cli_exec::CapturedExternal>,
+) -> Result<Value, Failure> {
+    let engine =
+        engine.ok_or_else(|| incomplete("A4 print requires its preflight Reporter capture."))?;
+    ds_cli_report::export::run_captured(inputs, engine)
 }
 
 fn pdf_unverified(message: String) -> Failure {
@@ -354,19 +367,24 @@ fn run_with(inputs: &Inputs, context: &Context, owners: &Owners) -> Result<Value
                 .remedy("Review the explicit project and transformer, then pass --yes."),
         );
     }
-    if inputs.switch("print-a4")
-        && let Err(error) = (owners.preflight)()
-    {
-        // A failed preflight has no effects. On a print retry preserve the
-        // validated captured save evidence even if the reporter vanished.
-        return Err(match captured_save_for_preflight(inputs) {
-            Ok(Some(saved)) => error.detail(json!({"saved":true,"printed":false,"save":saved,"out_dir":inputs.require("out-dir")?})),
-            _ => error,
-        });
-    }
+    let lane = inputs.require("lane")?;
+    let reporter = if inputs.switch("print-a4") {
+        match (owners.preflight)(lane) {
+            Ok(engine) => engine,
+            Err(error) => {
+                // A failed preflight has no effects. On a print retry preserve the
+                // validated captured save evidence even if the reporter vanished.
+                return Err(match captured_save_for_preflight(inputs) {
+                    Ok(Some(saved)) => error.detail(json!({"saved":true,"printed":false,"save":saved,"out_dir":inputs.require("out-dir")?})),
+                    _ => error,
+                });
+            }
+        }
+    } else {
+        None
+    };
     let project = inputs.require("project")?;
     let transformer = inputs.require("transformer")?;
-    let lane = inputs.require("lane")?;
     let directory = PathBuf::from(inputs.require("out-dir")?);
     if inputs.switch("resume") {
         if !directory
@@ -544,7 +562,7 @@ fn run_with(inputs: &Inputs, context: &Context, owners: &Owners) -> Result<Value
         "artifacts":{"source":source_path,"input":request,"result":result,"process_receipt":process_path,"first_verified_save_receipt":save_path},
         "saved":true,"printed":false,"save":saved});
     if inputs.switch("print-a4") {
-        match print_saved(owners, context, PrintRun { directory: &directory, project, transformer, lane, saved: &saved, source: &source, input: &input_bytes, result: &result_bytes }) {
+        match print_saved(owners, context, reporter.as_ref(), PrintRun { directory: &directory, project, transformer, lane, saved: &saved, source: &source, input: &input_bytes, result: &result_bytes }) {
             Ok(printed) => { outcome["printed"] = json!(true); outcome["print"] = printed; }
             Err(error) => return Err(Failure::failed("fast_lv_run_print_failed", "The transformer was saved and verified; A4 printing failed.")
                 .remedy(LOCAL_REFUSALS[6].remedy)
@@ -601,7 +619,12 @@ struct PrintRun<'a> {
     result: &'a [u8],
 }
 
-fn print_saved(owners: &Owners, context: &Context, run: PrintRun<'_>) -> Result<Value, Failure> {
+fn print_saved(
+    owners: &Owners,
+    context: &Context,
+    reporter: Option<&ds_cli_exec::CapturedExternal>,
+    run: PrintRun<'_>,
+) -> Result<Value, Failure> {
     let input: Value =
         serde_json::from_slice(run.input).map_err(|error| incomplete(error.to_string()))?;
     let network_config = &input["jobs"][0]["config_dfs"];
@@ -772,8 +795,9 @@ fn print_saved(owners: &Owners, context: &Context, run: PrintRun<'_>) -> Result<
     )?;
     let printed = invoke(
         &ds_cli_report::export::COMMAND,
-        owners.print,
+        |inputs, context| (owners.print)(inputs, context, reporter),
         &[
+            ("lane", run.lane),
             ("task", "voltage-drop"),
             ("request", &request_path.to_string_lossy()),
         ],
@@ -888,6 +912,8 @@ mod tests {
     struct Calls {
         stages: Vec<&'static str>,
         operations: Vec<String>,
+        preflight_lanes: Vec<String>,
+        print_lanes: Vec<String>,
         fail: Option<&'static str>,
         unverified: bool,
         brief: bool,
@@ -1045,8 +1071,10 @@ mod tests {
         )
         .unwrap()
     }
-    fn preflight() -> Result<(), Failure> {
-        stage("preflight")
+    fn preflight(lane: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
+        stage("preflight")?;
+        CALLS.with(|c| c.borrow_mut().preflight_lanes.push(lane.to_owned()));
+        Ok(None)
     }
     fn analysis(
         lane: &str,
@@ -1071,8 +1099,15 @@ mod tests {
         assert_eq!(project, "explicit-project");
         Ok(json!({"held_api_renderer":"same-project"}))
     }
-    fn print(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    fn print(
+        inputs: &Inputs,
+        _: &Context,
+        _: Option<&ds_cli_exec::CapturedExternal>,
+    ) -> Result<Value, Failure> {
         stage("print")?;
+        let lane = inputs.require("lane")?;
+        CALLS.with(|c| c.borrow_mut().print_lanes.push(lane.to_owned()));
+        assert_eq!(lane, "canary");
         assert_eq!(inputs.require("task")?, "voltage-drop");
         let request: Value =
             serde_json::from_slice(&std::fs::read(inputs.require("request")?).unwrap()).unwrap();
@@ -1160,6 +1195,20 @@ mod tests {
 
     fn reset() {
         CALLS.with(|calls| *calls.borrow_mut() = Calls::default());
+    }
+
+    #[test]
+    fn requested_lane_reaches_print_preflight_and_export() {
+        reset();
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("run");
+        let result = run_with(&inputs(&directory, &["--print-a4"]), &context(true), &MOCK).unwrap();
+        assert_eq!(result["printed"], true);
+        CALLS.with(|c| {
+            let calls = c.borrow();
+            assert_eq!(calls.preflight_lanes, ["canary"]);
+            assert_eq!(calls.print_lanes, ["canary"]);
+        });
     }
 
     #[test]
@@ -1252,7 +1301,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let directory = temp.path().join("run");
         run_with(&inputs(&directory, &[]), &context(true), &MOCK).unwrap();
-        fn missing() -> Result<(), Failure> {
+        fn missing(_: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
             Err(Failure::unavailable("reporter_browser_missing", "gone")
                 .remedy("configure chromium for reporter"))
         }
@@ -1285,14 +1334,14 @@ mod tests {
             reset();
             let temp = tempfile::tempdir().unwrap();
             let directory = temp.path().join("run");
-            fn missing_reporter() -> Result<(), Failure> {
+            fn missing_reporter(_: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
                 Err(Failure::unavailable("reporter_engine_missing", "missing")
                     .remedy("install reporter"))
             }
-            fn missing_task() -> Result<(), Failure> {
+            fn missing_task(_: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
                 Err(Failure::unavailable("unknown_task", "missing").remedy("update reporter"))
             }
-            fn missing_browser() -> Result<(), Failure> {
+            fn missing_browser(_: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
                 Err(Failure::unavailable("reporter_browser_missing", "missing")
                     .remedy("configure chromium for reporter"))
             }
@@ -1514,6 +1563,11 @@ mod tests {
             CALLS.with(|c| c.borrow().stages.clone()),
             ["export", "process", "save", "save"]
         );
+        CALLS.with(|c| {
+            let calls = c.borrow();
+            assert!(calls.preflight_lanes.is_empty());
+            assert!(calls.print_lanes.is_empty());
+        });
         assert_eq!(
             std::fs::read(directory.join("save.json")).unwrap(),
             first_save
