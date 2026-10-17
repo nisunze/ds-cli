@@ -176,6 +176,9 @@ pub fn report(argv: &[String], started: Instant, crash: Option<String>) {
 
 fn records_only(command: &Command) -> bool {
     matches!(command.effect, Effect::Discovery)
+        // Protected identity is local; it does not authorize telemetry network
+        // delivery during a retained Sync Center read.
+        || command.id == "core.sync.read"
         || (matches!(command.authority, Authority::None) && !ADAPTER_COMMANDS.contains(&command.id))
 }
 
@@ -394,6 +397,8 @@ mod tests {
             ("solar.calculate-prepared", true),
             ("feedback.draft", true),
             ("feedback.submit", false),
+            ("core.sync.read", true),
+            ("core.sync.retry", false),
             ("mcp.serve", false),
         ] {
             let command = crate::registry::find_by_id(id).expect("registered command");
