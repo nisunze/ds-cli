@@ -9,7 +9,9 @@ use ds_network_contracts::profile::{
     NativeProfileEngineeringTableV1, NativeProfileOperationV1, NativeProfilePickRequestV1,
     NativeProfileSelectionRangeRequestV1, NativeProfileViewInputV1, PROFILE_VIEW_INPUT_SCHEMA,
 };
+use ds_network_contracts::profile_control::ProfileControlOperation;
 use ds_sync_store::{ProfileSourceHeader, ProfileSourceScope, Store};
+mod controls;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -48,6 +50,37 @@ pub enum Operation {
     Open {
         package_base64: String,
         package_sha256: String,
+        #[serde(default)]
+        recover: bool,
+    },
+    PackageCheckpoint {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+    },
+    EditMode {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        enabled: bool,
+    },
+    Control {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        operation: ProfileControlOperation,
+    },
+    SaveControl {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        operation: Value,
+    },
+    Discard {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        request: Value,
     },
     Snapshot {
         session_id: String,
@@ -72,6 +105,8 @@ pub enum Operation {
         patch: Value,
         style_document: Value,
         cached: bool,
+        #[serde(default)]
+        observe: bool,
     },
     FeatureCodes {
         session_id: String,
@@ -217,6 +252,35 @@ fn operation_owner(operation: &Operation) -> Option<(&str, &str, &Value)> {
             model_id,
             expected_history,
         }
+        | Operation::PackageCheckpoint {
+            session_id,
+            model_id,
+            expected_history,
+        }
+        | Operation::EditMode {
+            session_id,
+            model_id,
+            expected_history,
+            ..
+        }
+        | Operation::Control {
+            session_id,
+            model_id,
+            expected_history,
+            ..
+        }
+        | Operation::SaveControl {
+            session_id,
+            model_id,
+            expected_history,
+            ..
+        }
+        | Operation::Discard {
+            session_id,
+            model_id,
+            expected_history,
+            ..
+        }
         | Operation::State {
             session_id,
             model_id,
@@ -288,12 +352,16 @@ fn open_original(
     id: &str,
     authorized: &dyn Fn() -> Result<(), Failure>,
     required_capability: Option<NetworkCapability>,
+    retained_pin: Option<&ds_network_client::NetworkEnginePin>,
 ) -> Result<(Held, Vec<u8>), Failure> {
     let workers = std::thread::available_parallelism()
         .map_or(1, usize::from)
         .min(2);
-    let client =
-        CapturedNetworkClient::capture_for_lane(&scope.lane, workers, &|| false).map_err(native)?;
+    let client = match retained_pin {
+        Some(pin) => CapturedNetworkClient::from_pin(pin, &|| false),
+        None => CapturedNetworkClient::capture_for_lane(&scope.lane, workers, &|| false),
+    }
+    .map_err(native)?;
     authorized()?;
     if let Some(required) = required_capability {
         require_read_capability(&client.identity().capabilities, required)?;
@@ -351,6 +419,9 @@ fn open_original(
         display_state: Default::default(),
         style: None,
         touched: Instant::now(),
+        retained_history: source.initial_history.clone(),
+        has_draft: false,
+        saving: false,
         source,
         session,
     };
@@ -472,6 +543,9 @@ struct Held {
     style: Option<StyleCapture>,
     touched: Instant,
     source: ProfileSourceHeader,
+    retained_history: Value,
+    has_draft: bool,
+    saving: bool,
     session: ProfileSession,
 }
 #[derive(Default)]
@@ -516,8 +590,10 @@ impl Sessions {
         // Dropping a native session aborts/reaps its entire supervised worker.
         held.retain(|_, value| {
             // Original-only expiry may never silently discard authored history.
-            value.session.history() != &value.source.initial_history
-                || (value.touched.elapsed() < IDLE && !value.session.is_closed())
+            !value.session.is_closed()
+                && (value.saving
+                    || value.session.history() != &value.source.initial_history
+                    || value.touched.elapsed() < IDLE)
         });
         let mut rehydrated = false;
         if let Some((id, model, expected)) = operation_owner(&request.operation) {
@@ -525,19 +601,26 @@ impl Sessions {
                 let source_scope = source_scope(&scope);
                 let source = Store::open_read_only(database)
                     .map_err(source_error)?
-                    .map(|store| store.profile_source(&source_scope, id))
+                    .map(|store| store.profile_recovery(&source_scope, id))
                     .transpose()
                     .map_err(source_error)?
                     .flatten();
-                if let Some((header, bytes)) = source {
-                    if header.model_id != model || &header.initial_history != expected {
+                if let Some(recovery) = source {
+                    let header = recovery.source.clone();
+                    let retained_history = recovery
+                        .draft
+                        .as_ref()
+                        .map_or(&header.initial_history, |(draft, _)| &draft.history);
+                    if header.model_id != model || retained_history != expected {
                         return Err(Failure::conflict(
                             "core_profile_history_conflict",
                             "Retained original differs from the exact requested model/initial history",
                         ));
                     }
                     authorized()?;
-                    if matches!(request.operation, Operation::Close { .. }) {
+                    if matches!(request.operation, Operation::Close { .. })
+                        && recovery.draft.is_none()
+                    {
                         Store::open(database)
                             .map_err(source_error)?
                             .remove_profile_source(&source_scope, &header)
@@ -562,14 +645,25 @@ impl Sessions {
                             "Core already retains eight Profile sessions",
                         ));
                     }
-                    let (value, _) = open_original(
-                        scope.clone(),
-                        scratch,
-                        &bytes,
-                        id,
-                        authorized,
-                        required_capability.clone(),
-                    )?;
+                    let (value, _) = if recovery.draft.is_some() {
+                        controls::restore(
+                            scope.clone(),
+                            scratch,
+                            &recovery,
+                            authorized,
+                            required_capability.clone(),
+                        )?
+                    } else {
+                        open_original(
+                            scope.clone(),
+                            scratch,
+                            &recovery.source_bytes,
+                            id,
+                            authorized,
+                            required_capability.clone(),
+                            Some(&pin),
+                        )?
+                    };
                     if value.source != header {
                         return Err(Failure::conflict(
                             "core_profile_source_changed",
@@ -577,10 +671,12 @@ impl Sessions {
                         ));
                     }
                     authorized()?;
-                    Store::open(database)
-                        .map_err(source_error)?
-                        .touch_profile_source(&source_scope, &header, now_ms())
-                        .map_err(source_error)?;
+                    if recovery.draft.is_none() {
+                        Store::open(database)
+                            .map_err(source_error)?
+                            .touch_profile_source(&source_scope, &header, now_ms())
+                            .map_err(source_error)?;
+                    }
                     authorized()?;
                     held.insert(id.to_owned(), value);
                     rehydrated = true;
@@ -588,10 +684,37 @@ impl Sessions {
             }
         }
         let mut answer = match request.operation {
+            operation @ (Operation::PackageCheckpoint { .. }
+            | Operation::EditMode { .. }
+            | Operation::Control { .. }
+            | Operation::SaveControl { .. }
+            | Operation::Discard { .. }) => {
+                controls::execute(&mut held, &scope, database, operation, authorized)
+            }
             Operation::Open {
                 package_base64,
                 package_sha256,
+                recover,
             } => {
+                let bytes = decode_package(&package_base64, &package_sha256)?;
+                if recover {
+                    if let Some(recovery) = Store::open_read_only(database)
+                        .map_err(source_error)?
+                        .map(|store| {
+                            store.profile_draft_for_package(&source_scope(&scope), &package_sha256)
+                        })
+                        .transpose()
+                        .map_err(source_error)?
+                        .flatten()
+                    {
+                        if recovery.source_bytes != bytes {
+                            return Err(invalid(
+                                "Recovery source bytes differ from the opened exact package",
+                            ));
+                        }
+                        return controls::resume(&mut held, scope, scratch, &recovery, authorized);
+                    }
+                }
                 if held.len() >= MAX_SESSIONS {
                     return Err(Failure::unavailable(
                         "core_profile_capacity",
@@ -599,7 +722,6 @@ impl Sessions {
                     )
                     .remedy("Close an existing Profile session before opening another"));
                 }
-                let bytes = decode_package(&package_base64, &package_sha256)?;
                 let mut random = [0u8; 16];
                 getrandom::getrandom(&mut random).map_err(|_| {
                     Failure::internal(
@@ -618,7 +740,7 @@ impl Sessions {
                     ));
                 }
                 let (value, snapshot) =
-                    open_original(scope.clone(), scratch, &bytes, &id, authorized, None)?;
+                    open_original(scope.clone(), scratch, &bytes, &id, authorized, None, None)?;
                 authorized()?;
                 let active: Vec<_> = held.keys().cloned().collect();
                 Store::open(database)
@@ -695,12 +817,24 @@ impl Sessions {
                 patch,
                 style_document,
                 cached,
+                observe,
             } => {
                 let value = owned(&mut held, &scope, &session_id, &model_id, &expected_history)?;
                 require_read_capability(
                     &value.session.pin().identity.capabilities,
                     NetworkCapability::ProfileViewV1,
                 )?;
+                if observe {
+                    require_read_capability(
+                        &value.session.pin().identity.capabilities,
+                        NetworkCapability::ProfileObserveV1,
+                    )?;
+                    if !cached {
+                        return Err(invalid(
+                            "Observe requires cached intent; reconcile is an explicit request",
+                        ));
+                    }
+                }
                 let options: ds_network_contracts::profile_scene::ProfileAtlasOptions =
                     serde_json::from_value(options)
                         .map_err(|_| invalid("Use existing native ProfileAtlasOptions"))?;
@@ -726,23 +860,30 @@ impl Sessions {
                         })
                     },
                 )?;
-                let result = value
-                    .session
-                    .view_at(
-                        &NativeProfileViewInputV1 {
-                            schema: PROFILE_VIEW_INPUT_SCHEMA.into(),
-                            display_state: serde_json::to_value(&value.display_state)
-                                .map_err(invalid)?,
-                            options: serde_json::to_value(options).map_err(invalid)?,
-                            patch: serde_json::to_value(patch).map_err(invalid)?,
-                            style_document,
-                        },
+                let input = NativeProfileViewInputV1 {
+                    schema: PROFILE_VIEW_INPUT_SCHEMA.into(),
+                    display_state: serde_json::to_value(&value.display_state).map_err(invalid)?,
+                    options: serde_json::to_value(options).map_err(invalid)?,
+                    patch: serde_json::to_value(patch).map_err(invalid)?,
+                    style_document,
+                };
+                let result = if observe {
+                    value.session.observe_view_at(
+                        &input,
+                        expected_history.clone(),
+                        DEADLINE,
+                        &|| false,
+                    )
+                } else {
+                    value.session.view_at(
+                        &input,
                         cached,
                         expected_history.clone(),
                         DEADLINE,
                         &|| false,
                     )
-                    .map_err(view_native)?;
+                }
+                .map_err(view_native)?;
                 authorized()?;
                 let display = validate_view_payload(
                     &result.bytes,
@@ -829,21 +970,44 @@ impl Sessions {
                     | Operation::GisProjection { .. }
                     | Operation::Properties { .. }
                     | Operation::Pick { .. }
-                    | Operation::SelectionRange { .. } => unreachable!(),
+                    | Operation::SelectionRange { .. }
+                    | Operation::PackageCheckpoint { .. }
+                    | Operation::EditMode { .. }
+                    | Operation::Control { .. }
+                    | Operation::SaveControl { .. }
+                    | Operation::Discard { .. } => unreachable!(),
                 };
                 let session = owned(&mut held, &scope, &id, &model, &expected)?;
                 if matches!(&native_op, NativeProfileOperationV1::Close) {
+                    if session.saving {
+                        return Err(Failure::conflict(
+                            "profile_save_in_progress",
+                            "Finish the admitted Save before closing this Profile",
+                        ));
+                    }
                     let current = Store::open(database)
                         .map_err(source_error)?
-                        .profile_source(&source_scope(&scope), &id)
+                        .profile_recovery(&source_scope(&scope), &id)
                         .map_err(source_error)?;
-                    if current.as_ref().map(|(header, _)| header) != Some(&session.source) {
+                    if current.as_ref().map(|recovery| &recovery.source) != Some(&session.source)
+                        || current.as_ref().map(|recovery| {
+                            recovery
+                                .draft
+                                .as_ref()
+                                .map_or(&recovery.source.initial_history, |(draft, _)| {
+                                    &draft.history
+                                })
+                        }) != Some(&session.retained_history)
+                    {
                         return Err(Failure::conflict(
                             "core_profile_source_changed",
                             "Exact original changed before native Close",
                         ));
                     }
                     authorized()?;
+                    if session.has_draft {
+                        controls::retain_checkpoint(session, database, authorized)?;
+                    }
                 }
                 let result = session
                     .session
@@ -854,11 +1018,18 @@ impl Sessions {
                 let closed = result.reply.closed;
                 let receipt = receipt(&id, session, &result.bytes, closed)?;
                 if closed {
-                    let source = session.source.clone();
-                    Store::open(database)
-                        .map_err(source_error)?
-                        .remove_profile_source(&source_scope(&scope), &source)
-                        .map_err(source_error)?;
+                    // Closing releases only the worker. Authored recovery stays
+                    // durable until explicit discard or a verified saved successor.
+                    if session.retained_history == session.source.initial_history {
+                        Store::open(database)
+                            .map_err(source_error)?
+                            .remove_profile_recovery(
+                                &source_scope(&scope),
+                                &session.source,
+                                &session.retained_history,
+                            )
+                            .map_err(source_error)?;
+                    }
                     authorized()?;
                     held.remove(&id);
                 }
@@ -903,6 +1074,12 @@ fn validate_label_fields(fields: &[String]) -> Result<(), Failure> {
 }
 fn read_capability(operation: &Operation) -> Option<NetworkCapability> {
     match operation {
+        Operation::PackageCheckpoint { .. } => Some(NetworkCapability::ProfilePackageCheckpointV1),
+        Operation::EditMode { .. }
+        | Operation::Control { .. }
+        | Operation::SaveControl { .. }
+        | Operation::Discard { .. } => Some(NetworkCapability::ProfileEditControlsV1),
+        Operation::View { observe: true, .. } => Some(NetworkCapability::ProfileObserveV1),
         Operation::View { .. } => Some(NetworkCapability::ProfileViewV1),
         Operation::Properties { .. } => Some(NetworkCapability::ProfilePropertiesV1),
         Operation::Pick { .. } | Operation::SelectionRange { .. } => {
@@ -1096,8 +1273,22 @@ fn receipt(id: &str, held: &Held, bytes: &[u8], closed: bool) -> Result<Value, F
             .map_err(|_| invalid("Native Profile artifact is not its declared JSON"))?
     };
     if payload["table_counts"].is_object() && payload["revision"].is_object() {
-        payload["model_revision"] = json!(held.source_revision);
-        payload["coordinate_system"] = json!(held.coordinate_system);
+        if payload["model_revision"].is_null() {
+            payload["model_revision"] = json!(held.source_revision);
+        }
+        if payload["coordinate_system"].is_null() {
+            payload["coordinate_system"] = json!(held.coordinate_system);
+        }
+    }
+    if payload["presentation"]["history"].is_object()
+        && payload["presentation"]["revision"].is_object()
+    {
+        if payload["presentation"]["model_revision"].is_null() {
+            payload["presentation"]["model_revision"] = json!(held.source_revision);
+        }
+        if payload["presentation"]["coordinate_system"].is_null() {
+            payload["presentation"]["coordinate_system"] = json!(held.coordinate_system);
+        }
     }
     Ok(
         json!({"schema":RECEIPT_SCHEMA,"session_id":id,"project":held.scope.project,
@@ -1163,6 +1354,7 @@ mod tests {
             patch: json!({}),
             style_document: Value::Null,
             cached: true,
+            observe: false,
         };
         assert_eq!(
             read_capability(&operation),
