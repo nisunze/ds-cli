@@ -477,6 +477,15 @@ impl Store {
     }
 
     /// Everything one scope holds under one fence.
+    /// Run related retained reads against one SQLite snapshot. A deferred
+    /// read transaction creates no schema, rows, writer lease or state.
+    pub fn with_read_snapshot<T>(&self, read: impl FnOnce(&Self) -> T) -> Result<T> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let result = read(self);
+        transaction.rollback()?;
+        Ok(result)
+    }
+
     pub fn snapshot(&self, fence: &Fence, scope: &Scope) -> Result<Snapshot> {
         Self::snapshot_on(&self.connection, fence, scope)
     }
@@ -528,6 +537,32 @@ impl Store {
             )
             .optional()?;
         Ok(at.map(|value| value.max(0) as u64))
+    }
+
+    /// Sorted unique project scopes represented by any retained sync row.
+    /// The inventory remains under the exact native account/deployment/install.
+    pub fn projects_of_fence(&self, fence: &Fence) -> Result<Vec<String>> {
+        let mut statement = self.connection.prepare(
+            "SELECT scope FROM artifacts WHERE account=?1 AND deployment=?2 AND install_id=?3
+             UNION SELECT scope FROM heads WHERE account=?1 AND deployment=?2 AND install_id=?3
+             UNION SELECT scope FROM head_reads WHERE account=?1 AND deployment=?2 AND install_id=?3
+             UNION SELECT scope FROM grants WHERE account=?1 AND deployment=?2 AND install_id=?3
+             UNION SELECT scope FROM receipts WHERE account=?1 AND deployment=?2 AND install_id=?3
+             UNION SELECT scope FROM leases WHERE account=?1 AND deployment=?2 AND install_id=?3
+             ORDER BY scope",
+        )?;
+        let scopes = statement.query_map(
+            params![fence.account, fence.deployment, fence.install_id],
+            |row| row.get::<_, String>(0),
+        )?;
+        let mut projects = Vec::new();
+        for scope in scopes {
+            let scope = scope?;
+            if let Some(project) = scope.strip_prefix("project:") {
+                projects.push(project.to_owned());
+            }
+        }
+        Ok(projects)
     }
 
     /// Every artifact row of one fence, across scopes.

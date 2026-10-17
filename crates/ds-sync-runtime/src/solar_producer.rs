@@ -31,6 +31,24 @@ pub fn fence_of(identity: &HostIdentity) -> crate::store::Fence {
 /// Projects owning durable Solar work under this captured connection.
 pub fn projects(database: &Path, identity: &HostIdentity) -> Result<Vec<String>, String> {
     let store = runtime::open(database)?;
+    projects_in_store(&store, identity, false)
+}
+
+/// Existing native Solar projects without opening or initializing a database.
+pub fn projects_from_store(
+    store: &ds_sync_store::Store,
+    identity: &HostIdentity,
+) -> Result<Vec<String>, String> {
+    projects_in_store(store, identity, true)
+}
+fn projects_in_store(
+    store: &ds_sync_store::Store,
+    identity: &HostIdentity,
+    install_fence: bool,
+) -> Result<Vec<String>, String> {
+    if !store.has_jobs().map_err(|error| error.to_string())? {
+        return Ok(Vec::new());
+    }
     let caller = identity.caller(None);
     let mut projects = BTreeSet::new();
     let mut cursor: Option<(u64, String)> = None;
@@ -44,10 +62,10 @@ pub fn projects(database: &Path, identity: &HostIdentity) -> Result<Vec<String>,
             .map_err(|error| error.to_string())?;
         let Some(last) = page.last() else { break };
         cursor = Some((last.created_at_ms, last.id.clone()));
-        for job in page
-            .into_iter()
-            .filter(|job| job.engine == EngineKind::SolarPrepared)
-        {
+        for job in page.into_iter().filter(|job| {
+            job.engine == EngineKind::SolarPrepared
+                && (!install_fence || same_install(job, identity))
+        }) {
             if let Some(context) = job.context {
                 projects.insert(context.project);
             }
@@ -157,6 +175,26 @@ pub fn solar_jobs_in(
     project: &str,
 ) -> Result<(Vec<Job>, bool), String> {
     let store = runtime::open(database)?;
+    solar_jobs_in_store(&store, identity, project, false)
+}
+
+/// The same bounded activity query through an already opened read-only store.
+pub fn solar_jobs_from_store(
+    store: &ds_sync_store::Store,
+    identity: &HostIdentity,
+    project: &str,
+) -> Result<(Vec<Job>, bool), String> {
+    solar_jobs_in_store(store, identity, project, true)
+}
+fn solar_jobs_in_store(
+    store: &ds_sync_store::Store,
+    identity: &HostIdentity,
+    project: &str,
+    install_fence: bool,
+) -> Result<(Vec<Job>, bool), String> {
+    if !store.has_jobs().map_err(|error| error.to_string())? {
+        return Ok((Vec::new(), false));
+    }
     let caller = identity.caller(Some(project));
     let mut cursor: Option<(u64, String)> = None;
     let mut jobs = Vec::new();
@@ -172,10 +210,10 @@ pub fn solar_jobs_in(
             return Ok((jobs, false));
         };
         cursor = Some((last.created_at_ms, last.id.clone()));
-        for job in page
-            .into_iter()
-            .filter(|job| job.engine == EngineKind::SolarPrepared)
-        {
+        for job in page.into_iter().filter(|job| {
+            job.engine == EngineKind::SolarPrepared
+                && (!install_fence || same_install(job, identity))
+        }) {
             if jobs.len() == PROJECTION_PER_PROJECT {
                 return Ok((jobs, true));
             }
@@ -469,30 +507,7 @@ impl Producer for SolarProducer<'_> {
 
     fn activity(&self, project: &str) -> Result<Vec<ActivityRow>, String> {
         let store = runtime::open(self.database)?;
-        let caller = self.identity.caller(None);
-        let mut rows = self
-            .solar_jobs(project)?
-            .into_iter()
-            .filter_map(|job| {
-                let input = store.job_input(&caller, &job.id).ok()??;
-                let scope = runtime::solar_job_scope(&job, &input).ok()?;
-                (scope.project_id == project).then(|| ActivityRow {
-                    id: job.id,
-                    engine: solar::ENGINE.into(),
-                    state: match job.phase {
-                        ds_command_kernel::compute_jobs::Phase::Queued => "queued",
-                        ds_command_kernel::compute_jobs::Phase::Running => "running",
-                        ds_command_kernel::compute_jobs::Phase::Completed => "completed",
-                        ds_command_kernel::compute_jobs::Phase::Failed => "failed",
-                        ds_command_kernel::compute_jobs::Phase::Cancelled => "cancelled",
-                    }
-                    .into(),
-                    created_at_ms: job.created_at_ms,
-                    updated_at_ms: job.updated_at_ms,
-                    detail: job.error,
-                })
-            })
-            .collect::<Vec<_>>();
+        let mut rows = activity_from_store(&store, self.identity, project)?;
         if let Some(detail) = self
             .failure
             .and_then(|failure| failure.lock().ok().and_then(|held| held.clone()))
@@ -508,4 +523,49 @@ impl Producer for SolarProducer<'_> {
         }
         Ok(rows)
     }
+}
+
+fn same_install(job: &Job, identity: &HostIdentity) -> bool {
+    job.context
+        .as_ref()
+        .is_some_and(|context| context.install_id == identity.principal.install_id)
+}
+
+/// Project the native retained Solar jobs with the producer's existing mapping.
+pub fn activity_from_store(
+    store: &ds_sync_store::Store,
+    identity: &HostIdentity,
+    project: &str,
+) -> Result<Vec<ActivityRow>, String> {
+    let caller = identity.caller(None);
+    let rows = solar_jobs_from_store(store, identity, project)?
+        .0
+        .into_iter()
+        .map(|job| {
+            let input = store
+                .job_input(&caller, &job.id)
+                .map_err(|error| error.to_string())?
+                .ok_or("retained Solar activity lost its durable input")?;
+            let scope = runtime::solar_job_scope(&job, &input)?;
+            if scope.project_id != project {
+                return Err("retained Solar activity crosses its project fence".into());
+            }
+            Ok(ActivityRow {
+                id: job.id,
+                engine: solar::ENGINE.into(),
+                state: match job.phase {
+                    ds_command_kernel::compute_jobs::Phase::Queued => "queued",
+                    ds_command_kernel::compute_jobs::Phase::Running => "running",
+                    ds_command_kernel::compute_jobs::Phase::Completed => "completed",
+                    ds_command_kernel::compute_jobs::Phase::Failed => "failed",
+                    ds_command_kernel::compute_jobs::Phase::Cancelled => "cancelled",
+                }
+                .into(),
+                created_at_ms: job.created_at_ms,
+                updated_at_ms: job.updated_at_ms,
+                detail: job.error,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(rows)
 }

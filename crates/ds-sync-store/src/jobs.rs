@@ -142,6 +142,15 @@ pub struct Recovery {
 }
 
 impl Store {
+    /// Whether this existing database has the native compute owner schema.
+    /// Absence is valid for a sync-only store; malformed tables still fail on read.
+    pub fn has_jobs(&self) -> Result<bool> {
+        self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='compute_jobs')",
+            [],
+            |row| row.get(0),
+        ).map_err(Into::into)
+    }
     pub fn initialize_jobs(&self) -> Result<()> {
         // Acknowledged jobs survive power failure as well as process restarts.
         self.connection.pragma_update(None, "synchronous", "FULL")?;

@@ -257,6 +257,13 @@ pub fn execute_format(
             serde_json::from_value(source.clone()).map_err(|e| invalid(e.to_string()))?;
         semantic["render"]["layout"] =
             serde_json::to_value(source.render_layout()).map_err(|e| invalid(e.to_string()))?;
+    } else {
+        // The admitted typed document owns defaults. The producer hashes its
+        // decoded Layout, so an omitted default in a valid UI draft must be
+        // materialized before the transport hash is compared to that receipt.
+        // The original capture above remains the retained provenance identity.
+        semantic["render"]["layout"] =
+            serde_json::to_value(&layout).map_err(|e| invalid(e.to_string()))?;
     }
     semantic
         .as_object_mut()
@@ -535,6 +542,46 @@ mod tests {
             "revision_id":"c".repeat(64),"content_sha256":printing::style_capture::layout_digest(&layout).unwrap(),"layout":layout,
             "receipt":{"id":layout.id,"revision":"c".repeat(64),"name":layout.name,"paper":layout.paper,"classification":layout.classification}});
         (room, capture)
+    }
+
+    #[test]
+    fn valid_draft_defaults_are_canonicalized_without_changing_capture_provenance() {
+        let dir = tempfile::tempdir().unwrap();
+        let (room, mut capture) = static_fixture(dir.path(), "{project_title}");
+        capture.as_object_mut().unwrap().remove("source");
+        capture["render"]["layout"]["elements"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("opacity");
+        let original = capture.clone();
+        let expected = serde_json::to_value(admit(&room, &capture).unwrap()).unwrap();
+        assert_ne!(capture["render"]["layout"], expected);
+        let engine = Engine::new();
+        let answer = execute(
+            &engine,
+            &room,
+            &capture,
+            preview_artifact::Retention::Hours24,
+            &dir.path().join("scratch"),
+        )
+        .unwrap();
+        assert_eq!(
+            engine.requests.lock().unwrap()[0]["render"]["layout"],
+            expected
+        );
+        assert_eq!(capture, original);
+        assert!(!answer.preview_cache.reused);
+        let again = execute(
+            &engine,
+            &room,
+            &capture,
+            preview_artifact::Retention::Hours24,
+            &dir.path().join("scratch"),
+        )
+        .unwrap();
+        assert!(again.preview_cache.reused);
+        assert_eq!(again.page.sha256, answer.page.sha256);
+        assert_eq!(engine.renders.load(Ordering::SeqCst), 1);
     }
 
     #[test]

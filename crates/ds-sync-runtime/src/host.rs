@@ -26,6 +26,72 @@ use crate::rows::{
 };
 use crate::run::SyncHost;
 
+/// The shared public projection, usable over an already opened read-only store.
+/// The caller supplies retained native activities; no producer observation runs.
+pub fn store_read_projection(
+    store: Option<&ds_sync_store::Store>,
+    fence: &store::Fence,
+    project: &str,
+    activities: Vec<ActivityRow>,
+    at_ms: u64,
+) -> Result<Value, String> {
+    let scope = store_scope(project);
+    let (snapshot, receipts, read_at, status) = match store {
+        Some(store) => (
+            store
+                .snapshot(fence, &scope)
+                .map_err(|error| error.to_string())?,
+            store
+                .receipts(fence, &scope, 200)
+                .map_err(|error| error.to_string())?,
+            store
+                .heads_read_at_ms(fence, &scope)
+                .map_err(|error| error.to_string())?,
+            store
+                .queue(fence, Some(project), at_ms)
+                .map_err(|error| error.to_string())?,
+        ),
+        None => (
+            store::Snapshot {
+                artifacts: vec![],
+                heads: vec![],
+                grants: vec![],
+                lease: None,
+            },
+            vec![],
+            None,
+            store::queue_status(&[], &[], &[], Some(project), at_ms),
+        ),
+    };
+    let artifacts: Vec<Value> = snapshot
+        .artifacts
+        .iter()
+        .map(|row| {
+            let mut value = serde_json::to_value(row).unwrap_or(Value::Null);
+            if let Value::Object(map) = &mut value {
+                map.remove("transfer_state");
+            }
+            value
+        })
+        .collect();
+    Ok(json!({
+        "schema": "ds.sync-store-read/v1",
+        "project": project,
+        "artifacts": artifacts,
+        "activities": activities,
+        "heads": snapshot.heads,
+        "readAtMs": read_at,
+        "grants": snapshot.grants.iter().map(|grant| json!({
+            "grantId": grant.grant_id,
+            "expiresAtMs": grant.expires_at_ms,
+            "engines": grant.engines,
+        })).collect::<Vec<_>>(),
+        "lease": snapshot.lease,
+        "receipts": receipts,
+        "status": status,
+    }))
+}
+
 /// How long one worker may hold a project's lease without renewing it: a
 /// dead worker's lease expires and another recovers the work.
 pub const LEASE_TTL_MS: u64 = 5 * 60 * 1000;
@@ -293,42 +359,16 @@ impl<'a> StoreHost<'a> {
     /// a scoped upload credential), the heads, the grants' public facts, the
     /// lease and the latest receipts. Nothing here is decided; it is read.
     pub fn store_read(&self) -> Result<Value, String> {
-        let snapshot = self.snapshot()?;
-        let receipts = self.receipts(200)?;
-        let read_at = self.read_at()?;
-        let status = self.with_store(|store| {
-            store
-                .queue(&self.fence, Some(&self.project), now_ms())
-                .map_err(|error| error.to_string())
-        })?;
-        let artifacts: Vec<Value> = snapshot
-            .artifacts
-            .iter()
-            .map(|row| {
-                let mut value = serde_json::to_value(row).unwrap_or(Value::Null);
-                if let Value::Object(map) = &mut value {
-                    map.remove("transfer_state");
-                }
-                value
-            })
-            .collect();
         let activities = self.producer.activity(&self.project)?;
-        Ok(json!({
-            "schema": "ds.sync-store-read/v1",
-            "project": self.project,
-            "artifacts": artifacts,
-            "activities": activities,
-            "heads": snapshot.heads,
-            "readAtMs": read_at,
-            "grants": snapshot.grants.iter().map(|grant| json!({
-                "grantId": grant.grant_id,
-                "expiresAtMs": grant.expires_at_ms,
-                "engines": grant.engines,
-            })).collect::<Vec<_>>(),
-            "lease": snapshot.lease,
-            "receipts": receipts,
-            "status": status,
-        }))
+        self.with_store(|store| {
+            store_read_projection(
+                Some(store),
+                &self.fence,
+                &self.project,
+                activities,
+                now_ms(),
+            )
+        })
     }
 
     /// Free one row the store already holds as lost, and keep the evidence.
