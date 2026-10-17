@@ -24,7 +24,8 @@ pub use solar_workspaces::{
 };
 mod publications;
 pub use profile_sources::{
-    ProfileSourceHeader, ProfileSourceScope, MAX_PROFILE_SOURCES, MAX_PROFILE_SOURCE_BYTES,
+    ProfileDraftHeader, ProfileRecovery, ProfileSourceHeader, ProfileSourceScope,
+    MAX_PROFILE_CHECKPOINT_BYTES, MAX_PROFILE_SOURCES, MAX_PROFILE_SOURCE_BYTES,
 };
 mod recovery;
 pub use publications::{PublicationBytes, PublicationPayload};

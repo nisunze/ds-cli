@@ -319,36 +319,62 @@ are preserved. Existing governed owners rebuild current cloud/cache facts. This
 source behavior changes no wire schema or artifact admission and does not prove a
 new installed Core release by itself.
 
-## Bounded readonly Profile originals
+## Bounded Profile originals and authored recovery
 
-The native Store's optional `profile_sources` auxiliary table shares the existing
-protected canonical SQLite file and schema-2 opener, like native job/payload tables.
-It contains no publication, queue, credential or browser model records. Its closed
-`ds.core.profile-source/v1` metadata binds an opaque handle to the complete native
+The native Store's optional `profile_sources` and `profile_drafts` auxiliary tables
+share the existing protected canonical SQLite file and schema-2 opener. They add
+no publication, queue, credential or browser model store. Closed
+`ds.core.profile-source/v1` metadata binds an opaque session handle to the complete
 account/lane/deployment/install/project scope, exact original package SHA/size,
-model/source revision/declared CRS, full initial history and managed engine pin.
-Original bytes are at most 32 MiB; metadata at most 64 KiB. SQL bounds raw reads
-before allocation. Unknown row schemas, changed bytes/history or invalidated
-original-only eligibility refuse; no row is repaired or inferred.
+model/source revision/declared CRS, full initial history and captured engine pin.
+Original bytes are immutable and at most 32 MiB; each metadata record is at most
+64 KiB. SQL bounds raw reads before allocation.
 
-At most eight originals (256 MiB) are retained per canonical owner across projects.
-Only intentional Open may evict the oldest dormant eligible original; active,
-invalidated or corrupt sources cannot be evicted. An all-protected cache refuses
-capacity. Exact replay cannot overwrite a source. Rebind verifies the source again
-with a short CAS transaction after native admission; no SQLite transaction spans
-a process launch. Close removes the exact admitted source. Any future authored
-mutation must invalidate original-only eligibility before dispatch, including a
-lost response; an original must never replace edited or uncertain history.
+An authored `ds.core.profile-draft/v1` record repeats that exact source header and
+binds all five current history fields (`model_revision`, `initial_revision`,
+`undo_depth`, `redo_depth`, `history_pin`) to checkpoint SHA/size. Checkpoint bytes
+are opaque, nonempty and at most 64 MiB. SQLite preserves exact bytes, including
+numeric representations; the captured Network owner validates their semantics
+before retention and after recovery. No original metadata, engine or model pin
+is reconstructed from a checkpoint.
 
-Before this addition, native Profile source disappeared with its retired process.
-Core can now recover only its unchanged readonly initial head on an intentional
-request after worker retirement, without a second database, retained RAM package,
-background scan or publication. This is original-only recovery, not recovery of
-a checkpoint or authored edits. Older schema-2 Store readers ignore the auxiliary
-table; old Core has no rebind behavior and still refuses an expired handle.
-Canonical account-cache retirement archives this same SQLite file and sidecars;
-other accounts/projects cannot adopt its sources. Browser model persistence is not
-migrated by this handoff.
+Retention compares the exact source and expected history against the previous
+draft, or the original's initial history for the first checkpoint. One immediate
+transaction invalidates original-only eligibility and replaces the checkpoint.
+A failed write leaves both records unchanged. Core establishes the initial
+checkpoint before admitting edits. An already invalidated original without a
+checkpoint cannot be repaired through this API. Recovery reads one SQLite
+snapshot and validates both headers and all returned bytes; an ineligible
+original requires its matching valid draft. Corrupt, incompatible or missing
+drafts never reopen the original. Existing readonly source readers still refuse
+ineligible originals and draft-bearing rows.
+
+At most eight originals are retained per canonical owner across projects. Only
+intentional Open may evict the oldest dormant eligible original; active,
+invalidated, corrupt or draft-bearing sources remain protected. An all-protected
+cache refuses capacity. The draft lookup requires the exact scope and original
+package SHA, validates bounded scoped headers, and returns only a unique valid
+authored recovery. Eligible original-only matches do not claim a draft. Matching
+invalidated sources without a valid checkpoint, ambiguous drafts, orphaned rows
+or corrupt scoped headers refuse; lookup never selects the newest or discards
+another record. Reads neither touch recency nor create tables.
+
+Rehydration retains the original scope and captured engine authority. No SQLite
+transaction spans a process launch. Explicit recovery removal checks the full
+source and expected history, then deletes original and checkpoint atomically.
+Ordinary close preserves a noninitial authored draft. Runtime Save leases remain
+transient exclusion, separate from retained checkpoint durability. This recovery
+path does not establish project Save, export or publication durability.
+
+The [Store owner](../../crates/ds-sync-store/src/profile_sources/drafts.rs) and
+[focused tests](../../crates/ds-sync-store/src/profile_sources/drafts/tests.rs)
+cover byte/header/pin tampering, exact-history CAS, protected reopen, rollback,
+capacity and scoped package discovery. Core consumer tests additionally exercise
+real native editing, recovery, Save exclusion and late authority. Older schema-2
+readers ignore the new table and continue to refuse invalidated original-only
+rows. Canonical account-cache retirement archives this same SQLite file and
+sidecars; other accounts/projects cannot adopt its recovery records. Browser
+model persistence is not migrated by this handoff.
 
 ## Core Solar workspace selection
 

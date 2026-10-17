@@ -1,10 +1,13 @@
 //! Bounded immutable Profile opening sources, in the existing protected Store.
-//! These are local readonly recovery inputs, never publication or compute jobs.
+//! Originals and opaque authored checkpoints, never publication or compute jobs.
 use crate::{Error, Result, Store};
 use ds_command_kernel::report_export::sha256_hex;
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+mod drafts;
+pub use drafts::{ProfileDraftHeader, ProfileRecovery, MAX_PROFILE_CHECKPOINT_BYTES};
 
 pub const MAX_PROFILE_SOURCE_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_PROFILE_SOURCES: usize = 8;
@@ -98,38 +101,73 @@ fn header_bytes(header: &ProfileSourceHeader) -> Result<String> {
     }
     Ok(bytes)
 }
+type SourceRow = (String, String, Vec<u8>, i64, i64);
+fn read_source_row(
+    connection: &rusqlite::Connection,
+    scope: &ProfileSourceScope,
+    id: &str,
+) -> Result<Option<SourceRow>> {
+    Ok(connection.query_row(
+        "SELECT substr(header,1,?7),substr(header_sha256,1,65),substr(package,1,?8),length(package),eligible FROM profile_sources WHERE principal=?1 AND lane=?2 AND deployment=?3 AND install_id=?4 AND project=?5 AND session_id=?6",
+        params![scope.principal,scope.lane,scope.deployment,scope.install,scope.project,id,MAX_HEADER_BYTES+1,MAX_PROFILE_SOURCE_BYTES+1],
+        |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional()?)
+}
 fn decode_source(
     scope: &ProfileSourceScope,
     id: &str,
-    row: (String, String, Vec<u8>, i64, i64),
+    row: SourceRow,
+) -> Result<(ProfileSourceHeader, Vec<u8>)> {
+    if row.4 != 1 {
+        return Err(refused("Profile original is no longer readonly"));
+    }
+    decode_retained_source(scope, id, row)
+}
+fn decode_retained_source(
+    scope: &ProfileSourceScope,
+    id: &str,
+    row: SourceRow,
 ) -> Result<(ProfileSourceHeader, Vec<u8>)> {
     let (raw, digest, bytes, length, eligible) = row;
-    if raw.len() > MAX_HEADER_BYTES || digest != sha256_hex(raw.as_bytes()) || eligible != 1 {
-        return Err(refused(
-            "Profile original is corrupt, incompatible or no longer readonly",
-        ));
-    }
-    let header: ProfileSourceHeader = serde_json::from_str(&raw)?;
-    header_bytes(&header)?;
-    if &header.scope != scope
-        || header.session_id != id
-        || length != header.package_bytes as i64
-        || bytes.len() as u64 != header.package_bytes
-        || sha256_hex(&bytes) != header.package_sha256
-    {
+    let header = decode_source_header(scope, id, &raw, &digest, length, eligible)?;
+    if bytes.len() as u64 != header.package_bytes || sha256_hex(&bytes) != header.package_sha256 {
         return Err(refused("Profile original package digest/size changed"));
     }
     Ok((header, bytes))
 }
+fn decode_source_header(
+    scope: &ProfileSourceScope,
+    id: &str,
+    raw: &str,
+    digest: &str,
+    length: i64,
+    eligible: i64,
+) -> Result<ProfileSourceHeader> {
+    if raw.len() > MAX_HEADER_BYTES
+        || digest != sha256_hex(raw.as_bytes())
+        || !matches!(eligible, 0 | 1)
+    {
+        return Err(refused(
+            "Profile original is corrupt, incompatible or no longer readonly",
+        ));
+    }
+    let header: ProfileSourceHeader = serde_json::from_str(raw)?;
+    header_bytes(&header)?;
+    if &header.scope != scope || header.session_id != id || length != header.package_bytes as i64 {
+        return Err(refused("Profile original package digest/size changed"));
+    }
+    Ok(header)
+}
+
 fn verify_current_source(
     connection: &rusqlite::Connection,
     scope: &ProfileSourceScope,
     expected: &ProfileSourceHeader,
     expected_raw: &str,
 ) -> Result<()> {
-    let row:Option<(String,String,Vec<u8>,i64,i64)>=connection.query_row(
- "SELECT substr(header,1,?7),substr(header_sha256,1,65),substr(package,1,?8),length(package),eligible FROM profile_sources WHERE principal=?1 AND lane=?2 AND deployment=?3 AND install_id=?4 AND project=?5 AND session_id=?6",
- params![scope.principal,scope.lane,scope.deployment,scope.install,scope.project,expected.session_id,MAX_HEADER_BYTES+1,MAX_PROFILE_SOURCE_BYTES+1],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional()?;
+    if drafts::has_draft(connection, scope, &expected.session_id)? {
+        return Err(refused("Profile original has an authored checkpoint"));
+    }
+    let row = read_source_row(connection, scope, &expected.session_id)?;
     let Some(row) = row else {
         return Err(refused("Profile original changed during native admission"));
     };
@@ -183,6 +221,11 @@ impl Store {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if drafts::has_draft(&tx, scope, &header.session_id)? {
+            return Err(refused(
+                "Immutable Profile original has an authored checkpoint",
+            ));
+        }
         let existing: Option<(String,String,i64)> = tx.query_row(
             "SELECT substr(header,1,65537),substr(header_sha256,1,65),eligible FROM profile_sources WHERE principal=?1 AND lane=?2 AND deployment=?3 AND install_id=?4 AND project=?5 AND session_id=?6",
             params![scope.principal,scope.lane,scope.deployment,scope.install,scope.project,header.session_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
@@ -213,10 +256,19 @@ impl Store {
             return Err(refused("Profile source cache exceeds its logical capacity"));
         }
         if rows.len() == MAX_PROFILE_SOURCES {
-            let Some((project, id, _)) = rows
-                .iter()
-                .find(|(_, id, eligible)| *eligible == 1 && !active.contains(id))
-            else {
+            let mut candidate = None;
+            for (project, id, eligible) in &rows {
+                let mut candidate_scope = scope.clone();
+                candidate_scope.project = project.clone();
+                if *eligible == 1
+                    && !active.contains(id)
+                    && !drafts::has_draft(&tx, &candidate_scope, id)?
+                {
+                    candidate = Some((project, id));
+                    break;
+                }
+            }
+            let Some((project, id)) = candidate else {
                 return Err(refused(
                     "Profile source capacity holds active or non-recoverable history",
                 ));
@@ -262,11 +314,15 @@ impl Store {
         if !self.has_profile_sources()? {
             return Ok(None);
         }
-        let row: Option<(String,String,Vec<u8>,i64,i64)> = self.connection.query_row(
-            "SELECT substr(header,1,?7),substr(header_sha256,1,65),substr(package,1,?8),length(package),eligible FROM profile_sources WHERE principal=?1 AND lane=?2 AND deployment=?3 AND install_id=?4 AND project=?5 AND session_id=?6",
-            params![scope.principal,scope.lane,scope.deployment,scope.install,scope.project,id,MAX_HEADER_BYTES+1,MAX_PROFILE_SOURCE_BYTES+1],
-            |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional()?;
-        row.map(|row| decode_source(scope, id, row)).transpose()
+        let tx = self.connection.unchecked_transaction()?;
+        if drafts::has_draft(&tx, scope, id)? {
+            return Err(refused("Profile original has an authored checkpoint"));
+        }
+        let result = read_source_row(&tx, scope, id)?
+            .map(|row| decode_source(scope, id, row))
+            .transpose()?;
+        tx.commit()?;
+        Ok(result)
     }
     /// Recheck immutable metadata after external launch, then touch. Never hold
     /// an SQLite writer transaction while a process is running an operation.
@@ -456,6 +512,11 @@ mod tests {
     #[test]
     fn auxiliary_schema_two_reopens_without_changing_queue_or_legacy_schema() {
         let temp = tempfile::tempdir().unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(temp.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
         let path = temp.path().join("store.sqlite");
         {
             let mut s = Store::open(&path).unwrap();
