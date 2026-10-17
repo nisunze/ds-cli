@@ -928,15 +928,11 @@ dependencies = [
  "ds-cli-data",
  "ds-cli-design",
  "ds-cli-desktop",
- "ds-cli-dsgrid",
- "ds-cli-dsgrid-exchange",
  "ds-cli-feedback",
  "ds-cli-installs",
- "ds-cli-library",
  "ds-cli-map",
  "ds-cli-mcp",
  "ds-cli-messaging",
- "ds-cli-pls",
  "ds-cli-pm",
  "ds-cli-report",
  "ds-cli-server",
@@ -1049,7 +1045,6 @@ dependencies = [
  "ds-elevation-host",
  "ds-io",
  "ds-layer-store",
- "ds-network",
  "ds-project-data",
  "ds-terrain-host",
  "flate2",
@@ -1247,7 +1242,6 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-auth",
  "ds-cli-contract",
- "ds-cli-dsgrid",
  "ds-client-core",
  "ds-command-kernel",
  "serde",
@@ -1850,31 +1844,6 @@ name = "ds-profile-policy"
 version = "0.1.0"
 dependencies = [
  "schemars",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "ds-profile-presentation"
-version = "0.1.0"
-dependencies = [
- "ds-grid-engine",
- "ds-grid-model",
- "ds-profile-policy",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "ds-profile-runtime"
-version = "0.1.0"
-dependencies = [
- "ds-command-kernel",
- "ds-grid-engine",
- "ds-grid-exchange",
- "ds-grid-model",
- "ds-grid-physics",
- "ds-profile-presentation",
  "serde",
  "serde_json",
 ]
