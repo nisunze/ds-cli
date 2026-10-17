@@ -217,6 +217,18 @@ reads the rooms a headless seed filled. The orchestration is
 `ds-command-kernel/crates/ds-project-data` (shared with the desktop shell); every decision
 is `ds-command-kernel`'s.
 
+### Explicit remote context acquisition
+
+`seed --remote-context` explicitly permits missing Google Open Buildings and
+Elevation Contours coverage to use the existing governed project service.
+The service relays geospatial acquisition to the independently deployed Reporter;
+the CLI does not compute contours. The exact dataset identity, authored contour
+intervals and sample spacing are preserved; missing or invalid parameters refuse.
+This option is exclusive with `--local-source` and `--publisher-input` and is
+never implied by report export seeding. Without it, these datasets still require
+pinned local inputs. Held coverage is reused, so an unchanged warm seed acquires
+nothing even with the option enabled. Status and query remain read-only.
+
 ### Select an existing local analytical project asset
 
 `--local-source <manifest.json>` on `seed`, `status` and `query` selects the

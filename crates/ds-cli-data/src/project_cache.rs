@@ -40,6 +40,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 mod local_source;
+mod remote_context;
 
 const NETWORK_ENGINE_MISSING: Refusal = Refusal {
     code: "network_engine_missing",
@@ -80,6 +81,11 @@ const PUBLISHER_INPUT_ARG: Arg = Arg::value(
     "publisher-input",
     "<manifest.json>",
     "Native pinned Google CSV.gz/Microsoft GeoJSONL.gz manifest; converts and seeds gaps. Exclusive with --local-source/--dataset.",
+);
+
+const REMOTE_CONTEXT_ARG: Arg = Arg::switch(
+    "remote-context",
+    "Explicitly acquire missing Google buildings/elevation contours through the governed remote service with exact authored parameters. Exclusive with --local-source/--publisher-input.",
 );
 
 const LANE_ARG: ds_cli_contract::spec::Arg =
@@ -144,7 +150,7 @@ macro_rules! refusal {
 refusal!(
     INVALID_SCOPE,
     "project_dataset_scope_invalid",
-    "the named dataset is not one this client can hold, or the project declares no dataset at all",
+    "the named dataset is not one this client can hold, the project declares no dataset, or seed source modes conflict",
     "pass a --dataset id listed by `ds data project-cache status`, or omit it to seed what the project declares"
 );
 refusal!(
@@ -555,7 +561,7 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Seeds design/MV coverage under authorized --project. --local-source selects analytical input; --publisher-input converts pinned Google CSV.gz/Microsoft GeoJSONL.gz. Both skip catalogue/remote compute. Otherwise seeds declared datasets plus what it holds. --refresh repeats. Incomplete results refuse with detail.result.",
+    purpose: "Seeds design/MV coverage under authorized --project. --local-source selects analytical input; --publisher-input converts pinned Google CSV.gz/Microsoft GeoJSONL.gz. Both skip catalogue/remote compute. --remote-context explicitly admits governed remote buildings/contours for missing coverage; otherwise they require local input. Seeds declared datasets plus what it holds. --refresh repeats. Incomplete results refuse with detail.result.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
@@ -565,6 +571,7 @@ pub static SEED_COMMAND: Command = Command {
         DATASET_ARG,
         LOCAL_SOURCE_ARG,
         PUBLISHER_INPUT_ARG,
+        REMOTE_CONTEXT_ARG,
         MV_MODEL_ARG,
         REFRESH_ARG,
         LANE_ARG,
@@ -1514,6 +1521,7 @@ fn mv_projection_fail(error: &ds_project_data::mv_projection::ProjectionError) -
 }
 
 pub fn run_seed(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    remote_context::validate_source_mode(inputs)?;
     let lane = inputs.require("lane")?;
     let project = inputs.require("project")?;
     explicit_dataset(inputs)?;
@@ -1660,9 +1668,12 @@ fn catalog_seed(
         Failure::unavailable(STORE_FAILED.code, error).remedy(STORE_FAILED.remedy)
     })?;
     policy.sheets = both_orientations();
-    let mut provider = CliProvider {
-        lane,
-        project: &project,
+    let mut provider = remote_context::SeedProvider {
+        local: CliProvider {
+            lane,
+            project: &project,
+        },
+        enabled: inputs.switch("remote-context"),
     };
     let mut fetch = bundle_fetch(lane);
     let mut rows = Vec::new();
