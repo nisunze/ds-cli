@@ -4,7 +4,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::session::SessionControlRequest;
+use ds_network_contracts::profile_control::ProfileControlRequest;
 use serde_json::{Value, json};
 
 pub static COMMAND: Command = Command {
@@ -61,7 +61,7 @@ fn native_request(inputs: &Inputs, confirmed: bool) -> Result<Value, Failure> {
     if raw.len() > 65536 || history.len() > 2048 {
         return Err(invalid("native operation/history exceeds transport bounds"));
     }
-    let request = SessionControlRequest {
+    let request: ProfileControlRequest = ProfileControlRequest {
         expected_history: serde_json::from_str(history)
             .map_err(|error| invalid(error.to_string()))?,
         operation: serde_json::from_str(raw).map_err(|error| invalid(error.to_string()))?,
@@ -99,7 +99,7 @@ mod tests {
             let raw = json!({"action":action}).to_string();
             assert!(native_request(&inputs(&raw), false).is_err());
             let value = native_request(&inputs(&raw), true).unwrap();
-            let native: SessionControlRequest =
+            let native: ProfileControlRequest =
                 serde_json::from_value(value["request"].clone()).unwrap();
             assert_eq!(json!(native.operation), json!({"action":action}));
         }
@@ -111,6 +111,33 @@ mod tests {
             assert!(native_request(&inputs(raw), true).is_err());
         }
         assert_eq!(crate::PROFILE_EDIT.arguments, ["model_id", "request"]);
+    }
+
+    #[test]
+    fn opaque_commands_preserve_owner_validation_and_transport_bounds() {
+        let operation = json!({"action":"apply", "envelope": {
+            "command_id":"opaque", "command_schema_version":1,
+            "expected_revision":"rev:head", "command": {
+                "command_kind":"native_owner_validates_this", "value":-0.0
+            }
+        }});
+        let raw = operation.to_string();
+        let request = inputs(&raw);
+        assert_eq!(
+            native_request(&request, false).unwrap_err().code(),
+            "confirmation_required"
+        );
+        let forwarded = native_request(&request, true).unwrap();
+        assert_eq!(forwarded["request"]["operation"], operation);
+        assert!(forwarded.to_string().contains("-0.0"));
+        let oversized =
+            json!({"action":"apply", "envelope":{"payload":"x".repeat(65536)}}).to_string();
+        assert_eq!(
+            native_request(&inputs(&oversized), true)
+                .unwrap_err()
+                .code(),
+            "invalid_profile_model_request"
+        );
     }
 
     #[test]

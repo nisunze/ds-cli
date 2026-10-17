@@ -4,7 +4,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::session::SessionHistoryState;
+use ds_network_contracts::profile::ProfileHistory;
 use serde_json::{Value, json};
 
 pub static COMMAND: Command = Command {
@@ -97,7 +97,7 @@ fn native_request(inputs: &Inputs, confirmed: bool) -> Result<Value, Failure> {
     {
         return Err(invalid("Use a bounded native model identity and history."));
     }
-    let history: SessionHistoryState = serde_json::from_str(history)
+    let history: ProfileHistory = serde_json::from_str(history)
         .map_err(|_| invalid("Use the complete native history JSON."))?;
     if !confirmed {
         return Err(Failure::invalid(

@@ -151,7 +151,7 @@ fn pick_request(inputs: &Inputs) -> Result<Value, Failure> {
     if raw.len() > 2048 {
         return Err(invalid("history exceeds the 2 KiB transport bound"));
     }
-    let history: ds_grid_engine::SessionHistoryState =
+    let history: ds_network_contracts::profile::ProfileHistory =
         serde_json::from_str(raw).map_err(|error| invalid(error.to_string()))?;
     Ok(
         json!({"model_id": model, "expected_history": history, "pick_context": context,

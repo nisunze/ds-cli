@@ -4,7 +4,9 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::profile_atlas::ProfileAtlasAttachmentRef;
+use ds_network_contracts::{
+    profile_control::ProfileEditModeRequest, profile_scene::ProfileAtlasAttachmentRef,
+};
 use serde_json::{json, Map, Value};
 
 use crate::{DESCRIPTOR_ARG, TARGET_ARG};
@@ -605,7 +607,7 @@ fn patch_from_inputs(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
         if history.len() > 2048 {
             return Err(invalid("history exceeds 2 KiB"));
         }
-        let request = ds_grid_engine::session::SessionEditModeRequest {
+        let request: ProfileEditModeRequest = ProfileEditModeRequest {
             enabled: raw
                 .parse()
                 .map_err(|_| invalid("edit-mode must be true or false"))?,
@@ -723,7 +725,7 @@ mod tests {
         .map(str::to_owned);
         let inputs = ds_cli_contract::args::parse(&SET, &args).unwrap();
         let patch = Value::Object(patch_from_inputs(&inputs).unwrap());
-        let request: ds_grid_engine::session::SessionEditModeRequest =
+        let request: ProfileEditModeRequest =
             serde_json::from_value(patch["edit_mode"]["request"].clone()).unwrap();
         assert!(!request.enabled);
         assert_eq!(request.expected_history.redo_depth, 2);

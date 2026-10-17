@@ -1199,7 +1199,6 @@ dependencies = [
  "ds-command-kernel",
  "ds-geo",
  "ds-geo-lite",
- "ds-grid-engine",
  "ds-layer-ops",
  "ds-layer-store",
  "ds-network-contracts",

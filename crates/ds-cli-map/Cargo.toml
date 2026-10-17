@@ -20,9 +20,7 @@ ds-cli-auth = { workspace = true }
 # of it here. There is no cycle: nothing in `ds-cli-server` knows `ds map`.
 ds-cli-server = { workspace = true }
 ds-command-kernel = { workspace = true }
-# Typed native issue queries; no engineering predicate is copied into the lens.
-ds-grid-engine = { workspace = true }
-# Profile wire history is contracts-only; no retained runtime or solver.
+# Profile wire controls, history and selection are contracts-only; no solver.
 ds-network-contracts.workspace = true
 serde_json = { workspace = true }
 serde = { workspace = true }
