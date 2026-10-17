@@ -3306,8 +3306,34 @@ mod tests {
                 .unwrap(),
             document["engineering_preflight"]
         );
+        let mut with_network = document.clone();
+        with_network["engineering_preflight"]["network_engineering"] = json!([{
+            "executable_sha256":"a".repeat(64),"development_override":false,
+            "receipt":{"schema":"ds.network.task-result/v1","outcome":"completed",
+                "inputSha256":"b".repeat(64),
+                "engineIdentity":{"schema":"ds.network-engine/v1","owner_addition":"retained"},
+                "artifact":{"file":"result.json","byteCount":42,"sha256":"c".repeat(64),
+                    "schema":"ds.network.report-engineering.result/v1"}}
+        }]);
+        assert_eq!(
+            serde_json::to_value(
+                verify(&with_network)
+                    .unwrap()
+                    .engineering_preflight
+                    .unwrap()
+            )
+            .unwrap(),
+            with_network["engineering_preflight"]
+        );
+        with_network["engineering_preflight"]["network_engineering"][0]["receipt"]["outcome"] =
+            json!("failed");
+        assert!(matches!(
+            verify(&with_network),
+            Err(ResultRefusal::Invalid { .. })
+        ));
         let mut optional = document.clone();
-        optional["engineering_preflight"]["coverage_counts"] = json!({"optional_engineering_fact_unrecorded":1});
+        optional["engineering_preflight"]["coverage_counts"] =
+            json!({"optional_engineering_fact_unrecorded":1});
         optional["engineering_preflight"]["field_lineage"] = json!([{
             "layer":"lv_poles","field":"flying_stay","requirement":"optional","sections":["Fly Stay"],
             "source_rows":1,"valid":0,"explicit_zero":0,"existing_component":0,"tapping_marker":0,"missing":1,"invalid":0

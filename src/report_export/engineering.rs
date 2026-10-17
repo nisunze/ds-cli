@@ -18,6 +18,8 @@ pub struct EngineeringPreflight {
     pub quantity_rows_total: usize,
     pub quantity_lineage: Vec<QuantityLineage>,
     pub omitted_quantity_details: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub network_engineering: Vec<Value>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -68,6 +70,11 @@ impl EngineeringPreflight {
         let text = |s: &str| !s.is_empty() && s.len() <= 2048 && !s.chars().any(char::is_control);
         let optional = |s: &Option<String>| s.as_deref().is_none_or(text);
         self.schema == "ds.report.engineering-preflight/v1"
+            && self.network_engineering.len() <= 4096
+            && self
+                .network_engineering
+                .iter()
+                .all(valid_network_engineering)
             && self.source_layers.len() <= 32
             && self.field_lineage.len() <= 128
             && self.findings.len() <= 100
@@ -150,3 +157,32 @@ impl EngineeringPreflight {
 fn required() -> String {
     "required".into()
 }
+
+// Network owns this provenance and its engineering semantics. The report
+// consumer checks only the bounded receipt shape and retains the exact Value.
+fn valid_network_engineering(value: &Value) -> bool {
+    let sha = |value: &Value| value.as_str().is_some_and(super::exact_lower_sha256);
+    let receipt = &value["receipt"];
+    let identity = &receipt["engineIdentity"];
+    let artifact = &receipt["artifact"];
+    value.as_object().is_some_and(|row| row.len() == 3)
+        && serde_json::to_vec(value).is_ok_and(|bytes| bytes.len() <= 64 * 1024)
+        && sha(&value["executable_sha256"])
+        && value["development_override"].is_boolean()
+        && receipt.is_object()
+        && receipt["schema"] == "ds.network.task-result/v1"
+        && receipt["outcome"] == "completed"
+        && sha(&receipt["inputSha256"])
+        && identity.is_object()
+        && identity["schema"] == "ds.network-engine/v1"
+        && artifact.is_object()
+        && sha(&artifact["sha256"])
+        && artifact["file"] == "result.json"
+        && artifact["schema"] == "ds.network.report-engineering.result/v1"
+        && artifact["byteCount"]
+            .as_u64()
+            .is_some_and(|bytes| bytes > 0)
+}
+
+#[cfg(test)]
+mod tests;
