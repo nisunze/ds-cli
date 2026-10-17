@@ -172,6 +172,7 @@ fn packaged_canary_captures_managed_bytes_without_discovery_execution_and_retain
     let resolved = fixture.resolve(Some("canary")).unwrap();
     assert_eq!(resolved.executable, selected);
     assert!(resolved.managed_identity.is_some());
+    assert_eq!(resolved.lane, Some("canary"));
     let captured = OWNER.capture_resolved(resolved).unwrap();
     assert!(
         !fixture.root.join("executed").exists(),
@@ -334,5 +335,87 @@ fn all_three_exact_managed_owners_require_the_packaged_lane() {
                 .code(),
             "fixture_missing"
         );
+    }
+}
+
+#[test]
+fn default_reporter_capture_and_fixed_launches_preserve_only_the_closed_host_lane() {
+    static REPORTER: External = External {
+        name: "reporter",
+        owner: "ds-network-reporter",
+        env_override: "DS_EXEC_DEFAULT_REPORTER_LANE",
+        missing_code: "fixture_missing",
+        remedy: "repair",
+    };
+    let fixture = Fixture::new();
+    let reporter = fixture.root.join("reporter-fixture");
+    executable(
+        &reporter,
+        b"#!/bin/sh\nif [ \"$1\" = \"typed-input\" ]; then cat >/dev/null; fi\nprintf '%s' \"${DS_REPORTER_NETWORK_LANE-unset}\"\n",
+    );
+    unsafe {
+        std::env::set_var(REPORTER.env_override, &reporter);
+    }
+    for lane in [Some("canary"), Some("stable"), None] {
+        let resolved = REPORTER
+            .resolve_default_for_paths(Some(&fixture.host), None, lane, || {
+                panic!("explicit fixture must not read managed base")
+            })
+            .unwrap();
+        assert_eq!(resolved.lane, lane);
+        let captured = REPORTER.capture_resolved(resolved).unwrap();
+        let expected = lane.unwrap_or("unset");
+        assert_eq!(
+            captured
+                .call("build-info", &[], Duration::from_secs(2))
+                .unwrap()
+                .stdout,
+            expected
+        );
+        let resolved = REPORTER
+            .resolve_default_for_paths(Some(&fixture.host), None, lane, || {
+                panic!("explicit fixture must not read managed base")
+            })
+            .unwrap();
+        assert_eq!(
+            resolved
+                .verified(|| REPORTER.call_at(
+                    &resolved.executable,
+                    "build-info",
+                    &[],
+                    Duration::from_secs(2),
+                    resolved.lane
+                ))
+                .unwrap()
+                .stdout,
+            expected
+        );
+        assert_eq!(
+            resolved
+                .verified(|| REPORTER.call_with_stdin_at(
+                    &resolved.executable,
+                    "typed-input",
+                    &[],
+                    b"{}",
+                    Duration::from_secs(2),
+                    resolved.lane
+                ))
+                .unwrap()
+                .stdout,
+            expected
+        );
+    }
+    assert_eq!(
+        REPORTER
+            .resolve_default_for_paths(None, None, Some("other"), || panic!(
+                "invalid lane must refuse before lookup"
+            ))
+            .err()
+            .unwrap()
+            .code(),
+        "module_lane_invalid"
+    );
+    unsafe {
+        std::env::remove_var(REPORTER.env_override);
     }
 }

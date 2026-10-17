@@ -4,6 +4,7 @@ use super::*;
 pub(super) struct Resolved {
     pub executable: PathBuf,
     pub managed_identity: Option<managed_modules::ManagedIdentity>,
+    pub lane: Option<&'static str>,
 }
 impl Resolved {
     pub(super) fn verified<T>(
@@ -78,6 +79,17 @@ impl External {
         lane: Option<&str>,
         module_base: impl FnOnce() -> Result<PathBuf, Failure>,
     ) -> Result<Resolved, Failure> {
+        let lane = match lane {
+            Some("stable") => Some("stable"),
+            Some("canary") => Some("canary"),
+            None => None,
+            Some(_) => {
+                return Err(Failure::invalid(
+                    "module_lane_invalid",
+                    "resolve exactly stable or canary",
+                ));
+            }
+        };
         if std::env::var_os(self.env_override).is_none()
             && managed_modules::component(self).is_ok()
             && let Some(lane) = lane
@@ -100,6 +112,7 @@ impl External {
             return Ok(Resolved {
                 executable,
                 managed_identity: Some(identity),
+                lane: Some(lane),
             });
         }
         let executable = self
@@ -108,6 +121,7 @@ impl External {
         Ok(Resolved {
             executable,
             managed_identity: None,
+            lane,
         })
     }
 
