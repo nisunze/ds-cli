@@ -86,7 +86,7 @@ fn profile_input(lane: DeploymentLane) -> ClientProfileInput {
         survey_entries_changes_method: "POST".to_owned(),
         survey_entries_changes_path: "/api/v1/survey/entries/changes".to_owned(),
         survey_entry_create_method: "POST".to_owned(),
-        survey_entry_create_path: "/api/v1/entries/mutate".to_owned(),
+        survey_entry_create_path: "/v1/projects/{firebase_project}/databases/(default)/documents:commit".to_owned(),
         survey_entry_create_operation: "create".to_owned(),
         project_data_method: "POST".to_owned(),
         project_data_path: "/api/v1/project_data".to_owned(),
@@ -273,7 +273,6 @@ struct TransportState {
     survey_query_projects: Vec<String>,
     correlated_survey_entries_select_requests: usize,
     correlated_survey_entries_changes_requests: usize,
-    correlated_survey_entry_create_requests: usize,
     correlated_tile_requests: usize,
     correlated_project_report_requests: usize,
     /// Sign-in and refresh attempts that drop before an answer, as a weak link.
@@ -1180,27 +1179,13 @@ impl Transport for FixtureTransport {
     ) -> Result<TransportResponse, TransportError> {
         let mut state = self.0.lock().unwrap();
         let body = call.body();
-        let exact_body = br#"{"project_id":"project_a","form_id":"survey_points","doc_id":"entry_1","operation":"create","idempotency_key":"outbox-1","data":{"name":"Pole 1"},"context_key":"parents:parent%3A1","geometry":{"coordinates":[30.0,-1.0],"type":"Point"},"connectivity":{"precedent":"p0"},"detailed_location":{"district":"Huye"},"metadata":{"created_at":"2026-08-30T00:00:00Z","origin":"unknown"}}"#;
-        let correlation_valid = call.correlation_headers() == ["X-Request-Id", "X-DS-Action-Id"];
-        if correlation_valid {
-            state.correlated_survey_entry_create_requests += 1;
-        }
-        state.calls.push(format!(
-            "survey_entry_create method={} origin={} path={} content_type={} body_exact={} limit={} timeout={} api_key={} authorization={} forwarded_authorization={} email={} client_id={} correlation={}",
-            call.method(),
-            call.gateway_origin(),
-            call.path(),
-            call.content_type(),
-            serde_json::from_slice::<serde_json::Value>(body.as_bytes()).unwrap() == serde_json::from_slice::<serde_json::Value>(exact_body).unwrap(),
-            call.response_limit(),
-            call.timeout_seconds(),
-            !call.gateway_api_key().is_empty(),
-            !call.bearer_token().is_empty(),
-            !call.bearer_token().is_empty(),
-            !call.canonical_email().is_empty(),
-            call.client_id(),
-            correlation_valid,
-        ));
+        let actual:serde_json::Value=serde_json::from_slice(body.as_bytes()).unwrap();
+        let exact_body = actual["writes"].as_array().is_some_and(|writes| writes.len()==1)
+            && actual["writes"][0]["currentDocument"]==json!({"exists":false})
+            && actual["writes"][0]["update"]["name"].as_str().is_some_and(|n|n.ends_with("/eds_project/project_a/parents/parent:1/forms/survey_points/entries/entry_1"))
+            && actual["writes"][0]["updateTransforms"]==json!([{"fieldPath":"metadata.firestore_updated_at","setToServerValue":"REQUEST_TIME"}]);
+        state.calls.push(format!("survey_entry_create method={} origin={} path={} body_exact={} authorization={}",
+            call.method(),call.origin(),call.path(),exact_body,!call.bearer_token().is_empty()));
         Ok(state.survey_entry_create.pop_front().unwrap())
     }
 
@@ -2061,7 +2046,7 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
         survey_entries_changes_method: "POST".to_owned(),
         survey_entries_changes_path: "/api/v1/survey/entries/changes".to_owned(),
         survey_entry_create_method: "POST".to_owned(),
-        survey_entry_create_path: "/api/v1/entries/mutate".to_owned(),
+        survey_entry_create_path: "/v1/projects/{firebase_project}/databases/(default)/documents:commit".to_owned(),
         survey_entry_create_operation: "create".to_owned(),
         project_data_method: "POST".to_owned(),
         project_data_path: "/api/v1/project_data".to_owned(),
@@ -4871,30 +4856,13 @@ fn survey_entry_create_request() -> SurveyEntryCreateRequest {
 }
 
 fn survey_entry_create_envelope() -> Vec<u8> {
-    serde_json::to_vec(&serde_json::json!({
-        "success": true,
-        "message": "Entry created successfully",
-        "data": {
-            "project_id": "project_a",
-            "form_id": "survey_points",
-            "doc_id": "entry_1",
-            "operation": "create",
-            "client_version": 0,
-            "replication_clock": "metadata.firestore_updated_at",
-            "replication_authority": "firestore_server_timestamp"
-        },
-        "timestamp": "2026-08-30T00:00:00Z",
-        "service": "data-solutions-backend",
-        "version": "1.0.0",
-        "request_id": "request-1"
-    }))
-    .unwrap()
+    serde_json::to_vec(&json!({"commitTime":"2026-08-30T00:00:01Z","writeResults":[{"updateTime":"2026-08-30T00:00:01Z","transformResults":[{"timestampValue":"2026-08-30T00:00:01Z"}]}]})).unwrap()
 }
 
 #[test]
-fn survey_entry_create_is_one_fixed_selected_project_call_and_verifies_201_receipt() {
+fn survey_entry_create_is_one_fixed_direct_call_and_verifies_commit_receipt() {
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
-    transport.push_survey_entry_create(201, &survey_entry_create_envelope());
+    transport.push_survey_entry_create(200, &survey_entry_create_envelope());
     let mut client = signed_in(transport.clone(), MemoryStore::default());
     let receipt = client
         .survey_entry_create("project_a", &survey_entry_create_request(), NOW + 1)
@@ -4910,7 +4878,7 @@ fn survey_entry_create_is_one_fixed_selected_project_call_and_verifies_201_recei
         "firestore_server_timestamp"
     );
     assert!(transport.calls().iter().any(|call| call ==
-        "survey_entry_create method=POST origin=https://eds-gateway-3c0q477h.ue.gateway.dev path=/api/v1/entries/mutate content_type=application/json body_exact=true limit=1048576 timeout=120 api_key=true authorization=true forwarded_authorization=true email=true client_id=ds-native-client correlation=true"));
+        "survey_entry_create method=POST origin=https://firestore.googleapis.com path=/v1/projects/firebase-project/databases/(default)/documents:commit body_exact=true authorization=true"));
 }
 
 #[test]
@@ -5054,198 +5022,35 @@ fn survey_entry_create_profile_and_response_identity_fail_closed() {
         );
     }
 
-    for (from, to) in [
-        ("\"project_id\":\"project_a\"", "\"project_id\":\"other\""),
-        ("\"form_id\":\"survey_points\"", "\"form_id\":\"other\""),
-        ("\"doc_id\":\"entry_1\"", "\"doc_id\":\"other\""),
-        ("\"operation\":\"create\"", "\"operation\":\"update\""),
-        ("\"client_version\":0", "\"client_version\":1"),
-        (
-            "\"replication_clock\":\"metadata.firestore_updated_at\"",
-            "\"replication_clock\":\"metadata.updated_at\"",
-        ),
-        (
-            "\"replication_authority\":\"firestore_server_timestamp\"",
-            "\"replication_authority\":\"client_clock\"",
-        ),
-    ] {
-        let body = String::from_utf8(survey_entry_create_envelope())
-            .unwrap()
-            .replace(from, to)
-            .into_bytes();
-        let transport = FixtureTransport::with_sign_in(SIGN_IN);
-        transport.push_survey_entry_create(201, &body);
-        let mut client = signed_in(transport, MemoryStore::default());
-        assert_eq!(
-            client
-                .survey_entry_create("project_a", &survey_entry_create_request(), NOW + 1)
-                .unwrap_err()
-                .kind(),
-            ErrorKind::UnreadableResponse
-        );
+    for response in [json!({}),json!({"commitTime":"2026-08-30T00:00:01Z","writeResults":[]}),
+        json!({"commitTime":"2026-08-30T00:00:01Z","writeResults":[{"updateTime":"2026-08-30T00:00:01Z","transformResults":[]}]}),
+        json!({"commitTime":"2026-08-30T00:00:01Z","writeResults":[{"updateTime":"2026-08-30T00:00:01Z","transformResults":[{"timestampValue":"2026-08-30T00:00:01Z"}]}],"unknown":true})] {
+        let transport=FixtureTransport::with_sign_in(SIGN_IN);transport.push_survey_entry_create(200,&serde_json::to_vec(&response).unwrap());
+        let mut client=signed_in(transport,MemoryStore::default());
+        assert_eq!(client.survey_entry_create("project_a",&survey_entry_create_request(),NOW+1).unwrap_err().kind(),ErrorKind::UnreadableResponse);
     }
-
-    let mut unknown: serde_json::Value =
-        serde_json::from_slice(&survey_entry_create_envelope()).unwrap();
-    unknown["data"]["unexpected"] = serde_json::json!(true);
-    let transport = FixtureTransport::with_sign_in(SIGN_IN);
-    transport.push_survey_entry_create(201, &serde_json::to_vec(&unknown).unwrap());
-    let mut client = signed_in(transport, MemoryStore::default());
-    assert_eq!(
-        client
-            .survey_entry_create("project_a", &survey_entry_create_request(), NOW + 1)
-            .unwrap_err()
-            .kind(),
-        ErrorKind::UnreadableResponse
-    );
-
-    let transport = FixtureTransport::with_sign_in(SIGN_IN);
-    transport.push_survey_entry_create(
-        201,
-        &vec![b'x'; ds_client_core::SURVEY_ENTRY_CREATE_RESPONSE_LIMIT + 1],
-    );
-    let mut client = signed_in(transport, MemoryStore::default());
-    assert_eq!(
-        client
-            .survey_entry_create("project_a", &survey_entry_create_request(), NOW + 1)
-            .unwrap_err()
-            .kind(),
-        ErrorKind::UnreadableResponse
-    );
-}
-
-fn survey_entry_create_error_envelope(code: &str) -> Vec<u8> {
-    serde_json::to_vec(&serde_json::json!({
-        "success": false,
-        "error": {"code": code, "message": "private backend text", "timestamp": 1},
-        "timestamp": "2026-08-30T00:00:00Z",
-        "service": "data-solutions-backend",
-        "version": "1.0.0"
-    }))
-    .unwrap()
+    let transport=FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_survey_entry_create(200,&vec![b'x';ds_client_core::SURVEY_ENTRY_CREATE_RESPONSE_LIMIT+1]);
+    let mut client=signed_in(transport,MemoryStore::default());
+    assert_eq!(client.survey_entry_create("project_a",&survey_entry_create_request(),NOW+1).unwrap_err().kind(),ErrorKind::UnreadableResponse);
 }
 
 #[test]
-fn survey_entry_create_maps_only_exact_status_code_pairs_without_backend_text() {
-    let cases = [
-        (
-            400,
-            "VALIDATION_FAILED",
-            SurveyEntryCreateServiceCode::Invalid,
-            ErrorKind::InvalidInput,
-        ),
-        (
-            400,
-            "INVALID_FORMAT",
-            SurveyEntryCreateServiceCode::Invalid,
-            ErrorKind::InvalidInput,
-        ),
-        (
-            401,
-            "UNAUTHORIZED",
-            SurveyEntryCreateServiceCode::Unauthorized,
-            ErrorKind::AuthenticationRejected,
-        ),
-        (
-            403,
-            "INSUFFICIENT_PERMISSIONS",
-            SurveyEntryCreateServiceCode::PermissionDenied,
-            ErrorKind::AuthenticationRejected,
-        ),
-        (
-            404,
-            "NOT_FOUND",
-            SurveyEntryCreateServiceCode::ScopeNotFound,
-            ErrorKind::ResourceNotFound,
-        ),
-        (
-            404,
-            "PROJECT_NOT_FOUND",
-            SurveyEntryCreateServiceCode::ScopeNotFound,
-            ErrorKind::ResourceNotFound,
-        ),
-        (
-            409,
-            "FORM_NOT_ENABLED",
-            SurveyEntryCreateServiceCode::FormDisabled,
-            ErrorKind::InvalidInput,
-        ),
-        (
-            403,
-            "PROJECT_NOT_ACTIVE",
-            SurveyEntryCreateServiceCode::ProjectReadOnly,
-            ErrorKind::InvalidInput,
-        ),
-        (
-            403,
-            "PROJECT_ARCHIVED",
-            SurveyEntryCreateServiceCode::ProjectReadOnly,
-            ErrorKind::InvalidInput,
-        ),
-        (
-            403,
-            "PROJECT_EXPIRED",
-            SurveyEntryCreateServiceCode::ProjectReadOnly,
-            ErrorKind::InvalidInput,
-        ),
-        (
-            409,
-            "CONFLICT",
-            SurveyEntryCreateServiceCode::IdempotencyConflict,
-            ErrorKind::InvalidInput,
-        ),
-        (
-            409,
-            "ALREADY_EXISTS",
-            SurveyEntryCreateServiceCode::AlreadyExists,
-            ErrorKind::InvalidInput,
-        ),
-        (
-            500,
-            "INTERNAL_ERROR",
-            SurveyEntryCreateServiceCode::Failed,
-            ErrorKind::Transient,
-        ),
-    ];
-    for (status, wire, code, kind) in cases {
-        let transport = FixtureTransport::with_sign_in(SIGN_IN);
-        transport.push_survey_entry_create(status, &survey_entry_create_error_envelope(wire));
-        let mut client = signed_in(transport, MemoryStore::default());
-        let error = client
-            .survey_entry_create("project_a", &survey_entry_create_request(), NOW + 1)
-            .unwrap_err();
-        assert_eq!(error.kind(), kind, "{wire}");
-        assert_eq!(
-            error.survey_entry_create_service_code(),
-            Some(code),
-            "{wire}"
-        );
+fn survey_entry_create_maps_exact_firestore_denials_and_retains_conflicts() {
+    use SurveyEntryCreateServiceCode as C;
+    for (status,wire,code,kind) in [(400,"INVALID_ARGUMENT",C::Invalid,ErrorKind::InvalidInput),
+        (401,"UNAUTHENTICATED",C::Unauthorized,ErrorKind::AuthenticationRejected),
+        (403,"PERMISSION_DENIED",C::PermissionDenied,ErrorKind::AuthenticationRejected),
+        (404,"NOT_FOUND",C::ScopeNotFound,ErrorKind::ResourceNotFound),
+        (409,"ALREADY_EXISTS",C::AlreadyExists,ErrorKind::InvalidInput),
+        (500,"INTERNAL",C::Failed,ErrorKind::Transient)] {
+        let transport=FixtureTransport::with_sign_in(SIGN_IN);
+        transport.push_survey_entry_create(status,&serde_json::to_vec(&json!({"error":{"code":status,"status":wire,"message":"private backend text"}})).unwrap());
+        let mut client=signed_in(transport,MemoryStore::default());
+        let error=client.survey_entry_create("project_a",&survey_entry_create_request(),NOW+1).unwrap_err();
+        assert_eq!(error.kind(),kind);assert_eq!(error.survey_entry_create_service_code(),Some(code));
         assert!(!error.to_string().contains("private backend text"));
     }
-
-    let transport = FixtureTransport::with_sign_in(SIGN_IN);
-    transport.push_survey_entry_create(
-        409,
-        &survey_entry_create_error_envelope("PROJECT_NOT_ACTIVE"),
-    );
-    let mut client = signed_in(transport, MemoryStore::default());
-    let error = client
-        .survey_entry_create("project_a", &survey_entry_create_request(), NOW + 1)
-        .unwrap_err();
-    assert_eq!(error.survey_entry_create_service_code(), None);
-    assert_eq!(error.kind(), ErrorKind::InvalidInput);
-
-    let transport = FixtureTransport::with_sign_in(SIGN_IN);
-    transport.push_survey_entry_create(
-        500,
-        &vec![b'x'; ds_client_core::SURVEY_ENTRY_CREATE_RESPONSE_LIMIT + 1],
-    );
-    let mut client = signed_in(transport, MemoryStore::default());
-    let error = client
-        .survey_entry_create("project_a", &survey_entry_create_request(), NOW + 1)
-        .unwrap_err();
-    assert_eq!(error.kind(), ErrorKind::Transient);
-    assert_eq!(error.survey_entry_create_service_code(), None);
 }
 
 fn tile_status_envelope(status: &str, project: &str, tile_type: &str) -> Vec<u8> {
@@ -6562,6 +6367,17 @@ fn device_credential(profile: &ClientProfile) -> DeviceCredential {
         DevicePrivateKey::from_secret_bytes([5; 32]),
     )
     .unwrap()
+}
+
+#[test]
+fn survey_entry_create_device_provider_refuses_before_any_transport() {
+    let p=profile(DeploymentLane::Stable);let credential=device_credential(&p);
+    let session=DeviceAccessSession::new("ds-access-token".into(),NOW+300,NOW).unwrap();
+    let authority=credential.authorize_api(&session,&p,"uid-1",NOW).unwrap();
+    let mut transport=FixtureTransport::default();
+    let error=authority.survey_entry_create(&mut transport,"project_a",&survey_entry_create_request(),NOW+1).unwrap_err();
+    assert_eq!(error.survey_entry_create_service_code(),Some(SurveyEntryCreateServiceCode::FirebaseSessionRequired));
+    assert!(transport.calls().is_empty());
 }
 
 #[test]

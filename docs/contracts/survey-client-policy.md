@@ -8,6 +8,7 @@ identity, grants and existing state supplied explicitly by the host.
 | Operation | Decisions |
 | --- | --- |
 | `fill`, `fields`, `draft` | Pinned form revision, visible values, validation, binary draft markers, capture filenames and submission plan. |
+| `validate` | Read-only typed `ds.survey-form-validation/v1` preview of supplied fields/values and revision label; returns visible/hidden keys, runtime errors and exact input digest. No acquisition, authority or entry mutation. |
 | `factory`, `project_forms` | Canonical form documents, dirty state, draft versions, save/conflict receipts, public visibility and project-form receipts. |
 | `mutation` | Create capture, identity/alias normalization, update/delete/restore bodies, capability admission, geometry and optimistic deltas. |
 | `access`, `policy` | Edit eligibility, editable field projection, node/edge relationships, location and connectivity rules. |

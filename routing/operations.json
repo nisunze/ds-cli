@@ -1238,18 +1238,6 @@
           "response_cap_bytes": 65536,
           "gateway": { "method": "PUT", "path": "/api/v1/entries/mutate", "backend": "ds_brain_url" },
           "resolution": { "web": "gateway", "desktop": "gateway" }
-        },
-        "create": {
-          "summary": "Create one exact survey entry or replay its stable idempotency key.",
-          "transport": "json",
-          "action_key": "operation",
-          "actions": ["create"],
-          "idempotency": "idempotent",
-          "retry_class": "none",
-          "timeout_s": 30,
-          "response_cap_bytes": 65536,
-          "gateway": { "method": "POST", "path": "/api/v1/entries/mutate", "backend": "ds_brain_url" },
-          "resolution": { "web": "gateway", "desktop": "gateway" }
         }
       }
     },

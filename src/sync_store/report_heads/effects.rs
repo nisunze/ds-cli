@@ -214,3 +214,9 @@ pub fn evaluate(bytes: &[u8]) -> Result<String, String> {
     };
     serde_json::to_string(&step).map_err(|e| e.to_string())
 }
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name=reportHeadStore)]
+pub fn wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}

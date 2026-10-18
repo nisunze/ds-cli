@@ -2,7 +2,7 @@ use crate::project_report::ProjectReportOperation;
 use crate::tiles::TileOperation;
 use crate::{
     ClientProfile, ProjectStatus, SurveyEntriesChangesRequest, SurveyEntriesSelectRequest,
-    SurveyEntryCreateRequest, SurveyQueryRequest, TransportError,
+    SurveyQueryRequest, TransportError,
 };
 use serde::Serialize;
 use std::io::Write;
@@ -18,7 +18,7 @@ pub use crate::profile::{
     PROJECT_FORMS_ACTION, PROJECT_FORMS_METHOD, PROJECT_FORMS_PATH, PROJECT_FORM_EDITOR_ACTION,
     SOLAR_SNAPSHOT_METHOD, SOLAR_SNAPSHOT_PATH, SURVEY_ENTRIES_CHANGES_METHOD,
     SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH,
-    SURVEY_ENTRY_CREATE_METHOD, SURVEY_ENTRY_CREATE_PATH, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH,
+    SURVEY_ENTRY_CREATE_METHOD, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH,
     TILES_METHOD, TILES_PATH, TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD,
     TRANSFORMER_CONTEXT_PATH,
 };
@@ -763,18 +763,16 @@ impl SurveyEntriesChangesCall<'_> {
 /// Project identity comes from the host's audience-fenced selection; the core
 /// fixes the route, method, operation, request keys, and response bounds.
 pub struct SurveyEntryCreateCall<'a> {
-    pub(crate) profile: &'a ClientProfile,
-    pub(crate) project_id: &'a str,
-    pub(crate) request: &'a SurveyEntryCreateRequest,
+    pub(crate) direct: &'a ds_command_kernel::survey_entry_create::direct::DirectPlan,
     pub(crate) authority: CallAuthority<'a>,
 }
 
 impl SurveyEntryCreateCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub fn origin(&self) -> &str {
+        self.direct.origin
     }
-    pub const fn path(&self) -> &'static str {
-        SURVEY_ENTRY_CREATE_PATH
+    pub fn path(&self) -> &str {
+        &self.direct.path
     }
     pub const fn method(&self) -> &'static str {
         SURVEY_ENTRY_CREATE_METHOD
@@ -787,15 +785,6 @@ impl SurveyEntryCreateCall<'_> {
     }
     pub const fn timeout_seconds(&self) -> u64 {
         SURVEY_ENTRY_CREATE_TIMEOUT_SECONDS
-    }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
     }
     pub fn bearer_token(&self) -> &str {
         self.authority.bearer_token
@@ -810,7 +799,7 @@ impl SurveyEntryCreateCall<'_> {
         self.authority.device_id
     }
     pub fn body(&self) -> SecretRequestBody {
-        SecretRequestBody(self.request.body_bytes(self.project_id))
+        SecretRequestBody(serde_json::to_vec(&self.direct.body).expect("admitted direct create body"))
     }
 }
 

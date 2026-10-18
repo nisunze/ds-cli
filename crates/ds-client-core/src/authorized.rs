@@ -534,31 +534,22 @@ pub(crate) fn survey_entries_changes<T: AuthorizedTransport>(
 }
 
 pub(crate) fn survey_entry_create<T: AuthorizedTransport>(
-    profile: &ClientProfile,
-    transport: &mut T,
-    authority: Authority<'_>,
-    project_id: &str,
+    profile: &ClientProfile, transport: &mut T, authority: Authority<'_>, project_id: &str,
     request: &SurveyEntryCreateRequest,
 ) -> Result<SurveyEntryCreateReceipt, ClientError> {
-    let response = transport.survey_entry_create(SurveyEntryCreateCall {
-        profile,
-        project_id,
-        request,
-        authority: authority.call(),
-    })?;
-    if response.status != 201 {
-        return Err(crate::survey_entry_create::decode_service_error(
-            &response,
-            SURVEY_ENTRY_CREATE_RESPONSE_LIMIT,
-        )
-        .unwrap_or_else(|| classify_survey_entry_create_error(response.status)));
+    if authority.device_id.is_some() {
+        return Err(ClientError::with_survey_entry_create_service_code(ErrorKind::AuthenticationRejected,
+            "trusted-device tokens cannot authorize direct Firestore creation",crate::SurveyEntryCreateServiceCode::FirebaseSessionRequired));
     }
-    crate::survey_entry_create::decode(
-        response,
-        SURVEY_ENTRY_CREATE_RESPONSE_LIMIT,
-        project_id,
-        request,
-    )
+    let direct = request.direct_plan(project_id, &ds_command_kernel::survey_entry_create::direct::Authority {
+        firebase_project:profile.firebase_project_id().into(),uid:authority.uid.into(),email:authority.email.into(),lane:profile.lane().token().into(),
+    })?;
+    let response = transport.survey_entry_create(SurveyEntryCreateCall { direct:&direct, authority:authority.call() })?;
+    if response.status != 200 { return Err(crate::survey_entry_create::decode_service_error(&response, SURVEY_ENTRY_CREATE_RESPONSE_LIMIT).unwrap_or_else(|| classify_survey_entry_create_error(response.status))); }
+    if response.body.len() > SURVEY_ENTRY_CREATE_RESPONSE_LIMIT { return Err(ClientError::new(ErrorKind::UnreadableResponse,"Survey create response exceeds its bound")); }
+    let value:serde_json::Value=serde_json::from_slice(&response.body).map_err(|_| ClientError::new(ErrorKind::UnreadableResponse,"Survey create commit receipt is unreadable"))?;
+    ds_command_kernel::survey_entry_create::direct::receipt(&direct,response.status,&value)
+        .map_err(|_| ClientError::new(ErrorKind::UnreadableResponse,"Survey create commit receipt is unreadable"))
 }
 
 pub(crate) fn tile_status<T: AuthorizedTransport>(

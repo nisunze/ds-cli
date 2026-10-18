@@ -155,3 +155,70 @@ mod tests {
         assert_eq!(heads.len(), 2);
     }
 }
+
+/// The same reduced planning facts for native and browser. Full declarations
+/// remain in report_head_observations and are never reconstructed from this row.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RemoteRow {
+    pub identity: super::Identity,
+    pub revision: String,
+    pub head_revision: i64,
+    pub input_base_fingerprint: Option<String>,
+    pub sha256: String,
+    pub published_at_ms: u64,
+    pub outputs: Vec<RemoteOutput>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RemoteOutput {
+    pub output_id: String,
+    pub sha256: String,
+    pub size_bytes: u64,
+}
+pub fn remote_row(head: &Value) -> RemoteRow {
+    let text = |value: &Value, key: &str| {
+        value
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let mut outputs: Vec<_> = head["outputs"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .map(|o| RemoteOutput {
+                    output_id: text(o, "output_id"),
+                    sha256: text(o, "sha256"),
+                    size_bytes: o["size_bytes"].as_u64().unwrap_or_default(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    outputs.sort_by(|a, b| a.output_id.cmp(&b.output_id));
+    let pairs: Vec<_> = outputs
+        .iter()
+        .map(|o| (o.output_id.clone(), o.sha256.clone()))
+        .collect();
+    let revision = head["head_revision"].as_i64().unwrap_or_default();
+    let at = time::OffsetDateTime::parse(
+        &text(head, "updated_at"),
+        &time::format_description::well_known::Rfc3339,
+    )
+    .ok()
+    .map(|v| (v.unix_timestamp_nanos() / 1_000_000).max(0) as u64)
+    .unwrap_or_default();
+    RemoteRow {
+        identity: super::Identity {
+            engine: text(head, "engine"),
+            operation: text(head, "operation"),
+            variant: text(head, "variant"),
+        },
+        revision: format!("head-{revision}"),
+        head_revision: revision,
+        input_base_fingerprint: Some(text(head, "input_base_fingerprint"))
+            .filter(|s| !s.is_empty()),
+        sha256: crate::sync_store::inventory_digest(&pairs),
+        published_at_ms: at,
+        outputs,
+    }
+}

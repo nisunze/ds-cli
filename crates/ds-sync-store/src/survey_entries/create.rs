@@ -8,6 +8,8 @@ use ds_command_kernel::survey_entry_create::{evaluate, SURVEY_ENTRY_CREATE_SCHEM
 pub struct Expected {
     pub fence: Fence,
     pub row_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_sha256: Option<String>,
 }
 
 fn retained(
@@ -50,7 +52,7 @@ fn normalize(row: &Value, header: &Header) -> Result<Value> {
 
 /// The full-row digest and lifecycle fence bind later receipt validation.
 /// A failed row can be inspected without retry, queue writes, or transport.
-pub fn prepare(
+fn prepare(
     store: Option<&Store>,
     scope: &SurveyEntryScope,
     project: &str,
@@ -62,36 +64,33 @@ pub fn prepare(
         let expected = Expected {
             fence: Fence::from(&header),
             row_sha256: sha256_hex(&serde_json::to_vec(&row)?),
+            direct_sha256: None,
         };
         Ok(json!({"expected":expected,"plan":normalize(&row, &header)?}))
     })?
 }
 
-/// Verification is also read-only. Only the existing result transition can
-/// settle a queue row, after the exact service receipt has been admitted.
-pub fn verify_receipt(
-    store: Option<&Store>,
-    scope: &SurveyEntryScope,
-    project: &str,
-    expected: &Expected,
-    status: u16,
-    response: &Value,
-) -> Result<Value> {
-    let store = store.ok_or_else(|| refused("create receipt row is not retained"))?;
-    store.with_read_snapshot(|store| {
-        let (row, header) = retained(store, scope, project, &expected.fence)?;
-        if expected.row_sha256 != sha256_hex(&serde_json::to_vec(&row)?) {
-            return Err(refused(
-                "create receipt row differs from its prepared digest",
-            ));
-        }
-        let mut request = normalize(&row, &header)?["payload"].clone();
-        request["schema"] = json!(SURVEY_ENTRY_CREATE_SCHEMA);
-        request["operation"] = json!("receipt");
-        request["status"] = json!(status);
-        request["response"] = response.clone();
-        let raw = evaluate(&serde_json::to_vec(&request)?).map_err(Error::Kernel)?;
-        let result: Value = serde_json::from_str(&raw)?;
-        Ok(json!({"expected":expected,"receipt":result["receipt"]}))
-    })?
+/// Same retained-row fence, with a fixed direct plan bound to the native Firebase principal.
+pub fn prepare_direct(store: Option<&Store>, scope: &SurveyEntryScope, project: &str, fence: &Fence,
+    authority: &ds_command_kernel::survey_entry_create::direct::Authority) -> Result<Value> {
+    if authority.uid != scope.account { return Err(refused("direct create account differs from retained owner")); }
+    let mut prepared = prepare(store, scope, project, fence)?;
+    let mut request = prepared["plan"]["payload"].clone();
+    request["schema"] = json!(SURVEY_ENTRY_CREATE_SCHEMA);
+    request["operation"] = json!("direct_plan");
+    request["authority"] = serde_json::to_value(authority)?;
+    let direct:Value = serde_json::from_str(&evaluate(&serde_json::to_vec(&request)?).map_err(Error::Kernel)?)?;
+    prepared["expected"]["direct_sha256"] = json!(sha256_hex(&serde_json::to_vec(&direct["direct"])?));
+    prepared["plan"] = direct;
+    Ok(prepared)
+}
+pub fn verify_direct(store: Option<&Store>, scope: &SurveyEntryScope, project: &str, expected: &Expected,
+    authority: &ds_command_kernel::survey_entry_create::direct::Authority, status:u16, response:&Value) -> Result<Value> {
+    let prepared = prepare_direct(store, scope, project, &expected.fence, authority)?;
+    if prepared["expected"] != serde_json::to_value(expected)? { return Err(refused("direct create retained row or authority changed")); }
+    let mut request=prepared["plan"]["payload"].clone();
+    request["schema"]=json!(SURVEY_ENTRY_CREATE_SCHEMA);request["operation"]=json!("direct_receipt");
+    request["authority"]=serde_json::to_value(authority)?;request["status"]=json!(status);request["response"]=response.clone();
+    let result:Value=serde_json::from_str(&evaluate(&serde_json::to_vec(&request)?).map_err(Error::Kernel)?)?;
+    Ok(json!({"expected":expected,"receipt":result["receipt"]}))
 }

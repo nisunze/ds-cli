@@ -206,7 +206,11 @@ fn sha(s: &str) -> bool {
             .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
 }
 fn require(valid: bool, why: &str) -> Result<(), String> {
-    if valid { Ok(()) } else { Err(why.into()) }
+    if valid {
+        Ok(())
+    } else {
+        Err(why.into())
+    }
 }
 fn ids(items: &[String], max: usize) -> bool {
     items.len() <= max
@@ -770,7 +774,7 @@ impl Command {
                         && v["replayed"].is_boolean()
                         && v["note"]["version"].as_u64()
                             == Some(w.expected_version.map_or(1, |n| n + 1))
-                        && v["context_revision"].as_str().is_some_and(sha),
+                        && v["context_revision"].as_i64().is_some_and(|revision| revision >= 0),
                     "Write lacks its exact durable operation receipt",
                 )?;
             }
@@ -971,7 +975,7 @@ fn verify_page(project: &str, v: &serde_json::Value, limit: u32) -> Result<(), S
             && v["complete"].is_boolean()
             && v["truncated"].is_boolean()
             && !(v["complete"] == true && v["truncated"] == true)
-            && v["context_revision"].as_str().is_some_and(sha),
+            && v["context_revision"].as_i64().is_some_and(|revision| revision >= 0),
         "Note page completeness is invalid; an incomplete page is not no context",
     )?;
     if !v["migration_required"].is_null() {
@@ -1003,7 +1007,7 @@ fn verify_lifecycle(
             && v["backup_id"] == backup
             && v["backup_sha256"] == digest
             && v["replayed"].is_boolean()
-            && v["context_revision"].as_str().is_some_and(sha),
+            && v["context_revision"].as_i64().is_some_and(|revision| revision >= 0),
         "Lifecycle receipt differs from its verified backup/operation",
     )?;
     let rows = v["notes"]
@@ -1038,31 +1042,27 @@ mod tests {
 
     #[test]
     fn plain_history_is_literal_only_for_exact_version_without_claim() {
-        let literal = json!({"project_id":"p","context_revision":"a".repeat(64),"note":{"project_id":"p","id":"n","version":7,"document":{"body":"unaltered"},"memory":null,"semantic_status":"unrecorded"}});
+        let literal = json!({"project_id":"p","context_revision":0,"note":{"project_id":"p","id":"n","version":7,"document":{"body":"unaltered"},"memory":null,"semantic_status":"unrecorded"}});
         let c = Command::Read(Read {
             id: "n".into(),
             version: Some(7),
             claim_id: None,
         });
         c.verify_response("p", &literal).unwrap();
-        assert!(
-            Command::Read(Read {
-                id: "n".into(),
-                version: None,
-                claim_id: None
-            })
-            .verify_response("p", &literal)
-            .is_err()
-        );
-        assert!(
-            Command::Read(Read {
-                id: "n".into(),
-                version: Some(7),
-                claim_id: Some("claim".into())
-            })
-            .verify_response("p", &literal)
-            .is_err()
-        );
+        assert!(Command::Read(Read {
+            id: "n".into(),
+            version: None,
+            claim_id: None
+        })
+        .verify_response("p", &literal)
+        .is_err());
+        assert!(Command::Read(Read {
+            id: "n".into(),
+            version: Some(7),
+            claim_id: Some("claim".into())
+        })
+        .verify_response("p", &literal)
+        .is_err());
     }
     fn scope() -> Scope {
         Scope {
@@ -1133,7 +1133,7 @@ mod tests {
             reason: "Record subnote".into(),
             draft: d.clone(),
         });
-        let mut good = json!({"project_id":"p","note":view("child",1),"operation_id":"create-child","replayed":false,"context_revision":"a".repeat(64)});
+        let mut good = json!({"project_id":"p","note":view("child",1),"operation_id":"create-child","replayed":false,"context_revision":0});
         good["note"]["memory"] = serde_json::to_value(&d.memory).unwrap();
         command.verify_response("p", &good).unwrap();
         let mut dropped = good.clone();
@@ -1145,23 +1145,21 @@ mod tests {
         let mut q = query();
         q.parent_id = Some("parent".into());
         let c = Command::Query(q);
-        let mut page = json!({"project_id":"p","items":[good["note"]],"scanned":1,"complete":true,"truncated":false,"context_revision":"a".repeat(64)});
+        let mut page = json!({"project_id":"p","items":[good["note"]],"scanned":1,"complete":true,"truncated":false,"context_revision":0});
         c.verify_response("p", &page).unwrap();
         page["items"][0]["memory"]["parent"]["id"] = json!("different-parent");
         assert!(c.verify_response("p", &page).is_err());
         let mut self_parent = d;
         self_parent.memory.parent.as_mut().unwrap().id = "child".into();
-        assert!(
-            Write {
-                operation_id: "create-child".into(),
-                id: "child".into(),
-                expected_version: None,
-                reason: "Record subnote".into(),
-                draft: self_parent
-            }
-            .validate()
-            .is_err()
-        );
+        assert!(Write {
+            operation_id: "create-child".into(),
+            id: "child".into(),
+            expected_version: None,
+            reason: "Record subnote".into(),
+            draft: self_parent
+        }
+        .validate()
+        .is_err());
     }
     #[test]
     fn consolidation_receipt_requires_exact_validated_sources() {
@@ -1244,12 +1242,36 @@ mod tests {
         assert!(retired.validate().is_err());
     }
     #[test]
+    fn note_epoch_is_a_nonnegative_signed_integer_for_pages_and_receipts() {
+        let query = Command::Query(query());
+        let write = Command::Write(Write {
+            operation_id: "op1".into(), id: "n1".into(), expected_version: Some(2),
+            reason: "Record ruling".into(), draft: draft(),
+        });
+        let refs = vec![VersionRef { id: "n1".into(), version: 2 }];
+        let cases = [json!(0), json!(1), json!(i64::MAX), json!(-1), json!(1.0),
+            json!(1.5), json!("0"), json!("a".repeat(64)), json!(null),
+            json!(true), json!(9_223_372_036_854_775_808u64)];
+        for (index, revision) in cases.into_iter().enumerate() {
+            let accepted = index < 3;
+            let page = json!({"project_id":"p","items":[],"scanned":0,"truncated":false,"complete":true,"migration_required":[],"context_revision":revision});
+            assert_eq!(query.verify_response("p", &page).is_ok(), accepted, "page {revision}");
+            let receipt = json!({"project_id":"p","note":view("n1",3),"operation_id":"op1","replayed":false,"context_revision":revision});
+            assert_eq!(write.verify_response("p", &receipt).is_ok(), accepted, "write {revision}");
+            let lifecycle = json!({"project_id":"p","notes":[view("n1",3)],"operation_id":"op1","replayed":false,"backup_id":"backup1","backup_sha256":"b".repeat(64),"context_revision":revision});
+            assert_eq!(verify_lifecycle("p", &lifecycle, &refs, "op1", "backup1", &"b".repeat(64)).is_ok(), accepted, "lifecycle {revision}");
+        }
+        let missing = json!({"project_id":"p","items":[],"scanned":0,"truncated":false,"complete":true});
+        assert!(query.verify_response("p", &missing).is_err());
+    }
+
+    #[test]
     fn no_match_is_distinct_from_incomplete_or_cross_project_context() {
         let c = Command::Context(Context {
             query: query(),
             scope: Some(scope()),
         });
-        let good = json!({"project_id":"p","items":[],"claims":[],"conflicts":[],"scanned":0,"truncated":false,"complete":true,"context_revision":"a".repeat(64)});
+        let good = json!({"project_id":"p","items":[],"claims":[],"conflicts":[],"scanned":0,"truncated":false,"complete":true,"context_revision":0});
         c.verify_response("p", &good).unwrap();
         let mut incomplete = good.clone();
         incomplete["complete"] = json!(false);
@@ -1274,7 +1296,7 @@ mod tests {
         };
         let c = Command::Write(w);
         c.validate().unwrap();
-        let good = json!({"project_id":"p","note":view("n1",3),"operation_id":"op1","replayed":false,"context_revision":"a".repeat(64)});
+        let good = json!({"project_id":"p","note":view("n1",3),"operation_id":"op1","replayed":false,"context_revision":0});
         c.verify_response("p", &good).unwrap();
         let mut replay = good.clone();
         replay["replayed"] = json!(true);
@@ -1386,12 +1408,10 @@ mod declaration_tests {
         assert_eq!(d.authoring_model.unwrap().model.as_deref(), Some("GPT-6"));
         let mut human = raw.clone();
         human.as_object_mut().unwrap().remove("authoring_model");
-        assert!(
-            serde_json::from_value::<Draft>(human)
-                .unwrap()
-                .authoring_model
-                .is_none()
-        );
+        assert!(serde_json::from_value::<Draft>(human)
+            .unwrap()
+            .authoring_model
+            .is_none());
         let mut spoof = raw;
         spoof["authoring_model"]["source"] = json!("verified");
         assert!(serde_json::from_value::<Draft>(spoof).is_err());

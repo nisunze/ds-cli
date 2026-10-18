@@ -96,6 +96,8 @@ pub enum SurveyEntriesChangesServiceCode {
 /// Closed backend refusal code for one governed Survey entry create.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurveyEntryCreateServiceCode {
+    /// Local provider refusal before IO: DS device JWTs cannot authorize Firestore.
+    FirebaseSessionRequired,
     Invalid,
     Unauthorized,
     PermissionDenied,

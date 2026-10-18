@@ -32,7 +32,12 @@ thin typed bindings. It does not keep a transport engine.
 | TypeScript chunk/retry/probe engine (`src/lib/api/resumableUpload.ts`) | ds-web | Deleted. Its behaviour is replaced by §4. |
 
 This decision does **not** authorize moving rendering, engineering, project
-policy, Firestore encoding, or lifecycle authority into Rust or into the shell.
+policy or lifecycle authority into Rust or into the shell. The owner-approved
+2026-10-18 Survey create repair is the bounded exception for shared Rust
+Firestore request encoding and commit-receipt interpretation; see
+[survey-entry-create](survey-entry-create.md). Hosts still execute the fixed
+effect with the existing Firebase user credential, and Firestore rules remain
+the direct-write authority.
 ds-brain remains the server-side authorization, lifecycle, publication and
 data-authority owner. The Tauri shell remains an IO host.
 

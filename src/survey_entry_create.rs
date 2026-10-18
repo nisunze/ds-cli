@@ -3,6 +3,8 @@
 //! Hosts provide selected-project identity and perform IO.  This module owns
 //! the create grammar, canonical body and the successful service receipt.
 
+pub mod direct;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use time::format_description::well_known::Rfc3339;
@@ -15,7 +17,6 @@ pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 512;
 pub const MAX_PAYLOAD_BYTES: usize = 900 * 1024;
 const MAX_PROJECT_CHARS: usize = 200;
 const MAX_CONTEXT_SEGMENTS: usize = 32;
-const MAX_REQUEST_ID_BYTES: usize = 128;
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -323,61 +324,6 @@ impl Receipt {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Envelope {
-    success: bool,
-    message: String,
-    data: ReceiptWire,
-    timestamp: String,
-    service: String,
-    version: String,
-    #[serde(default)]
-    request_id: String,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ReceiptWire {
-    project_id: String,
-    form_id: String,
-    doc_id: String,
-    operation: String,
-    client_version: i64,
-    replication_clock: String,
-    replication_authority: String,
-}
-pub fn validate_receipt(plan: &Plan, status: u16, response: &Value) -> Result<Receipt, Refusal> {
-    if status != 201 {
-        return Err(Refusal::UnreadableResponse);
-    }
-    let envelope: Envelope =
-        serde_json::from_value(response.clone()).map_err(|_| Refusal::UnreadableResponse)?;
-    if !envelope.success
-        || envelope.message != "Entry created successfully"
-        || envelope.service != "data-solutions-backend"
-        || envelope.version != "1.0.0"
-        || !canonical_utc_rfc3339(&envelope.timestamp)
-        || !bounded_request_id(&envelope.request_id)
-        || envelope.data.project_id != plan.identity.project_id
-        || envelope.data.form_id != plan.identity.form_id
-        || envelope.data.doc_id != plan.identity.doc_id
-        || envelope.data.operation != "create"
-        || envelope.data.client_version != 0
-        || envelope.data.replication_clock != "metadata.firestore_updated_at"
-        || envelope.data.replication_authority != "firestore_server_timestamp"
-    {
-        return Err(Refusal::UnreadableResponse);
-    }
-    Ok(Receipt {
-        project_id: envelope.data.project_id,
-        form_id: envelope.data.form_id,
-        doc_id: envelope.data.doc_id,
-        client_version: 0,
-        replication_clock: envelope.data.replication_clock,
-        replication_authority: envelope.data.replication_authority,
-    })
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct Evaluate {
     schema: String,
     operation: String,
@@ -389,6 +335,8 @@ struct Evaluate {
     status: Option<u16>,
     #[serde(default)]
     response: Option<Value>,
+    #[serde(default)]
+    authority: Option<direct::Authority>,
 }
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -542,22 +490,19 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         canonical_wire_request(wire.request, wire.row).map_err(|e| e.message().to_owned())?;
     let plan = plan(&request, &project).map_err(|e| e.message().to_owned())?;
     let output = match wire.operation.as_str() {
+        "direct_plan" | "direct_receipt" => {
+            let authority = wire.authority.ok_or_else(|| Refusal::InvalidInput.message().to_owned())?;
+            let direct = direct::plan(&request, &project, &authority).map_err(|e| e.message().to_owned())?;
+            if wire.operation == "direct_plan" {
+                json!({"schema":SURVEY_ENTRY_CREATE_SCHEMA,"operation":"plan","identity":plan.identity,"payload":plan.body,"direct":direct})
+            } else {
+                let receipt = direct::receipt(&direct, wire.status.ok_or_else(|| Refusal::UnreadableResponse.message().to_owned())?,
+                    &wire.response.ok_or_else(|| Refusal::UnreadableResponse.message().to_owned())?).map_err(|e| e.message().to_owned())?;
+                json!({"schema":SURVEY_ENTRY_CREATE_SCHEMA,"operation":"receipt","receipt":receipt})
+            }
+        }
         "plan" | "normalize" => {
             json!({"schema":SURVEY_ENTRY_CREATE_SCHEMA,"operation":"plan","identity":plan.identity,"payload":plan.body})
-        }
-        "receipt" => {
-            let receipt = validate_receipt(
-                &plan,
-                wire.status
-                    .ok_or(Refusal::UnreadableResponse)
-                    .map_err(|e| e.message().to_owned())?,
-                &wire
-                    .response
-                    .ok_or(Refusal::UnreadableResponse)
-                    .map_err(|e| e.message().to_owned())?,
-            )
-            .map_err(|e| e.message().to_owned())?;
-            json!({"schema":SURVEY_ENTRY_CREATE_SCHEMA,"operation":"receipt","receipt":receipt})
         }
         _ => return Err(Refusal::InvalidInput.message().into()),
     };
@@ -719,9 +664,6 @@ fn canonicalize_rfc3339(v: &str) -> Option<String> {
 fn canonical_utc_rfc3339(v: &str) -> bool {
     canonicalize_rfc3339(v).as_deref() == Some(v)
 }
-fn bounded_request_id(v: &str) -> bool {
-    v.len() <= MAX_REQUEST_ID_BYTES && v.trim() == v && !v.chars().any(char::is_control)
-}
 
 #[cfg(test)]
 mod tests {
@@ -740,9 +682,6 @@ mod tests {
         .unwrap()
         .with_geometry(json!({"type":"Point","coordinates":[30.0,-1.0]}))
         .unwrap()
-    }
-    fn receipt() -> Value {
-        json!({"success":true,"message":"Entry created successfully","data":{"project_id":"project_a","form_id":"survey_points","doc_id":"entry_1","operation":"create","client_version":0,"replication_clock":"metadata.firestore_updated_at","replication_authority":"firestore_server_timestamp"},"timestamp":"2026-08-30T00:00:00Z","service":"data-solutions-backend","version":"1.0.0","request_id":"request-1"})
     }
     #[test]
     fn preserves_native_request_grammar_and_canonical_body() {
@@ -770,25 +709,11 @@ mod tests {
         }
     }
     #[test]
-    fn receipt_is_strict_201_and_identity_fenced() {
-        let p = plan(&request(), "project_a").unwrap();
-        assert_eq!(
-            validate_receipt(&p, 201, &receipt()).unwrap().doc_id(),
-            "entry_1"
-        );
-        for (status, patch) in [(200, json!(null)), (201, json!("other"))] {
-            let mut body = receipt();
-            if patch != Value::Null {
-                body["data"]["doc_id"] = patch;
-            }
-            assert_eq!(
-                validate_receipt(&p, status, &body).unwrap_err(),
-                Refusal::UnreadableResponse
-            );
-        }
-        let mut unknown = receipt();
-        unknown["data"]["unexpected"] = json!(true);
-        assert!(validate_receipt(&p, 201, &unknown).is_err());
+    fn retired_gateway_receipt_operation_refuses() {
+        let mut input=plan(&request(),"project_a").unwrap().body().clone();
+        input["schema"]=json!(SURVEY_ENTRY_CREATE_SCHEMA);input["operation"]=json!("receipt");
+        input["status"]=json!(201);input["response"]=json!({"success":true});
+        assert!(evaluate(&serde_json::to_vec(&input).unwrap()).is_err());
     }
     #[test]
     fn wasm_surface_normalizes_durable_aliases_without_changing_identity() {

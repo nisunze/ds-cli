@@ -5,6 +5,8 @@ use std::collections::BTreeSet;
 pub mod activity;
 pub mod archive_groups;
 pub mod artifacts;
+pub mod browser;
+pub mod browser_store;
 pub mod inventory;
 pub mod transformers;
 

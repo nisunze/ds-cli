@@ -1,29 +1,48 @@
-# Survey entry create kernel
+# Survey entry creation
 
-`survey_entry_create` is the transport-free authority for one create-only
-Survey mutation. Hosts provide a selected project and perform the request;
-the kernel constructs the canonical JSON body and validates a successful
-receipt. It has no URL, session, service-error classification, retry, or
-Firestore dependency.
+`survey_entry_create` owns the closed Survey create grammar, legacy-row identity
+normalization, geometry validation and canonical admitted payload. Its `direct`
+module constructs the fixed Firestore `documents:commit` request and interprets
+the commit receipt for both native and browser consumers. No Brain create endpoint
+exists; update/delete/restore continue through Brain.
 
-The typed API is `Request`, `Origin`, `plan(&Request, project_id)`, and
-`validate_receipt(&Plan, status, response)`. `Refusal::InvalidInput` means
-the closed request grammar was refused. `Refusal::UnreadableResponse` means a
-purported successful response was not an exact create receipt. Hosts retain
-their public error types and map those two categories.
+The direct authority consists of the verified Firebase project, UID, canonical
+email and deployment lane. Native preparation derives it from the protected principal and packaged public
+Firebase project; it needs no transport credential. Desktop IO uses the published
+same-owner Firebase session after UID/lane/audience checks. Browser preparation
+uses that current verified Firebase session. A DS trusted-device access token is
+not a Firebase credential: standalone native create refuses it before IO.
+The host cannot select another origin, database, URL, method or credential kind.
+Existing Firestore rules remain the authority for direct writes; this protocol
+does not claim Brain-equivalent membership or project lifecycle enforcement.
 
-The `surveyEntryCreate` WASM entry point accepts JSON with schema
-`ds.survey-entry-create/v1`. Operation `plan` returns
-`{ identity, payload }`; operation `receipt` additionally accepts `status`
-and the full response JSON and returns the verified receipt. Operation
-`normalize` has the same output as `plan` and accepts durable aliases
-`eds_project_id`, `form_slug`, and `entry_id`. A supplied `row` can provide
-the stable identity, idempotency key, and a millisecond `created_at` fallback;
-every duplicate identity or idempotency value must agree. It never generates
-an identity or replay key. Empty legacy `context_key` becomes absent.
+The one write addresses the admitted project, optional context ancestry, form
+and document ID. It uses `currentDocument.exists:false`; it never overwrites an
+existing document. The original idempotency key is retained in metadata. The
+shared encoder writes the dedicated `metadata.firestore_updated_at` server
+transform and preserves the device `created_at` timestamp. Untouched creates do
+not receive `metadata.updated_at`. Geometry remains admitted GeoJSON and is
+serialized only at the Firestore storage boundary.
 
-`evaluate_geometry` accepts
-`{ "schema": "ds.survey-entry-geometry/v1", "geometry": ... }` and returns
-the accepted GeoJSON object. It shares the exact strict GeoJSON grammar used
-by create; the survey mutation `normalize` applies it to every retained
-update row, so no host validates geometry on its own.
+Only HTTP 200 with exactly one bounded write result and one valid server
+timestamp transform is a commit acknowledgement. Conflict, malformed response,
+transport ambiguity and missing transform do not settle the row. An existing
+document is never treated as a successful replay merely because its ID matches;
+this slice implements no authoritative replay lookup. The durable identity and
+key remain available for later resolution. Commit does not establish mirror
+convergence; that still requires the existing BigQuery-backed read.
+
+The `surveyEntryCreate` WASM JSON entry point retains schema
+`ds.survey-entry-create/v1`. `plan` and `normalize` admit opaque capture bytes;
+`direct_plan` additionally requires `authority` and returns the fixed `direct`
+effect under `ds.survey-direct-create/v1`. `direct_receipt` consumes the same
+admitted request and authority plus status/response. Native APIs call the same
+functions. The old gateway receipt grammar is not a transport contract.
+
+Core queue preparation reads exact retained SQLite bytes, binding account,
+project, full lifecycle fence, full-row SHA256 and direct-plan SHA256. Receipt
+verification reconstructs the direct plan from the same retained row and current
+protected identity; every fence and digest must agree. Hosts do not replace the
+retained payload. Only the existing fenced result transition changes queue state.
+No additional retry loop, Firestore listing, rendering fallback or implicit save
+is introduced.
