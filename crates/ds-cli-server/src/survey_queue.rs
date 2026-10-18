@@ -43,12 +43,12 @@ const CHANGED: Refusal = Refusal {
 };
 
 pub static COMMAND: Command = Command {
-    id: "core.survey.queue", path: &["core", "survey", "queue"], contract: 1,
+    id: "core.survey.queue", path: &["core", "survey", "queue"], contract: 2,
     summary: "Read, admit or transition the retained native Survey entry queue offline.",
-    purpose: "Use the installed Core SQLite owner under the existing lane's protected account, deployment and installation and one exact project. Closed request actions are headers, row, admit, transition, prepare_create, verify_create_receipt, prepare_discard and commit_discard. Create preparation and receipt verification read the exact retained row through the shared Rust create contract, fenced by account, project, lifecycle and full-row digest; they never mutate or dispatch. Prepare is read-only; callers audit its exact rows before commit, which atomically rechecks every row digest, lifecycle fence and Kernel discard decision. Generic discard transitions refuse. The Kernel decides replay; persist/remove actions commit atomically before transport effects are returned. This command runs no transport, Core daemon, network, credential refresh, project selection or store repair. Reads never create a missing store or table. Admissions refuse foreign or ownerless rows. Output is preadmitted before mutations, bounded to 64 MiB and acknowledged only after a protected identity recheck.",
+    purpose: "Use the installed Core SQLite owner under the existing lane's protected account, deployment and installation and one exact project. Closed request actions are headers, row, admit, transition, prepare_create, verify_create_receipt, prepare_discard and commit_discard. Create preparation returns the shared Rust direct Firestore commit effect from the exact retained row and protected principal/public Firebase profile. Verification reconstructs that effect and checks the actual commit receipt, fenced by account, project, lifecycle, full-row and direct-plan digests; neither action mutates or dispatches. Prepare is read-only; callers audit its exact rows before commit, which atomically rechecks every row digest, lifecycle fence and Kernel discard decision. Generic discard transitions refuse. The Kernel decides replay; persist/remove actions commit atomically before transport effects are returned. This command runs no transport, Core daemon, network, credential refresh, project selection or store repair. Reads never create a missing store or table. Admissions refuse foreign or ownerless rows. Output is preadmitted before mutations, bounded to 64 MiB and acknowledged only after a protected identity recheck.",
     chapter: Chapter::Survey, effect: Effect::LocalAuthState, authority: Authority::HeadlessUser, execution: Execution::Sync,
     args: &[Arg::value("lane", "<stable|canary>", "Existing protected native identity lane.").choices(&["stable", "canary"]).required(), super::PROJECT.required(),
-        Arg::value("request", "<absolute-existing-json-file>", "Owner-only ordinary single-link file, at most 64 MiB. Closed JSON discriminator action: headers; row with id; admit with rows and now; transition with event and now; prepare_create with fence; verify_create_receipt with expected {fence,row_sha256}, status and response; prepare_discard with ids and now; commit_discard with expected [{fence,row_sha256}] and now. Discard batches contain at most 500 unique IDs. No extra request fields.").required(),
+        Arg::value("request", "<absolute-existing-json-file>", "Owner-only ordinary single-link file, at most 64 MiB. Closed JSON discriminator action: headers; row with id; admit with rows and now; transition with event and now; prepare_create with fence; verify_create_receipt with expected {fence,row_sha256,direct_sha256}, status and response; prepare_discard with ids and now; commit_discard with expected [{fence,row_sha256}] and now. Discard batches contain at most 500 unique IDs. No extra request fields.").required(),
         Arg::value("out", "<absolute-new-json-file>", "New owner-only result file in an existing protected directory; never replaced, at most 64 MiB.").required()],
     output: "Bounded ds.survey-queue-file/v1 receipt with path, sha256, size_bytes, action, project, lane and safe owner context (account, deployment_sha256, install_id). The bound file is ds.survey-queue/v1 with the same context and result. Transition results retain Kernel effects after atomic persistence. Create preparation returns {expected:{fence,row_sha256},plan}; receipt verification returns {expected,receipt}. Discard prepare returns {rows:[{fence,row_sha256,row}]}; commit returns {removed:[id]}.",
     examples: &[], refusals: &[super::PLATFORM, INVALID, DISCARD, STORE, OUTPUT, CHANGED, super::CONTEXT_CORRUPT, super::PROJECT_REQUIRED],
@@ -257,16 +257,17 @@ fn read(
     scope: &SurveyEntryScope,
     project: &str,
     request: &Request,
+    direct: Option<&ds_command_kernel::survey_entry_create::direct::Authority>,
 ) -> Result<Value, Failure> {
     match request {
         Request::PrepareCreate { fence } => {
-            create::prepare(store, scope, project, fence).map_err(|e| failure(STORE, e))
+            create::prepare_direct(store, scope, project, fence, direct.ok_or_else(|| failure(STORE, "Firebase create authority unavailable"))?).map_err(|e| failure(STORE, e))
         }
         Request::VerifyCreateReceipt {
             expected,
             status,
             response,
-        } => create::verify_receipt(store, scope, project, expected, *status, response)
+        } => create::verify_direct(store, scope, project, expected, direct.ok_or_else(|| failure(STORE, "Firebase create authority unavailable"))?, *status, response)
             .map_err(|e| failure(STORE, e)),
         Request::Headers {} => match store {
             Some(s) => s
@@ -300,6 +301,7 @@ fn read(
 }
 fn perform(
     database: &Path,
+    direct: Option<&ds_command_kernel::survey_entry_create::direct::Authority>,
     scope: &SurveyEntryScope,
     project: &str,
     request: Request,
@@ -314,13 +316,13 @@ fn perform(
                 | Request::VerifyCreateReceipt { .. }
         ) {
             // The owning preparation API holds its one read snapshot itself.
-            return read(store.as_ref(), scope, project, &request);
+            return read(store.as_ref(), scope, project, &request, direct);
         }
         return match store.as_ref() {
             Some(store) => store
-                .with_read_snapshot(|s| read(Some(s), scope, project, &request))
+                .with_read_snapshot(|s| read(Some(s), scope, project, &request, direct))
                 .map_err(|e| failure(STORE, e))?,
-            None => read(None, scope, project, &request),
+            None => read(None, scope, project, &request, direct),
         };
     }
     if let Request::CommitDiscard { expected, now } = &request {
@@ -368,6 +370,7 @@ impl Write for BoundedBytes {
 fn capture(
     database: &Path,
     lane: &str,
+    direct: Option<&ds_command_kernel::survey_entry_create::direct::Authority>,
     project: &str,
     request: Request,
     out: &Path,
@@ -389,7 +392,7 @@ fn capture(
                 "protected identity changed before queue effect",
             ));
         }
-        let result = perform(database, &scope, &project, request)?;
+        let result = perform(database, direct, &scope, &project, request)?;
         completed = mutates;
         let payload = json!({"schema":"ds.survey-queue/v1","action":action,"project":project,"lane":lane,"owner":owner(&scope),"result":result});
         let mut bytes = BoundedBytes(Vec::new());
@@ -428,9 +431,13 @@ pub fn command(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let database = ds_compute_runtime::server_state_directory(lane, None)
         .map_err(|e| failure(INVALID, e))?
         .join("store.sqlite");
+    let direct = if matches!(&request, Request::PrepareCreate { .. } | Request::VerifyCreateReceipt { .. }) {
+        Some(ds_cli_auth::survey_direct_authority_read_only(lane)?)
+    } else { None };
     capture(
         &database,
         lane,
+        direct.as_ref(),
         project,
         request,
         &PathBuf::from(inputs.require("out")?),
@@ -481,6 +488,9 @@ mod tests {
         super::super::host::prepare_directory(dir.path()).unwrap();
         dir
     }
+    fn direct_authority() -> ds_command_kernel::survey_entry_create::direct::Authority {
+        ds_command_kernel::survey_entry_create::direct::Authority { firebase_project:"test-project".into(), uid:"owner-a".into(), email:"test@example.invalid".into(), lane:"stable".into() }
+    }
     fn scope() -> SurveyEntryScope {
         SurveyEntryScope {
             account: "owner-a".into(),
@@ -492,7 +502,7 @@ mod tests {
         json!({"kind":"survey","id":id,"owner_uid":"owner-a","generation":"11111111-2222-3333-4444-555555555555","project_id":project,"form_id":"form-a","doc_id":format!("doc-{id}"),"operation":"create","payload":{"answers":{"opaque":[1,2,3]},"expected_version":3},"overlay":{"type":"Feature","properties":{"label":"offline"}},"status":"pending","attempts":0,"created_at":17,"synced_at":null,"error":null,"idempotency_key":format!("key-{id}")})
     }
     fn run(db: &Path, out: &Path, project: &str, request: Request) -> Result<Value, Failure> {
-        capture(db, "stable", project, request, out, || Ok(scope()))
+        capture(db, "stable", Some(&direct_authority()), project, request, out, || Ok(scope()))
     }
     fn payload(path: &Path) -> Value {
         serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
@@ -582,10 +592,7 @@ mod tests {
         assert_eq!(prepared["plan"]["identity"]["doc_id"], "doc-one");
         let expected: create::Expected =
             serde_json::from_value(prepared["expected"].clone()).unwrap();
-        let response = json!({"success":true,"message":"Entry created successfully",
-            "data":{"project_id":"project-a","form_id":"field_notes","doc_id":"doc-one","operation":"create",
-            "client_version":0,"replication_clock":"metadata.firestore_updated_at","replication_authority":"firestore_server_timestamp"},
-            "timestamp":"2026-10-18T09:02:47Z","service":"data-solutions-backend","version":"1.0.0","request_id":"request-1"});
+        let response = json!({"commitTime":"2026-10-18T09:02:47Z","writeResults":[{"updateTime":"2026-10-18T09:02:47Z","transformResults":[{"timestampValue":"2026-10-18T09:02:47Z"}]}]});
         let verified = dir.path().join("verified.json");
         run(
             &db,
@@ -593,7 +600,7 @@ mod tests {
             "project-a",
             Request::VerifyCreateReceipt {
                 expected,
-                status: 201,
+                status: 200,
                 response,
             },
         )
@@ -794,7 +801,7 @@ mod tests {
         let out = dir.path().join("foreign-read.json");
         let mut foreign = scope();
         foreign.account = "other".into();
-        capture(&db, "stable", "p", Request::Headers {}, &out, || {
+        capture(&db, "stable", None, "p", Request::Headers {}, &out, || {
             Ok(foreign.clone())
         })
         .unwrap();
@@ -833,6 +840,7 @@ mod tests {
                 let error = capture(
                     &db,
                     "stable",
+                    None,
                     "p",
                     Request::Admit {
                         rows: vec![row("one", "p")],
@@ -1068,6 +1076,7 @@ mod tests {
             let error = capture(
                 &db,
                 "stable",
+                None,
                 "p",
                 Request::CommitDiscard { expected, now: 101 },
                 &dir.path().join("committed.json"),

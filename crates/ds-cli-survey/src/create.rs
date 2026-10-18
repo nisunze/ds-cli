@@ -48,6 +48,7 @@ const LANE: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 pub(crate) const REFUSALS: &[Refusal] = &[
+    Refusal { code:"survey_create_firebase_session_required", when:"only a DS trusted-device provider is available", remedy:"sign in to the native app with the same Firebase account; preserve the retained row" },
     Refusal {
         code: "survey_entry_create_invalid",
         when: "the form, document id, replay key, timestamp, context, or typed JSON values violate the closed create grammar",
@@ -65,8 +66,8 @@ pub(crate) const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "survey_entry_create_permission_denied",
-        when: "the verified user lacks entries.create authority for this project form",
-        remedy: "request entries.create authority for the project and form",
+        when: "Firestore rules deny the fixed direct create",
+        remedy: "verify the Firebase account and the existing Firestore write rules",
     },
     Refusal {
         code: "survey_entry_create_scope_not_found",
@@ -74,24 +75,9 @@ pub(crate) const REFUSALS: &[Refusal] = &[
         remedy: "verify --project, the form, and the optional context key",
     },
     Refusal {
-        code: "survey_entry_create_form_disabled",
-        when: "the Survey form is not enabled for entry creation in the project",
-        remedy: "enable the project form before creating entries",
-    },
-    Refusal {
-        code: "survey_entry_create_project_read_only",
-        when: "the project lifecycle does not permit Survey entry creation",
-        remedy: "select an active writable project",
-    },
-    Refusal {
-        code: "survey_entry_create_idempotency_conflict",
-        when: "the opaque replay key is already bound to a different mutation",
-        remedy: "use the original exact request for replay, or a fresh key for a distinct create",
-    },
-    Refusal {
         code: "survey_entry_create_already_exists",
-        when: "the Survey document exists and this request is not its exact replay",
-        remedy: "choose a new document id, or replay the original exact request and key",
+        when: "the create-only precondition found an existing document; replay success is not proven",
+        remedy: "retain the original identity and key; resolve the existing document through its authorized owner before any new create",
     },
     Refusal {
         code: "survey_entry_create_failed",
@@ -196,8 +182,8 @@ pub static COMMAND: Command = Command {
     path: &["survey", "entries", "create"],
     contract: 1,
     chapter: Chapter::Survey,
-    summary: "Create one governed Survey entry headlessly.",
-    purpose: "Parses one closed local JSON document and validates all caller-controlled identity, timestamp, context, GeoJSON, and payload bounds before profile or auth access; restores the native user; uses the project --project names (never the saved selection) for one fixed create-only backend call. The backend atomically binds the idempotency key, entry write, report watermark, and tile-stale fence. The receipt proves Firestore commit only; BigQuery mirror presence remains unconfirmed until a later governed read. There is no project, URL, method, body, token, origin, operation, retry, fallback, force, caller-authority, or Desktop override.",
+    summary: "Create one Survey entry through the existing native Firebase session.",
+    purpose: "Validates the closed document, identity, timestamp, context, GeoJSON and byte bounds, then uses the explicit project with one fixed Firestore documents:commit call under the existing Firebase user session. Trusted-device DS credentials refuse before IO. The shared Rust encoder sets exists:false and the server replication timestamp; it preserves the original idempotency key but does not claim replay success for an existing document. Existing Firestore rules authorize the write; this does not claim Brain-equivalent membership checks. A validated commit receipt proves commit only; mirror convergence requires a later governed BQ read. No arbitrary URL, admin credential, overwrite, transport fallback or extra retry is admitted.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,

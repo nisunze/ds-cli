@@ -583,23 +583,16 @@ impl Transport for NativeTransport {
         call: SurveyEntryCreateCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         debug_assert_eq!(call.method(), "POST");
-        debug_assert_eq!(call.path(), "/api/v1/entries/mutate");
+        debug_assert_eq!(call.origin(), "https://firestore.googleapis.com");
         debug_assert_eq!(call.timeout_seconds(), 120);
-        let (request_id, action_id) = correlation_headers();
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
-        let url = survey_entry_create_url(local_go::api_origin(call.gateway_origin())?);
-        let result = local_go::api_agent()?
+        let url = format!("{}{}", call.origin(), call.path());
+        let result = ureq::Agent::new_with_defaults()
             .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
-            .header("X-App-Id", call.client_id())
-            .header("X-Request-Id", &request_id)
-            .header("X-DS-Action-Id", &action_id)
-            .header("X-User-Email", call.canonical_email())
-            .header("x-api-key", call.gateway_api_key())
             .header("Authorization", &bearer)
-            .header("X-Forwarded-Authorization", &bearer)
             .config()
             .max_redirects(0)
             .http_status_as_error(false)
@@ -2483,8 +2476,9 @@ fn survey_entries_changes_url(origin: &str) -> String {
     format!("{origin}{}", ds_client_core::SURVEY_ENTRIES_CHANGES_PATH)
 }
 
-fn survey_entry_create_url(origin: &str) -> String {
-    format!("{origin}{}", ds_client_core::SURVEY_ENTRY_CREATE_PATH)
+#[cfg(test)]
+fn survey_entry_create_url(firebase_project: &str) -> String {
+    format!("https://firestore.googleapis.com{}", ds_client_core::SURVEY_ENTRY_CREATE_PATH.replace("{firebase_project}", firebase_project))
 }
 
 fn tiles_url(origin: &str) -> String {
@@ -3115,8 +3109,8 @@ mod tests {
     #[test]
     fn survey_entry_create_wire_target_and_limits_are_fixed() {
         assert_eq!(
-            survey_entry_create_url("https://fixture.ue.gateway.dev"),
-            "https://fixture.ue.gateway.dev/api/v1/entries/mutate"
+            survey_entry_create_url("test-project"),
+            "https://firestore.googleapis.com/v1/projects/test-project/databases/(default)/documents:commit"
         );
         assert_eq!(ds_client_core::SURVEY_ENTRY_CREATE_METHOD, "POST");
         assert_eq!(ds_client_core::SURVEY_ENTRY_CREATE_OPERATION, "create");
