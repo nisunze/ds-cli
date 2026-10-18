@@ -60,6 +60,8 @@ use ds_report_host::{
 use ds_sync_runtime::reports::{SealOutcome, SealRequest};
 use serde_json::{Value, json};
 
+#[path = "held_export.rs"]
+mod held_export;
 #[path = "held_preview.rs"]
 mod held_preview;
 
@@ -287,6 +289,31 @@ const HOLDINGS_STORE: Refusal = Refusal {
 
 pub(super) const REFUSALS: &[Refusal] = &[
     Refusal {
+        code: "report_held_export_invalid",
+        when: "Closed held export inputs, selected GIS formats or controls fail admission",
+        remedy: "Preserve the captured room; provide an explicit SHP/KMZ/XLSX selection and the original report receipt",
+    },
+    Refusal {
+        code: "report_held_export_source_unsaved",
+        when: "Held room has no clean governed saved revision",
+        remedy: "Save through the design owner before exporting; reporting never saves a design",
+    },
+    Refusal {
+        code: "report_held_export_source_changed",
+        when: "Held version or content differs from the saved source",
+        remedy: "Explicitly refresh or save the held room through its design owner and retry",
+    },
+    Refusal {
+        code: "report_held_export_configuration_changed",
+        when: "Held receipt differs from admitted project configuration",
+        remedy: "Explicitly refresh the project configuration and retry with its original receipt",
+    },
+    Refusal {
+        code: "report_pending_outputs_require_sync",
+        when: "A partial export would replace a publication with other pending outputs",
+        remedy: "Sync the previous report publication before exporting this selection",
+    },
+    Refusal {
         code: "report_held_preview_invalid",
         when: "The closed held-preview payload, original receipt/media/context or controls fail admission",
         remedy: "Preserve the held snapshot and correct the named field; never reacquire or substitute current report rows",
@@ -382,6 +409,11 @@ pub static COMMAND: Command = Command {
             "held-preview",
             "<json-file>",
             "Closed ds.report-held-preview/v1 exact caller-held transformer preview; no config/room/style acquisition or publication. Requires fresh absolute out-dir for private scratch.",
+        ),
+        Arg::value(
+            "held-export",
+            "<json-file>",
+            "Closed ds.report-held-export/v1 saved-room SHP/KMZ/XLSX export; verifies source/receipt pins and queues exact artifacts through Core Sync. Dirty or unsaved rooms refuse before compute.",
         ),
         OUT_DIR_ARG,
         CONCURRENCY_ARG,
@@ -921,6 +953,9 @@ fn concurrency_limit(inputs: &Inputs) -> Result<usize, Failure> {
 /// Local refusal pass that must run before a project report touch restores
 /// credentials or reconciles remote report state.
 pub fn preflight(inputs: &Inputs) -> Result<(), Failure> {
+    if inputs.value("held-export").is_some() {
+        return held_export::preflight(inputs);
+    }
     if inputs.value("held-preview").is_some() {
         return held_preview::preflight(inputs);
     }
@@ -1414,6 +1449,9 @@ fn pinned_rooms(
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    if inputs.value("held-export").is_some() {
+        return held_export::run(inputs);
+    }
     if inputs.value("held-preview").is_some() {
         return held_preview::run(inputs);
     }

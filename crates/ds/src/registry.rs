@@ -3567,6 +3567,7 @@ fn report_project_touch(id: &str, inputs: &Inputs) -> bool {
         || (id == "report.project.export"
             && (inputs.switch("dry-run")
                 || inputs.value("held-preview").is_some()
+                || inputs.value("held-export").is_some()
                 || inputs.value("preview-layout").is_some()
                 || !inputs.repeated("print-layout").is_empty()))
     {
@@ -4124,6 +4125,14 @@ mod report_touch_tests {
             &args.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>(),
         )
         .expect("declared inputs")
+    }
+
+    #[test]
+    fn held_export_seals_only_its_selected_run_without_an_unrelated_touch() {
+        let held = inputs(&ds_cli_report::project::export::COMMAND,
+            &["--project", "p", "--lane", "canary", "--held-export", "/held.json", "--out-dir", "/held-out"]);
+        assert!(!report_project_touch("report.project.export", &held));
+        assert!(!report_held_read("report.project.export"));
     }
 
     #[test]

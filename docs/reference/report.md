@@ -20,6 +20,23 @@ needs this native reconciliation adapter. This is a runtime implementation
 gap, not evidence of an installed Desktop bridge or printer driver. Local
 observation exports remain available through the local reporter.
 
+`report project export --held-export <json-file>` accepts the closed
+`ds.report-held-export/v1` capture with explicit SHP, KMZ and/or XLSX selection.
+It checks the held room against its governed saved revision and content digest,
+and checks the original configuration receipt against the admitted project.
+Dirty, unsaved or changed sources refuse before computation; reporting never
+saves a design. This mode does not run an unrelated project reconciliation.
+Core verifies the installed reference asset, uses the managed Reporter, and
+seals successful selected outputs into the existing Sync publication queue.
+It cannot report an ordinary export as local-only success.
+
+A partial result names each failed selected format and keeps successful outputs
+publishable. Quantity-only media omissions remain bounded diagnostics, never
+media authority. Previously published unselected outputs retain their original
+producer receipts and bytes until their exact output is replaced. If a selection
+would strand other outputs in a pending publication, export refuses with
+`report_pending_outputs_require_sync`; Sync that previous publication first.
+
 ## Why this domain calls a binary instead of linking a crate
 
 `ds-network-reporter` publishes exactly one surface an agent host may call,
