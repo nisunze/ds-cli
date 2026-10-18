@@ -17,6 +17,11 @@ const REFUSALS: &[Refusal] = &[Refusal {
     remedy: "Pass the project configuration as `ds design config` returns it and settings as {key: bool|number}",
 }];
 
+const CATALOG: Arg = Arg::switch(
+    "catalog",
+    "Include the engine-owned settings catalog for a process-settings editor.",
+);
+
 const PRESET: Arg = Arg::value("preset", "<preset>", "The named preset.")
     .choices(&["drafting", "sketch"])
     .required();
@@ -45,8 +50,14 @@ pub static COMMAND: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[PRESET, PROJECT_CONFIG, OPERATOR, FIRESTORE_DESIGN_DATA],
-    output: "{settings, visible_groups, wire_settings, dropped[{key, why, forced_to?}]}.",
+    args: &[
+        PRESET,
+        PROJECT_CONFIG,
+        OPERATOR,
+        FIRESTORE_DESIGN_DATA,
+        CATALOG,
+    ],
+    output: "{settings, visible_groups, wire_settings, dropped[{key, why, forced_to?}]}; --catalog additionally returns catalog, the engine-owned editor metadata.",
     examples: &[Example {
         command: "ds design process settings --preset sketch --output json",
         note: "`.data.wire_settings` is the payload a Sketch run carries.",
@@ -82,7 +93,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         serde_json::from_str(ds_network_contracts::lv::PROCESSOR_PRESETS_JSON).map_err(invalid)?;
     let mut request = json!({
         "op": "resolve",
-        "catalog": catalog,
+        "catalog": &catalog,
         "preset": i.require("preset")?,
         "use_firestore_design_data": i.switch("firestore-design-data"),
     });
@@ -94,7 +105,11 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     }
     let input = serde_json::to_vec(&request).map_err(invalid)?;
     let reply = ds_command_kernel::process_settings::evaluate(&input).map_err(invalid)?;
-    serde_json::from_str(&reply).map_err(invalid)
+    let mut result: Value = serde_json::from_str(&reply).map_err(invalid)?;
+    if i.switch("catalog") {
+        result["catalog"] = catalog;
+    }
+    Ok(result)
 }
 
 pub fn render(data: &Value) -> String {
@@ -118,4 +133,43 @@ pub fn render(data: &Value) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn optional_catalog_uses_engine_metadata_without_changing_resolved_settings() {
+        let context = Context {
+            confirmed: false,
+            output: ds_cli_contract::Output::resolve(
+                ds_cli_contract::output::Format::Json,
+                false,
+                true,
+            ),
+        };
+        let base = vec!["--preset".into(), "sketch".into()];
+        let plain = run(
+            &ds_cli_contract::args::parse(&COMMAND, &base).unwrap(),
+            &context,
+        )
+        .unwrap();
+        let mut with_catalog = base;
+        with_catalog.push("--catalog".into());
+        let mut catalogued = run(
+            &ds_cli_contract::args::parse(&COMMAND, &with_catalog).unwrap(),
+            &context,
+        )
+        .unwrap();
+        let catalog = catalogued
+            .as_object_mut()
+            .unwrap()
+            .remove("catalog")
+            .unwrap();
+        let owner: Value =
+            serde_json::from_str(ds_network_contracts::lv::PROCESSOR_PRESETS_JSON).unwrap();
+        assert_eq!(catalog, owner);
+        assert_eq!(plain, catalogued);
+        assert!(!catalog["groups"].as_array().unwrap().is_empty());
+    }
 }
