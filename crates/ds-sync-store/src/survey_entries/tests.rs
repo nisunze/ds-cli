@@ -878,3 +878,61 @@ fn audited_discard_bounds_complete_row_bytes_without_partial_preparation_or_dele
         5
     );
 }
+
+#[test]
+fn native_create_preparation_and_receipt_are_read_only_and_exactly_fenced() {
+    let (_root, mut store) = store();
+    let scope = scope();
+    let mut row = sample("create-one", "project-a");
+    row["form_id"] = json!("field_notes");
+    row["created_at"] = json!(1792314166506u64);
+    row["payload"] = json!({"project_id":"project-a","form_id":"field_notes",
+        "doc_id":"doc-create-one","operation":"create","idempotency_key":"key-create-one",
+        "data":{"note":"SQLite offline acceptance"},
+        "metadata":{"created_at":"2026-10-18T09:02:46.506Z","origin":"web"}});
+    store
+        .survey_entry_admit_batch(&scope, vec![row], 1792314166506)
+        .unwrap();
+    let fence = Fence::from(&first(&store, &scope));
+    let before = store.survey_entry_row(&scope, &fence.id).unwrap();
+    let prepared = create::prepare(Some(&store), &scope, "project-a", &fence).unwrap();
+    assert_eq!(
+        prepared["plan"]["payload"],
+        before.as_ref().unwrap()["payload"]
+    );
+    let expected: create::Expected = serde_json::from_value(prepared["expected"].clone()).unwrap();
+    let response = json!({"success":true,"message":"Entry created successfully",
+        "data":{"project_id":"project-a","form_id":"field_notes","doc_id":"doc-create-one",
+        "operation":"create","client_version":0,"replication_clock":"metadata.firestore_updated_at",
+        "replication_authority":"firestore_server_timestamp"},"timestamp":"2026-10-18T09:02:47Z",
+        "service":"data-solutions-backend","version":"1.0.0","request_id":"request-1"});
+    let verified =
+        create::verify_receipt(Some(&store), &scope, "project-a", &expected, 201, &response)
+            .unwrap();
+    assert_eq!(verified["receipt"]["doc_id"], "doc-create-one");
+    assert_eq!(store.survey_entry_row(&scope, &fence.id).unwrap(), before);
+    assert!(
+        create::verify_receipt(Some(&store), &scope, "project-a", &expected, 200, &response)
+            .is_err()
+    );
+    let mut crossed = response.clone();
+    crossed["data"]["doc_id"] = json!("other-doc");
+    assert!(
+        create::verify_receipt(Some(&store), &scope, "project-a", &expected, 201, &crossed)
+            .is_err()
+    );
+    let mut stale = expected.clone();
+    stale.row_sha256 = "0".repeat(64);
+    assert!(
+        create::verify_receipt(Some(&store), &scope, "project-a", &stale, 201, &response).is_err()
+    );
+    let mut crossed_fence = fence.clone();
+    crossed_fence.lease += 1;
+    assert!(create::prepare(Some(&store), &scope, "project-a", &crossed_fence).is_err());
+    crossed_fence = fence.clone();
+    crossed_fence.owner_uid = Some("other-owner".into());
+    assert!(create::prepare(Some(&store), &scope, "project-a", &crossed_fence).is_err());
+    assert!(create::prepare(Some(&store), &scope, "project-b", &fence).is_err());
+    assert!(create::prepare(None, &scope, "project-a", &fence).is_err());
+    assert_eq!(store.survey_entry_row(&scope, &fence.id).unwrap(), before);
+}
