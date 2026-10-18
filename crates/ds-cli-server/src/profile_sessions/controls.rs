@@ -83,6 +83,12 @@ pub(super) fn execute(
             NetworkCapability::ProfileEditControlsV1
         },
     )?;
+    // Capability/bounds admission precedes a checkpoint or any worker request.
+    // A large control against an older engine must preserve the live session.
+    value
+        .session
+        .check_control_transport(&native_op, Some(&expected))
+        .map_err(native)?;
     let mut retire_on_failure = false;
     let result = (|| {
         if preflight {

@@ -280,3 +280,25 @@ Desktop and engine artifacts retain their independent versions and identities.
 Abrupt whole-parent death still kills the direct engine. Group cleanup covers
 its admitted descendants during normal owner termination; this does not claim
 that Linux parent-death signals propagate to arbitrary fork descendants.
+
+## Retained Profile bulk controls
+
+Core admits the closed typed `control` request up to 8 MiB; its total request
+ceiling remains 48 MiB and other non-open operations retain 64 KiB admission.
+The retained Network pipe frame remains at 64 KiB including its newline.
+Controls that fit retain the existing `control` wire operation. Larger controls
+require the captured engine's additive `profile_bulk_controls_v1` capability
+before Core checkpoints or submits the operation. An older engine refuses with
+`network_engine_incompatible` and remains usable for small controls. The message
+and native remedy say "Update Network to edit this terrain batch." Existing
+structured native detail identifies `component: network` and
+`required_capability: profile_bulk_controls_v1`; no exact build pin is required.
+
+A bulk control uses the closed `ds.network.profile-control-input/v1` document
+and `bulk_control` receipt operation. The private, fixed-sequence
+`profile-input-NNNNNNNNNN.json` is bounded at 8 MiB and pinned by schema, exact
+size and SHA-256. Client and native transport admit regular files only; the
+client verifies the same bytes again after every response before cleanup.
+Network delegates the complete operation to the existing typed Profile control
+owner. History, authorization, confirmation, atomic transaction, Save exclusion,
+reply validation and durable checkpoint rules remain the same.

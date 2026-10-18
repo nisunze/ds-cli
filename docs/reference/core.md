@@ -255,6 +255,18 @@ are read through the opened no-link native file owner, with Windows SID/DACL
 validation retained. No arbitrary RPC,
 argv, paths, alternate credentials or browser engine is exposed.
 
+Open requests retain the 48 MiB request ceiling and 32 MiB exact-package bound.
+Closed `control` requests admit up to 8 MiB; other non-open actions retain 64 KiB.
+Small controls keep their existing native wire operation. Larger controls require
+`profile_bulk_controls_v1` on the captured Network and use a private receipt-pinned
+input; the native pipe frame remains at 64 KiB. A missing capability returns
+`core_profile_native_refused` with `native_code: network_engine_incompatible`
+before checkpointing or submitting the control, preserving the session for
+small controls. Install a compatible same-lane Network and explicitly reopen
+under its new captured identity before retrying the large operation. See the
+[process boundary](../contracts/process-boundary-contract.md#retained-profile-bulk-controls)
+for exact staging and integrity rules.
+
 Previous Desktop package opening required the unavailable browser `openDsgrid`
 binding. Its replacement is this independently qualified Core command plus the
 closed Desktop adapter; older installed Core explicitly refuses

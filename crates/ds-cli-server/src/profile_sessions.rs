@@ -168,8 +168,17 @@ impl Request {
         if request.schema != REQUEST_SCHEMA {
             return Err(invalid("Profile request schema is unsupported"));
         }
-        if !matches!(request.operation, Operation::Open { .. }) && bytes.len() > 64 * 1024 {
-            return Err(invalid("Profile controls exceed 64 KiB"));
+        let limit = match &request.operation {
+            Operation::Open { .. } => MAX_REQUEST,
+            Operation::Control { .. } => {
+                ds_network_contracts::profile::MAX_PROFILE_CONTROL_INPUT_BYTES
+            }
+            _ => ds_network_contracts::profile::MAX_PROFILE_CONTROL_BYTES,
+        };
+        if bytes.len() > limit {
+            return Err(invalid(format!(
+                "Profile operation exceeds its {limit}-byte bound"
+            )));
         }
         Ok(request)
     }
@@ -1308,6 +1317,47 @@ mod tests {
             br#"{"schema":"ds.core.profile-session/v1","operation":{"action":"open","package_base64":"AA==","package_sha256":"a","path":"/etc/passwd"}}"#] {
             assert!(Request::parse(bytes).is_err());
         }
+    }
+    #[test]
+    fn bulk_update_refusal_preserves_plain_message_and_structured_requirement() {
+        let message = "Update Network to edit this terrain batch.";
+        let requirement =
+            json!({"component":"network", "required_capability":"profile_bulk_controls_v1"});
+        let error = native(NetworkFailure {
+            code: "network_engine_incompatible",
+            message: message.into(),
+            owner_error: None,
+            owner_code: None,
+            owner_detail: Some(Box::new(requirement.clone())),
+            owner_remedy: Some(message.into()),
+            owner_invalid_input: None,
+        });
+        assert_eq!(error.code(), "core_profile_native_refused");
+        assert_eq!(error.message(), message);
+        let detail = error.detail_value().unwrap();
+        assert_eq!(detail["native_code"], "network_engine_incompatible");
+        assert_eq!(detail["native_detail"], requirement);
+        assert_eq!(detail["native_remedy"], message);
+    }
+    #[test]
+    fn only_typed_controls_admit_bulk_requests_up_to_eight_mib() {
+        let mut value = json!({"schema":REQUEST_SCHEMA,"operation":{
+        "action":"control","session_id":"captured","model_id":"model",
+        "expected_history":{},"operation":{"action":"preview_transaction","commands":[{
+            "command_id":"one","command":{"owner_payload":"x".repeat(70*1024)}
+        }]}}});
+        let bytes = serde_json::to_vec(&value).unwrap();
+        assert!(bytes.len() > 64 * 1024);
+        assert!(Request::parse(&bytes).is_ok());
+        value["operation"]["operation"]["commands"][0]["command"]["owner_payload"] =
+            json!("x".repeat(ds_network_contracts::profile::MAX_PROFILE_CONTROL_INPUT_BYTES));
+        assert!(Request::parse(&serde_json::to_vec(&value).unwrap()).is_err());
+        let state = json!({"schema":REQUEST_SCHEMA,"operation":{
+            "action":"state","session_id":"captured","model_id":"model",
+            "expected_history":{"large":"x".repeat(70*1024)}}});
+        assert!(Request::parse(&serde_json::to_vec(&state).unwrap()).is_err());
+        value["operation"]["operation"]["action"] = json!("unknown");
+        assert!(Request::parse(&serde_json::to_vec(&value).unwrap()).is_err());
     }
     #[test]
     fn gis_labels_are_closed_and_bounded() {
