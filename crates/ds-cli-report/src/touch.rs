@@ -4,12 +4,9 @@
 //! `ds-sync-runtime::run` pass. `Manual` is the kernel's always-read trigger: each
 //! command gets its own remote-head observation, with no freshness timer.
 
-#[cfg(target_os = "linux")]
 use std::path::Path;
 
-#[cfg(target_os = "linux")]
 use ds_command_kernel::sync_store::Scope;
-#[cfg(target_os = "linux")]
 use ds_sync_runtime::Trigger;
 use serde_json::{Value, json};
 
@@ -25,46 +22,9 @@ pub struct Touch {
 /// running Server; the SQLite store and project lease remain the same ones a
 /// running Server uses. No second queue or publication protocol is created.
 pub fn project(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = state_dir;
-        return unsupported_host(lane, project);
-    }
-    #[cfg(target_os = "linux")]
-    {
-        project_native(lane, project, state_dir)
-    }
+    project_native(lane, project, state_dir)
 }
 
-#[cfg(any(not(target_os = "linux"), test))]
-fn unsupported_host(lane: &str, project: &str) -> Touch {
-    Touch {
-        current: false,
-        receipt: json!({
-            "schema": "ds.report-touch/v1",
-            "project": project,
-            "lane": lane,
-            "engine": "network_reporter",
-            "state": "not_checked",
-            "reason": "report_sync_runtime_unavailable",
-            "detail": "this build does not implement native report reconciliation on this operating system; use --dry-run for local observation exports or a supported headless Server for publication",
-        }),
-    }
-}
-
-#[cfg(test)]
-mod host_tests {
-    #[test]
-    fn unsupported_host_names_the_missing_runtime_without_inventing_a_desktop() {
-        let result = super::unsupported_host("stable", "project-a");
-        assert!(!result.current);
-        assert_eq!(result.receipt["project"], "project-a");
-        assert_eq!(result.receipt["reason"], "report_sync_runtime_unavailable");
-        assert!(!result.receipt.to_string().contains("Desktop"));
-    }
-}
-
-#[cfg(target_os = "linux")]
 fn project_native(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
     let state = ds_compute_runtime::server_state_directory(lane, state_dir.map(Path::new));
     let held_before = state
@@ -184,7 +144,6 @@ fn project_native(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
     }
 }
 
-#[cfg(target_os = "linux")]
 fn read_block(state: &Path, lane: &str, project: &str) -> Option<Value> {
     let fence = crate::outbox::fence(lane).ok()?;
     let store = ds_sync_store::Store::open_read_only(&state.join("store.sqlite")).ok()??;
@@ -200,7 +159,6 @@ fn read_block(state: &Path, lane: &str, project: &str) -> Option<Value> {
     }))
 }
 
-#[cfg(target_os = "linux")]
 fn pass_failed(pass: &ds_cli_server::server_reports::Pass) -> bool {
     pass.receipts.iter().any(|receipt| {
         matches!(receipt.outcome.as_str(), "failed" | "credential_refused")
@@ -208,7 +166,6 @@ fn pass_failed(pass: &ds_cli_server::server_reports::Pass) -> bool {
     })
 }
 
-#[cfg(target_os = "linux")]
 fn pass_current(
     lease_blocked: bool,
     pass: &ds_cli_server::server_reports::Pass,
@@ -226,7 +183,6 @@ fn pass_current(
         && head_read_at_ms.is_some()
 }
 
-#[cfg(target_os = "linux")]
 fn read_at(state: &Path, lane: &str, project: &str) -> Option<u64> {
     let fence = crate::outbox::fence(lane).ok()?;
     let store = ds_sync_store::Store::open_read_only(&state.join("store.sqlite")).ok()??;
@@ -240,7 +196,7 @@ fn read_at(state: &Path, lane: &str, project: &str) -> Option<u64> {
         .ok()?
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use ds_sync_runtime::{Receipt, Reclaimed, kernel_sync::Summary};
@@ -262,6 +218,31 @@ mod tests {
             summary: Summary::default(),
             receipts: Vec::new(),
         }
+    }
+
+    #[test]
+    fn project_dispatch_uses_native_state_validation_without_credentials() {
+        // A relative path fails before opening any identity or connection store.
+        // This also exercises Windows dispatch instead of a host-only stub.
+        let result = project("stable", "project-a", Some("relative-state"));
+        assert!(!result.current);
+        assert_eq!(
+            result.receipt,
+            json!({
+                "schema": "ds.report-touch/v1",
+                "project": "project-a",
+                "lane": "stable",
+                "engine": "network_reporter",
+                "trigger": "manual",
+                "state": "held",
+                "reason": "report_sync_unavailable",
+                "detail": "server state directory must be absolute",
+                "blocked": null,
+                "head_read_at_ms": null,
+                "held_age_ms": null,
+                "previous_head_read_at_ms": null,
+            }),
+        );
     }
 
     #[test]
