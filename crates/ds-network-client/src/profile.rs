@@ -438,6 +438,112 @@ impl ProfileSession {
         }
         result
     }
+    /// Admit the bounded control transport without staging, requesting a
+    /// checkpoint, sending a frame or changing the retained session lifetime.
+    pub fn check_control_transport(
+        &self,
+        operation: &NativeProfileOperationV1,
+        expected_history: Option<&Value>,
+    ) -> Result<(), NetworkFailure> {
+        self.bulk_control_input(operation, expected_history)
+            .map(|_| ())
+    }
+    fn bulk_control_input(
+        &self,
+        operation: &NativeProfileOperationV1,
+        expected_history: Option<&Value>,
+    ) -> Result<Option<Vec<u8>>, NetworkFailure> {
+        let NativeProfileOperationV1::Control { operation: control } = operation else {
+            return Ok(None);
+        };
+        let request = NativeProfileRequestV1 {
+            schema: PROFILE_REQUEST_SCHEMA.into(),
+            sequence: self.sequence + 1,
+            model_id: self.model_id.clone(),
+            expected_history: expected_history.cloned(),
+            operation: operation.clone(),
+        };
+        if serde_json::to_vec(&request)
+            .map_err(|e| invalid(e.to_string()))?
+            .len()
+            + 1
+            <= MAX_PROFILE_CONTROL_BYTES
+        {
+            return Ok(None);
+        }
+        let bytes = serde_json::to_vec(&NativeProfileControlInputV1 {
+            schema: PROFILE_CONTROL_INPUT_SCHEMA.into(),
+            operation: control.clone(),
+        })
+        .map_err(|e| invalid(e.to_string()))?;
+        if bytes.len() > MAX_PROFILE_CONTROL_INPUT_BYTES {
+            return Err(NetworkFailure::new(
+                "profile_control_input_invalid",
+                "complete Profile control exceeds its 8 MiB input bound",
+            ));
+        }
+        self.require_bulk_control_capability()?;
+        Ok(Some(bytes))
+    }
+    fn require_bulk_control_capability(&self) -> Result<(), NetworkFailure> {
+        if !self
+            .pin
+            .identity
+            .capabilities
+            .contains(&NetworkCapability::ProfileBulkControlsV1)
+        {
+            let message = "Update Network to edit this terrain batch.";
+            let mut failure = NetworkFailure::new("network_engine_incompatible", message);
+            failure.owner_detail = Some(Box::new(serde_json::json!({
+                "component": "network",
+                "required_capability": NetworkCapability::ProfileBulkControlsV1,
+            })));
+            failure.owner_remedy = Some(message.into());
+            return Err(failure);
+        }
+        Ok(())
+    }
+    fn bulk_control_at(
+        &mut self,
+        bytes: &[u8],
+        expected_history: Option<Value>,
+        timeout: Duration,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<ProfileOutcome, NetworkFailure> {
+        let file = format!("profile-input-{:010}.json", self.sequence + 1);
+        let path = self.run.path().join(&file);
+        if let Err(error) = write_request(&path, bytes) {
+            self.abort();
+            return Err(error);
+        }
+        let result = self.request_at(
+            NativeProfileOperationV1::BulkControl {
+                input: ArtifactReceipt {
+                    file,
+                    byte_count: bytes.len(),
+                    sha256: digest_bytes(bytes),
+                    schema: PROFILE_CONTROL_INPUT_SCHEMA.into(),
+                },
+            },
+            expected_history,
+            timeout,
+            cancel,
+        );
+        let retained = read_regular(
+            &path,
+            MAX_PROFILE_CONTROL_INPUT_BYTES,
+            "network_request_changed",
+        );
+        let cleanup = fs::remove_file(&path);
+        if !matches!(retained, Ok(ref value) if value == bytes) || cleanup.is_err() {
+            self.abort();
+            return Err(NetworkFailure::new(
+                "network_request_changed",
+                "staged Profile control changed during execution",
+            ));
+        }
+        result
+    }
     pub fn request_at(
         &mut self,
         operation: NativeProfileOperationV1,
@@ -472,8 +578,10 @@ impl ProfileSession {
                 .capabilities
                 .contains(&NetworkCapability::ProfilePackageCheckpointV1)
         {
-            return Err(NetworkFailure::new("network_engine_incompatible",
-                "Captured Network has no profile_package_checkpoint_v1 capability"));
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "Captured Network has no profile_package_checkpoint_v1 capability",
+            ));
         }
         if matches!(operation, NativeProfileOperationV1::ObserveView { .. })
             && !self
@@ -523,6 +631,12 @@ impl ProfileSession {
                 "Profile request capacity reached; retain the last checkpoint",
             ));
         }
+        if let Some(bytes) = self.bulk_control_input(&operation, expected_history.as_ref())? {
+            return self.bulk_control_at(&bytes, expected_history, timeout, cancel);
+        }
+        if matches!(operation, NativeProfileOperationV1::BulkControl { .. }) {
+            self.require_bulk_control_capability()?;
+        }
         let request = NativeProfileRequestV1 {
             schema: PROFILE_REQUEST_SCHEMA.into(),
             sequence: self.sequence + 1,
@@ -548,6 +662,12 @@ impl ProfileSession {
                     "profile_replay_input_invalid",
                 ))
             }
+            NativeProfileOperationV1::BulkControl { input } => Some((
+                input,
+                PROFILE_CONTROL_INPUT_SCHEMA,
+                MAX_PROFILE_CONTROL_INPUT_BYTES,
+                "profile_control_input_invalid",
+            )),
             NativeProfileOperationV1::View { input, .. }
             | NativeProfileOperationV1::ObserveView { input } => Some((
                 input,
@@ -557,6 +677,9 @@ impl ProfileSession {
             )),
             _ => None,
         };
+        // Reply validation still sees the original typed control. Only its wire
+        // representation changes; history and mutation receipt fences do not.
+        let mut logical_request = request.clone();
         if let Some((receipt, schema, limit, code)) = input_contract {
             if receipt.file != format!("profile-input-{:010}.json", request.sequence)
                 || receipt.schema != schema
@@ -576,6 +699,22 @@ impl ProfileSession {
                     "staged Profile input differs from its receipt",
                 ));
             }
+            if matches!(
+                request.operation,
+                NativeProfileOperationV1::BulkControl { .. }
+            ) {
+                let input: NativeProfileControlInputV1 = serde_json::from_slice(&bytes)
+                    .map_err(|e| NetworkFailure::new(code, e.to_string()))?;
+                if input.schema != PROFILE_CONTROL_INPUT_SCHEMA {
+                    return Err(NetworkFailure::new(
+                        code,
+                        "unsupported Profile control input schema",
+                    ));
+                }
+                logical_request.operation = NativeProfileOperationV1::Control {
+                    operation: input.operation,
+                };
+            }
         }
         let input = serde_json::to_vec(&request).map_err(|e| invalid(e.to_string()))?;
         if input.len() + 1 > MAX_PROFILE_CONTROL_BYTES {
@@ -584,7 +723,7 @@ impl ProfileSession {
                 "Profile control frame exceeds its bound",
             ));
         }
-        let result = self.exchange(&input, &request, timeout, cancel);
+        let result = self.exchange(&input, &logical_request, timeout, cancel);
         if result.is_err() && self.sequence != request.sequence {
             self.abort();
         }
