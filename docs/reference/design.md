@@ -12,6 +12,21 @@ Governed collaboration serves
 `ds-brain/docs/contracts/design-collaboration-roadmap.md`. Offline LV
 processing serves the ds-network native batch contract directly.
 
+## Saved MV model packages
+
+`ds design model list --project <exact-id>` reads one page of active saved MV
+heads under the native account (`--lane stable` by default). Follow
+`next_cursor` whenever `more` is true, including an empty page. Local drafts
+are outside this catalog.
+
+Use a listed `model_id` and exact `head_revision_id` with `ds design model
+export --project <exact-id> --model <id> --revision <id> --out
+<absolute-file.dsgrid>`. The destination must be fresh with an existing
+writable parent. The command verifies package size and SHA-256 and creates
+the file atomically without replacing existing bytes. Its receipt preserves
+project, lane and immutable revision identity. Pass the resulting local package
+to `ds report plan-profile` after reading that command's live descriptor.
+
 ## Design intake
 
 `ds design intake upload` runs the same Rust-owned upload job as Transformer

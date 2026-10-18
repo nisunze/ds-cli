@@ -84,6 +84,7 @@ pub mod known_columns;
 pub mod lv;
 pub mod materials;
 pub mod migrate;
+pub mod models;
 pub mod native_tags;
 pub mod pinned;
 pub mod preview;
@@ -109,6 +110,8 @@ pub static DOMAIN: Domain = Domain {
     id: "design",
     summary: "Headless reads, offline LV compute, and governed collaboration.",
     commands: &[
+        &models::LIST,
+        &models::EXPORT,
         &native_tags::DEFINITIONS,
         &native_tags::PROJECTION,
         &native_tags::PREVIEW,
