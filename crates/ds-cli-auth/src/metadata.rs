@@ -146,3 +146,65 @@ pub fn observed_transformer_status_for_project(
         cached,
     ))
 }
+
+/// Explicit UI reads: held never acquires, refresh retains prior bytes on failure.
+/// The observation describes the returned snapshot, not remote freshness.
+pub fn read_transformer_status_for_project(
+    lane: &str,
+    project: &str,
+    refresh: bool,
+) -> Result<(HeadlessNamedProject<TransformerStatusList>, Value), Failure> {
+    let project = bounded_named_project(project)?;
+    let identity = headless_identity_for_named_project(lane)?;
+    let refresh_error = if refresh {
+        observed_transformer_status_for_project(lane, &project, true).err()
+    } else {
+        None
+    };
+    if headless_identity_for_named_project(lane)? != identity {
+        return Err(failed(
+            "account changed while reading transformer status".into(),
+        ));
+    }
+    let held = store::transformer_status::held(
+        &ds_layer_store::default_root().map_err(failed)?,
+        &scope(&identity, &project),
+    )
+    .map_err(failed)?;
+    let Some(held) = held else {
+        return Err(refresh_error.unwrap_or_else(|| Failure::unavailable(
+            "design_status_not_held", "No authenticated transformer status snapshot is held for this account and project.",
+        ).remedy("run design status with --read refresh to acquire this project's status")));
+    };
+    if headless_identity_for_named_project(lane)? != identity {
+        return Err(failed(
+            "account changed before transformer status delivery".into(),
+        ));
+    }
+    let result = TransformerStatusList::from_observation(held.document["transformers"].clone())
+        .map_err(map_client)?;
+    let error = refresh_error
+        .as_ref()
+        .map(|error| error.code().to_string())
+        .or(held.last_error);
+    let state = if held.needs_refresh || error.is_some() {
+        "held"
+    } else {
+        "ready"
+    };
+    let observation = json!({"source":if refresh && refresh_error.is_none() {"refresh"} else {"held"},
+        "state":state,"observed_at_ms":held.observed_at_ms,"sha256":held.sha256,"last_error":error});
+    Ok((
+        HeadlessNamedProject {
+            identity,
+            user_email: held.document["user_email"]
+                .as_str()
+                .unwrap_or_default()
+                .into(),
+            lane: Lane::parse(lane)?.token(),
+            project_id: project,
+            result,
+        },
+        observation,
+    ))
+}

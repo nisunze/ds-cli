@@ -405,6 +405,28 @@ ds design status --project <id> --transformer TX-1 --transformer TX-2 --output j
 ds design status --project <id> --findings --output json
 ```
 
+Explicit `--read held` reads the last authenticated whole-project observation
+from native SQLite without network acquisition; no held observation refuses with
+`design_status_not_held`. `--read refresh` intentionally acquires a whole-project
+snapshot. Both modes apply `--transformer` locally. Their `observation` records
+source (`held` or `refresh`), state (`ready` or `held`), observation time, digest,
+and a bounded error code. Failed refresh preserves prior bytes and time, returns
+clearly held data when available, and never reports it as a fresh observation.
+Invalidations mark the retained snapshot as needing refresh. No retired JSON
+cache is read or maintained; an initial explicit refresh establishes SQLite.
+
+Omitting `--read` preserves the original behavior: full reads refresh, targeted
+reads call the service for those names and invalidate full-snapshot freshness.
+Internal observed-status callers retain their cold-acquire behavior. Styles
+retain their existing separate JSON contract.
+
+`--out <absolute-path>` writes the complete projection to a new private JSON
+file in an existing protected directory. The bounded `ds.design-status-file/v1`
+receipt names its exact path, SHA256, byte size, lane, project, principal, count,
+and observation. Native UI consumers always pass `--read` and `--out`; opening
+uses held, and intentional Refresh uses refresh. A missing or incompatible
+native owner is a refusal, never a browser fallback.
+
 Omit `--transformer` for every transformer document in the project; repeat it
 for exact names. A named read answers only the names that have a document, so
 a shorter list than the request is an answer and not a refusal — use

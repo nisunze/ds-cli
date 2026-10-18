@@ -18,7 +18,10 @@ pub mod grid_mv_catalogue;
 pub mod link_approval;
 mod local_go;
 mod metadata;
-pub use metadata::{observed_style_catalog, observed_transformer_status_for_project};
+pub use metadata::{
+    observed_style_catalog, observed_transformer_status_for_project,
+    read_transformer_status_for_project,
+};
 mod profile;
 mod project_template;
 pub mod reliability;

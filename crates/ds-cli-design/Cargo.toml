@@ -12,6 +12,7 @@ publish.workspace = true
 ds-client-core = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-auth = { workspace = true }
+ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
 # Collaboration commands are governed routes on ds-brain under the native
 # credential (`ds-cli-auth`); nothing here pairs with a window. Offline LV
 # processing delegates to the admitted Network process. The engine crate is

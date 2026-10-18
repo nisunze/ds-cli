@@ -14,6 +14,8 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::design_health::{TransformerHealth, summarize, transformer_health};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::{io::Write, path::Path};
 
 use super::{LANE_ARG, PROJECT_ARG, TRANSFORMER_ARG};
 
@@ -93,6 +95,16 @@ const REFUSALS: &[Refusal] = &[
     super::PROJECT_REQUIRED,
     super::CONTEXT_CORRUPT,
     QUERY_INVALID,
+    Refusal {
+        code: "design_status_not_held",
+        when: "Explicit held read has no scoped authenticated observation",
+        remedy: "use --read refresh to acquire status",
+    },
+    Refusal {
+        code: "design_status_output_invalid",
+        when: "Output is not a fresh private absolute file or exceeds its bound",
+        remedy: "choose a new absolute path in an existing private directory",
+    },
 ];
 
 pub static COMMAND: Command = Command {
@@ -109,7 +121,7 @@ them, each with the shared kernel's verdict (health) and truth (view, phase \
 ownership, latest action, governance, retry, kind, allows). With --search, \
 --sort or --filter the rows are the register's own selection, in its order, \
 decided by the same kernel the application reads. Nothing falls back to a \
-browser; the reference describes each member.",
+browser. Default preserves the existing authenticated read. --read held reads only retained SQLite; --read refresh explicitly replaces the whole-project observation. A failed refresh retains and labels held data. --out writes the full projection to a private file with a bounded receipt.",
     chapter: Chapter::Design,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
@@ -123,6 +135,8 @@ browser; the reference describes each member.",
         SORT_ARG,
         DESC_ARG,
         FILTER_ARG,
+        Arg::value("read", "<mode>", "Explicit held-only read or authenticated full refresh; omitted preserves existing acquisition.").choices(&["held","refresh"]),
+        Arg::value("out", "<absolute-path>", "Write full status to a fresh private JSON file in an existing private directory."),
     ],
     output: "\
 Lane and the named project, the row count, the project's \
@@ -130,7 +144,7 @@ severity summary, and one row per transformer as the service sent it — \
 process/report/draft/sketch metadata, layer counts, uploads, artifacts, \
 retry capabilities — plus `health`, `view`, `phase_ownership`, `latest_action`, \
 `governance`, `retry`, `kind` and `allows`. With --findings, one `findings` row \
-per finding; with a selector, `query` carries the options each filter may offer.",
+per finding; with a selector, `query` carries the options each filter may offer. Explicit --read adds observation source/state/timestamp/digest/error. --out returns ds.design-status-file/v1 with path, sha256, size_bytes, lane, project, principal, count and observation; full data is in the private file.",
     examples: &[
         Example {
             command: "ds design status --project <id> --transformer TX-1 --output json",
@@ -155,24 +169,120 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let selector = selector_from_inputs(inputs)?;
     let requested = super::transformer_set(inputs, false)?;
     let project = super::named_project(inputs)?;
-    let headless =
-        ds_cli_auth::transformer_status_for_project(inputs.require("lane")?, &project, &requested)?;
+    let lane = inputs.require("lane")?;
+    let out = inputs.value("out").map(Path::new);
+    if let Some(path) = out {
+        validate_output(path)?;
+    }
+    let (headless, observation) = match inputs.value("read") {
+        Some(mode @ ("held" | "refresh")) => {
+            let (snapshot, observation) = ds_cli_auth::read_transformer_status_for_project(
+                lane,
+                &project,
+                mode == "refresh",
+            )?;
+            (snapshot, Some(observation))
+        }
+        Some(_) => {
+            return Err(Failure::invalid(
+                QUERY_INVALID.code,
+                "--read must be held or refresh",
+            ));
+        }
+        None => (
+            ds_cli_auth::transformer_status_for_project(lane, &project, &requested)?,
+            None,
+        ),
+    };
+    let selected;
+    let result = if observation.is_some() && !requested.is_empty() {
+        selected = TransformerStatusList::from_observation(json!(
+            headless
+                .result()
+                .rows()
+                .iter()
+                .filter(|row| requested.names().iter().any(|name| name == row.name()))
+                .map(|row| row.row().clone())
+                .collect::<Vec<_>>()
+        ))
+        .map_err(|error| Failure::failed("design_status_query_invalid", format!("{error:?}")))?;
+        &selected
+    } else {
+        headless.result()
+    };
     let mut output = super::named_project_receipt(headless.lane(), headless.project_id());
-    let mut rows = status_json(headless.result(), inputs.switch("findings"));
+    let mut rows = status_json(result, inputs.switch("findings"));
     if let Some(selector) = selector {
-        let raw: Vec<Value> = headless
-            .result()
-            .rows()
-            .iter()
-            .map(|row| row.row().clone())
-            .collect();
+        let raw: Vec<Value> = result.rows().iter().map(|row| row.row().clone()).collect();
         apply_selector(raw, &mut rows, selector)?;
     }
     output
         .as_object_mut()
         .expect("receipt is an object")
         .extend(rows.as_object().expect("rows are an object").clone());
+    if let Some(observation) = observation {
+        output["observation"] = observation;
+    }
+    if let Some(path) = out {
+        return deliver_output(path, &output, lane, &project, headless.identity());
+    }
     Ok(output)
+}
+
+fn output_error(error: impl std::fmt::Display) -> Failure {
+    Failure::invalid("design_status_output_invalid", error.to_string())
+}
+fn validate_output(path: &Path) -> Result<(), Failure> {
+    if !path.is_absolute()
+        || path.to_str().is_none()
+        || path.try_exists().map_err(output_error)?
+        || !path.parent().is_some_and(Path::is_dir)
+    {
+        return Err(output_error(
+            "Use a fresh absolute path in an existing private directory",
+        ));
+    }
+    ds_layer_store::snapshot_privacy::directory(path.parent().unwrap()).map_err(output_error)
+}
+fn deliver_output(
+    path: &Path,
+    output: &Value,
+    lane: &str,
+    project: &str,
+    identity: &ds_cli_auth::ProviderIdentity,
+) -> Result<Value, Failure> {
+    let bytes = serde_json::to_vec(output).map_err(output_error)?;
+    if bytes.len() > 64 * 1024 * 1024 {
+        return Err(output_error("Status projection exceeds 64 MiB"));
+    }
+    #[cfg(windows)]
+    let mut file =
+        ds_cli_auth::windows_host::create_private_output_file(path).map_err(output_error)?;
+    #[cfg(not(windows))]
+    let mut file = ds_layer_store::private::open_options()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(output_error)?;
+    let result = (|| {
+        file.write_all(&bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(output_error)?;
+        if ds_cli_auth::headless_identity_for_named_project(lane)? != *identity {
+            return Err(output_error("Account changed before status delivery"));
+        }
+        Ok(())
+    })();
+    drop(file);
+    if let Err(error) = result {
+        let _ = std::fs::remove_file(path);
+        return Err(error);
+    }
+    Ok(
+        json!({"schema":"ds.design-status-file/v1","lane":lane,"project":project,
+        "principal":identity.uid(),"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),
+        "size_bytes":bytes.len(),"count":output["count"],"observation":output["observation"]}),
+    )
 }
 
 /// The register's selector, spelled as `ds` arguments. `None` when no
@@ -561,6 +671,40 @@ pub fn render(data: &Value) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn explicit_read_modes_are_additive_and_closed() {
+        let parse = |extra: &[&str]| {
+            let mut args = vec!["--project".to_string(), "p_one".to_string()];
+            args.extend(extra.iter().map(|s| s.to_string()));
+            ds_cli_contract::args::parse(&COMMAND, &args)
+        };
+        assert!(parse(&[]).unwrap().value("read").is_none());
+        assert_eq!(
+            parse(&["--read", "held"]).unwrap().value("read"),
+            Some("held")
+        );
+        assert_eq!(
+            parse(&["--read", "refresh"]).unwrap().value("read"),
+            Some("refresh")
+        );
+        assert!(parse(&["--read", "auto"]).is_err());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn output_requires_a_private_parent_and_never_replaces_existing_files() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        validate_output(&path).unwrap();
+        std::fs::write(&path, b"preserve").unwrap();
+        assert!(validate_output(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"preserve");
+        let alias = dir.path().join("alias");
+        symlink(dir.path(), &alias).unwrap();
+        assert!(validate_output(&alias.join("new.json")).is_err());
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(validate_output(&dir.path().join("new.json")).is_err());
+    }
     fn selector(filters: &[&str]) -> Result<Option<Value>, Failure> {
         let mut argv: Vec<String> = vec!["--project".into(), "p_one".into()];
         for filter in filters {
