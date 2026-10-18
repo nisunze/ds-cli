@@ -690,6 +690,7 @@ impl SyncHost for StoreHost<'_> {
 
     fn heads(&self, project: &str) -> Result<Vec<RemoteRow>, GatewayError> {
         let mut rows: Vec<RemoteRow> = Vec::new();
+        let mut report_heads = Vec::new();
         let mut cursor = String::new();
         let mut seen = std::collections::BTreeSet::new();
         loop {
@@ -707,6 +708,7 @@ impl SyncHost for StoreHost<'_> {
                 .and_then(Value::as_array)
                 .ok_or("the record did not return a head inventory")?;
             for head in heads {
+                report_heads.push(head.clone());
                 rows.push(remote_row(head));
             }
             cursor = text(&page, "next_cursor");
@@ -720,6 +722,12 @@ impl SyncHost for StoreHost<'_> {
                 return Err("head pagination did not advance".into());
             }
         }
+        self.ensure_active()?;
+        self.with_store(|store| {
+            store
+                .observe_report_heads(&self.fence, project, now_ms(), &report_heads)
+                .map_err(|error| error.to_string())
+        })?;
         Ok(rows)
     }
 

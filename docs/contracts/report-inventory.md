@@ -130,3 +130,49 @@ per set and 32 required IDs. Known renderer metadata and output presentation are
 validated by their existing owners. Public `report.plan --action inventory`
 accepts this supplied JSON snapshot without authority, with its existing 4 MiB
 request-file bound. It does not claim to read the installed native store.
+
+## Native status view and retained acquisition
+
+`report.inventory` writes the final `ds.report.inventory/v1` view to a bounded
+private file and returns its exact path, SHA-256, byte count and captured
+owner/project/transformer/lane. It does not return an unbounded snapshot through
+Desktop stdout. Its default read has no provider call, queue transition or
+freshness probe. Explicit `--refresh` runs the existing project Sync pass and
+includes its receipt; that pass may publish queued work and acquire remote
+outputs. The Sync pass still reads its project heads exactly once. Only when
+that pass publishes the selected transformer does this explicit refresh read
+back that exact full declaration, through the existing publication authority,
+and merge it transactionally without replacing unrelated heads or regressing
+an already observed revision. A failed or blocked pass or targeted readback
+cannot label previous cloud facts current.
+
+The Sync store retains complete authenticated publication-head documents only
+after the bounded cursor walk completes. These additive SQLite observations are
+not queue rows. They retain per-output origins, format and presentation exactly;
+a reduced Sync head row is never expanded into invented publication facts.
+The report consumer validates its exact selected full declaration through the
+published artifact owner before projecting it. Old stores with no observation
+table are unobserved; reading them creates no table. Older compatible writers
+ignore this additive observation table and remain the sole queue owner.
+
+The native view adds `outputs[].retained`: null, `source=committed`, or
+`source=sync_download` with the exact head revision. A downloaded replica requires
+its existing Sync receipt and physical output hashes. This is byte availability,
+not a local producing generation: an acquired cloud-only output keeps null
+local-run, generation-time and committed-artifact fields.
+
+`report.inventory.copy` explicitly selects one retained source and exact
+output SHA/size; downloaded replicas also require their selected head revision.
+It performs no network call and never switches sources. The existing producer
+receipt gate opens committed files; the existing verified Sync reader opens
+replicas. A missing, corrupt or moved source refuses. Copying rehashes the
+stream into a fresh private destination and rechecks captured identity before
+returning its receipt.
+
+`report.publication.download` reauthorizes one exact project and selected
+engine/operation/variant/output/revision/SHA/size, checks that the governed ticket
+still declares that full head and output, and uses the existing verified-byte
+transport. It never substitutes a newer revision, recalculates a report or
+falls back to another local source. The retained A4 preview and this operation
+share the same exact-ticket acquisition implementation. Both byte-copy commands
+leave no acknowledged output on failed identity or integrity verification.

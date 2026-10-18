@@ -25,6 +25,8 @@ pub use solar_workspaces::{
     MAX_SOLAR_WORKSPACE_SELECTIONS,
 };
 mod publications;
+mod report_heads;
+pub use report_heads::ReportHeadObservation;
 pub use profile_sources::{
     ProfileDraftHeader, ProfileRecovery, ProfileSourceHeader, ProfileSourceScope,
     MAX_PROFILE_CHECKPOINT_BYTES, MAX_PROFILE_SOURCES, MAX_PROFILE_SOURCE_BYTES,

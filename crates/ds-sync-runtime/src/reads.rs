@@ -36,6 +36,37 @@ impl VerifiedReads {
         VerifiedReads { root }
     }
 
+    /// Inspect an already acquired exact head without creating directories or
+    /// contacting the authority. The caller supplies a validated scoped head.
+    pub fn retained_head(
+        &self,
+        project: &str,
+        head: &ds_command_kernel::compute_artifact_inventory::Head,
+    ) -> Result<Option<PathBuf>, String> {
+        if !ds_command_kernel::execution_context::valid_project(project) {
+            return Err("Invalid retained project.".into());
+        }
+        let value = serde_json::to_value(head).map_err(|e| e.to_string())?;
+        ds_command_kernel::compute_artifact_inventory::decode_head(
+            &serde_json::to_vec(&value).map_err(|e| e.to_string())?,
+        )?;
+        let row = crate::rows::remote_row(&value);
+        validate_output_names(&row)?;
+        let mut path = self.root.clone();
+        for part in ["", project, &head.engine, &head.operation, &head.variant] {
+            if !part.is_empty() {
+                path.push(part);
+            }
+            match std::fs::symlink_metadata(&path) {
+                Ok(m) if m.is_dir() && !m.file_type().is_symlink() => {}
+                Ok(_) => return Err("Retained output directory is linked or not ordinary.".into()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        Ok(held_head(&path, &row)?.then_some(path))
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -323,6 +354,39 @@ impl Reads for VerifiedReads {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retained_full_head_is_read_only_and_requires_exact_revision_and_physical_bytes() {
+        use serde_json::json;
+        let dir = tempfile::tempdir().unwrap();
+        let reads = VerifiedReads::new(dir.path().join("absent"));
+        let bytes = b"report";
+        let sha = format!("{:x}", Sha256::digest(bytes));
+        let raw = json!({"work_id":"work1","engine":"network_reporter","operation":"export-test","variant":"default","input_base_fingerprint":"a".repeat(64),"head_revision":1,"updated_at":"2026-10-18T00:00:00Z","outputs":[{"output_id":"xlsx","format":"xlsx","content_type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","sha256":sha,"size_bytes":bytes.len()}]});
+        let mut head = ds_command_kernel::compute_artifact_inventory::decode_head(
+            &serde_json::to_vec(&raw).unwrap(),
+        )
+        .unwrap();
+        assert!(reads.retained_head("project", &head).unwrap().is_none());
+        assert!(!reads.root().exists());
+        let row = crate::rows::remote_row(&raw);
+        let root = reads.head_root("project", &row.identity).unwrap();
+        std::fs::write(root.join("xlsx"), bytes).unwrap();
+        std::fs::write(
+            root.join("head.json"),
+            serde_json::to_vec(&json!({"sha256":row.sha256,"revision":row.revision})).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            reads.retained_head("project", &head).unwrap(),
+            Some(root.clone())
+        );
+        head.head_revision = 2;
+        assert!(reads.retained_head("project", &head).unwrap().is_none());
+        head.head_revision = 1;
+        std::fs::write(root.join("xlsx"), b"broken").unwrap();
+        assert!(reads.retained_head("project", &head).unwrap().is_none());
+    }
 
     #[test]
     fn only_a_ds_storage_ticket_is_accepted() {

@@ -37,22 +37,51 @@ pub fn read_a4<E>(
         .map_err(ReadError::Gateway)?;
     let head = decode_head(&value)?;
     retained_preview::validate_head(project, transformer, &head).map_err(ReadError::Unreadable)?;
+    read_output(
+        gateway,
+        reads,
+        project,
+        &head,
+        &head.outputs[0].output_id,
+        destination,
+        guard,
+    )?;
+    Ok(head)
+}
+
+/// Download one already validated immutable declaration. The ticket must name
+/// this exact complete head, revision and output; a moved head never substitutes.
+pub fn read_output<E>(
+    gateway: &dyn Gateway,
+    reads: &dyn Reads,
+    project: &str,
+    head: &inventory::Head,
+    output_id: &str,
+    destination: &Path,
+    guard: &dyn Fn() -> Result<(), E>,
+) -> Result<(), ReadError<E>> {
     guard().map_err(ReadError::Scope)?;
-    let output = &head.outputs[0];
+    let output = head
+        .outputs
+        .iter()
+        .find(|output| output.output_id == output_id)
+        .ok_or_else(|| {
+            ReadError::Unreadable("The selected output is absent from its head.".into())
+        })?;
     let ticket = gateway
         .post(
             SyncRoute::ComputeArtifacts,
-            &json!({"action":"download","project_id":project,"engine":"network_reporter",
-                "operation":operation,"variant":retained_preview::VARIANT,"output_id":output.output_id}),
+            &json!({"action":"download","project_id":project,"engine":head.engine,
+            "operation":head.operation,"variant":head.variant,"output_id":output_id}),
         )
         .map_err(ReadError::Gateway)?;
-    let url = admitted_ticket_url(&head, &ticket)?;
+    let url = admitted_ticket_url(head, output, &ticket)?;
     guard().map_err(ReadError::Scope)?;
     reads
         .download_verified(url, destination, &output.sha256, output.size_bytes)
         .map_err(ReadError::Unreadable)?;
     guard().map_err(ReadError::Scope)?;
-    Ok(head)
+    Ok(())
 }
 
 fn decode_head<E>(value: &Value) -> Result<inventory::Head, ReadError<E>> {
@@ -64,12 +93,13 @@ fn decode_head<E>(value: &Value) -> Result<inventory::Head, ReadError<E>> {
 
 fn admitted_ticket_url<'a, E>(
     head: &inventory::Head,
+    expected_output: &inventory::Declaration,
     ticket: &'a Value,
 ) -> Result<&'a str, ReadError<E>> {
     let resolved = decode_head(&ticket["head"])?;
     let output: inventory::Declaration = serde_json::from_value(ticket["output"].clone())
         .map_err(|error| ReadError::Unreadable(error.to_string()))?;
-    if resolved != *head || output != head.outputs[0] {
+    if resolved != *head || output != *expected_output {
         return Err(ReadError::HeadMoved);
     }
     inventory::evaluate(
@@ -120,6 +150,25 @@ mod tests {
     fn ticket(head: &inventory::Head) -> Value {
         json!({"head":head,"output":head.outputs[0],"file_name":head.outputs[0].filename,
             "download_url":"https://storage.googleapis.com/b/object?generation=1"})
+    }
+
+    #[test]
+    fn general_output_ticket_binds_the_selected_output_not_the_first_output() {
+        let mut value = serde_json::to_value(head()).unwrap();
+        value.as_object_mut().unwrap().remove("printing_preview");
+        value["variant"] = json!("default");
+        value["outputs"] = json!([
+            {"output_id":"xlsx","format":"xlsx","content_type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","sha256":"5".repeat(64),"size_bytes":42},
+            value["outputs"][0].clone()
+        ]);
+        let selected = inventory::decode_head(&serde_json::to_vec(&value).unwrap()).unwrap();
+        let output = &selected.outputs[1];
+        let ticket = json!({"head":selected,"output":output,"file_name":inventory::filename(&selected.engine,&selected.operation,output),"download_url":"https://storage.googleapis.com/b/object?generation=2"});
+        assert!(admitted_ticket_url::<()>(&selected, output, &ticket).is_ok());
+        assert!(matches!(
+            admitted_ticket_url::<()>(&selected, &selected.outputs[0], &ticket),
+            Err(ReadError::HeadMoved)
+        ));
     }
 
     struct Host {
