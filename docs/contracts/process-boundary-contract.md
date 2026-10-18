@@ -302,3 +302,32 @@ client verifies the same bytes again after every response before cleanup.
 Network delegates the complete operation to the existing typed Profile control
 owner. History, authorization, confirmation, atomic transaction, Save exclusion,
 reply validation and durable checkpoint rules remain the same.
+
+## Survey queue audited discard
+
+`core.survey.queue` contract 1 keeps its protected input/output, captured
+account/deployment/install, lane and explicit project fences. The additive
+`prepare_discard {ids,now}` action is read-only. In one SQLite read snapshot,
+the native Store asks the existing Survey kernel to evaluate its discard event
+against the exact scoped project headers. It returns only eligible removals as
+`{rows:[{fence,row_sha256,row}]}`. The digest is SHA-256 of the complete row's
+native `serde_json::to_vec` bytes, including payload and overlay. Missing stores
+or tables remain uncreated and return an empty rows array. IDs are unique,
+nonempty and bounded to 500; the prepared row batch retains the 32 MiB bound.
+
+The caller must submit the exact prepared rows to the existing audit endpoint
+and receive its successful acknowledgment before `commit_discard`. Audit
+payload projection keeps the endpoint's existing overlay omission; commit still
+uses the digest of the full prepared row. The Store performs no audit or network
+work. An audit refusal or uncertain receipt leaves every row retained.
+
+`commit_discard {expected:[{fence,row_sha256}],now}` opens one immediate SQLite
+transaction, requires every expected row in the captured scope/project to match
+its exact fence and full-row digest, and reruns the same kernel discard event.
+Only an exact requested removal set with no other actions may be CAS-removed
+and committed once. A missing, foreign, stale or ineligible row, malformed batch
+or SQLite failure removes nothing. Empty arrays are allowed no-ops. Commit
+returns `{removed:[id]}`. Generic `transition` with event kind `discard` refuses
+and directs callers to prepare, audit and commit; other lifecycle transitions
+retain their existing behavior. Older closed Core parsers refuse the additive
+actions rather than falling back to browser/WASM or generic CAS deletion.

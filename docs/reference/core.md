@@ -465,3 +465,13 @@ PATH override, installation-wide pin, credential or data migration.
 `core.survey.queue` exposes the retained native Survey queue offline through a
 closed private request file and a new private result file. Discover its command
 contract for actions, identity fences, bounds and mutation completion receipts.
+
+For discard, first call `prepare_discard {ids,now}` and retain its exact
+`result.rows` entries (`fence`, `row_sha256`, `row`). Audit those prepared rows
+through the existing audit endpoint before submitting
+`commit_discard {expected:[{fence,row_sha256}],now}`. A failed audit must leave
+the rows retained. Commit removes the complete exact set or refuses with zero
+deletion if any row changed or became ineligible. Both batches are bounded to
+500 unique IDs; empty arrays are allowed. Generic discard transitions refuse.
+See the [audited discard contract](../contracts/process-boundary-contract.md#survey-queue-audited-discard)
+for snapshot, digest and transaction rules.

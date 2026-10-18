@@ -3,6 +3,7 @@ use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
+use ds_sync_store::survey_entries::{self, SurveyEntryDiscardExpected};
 use ds_sync_store::{Store, SurveyEntryScope};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -17,7 +18,12 @@ const MAX_BYTES: usize = 64 * 1024 * 1024;
 const INVALID: Refusal = Refusal {
     code: "survey_queue_invalid_input",
     when: "the closed request, exact project, or absolute private input file is invalid",
-    remedy: "use headers {}, row {id}, admit {rows,now}, or transition {event,now} with action as the discriminator; preserve the source file",
+    remedy: "use headers {}, row {id}, admit {rows,now}, transition {event,now}, prepare_discard {ids,now}, or commit_discard {expected,now} with action as the discriminator; preserve the source file",
+};
+const DISCARD: Refusal = Refusal {
+    code: "survey_queue_discard_requires_audit",
+    when: "a generic transition attempts to discard retained Survey rows",
+    remedy: "use prepare_discard, submit the exact prepared rows to the existing audit endpoint, then commit_discard with their fences and row_sha256 values",
 };
 const STORE: Refusal = Refusal {
     code: "survey_queue_store_refused",
@@ -38,22 +44,38 @@ const CHANGED: Refusal = Refusal {
 pub static COMMAND: Command = Command {
     id: "core.survey.queue", path: &["core", "survey", "queue"], contract: 1,
     summary: "Read, admit or transition the retained native Survey entry queue offline.",
-    purpose: "Use the installed Core SQLite owner under the existing lane's protected account, deployment and installation and one exact project. Closed request actions are headers, row, admit and transition. The Kernel decides replay; persist/remove actions commit atomically before transport effects are returned. This command runs no transport, Core daemon, network, credential refresh, project selection or store repair. Reads never create a missing store or table. Admissions refuse foreign or ownerless rows. Output is preadmitted before mutations, bounded to 64 MiB and acknowledged only after a protected identity recheck.",
+    purpose: "Use the installed Core SQLite owner under the existing lane's protected account, deployment and installation and one exact project. Closed request actions are headers, row, admit, transition, prepare_discard and commit_discard. Prepare is read-only; callers audit its exact rows before commit, which atomically rechecks every row digest, lifecycle fence and Kernel discard decision. Generic discard transitions refuse. The Kernel decides replay; persist/remove actions commit atomically before transport effects are returned. This command runs no transport, Core daemon, network, credential refresh, project selection or store repair. Reads never create a missing store or table. Admissions refuse foreign or ownerless rows. Output is preadmitted before mutations, bounded to 64 MiB and acknowledged only after a protected identity recheck.",
     chapter: Chapter::Survey, effect: Effect::LocalAuthState, authority: Authority::HeadlessUser, execution: Execution::Sync,
     args: &[Arg::value("lane", "<stable|canary>", "Existing protected native identity lane.").choices(&["stable", "canary"]).required(), super::PROJECT.required(),
-        Arg::value("request", "<absolute-existing-json-file>", "Owner-only ordinary single-link file, at most 64 MiB. Closed JSON discriminator action: headers; row with id; admit with rows and now; transition with event and now. No extra request fields.").required(),
+        Arg::value("request", "<absolute-existing-json-file>", "Owner-only ordinary single-link file, at most 64 MiB. Closed JSON discriminator action: headers; row with id; admit with rows and now; transition with event and now; prepare_discard with ids and now; commit_discard with expected [{fence,row_sha256}] and now. Discard batches contain at most 500 unique IDs. No extra request fields.").required(),
         Arg::value("out", "<absolute-new-json-file>", "New owner-only result file in an existing protected directory; never replaced, at most 64 MiB.").required()],
-    output: "Bounded ds.survey-queue-file/v1 receipt with path, sha256, size_bytes, action, project, lane and safe owner context (account, deployment_sha256, install_id). The bound file is ds.survey-queue/v1 with the same context and result. Transition results retain Kernel effects after atomic persistence.",
-    examples: &[], refusals: &[super::PLATFORM, INVALID, STORE, OUTPUT, CHANGED, super::CONTEXT_CORRUPT, super::PROJECT_REQUIRED],
+    output: "Bounded ds.survey-queue-file/v1 receipt with path, sha256, size_bytes, action, project, lane and safe owner context (account, deployment_sha256, install_id). The bound file is ds.survey-queue/v1 with the same context and result. Transition results retain Kernel effects after atomic persistence. Prepare returns {rows:[{fence,row_sha256,row}]}; commit returns {removed:[id]}.",
+    examples: &[], refusals: &[super::PLATFORM, INVALID, DISCARD, STORE, OUTPUT, CHANGED, super::CONTEXT_CORRUPT, super::PROJECT_REQUIRED],
     reference: Some("docs/reference/core.md"), search: &["survey", "offline", "queue", "sqlite"], requires: Requires::Server, availability: super::native_host_availability,
 };
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
     Headers {},
-    Row { id: String },
-    Admit { rows: Vec<Value>, now: u64 },
-    Transition { event: Value, now: u64 },
+    Row {
+        id: String,
+    },
+    Admit {
+        rows: Vec<Value>,
+        now: u64,
+    },
+    Transition {
+        event: Value,
+        now: u64,
+    },
+    PrepareDiscard {
+        ids: Vec<String>,
+        now: u64,
+    },
+    CommitDiscard {
+        expected: Vec<SurveyEntryDiscardExpected>,
+        now: u64,
+    },
 }
 impl Request {
     fn action(&self) -> &'static str {
@@ -62,10 +84,15 @@ impl Request {
             Self::Row { .. } => "row",
             Self::Admit { .. } => "admit",
             Self::Transition { .. } => "transition",
+            Self::PrepareDiscard { .. } => "prepare_discard",
+            Self::CommitDiscard { .. } => "commit_discard",
         }
     }
     fn mutates(&self) -> bool {
-        !matches!(self, Self::Headers {} | Self::Row { .. })
+        !matches!(
+            self,
+            Self::Headers {} | Self::Row { .. } | Self::PrepareDiscard { .. }
+        )
     }
     fn validate(&self, scope: &SurveyEntryScope, project: &str) -> Result<(), Failure> {
         match self {
@@ -80,7 +107,20 @@ impl Request {
                     ));
                 }
             }
+            Self::PrepareDiscard { ids, .. } => {
+                survey_entries::validate_discard_ids(ids).map_err(|e| failure(INVALID, e))?
+            }
+            Self::CommitDiscard { expected, .. } => {
+                survey_entries::validate_discard_expected(expected)
+                    .map_err(|e| failure(INVALID, e))?
+            }
             Self::Transition { event, .. } => {
+                if event.get("kind").and_then(Value::as_str) == Some("discard") {
+                    return Err(failure(
+                        DISCARD,
+                        "Audit the prepared Survey rows before discarding them.",
+                    ));
+                }
                 if !event.is_object()
                     || event
                         .get("current_uid")
@@ -226,6 +266,11 @@ fn read(
             }
             Ok(row.unwrap_or(Value::Null))
         }
+        Request::PrepareDiscard { ids, now } => {
+            survey_entries::prepare_discard(store, scope, project, ids, *now)
+                .map(|rows| json!({"rows":rows}))
+                .map_err(|e| failure(STORE, e))
+        }
         _ => unreachable!("closed read dispatch"),
     }
 }
@@ -238,12 +283,23 @@ fn perform(
     validate_database(database)?;
     if !request.mutates() {
         let store = Store::open_read_only(database).map_err(|e| failure(STORE, e))?;
+        if matches!(&request, Request::PrepareDiscard { .. }) {
+            // The owning preparation API holds its one read snapshot itself.
+            return read(store.as_ref(), scope, project, &request);
+        }
         return match store.as_ref() {
             Some(store) => store
                 .with_read_snapshot(|s| read(Some(s), scope, project, &request))
                 .map_err(|e| failure(STORE, e))?,
             None => read(None, scope, project, &request),
         };
+    }
+    if let Request::CommitDiscard { expected, now } = &request {
+        if expected.is_empty() {
+            survey_entries::prepare_discard(None, scope, project, &[], *now)
+                .map_err(|e| failure(STORE, e))?;
+            return Ok(json!({"removed":[]}));
+        }
     }
     let parent = database
         .parent()
@@ -257,6 +313,10 @@ fn perform(
                 .map_err(|e| failure(STORE, e))?;
             Ok(json!({"admitted":true}))
         }
+        Request::CommitDiscard { expected, now } => store
+            .survey_entry_commit_discard(scope, project, &expected, now)
+            .map(|removed| json!({"removed":removed}))
+            .map_err(|e| failure(STORE, e)),
         Request::Transition { event, now } => store
             .survey_entry_transition(scope, project, event, now)
             .map_err(|e| failure(STORE, e)),
@@ -704,6 +764,230 @@ mod tests {
                             .is_some()
                     );
                 }
+            }
+        }
+    }
+    fn terminal_rows(database: &Path) {
+        let mut store = Store::open(database).unwrap();
+        for header in store.survey_entry_headers(&scope(), Some("p")).unwrap() {
+            let mut terminal = header.clone();
+            terminal.status = ds_command_kernel::survey_entry_outbox::Status::Failed;
+            assert!(
+                store
+                    .survey_entry_cas_apply(
+                        &scope(),
+                        &ds_command_kernel::survey_entry_outbox::Fence::from(&header),
+                        &terminal,
+                        None
+                    )
+                    .unwrap()
+            );
+        }
+    }
+    fn prepared_expected(payload: &Value) -> Vec<SurveyEntryDiscardExpected> {
+        payload["result"]["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                serde_json::from_value(json!({"fence":r["fence"],"row_sha256":r["row_sha256"]}))
+                    .unwrap()
+            })
+            .collect()
+    }
+    #[test]
+    fn discard_prepare_is_readonly_on_missing_store_and_commit_empty_is_a_noop() {
+        let dir = directory();
+        let db = dir.path().join("missing/store.sqlite");
+        let out = dir.path().join("prepared.json");
+        let prepare = Request::PrepareDiscard {
+            ids: vec!["one".into()],
+            now: 100,
+        };
+        assert!(!prepare.mutates());
+        let receipt = run(&db, &out, "p", prepare).unwrap();
+        assert_eq!(receipt["action"], "prepare_discard");
+        assert_eq!(payload(&out)["result"], json!({"rows":[]}));
+        run(
+            &db,
+            &dir.path().join("empty-commit.json"),
+            "p",
+            Request::CommitDiscard {
+                expected: vec![],
+                now: 100,
+            },
+        )
+        .unwrap();
+        assert!(!db.parent().unwrap().exists());
+        let out = dir.path().join("discard.json");
+        let error = run(
+            &db,
+            &out,
+            "p",
+            Request::Transition {
+                event: json!({"kind":"discard","ids":["one"]}),
+                now: 100,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), DISCARD.code);
+        assert!(error.remedy_text().unwrap().contains("prepare_discard"));
+        assert!(!out.exists());
+    }
+    #[test]
+    fn discard_prepare_retains_auditable_rows_and_exact_commit_removes_them() {
+        let dir = directory();
+        let db = dir.path().join("store.sqlite");
+        run(
+            &db,
+            &dir.path().join("admitted.json"),
+            "p",
+            Request::Admit {
+                rows: vec![row("one", "p"), row("two", "p")],
+                now: 20,
+            },
+        )
+        .unwrap();
+        terminal_rows(&db);
+        let out = dir.path().join("prepared.json");
+        run(
+            &db,
+            &out,
+            "p",
+            Request::PrepareDiscard {
+                ids: vec!["one".into(), "two".into()],
+                now: 100,
+            },
+        )
+        .unwrap();
+        let prepared = payload(&out);
+        let expected = prepared_expected(&prepared);
+        assert_eq!(expected.len(), 2);
+        let store = Store::open_read_only(&db).unwrap().unwrap();
+        for entry in prepared["result"]["rows"].as_array().unwrap() {
+            assert_eq!(
+                entry["row"],
+                store
+                    .survey_entry_row(&scope(), entry["fence"]["id"].as_str().unwrap())
+                    .unwrap()
+                    .unwrap()
+            );
+            assert_eq!(
+                entry["row_sha256"],
+                format!(
+                    "{:x}",
+                    Sha256::digest(serde_json::to_vec(&entry["row"]).unwrap())
+                )
+            );
+        }
+        drop(store);
+        let committed = dir.path().join("committed.json");
+        run(
+            &db,
+            &committed,
+            "p",
+            Request::CommitDiscard { expected, now: 101 },
+        )
+        .unwrap();
+        assert_eq!(
+            payload(&committed)["result"],
+            json!({"removed":["one","two"]})
+        );
+        assert!(
+            Store::open_read_only(&db)
+                .unwrap()
+                .unwrap()
+                .survey_entry_headers(&scope(), Some("p"))
+                .unwrap()
+                .is_empty()
+        );
+    }
+    #[test]
+    fn discard_closed_batches_refuse_malformed_fields_and_bounds_before_effects() {
+        let dir = directory();
+        let db = dir.path().join("missing/store.sqlite");
+        for ids in [
+            vec!["one".into(), "one".into()],
+            vec!["".into()],
+            (0..501).map(|n| format!("{n}")).collect(),
+        ] {
+            assert!(
+                run(
+                    &db,
+                    &dir.path().join("invalid.json"),
+                    "p",
+                    Request::PrepareDiscard { ids, now: 100 }
+                )
+                .is_err()
+            );
+        }
+        for value in [
+            json!({"action":"prepare_discard","ids":[],"now":100,"account":"other"}),
+            json!({"action":"commit_discard","expected":[],"now":100,"audit_succeeded":true}),
+            json!({"action":"commit_discard","expected":[{"fence":{},"row_sha256":"bad","row":{}}],"now":100}),
+            json!({"action":"prepare_discard","ids":[1],"now":100}),
+        ] {
+            assert!(serde_json::from_value::<Request>(value).is_err());
+        }
+        assert!(!db.parent().unwrap().exists());
+    }
+    #[test]
+    fn discard_identity_change_before_commit_retains_rows_and_late_ack_reports_completed_mutation()
+    {
+        for change_at in [2, 3] {
+            let dir = directory();
+            let db = dir.path().join("store.sqlite");
+            run(
+                &db,
+                &dir.path().join("admit.json"),
+                "p",
+                Request::Admit {
+                    rows: vec![row("one", "p")],
+                    now: 20,
+                },
+            )
+            .unwrap();
+            terminal_rows(&db);
+            let prepared = dir.path().join("prepared.json");
+            run(
+                &db,
+                &prepared,
+                "p",
+                Request::PrepareDiscard {
+                    ids: vec!["one".into()],
+                    now: 100,
+                },
+            )
+            .unwrap();
+            let expected = prepared_expected(&payload(&prepared));
+            let calls = Cell::new(0);
+            let error = capture(
+                &db,
+                "stable",
+                "p",
+                Request::CommitDiscard { expected, now: 101 },
+                &dir.path().join("committed.json"),
+                || {
+                    calls.set(calls.get() + 1);
+                    let mut s = scope();
+                    if calls.get() >= change_at {
+                        s.install_id = "changed".into();
+                    }
+                    Ok(s)
+                },
+            )
+            .unwrap_err();
+            let held = Store::open_read_only(&db)
+                .unwrap()
+                .unwrap()
+                .survey_entry_row(&scope(), "one")
+                .unwrap();
+            if change_at == 2 {
+                assert_eq!(error.code(), CHANGED.code);
+                assert!(held.is_some());
+            } else {
+                assert_eq!(error.detail_value().unwrap()["mutation_completed"], true);
+                assert!(held.is_none());
             }
         }
     }
