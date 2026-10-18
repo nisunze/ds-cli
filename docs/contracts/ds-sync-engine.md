@@ -202,6 +202,21 @@ is available when needed; preserving them does not reduce artifact synchronizati
 or justify unnecessary compute. Reclaiming derived bytes never authorizes deleting
 or rewriting their source inputs.
 
+**Governed report completion (owner, 2026-10-18):** Every governed report
+produced through CLI, MCP, Desktop or a headless agent must durably seal its
+verified artifact inventory into the shared SQLite Sync Center queue before
+reporting production complete. Local export paths are additional delivery
+copies, never an opt-out from project synchronization. The existing shared
+runtime uploads automatically when authority and connectivity permit; offline
+or refused delivery retains bytes and a visible pending/refused state.
+Remote receipt/readback, not a local PDF or a successful enqueue, proves delivery.
+This includes transformer sheets, voltage-drop reports and MV plan/profile
+booklets. MV publication retains its exact model/content revision and one logical
+attachment history; it must not be disguised as a transformer or project-wide map.
+Explicit template previews remain previews and cannot masquerade as governed
+production. A missing producer adapter is an implementation gap to expose and
+repair, never permission to upload directly around Sync Center.
+
 Hybrid placement never makes calculation depend on publication admission.
 Retained prepared inputs and their declared cached dependencies can compute
 while Brain is unreachable. Completion seals the local queue without a gateway
