@@ -3,7 +3,7 @@
 //! capture current engineering inputs or wake the publication queue.
 use crate::{Gateway, GatewayError, Reads, SyncRoute};
 use ds_command_kernel::{compute_artifact_inventory as inventory, printing::retained_preview};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::Path;
 
 /// Keep host scope refusals and authority verdicts intact for the caller.
@@ -97,17 +97,26 @@ fn admitted_ticket_url<'a, E>(
     ticket: &'a Value,
 ) -> Result<&'a str, ReadError<E>> {
     let resolved = decode_head(&ticket["head"])?;
-    let output: inventory::Declaration = serde_json::from_value(ticket["output"].clone())
-        .map_err(|error| ReadError::Unreadable(error.to_string()))?;
-    if resolved != *head || output != *expected_output {
+    if resolved != *head {
         return Err(ReadError::HeadMoved);
     }
-    inventory::evaluate(
+    // Head and download declarations use the same portable normalization owner.
+    // Historical Reporter tickets may omit the stored canonical filename.
+    let projection = inventory::evaluate(
         &serde_json::to_vec(&json!({"engine":head.engine,"operation":head.operation,
             "outputs":head.outputs,"download":{"output":ticket["output"],"file_name":ticket["file_name"]}}))
         .map_err(|error| ReadError::Unreadable(error.to_string()))?,
     )
     .map_err(ReadError::Unreadable)?;
+    #[derive(serde::Deserialize)]
+    struct DownloadProjection {
+        download_output: inventory::Declaration,
+    }
+    let projection: DownloadProjection = serde_json::from_str(&projection)
+        .map_err(|error| ReadError::Unreadable(error.to_string()))?;
+    if projection.download_output != *expected_output {
+        return Err(ReadError::HeadMoved);
+    }
     ticket["download_url"].as_str().ok_or_else(|| {
         ReadError::Unreadable("The retained PDF has no governed download ticket.".into())
     })
@@ -169,6 +178,32 @@ mod tests {
             admitted_ticket_url::<()>(&selected, &selected.outputs[0], &ticket),
             Err(ReadError::HeadMoved)
         ));
+    }
+
+    #[test]
+    fn historical_download_filename_uses_shared_projection_without_weakening_pins() {
+        let mut raw = serde_json::to_value(head()).unwrap();
+        raw.as_object_mut().unwrap().remove("printing_preview");
+        raw["variant"] = json!("default");
+        raw["outputs"] = json!([{"output_id":"xlsx","format":"xlsx",
+            "content_type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "sha256":"5".repeat(64),"size_bytes":42}]);
+        let selected = inventory::decode_head(&serde_json::to_vec(&raw).unwrap()).unwrap();
+        let ticket = json!({"head":raw,"output":raw["outputs"][0],"file_name":"",
+            "download_url":"https://storage.googleapis.com/b/object?generation=2"});
+        assert!(admitted_ticket_url::<()>(&selected, &selected.outputs[0], &ticket).is_ok());
+        for (field, value) in [
+            ("sha256", json!("6".repeat(64))),
+            ("size_bytes", json!(43)),
+            ("filename", json!("Wrong.xlsx")),
+        ] {
+            let mut wrong = ticket.clone();
+            wrong["output"][field] = value;
+            assert!(admitted_ticket_url::<()>(&selected, &selected.outputs[0], &wrong).is_err());
+        }
+        let mut wrong = ticket;
+        wrong["file_name"] = json!("Wrong.xlsx");
+        assert!(admitted_ticket_url::<()>(&selected, &selected.outputs[0], &wrong).is_err());
     }
 
     struct Host {
@@ -243,7 +278,9 @@ mod tests {
         assert_eq!(host.read("project_a").unwrap(), head);
         assert_eq!(
             *host.events.borrow(),
-            ["guard", "read", "guard", "download", "guard", "bytes", "guard"]
+            [
+                "guard", "read", "guard", "download", "guard", "bytes", "guard"
+            ]
         );
     }
 
@@ -276,12 +313,13 @@ mod tests {
             let host = Host::new(&head, ticket(&head));
             let mut foreign = json!(head);
             if change == 0 {
-                foreign["input_base_fingerprint"] = json!(head
-                    .printing_preview
-                    .as_ref()
-                    .unwrap()
-                    .input_base_fingerprint("project_b", "transformer_a")
-                    .unwrap());
+                foreign["input_base_fingerprint"] = json!(
+                    head.printing_preview
+                        .as_ref()
+                        .unwrap()
+                        .input_base_fingerprint("project_b", "transformer_a")
+                        .unwrap()
+                );
             } else {
                 foreign["outputs"] = json!([]);
             }
