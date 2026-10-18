@@ -375,7 +375,8 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     // Project templates persist semantic keys after migration. Resolve their
     // exact API documents before the ref-based physical-pen preflight, just
     // as the interactive and report renderers do.
-    let (layout, _) = printing::resolve_style_documents(layout, &snapshot).map_err(invalid)?;
+    let (layout, resolved_styles) =
+        printing::resolve_style_documents(layout, &snapshot).map_err(invalid)?;
     let receipt = super::export::complete_proof_print_styles(
         lane,
         project,
@@ -384,7 +385,10 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     )?;
     let sheets = receipt.sheets().map_err(invalid)?;
     let renderer_defaults = printing::renderer_defaults::resolve(&snapshot).map_err(invalid)?;
-    printing::style_overrides::preflight(&layout, &sheets["printing_styles"]).map_err(invalid)?;
+    // Renderer inputs use the same authenticated capture as the semantic keys.
+    // The original sheets remain unchanged provenance, not a second style source.
+    printing::style_overrides::preflight(&layout, &resolved_styles["print_styles"])
+        .map_err(invalid)?;
     let mut models = {
         let (lane, identity, project) = (lane.to_owned(), identity.clone(), project.to_owned());
         bounded("the MV model read", ACQUISITION_STEP_BOUND, move || {
@@ -630,7 +634,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     )
     .map_err(invalid)?;
     let report_config = json!({"sheets":sheets,"printing_style_capture":style_capture});
-    let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"admin_reference":admin_reference,"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":sheets["printing_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
+    let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"admin_reference":admin_reference,"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":resolved_styles["print_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
     let path = out.join("render-request.json");
     let data = serde_json::to_vec(&render).map_err(invalid)?;
     std::fs::OpenOptions::new()
