@@ -96,7 +96,7 @@ fn isolated_profile_case() {
     let input = if case == "real" || case == "authored" || case == "old-authored" {
         fs::read(required("DS_PROFILE_OPEN_FIXTURE")).unwrap()
     } else {
-        serde_json::to_vec(&NativeProfileOpenV1{schema:PROFILE_OPEN_SCHEMA.into(),seed_json:json!({"model_id":"fixture","history":{"initial_revision":format!("rev:{}", "1".repeat(64)),"model_revision":format!("rev:{}", "1".repeat(64)),"undo_depth":0,"redo_depth":0,"history_pin":"2".repeat(64)}}).to_string(),binding_history:None,calculated:None,analysis:None}).unwrap()
+        serde_json::to_vec(&NativeProfileOpenV1{schema:PROFILE_OPEN_SCHEMA.into(),package_lineage_json:None,seed_json:json!({"model_id":"fixture","history":{"initial_revision":format!("rev:{}", "1".repeat(64)),"model_revision":format!("rev:{}", "1".repeat(64)),"undo_depth":0,"redo_depth":0,"history_pin":"2".repeat(64)}}).to_string(),binding_history:None,calculated:None,analysis:None}).unwrap()
     };
     let start = Instant::now();
     let result = captured.open_profile_session_with_timeout(
