@@ -524,6 +524,30 @@ fn explicit_artifact_verification_streams_exact_bytes_without_mutating_work() {
         "not_retained"
     );
     assert!(!missing.applied);
+    // Production reclamation clears the locator as well as retiring the blobs.
+    // That is absent payload evidence, not an alternate storage implementation.
+    let receipt = serde_json::from_value(serde_json::json!({
+        "receipt_id":"reclaimed-after-refusal", "scope":rows::store_scope("project-a"),
+        "action":"reclaimed", "identity":row.identity, "outcome":"refused",
+        "client_publish_id":row.client_publish_id, "at_ms":8
+    }))
+    .unwrap();
+    store
+        .lock()
+        .unwrap()
+        .apply(
+            &fence(),
+            8,
+            ds_sync_runtime::store::Event::ActionReceipt { receipt },
+        )
+        .unwrap();
+    let reclaimed = ds_sync_runtime::recover(&path, &fence(), command(), 9).unwrap();
+    let verification = reclaimed.artifact_verification.unwrap();
+    assert_eq!(verification.status, "not_retained");
+    assert_eq!(verification.output_count, 1);
+    assert_eq!(verification.verified_bytes, 0);
+    assert!(verification.outputs.is_empty());
+    assert!(!reclaimed.applied);
 }
 
 #[test]

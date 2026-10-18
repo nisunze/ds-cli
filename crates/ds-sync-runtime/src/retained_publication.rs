@@ -307,6 +307,9 @@ pub fn verify_artifacts(
             .ok_or("sync_row_not_found: retained publication is absent")?;
         result.output_count = stored.outputs.len();
         let local = rows::local_row_from_store(&stored);
+        if !local.readable || local.bytes_locator.is_empty() {
+            return Ok(result);
+        }
         if !owns(&local) {
             result.status = "unsupported_storage";
             return Ok(result);
