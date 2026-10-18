@@ -173,16 +173,17 @@ a retained previous unit refuses `module_rollback_unavailable`. No lifecycle
 operation downloads, reads a release catalogue, launches an engine or requires
 Desktop. Installed acceptance remains distinct from source and fixture proof.
 
-## Browser Network unit decisions
+## Browser engine unit decisions
 
 `module_release::browser` owns the closed `browserModule` WASM wire and the
 matching native decision functions. `core.module-release --runtime wasm` is
-read-only inspection of this owner; native remains the default. Only Network
-has an admitted browser publication contract. Solar/Reporter refuse before
-file access; public metadata inspection never installs or authorizes processing.
+read-only inspection of this owner; native remains the default. The closed
+profiles admit Network and Reporter. Reporter uses `ds.reporter-wasm/v1` and
+only `render_held_svg_pdf_v1`; Solar still refuses before file access. Public
+metadata inspection never installs or authorizes processing.
 
-A browser unit contains exactly the JavaScript loader, WASM, and both type
-files, with matching lane, immutable release folder, producer source closure,
+A browser unit contains exactly its component's JavaScript loader, WASM, and both
+type files, with matching lane, immutable release folder, producer source closure,
 build timestamp and engine identity. Its SHA-256 binds the complete typed
 catalog with assets sorted by URL. Shape limits precede cloning; unknown keys,
 mixed producers, crossed lanes, repeated/missing members and mutable URLs refuse.
@@ -193,6 +194,12 @@ and consent before asset transfer. It supplies actual byte hashes and sizes to
 then admits the loaded engine identity and captured gateway/route authority.
 These pure decisions perform zero acquisition, cache writes or engine calls;
 they are not trusted installation grants or project authorization.
+
+Every inspection, retained selection, installation and capture is bound to the
+requested component. Network and Reporter have separate selections and locks;
+activation cannot cross their units or identities. Reporter identity admits the
+shared Rust SVG/PDF converter, not acquisition, composition, Chromium-based
+voltage-drop printing or report publication.
 
 `ds.browser-module-selection/v1` records active and retained previous receipts,
 or an explicit removed state. Activation and rollback take the existing

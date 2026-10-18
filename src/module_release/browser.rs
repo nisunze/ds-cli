@@ -12,12 +12,64 @@ pub const SELECTION_SCHEMA: &str = "ds.browser-module-selection/v1";
 pub const MAX_WIRE_BYTES: usize = 384 * 1024;
 const MAX_UNIT_BYTES: i64 = 128 * 1024 * 1024;
 const MAX_GENERATION: u64 = crate::desktop_instance::MAX_GENERATION;
-const FILES: [(&str, &str); 4] = [
+const NETWORK_FILES: [(&str, &str); 4] = [
     ("ds_network_wasm.js", "module-javascript"),
     ("ds_network_wasm_bg.wasm", "module-wasm"),
     ("ds_network_wasm.d.ts", "module-types"),
     ("ds_network_wasm_bg.wasm.d.ts", "module-types"),
 ];
+
+const REPORTER_FILES: [(&str, &str); 4] = [
+    ("ds_reporter_wasm.js", "module-javascript"),
+    ("ds_reporter_wasm_bg.wasm", "module-wasm"),
+    ("ds_reporter_wasm.d.ts", "module-types"),
+    ("ds_reporter_wasm_bg.wasm.d.ts", "module-types"),
+];
+struct ComponentProfile {
+    protocol: &'static str,
+    files: &'static [(&'static str, &'static str); 4],
+    owner: &'static str,
+    identity_schema: &'static str,
+    capability: &'static str,
+}
+fn profile(component: ModuleComponent) -> Result<ComponentProfile, ModuleReleaseError> {
+    match component {
+        ModuleComponent::Network => Ok(ComponentProfile {
+            protocol: PROTOCOL,
+            files: &NETWORK_FILES,
+            owner: "ds-network",
+            identity_schema: "ds.network-engine/v1",
+            capability: "lv_processing_v1",
+        }),
+        ModuleComponent::Reporter => Ok(ComponentProfile {
+            protocol: "ds.reporter-wasm/v1",
+            files: &REPORTER_FILES,
+            owner: "ds-network-reporter",
+            identity_schema: "ds.reporter-engine/v1",
+            capability: "render_held_svg_pdf_v1",
+        }),
+        ModuleComponent::Solar => fail(
+            "module_release_target_unsupported",
+            "Solar has no admitted browser publication contract",
+        ),
+    }
+}
+fn network() -> ModuleComponent {
+    ModuleComponent::Network
+}
+fn bind_component(
+    expected: ModuleComponent,
+    actual: ModuleComponent,
+) -> Result<(), ModuleReleaseError> {
+    profile(expected)?;
+    if expected != actual {
+        return fail(
+            "module_receipt_invalid",
+            "Browser caller and receipt components differ",
+        );
+    }
+    Ok(())
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -102,14 +154,14 @@ pub fn capture(
     let selected = current.ok_or_else(|| {
         refuse(
             "module_not_installed",
-            "Install and activate Network before processing",
+            "Install and activate this browser component before processing",
         )
     })?;
     validate_selection(selected, lane)?;
     let BrowserSelectionState::Installed { active, .. } = &selected.selection else {
         return fail(
             "module_removed",
-            "Network was explicitly removed; restore it before processing",
+            "This browser component was explicitly removed; restore it before processing",
         );
     };
     let receipt = admit_retained(active, lane, gateway_origin)?;
@@ -161,12 +213,7 @@ fn channel(value: &str) -> Result<(), ModuleReleaseError> {
 }
 pub fn admit_target(component: &str, channel_name: &str) -> Result<(), ModuleReleaseError> {
     channel(channel_name)?;
-    if ModuleComponent::parse(component)? != ModuleComponent::Network {
-        return fail(
-            "module_release_target_unsupported",
-            "Only Network has an admitted browser publication contract",
-        );
-    }
+    profile(ModuleComponent::parse(component)?)?;
     Ok(())
 }
 fn filename(asset: &ModuleReleaseAsset) -> Result<String, ModuleReleaseError> {
@@ -190,7 +237,9 @@ pub fn inspect(channel_name: &str, value: &Value) -> Result<BrowserUnit, ModuleR
     if !value
         .get("assets")
         .and_then(Value::as_array)
-        .is_some_and(|assets| assets.len() == FILES.len() && assets.iter().all(bounded_asset_shape))
+        .is_some_and(|assets| {
+            assets.len() == NETWORK_FILES.len() && assets.iter().all(bounded_asset_shape)
+        })
     {
         return fail(
             "module_release_invalid",
@@ -222,8 +271,11 @@ pub fn inspect(channel_name: &str, value: &Value) -> Result<BrowserUnit, ModuleR
     }
     let release: BrowserRelease = serde_json::from_value(value.clone())
         .map_err(|_| refuse("module_release_invalid", "Invalid browser release schema"))?;
+    let component = release.component;
+    let profile = profile(component)?;
     let expected_product = format!(
-        "rw.datasolutions.module.network{}",
+        "rw.datasolutions.module.{}{}",
+        component.as_str(),
         if channel_name == "canary" {
             ".canary"
         } else {
@@ -232,14 +284,13 @@ pub fn inspect(channel_name: &str, value: &Value) -> Result<BrowserUnit, ModuleR
     );
     if release.schema != MODULE_RELEASE_SCHEMA
         || release.runtime != "wasm"
-        || release.component != ModuleComponent::Network
         || release.channel != channel_name
         || release.product_id != expected_product
-        || release.protocol != PROTOCOL
+        || release.protocol != profile.protocol
     {
         return fail(
             "module_release_identity_mismatch",
-            "Expected this lane's Network browser catalog",
+            "Expected this lane's declared browser component catalog",
         );
     }
     if !release_folder(&release.version)
@@ -248,7 +299,7 @@ pub fn inspect(channel_name: &str, value: &Value) -> Result<BrowserUnit, ModuleR
             release.status.as_str(),
             "active" | "blocked" | "stopped" | "rolled_back"
         )
-        || release.assets.len() != FILES.len()
+        || release.assets.len() != profile.files.len()
     {
         return fail(
             "module_release_invalid",
@@ -261,7 +312,7 @@ pub fn inspect(channel_name: &str, value: &Value) -> Result<BrowserUnit, ModuleR
     for asset in &release.assets {
         if asset.platform != "browser"
             || asset.arch != "wasm32"
-            || asset.protocol != PROTOCOL
+            || asset.protocol != profile.protocol
             || asset.size_bytes <= 0
             || asset.size_bytes > MAX_UNIT_BYTES
             || !hex(&asset.sha256, 64)
@@ -273,7 +324,13 @@ pub fn inspect(channel_name: &str, value: &Value) -> Result<BrowserUnit, ModuleR
                 "Invalid browser target, size, digest or closure",
             );
         }
-        validate_asset_provenance(ModuleComponent::Network, asset)?;
+        validate_asset_provenance(component, asset)?;
+        if asset.engines[0].engine != profile.owner {
+            return fail(
+                "module_release_provenance_invalid",
+                "Browser producer differs from its component",
+            );
+        }
         if asset.source_sha != first.source_sha
             || asset.built_at != first.built_at
             || asset.source_revisions != first.source_revisions
@@ -299,11 +356,12 @@ pub fn inspect(channel_name: &str, value: &Value) -> Result<BrowserUnit, ModuleR
             || parts.len() != 8
             || parts[1].is_empty()
             || parts[2] != "modules"
-            || parts[3] != "network"
+            || parts[3] != component.as_str()
             || parts[4] != channel_name
             || parts[5] != "wasm"
             || parts[6] != release.version
-            || !FILES
+            || !profile
+                .files
                 .iter()
                 .any(|(file, kind)| *file == name && *kind == asset.kind)
             || seen.contains(&name)
@@ -375,6 +433,8 @@ fn validate_installation(
             "Browser identity exceeds 16 KiB",
         );
     }
+    let component = receipt.unit.release.component;
+    let profile = profile(component)?;
     let asset = &receipt.unit.release.assets[0];
     let version = receipt
         .unit
@@ -383,23 +443,27 @@ fn validate_installation(
         .split("-r")
         .next()
         .unwrap_or_default();
-    if identity["schema"] != "ds.network-engine/v1"
+    if identity["schema"] != profile.identity_schema
         || identity["protocolMajor"] != 1
         || identity["environment"] != "wasm"
-        || identity["runtime"]["environment"] != "wasm"
+        || (component == ModuleComponent::Network && identity["runtime"]["environment"] != "wasm")
         || identity["coreVersion"] != version
         || identity["sourceSha"] != asset.source_sha
         || identity["dependencyClosureSha256"] != asset.engines[0].manifest_sha256
-        || !matches!(
-            identity["jsonObjectOrder"].as_str(),
-            Some("sorted" | "insertion")
-        )
+        || (component == ModuleComponent::Network
+            && !matches!(
+                identity["jsonObjectOrder"].as_str(),
+                Some("sorted" | "insertion")
+            ))
+        || (component == ModuleComponent::Reporter
+            && (version != "0.1.0"
+                || identity["capabilities"] != serde_json::json!(["render_held_svg_pdf_v1"])))
         || !identity["capabilities"]
             .as_array()
             .is_some_and(|capabilities| {
                 capabilities
                     .iter()
-                    .any(|capability| capability == "lv_processing_v1")
+                    .any(|capability| capability == profile.capability)
             })
     {
         return fail(
@@ -443,7 +507,7 @@ pub fn verify_files(
             "Browser unit differs from its captured catalog",
         );
     }
-    if verified.len() != FILES.len() {
+    if verified.len() != NETWORK_FILES.len() {
         return fail(
             "module_artifact_invalid",
             "Verify all four members before staging",
@@ -540,8 +604,8 @@ pub fn validate_selection(
     lane: &str,
 ) -> Result<(), ModuleReleaseError> {
     channel(lane)?;
+    profile(selection.component)?;
     if selection.schema != SELECTION_SCHEMA
-        || selection.component != ModuleComponent::Network
         || selection.channel != lane
         || selection.generation == 0
         || selection.generation > MAX_GENERATION
@@ -556,9 +620,11 @@ pub fn validate_selection(
         BrowserSelectionState::Removed { previous } => (None, previous),
     };
     if let Some(active) = active {
+        bind_component(selection.component, active.unit.release.component)?;
         validate_installation(active, lane)?;
     }
     if let Some(previous) = previous {
+        bind_component(selection.component, previous.unit.release.component)?;
         validate_installation(previous, lane)?;
     }
     Ok(())
@@ -601,6 +667,10 @@ pub fn activate(
     })?;
     let lane = staged.unit.release.channel.clone();
     validate_installation(&staged, &lane)?;
+    let component = staged.unit.release.component;
+    if let Some(current) = current {
+        bind_component(component, current.component)?;
+    }
     let generation = next_generation(current, &lane, expected)?;
     if let Some(current) = current.filter(|current| matches!(&current.selection, BrowserSelectionState::Installed { active, .. } if active.unit.unit_sha256 == staged.unit.unit_sha256)) {
         return Ok(current.clone());
@@ -611,7 +681,7 @@ pub fn activate(
     });
     Ok(BrowserSelection {
         schema: SELECTION_SCHEMA.into(),
-        component: ModuleComponent::Network,
+        component,
         channel: lane,
         generation,
         selection: BrowserSelectionState::Installed {
@@ -697,11 +767,15 @@ enum Request {
         identity: Value,
     },
     Capture {
+        #[serde(default = "network")]
+        component: ModuleComponent,
         current: Option<Box<BrowserSelection>>,
         channel: String,
         gateway_origin: String,
     },
     Installation {
+        #[serde(default = "network")]
+        component: ModuleComponent,
         receipt: Box<InstalledBrowserModule>,
         channel: String,
         gateway_origin: String,
@@ -717,6 +791,8 @@ enum Request {
         consent: bool,
     },
     Inspect {
+        #[serde(default = "network")]
+        component: ModuleComponent,
         channel: String,
         release: Value,
     },
@@ -728,6 +804,8 @@ enum Request {
         consent: bool,
     },
     Selection {
+        #[serde(default = "network")]
+        component: ModuleComponent,
         channel: String,
         current: Option<Box<BrowserSelection>>,
     },
@@ -772,17 +850,28 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 Value::Null
             }
             Request::Capture {
+                component,
                 current,
                 channel,
                 gateway_origin,
-            } => serde_json::to_value(capture(current.as_deref(), &channel, &gateway_origin)?)
-                .expect("typed browser capture"),
+            } => {
+                profile(component)?;
+                if let Some(current) = &current {
+                    bind_component(component, current.component)?;
+                }
+                serde_json::to_value(capture(current.as_deref(), &channel, &gateway_origin)?)
+                    .expect("typed browser capture")
+            }
             Request::Installation {
+                component,
                 receipt,
                 channel,
                 gateway_origin,
-            } => serde_json::to_value(admit_retained(&receipt, &channel, &gateway_origin)?)
-                .expect("typed retained receipt"),
+            } => {
+                bind_component(component, receipt.unit.release.component)?;
+                serde_json::to_value(admit_retained(&receipt, &channel, &gateway_origin)?)
+                    .expect("typed retained receipt")
+            }
             Request::VerifyFiles { unit, verified } => {
                 verify_files(&unit, &verified)?;
                 Value::Null
@@ -799,8 +888,14 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 consent,
             )?)
             .expect("typed acquisition plan"),
-            Request::Inspect { channel, release } => {
-                serde_json::to_value(inspect(&channel, &release)?).expect("typed unit")
+            Request::Inspect {
+                component,
+                channel,
+                release,
+            } => {
+                let unit = inspect(&channel, &release)?;
+                bind_component(component, unit.release.component)?;
+                serde_json::to_value(unit).expect("typed unit")
             }
             Request::Prepare {
                 unit,
@@ -810,9 +905,15 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 consent,
             } => serde_json::to_value(prepare(*unit, authority, &verified, identity, consent)?)
                 .expect("typed receipt"),
-            Request::Selection { channel, current } => {
+            Request::Selection {
+                component,
+                channel,
+                current,
+            } => {
                 self::channel(&channel)?;
+                profile(component)?;
                 if let Some(selection) = &current {
+                    bind_component(component, selection.component)?;
                     validate_selection(selection, &channel)?;
                 }
                 serde_json::to_value(current).expect("typed selection")
@@ -1011,7 +1112,7 @@ mod tests {
                 .code,
             "module_selection_changed"
         );
-        for component in ["solar", "reporter"] {
+        for component in ["solar"] {
             assert!(admit_target(component, "canary").is_err());
         }
         let mut withdrawn = catalog();
@@ -1252,5 +1353,212 @@ mod tests {
             assert!(evaluate(input).is_err());
         }
         assert!(evaluate(&vec![b' '; MAX_WIRE_BYTES + 1]).is_err());
+    }
+    fn reporter_catalog() -> Value {
+        serde_json::from_str::<Value>(include_str!("fixtures/reporter-wasm-canary.json")).unwrap()
+            ["release"]
+            .clone()
+    }
+    fn reporter_ready() -> InstalledBrowserModule {
+        let unit = inspect("canary", &reporter_catalog()).unwrap();
+        let verified = unit
+            .release
+            .assets
+            .iter()
+            .map(|asset| VerifiedFile {
+                filename: filename(asset).unwrap(),
+                sha256: asset.sha256.clone(),
+                size_bytes: asset.size_bytes,
+            })
+            .collect::<Vec<_>>();
+        let identity = json!({"schema":"ds.reporter-engine/v1","protocolMajor":1,"environment":"wasm",
+            "coreVersion":"0.1.0","sourceSha":unit.release.assets[0].source_sha,
+            "dependencyClosureSha256":unit.release.assets[0].engines[0].manifest_sha256,
+            "capabilities":["render_held_svg_pdf_v1"]});
+        prepare(
+            unit,
+            BrowserAuthority {
+                gateway_origin: "https://gateway.example".into(),
+                route_manifest_sha256: "a".repeat(64),
+            },
+            &verified,
+            identity,
+            true,
+        )
+        .unwrap()
+    }
+    #[test]
+    fn reporter_requires_its_complete_closed_unit_owner_protocol_and_identity() {
+        let receipt = reporter_ready();
+        admit_target("reporter", "canary").unwrap();
+        assert!(admit_target("solar", "canary").is_err());
+        let files = receipt
+            .unit
+            .release
+            .assets
+            .iter()
+            .map(|asset| VerifiedFile {
+                filename: filename(asset).unwrap(),
+                sha256: asset.sha256.clone(),
+                size_bytes: asset.size_bytes,
+            })
+            .collect::<Vec<_>>();
+        for (key, value) in [
+            ("schema", json!("ds.network-engine/v1")),
+            ("protocolMajor", json!("1")),
+            ("environment", json!("native")),
+            ("coreVersion", json!("0.2.0")),
+            ("sourceSha", json!("a".repeat(40))),
+            ("dependencyClosureSha256", json!("a".repeat(64))),
+            ("capabilities", json!(["lv_processing_v1"])),
+            ("capabilities", json!(["render_held_svg_pdf_v1", "other"])),
+        ] {
+            let mut identity = receipt.engine_identity.clone();
+            identity[key] = value;
+            assert!(
+                prepare(
+                    receipt.unit.clone(),
+                    receipt.authority.clone(),
+                    &files,
+                    identity,
+                    true
+                )
+                .is_err(),
+                "{key}"
+            );
+        }
+        for key in [
+            "schema",
+            "protocolMajor",
+            "environment",
+            "coreVersion",
+            "sourceSha",
+            "dependencyClosureSha256",
+            "capabilities",
+        ] {
+            let mut identity = receipt.engine_identity.clone();
+            identity.as_object_mut().unwrap().remove(key);
+            assert!(
+                prepare(
+                    receipt.unit.clone(),
+                    receipt.authority.clone(),
+                    &files,
+                    identity,
+                    true
+                )
+                .is_err(),
+                "{key}"
+            );
+        }
+        for index in 0..4 {
+            let mut corrupt = files.clone();
+            corrupt[index].sha256 = "0".repeat(64);
+            assert_eq!(
+                verify_files(&receipt.unit, &corrupt).unwrap_err().code,
+                "module_artifact_invalid"
+            );
+        }
+        assert!(verify_files(&receipt.unit, &files[..3]).is_err());
+        let mut wrong = reporter_catalog();
+        wrong["assets"][0]["kind"] = json!("module-executable");
+        assert!(inspect("canary", &wrong).is_err());
+        let mut wrong = reporter_catalog();
+        wrong["protocol"] = json!(PROTOCOL);
+        assert!(inspect("canary", &wrong).is_err());
+        let mut wrong = reporter_catalog();
+        wrong["assets"][0]["engines"][0]["engine"] = json!("ds-network");
+        assert!(inspect("canary", &wrong).is_err());
+        let selected =
+            activate(None, receipt.clone(), 0, true, ActivationGuard::default()).unwrap();
+        let captured = capture(Some(&selected), "canary", "https://gateway.example").unwrap();
+        admit_loaded(&captured, &files, &receipt.engine_identity).unwrap();
+    }
+    #[test]
+    fn browser_components_have_independent_updates_and_refuse_crossed_selections() {
+        let network = ready();
+        let reporter = reporter_ready();
+        let n = activate(None, network.clone(), 0, true, ActivationGuard::default()).unwrap();
+        let r = activate(None, reporter.clone(), 0, true, ActivationGuard::default()).unwrap();
+        assert!(activate(
+            Some(&n),
+            reporter.clone(),
+            1,
+            true,
+            ActivationGuard::default()
+        )
+        .is_err());
+        assert!(activate(
+            Some(&r),
+            network.clone(),
+            1,
+            true,
+            ActivationGuard::default()
+        )
+        .is_err());
+        for previous in [false, true] {
+            let mut crossed = n.clone();
+            if let BrowserSelectionState::Installed {
+                active,
+                previous: old,
+            } = &mut crossed.selection
+            {
+                if previous {
+                    *old = Some(Box::new(reporter.clone()));
+                } else {
+                    *active = Box::new(reporter.clone());
+                }
+            }
+            assert!(validate_selection(&crossed, "canary").is_err());
+        }
+        let mut newer = reporter.clone();
+        let mut release = reporter_catalog();
+        release["version"] = json!("0.1.0-r99");
+        for asset in release["assets"].as_array_mut().unwrap() {
+            asset["url"] = json!(asset["url"]
+                .as_str()
+                .unwrap()
+                .replace("/0.1.0-r1/", "/0.1.0-r99/"));
+            asset["source_revisions"]["ds-command-kernel"] = json!("9".repeat(40));
+        }
+        newer.unit = inspect("canary", &release).unwrap();
+        let updated = activate(Some(&r), newer, 1, true, ActivationGuard::default()).unwrap();
+        let rolled = rollback(&updated, 2, true, ActivationGuard::default()).unwrap();
+        assert_eq!(n.generation, 1);
+        assert_eq!(rolled.generation, 3);
+        assert!(
+            matches!(rolled.selection,BrowserSelectionState::Installed{active,..} if *active==reporter)
+        );
+    }
+    #[test]
+    fn wire_context_defaults_network_and_rejects_crossed_component_callers() {
+        let receipt = reporter_ready();
+        let selected =
+            activate(None, receipt.clone(), 0, true, ActivationGuard::default()).unwrap();
+        for kind in ["inspect", "selection", "capture", "installation"] {
+            let mut request = match kind {
+                "inspect" => json!({"kind":kind,"channel":"canary","release":reporter_catalog()}),
+                "selection" => json!({"kind":kind,"channel":"canary","current":selected}),
+                "capture" => {
+                    json!({"kind":kind,"channel":"canary","current":selected,"gateway_origin":"https://gateway.example"})
+                }
+                _ => {
+                    json!({"kind":kind,"channel":"canary","receipt":receipt,"gateway_origin":"https://gateway.example"})
+                }
+            };
+            assert!(
+                evaluate(&serde_json::to_vec(&request).unwrap()).is_err(),
+                "{kind}"
+            );
+            request["component"] = json!("reporter");
+            assert!(
+                evaluate(&serde_json::to_vec(&request).unwrap()).is_ok(),
+                "{kind}"
+            );
+            request["component"] = json!("solar");
+            assert!(
+                evaluate(&serde_json::to_vec(&request).unwrap()).is_err(),
+                "{kind}"
+            );
+        }
     }
 }
