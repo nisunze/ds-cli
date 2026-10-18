@@ -678,6 +678,7 @@ dependencies = [
  "ds-network-client",
  "ds-network-contracts",
  "flate2",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",

@@ -1,6 +1,6 @@
 //! Last authenticated project observations. A read is not a freshness probe
 //! or an authorization grant. Navigation/Refresh replaces an observation;
-//! writes and push invalidations remove it. No timer, TTL or background IO.
+//! Styles invalidation removes JSON; status invalidation retains SQLite bytes. No timer, TTL or background IO.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -9,6 +9,8 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
+
+pub mod transformer_status;
 
 const SCHEMA: &str = "ds.project-metadata/v1";
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
@@ -99,7 +101,8 @@ pub enum Error<E> {
 }
 
 /// Share a cold read across processes. Explicit Refresh always reads again.
-/// A failed explicit read never falls back to, or leaves admissible, old data.
+/// A failed explicit read never returns old data as fresh. Status keeps it for
+/// explicit held reads; Styles preserves its existing removal behavior.
 pub fn acquire<E>(
     root: &Path,
     scope: &Scope,
@@ -107,6 +110,9 @@ pub fn acquire<E>(
     refresh: bool,
     fetch: impl FnOnce() -> Result<Value, E>,
 ) -> Result<(Value, bool), Error<E>> {
+    if matches!(kind, Kind::TransformerStatus) {
+        return transformer_status::acquire(root, scope, refresh, fetch);
+    }
     let path = path(root, scope, kind).map_err(Error::Store)?;
     let _lock = lock(&path).map_err(Error::Store)?;
     if !refresh {
@@ -144,12 +150,18 @@ fn write(path: &Path, scope: &Scope, document: &Value) -> Result<(), String> {
 /// Record an already authenticated full observation. Targeted status reads
 /// cannot establish whole-project completeness and must not use this method.
 pub fn observe(root: &Path, scope: &Scope, kind: Kind, document: &Value) -> Result<(), String> {
+    if matches!(kind, Kind::TransformerStatus) {
+        return transformer_status::observe(root, scope, document);
+    }
     let path = path(root, scope, kind)?;
     let _lock = lock(&path)?;
     write(&path, scope, document)
 }
 
 pub fn invalidate(root: &Path, scope: &Scope, kind: Kind) -> Result<(), String> {
+    if matches!(kind, Kind::TransformerStatus) {
+        return transformer_status::invalidate(root, scope);
+    }
     let path = path(root, scope, kind)?;
     let _lock = lock(&path)?;
     match fs::remove_file(path) {

@@ -188,7 +188,7 @@ mod read_test {
 /// to do, and it must not be reintroduced by a path helper. A relative path or
 /// one that already carries the prefix is returned unchanged, and non-Windows
 /// targets are untouched.
-pub(crate) fn sqlite_path(path: &Path) -> Result<PathBuf, String> {
+pub fn sqlite_path(path: &Path) -> Result<PathBuf, String> {
     #[cfg(windows)]
     {
         const VERBATIM: &str = r"\\?\";
@@ -218,7 +218,7 @@ pub mod prepared;
 pub mod private;
 pub mod project_dataset_cache;
 pub mod project_snapshot;
-mod snapshot_privacy;
+pub mod snapshot_privacy;
 pub mod reference_cache;
 pub mod scoped;
 pub mod visibility;
