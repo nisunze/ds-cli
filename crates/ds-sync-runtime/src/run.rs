@@ -136,6 +136,26 @@ pub fn plan_once(
     local: &[LocalRow],
     remote: &[RemoteRow],
 ) -> Result<sync::Plan, String> {
+    plan_once_with_interest(
+        host,
+        project,
+        trigger,
+        remote_read_at_ms,
+        local,
+        remote,
+        None,
+    )
+}
+
+fn plan_once_with_interest(
+    host: &dyn SyncHost,
+    project: &str,
+    trigger: sync::Trigger,
+    remote_read_at_ms: Option<u64>,
+    local: &[LocalRow],
+    remote: &[RemoteRow],
+    download_interest: Option<&[sync::Identity]>,
+) -> Result<sync::Plan, String> {
     if local.len() > MAX_ROWS || remote.len() > MAX_ROWS {
         return Err("this project's sync inventories exceed their bound".to_string());
     }
@@ -154,6 +174,7 @@ pub fn plan_once(
         source_grants: Vec::new(),
         local: local.iter().map(kernel_local).collect(),
         remote: remote.iter().map(kernel_remote).collect(),
+        download_interest: download_interest.map(<[sync::Identity]>::to_vec),
         published_outputs: remote
             .iter()
             .flat_map(|head| {
@@ -203,13 +224,25 @@ pub fn plan(
 /// record must be re-read for that trigger, the record is read at most once,
 /// and then the actions run. Nothing here waits, sleeps or schedules.
 pub fn run(host: &dyn SyncHost, project: &str, trigger: sync::Trigger) -> Result<SyncRun, String> {
-    run_scoped(host, project, trigger)
+    run_with_download_interest(host, project, trigger, None)
+}
+
+/// The existing project pass with exact download demand. Heads and uploads stay
+/// complete; only the portable planner decides which downloads are requested.
+pub fn run_with_download_interest(
+    host: &dyn SyncHost,
+    project: &str,
+    trigger: sync::Trigger,
+    download_interest: Option<&[sync::Identity]>,
+) -> Result<SyncRun, String> {
+    run_scoped(host, project, trigger, download_interest)
 }
 
 fn run_scoped(
     host: &dyn SyncHost,
     project: &str,
     trigger: sync::Trigger,
+    download_interest: Option<&[sync::Identity]>,
 ) -> Result<SyncRun, String> {
     if trigger == sync::Trigger::LocalChange {
         if let Some(block) = host.credential_block(project)? {
@@ -224,8 +257,24 @@ fn run_scoped(
                 block.detail
             )));
             let (remote, read_at) = host.held_heads(project)?;
-            let plan = plan_once(host, project, trigger, read_at, &local, &remote)?;
-            let replanned = plan_once(host, project, trigger, read_at, &local, &remote)?;
+            let plan = plan_once_with_interest(
+                host,
+                project,
+                trigger,
+                read_at,
+                &local,
+                &remote,
+                download_interest,
+            )?;
+            let replanned = plan_once_with_interest(
+                host,
+                project,
+                trigger,
+                read_at,
+                &local,
+                &remote,
+                download_interest,
+            )?;
             let reclaimed = Reclaimed::from_receipts(&receipts);
             return Ok(SyncRun {
                 schema: SCHEMA,
@@ -245,8 +294,24 @@ fn run_scoped(
         let mut receipts = host.take_receipts(project);
         receipts.push(Receipt::new("lease", "held").detail(holder));
         let (remote, read_at) = host.held_heads(project)?;
-        let plan = plan_once(host, project, trigger, read_at, &local, &remote)?;
-        let replanned = plan_once(host, project, trigger, read_at, &local, &remote)?;
+        let plan = plan_once_with_interest(
+            host,
+            project,
+            trigger,
+            read_at,
+            &local,
+            &remote,
+            download_interest,
+        )?;
+        let replanned = plan_once_with_interest(
+            host,
+            project,
+            trigger,
+            read_at,
+            &local,
+            &remote,
+            download_interest,
+        )?;
         let reclaimed = Reclaimed::from_receipts(&receipts);
         return Ok(SyncRun {
             schema: SCHEMA,
@@ -265,7 +330,7 @@ fn run_scoped(
         }
     }
     let _lease = Release(host, project);
-    run_leased(host, project, trigger)
+    run_leased(host, project, trigger, download_interest)
 }
 
 /// Keep one receipt: in the store first, then in the run's answer. A store
@@ -284,6 +349,7 @@ fn run_leased(
     host: &dyn SyncHost,
     project: &str,
     trigger: sync::Trigger,
+    download_interest: Option<&[sync::Identity]>,
 ) -> Result<SyncRun, String> {
     let mut local = host.local(project)?;
     // What the host freed while observing — rows the store had already
@@ -291,7 +357,15 @@ fn run_leased(
     // effect of reading the inventory.
     let mut receipts: Vec<Receipt> = host.take_receipts(project);
     let (mut remote, mut read_at) = host.held_heads(project)?;
-    let mut plan = plan_once(host, project, trigger, read_at, &local, &remote)?;
+    let mut plan = plan_once_with_interest(
+        host,
+        project,
+        trigger,
+        read_at,
+        &local,
+        &remote,
+        download_interest,
+    )?;
 
     // The plan decides whether this trigger needs the record; it is honoured
     // exactly once per run, because a second read in the same pass could only
@@ -331,7 +405,15 @@ fn run_leased(
         local = host.local(project)?;
         receipts.extend(host.take_receipts(project));
         read_at = Some(at);
-        plan = plan_once(host, project, trigger, read_at, &local, &remote)?;
+        plan = plan_once_with_interest(
+            host,
+            project,
+            trigger,
+            read_at,
+            &local,
+            &remote,
+            download_interest,
+        )?;
     }
 
     for action in &plan.actions {
@@ -442,7 +524,15 @@ fn run_leased(
     local = host.local(project)?;
     receipts.extend(host.take_receipts(project));
     let (remote, read_at) = host.held_heads(project)?;
-    let replanned = plan_once(host, project, trigger, read_at, &local, &remote)?;
+    let replanned = plan_once_with_interest(
+        host,
+        project,
+        trigger,
+        read_at,
+        &local,
+        &remote,
+        download_interest,
+    )?;
     let reclaimed = Reclaimed::from_receipts(&receipts);
     Ok(SyncRun {
         schema: SCHEMA,
@@ -584,7 +674,7 @@ fn upload(
         answer = match host.finalize_publication(&finalize_declaration(project, row, &work_id)) {
             Ok(answer) => answer,
             Err(error) => {
-                return record_refusal(identity, Stage::Finalize, error, Some(work_id), transfers)
+                return record_refusal(identity, Stage::Finalize, error, Some(work_id), transfers);
             }
         };
     }

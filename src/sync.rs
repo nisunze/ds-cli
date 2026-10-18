@@ -246,6 +246,11 @@ pub struct Input {
     /// dependency is satisfied only by an output of a head in `remote`.
     #[serde(default)]
     pub published_outputs: Vec<PublishedOutput>,
+    /// Absent means the whole project's downloads; an explicit empty set means
+    /// observation/upload reconciliation only. Exact identities bound demand
+    /// without hiding remote heads from authorization or dependency decisions.
+    #[serde(default)]
+    pub download_interest: Option<Vec<Identity>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -642,6 +647,15 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
     {
         return Err("sync inventories exceed their bound".into());
     }
+    if let Some(interest) = &input.download_interest {
+        let unique: BTreeSet<_> = interest.iter().collect();
+        if interest.len() > MAX_ARTIFACTS
+            || unique.len() != interest.len()
+            || interest.iter().any(|identity| !valid_identity(identity))
+        {
+            return Err("download interest requires bounded unique exact identities".into());
+        }
+    }
     let mut plan = Plan {
         schema: SCHEMA,
         project: input.project.clone(),
@@ -874,6 +888,13 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
         }
     }
 
+    if let Some(interest) = &input.download_interest {
+        actions.retain(|action| match action {
+            Action::Download { identity, .. } => interest.contains(identity),
+            _ => true,
+        });
+    }
+
     let uploads_pending = actions
         .iter()
         .any(|action| matches!(action, Action::Upload { .. }));
@@ -1020,6 +1041,7 @@ mod tests {
             local,
             remote,
             published_outputs: Vec::new(),
+            download_interest: None,
         }
     }
     /// A derived artifact — a report — with its source fingerprint pinned.
@@ -1039,6 +1061,36 @@ mod tests {
             input_base_fingerprint: Some("f".repeat(64)),
             ..remote(op, sha, "rev-9")
         }
+    }
+
+    #[test]
+    fn download_interest_limits_bytes_without_hiding_heads_or_pending_uploads() {
+        let mut request = input(
+            vec![local("upload", &"1".repeat(64), None)],
+            vec![
+                remote("one", &"2".repeat(64), "head1"),
+                remote("two", &"3".repeat(64), "head2"),
+            ],
+            Some(grant(100_000)),
+        );
+        request.trigger = Trigger::Manual;
+        assert_eq!(plan(&request).unwrap().summary.downloads, 2);
+        request.download_interest = Some(vec![ident("one")]);
+        let selected = plan(&request).unwrap();
+        assert!(selected.refresh_remote.needed);
+        assert_eq!(selected.summary.downloads, 1);
+        assert_eq!(selected.summary.uploads, 1);
+        assert!(selected.actions.iter().any(|action| matches!(action,
+            Action::Download { identity, .. } if *identity == ident("one"))));
+        request.download_interest = Some(vec![]);
+        let observation_only = plan(&request).unwrap();
+        assert_eq!(observation_only.summary.downloads, 0);
+        assert_eq!(observation_only.summary.uploads, 1);
+        assert!(observation_only.refresh_remote.needed);
+        request.download_interest = Some(vec![ident("one"), ident("one")]);
+        assert!(plan(&request).is_err());
+        request.download_interest = Some(vec![ident("../crossed")]);
+        assert!(plan(&request).is_err());
     }
 
     #[test]

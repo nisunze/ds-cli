@@ -29,6 +29,7 @@ plan again.
 | `local[]` | What this machine holds: identity (`engine`, `operation`, `variant`), `sha256`, `size_bytes`, `produced_at_ms`, `base_revision` (the remote head revision the result was computed against, if any), `readable`, `engine_release`. |
 | `source_grants[]` | Resource-scoped grants with `snapshot_base`, used for derived reports whose `input_base_fingerprint` pins source inputs separately from output heads. |
 | `remote[]` | What the shared record holds: identity, `revision`, `sha256`, `published_at_ms`. |
+| `download_interest` | Optional bounded unique exact identities. Absent/null retains whole-project downloads; `[]` requests none; a nonempty set requests only those identities. It never filters remote observations, publication dependencies, uploads or conflicts. |
 
 | Action | When |
 |---|---|
@@ -39,6 +40,12 @@ plan again.
 | `conflict{identity, base_revision, current_revision, reason}` | Both exist, digests differ, and the local result was computed on an older base — or on no base at all (`base_moved`). Surfaced, never overwritten. |
 | `nothing{identity, reason}` | Digests equal (`in_sync`). |
 | `refused{identity?, reason}` | A row that takes no part: `identity_malformed`, `duplicate_identity`, `local_unreadable` with no remote copy. One bad row never poisons the queue. |
+
+Demand-limited callers use the same plan and native run owner. A selected report
+refresh supplies its exact engine/operation/variant. The authenticated complete
+head observation is retained once; only selected download actions and their
+counts remain. Unrequested bytes are not fetched or claimed to be in sync.
+Ordinary project Sync keeps the absent-interest behavior.
 
 Derived reports compare their `input_base_fingerprint` with the operation's
 source revision in a valid work grant, not with the input fingerprint of an

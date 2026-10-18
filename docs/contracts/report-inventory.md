@@ -181,3 +181,8 @@ transport. It never substitutes a newer revision, recalculates a report or
 falls back to another local source. The retained A4 preview and this operation
 share the same exact-ticket acquisition implementation. Both byte-copy commands
 leave no acknowledged output on failed identity or integrity verification.
+
+Selected report refresh supplies one exact download interest to the shared Sync
+planner. The pass still observes all authenticated project heads and reconciles
+pending uploads, but it acquires bytes only for the selected report identity.
+Other report heads remain available as held declarations for later consumers.

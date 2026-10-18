@@ -3430,3 +3430,70 @@ fn both_engines_keep_a_cancellation_that_races_remote_finalize() {
         assert_eq!(fakes::lock(&h.world).opens, opens);
     }
 }
+
+#[test]
+fn selected_download_interest_keeps_complete_heads_and_never_fetches_unused_bytes() {
+    for selection in [
+        None,
+        Some(vec![]),
+        Some(vec![sync::Identity {
+            engine: "network_reporter".into(),
+            operation: "export-tx_1".into(),
+            variant: "default".into(),
+        }]),
+    ] {
+        let h = Harness::new();
+        let bytes = b"verified selected output";
+        let first = record_head(bytes, 3, fakes::FINGERPRINT);
+        let mut second = first.clone();
+        second["operation"] = serde_json::json!("export-tx_2");
+        {
+            let mut world = fakes::lock(&h.world);
+            world.record = vec![first, second];
+            for operation in ["export-tx_1", "export-tx_2"] {
+                world
+                    .objects
+                    .insert(fakes::download_url(operation, "xlsx"), bytes.to_vec());
+            }
+        }
+        let gateway = FakeGateway {
+            world: h.world.clone(),
+        };
+        let producer = FakeProducer::new(h.world.clone(), vec![]);
+        let reads = FakeReads {
+            world: h.world.clone(),
+            root: h.reads_root.clone(),
+        };
+        let host = StoreHost::new(
+            h.store.clone(),
+            fence(),
+            "interest-worker".into(),
+            PROJECT,
+            &gateway,
+            &producer,
+            &reads,
+            &|| true,
+        )
+        .unwrap();
+        let result = ds_sync_runtime::run_with_download_interest(
+            &host,
+            PROJECT,
+            sync::Trigger::Manual,
+            selection.as_deref(),
+        )
+        .unwrap();
+        let expected = selection.as_ref().map_or(2, Vec::len);
+        assert_eq!(result.plan.summary.downloads as usize, expected);
+        assert_eq!(result.replanned.summary.downloads, 0);
+        assert_eq!(host.held_heads(PROJECT).unwrap().0.len(), 2);
+        let world = fakes::lock(&h.world);
+        assert_eq!(world.head_reads, 1);
+        assert_eq!(world.downloads.len(), expected);
+        if expected == 1 {
+            assert_eq!(world.downloads, ["export-tx_1"]);
+        }
+        assert_eq!(world.opens, 0);
+        assert_eq!(world.commits, 0);
+        assert!(stored_rows(&h, PROJECT).is_empty());
+    }
+}
