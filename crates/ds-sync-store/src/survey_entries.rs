@@ -1,5 +1,6 @@
 //! Durable Survey mutation bytes. The kernel alone owns replay decisions.
 use crate::{Error, Result, Store};
+use ds_command_kernel::report_export::sha256_hex;
 use ds_command_kernel::survey_entry_outbox::{self as kernel, Fence, Header, PayloadPatch};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -25,6 +26,135 @@ pub struct SurveyEntryScope {
     pub account: String,
     pub deployment: String,
     pub install_id: String,
+}
+
+/// Exact retained row identity returned before the caller performs its audit.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SurveyEntryDiscardExpected {
+    pub fence: Fence,
+    pub row_sha256: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SurveyEntryDiscardPrepared {
+    pub fence: Fence,
+    pub row_sha256: String,
+    pub row: Value,
+}
+
+/// Shared admission also applies when a readonly caller has no existing store.
+pub fn validate_discard_ids(ids: &[String]) -> Result<()> {
+    let mut unique = std::collections::BTreeSet::new();
+    if ids.len() > MAX_SURVEY_ENTRY_BATCH
+        || ids.iter().any(|id| !text(id, 4096) || !unique.insert(id))
+    {
+        return Err(refused("discard IDs must be unique valid IDs, at most 500"));
+    }
+    Ok(())
+}
+
+pub fn validate_discard_expected(expected: &[SurveyEntryDiscardExpected]) -> Result<()> {
+    if expected.len() > MAX_SURVEY_ENTRY_BATCH {
+        return Err(refused("discard expectations exceed 500 rows"));
+    }
+    validate_discard_ids(
+        &expected
+            .iter()
+            .map(|e| e.fence.id.clone())
+            .collect::<Vec<_>>(),
+    )?;
+    if expected.iter().any(|e| {
+        e.row_sha256.len() != 64
+            || !e
+                .row_sha256
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    }) {
+        return Err(refused(
+            "discard row_sha256 must be an exact lowercase SHA-256",
+        ));
+    }
+    Ok(())
+}
+
+fn discard_fences(
+    scope: &SurveyEntryScope,
+    headers: &[Header],
+    ids: &[String],
+    now: u64,
+) -> Result<Vec<Fence>> {
+    let request = json!({"schema":kernel::SCHEMA,"now":now,"headers":headers,
+        "event":{"kind":"discard","current_uid":scope.account,"ids":ids}});
+    let raw = kernel::evaluate(&serde_json::to_vec(&request)?).map_err(Error::Kernel)?;
+    let reply: Value = serde_json::from_str(&raw)?;
+    let actions = reply["actions"]
+        .as_array()
+        .ok_or_else(|| refused("invalid Kernel discard reply"))?;
+    let mut fences = Vec::with_capacity(actions.len());
+    let mut unique = std::collections::BTreeSet::new();
+    for action in actions {
+        if action["kind"] != "remove" {
+            return Err(refused("Kernel discard returned a non-removal action"));
+        }
+        let fence: Fence = serde_json::from_value(action["expected"].clone())?;
+        if !ids.contains(&fence.id)
+            || !unique.insert(fence.id.clone())
+            || !headers.iter().any(|header| matches(header, &fence))
+        {
+            return Err(refused("Kernel discard escaped the exact requested rows"));
+        }
+        fences.push(fence);
+    }
+    Ok(fences)
+}
+
+/// Prepare under one read snapshot, without creating a missing database/table.
+/// The caller must audit these exact rows before requesting an exact commit.
+pub fn prepare_discard(
+    store: Option<&Store>,
+    scope: &SurveyEntryScope,
+    project: &str,
+    ids: &[String],
+    now: u64,
+) -> Result<Vec<SurveyEntryDiscardPrepared>> {
+    scope.validate()?;
+    if !text(project, 1500) {
+        return Err(refused("invalid project"));
+    }
+    validate_discard_ids(ids)?;
+    let Some(store) = store else {
+        discard_fences(scope, &[], ids, now)?;
+        return Ok(Vec::new());
+    };
+    store.with_read_snapshot(|store| {
+        let headers = headers_on(&store.connection, scope, Some(project))?;
+        let fences = discard_fences(scope, &headers, ids, now)?;
+        let mut rows = Vec::with_capacity(fences.len());
+        let mut bytes = 0usize;
+        for fence in fences {
+            let (raw, header) = read_row(&store.connection, scope, &fence.id)?
+                .ok_or_else(|| refused("prepared discard row is missing"))?;
+            if header.project_id != project || !matches(&header, &fence) {
+                return Err(refused(
+                    "prepared discard row changed its exact project or fence",
+                ));
+            }
+            let row: Value = serde_json::from_str(&raw)?;
+            let canonical = serde_json::to_vec(&row)?;
+            bytes = bytes.saturating_add(canonical.len());
+            if bytes > MAX_BATCH_BYTES {
+                return Err(refused("prepared discard rows exceed 32 MiB"));
+            }
+            rows.push(SurveyEntryDiscardPrepared {
+                fence,
+                row_sha256: sha256_hex(&canonical),
+                row,
+            });
+        }
+        Ok(rows)
+    })?
 }
 
 fn refused(detail: &str) -> Error {
@@ -438,6 +568,64 @@ impl Store {
         Ok(removed)
     }
 
+    /// Commit only the exact audited rows, under one writer transaction. A stale
+    /// digest, fence, project or Kernel eligibility decision removes nothing.
+    pub fn survey_entry_commit_discard(
+        &mut self,
+        scope: &SurveyEntryScope,
+        project: &str,
+        expected: &[SurveyEntryDiscardExpected],
+        now: u64,
+    ) -> Result<Vec<String>> {
+        scope.validate()?;
+        if !text(project, 1500) {
+            return Err(refused("invalid project"));
+        }
+        validate_discard_expected(expected)?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let headers = headers_on(&transaction, scope, Some(project))?;
+        let mut bytes = 0usize;
+        for expected in expected {
+            let (raw, header) = read_row(&transaction, scope, &expected.fence.id)?
+                .ok_or_else(|| refused("audited discard row is missing in the captured scope"))?;
+            let row: Value = serde_json::from_str(&raw)?;
+            let canonical = serde_json::to_vec(&row)?;
+            bytes = bytes.saturating_add(canonical.len());
+            if bytes > MAX_BATCH_BYTES
+                || header.project_id != project
+                || !matches(&header, &expected.fence)
+                || sha256_hex(&canonical) != expected.row_sha256
+            {
+                return Err(refused(
+                    "audited discard row, project or fence changed; prepare and audit again",
+                ));
+            }
+        }
+        let ids = expected
+            .iter()
+            .map(|e| e.fence.id.clone())
+            .collect::<Vec<_>>();
+        let fences = discard_fences(scope, &headers, &ids, now)?;
+        let removed = fences
+            .iter()
+            .map(|f| f.id.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        if removed != ids.iter().cloned().collect() {
+            return Err(refused(
+                "Kernel no longer permits the complete audited discard set",
+            ));
+        }
+        for fence in fences {
+            if !cas_remove_on(&transaction, scope, &fence)? {
+                return Err(refused("audited discard fence no longer matches"));
+            }
+        }
+        transaction.commit()?;
+        Ok(removed.into_iter().collect())
+    }
+
     /// Persist the Kernel's exact project-scoped transition before exposing any
     /// dispatch/auth/version effects. No transaction spans an external effect.
     pub fn survey_entry_transition(
@@ -454,6 +642,9 @@ impl Store {
         let object = event
             .as_object()
             .ok_or_else(|| refused("invalid Survey event"))?;
+        if object.get("kind").and_then(Value::as_str) == Some("discard") {
+            return Err(refused("discard requires prepare_discard, audit the exact prepared rows, then commit_discard"));
+        }
         if matches!(
             object.get("kind").and_then(Value::as_str),
             Some("admit" | "admit_batch")
