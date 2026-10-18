@@ -27,6 +27,16 @@ the file atomically without replacing existing bytes. Its receipt preserves
 project, lane and immutable revision identity. Pass the resulting local package
 to `ds report plan-profile` after reading that command's live descriptor.
 
+`ds design model publish` saves a reviewed checkpoint into an existing MV
+model's current version. Supply explicit `--project`, `--lane`, `--model`,
+`--expected-head`, `--file <absolute.dsgrid>` and `--reason`, then confirm with
+`--yes`. Native Network preparation validates the unchanged source package;
+the authenticated owner fences the commit on the reviewed head and verifies
+the exact revision afterward. The command does not update a local active
+model or upload a report. Retain its immutable revision and digest receipt.
+If an acknowledgement fails, inspect the exact model head before deciding
+whether another publish is appropriate; the command never retries it.
+
 ## Design intake
 
 `ds design intake upload` runs the same Rust-owned upload job as Transformer

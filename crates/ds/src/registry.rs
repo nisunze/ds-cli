@@ -2111,6 +2111,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::models::render,
     },
     Entry {
+        command: &ds_cli_design::models_publish::COMMAND,
+        handler: ds_cli_design::models_publish::run,
+        render: ds_cli_design::models_publish::render,
+    },
+    Entry {
         command: &ds_cli_design::intake_upload::COMMAND,
         handler: ds_cli_design::intake_upload::run,
         render: ds_cli_design::intake_upload::render,

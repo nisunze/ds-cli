@@ -126,10 +126,17 @@ pub static EXPORT: Command = Command {
 };
 
 fn invalid(refusal: Refusal, why: impl std::fmt::Display) -> Failure {
-    Failure::invalid(refusal.code, why.to_string()).remedy(refusal.remedy)
+    let message = why.to_string();
+    let failure = match refusal.code {
+        "design_model_input_invalid"
+        | "design_model_output_invalid"
+        | "design_model_receipt_invalid" => Failure::invalid(refusal.code, message),
+        _ => Failure::failed("design_model_receipt_invalid", message),
+    };
+    failure.remedy(refusal.remedy)
 }
 
-fn native_failure(failure: Failure, project: &str, lane: &str) -> Failure {
+pub(super) fn native_failure(failure: Failure, project: &str, lane: &str) -> Failure {
     if failure.code() != MISSING.code {
         return failure;
     }
