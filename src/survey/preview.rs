@@ -44,11 +44,11 @@ pub fn validate(bytes: &[u8]) -> Result<Value, String> {
         .iter()
         .filter_map(Value::as_str)
         .collect();
-    let hidden = request.fields.iter().filter_map(|field| {
+    let hidden = request.fields.iter().filter(|field| !super::fields::is_display_only(field)).filter_map(|field| {
         let key = field["key"].as_str()?;
         (!visible.contains(key)).then_some(key)
     }).collect::<Vec<_>>();
-    let required_visible = request.fields.iter().filter_map(|field| {
+    let required_visible = request.fields.iter().filter(|field| !super::fields::is_display_only(field)).filter_map(|field| {
         let key = field["key"].as_str()?;
         (visible.contains(key) && field["required"] == true).then_some(key)
     }).collect::<Vec<_>>();

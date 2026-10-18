@@ -167,11 +167,11 @@ fn visible(field: &Value, values: &Value) -> bool {
     }
     conditions(rule, values)
 }
+pub(super) fn is_display_only(field: &Value) -> bool {
+    matches!(field["type"].as_str(), Some("textBlock" | "separator"))
+}
 fn validate(field: &Value, value: &Value) -> Option<String> {
     let kind = field["type"].as_str().unwrap_or("");
-    if matches!(kind, "textBlock" | "separator") {
-        return None;
-    }
     let media = matches!(
         kind,
         "photo" | "photos" | "video" | "videos" | "document" | "documents" | "audio" | "audios"
@@ -267,14 +267,25 @@ pub(super) fn evaluate(request: &Value) -> Result<Value, String> {
     let mut data = Map::new();
     let mut errors = Map::new();
     for field in fields {
-        let key = field["key"].as_str().ok_or("Survey field has no key")?;
-        if key.is_empty() || !seen.insert(key) {
+        let display_only = is_display_only(field);
+        // Presentation fields have no collected answer and need no data key.
+        // Retain declared nonempty keys only for existing visibility consumers.
+        let key = match field["key"].as_str() {
+            Some(key) if !key.is_empty() => key,
+            _ if display_only => continue,
+            Some(_) => return Err("Survey field keys must be nonempty and unique".into()),
+            None => return Err("Survey field has no key".into()),
+        };
+        if !seen.insert(key) {
             return Err("Survey field keys must be nonempty and unique".into());
         }
         if request["visible_only"] != false && !visible(field, &request["values"]) {
             continue;
         }
         keys.push(key);
+        if display_only {
+            continue;
+        }
         let value = values.get(key).unwrap_or(&Value::Null);
         if let Some(value) = values.get(key) {
             data.insert(key.into(), value.clone());
@@ -302,5 +313,92 @@ mod vocabulary_tests {
             &json!({"field":"x","operator":"in_array","values":["a","b"]}),
             &json!({"x":"a"})
         ));
+    }
+}
+
+#[cfg(test)]
+mod display_only_tests {
+    use super::*;
+    use crate::survey::{fill, preview};
+
+    #[test]
+    fn served_seven_field_form_preserves_bytes_and_real_required_errors() {
+        let fields: Value =
+            serde_json::from_str(include_str!("fixtures/transformer_survey_v23_fields.json"))
+                .unwrap();
+        assert_eq!(fields.as_array().unwrap().len(), 7);
+        assert_eq!(fields[4]["type"], "textBlock");
+        assert!(fields[4].get("key").is_none());
+        for (values, expected) in [
+            (
+                json!({"transformer_name":"TX-1","transformer_type":"Existing","transformer_size":"50kVA","photo":"test/forms/transformer_survey/entry/photo.jpg","phase_type":"Three Phase"}),
+                json!({}),
+            ),
+            (
+                json!({}),
+                json!({"transformer_name":"Transformer Name is required","transformer_type":"Transformer Type is required","transformer_size":"Transformer Size is required","photo":"Photo is required","phase_type":"Phase Type is required"}),
+            ),
+        ] {
+            let request = json!({"schema":preview::SCHEMA,"form_revision":"transformer_survey:23","fields":fields,"values":values});
+            let bytes = serde_json::to_vec(&request).unwrap();
+            let original = bytes.clone();
+            let result = preview::validate(&bytes).unwrap();
+            let submission=fill::evaluate(&json!({"mode":"submission","form_revision":"transformer_survey:23","fields":fields,"values":values})).unwrap();
+            assert_eq!(result["errors"], expected);
+            assert_eq!(result["errors"], submission["errors"]);
+            assert_eq!(
+                result["required_visible_keys"],
+                json!([
+                    "transformer_name",
+                    "transformer_type",
+                    "transformer_size",
+                    "photo",
+                    "phase_type"
+                ])
+            );
+            assert_eq!(
+                result["visible_keys"],
+                json!([
+                    "transformer_name",
+                    "transformer_type",
+                    "transformer_size",
+                    "photo",
+                    "photos",
+                    "phase_type"
+                ])
+            );
+            assert_eq!(result["hidden_keys"], json!([]));
+            assert_eq!(result["valid"], expected.as_object().unwrap().is_empty());
+            assert_eq!(bytes, original);
+            assert!(fields[4].get("key").is_none());
+        }
+    }
+
+    #[test]
+    fn only_declared_display_types_are_keyless_and_never_collect_answers() {
+        for kind in ["textBlock", "separator"] {
+            let fields = json!([{"id":"note","type":kind,"required":true},{"id":"keyed","key":"presentation","type":kind,"required":true},{"key":"name","label":"Name","type":"text","required":true}]);
+            let result =
+                evaluate(&json!({"fields":fields,"values":{"presentation":"not an answer"}}))
+                    .unwrap();
+            assert_eq!(result["visible_keys"], json!(["presentation", "name"]));
+            assert_eq!(result["data"], json!({}));
+            assert_eq!(result["errors"], json!({"name":"Name is required"}));
+            let preview=preview::validate(&serde_json::to_vec(&json!({"schema":preview::SCHEMA,"form_revision":"test:1","fields":fields,"values":{}})).unwrap()).unwrap();
+            assert_eq!(preview["required_visible_keys"], json!(["name"]));
+            assert_eq!(preview["hidden_keys"], json!([]));
+        }
+        for field in [
+            json!({"type":"text"}),
+            json!({"type":"future_display"}),
+            json!({"type":"TextBlock"}),
+            json!({}),
+            json!({"key":"","type":"text"}),
+        ] {
+            assert!(evaluate(&json!({"fields":[field],"values":{}})).is_err());
+        }
+        assert!(evaluate(&json!({"fields":[{"type":"textBlock","key":"same"},{"type":"text","key":"same"}],"values":{}})).is_err());
+        let hidden=evaluate(&json!({"fields":[{"type":"textBlock","key":"presentation","visibility":{"conditions":[{"field":"mode","operator":"equals","value":"show"}]}}],"values":{"mode":"hide"}})).unwrap();
+        assert_eq!(hidden["visible_keys"], json!([]));
     }
 }
