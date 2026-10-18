@@ -4,8 +4,8 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
-use ds_command_kernel::report::inventory::{CloudHead, ReadFact, ReadState};
-use serde_json::{Value, json};
+use ds_command_kernel::report::inventory::RetainedOutput;
+use serde_json::{json, Value};
 use std::{io::Write, path::Path};
 
 pub static COMMAND: Command = Command {
@@ -13,7 +13,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "inventory"],
     contract: 1,
     summary: "Read a transformer's verified held and published report inventory.",
-    purpose: "Writes a bounded private final inventory document from verified committed local bytes and full authenticated publication heads retained in Sync SQLite. The default makes no cloud call or queue transition. --refresh explicitly runs the existing project Sync pass, which can publish queued work and download changed heads; failure retains clearly held observations. No second queue, freshness probe, generation or local deletion.",
+    purpose: "Writes a bounded private final inventory document from verified committed local bytes and full authenticated publication heads retained in Sync SQLite. The default makes no cloud call or queue transition. --refresh explicitly runs the existing project Sync pass, which can publish queued work and download the selected report head; failure retains clearly held observations. No second queue, freshness probe, generation or local deletion.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessUser,
@@ -65,9 +65,14 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let before = crate::outbox::inventory_snapshot(inputs)?;
     let project = inputs.require("project")?;
     let lane = inputs.require("lane")?;
-    let mut sync = inputs
-        .switch("refresh")
-        .then(|| crate::touch::project(lane, project, inputs.value("core-state-dir")));
+    let mut sync = inputs.switch("refresh").then(|| {
+        crate::touch::selected_report(
+            lane,
+            project,
+            inputs.value("core-state-dir"),
+            inputs.value("transformer").unwrap_or_default(),
+        )
+    });
     let before_owner = before.owner.clone();
     if let Some(touch) = sync.as_mut() {
         if touch.current
@@ -113,29 +118,32 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
                 .to_owned()
         }),
     )?;
-    let mut view = serde_json::to_value(
-        ds_command_kernel::report::inventory::project(&snapshot).map_err(failed)?,
-    )
-    .map_err(failed)?;
-    let acquired = if let Some(cloud) = snapshot.cloud_head.as_ref() {
-        ds_sync_runtime::VerifiedReads::new(state.join("sync-downloads"))
+    let retained = if let Some(cloud) = snapshot.cloud_head.as_ref() {
+        if ds_sync_runtime::VerifiedReads::new(state.join("sync-downloads"))
             .retained_head(project, &cloud.head)
             .map_err(failed)?
-    } else {
-        None
-    };
-    for output in view["outputs"]
-        .as_array_mut()
-        .ok_or_else(|| failed("Invalid projected outputs."))?
-    {
-        output["retained"] = if output["local"].is_object() {
-            json!({"source":"committed"})
-        } else if acquired.is_some() && output["cloud"].is_object() {
-            json!({"source":"sync_download","head_revision":output["cloud_binding"]["head_revision"]})
+            .is_some()
+        {
+            cloud
+                .head
+                .outputs
+                .iter()
+                .map(|output| RetainedOutput {
+                    output_id: output.output_id.clone(),
+                    head_revision: cloud.head.head_revision,
+                    sha256: output.sha256.clone(),
+                    size_bytes: output.size_bytes,
+                })
+                .collect::<Vec<_>>()
         } else {
-            Value::Null
-        };
-    }
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+    let mut view =
+        ds_command_kernel::report::inventory::project_with_retained(&snapshot, &retained)
+            .map_err(failed)?;
     if let Some(sync) = sync {
         view["sync"] = sync.receipt;
     }
@@ -206,42 +214,19 @@ pub(crate) fn attach_cloud(
         .transpose()
         .map_err(failed)?
         .flatten();
-    if let Some(observation) = observation {
-        snapshot.cloud_head = observation
-            .heads
-            .into_iter()
-            .find(|h| {
-                h["engine"] == "network_reporter"
-                    && h["operation"] == format!("export-{}", snapshot.transformer)
-                    && h["variant"] == snapshot.variant
-            })
-            .map(|raw| {
-                ds_command_kernel::compute_artifact_inventory::decode_head(
-                    &serde_json::to_vec(&raw).map_err(failed)?,
-                )
-                .map_err(failed)
-            })
-            .transpose()?
-            .map(|head| CloudHead {
-                owner: snapshot.owner.clone(),
-                project: snapshot.project.clone(),
-                head,
-            });
-        snapshot.cloud_read = ReadFact {
-            state: if current {
-                ReadState::Ready
-            } else {
-                ReadState::Held
-            },
-            error,
-        };
-    }
-    Ok(())
+    ds_command_kernel::report::inventory::attach_observed_head(
+        snapshot,
+        observation.as_ref(),
+        current,
+        error,
+    )
+    .map_err(failed)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ds_command_kernel::report::inventory::{project_with_retained, ReadState};
     fn snapshot() -> ds_command_kernel::report::inventory::Snapshot {
         serde_json::from_value(json!({"owner":"owner","project":"project","transformer":"test","variant":"default","expected_input_base_fingerprint":null,"local_read":{"state":"ready","error":null},"sync_read":{"state":"ready","error":null},"cloud_read":{"state":"not_observed","error":null},"local_sets":[],"sync_artifacts":[],"cloud_head":null,"legacy_cloud":null,"required_outputs":[]})).unwrap()
     }
@@ -278,6 +263,28 @@ mod tests {
         assert!(view.outputs[0].local.is_none());
         assert!(view.outputs[0].generated_at_ms.is_none());
         assert!(view.outputs[0].client_run_id.is_none());
+        let mut proof = RetainedOutput {
+            output_id: "xlsx".into(),
+            head_revision: 7,
+            sha256: "b".repeat(64),
+            size_bytes: 123,
+        };
+        let retained = project_with_retained(&held, &[proof.clone()]).unwrap();
+        assert_eq!(
+            retained["outputs"][0]["retained"],
+            json!({"source":"sync_download","head_revision":7})
+        );
+        assert!(retained["outputs"][0]["local"].is_null());
+        assert!(retained["outputs"][0]["generated_at_ms"].is_null());
+        assert!(project_with_retained(&held, &[]).unwrap()["outputs"][0]["retained"].is_null());
+        proof.head_revision = 8;
+        assert!(project_with_retained(&held, &[proof.clone()]).is_err());
+        proof.head_revision = 7;
+        proof.sha256 = "c".repeat(64);
+        assert!(project_with_retained(&held, &[proof]).is_err());
+        let mut ordinary_held = snapshot();
+        attach_cloud(&mut ordinary_held, Some(&store), &fence, false, None).unwrap();
+        assert!(project_with_retained(&ordinary_held, &[]).is_ok());
         let mut current = snapshot();
         attach_cloud(&mut current, Some(&store), &fence, true, None).unwrap();
         assert!(matches!(current.cloud_read.state, ReadState::Ready));
