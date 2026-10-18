@@ -89,6 +89,10 @@ pub fn recover(
 ) -> Result<crate::store::recovery::Result, String> {
     use crate::store::recovery;
     control.validate()?;
+    let verify_row = match &control.command {
+        recovery::Command::VerifyArtifacts { row } => Some(row.clone()),
+        _ => None,
+    };
     let scope = crate::store::Scope::Project {
         project: control.project,
     };
@@ -102,9 +106,23 @@ pub fn recover(
         ds_sync_store::Store::open_read_only(database).map_err(|error| error.to_string())?
     };
     match store {
-        Some(mut store) => store
-            .recovery(fence, &scope, now_ms, control.command)
-            .map_err(|error| error.to_string()),
+        Some(mut store) => {
+            let mut result = store
+                .recovery(fence, &scope, now_ms, control.command)
+                .map_err(|error| error.to_string())?;
+            if result.refusals.is_empty() {
+                if let Some(row) = verify_row {
+                    result.artifact_verification =
+                        Some(crate::retained_publication::verify_artifacts(
+                            &store,
+                            fence,
+                            scope.project(),
+                            &row,
+                        )?);
+                }
+            }
+            Ok(result)
+        }
         None => recovery::resolve(recovery::Request {
             schema: recovery::SCHEMA.into(),
             fence: fence.clone(),

@@ -419,3 +419,131 @@ fn one_recovery_execution_reads_without_creating_and_refuses_unknown_rows() {
     )
     .is_err());
 }
+
+#[test]
+fn explicit_artifact_verification_streams_exact_bytes_without_mutating_work() {
+    use ds_sync_runtime::store::recovery::{Command, Control, SCHEMA};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("queue.sqlite");
+    let bytes = vec![42u8; 2 * 65536 + 17];
+    let row = row(&bytes);
+    let store = open_store(&path).unwrap();
+    seal(&store, &row, &bytes).unwrap();
+    let receipt = serde_json::from_value(serde_json::json!({
+        "receipt_id":"old-heartbeat-refusal", "scope":rows::store_scope("project-a"),
+        "action":"upload", "identity":row.identity, "outcome":"refused",
+        "detail":"old untyped refusal", "client_publish_id":row.client_publish_id, "at_ms":2
+    }))
+    .unwrap();
+    store
+        .lock()
+        .unwrap()
+        .apply(
+            &fence(),
+            2,
+            ds_sync_runtime::store::Event::ActionReceipt { receipt },
+        )
+        .unwrap();
+    let command = || Control {
+        schema: SCHEMA.into(),
+        project: "project-a".into(),
+        command: Command::VerifyArtifacts {
+            row: row.client_publish_id.clone(),
+        },
+    };
+    let snapshot = serde_json::to_value(
+        store
+            .lock()
+            .unwrap()
+            .snapshot(&fence(), &rows::store_scope("project-a"))
+            .unwrap(),
+    )
+    .unwrap();
+    drop(store);
+    let answer = ds_sync_runtime::recover(&path, &fence(), command(), 5).unwrap();
+    assert!(answer.refusals.is_empty());
+    assert!(!answer.applied);
+    assert!(answer.changes.is_empty());
+    let verified = answer.artifact_verification.unwrap();
+    assert_eq!(verified.status, "verified");
+    assert_eq!(verified.output_count, 1);
+    assert_eq!(verified.verified_bytes, bytes.len() as u64);
+    assert_eq!(verified.outputs[0].sha256, row.outputs[0].sha256);
+    let store = open_store(&path).unwrap();
+    assert_eq!(
+        snapshot,
+        serde_json::to_value(
+            store
+                .lock()
+                .unwrap()
+                .snapshot(&fence(), &rows::store_scope("project-a"))
+                .unwrap()
+        )
+        .unwrap()
+    );
+    let mut other = fence();
+    other.account = "other".into();
+    let crossed = ds_sync_runtime::recover(&path, &other, command(), 5).unwrap();
+    assert_eq!(crossed.refusals[0].code, "sync_row_not_found");
+    assert!(crossed.artifact_verification.is_none());
+    store
+        .lock()
+        .unwrap()
+        .connection_for_test()
+        .execute(
+            "UPDATE publication_outputs SET bytes = zeroblob(length(bytes))",
+            [],
+        )
+        .unwrap();
+    let ordinary = ds_sync_runtime::recover(
+        &path,
+        &fence(),
+        Control {
+            schema: SCHEMA.into(),
+            project: "project-a".into(),
+            command: Command::Status { limit: 50 },
+        },
+        6,
+    )
+    .unwrap();
+    assert!(ordinary.artifact_verification.is_none());
+    assert!(ordinary.refusals.is_empty());
+    let corrupted = ds_sync_runtime::recover(&path, &fence(), command(), 6).unwrap();
+    assert_eq!(
+        corrupted.artifact_verification.unwrap().status,
+        "integrity_mismatch"
+    );
+    store
+        .lock()
+        .unwrap()
+        .retire_publication_payload(&fence(), "project-a", &row.client_publish_id)
+        .unwrap();
+    let missing = ds_sync_runtime::recover(&path, &fence(), command(), 7).unwrap();
+    assert_eq!(
+        missing.artifact_verification.unwrap().status,
+        "not_retained"
+    );
+    assert!(!missing.applied);
+}
+
+#[test]
+fn artifact_verification_never_creates_an_absent_store() {
+    use ds_sync_runtime::store::recovery::{Command, Control, SCHEMA};
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("absent.sqlite");
+    let result = ds_sync_runtime::recover(
+        &path,
+        &fence(),
+        Control {
+            schema: SCHEMA.into(),
+            project: "project-a".into(),
+            command: Command::VerifyArtifacts {
+                row: "publication".into(),
+            },
+        },
+        1,
+    )
+    .unwrap();
+    assert_eq!(result.refusals[0].code, "sync_row_not_found");
+    assert!(!path.exists());
+}

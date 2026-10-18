@@ -19,6 +19,7 @@ pub struct Entry {
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
     Status { limit: usize },
+    VerifyArtifacts { row: String },
     Retry { row: String },
     SanitizePreview { limit: usize },
     SanitizeApply { digest: String },
@@ -44,7 +45,7 @@ impl Control {
             {
                 Err("Recovery display limit must be 1..200".into())
             }
-            Command::Retry { row }
+            Command::Retry { row } | Command::VerifyArtifacts { row }
                 if row.is_empty()
                     || row.len() > 512
                     || row
@@ -90,6 +91,22 @@ pub struct Decision {
     pub reason: &'static str,
 }
 
+/// Native verification reads one sealed SQLite payload, never publication authority.
+#[derive(Debug, Serialize)]
+pub struct ArtifactVerification {
+    pub row: String,
+    pub status: &'static str,
+    pub output_count: usize,
+    pub verified_bytes: u64,
+    pub outputs: Vec<VerifiedOutput>,
+}
+#[derive(Debug, Serialize)]
+pub struct VerifiedOutput {
+    pub output_id: String,
+    pub sha256: String,
+    pub size_bytes: u64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Result {
     pub schema: &'static str,
@@ -100,6 +117,8 @@ pub struct Result {
     pub rows: Vec<Decision>,
     pub refusals: Vec<Refusal>,
     pub applied: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_verification: Option<ArtifactVerification>,
     #[serde(skip)]
     pub changes: Vec<RowChange>,
 }
@@ -266,6 +285,7 @@ pub fn resolve(mut request: Request) -> std::result::Result<Result, String> {
         rows,
         refusals: Vec::new(),
         applied: false,
+        artifact_verification: None,
         changes: Vec::new(),
     };
     let limit = match request.command {
@@ -274,6 +294,20 @@ pub fn resolve(mut request: Request) -> std::result::Result<Result, String> {
                 return Err("Recovery display limit must be 1..200".into());
             }
             limit
+        }
+        Command::VerifyArtifacts { row } => {
+            result
+                .rows
+                .retain(|entry| entry.id == row && entry.standing);
+            result.total = result.rows.len();
+            if result.rows.is_empty() {
+                refuse(
+                    &mut result,
+                    "sync_row_not_found",
+                    "The exact standing publication is absent from this fence and project",
+                );
+            }
+            1
         }
         Command::Retry { row } => {
             if lease_held {

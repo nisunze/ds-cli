@@ -282,3 +282,97 @@ impl Producer for RetainedProducer<'_> {
             .map_err(|e| e.to_string())
     }
 }
+
+/// Inspect one exact retained SQLite publication without transport or mutations.
+/// The read snapshot pins the closure and every bounded blob chunk together.
+pub fn verify_artifacts(
+    held: &ds_sync_store::Store,
+    fence: &store::Fence,
+    project: &str,
+    key: &str,
+) -> Result<store::recovery::ArtifactVerification, String> {
+    use sha2::{Digest, Sha256};
+    use store::recovery::{ArtifactVerification, VerifiedOutput};
+    held.with_read_snapshot(|held| {
+        let mut result = ArtifactVerification {
+            row: key.into(),
+            status: "not_retained",
+            output_count: 0,
+            verified_bytes: 0,
+            outputs: Vec::new(),
+        };
+        let stored = held
+            .artifact(fence, &rows::store_scope(project), key)
+            .map_err(|e| e.to_string())?
+            .ok_or("sync_row_not_found: retained publication is absent")?;
+        result.output_count = stored.outputs.len();
+        let local = rows::local_row_from_store(&stored);
+        if !owns(&local) {
+            result.status = "unsupported_storage";
+            return Ok(result);
+        }
+        let Some(receipt) = held
+            .publication_payload(fence, project, key)
+            .map_err(|e| e.to_string())?
+        else {
+            return Ok(result);
+        };
+        let closure: Closure = serde_json::from_str(&receipt)
+            .map_err(|_| "sync_artifacts_invalid: retained publication receipt is invalid")?;
+        let mut expected = closure.row.clone();
+        expected.base_revision = local.base_revision.clone();
+        if closure.schema != SCHEMA
+            || closure.project != project
+            || expected != local
+            || local.outputs.is_empty()
+            || local.outputs.len() > 100
+            || validate_closure(project, &closure.row, &closure.declaration).is_err()
+        {
+            result.status = "integrity_mismatch";
+            return Ok(result);
+        }
+        let mut inventory: Vec<(String, String)> = local
+            .outputs
+            .iter()
+            .map(|output| (output.output_id.clone(), output.sha256.clone()))
+            .collect();
+        if rows::inventory_digest(&mut inventory) != local.sha256
+            || local
+                .outputs
+                .iter()
+                .try_fold(0u64, |total, output| total.checked_add(output.size_bytes))
+                != Some(local.size_bytes)
+        {
+            result.status = "integrity_mismatch";
+            return Ok(result);
+        }
+        for output in &local.outputs {
+            if output.size_bytes == 0 || output.size_bytes > 64 * 1024 * 1024 {
+                result.status = "integrity_mismatch";
+                return Ok(result);
+            }
+            let mut hasher = Sha256::new();
+            let length = held
+                .visit_publication_output(fence, project, key, &output.output_id, |chunk| {
+                    hasher.update(chunk);
+                })
+                .map_err(|e| e.to_string())?;
+            let Some(length) = length else {
+                return Ok(result);
+            };
+            if length != output.size_bytes || format!("{:x}", hasher.finalize()) != output.sha256 {
+                result.status = "integrity_mismatch";
+                return Ok(result);
+            }
+            result.verified_bytes += output.size_bytes;
+            result.outputs.push(VerifiedOutput {
+                output_id: output.output_id.clone(),
+                sha256: output.sha256.clone(),
+                size_bytes: output.size_bytes,
+            });
+        }
+        result.status = "verified";
+        Ok(result)
+    })
+    .map_err(|e| e.to_string())?
+}

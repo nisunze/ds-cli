@@ -45,7 +45,9 @@ impl Store {
     ) -> Result<recovery::Result> {
         let behavior = if matches!(
             &command,
-            recovery::Command::Status { .. } | recovery::Command::SanitizePreview { .. }
+            recovery::Command::Status { .. }
+                | recovery::Command::SanitizePreview { .. }
+                | recovery::Command::VerifyArtifacts { .. }
         ) {
             TransactionBehavior::Deferred
         } else {

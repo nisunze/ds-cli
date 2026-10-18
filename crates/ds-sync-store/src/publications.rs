@@ -112,6 +112,54 @@ impl Store {
         }
         Ok(self.connection.query_row("SELECT bytes FROM publication_outputs WHERE account=?1 AND deployment=?2 AND install_id=?3 AND project=?4 AND replay_key=?5 AND output_id=?6",params![fence.account,fence.deployment,fence.install_id,project,key,output],|row|row.get(0)).optional()?)
     }
+    /// Stream one retained output through SQLite's incremental blob reader.
+    /// The caller holds a read snapshot. Neither a SQL handle nor a full blob
+    /// allocation leaves the storage owner.
+    pub fn visit_publication_output(
+        &self,
+        fence: &Fence,
+        project: &str,
+        key: &str,
+        output: &str,
+        mut visit: impl FnMut(&[u8]),
+    ) -> Result<Option<u64>> {
+        use std::io::Read;
+        if !self.has_publication_payloads()? {
+            return Ok(None);
+        }
+        let rowid: Option<i64> = self.connection.query_row(
+            "SELECT o.rowid FROM publication_outputs o JOIN publication_payloads p USING(account,deployment,install_id,project,replay_key) WHERE o.account=?1 AND o.deployment=?2 AND o.install_id=?3 AND o.project=?4 AND o.replay_key=?5 AND o.output_id=?6 AND p.retained=1",
+            params![fence.account, fence.deployment, fence.install_id, project, key, output],
+            |row| row.get(0),
+        ).optional()?;
+        let Some(rowid) = rowid else {
+            return Ok(None);
+        };
+        let mut blob = self.connection.blob_open(
+            rusqlite::DatabaseName::Main,
+            "publication_outputs",
+            "bytes",
+            rowid,
+            true,
+        )?;
+        let length = blob.len() as u64;
+        if length == 0 || length > 64 * 1024 * 1024 {
+            return Err(Error::Kernel(
+                "publication output exceeds its byte bound".into(),
+            ));
+        }
+        let mut buffer = [0u8; 65536];
+        loop {
+            let count = blob
+                .read(&mut buffer)
+                .map_err(|_| Error::Kernel("publication output cannot be read".into()))?;
+            if count == 0 {
+                break;
+            }
+            visit(&buffer[..count]);
+        }
+        Ok(Some(length))
+    }
     /// Retire only derived output bytes. The immutable closure remains as evidence.
     pub fn retire_publication_payload(
         &mut self,

@@ -259,11 +259,20 @@ nor publication identity, and does not authorize retry or reopen a terminal row.
 
 `sync_store::recovery::Control` is the closed public JSON request: schema
 `ds.sync-recovery/v1`, explicit `project`, and `command` (`status`, `retry`,
-`sanitize_preview`, or `sanitize_apply`). Hosts inject their captured owner,
+`verify_artifacts`, `sanitize_preview`, or `sanitize_apply`). Hosts inject their
+captured owner,
 deployment and installation fence and read durable facts; callers cannot supply
 a fence, snapshot, producer label or local path. The pure owner returns the same
 path-free result on every host. Read-only status/preview neither create a store
 nor migrate it. Apply reads and persists in one IMMEDIATE SQLite transaction.
+
+Status with explicit `--row` and `--verify-artifacts` verifies only that standing
+publication's retained SQLite closure and output SHA-256/size in a read snapshot,
+using at most 64 KiB per blob read. It reports bounded per-output digests and
+`verified`, `not_retained`, `integrity_mismatch`, or `unsupported_storage`;
+it exposes no byte locators or sessions. It neither contacts authority nor
+retries, reclaims, restores or changes a row. Ordinary status performs no
+artifact reads. Verification cannot establish online publication.
 
 Retry preserves publication id, replay key, output inventory, source fingerprint,
 producer release, exact manifest and immutable payload. A complete readable row
