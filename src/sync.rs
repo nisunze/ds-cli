@@ -34,6 +34,8 @@ pub use publication::{
     publication_preflight, publication_verdict, PublicationBlock, PublicationStage,
     PublicationVerdict,
 };
+#[path = "sync/acquisition.rs"]
+pub mod acquisition;
 #[path = "sync/declaration.rs"]
 pub mod declaration;
 #[path = "sync/engines.rs"]

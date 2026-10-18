@@ -4,8 +4,30 @@ use ds_command_kernel::sync_store::report_heads as policy;
 pub use policy::ReportHeadObservation;
 use serde_json::Value;
 
+fn drive(
+    connection: &Connection,
+    operation: policy::effects::Operation,
+) -> Result<Option<ReportHeadObservation>> {
+    use policy::effects::{self, Step};
+    let mut step = effects::start(operation).map_err(Error::Kernel)?;
+    for _ in 0..6 {
+        step = match step {
+            Step::Done { observation } => return Ok(observation),
+            Step::Sql {
+                statement,
+                continuation,
+            } => {
+                let result =
+                    crate::sql_effect::execute(connection, &statement).map_err(Error::Kernel)?;
+                effects::resume(continuation, result).map_err(Error::Kernel)?
+            }
+        };
+    }
+    Err(Error::Kernel(
+        "report store exceeded its bounded continuation".into(),
+    ))
+}
 impl Store {
-    /// Replace only after the complete authenticated cursor walk succeeds.
     pub fn observe_report_heads(
         &mut self,
         fence: &Fence,
@@ -13,27 +35,21 @@ impl Store {
         at_ms: u64,
         heads: &[Value],
     ) -> Result<()> {
-        policy::validate_scope(fence, project, at_ms).map_err(Error::Kernel)?;
-        let document = policy::encode(heads).map_err(Error::Kernel)?;
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        tx.execute_batch(policy::SCHEMA)?;
-        tx.execute(
-            policy::REPLACE,
-            params![
-                fence.account,
-                fence.deployment,
-                fence.install_id,
-                project,
-                at_ms as i64,
-                document
-            ],
+        drive(
+            &tx,
+            policy::effects::Operation::Observe {
+                fence: fence.clone(),
+                project: project.into(),
+                at_ms,
+                heads: heads.to_vec(),
+            },
         )?;
         tx.commit()?;
         Ok(())
     }
-    /// Read back the selected publication after its ACK without a second walk.
     pub fn observe_report_head(
         &mut self,
         fence: &Fence,
@@ -41,59 +57,33 @@ impl Store {
         at_ms: u64,
         head: &Value,
     ) -> Result<()> {
-        policy::validate_scope(fence, project, at_ms).map_err(Error::Kernel)?;
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let document: String = tx.query_row(
-            policy::READ,
-            params![fence.account, fence.deployment, fence.install_id, project],
-            |r| r.get(1),
+        drive(
+            &tx,
+            policy::effects::Operation::Merge {
+                fence: fence.clone(),
+                project: project.into(),
+                at_ms,
+                head: head.clone(),
+            },
         )?;
-        if let Some(document) = policy::merge(&document, head).map_err(Error::Kernel)? {
-            tx.execute(
-                policy::UPDATE,
-                params![
-                    fence.account,
-                    fence.deployment,
-                    fence.install_id,
-                    project,
-                    document,
-                    at_ms as i64
-                ],
-            )?;
-            tx.commit()?;
-        }
+        tx.commit()?;
         Ok(())
     }
-    /// Old stores without the additive observation table remain unobserved.
     pub fn report_heads(
         &self,
         fence: &Fence,
         project: &str,
     ) -> Result<Option<ReportHeadObservation>> {
-        let exists: bool = self
-            .connection
-            .query_row(policy::EXISTS, [], |r| r.get(0))?;
-        if !exists {
-            return Ok(None);
-        }
-        let row: Option<(i64, String)> = self
-            .connection
-            .query_row(
-                policy::READ,
-                params![fence.account, fence.deployment, fence.install_id, project],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .optional()?;
-        row.map(|(at, document)| {
-            Ok(ReportHeadObservation {
-                observed_at_ms: u64::try_from(at)
-                    .map_err(|_| Error::Kernel("invalid observation time".into()))?,
-                heads: policy::decode(document.as_bytes()).map_err(Error::Kernel)?,
-            })
-        })
-        .transpose()
+        drive(
+            &self.connection,
+            policy::effects::Operation::Read {
+                fence: fence.clone(),
+                project: project.into(),
+            },
+        )
     }
 }
 

@@ -1,6 +1,8 @@
 //! Portable SQLite schema and admission for full authenticated publication heads.
 //! Native and browser storage adapters execute these statements and retain the
 //! same complete declarations. This module performs no transport or filesystem IO.
+pub mod effects;
+
 use super::Fence;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

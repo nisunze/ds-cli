@@ -22,7 +22,7 @@ use crate::routes::SyncRoute;
 use crate::rows::{
     head_from_remote, local_row_from_store, now_ms, parse_record_answer, receipt_row, remote_row,
     remote_row_from_head, store_row, store_scope, text, LocalRow, Receipt, RecordAnswer, RemoteRow,
-    TransferReceipt, MAX_ROWS,
+    TransferReceipt,
 };
 use crate::run::SyncHost;
 
@@ -689,39 +689,19 @@ impl SyncHost for StoreHost<'_> {
     }
 
     fn heads(&self, project: &str) -> Result<Vec<RemoteRow>, GatewayError> {
-        let mut rows: Vec<RemoteRow> = Vec::new();
-        let mut report_heads = Vec::new();
-        let mut cursor = String::new();
-        let mut seen = std::collections::BTreeSet::new();
-        loop {
-            self.ensure_active()?;
-            // Match the service's ordinary page size. A whole project's
-            // heads need not fit one control-plane request on a slow link;
-            // the cursor walk still proves the complete bounded inventory.
-            let mut body = json!({"action": "list", "project_id": project, "limit": 25});
-            if !cursor.is_empty() {
-                body["cursor"] = json!(cursor);
+        use ds_command_kernel::sync::acquisition::{HeadStep, HeadWalk};
+        let mut step = HeadWalk::start(project)?;
+        let report_heads = loop {
+            match step {
+                HeadStep::Done { heads } => break heads,
+                HeadStep::Gateway { body, continuation } => {
+                    self.ensure_active()?;
+                    let page = self.gateway.post(SyncRoute::ComputeArtifacts, &body)?;
+                    step = continuation.resume(page)?;
+                }
             }
-            let page = self.gateway.post(SyncRoute::ComputeArtifacts, &body)?;
-            let heads = page
-                .get("heads")
-                .and_then(Value::as_array)
-                .ok_or("the record did not return a head inventory")?;
-            for head in heads {
-                report_heads.push(head.clone());
-                rows.push(remote_row(head));
-            }
-            cursor = text(&page, "next_cursor");
-            if rows.len() > MAX_ROWS || (!cursor.is_empty() && rows.len() == MAX_ROWS) {
-                return Err("the complete head inventory exceeds its bound".into());
-            }
-            if cursor.is_empty() {
-                break;
-            }
-            if heads.is_empty() || !seen.insert(cursor.clone()) {
-                return Err("head pagination did not advance".into());
-            }
-        }
+        };
+        let rows = report_heads.iter().map(remote_row).collect();
         self.ensure_active()?;
         self.with_store(|store| {
             store

@@ -96,29 +96,10 @@ fn admitted_ticket_url<'a, E>(
     expected_output: &inventory::Declaration,
     ticket: &'a Value,
 ) -> Result<&'a str, ReadError<E>> {
-    let resolved = decode_head(&ticket["head"])?;
-    if resolved != *head {
-        return Err(ReadError::HeadMoved);
-    }
-    // Head and download declarations use the same portable normalization owner.
-    // Historical Reporter tickets may omit the stored canonical filename.
-    let projection = inventory::evaluate(
-        &serde_json::to_vec(&json!({"engine":head.engine,"operation":head.operation,
-            "outputs":head.outputs,"download":{"output":ticket["output"],"file_name":ticket["file_name"]}}))
-        .map_err(|error| ReadError::Unreadable(error.to_string()))?,
-    )
-    .map_err(ReadError::Unreadable)?;
-    #[derive(serde::Deserialize)]
-    struct DownloadProjection {
-        download_output: inventory::Declaration,
-    }
-    let projection: DownloadProjection = serde_json::from_str(&projection)
-        .map_err(|error| ReadError::Unreadable(error.to_string()))?;
-    if projection.download_output != *expected_output {
-        return Err(ReadError::HeadMoved);
-    }
-    ticket["download_url"].as_str().ok_or_else(|| {
-        ReadError::Unreadable("The retained PDF has no governed download ticket.".into())
+    use ds_command_kernel::sync::acquisition::{self, TicketError};
+    acquisition::admitted_ticket_url(head, expected_output, ticket).map_err(|error| match error {
+        TicketError::HeadMoved => ReadError::HeadMoved,
+        TicketError::Unreadable(message) => ReadError::Unreadable(message),
     })
 }
 
