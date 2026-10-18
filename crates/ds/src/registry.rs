@@ -130,6 +130,21 @@ static AUTH_ENTRIES: &[Entry] = &[
 
 static REPORT_ENTRIES: &[Entry] = &[
     Entry {
+        command: &ds_cli_report::inventory_copy::COMMAND,
+        handler: ds_cli_report::inventory_copy::run,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::inventory::COMMAND,
+        handler: ds_cli_report::inventory::run,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
+        command: &ds_cli_report::publication_download::COMMAND,
+        handler: ds_cli_report::publication_download::run,
+        render: ds_cli_report::layout::render_text,
+    },
+    Entry {
         command: &ds_cli_report::planning::TRANSFORMERS,
         handler: ds_cli_report::planning::transformers,
         render: ds_cli_report::layout::render_text,
@@ -4184,6 +4199,9 @@ mod report_touch_tests {
             &["--project", "p", "--transformer", "tx_1"],
         );
         assert!(!report_project_touch("report.outbox.inventory", &inventory));
+        for id in ["report.inventory", "report.inventory.copy", "report.publication.download"] {
+            assert!(!report_project_touch(id, &inventory), "{id} must not acquire a second Sync pass");
+        }
         assert!(!report_held_read("report.outbox.inventory"));
     }
 }
