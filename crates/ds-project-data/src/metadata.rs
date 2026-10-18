@@ -15,13 +15,7 @@ pub mod transformer_status;
 const SCHEMA: &str = "ds.project-metadata/v1";
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Scope {
-    pub principal: String,
-    pub lane: String,
-    pub audience: String,
-    pub project: String,
-}
+pub use ds_command_kernel::transformer_status_store::Scope;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Kind {

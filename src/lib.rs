@@ -196,6 +196,14 @@ pub fn combined_readiness_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsV
 pub mod status_upload;
 pub mod freshness;
 pub mod sync;
+pub mod sql_effect;
+pub mod transformer_status_store;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = transformerStatusStore)]
+pub fn transformer_status_store_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    transformer_status_store::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
+}
+
 pub mod sync_store;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = syncStore)]

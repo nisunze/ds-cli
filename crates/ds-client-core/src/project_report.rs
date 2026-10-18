@@ -311,6 +311,7 @@ impl ProjectReportOperation<'_> {
 
     pub(crate) const fn timeout_seconds(&self) -> u64 {
         match self {
+            Self::ListStatus(_) => ds_command_kernel::transformer_status_store::READ_TIMEOUT_SECONDS,
             Self::Compounded(_) | Self::ExportReports(_) => {
                 crate::transport::PROJECT_REPORT_TIMEOUT_SECONDS
             }
@@ -319,6 +320,11 @@ impl ProjectReportOperation<'_> {
     }
 
     pub(crate) fn body(&self, project: &str) -> Vec<u8> {
+        if let Self::ListStatus(requested) = self {
+            return serde_json::to_vec(&ds_command_kernel::transformer_status_store::request_body(
+                project, requested.names(),
+            )).expect("closed status request serializes");
+        }
         let mut body = Map::new();
         body.insert("action".into(), Value::String(self.action().into()));
         body.insert("eds_project_id".into(), Value::String(project.into()));
@@ -1523,9 +1529,6 @@ pub(crate) fn decode_inventory(
 // Transformer status rows
 // ---------------------------------------------------------------------------
 
-/// The longest `kind` tag a status row may carry.
-const MAX_STATUS_KIND_CHARS: usize = 64;
-
 /// One transformer status row exactly as ds-brain sent it.
 ///
 /// The row is deliberately NOT reshaped here. ds-brain's `TransformerStatus`
@@ -1646,31 +1649,15 @@ pub(crate) fn decode_status(
     // A non-array `transformers` other than the service's own `null`, a
     // missing one, or a body over the fixed cap never becomes a row: `decode`
     // refuses the bytes first.
-    let wire: StatusWire = decode(response, limit)?;
-    if wire.transformers.len() > MAX_LIST {
-        return Err(unreadable());
-    }
-    let mut rows = Vec::with_capacity(wire.transformers.len());
-    for row in wire.transformers {
-        let Some(object) = row.as_object() else {
-            return Err(unreadable());
-        };
-        let Some(name) = object.get("name").and_then(Value::as_str) else {
-            return Err(unreadable());
-        };
-        if !bounded(name, PROJECT_REPORT_MAX_TRANSFORMER_CHARS, false) {
-            return Err(unreadable());
-        }
-        let name = name.to_owned();
-        let kind = match object.get("kind") {
-            None | Some(Value::Null) => None,
-            Some(Value::String(kind)) if bounded(kind, MAX_STATUS_KIND_CHARS, false) => {
-                Some(kind.clone())
-            }
-            Some(_) => return Err(unreadable()),
-        };
-        rows.push(TransformerStatusRow { name, kind, row });
-    }
+    let wire: StatusWire = decode(response, limit.min(ds_command_kernel::transformer_status_store::MAX_RESPONSE_BYTES))?;
+    let rows = ds_command_kernel::transformer_status_store::admit_rows(Value::Array(wire.transformers))
+        .map_err(|_| unreadable())?
+        .into_iter()
+        .map(|row| TransformerStatusRow {
+            name: row["name"].as_str().expect("admitted name").into(),
+            kind: row.get("kind").and_then(Value::as_str).map(str::to_owned),
+            row,
+        }).collect();
     Ok(TransformerStatusList { transformers: rows })
 }
 

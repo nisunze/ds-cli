@@ -1,23 +1,17 @@
 //! Whole-project transformer observations. No legacy JSON reader or network IO.
-use super::{digest, Error, Kind, Scope, MAX_BYTES};
+use super::{Error, Kind, Scope};
+use ds_command_kernel::transformer_status_store as shared;
 use ds_layer_store::{private, snapshot_privacy};
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
-use serde::Serialize;
+use ds_sync_store::sql_effect::execute;
+use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
+pub use shared::Observation;
 use std::{
     fs,
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-#[derive(Debug, Serialize)]
-pub struct Observation {
-    pub document: Value,
-    pub sha256: String,
-    pub observed_at_ms: u64,
-    pub needs_refresh: bool,
-    pub last_error: Option<String>,
-}
 fn path(root: &Path, scope: &Scope) -> Result<PathBuf, String> {
     Ok(super::path(root, scope, Kind::TransformerStatus)?.with_extension("sqlite"))
 }
@@ -61,58 +55,71 @@ fn open(path: &Path, writable: bool) -> Result<Connection, String> {
     let version: i64 = connection
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(sql)?;
-    if writable && !present {
+    if writable && (!present || version == 1) {
         connection
-            .execute_batch(
-                "PRAGMA journal_mode=WAL; BEGIN IMMEDIATE;
-            CREATE TABLE observation (id INTEGER PRIMARY KEY CHECK(id=1), scope TEXT NOT NULL,
-            document TEXT NOT NULL, sha256 TEXT NOT NULL, observed_at_ms INTEGER NOT NULL,
-            needs_refresh INTEGER NOT NULL CHECK(needs_refresh IN (0,1)), last_error TEXT);
-            PRAGMA user_version=1; COMMIT;",
-            )
+            .execute_batch("PRAGMA journal_mode=WAL; BEGIN IMMEDIATE;")
             .map_err(sql)?;
-    } else if version != 1 {
+        // Declared derived-cache v2 transition: no legacy import or dual reader.
+        // This database belongs only to status; Styles uses its separate JSON owner.
+        let upgraded = (|| {
+            if version == 1 {
+                connection
+                    .execute_batch("DROP TABLE observation")
+                    .map_err(sql)?;
+            }
+            execute(&connection, &shared::schema())?;
+            connection
+                .execute_batch("PRAGMA user_version=2; COMMIT;")
+                .map_err(sql)
+        })();
+        if upgraded.is_err() {
+            let _ = connection.execute_batch("ROLLBACK");
+        }
+        upgraded?;
+    } else if version != 2 && !(version == 1 && !writable) {
         return Err("transformer status store has an unsupported schema".into());
     }
     Ok(connection)
 }
+fn run(
+    connection: &Connection,
+    operation: shared::Operation,
+) -> Result<(Option<Observation>, Option<u64>), String> {
+    let transaction = connection.unchecked_transaction().map_err(sql)?;
+    let mut step = shared::start(operation)?;
+    for _ in 0..8 {
+        match step {
+            shared::Step::Done {
+                observation,
+                revision,
+            } => {
+                transaction.commit().map_err(sql)?;
+                return Ok((observation, revision));
+            }
+            shared::Step::Sql {
+                statement,
+                continuation,
+            } => {
+                step = shared::resume(continuation, execute(&transaction, &statement)?)?;
+            }
+        }
+    }
+    Err("status owner exceeded its bounded continuation".into())
+}
 fn read(connection: &Connection, scope: &Scope) -> Result<Option<Observation>, String> {
-    let size: Option<u64> = connection
-        .query_row(
-            "SELECT length(CAST(document AS BLOB)) FROM observation WHERE id=1",
-            [],
-            |r| r.get(0),
-        )
-        .optional()
+    let version: i64 = connection
+        .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(sql)?;
-    if size.is_some_and(|size| size > MAX_BYTES) {
-        return Err("transformer status observation exceeds its byte bound".into());
-    }
-
-    let row: Option<(String,String,String,u64,bool,Option<String>)> = connection.query_row(
-        "SELECT scope,document,sha256,observed_at_ms,needs_refresh,last_error FROM observation WHERE id=1 AND length(document)<=?1",
-        [MAX_BYTES], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).optional().map_err(sql)?;
-    let Some((stored_scope, document, sha256, observed_at_ms, needs_refresh, last_error)) = row
-    else {
+    if version == 1 {
         return Ok(None);
-    };
-    if stored_scope != serde_json::to_string(scope).map_err(|e| e.to_string())?
-        || document.len() as u64 > MAX_BYTES
-    {
-        return Err("transformer status observation scope or byte bound mismatch".into());
     }
-    let document: Value =
-        serde_json::from_str(&document).map_err(|_| "transformer status observation is corrupt")?;
-    if digest(&document)? != sha256 {
-        return Err("transformer status observation digest mismatch".into());
-    }
-    Ok(Some(Observation {
-        document,
-        sha256,
-        observed_at_ms,
-        needs_refresh,
-        last_error,
-    }))
+    run(
+        connection,
+        shared::Operation::Read {
+            scope: scope.clone(),
+        },
+    )
+    .map(|(observation, _)| observation)
 }
 /// Never creates a missing database, invokes a fetch, or reads the retired JSON.
 pub fn held(root: &Path, scope: &Scope) -> Result<Option<Observation>, String> {
@@ -123,18 +130,11 @@ pub fn held(root: &Path, scope: &Scope) -> Result<Option<Observation>, String> {
     read(&open(&path, false)?, scope)
 }
 fn write(connection: &Connection, scope: &Scope, document: &Value) -> Result<(), String> {
-    let bytes = serde_json::to_string(document).map_err(|e| e.to_string())?;
-    if bytes.len() as u64 > MAX_BYTES {
-        return Err("transformer status exceeds its byte bound".into());
-    }
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_millis() as u64;
-    connection.execute("INSERT INTO observation VALUES(1,?1,?2,?3,?4,0,NULL)
-        ON CONFLICT(id) DO UPDATE SET scope=excluded.scope,document=excluded.document,sha256=excluded.sha256,
-        observed_at_ms=excluded.observed_at_ms,needs_refresh=0,last_error=NULL",
-        params![serde_json::to_string(scope).map_err(|e|e.to_string())?,bytes,digest(document)?,now]).map_err(sql)?;
+    execute(connection, &shared::write(scope, document, now)?)?;
     Ok(())
 }
 fn locked(root: &Path, scope: &Scope) -> Result<(fs::File, Connection), String> {
@@ -150,29 +150,73 @@ pub(super) fn acquire<E>(
     fetch: impl FnOnce() -> Result<Value, E>,
 ) -> Result<(Value, bool), Error<E>> {
     let (_lock, connection) = locked(root, scope).map_err(Error::Store)?;
-    let previous = read(&connection, scope).map_err(Error::Store)?;
-    if !refresh {
-        if let Some(value) = previous.filter(|value| !value.needs_refresh) {
-            return Ok((value.document, true));
-        }
-    }
-    match fetch() {
-        Ok(document) => {
-            write(&connection, scope, &document).map_err(Error::Store)?;
-            Ok((document, false))
-        }
-        Err(error) => {
-            connection
-                .execute(
-                    "UPDATE observation SET needs_refresh=1,last_error='refresh_failed' WHERE id=1",
-                    [],
+    let mode = if refresh {
+        shared::ReadMode::Refresh
+    } else {
+        shared::ReadMode::Acquire
+    };
+    let mut step = shared::flow_start(scope.clone(), mode).map_err(Error::Store)?;
+    let mut fetch = Some(fetch);
+    let mut fetch_error = None;
+    for _ in 0..8 {
+        step = match step {
+            shared::FlowStep::Storage {
+                operation,
+                continuation,
+            } => {
+                let (observation, revision) = run(&connection, operation).map_err(Error::Store)?;
+                shared::flow_resume(
+                    continuation,
+                    shared::FlowResult::Storage {
+                        observation,
+                        revision,
+                    },
                 )
-                .map_err(sql)
-                .map_err(Error::Store)?;
-            Err(Error::Read(error))
+            }
+            shared::FlowStep::Fetch { continuation, .. } => {
+                let result = match fetch.take().ok_or_else(|| {
+                    Error::Store("status owner requested a duplicate fetch".into())
+                })?() {
+                    Ok(document) => shared::FlowResult::Fetch {
+                        document,
+                        now: SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .map_err(|e| Error::Store(e.to_string()))?
+                            .as_millis() as u64,
+                    },
+                    Err(error) => {
+                        fetch_error = Some(error);
+                        shared::FlowResult::Failure
+                    }
+                };
+                shared::flow_resume(continuation, result)
+            }
+            shared::FlowStep::Done {
+                observation,
+                refreshed,
+                failed,
+            } => {
+                if let Some(error) = fetch_error {
+                    return Err(Error::Read(error));
+                }
+                if failed {
+                    return Err(Error::Store("status_refresh_failed".into()));
+                }
+                return Ok((
+                    observation
+                        .ok_or_else(|| Error::Store("status observation is absent".into()))?
+                        .document,
+                    !refreshed,
+                ));
+            }
         }
+        .map_err(Error::Store)?;
     }
+    Err(Error::Store(
+        "status acquisition exceeded its continuation bound".into(),
+    ))
 }
+
 pub(super) fn observe(root: &Path, scope: &Scope, document: &Value) -> Result<(), String> {
     let (_lock, connection) = locked(root, scope)?;
     read(&connection, scope)?;
@@ -184,12 +228,7 @@ pub(super) fn invalidate(root: &Path, scope: &Scope) -> Result<(), String> {
     }
     let (_lock, connection) = locked(root, scope)?;
     read(&connection, scope)?;
-    connection
-        .execute(
-            "UPDATE observation SET needs_refresh=1,last_error=NULL WHERE id=1",
-            [],
-        )
-        .map_err(sql)?;
+    execute(&connection, &shared::invalidate(scope, false)?)?;
     Ok(())
 }
 
@@ -204,6 +243,38 @@ mod tests {
             audience: "a".into(),
             project: "p".into(),
         }
+    }
+    #[test]
+    fn declared_v1_reset_discards_only_derived_status_and_preserves_styles() {
+        let dir = tempfile::tempdir().unwrap();
+        let scope = scope();
+        super::super::observe(dir.path(), &scope, Kind::Styles, &json!({"style":"kept"})).unwrap();
+        let path = path(dir.path(), &scope).unwrap();
+        let legacy = Connection::open(&path).unwrap();
+        legacy.execute_batch("CREATE TABLE observation(id INTEGER PRIMARY KEY,document TEXT); INSERT INTO observation VALUES(1,'legacy derived status'); PRAGMA user_version=1;").unwrap();
+        drop(legacy);
+        assert!(held(dir.path(), &scope).unwrap().is_none());
+        acquire(dir.path(), &scope, false, || {
+            Ok::<_, ()>(json!({"transformers":[]}))
+        })
+        .unwrap();
+        let db = Connection::open(&path).unwrap();
+        assert_eq!(
+            db.query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name='observation'",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        let (style, cached) =
+            super::super::acquire(dir.path(), &scope, Kind::Styles, false, || {
+                Err::<Value, _>(())
+            })
+            .unwrap();
+        assert!(cached);
+        assert_eq!(style, json!({"style":"kept"}));
     }
     #[test]
     fn missing_held_does_not_create_and_legacy_json_is_not_read() {
@@ -315,7 +386,7 @@ mod tests {
         }
         let connection = open(&path(dir.path(), &scope).unwrap(), true).unwrap();
         connection
-            .execute("UPDATE observation SET sha256='wrong'", [])
+            .execute("UPDATE project_status_observations SET sha256='wrong'", [])
             .unwrap();
         assert!(held(dir.path(), &scope).is_err());
     }

@@ -677,6 +677,7 @@ dependencies = [
  "ds-layer-store",
  "ds-network-client",
  "ds-network-contracts",
+ "ds-sync-store",
  "flate2",
  "rusqlite",
  "serde",
@@ -697,6 +698,17 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "ds-sync-store"
+version = "0.1.0"
+dependencies = [
+ "ds-command-kernel",
+ "rusqlite",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 
