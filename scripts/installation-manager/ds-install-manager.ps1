@@ -116,6 +116,14 @@ function Download([object]$Asset,[string]$Path,[long]$Max=536870912) {
  if((Get-Item -LiteralPath $partial).Length -ne $Asset.size_bytes -or (Digest $partial) -cne $Asset.sha256) { Fail 'manager_digest_mismatch' 'Downloaded bytes differ; nothing was installed' }
  Move-Item -LiteralPath $partial -Destination $Path -Force
 }
+# Only manager-owned completed transfer files are disposable. Installed versions,
+# rollback selections and caller-supplied artifacts stay with their owners.
+function RemoveCompletedDownload([string]$Path) {
+ $full=[IO.Path]::GetFullPath($Path)
+ $cache=[IO.Path]::GetFullPath($script:Cache).TrimEnd('\')
+ if([IO.Path]::GetDirectoryName($full) -ine $cache){Fail 'manager_cleanup_invalid' 'Completed download is outside the manager cache'}
+ if(Test-Path -LiteralPath $full){$null=Ordinary $full;Remove-Item -LiteralPath $full -ErrorAction Stop}
+}
 function DesktopPath {
  $name=if($Channel -eq 'canary'){'DS GridDesign Canary'}else{'DS GridDesign'}
  $binary=if($Channel -eq 'canary'){'ds-web-desktop-canary.exe'}else{'ds-web-desktop.exe'}
@@ -233,7 +241,9 @@ function InstallCore([ValidateSet('Install','Update')][string]$Verb='Install') {
  $arguments=@('-Action',$operation,'-Channel',$Channel,'-Artifact',$CoreArtifact,'-Receipt',$CoreReceipt,'-Sha256',$CoreSha256)
  if($operation -eq 'Update'){$arguments+=@(CoreExpectedArguments $state)}
  $null=InvokeCoreInstaller $arguments
- return InvokeCore -Arguments @('version') -ExpectedCommand version -ExpectedContract 1
+ $installed=InvokeCore -Arguments @('version') -ExpectedCommand version -ExpectedContract 1
+ if($null -ne $assets){RemoveCompletedDownload $CoreArtifact;RemoveCompletedDownload $CoreReceipt}
+ return $installed
 }
 function CoreLifecycle([ValidateSet('Remove','Rollback')][string]$Verb) {
  if($CoreArtifact -or $CoreReceipt -or $CoreSha256){Fail 'core_package_unexpected' 'Removal and rollback use only retained verified installations'}
@@ -364,6 +374,7 @@ try {
    if($setup.ExitCode -eq 2){Fail 'desktop_busy' 'The existing Desktop installer refused replacement while the application is running; close DS Desktop and retry, preserving current data'}
    if($setup.ExitCode -ne 0){Fail 'desktop_install_failed' "The owning installer exited $($setup.ExitCode)"}
    RecordDesktop $assets[0]
+   RemoveCompletedDownload $path
   }
   $script:Completed+=@('Desktop')
   EnsureDesktopRequirements

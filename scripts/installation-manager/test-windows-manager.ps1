@@ -59,6 +59,17 @@ try {
  $null=. $manager -Action Status -Channel canary
  $fixtureLocal=Join-Path $testRoot 'host';$null=New-Item -ItemType Directory -Path $fixtureLocal
  $script:Local=$fixtureLocal
+ $script:Cache=Join-Path $fixtureLocal 'cleanup-cache';PrivateDirectory $script:Cache
+ $download=Join-Path $script:Cache 'completed-setup.exe';[IO.File]::WriteAllText($download,'download')
+ $retained=Join-Path $script:Cache 'desktop-canary-installation.json';[IO.File]::WriteAllText($retained,'receipt')
+ RemoveCompletedDownload $download
+ Check (!(Test-Path -LiteralPath $download)) 'Completed installer was retained'
+ Check (Test-Path -LiteralPath $retained) 'Unrelated retained receipt was deleted'
+ RemoveCompletedDownload $download
+ $external=Join-Path $fixtureLocal 'caller-artifact.zip';[IO.File]::WriteAllText($external,'caller')
+ $refused=$false;try{RemoveCompletedDownload $external}catch{$refused=$_.Exception.Message.Contains('manager_cleanup_invalid')}
+ Check $refused 'Cleanup accepted an external artifact'
+ Check (Test-Path -LiteralPath $external) 'Caller artifact was deleted'
  $sentinels=@('Programs\DS Core\ds.exe','Programs\DS Core Canary\ds.exe','DataSolutions\addons\network\stable\retained.bin','rw.datasolutions.desktop\work.bin','.local\state\ds\queue.bin')
  $before=@{}
  foreach($relative in $sentinels){$path=Join-Path $fixtureLocal $relative;$null=New-Item -ItemType Directory -Force -Path (Split-Path $path -Parent);[IO.File]::WriteAllText($path,'DO NOT TOUCH');$before[$path]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
