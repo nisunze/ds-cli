@@ -1,87 +1,39 @@
-//! Full authenticated publication-head observations. Domain consumers validate
-//! the selected declaration with their owner before projecting or acquiring it. These are retained read facts,
-//! never another publication queue or permission to reuse engineering output.
+//! Native SQLite effects for the shared full publication-head observation owner.
 use super::*;
+use ds_command_kernel::sync_store::report_heads as policy;
+pub use policy::ReportHeadObservation;
 use serde_json::Value;
-use std::collections::BTreeSet;
 
-const MAX_HEADS: usize = 4096;
-const MAX_BYTES: usize = 32 * 1024 * 1024;
-const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS report_head_observations(
- account TEXT NOT NULL, deployment TEXT NOT NULL, install_id TEXT NOT NULL,
- project TEXT NOT NULL, observed_at_ms INTEGER NOT NULL, document TEXT NOT NULL,
- PRIMARY KEY(account,deployment,install_id,project));";
-
-pub struct ReportHeadObservation {
-    pub observed_at_ms: u64,
-    pub heads: Vec<Value>,
-}
-fn validated(bytes: &[u8]) -> Result<Vec<Value>> {
-    if bytes.len() > MAX_BYTES {
-        return Err(Error::Kernel(
-            "report head observation exceeds its byte bound".into(),
-        ));
-    }
-    let values: Vec<serde_json::Value> = serde_json::from_slice(bytes)?;
-    if values.len() > MAX_HEADS {
-        return Err(Error::Kernel(
-            "report head observation exceeds its row bound".into(),
-        ));
-    }
-    let mut identities = BTreeSet::new();
-    values
-        .into_iter()
-        .map(|value| {
-            let identity = ["engine", "operation", "variant"]
-                .map(|key| value[key].as_str().unwrap_or_default());
-            if identity
-                .iter()
-                .any(|s| s.is_empty() || s.len() > 256 || s.chars().any(char::is_control))
-                || !identities.insert(identity.map(str::to_owned))
-            {
-                return Err(Error::Kernel(
-                    "publication head observation contains an invalid or duplicate identity".into(),
-                ));
-            }
-            Ok(value)
-        })
-        .collect()
-}
 impl Store {
     /// Replace only after the complete authenticated cursor walk succeeds.
-    /// An empty observed inventory is distinct from never having observed it.
     pub fn observe_report_heads(
         &mut self,
         fence: &Fence,
         project: &str,
         at_ms: u64,
-        heads: &[serde_json::Value],
+        heads: &[Value],
     ) -> Result<()> {
-        if [&fence.account, &fence.deployment, &fence.install_id]
-            .iter()
-            .any(|v| v.trim().is_empty())
-        {
-            return Err(Error::Kernel("incomplete report observation fence".into()));
-        }
-        if !ds_command_kernel::execution_context::valid_project(project) || at_ms > i64::MAX as u64
-        {
-            return Err(Error::Kernel(
-                "report head observation scope is invalid".into(),
-            ));
-        }
-        let bytes = serde_json::to_vec(heads)?;
-        validated(&bytes)?;
-        let document = String::from_utf8(bytes).map_err(|e| Error::Kernel(e.to_string()))?;
+        policy::validate_scope(fence, project, at_ms).map_err(Error::Kernel)?;
+        let document = policy::encode(heads).map_err(Error::Kernel)?;
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        tx.execute_batch(SCHEMA)?;
-        tx.execute("INSERT INTO report_head_observations VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(account,deployment,install_id,project) DO UPDATE SET observed_at_ms=excluded.observed_at_ms,document=excluded.document",params![fence.account,fence.deployment,fence.install_id,project,at_ms as i64,document])?;
+        tx.execute_batch(policy::SCHEMA)?;
+        tx.execute(
+            policy::REPLACE,
+            params![
+                fence.account,
+                fence.deployment,
+                fence.install_id,
+                project,
+                at_ms as i64,
+                document
+            ],
+        )?;
         tx.commit()?;
         Ok(())
     }
-    /// Read back the selected publication after its ACK, without a second
-    /// project walk or racing another observer's full snapshot replacement.
+    /// Read back the selected publication after its ACK without a second walk.
     pub fn observe_report_head(
         &mut self,
         fence: &Fence,
@@ -89,64 +41,56 @@ impl Store {
         at_ms: u64,
         head: &Value,
     ) -> Result<()> {
-        validated(&serde_json::to_vec(&[head])?)?;
-        if at_ms > i64::MAX as u64 {
-            return Err(Error::Kernel("invalid observation time".into()));
-        }
+        policy::validate_scope(fence, project, at_ms).map_err(Error::Kernel)?;
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let document:String=tx.query_row("SELECT document FROM report_head_observations WHERE account=?1 AND deployment=?2 AND install_id=?3 AND project=?4",params![fence.account,fence.deployment,fence.install_id,project],|r|r.get(0))?;
-        let mut heads = validated(document.as_bytes())?;
-        if let Some(index) = heads.iter().position(|old| {
-            ["engine", "operation", "variant"]
-                .iter()
-                .all(|k| old[k] == head[k])
-        }) {
-            let old = &heads[index];
-            if old["head_revision"].as_u64() > head["head_revision"].as_u64() {
-                return Ok(());
-            }
-            if old["head_revision"] == head["head_revision"] {
-                let decode = |v: &Value| {
-                    ds_command_kernel::compute_artifact_inventory::decode_head(
-                        &serde_json::to_vec(v).unwrap_or_default(),
-                    )
-                };
-                if decode(old).is_ok() && decode(old).ok() != decode(head).ok() {
-                    return Err(Error::Kernel(
-                        "the same publication revision has different declarations".into(),
-                    ));
-                }
-            }
-            heads[index] = head.clone();
-        } else {
-            heads.push(head.clone());
+        let document: String = tx.query_row(
+            policy::READ,
+            params![fence.account, fence.deployment, fence.install_id, project],
+            |r| r.get(1),
+        )?;
+        if let Some(document) = policy::merge(&document, head).map_err(Error::Kernel)? {
+            tx.execute(
+                policy::UPDATE,
+                params![
+                    fence.account,
+                    fence.deployment,
+                    fence.install_id,
+                    project,
+                    document,
+                    at_ms as i64
+                ],
+            )?;
+            tx.commit()?;
         }
-        let bytes = serde_json::to_vec(&heads)?;
-        validated(&bytes)?;
-        let document = String::from_utf8(bytes).map_err(|e| Error::Kernel(e.to_string()))?;
-        tx.execute("UPDATE report_head_observations SET document=?5,observed_at_ms=?6 WHERE account=?1 AND deployment=?2 AND install_id=?3 AND project=?4",params![fence.account,fence.deployment,fence.install_id,project,document,at_ms as i64])?;
-        tx.commit()?;
         Ok(())
     }
-
-    /// Read-only, including on old stores without the additive observation table.
+    /// Old stores without the additive observation table remain unobserved.
     pub fn report_heads(
         &self,
         fence: &Fence,
         project: &str,
     ) -> Result<Option<ReportHeadObservation>> {
-        let exists: bool = self.connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_head_observations')",[],|r|r.get(0))?;
+        let exists: bool = self
+            .connection
+            .query_row(policy::EXISTS, [], |r| r.get(0))?;
         if !exists {
             return Ok(None);
         }
-        let row: Option<(i64,String)> = self.connection.query_row("SELECT observed_at_ms,document FROM report_head_observations WHERE account=?1 AND deployment=?2 AND install_id=?3 AND project=?4",params![fence.account,fence.deployment,fence.install_id,project],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
+        let row: Option<(i64, String)> = self
+            .connection
+            .query_row(
+                policy::READ,
+                params![fence.account, fence.deployment, fence.install_id, project],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
         row.map(|(at, document)| {
             Ok(ReportHeadObservation {
                 observed_at_ms: u64::try_from(at)
                     .map_err(|_| Error::Kernel("invalid observation time".into()))?,
-                heads: validated(document.as_bytes())?,
+                heads: policy::decode(document.as_bytes()).map_err(Error::Kernel)?,
             })
         })
         .transpose()

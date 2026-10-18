@@ -274,3 +274,23 @@ fn foreign_scope_duplicate_identity_and_unbound_native_pins_never_launder_succes
         refused(input);
     }
 }
+
+#[test]
+fn normal_held_cloud_read_is_usable_without_fabricating_an_error_or_freshness() {
+    let mut input = fixture();
+    input["snapshot"]["cloud_head"] = cloud(&input);
+    input["snapshot"]["local_sets"] = json!([]);
+    input["snapshot"]["sync_artifacts"] = json!([]);
+    input["snapshot"]["cloud_read"] = json!({"state":"held","error":null});
+    let output = project(input.clone());
+    assert_eq!(output["outputs"].as_array().unwrap().len(), 6);
+    assert_eq!(output["cloud_read"]["state"], "held");
+    assert!(output["cloud_read"]["error"].is_null());
+    for artifact in output["outputs"].as_array().unwrap() {
+        assert_eq!(artifact["publication_phase"], "held_cloud_observation");
+        assert!(artifact["generated_at_ms"].is_null());
+        assert!(artifact["local"].is_null());
+    }
+    input["snapshot"]["cloud_read"]["state"] = json!("unavailable");
+    refused(input);
+}

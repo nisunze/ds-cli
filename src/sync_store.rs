@@ -20,6 +20,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 pub mod recovery;
+pub mod report_heads;
 
 pub const SCHEMA: &str = "ds.sync-store/v1";
 const INPUT_BOUND: usize = 16 * 1024 * 1024;

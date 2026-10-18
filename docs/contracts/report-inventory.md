@@ -155,6 +155,11 @@ published artifact owner before projecting it. Old stores with no observation
 table are unobserved; reading them creates no table. Older compatible writers
 ignore this additive observation table and remain the sole queue owner.
 
+A normal held observation may have no error: it is usable retained evidence,
+not a freshness claim or a failed request. A failed refresh retains its explicit
+error; unavailable observations still require a reason. This rule is shared by
+native and browser projections.
+
 The native view adds `outputs[].retained`: null, `source=committed`, or
 `source=sync_download` with the exact head revision. A downloaded replica requires
 its existing Sync receipt and physical output hashes. This is byte availability,

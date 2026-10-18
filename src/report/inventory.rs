@@ -170,7 +170,8 @@ fn valid_read(fact: &ReadFact) -> bool {
     fact.error.as_deref().is_none_or(|error| text(error, 2000))
         && match fact.state {
             ReadState::Ready | ReadState::NotObserved => fact.error.is_none(),
-            ReadState::Held | ReadState::Unavailable => fact.error.is_some(),
+            ReadState::Held => true,
+            ReadState::Unavailable => fact.error.is_some(),
         }
 }
 
@@ -539,4 +540,96 @@ pub fn project(snapshot: &Snapshot) -> Result<View<'_>, String> {
         missing_outputs,
         complete_inventory_observed,
     })
+}
+
+/// Bind the exact full retained declaration. A held read never claims freshness.
+/// Both native and browser Sync owners supply the authenticated observation.
+pub fn attach_observed_head(
+    snapshot: &mut Snapshot,
+    observation: Option<&crate::sync_store::report_heads::ReportHeadObservation>,
+    current: bool,
+    error: Option<String>,
+) -> Result<(), String> {
+    if let Some(observation) = observation {
+        snapshot.cloud_head = observation
+            .heads
+            .iter()
+            .find(|h| {
+                h["engine"] == "network_reporter"
+                    && h["operation"] == format!("export-{}", snapshot.transformer)
+                    && h["variant"] == snapshot.variant
+            })
+            .map(|raw| {
+                compute_artifact_inventory::decode_head(
+                    &serde_json::to_vec(raw).map_err(|e| e.to_string())?,
+                )
+            })
+            .transpose()?
+            .map(|head| CloudHead {
+                owner: snapshot.owner.clone(),
+                project: snapshot.project.clone(),
+                head,
+            });
+        snapshot.cloud_read = ReadFact {
+            state: if current {
+                ReadState::Ready
+            } else {
+                ReadState::Held
+            },
+            error,
+        };
+    }
+    Ok(())
+}
+
+/// Physical byte-verification evidence from the storage adapter, not a claim
+/// that downloading generated a new local report or made its inputs fresh.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetainedOutput {
+    pub output_id: String,
+    pub head_revision: u64,
+    pub sha256: String,
+    pub size_bytes: u64,
+}
+
+pub fn project_with_retained(
+    snapshot: &Snapshot,
+    retained: &[RetainedOutput],
+) -> Result<serde_json::Value, String> {
+    if retained.len() > 32 {
+        return Err("too many retained report outputs".into());
+    }
+    let mut ids = BTreeSet::new();
+    for proof in retained {
+        if !ids.insert(proof.output_id.as_str())
+            || !snapshot.cloud_head.as_ref().is_some_and(|cloud| {
+                cloud.head.head_revision == proof.head_revision
+                    && cloud.head.outputs.iter().any(|output| {
+                        output.output_id == proof.output_id
+                            && output.sha256 == proof.sha256
+                            && output.size_bytes == proof.size_bytes
+                    })
+            })
+        {
+            return Err("retained report bytes do not match the observed publication".into());
+        }
+    }
+    let mut view = serde_json::to_value(project(snapshot)?).map_err(|e| e.to_string())?;
+    for output in view["outputs"]
+        .as_array_mut()
+        .ok_or("invalid projected report outputs")?
+    {
+        output["retained"] = if output["local"].is_object() {
+            serde_json::json!({"source":"committed"})
+        } else if let Some(proof) = retained
+            .iter()
+            .find(|proof| output["output_id"] == proof.output_id && output["cloud"].is_object())
+        {
+            serde_json::json!({"source":"sync_download","head_revision":proof.head_revision})
+        } else {
+            serde_json::Value::Null
+        };
+    }
+    Ok(view)
 }
