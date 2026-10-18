@@ -24,10 +24,31 @@ pub struct Touch {
 /// running Server; the SQLite store and project lease remain the same ones a
 /// running Server uses. No second queue or publication protocol is created.
 pub fn project(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
-    project_native(lane, project, state_dir)
+    project_native(lane, project, state_dir, None)
 }
 
-fn project_native(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
+/// Refresh one report consumer through the same Sync pass and complete heads,
+/// while requesting downloads only for its exact publication identity.
+pub fn selected_report(
+    lane: &str,
+    project: &str,
+    state_dir: Option<&str>,
+    transformer: &str,
+) -> Touch {
+    let selected = [ds_command_kernel::sync::Identity {
+        engine: "network_reporter".into(),
+        operation: format!("export-{transformer}"),
+        variant: "default".into(),
+    }];
+    project_native(lane, project, state_dir, Some(&selected))
+}
+
+fn project_native(
+    lane: &str,
+    project: &str,
+    state_dir: Option<&str>,
+    download_interest: Option<&[ds_command_kernel::sync::Identity]>,
+) -> Touch {
     let state = ds_compute_runtime::server_state_directory(lane, state_dir.map(Path::new));
     let held_before = state
         .as_ref()
@@ -52,11 +73,12 @@ fn project_native(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
                 project,
                 None,
                 |producers| {
-                    ds_cli_server::server_reports::drain(
+                    ds_cli_server::server_reports::drain_with_download_interest(
                         &session,
                         producers,
                         &reads,
                         Trigger::Manual,
+                        download_interest,
                     )
                 },
             )?;

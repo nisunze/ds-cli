@@ -91,8 +91,23 @@ pub fn drain(
     reads: &dyn Reads,
     trigger: Trigger,
 ) -> Result<Pass, String> {
+    drain_with_download_interest(session, producer, reads, trigger, None)
+}
+
+pub fn drain_with_download_interest(
+    session: &ServerSyncSession,
+    producer: &dyn ds_sync_runtime::Producer,
+    reads: &dyn Reads,
+    trigger: Trigger,
+    download_interest: Option<&[ds_sync_runtime::kernel_sync::Identity]>,
+) -> Result<Pass, String> {
     session.with_host_for_project(session.project(), producer, reads, |host| {
-        let result = ds_sync_runtime::run(host, session.project(), trigger);
+        let result = ds_sync_runtime::run_with_download_interest(
+            host,
+            session.project(),
+            trigger,
+            download_interest,
+        );
         match result {
             Ok(run) => Ok(pass(inventory(session)?, run)),
             Err(error) => {
