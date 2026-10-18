@@ -186,11 +186,9 @@ fn active_page(data: Value, limit: u16, project: &str) -> Result<Value, Failure>
     }
     let models = rows
         .iter()
-        .filter(|row| {
-            row["model_kind"] == "mv_line"
-                && row["state"] == "active"
-                && row["deleted_at"].is_null()
-        })
+        // The native list already admits nondeleted heads. Optional timestamp
+        // serialization does not override the explicit active state.
+        .filter(|row| row["model_kind"] == "mv_line" && row["state"] == "active")
         .map(|row| {
             for key in ["model_id", "head_revision_id", "head_model_digest"] {
                 if !row[key].as_str().is_some_and(|value| !value.is_empty()) {
@@ -412,7 +410,7 @@ mod tests {
     fn active_heads_preserve_exact_identity_and_exclude_retirement_locators() {
         let page = json!({"project":"project","models":[
             {"model_kind":"mv_line","state":"active","model_id":"model-1","head_revision_id":"revision-1","head_model_digest":"digest","backup":{"url":"private-locator"}},
-            {"model_kind":"mv_line","state":"active","deleted_at":"time"},
+            {"model_kind":"mv_line","state":"deleted","deleted_at":"time"},
             {"model_kind":"other","state":"active"}
         ],"more":false,"next_cursor":""});
         let result = active_page(page, 3, "project").unwrap();
@@ -421,6 +419,19 @@ mod tests {
         assert_eq!(result["models"][0]["head_revision_id"], "revision-1");
         assert!(!result.to_string().contains("private-locator"));
         assert!(active_page(json!({"project":"project","models":[{"model_kind":"mv_line","state":"active"}],"more":false,"next_cursor":""}), 1, "project").is_err());
+    }
+    #[test]
+    fn active_go_zero_time_deleted_at_is_retained_but_deleted_state_is_excluded() {
+        let page = json!({"project":"project","models":[
+            {"model_kind":"mv_line","state":"active","deleted_at":"0001-01-01T00:00:00Z","model_id":"active-model","head_revision_id":"active-revision","head_model_digest":"active-digest"},
+            {"model_kind":"mv_line","state":"deleted","deleted_at":"0001-01-01T00:00:00Z","model_id":"deleted-model","head_revision_id":"deleted-revision","head_model_digest":"deleted-digest"}
+        ],"more":false,"next_cursor":""});
+        let result = active_page(page, 2, "project").unwrap();
+        assert_eq!(result["models"].as_array().unwrap().len(), 1);
+        assert_eq!(result["models"][0]["model_id"], "active-model");
+        assert_eq!(result["models"][0]["head_revision_id"], "active-revision");
+        assert_eq!(result["models"][0]["head_model_digest"], "active-digest");
+        assert_eq!(result["more"], false);
     }
     #[test]
     fn output_admission_precedes_acquisition_and_rejects_existing_paths() {
