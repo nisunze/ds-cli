@@ -814,3 +814,119 @@ fn malformed_existing_store_is_not_treated_as_an_empty_inventory() {
     );
     fixture.assert_read_only(&before);
 }
+
+#[test]
+fn final_inventory_private_handoff_and_explicit_committed_copy_are_offline_and_exact() {
+    let f = Fixture::new(true, true);
+    let committed = f.commit('a', &["xlsx"]);
+    let out = f.root.path().join("view.json");
+    let output = f
+        .command()
+        .args([
+            "report",
+            "inventory",
+            "--project",
+            PROJECT,
+            "--transformer",
+            TRANSFORMER,
+            "--lane",
+            "stable",
+            "--core-state-dir",
+            f.state.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+            "--output",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    let receipt: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(receipt["status"], "ok", "{receipt}");
+    let bytes = fs::read(&out).unwrap();
+    assert_eq!(
+        receipt["data"]["sha256"],
+        format!("{:x}", Sha256::digest(&bytes))
+    );
+    assert_eq!(receipt["data"]["size_bytes"], bytes.len());
+    let view: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        view["outputs"][0]["retained"],
+        json!({"source":"committed"})
+    );
+    assert!(view.get("sync").is_none());
+    assert_eq!(view["cloud_read"]["state"], "not_observed");
+    let selected = &committed.outputs[0];
+    let target = f.root.path().join("copied.xlsx");
+    let copy = f
+        .command()
+        .args([
+            "report",
+            "inventory",
+            "copy",
+            "--project",
+            PROJECT,
+            "--transformer",
+            TRANSFORMER,
+            "--lane",
+            "stable",
+            "--core-state-dir",
+            f.state.to_str().unwrap(),
+            "--source",
+            "committed",
+            "--output-id",
+            "xlsx",
+            "--sha256",
+            &selected.sha256,
+            "--size-bytes",
+            &selected.size_bytes.to_string(),
+            "--out",
+            target.to_str().unwrap(),
+            "--output",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    let receipt: Value = serde_json::from_slice(&copy.stdout).unwrap();
+    assert_eq!(receipt["status"], "ok", "{receipt}");
+    assert!(receipt["data"]["head_revision"].is_null());
+    assert_eq!(
+        format!("{:x}", Sha256::digest(fs::read(target).unwrap())),
+        selected.sha256
+    );
+    // A missing acquired replica cannot silently borrow the producer bytes.
+    let refused = f.root.path().join("must-not-exist.xlsx");
+    let copy = f
+        .command()
+        .args([
+            "report",
+            "inventory",
+            "copy",
+            "--project",
+            PROJECT,
+            "--transformer",
+            TRANSFORMER,
+            "--lane",
+            "stable",
+            "--core-state-dir",
+            f.state.to_str().unwrap(),
+            "--source",
+            "sync_download",
+            "--head-revision",
+            "1",
+            "--output-id",
+            "xlsx",
+            "--sha256",
+            &selected.sha256,
+            "--size-bytes",
+            &selected.size_bytes.to_string(),
+            "--out",
+            refused.to_str().unwrap(),
+            "--output",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    let receipt: Value = serde_json::from_slice(&copy.stdout).unwrap();
+    assert_eq!(receipt["status"], "error");
+    assert!(!refused.exists());
+}

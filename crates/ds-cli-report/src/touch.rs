@@ -15,6 +15,8 @@ use serde_json::{Value, json};
 pub struct Touch {
     pub current: bool,
     pub receipt: Value,
+    /// Exact acknowledged publications, for selected full-declaration readback.
+    pub published: Vec<ds_command_kernel::sync::Identity>,
 }
 
 /// One report-scoped pass for an exact project. Opening the Server's protected
@@ -92,6 +94,12 @@ fn project_native(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
                 json!("report_sync_pending")
             };
             Touch {
+                published: pass
+                    .receipts
+                    .iter()
+                    .filter(|r| r.action == "upload" && r.outcome == "published")
+                    .filter_map(|r| r.identity.clone())
+                    .collect(),
                 current,
                 receipt: json!({
                     "schema": "ds.report-touch/v1",
@@ -122,6 +130,7 @@ fn project_native(lane: &str, project: &str, state_dir: Option<&str>) -> Touch {
             }
         }
         Err(error) => Touch {
+            published: vec![],
             current: false,
             receipt: json!({
                 "schema": "ds.report-touch/v1",

@@ -41,7 +41,9 @@ mod transport;
 pub use saved_a4::{
     SavedA4Capture, saved_a4_for_project, saved_owned_a4_for_project,
 };
-pub use saved_preview_read::retained_a4_for_project;
+pub use saved_preview_read::{
+    PublicationOutputSelection, publication_output_for_project, retained_a4_for_project,
+};
 
 pub use account::{
     APPROVAL_INSTRUCTIONS, SIGNED_OUT_NEXT, SIGNED_OUT_REFUSAL, SIGNED_OUT_REMEDY, signed_out_next,

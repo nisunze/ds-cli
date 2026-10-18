@@ -31,6 +31,8 @@ pub mod artifact;
 pub mod bundle;
 pub mod engine;
 pub mod export;
+pub mod inventory;
+pub mod inventory_copy;
 pub mod layout;
 mod layout_preview;
 pub use layout_preview::PAIRED_OP as LAYOUT_PREVIEW_OP;
@@ -41,6 +43,7 @@ pub mod plan_profile_config;
 pub mod planning;
 pub mod project;
 pub mod publication;
+pub mod publication_download;
 pub mod retained_preview;
 pub mod spatial_workbook;
 pub mod standard;
@@ -133,9 +136,12 @@ pub static DOMAIN: Domain = Domain {
         &spatial_workbook::COMMAND,
         &outbox::STATUS,
         &outbox::INVENTORY,
+        &inventory::COMMAND,
+        &inventory_copy::COMMAND,
         &outbox::DRAIN,
         &publication::LIST,
         &publication::SHOW,
+        &publication_download::COMMAND,
         &retained_preview::READ,
         &retained_preview::REFRESH,
         &project::scope::COMMAND,

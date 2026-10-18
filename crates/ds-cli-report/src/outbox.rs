@@ -260,7 +260,9 @@ fn inventory_principal(lane: &str) -> Result<ds_cli_auth::HeadlessPrincipal, Fai
     })
 }
 
-pub fn inventory(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+pub(crate) fn inventory_snapshot(
+    inputs: &Inputs,
+) -> Result<ds_command_kernel::report::inventory::Snapshot, Failure> {
     let state = server_state(inputs)?;
     let project = inputs.require("project")?;
     let transformer = inputs.require("transformer")?;
@@ -350,6 +352,11 @@ pub fn inventory(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> 
                 .remedy(INVENTORY_CHANGED.remedy),
         );
     }
+    Ok(snapshot)
+}
+
+pub fn inventory(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let snapshot = inventory_snapshot(inputs)?;
     let view = ds_command_kernel::report::inventory::project(&snapshot).map_err(|error| {
         Failure::failed(INVENTORY_UNREADABLE.code, error).remedy(INVENTORY_UNREADABLE.remedy)
     })?;
@@ -383,7 +390,7 @@ pub fn render_inventory(data: &Value) -> String {
     text
 }
 
-fn server_state(inputs: &Inputs) -> Result<PathBuf, Failure> {
+pub(crate) fn server_state(inputs: &Inputs) -> Result<PathBuf, Failure> {
     ds_compute_runtime::server_state_directory(
         inputs.require("lane")?,
         inputs.value("core-state-dir").map(Path::new),
