@@ -18,6 +18,7 @@
 
 pub mod engineering;
 pub mod held;
+pub mod held_export;
 pub mod jcs;
 pub mod preview;
 pub mod proof;
@@ -1340,9 +1341,21 @@ pub struct AdminBoundsEvidence {
     pub features_requested: usize,
 }
 
+/// Bounded disclosure from the quantity-only media path. This carries no
+/// media locator, grant token or permission and cannot admit a GIS output.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct QuantityMediaOmission {
+    pub code: String,
+    pub reference_count: u64,
+    pub reason: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ResultDocument {
+    #[serde(default)]
+    quantity_media_omitted: Option<QuantityMediaOmission>,
     #[serde(default)]
     engineering_preflight: Option<engineering::EngineeringPreflight>,
     #[serde(default)]
@@ -1601,6 +1614,8 @@ pub fn layout_knob(message: &str) -> Option<LayoutKnob> {
 /// work that cannot leave the machine is the state the edge must never be in.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VerifiedResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantity_media_omitted: Option<QuantityMediaOmission>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub engineering_preflight: Option<engineering::EngineeringPreflight>,
     pub artifacts: Vec<VerifiedArtifact>,
@@ -1990,8 +2005,25 @@ pub fn verify_result(
             "Network Reporter named different omitted survey layers than this run planned",
         ));
     }
+    if let Some(omission) = &result.quantity_media_omitted {
+        if omission.code != "quantity_media_omitted"
+            || omission.reference_count == 0
+            || !matches!(
+                omission.reason.as_str(),
+                "media_not_required_for_quantity"
+                    | "media_reference_outside_grant"
+                    | "plain_local_media_requires_supplied_links"
+            )
+            || !plan.formats.iter().any(|f| f == "xlsx")
+        {
+            return Err(ResultRefusal::invalid(
+                "Network Reporter returned invalid quantity media omission evidence",
+            ));
+        }
+    }
     let survey_layers = verify_survey_layers(plan, &result.survey_layers)?;
     Ok(VerifiedResult {
+        quantity_media_omitted: result.quantity_media_omitted,
         engineering_preflight: result.engineering_preflight,
         artifacts,
         failed,
@@ -2321,6 +2353,9 @@ pub fn run_receipt(facts: &RunReceiptFacts<'_>) -> Result<Value, String> {
         "elapsed_ms": facts.result.elapsed_ms,
         "publication": publication_facts(facts.plan, facts.engine)?,
     });
+    if let Some(omission) = &facts.result.quantity_media_omitted {
+        receipt["quantity_media_omitted"] = json!(omission);
+    }
     if let Some(preflight) = &facts.result.engineering_preflight {
         receipt["engineering_preflight"] =
             serde_json::to_value(preflight).map_err(|error| error.to_string())?;
@@ -3276,6 +3311,48 @@ mod tests {
             "artifacts": artifacts,
             "blockers": [], "elapsed_ms": 42
         })
+    }
+
+    #[test]
+    fn quantity_media_omissions_survive_shared_result_admission_without_weakening_grants() {
+        let plan = plan_transformer_export(
+            "proj-1",
+            &simple_receipt("Benin"),
+            "tx_a",
+            7,
+            &layers(),
+            None,
+        )
+        .unwrap();
+        let out = PathBuf::from("/tmp/quantity-result");
+        let mut document = result_document(&plan, &out);
+        document["quantity_media_omitted"] = json!({"code":"quantity_media_omitted","reference_count":1,"reason":"media_not_required_for_quantity"});
+        let verify = |v: &Value| verify_result(&serde_json::to_vec(v).unwrap(), &plan, &out);
+        assert_eq!(
+            verify(&document)
+                .unwrap()
+                .quantity_media_omitted
+                .unwrap()
+                .reference_count,
+            1
+        );
+        let verified = verify(&document).unwrap();
+        let receipt = run_receipt(&RunReceiptFacts {
+            plan: &plan, client_run_id: &format!("report-{}", "0".repeat(32)),
+            engine: &engine(), result: &verified, artifact_dir: "tx_a", now_ms: 1,
+            expected_content_digest: Some(&plan.content_digest), print_context_sha256: None,
+            print_context_layers: &[], print_context_omitted: &[],
+        }).unwrap();
+        assert_eq!(receipt["quantity_media_omitted"], document["quantity_media_omitted"]);
+        for invalid in [
+            json!({"code":"allowed","reference_count":1,"reason":"media_not_required_for_quantity"}),
+            json!({"code":"quantity_media_omitted","reference_count":0,"reason":"media_not_required_for_quantity"}),
+            json!({"code":"quantity_media_omitted","reference_count":1,"reason":"https://private-path"}),
+            json!({"code":"quantity_media_omitted","reference_count":1,"reason":"media_not_required_for_quantity","grant":"forged"}),
+        ] {
+            document["quantity_media_omitted"] = invalid;
+            assert!(verify(&document).is_err());
+        }
     }
 
     #[test]

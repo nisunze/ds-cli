@@ -246,6 +246,89 @@ fn reclaim_batch(
     Ok(freed)
 }
 
+/// A one-row publication queue cannot replace only part of an unpublished run.
+/// Check before computation, and again with successful outputs at the seal.
+pub fn admit_selected_replacement(
+    store: &SharedStore,
+    fence: &store::Fence,
+    project: &str,
+    transformer: &str,
+    selected: &[&str],
+) -> Result<(), String> {
+    let identity = sync::Identity {
+        engine: ENGINE.into(),
+        operation: format!("export-{transformer}"),
+        variant: "default".into(),
+    };
+    if let Some(row) = crate::seal::standing(store, fence, project, &identity)? {
+        if row.readable
+            && !row.bytes_locator.is_empty()
+            && row.state != store::ArtifactState::Published
+            && row
+                .outputs
+                .iter()
+                .any(|output| !selected.contains(&output.output_id.as_str()))
+        {
+            return Err("report_pending_outputs_require_sync: Sync the previous report publication before exporting a selection that would leave its pending outputs behind".into());
+        }
+    }
+    Ok(())
+}
+
+// Only outputs actually produced by this run supersede earlier local bytes.
+// Published retained outputs keep their original immutable producer receipt.
+fn reclaim_replaced_outputs(
+    store: &SharedStore,
+    fence: &store::Fence,
+    root: &Path,
+    request: &SealRequest<'_>,
+    previous: &store::ArtifactRow,
+) -> Result<u64, String> {
+    let mut freed = 0_u64;
+    for batch in
+        ds_report_artifacts::list_project_publication_batches_from_root(root, request.project_id)?
+    {
+        if batch.owner_uid != request.owner_uid || batch.identity() != previous.identity {
+            continue;
+        }
+        let eligible = batch.client_publish_id == previous.client_publish_id || {
+            let store = store.lock().map_err(|_| "The sync gate is unavailable")?;
+            store
+                .artifact(
+                    fence,
+                    &crate::rows::store_scope(request.project_id),
+                    &batch.client_publish_id,
+                )
+                .map_err(|error| error.to_string())?
+                .is_some_and(|row| row.state == store::ArtifactState::Published)
+        };
+        if !eligible {
+            continue;
+        }
+        for output in &batch.outputs {
+            if !request
+                .artifacts
+                .iter()
+                .any(|new| new.format == output.output_id)
+            {
+                continue;
+            }
+            let id = ds_report_artifacts::locator_id(&output.locator)?;
+            let present = std::fs::symlink_metadata(root.join(id)).is_ok();
+            ds_report_artifacts::discard_artifact_from_root_with_gate(
+                root,
+                &output.locator,
+                &output.sha256,
+                |_| Ok(Instant::now()),
+            )?;
+            if present {
+                freed = freed.saturating_add(output.size_bytes);
+            }
+        }
+    }
+    Ok(freed)
+}
+
 /// Every committed batch of one project as a row, one per batch, each naming
 /// the batch its bytes live in. Cheap: the receipts are read, the bytes are
 /// not. The host adopts the ones the store does not know and frees the ones
@@ -444,6 +527,21 @@ fn seal_with_preview(
         }
     }
 
+    if printing_preview.is_none() {
+        let successful: Vec<&str> = request
+            .artifacts
+            .iter()
+            .map(|output| output.format.as_str())
+            .collect();
+        admit_selected_replacement(
+            store,
+            fence,
+            request.project_id,
+            request.transformer,
+            &successful,
+        )?;
+    }
+
     // The bytes: verified as they are copied, receipted per output, and
     // committed by one rename. Everything below this line either ends in a
     // recorded row or removes what it wrote.
@@ -473,12 +571,16 @@ fn seal_with_preview(
     // and is freed first; then the new row is recorded. Not acknowledged
     // means the new bytes leave with the failure.
     let free = |previous: &store::ArtifactRow| {
-        reclaim_batch(
-            root,
-            request.project_id,
-            &previous.bytes_locator,
-            &previous.client_publish_id,
-        )
+        if printing_preview.is_none() {
+            reclaim_replaced_outputs(store, fence, root, request, previous)
+        } else {
+            reclaim_batch(
+                root,
+                request.project_id,
+                &previous.bytes_locator,
+                &previous.client_publish_id,
+            )
+        }
     };
     let recorded = crate::seal::record(
         store,
@@ -1268,6 +1370,141 @@ mod tests {
             .unwrap()
             .contains(&older.receipt.client_publish_id));
         assert_eq!(inventory(&root, "project-a").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn partial_seal_preserves_published_unselected_bytes_and_refuses_pending_loss() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("report-artifacts");
+        let store = crate::open_store(&dir.path().join("store.sqlite")).unwrap();
+        let fence = seal_fence();
+        let deadline = Instant::now() + std::time::Duration::from_secs(30);
+        let guard = || Ok(());
+        let mut kmz = staged(dir.path(), "tx_1.kmz", b"original GIS bytes");
+        kmz.format = "kmz".into();
+        let first = [staged(dir.path(), "tx_1.xlsx", b"original quantity"), kmz];
+        let SealOutcome::Sealed(older) = seal(
+            &store,
+            &fence,
+            &root,
+            &seal_request(&first, &["xlsx", "kmz"], deadline, &guard),
+        )
+        .unwrap() else {
+            panic!("first seal")
+        };
+        let older_kmz = older
+            .artifacts
+            .iter()
+            .find(|a| a.output_id == "kmz")
+            .unwrap();
+        let older_xlsx = older
+            .artifacts
+            .iter()
+            .find(|a| a.output_id == "xlsx")
+            .unwrap();
+        let path = |a: &PublishedArtifact| {
+            root.join(ds_report_artifacts::locator_id(&a.locator).unwrap())
+                .join(ds_report_artifacts::ARTIFACT_FILE)
+        };
+        assert!(
+            admit_selected_replacement(&store, &fence, "project-a", "tx_1", &["xlsx"])
+                .unwrap_err()
+                .contains("require_sync")
+        );
+        assert!(
+            admit_selected_replacement(&store, &fence, "project-a", "tx_1", &["xlsx", "kmz"])
+                .is_ok()
+        );
+        let second = [staged(dir.path(), "new.xlsx", b"new quantity")];
+        let request = seal_request(&second, &["xlsx"], deadline, &guard);
+        assert!(seal(&store, &fence, &root, &request)
+            .unwrap_err()
+            .contains("require_sync"));
+        assert_eq!(
+            std::fs::read(path(older_kmz)).unwrap(),
+            b"original GIS bytes"
+        );
+        assert_eq!(
+            std::fs::read(path(older_xlsx)).unwrap(),
+            b"original quantity"
+        );
+        assert_eq!(inventory(&root, "project-a").unwrap().len(), 1);
+        let acknowledge = |sealed: &Sealed| {
+            let mut ack =
+                crate::rows::Receipt::new("upload", "committed").about(&sealed.row.identity);
+            ack.client_publish_id = Some(sealed.row.client_publish_id.clone());
+            ack.work_id = Some(format!("work_{}", sealed.receipt.batch_id));
+            let receipt = crate::rows::receipt_row("project-a", &ack, crate::now_ms());
+            let result = store
+                .lock()
+                .unwrap()
+                .apply(
+                    &fence,
+                    crate::now_ms(),
+                    store::Event::ActionReceipt { receipt },
+                )
+                .unwrap();
+            assert!(result.refusals.is_empty());
+        };
+        acknowledge(&older);
+        let SealOutcome::Sealed(newer) = seal(&store, &fence, &root, &request).unwrap() else {
+            panic!("partial seal")
+        };
+        assert!(!path(older_xlsx).exists());
+        assert_eq!(
+            std::fs::read(path(older_kmz)).unwrap(),
+            b"original GIS bytes"
+        );
+        let retained = ds_report_artifacts::committed_batch(&root, &older.receipt.batch_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(retained.client_publish_id, older.receipt.client_publish_id);
+        assert_eq!(
+            retained.input_base_fingerprint,
+            older.receipt.input_base_fingerprint
+        );
+        assert_eq!(
+            retained.engine_build_manifest_sha256,
+            older.receipt.engine_build_manifest_sha256
+        );
+        let historical = store
+            .lock()
+            .unwrap()
+            .artifact(&fence, &store_scope("project-a"), &older.row.replay_key)
+            .unwrap()
+            .unwrap();
+        assert_eq!(historical.state, store::ArtifactState::Published);
+        assert!(historical.acknowledged_work_id.is_some());
+        // A later exact replacement reclaims the retained older GIS output,
+        // but keeps the intervening quantity output with its own receipt.
+        acknowledge(&newer);
+        let mut kmz = staged(dir.path(), "new.kmz", b"replacement GIS");
+        kmz.format = "kmz".into();
+        let third = [kmz];
+        let SealOutcome::Sealed(_) = seal(
+            &store,
+            &fence,
+            &root,
+            &seal_request(&third, &["kmz"], deadline, &guard),
+        )
+        .unwrap() else {
+            panic!("third seal")
+        };
+        assert!(!path(older_kmz).exists());
+        assert!(
+            ds_report_artifacts::committed_batch(&root, &older.receipt.batch_id)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            std::fs::read(path(&newer.artifacts[0])).unwrap(),
+            b"new quantity"
+        );
+        assert!(
+            ds_report_artifacts::committed_batch(&root, &newer.receipt.batch_id)
+                .unwrap()
+                .is_some()
+        );
     }
 
     /// The guard is re-checked at the durable boundary: a scope that moved
