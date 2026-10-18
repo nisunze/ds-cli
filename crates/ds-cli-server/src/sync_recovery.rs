@@ -73,7 +73,21 @@ pub static STATUS: Command = super::command(
     "Inspect native retained publications under one explicit project.",
     Effect::ReadOnly,
     Execution::Sync,
-    &[super::STATE, super::LANE, PROJECT, LIMIT],
+    &[
+        super::STATE,
+        super::LANE,
+        PROJECT,
+        LIMIT,
+        Arg::value(
+            "row",
+            "<exact-id>",
+            "Exact standing publication to inspect; requires --verify-artifacts.",
+        ),
+        Arg::switch(
+            "verify-artifacts",
+            "Verify this --row's retained SQLite outputs in bounded chunks, without network, retry or mutation.",
+        ),
+    ],
     REFUSALS,
     &[],
 );
@@ -153,12 +167,18 @@ fn limit(inputs: &Inputs) -> Result<usize, Failure> {
         .map_err(|_| invalid("--limit must be 1..200"))
 }
 pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    send(
-        inputs,
-        recovery::Command::Status {
+    send(inputs, status_command(inputs)?)
+}
+fn status_command(inputs: &Inputs) -> Result<recovery::Command, Failure> {
+    match (inputs.value("row"), inputs.switch("verify-artifacts")) {
+        (Some(row), true) => Ok(recovery::Command::VerifyArtifacts { row: row.into() }),
+        (None, false) => Ok(recovery::Command::Status {
             limit: limit(inputs)?,
-        },
-    )
+        }),
+        _ => Err(invalid(
+            "--verify-artifacts and one exact --row must be supplied together",
+        )),
+    }
 }
 pub fn retry(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     send(
@@ -233,6 +253,30 @@ pub async fn invoke(State(app): State<crate::host::App>, bytes: Bytes) -> Respon
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn artifact_verification_requires_exact_row_and_preserves_read_only_status() {
+        let parse = |args: &[&str]| {
+            ds_cli_contract::args::parse(
+                &STATUS,
+                &args
+                    .iter()
+                    .map(|value| (*value).to_owned())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap()
+        };
+        assert!(matches!(STATUS.effect, Effect::ReadOnly));
+        assert!(matches!(
+            status_command(&parse(&["--project", "project"])).unwrap(),
+            recovery::Command::Status { limit: 50 }
+        ));
+        assert!(status_command(&parse(&["--project", "project", "--verify-artifacts"])).is_err());
+        assert!(status_command(&parse(&["--project", "project", "--row", "publication"])).is_err());
+        assert!(
+            matches!(status_command(&parse(&["--project", "project", "--row", "publication", "--verify-artifacts"])).unwrap(),
+            recovery::Command::VerifyArtifacts { row } if row == "publication")
+        );
+    }
     #[test]
     fn public_controls_refuse_authority_injection_and_require_the_complete_preview_digest() {
         let control = json!({"schema":recovery::SCHEMA,"project":"project","command":{"action":"status","limit":50}});
