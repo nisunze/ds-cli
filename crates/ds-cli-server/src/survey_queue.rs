@@ -3,7 +3,8 @@ use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
-use ds_sync_store::survey_entries::{self, SurveyEntryDiscardExpected};
+use ds_command_kernel::survey_entry_outbox::Fence;
+use ds_sync_store::survey_entries::{self, SurveyEntryDiscardExpected, create};
 use ds_sync_store::{Store, SurveyEntryScope};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -18,7 +19,7 @@ const MAX_BYTES: usize = 64 * 1024 * 1024;
 const INVALID: Refusal = Refusal {
     code: "survey_queue_invalid_input",
     when: "the closed request, exact project, or absolute private input file is invalid",
-    remedy: "use headers {}, row {id}, admit {rows,now}, transition {event,now}, prepare_discard {ids,now}, or commit_discard {expected,now} with action as the discriminator; preserve the source file",
+    remedy: "use headers {}, row {id}, admit {rows,now}, transition {event,now}, prepare_create {fence}, verify_create_receipt {expected,status,response}, prepare_discard {ids,now}, or commit_discard {expected,now} with action as the discriminator; preserve the source file",
 };
 const DISCARD: Refusal = Refusal {
     code: "survey_queue_discard_requires_audit",
@@ -44,12 +45,12 @@ const CHANGED: Refusal = Refusal {
 pub static COMMAND: Command = Command {
     id: "core.survey.queue", path: &["core", "survey", "queue"], contract: 1,
     summary: "Read, admit or transition the retained native Survey entry queue offline.",
-    purpose: "Use the installed Core SQLite owner under the existing lane's protected account, deployment and installation and one exact project. Closed request actions are headers, row, admit, transition, prepare_discard and commit_discard. Prepare is read-only; callers audit its exact rows before commit, which atomically rechecks every row digest, lifecycle fence and Kernel discard decision. Generic discard transitions refuse. The Kernel decides replay; persist/remove actions commit atomically before transport effects are returned. This command runs no transport, Core daemon, network, credential refresh, project selection or store repair. Reads never create a missing store or table. Admissions refuse foreign or ownerless rows. Output is preadmitted before mutations, bounded to 64 MiB and acknowledged only after a protected identity recheck.",
+    purpose: "Use the installed Core SQLite owner under the existing lane's protected account, deployment and installation and one exact project. Closed request actions are headers, row, admit, transition, prepare_create, verify_create_receipt, prepare_discard and commit_discard. Create preparation and receipt verification read the exact retained row through the shared Rust create contract, fenced by account, project, lifecycle and full-row digest; they never mutate or dispatch. Prepare is read-only; callers audit its exact rows before commit, which atomically rechecks every row digest, lifecycle fence and Kernel discard decision. Generic discard transitions refuse. The Kernel decides replay; persist/remove actions commit atomically before transport effects are returned. This command runs no transport, Core daemon, network, credential refresh, project selection or store repair. Reads never create a missing store or table. Admissions refuse foreign or ownerless rows. Output is preadmitted before mutations, bounded to 64 MiB and acknowledged only after a protected identity recheck.",
     chapter: Chapter::Survey, effect: Effect::LocalAuthState, authority: Authority::HeadlessUser, execution: Execution::Sync,
     args: &[Arg::value("lane", "<stable|canary>", "Existing protected native identity lane.").choices(&["stable", "canary"]).required(), super::PROJECT.required(),
-        Arg::value("request", "<absolute-existing-json-file>", "Owner-only ordinary single-link file, at most 64 MiB. Closed JSON discriminator action: headers; row with id; admit with rows and now; transition with event and now; prepare_discard with ids and now; commit_discard with expected [{fence,row_sha256}] and now. Discard batches contain at most 500 unique IDs. No extra request fields.").required(),
+        Arg::value("request", "<absolute-existing-json-file>", "Owner-only ordinary single-link file, at most 64 MiB. Closed JSON discriminator action: headers; row with id; admit with rows and now; transition with event and now; prepare_create with fence; verify_create_receipt with expected {fence,row_sha256}, status and response; prepare_discard with ids and now; commit_discard with expected [{fence,row_sha256}] and now. Discard batches contain at most 500 unique IDs. No extra request fields.").required(),
         Arg::value("out", "<absolute-new-json-file>", "New owner-only result file in an existing protected directory; never replaced, at most 64 MiB.").required()],
-    output: "Bounded ds.survey-queue-file/v1 receipt with path, sha256, size_bytes, action, project, lane and safe owner context (account, deployment_sha256, install_id). The bound file is ds.survey-queue/v1 with the same context and result. Transition results retain Kernel effects after atomic persistence. Prepare returns {rows:[{fence,row_sha256,row}]}; commit returns {removed:[id]}.",
+    output: "Bounded ds.survey-queue-file/v1 receipt with path, sha256, size_bytes, action, project, lane and safe owner context (account, deployment_sha256, install_id). The bound file is ds.survey-queue/v1 with the same context and result. Transition results retain Kernel effects after atomic persistence. Create preparation returns {expected:{fence,row_sha256},plan}; receipt verification returns {expected,receipt}. Discard prepare returns {rows:[{fence,row_sha256,row}]}; commit returns {removed:[id]}.",
     examples: &[], refusals: &[super::PLATFORM, INVALID, DISCARD, STORE, OUTPUT, CHANGED, super::CONTEXT_CORRUPT, super::PROJECT_REQUIRED],
     reference: Some("docs/reference/core.md"), search: &["survey", "offline", "queue", "sqlite"], requires: Requires::Server, availability: super::native_host_availability,
 };
@@ -57,6 +58,14 @@ pub static COMMAND: Command = Command {
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum Request {
     Headers {},
+    PrepareCreate {
+        fence: Fence,
+    },
+    VerifyCreateReceipt {
+        expected: create::Expected,
+        status: u16,
+        response: Value,
+    },
     Row {
         id: String,
     },
@@ -81,6 +90,8 @@ impl Request {
     fn action(&self) -> &'static str {
         match self {
             Self::Headers {} => "headers",
+            Self::PrepareCreate { .. } => "prepare_create",
+            Self::VerifyCreateReceipt { .. } => "verify_create_receipt",
             Self::Row { .. } => "row",
             Self::Admit { .. } => "admit",
             Self::Transition { .. } => "transition",
@@ -91,7 +102,11 @@ impl Request {
     fn mutates(&self) -> bool {
         !matches!(
             self,
-            Self::Headers {} | Self::Row { .. } | Self::PrepareDiscard { .. }
+            Self::Headers {}
+                | Self::Row { .. }
+                | Self::PrepareDiscard { .. }
+                | Self::PrepareCreate { .. }
+                | Self::VerifyCreateReceipt { .. }
         )
     }
     fn validate(&self, scope: &SurveyEntryScope, project: &str) -> Result<(), Failure> {
@@ -244,6 +259,15 @@ fn read(
     request: &Request,
 ) -> Result<Value, Failure> {
     match request {
+        Request::PrepareCreate { fence } => {
+            create::prepare(store, scope, project, fence).map_err(|e| failure(STORE, e))
+        }
+        Request::VerifyCreateReceipt {
+            expected,
+            status,
+            response,
+        } => create::verify_receipt(store, scope, project, expected, *status, response)
+            .map_err(|e| failure(STORE, e)),
         Request::Headers {} => match store {
             Some(s) => s
                 .survey_entry_headers(scope, Some(project))
@@ -283,7 +307,12 @@ fn perform(
     validate_database(database)?;
     if !request.mutates() {
         let store = Store::open_read_only(database).map_err(|e| failure(STORE, e))?;
-        if matches!(&request, Request::PrepareDiscard { .. }) {
+        if matches!(
+            &request,
+            Request::PrepareDiscard { .. }
+                | Request::PrepareCreate { .. }
+                | Request::VerifyCreateReceipt { .. }
+        ) {
             // The owning preparation API holds its one read snapshot itself.
             return read(store.as_ref(), scope, project, &request);
         }
@@ -509,6 +538,81 @@ mod tests {
             assert!(request(&link).is_err());
         }
     }
+    #[test]
+    fn native_create_policy_reads_private_retained_bytes_without_queue_effects() {
+        let dir = directory();
+        let db = dir.path().join("state/store.sqlite");
+        let mut captured = row("one", "project-a");
+        captured["form_id"] = json!("field_notes");
+        captured["payload"] = json!({"data":{"note":"retained capture"}});
+        run(
+            &db,
+            &dir.path().join("admit.json"),
+            "project-a",
+            Request::Admit {
+                rows: vec![captured],
+                now: 20,
+            },
+        )
+        .unwrap();
+        let store = Store::open_read_only(&db).unwrap().unwrap();
+        let fence = Fence::from(
+            &store
+                .survey_entry_headers(&scope(), Some("project-a"))
+                .unwrap()[0],
+        );
+        let before = store.survey_entry_row(&scope(), "one").unwrap();
+        drop(store);
+        let out = dir.path().join("prepare.json");
+        let receipt = run(
+            &db,
+            &out,
+            "project-a",
+            Request::PrepareCreate {
+                fence: fence.clone(),
+            },
+        )
+        .unwrap();
+        assert_eq!(receipt["action"], "prepare_create");
+        let prepared = payload(&out)["result"].clone();
+        assert_eq!(
+            prepared["plan"]["payload"]["data"],
+            json!({"note":"retained capture"})
+        );
+        assert_eq!(prepared["plan"]["identity"]["doc_id"], "doc-one");
+        let expected: create::Expected =
+            serde_json::from_value(prepared["expected"].clone()).unwrap();
+        let response = json!({"success":true,"message":"Entry created successfully",
+            "data":{"project_id":"project-a","form_id":"field_notes","doc_id":"doc-one","operation":"create",
+            "client_version":0,"replication_clock":"metadata.firestore_updated_at","replication_authority":"firestore_server_timestamp"},
+            "timestamp":"2026-10-18T09:02:47Z","service":"data-solutions-backend","version":"1.0.0","request_id":"request-1"});
+        let verified = dir.path().join("verified.json");
+        run(
+            &db,
+            &verified,
+            "project-a",
+            Request::VerifyCreateReceipt {
+                expected,
+                status: 201,
+                response,
+            },
+        )
+        .unwrap();
+        assert_eq!(payload(&verified)["result"]["receipt"]["doc_id"], "doc-one");
+        assert!(
+            run(
+                &db,
+                &dir.path().join("crossed.json"),
+                "project-b",
+                Request::PrepareCreate { fence }
+            )
+            .is_err()
+        );
+        let store = Store::open_read_only(&db).unwrap().unwrap();
+        assert_eq!(store.survey_entry_row(&scope(), "one").unwrap(), before);
+        assert!(!serde_json::from_value::<Request>(json!({"action":"prepare_create","fence":prepared["expected"]["fence"],"payload":{}})).is_ok());
+    }
+
     #[test]
     fn absent_store_and_absent_table_are_empty_without_creation_or_changes() {
         let dir = directory();

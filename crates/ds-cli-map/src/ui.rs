@@ -11,7 +11,7 @@
 //! It is not a driver. There is no selector, no click, no key, no script and
 //! no coordinate here, and there is no room for one: the operation declares
 //! exactly two argument keys, `target` and `ref`, and `target` is a closed set
-//! of three panels the application already publishes. A caller cannot ask for
+//! of panels the application already publishes. A caller cannot ask for
 //! "the third button in the legend", because the CLI has no vocabulary for
 //! saying it and the bridge would refuse the key if it did.
 //!
@@ -66,6 +66,7 @@ pub mod open {
         "project-printing",
         "project-control",
         "sync-center",
+        "notification-center",
         "transformers",
         "report-preview",
     ];
@@ -88,7 +89,7 @@ pub mod open {
         contract: 1,
         summary: "Open one named panel of the paired application over a ref.",
         purpose: "\
-Shows a named panel — attribute table, Style Center or selection properties — \
+Shows a named panel — attribute table, Style Center, selection properties or Notifications — \
 over --ref before `ds map evidence capture`. Uses only a closed target and an \
 application-published reference; no selector, click, keystroke or script. \
 Navigate with `ds map zoom`; edit with `ds map design set`.",
@@ -315,7 +316,8 @@ Navigate with `ds map zoom`; edit with `ds map design set`.",
             // `choices` is enforced by the parser, so this pins the other half:
             // The closed set includes panels, project pages and the committed
             // report preview. New targets remain deliberate contract changes.
-            assert_eq!(TARGETS.len(), 10);
+            assert_eq!(TARGETS.len(), 11);
+            assert!(TARGETS.contains(&"notification-center"));
             assert_eq!(crate::UI_OPEN.arguments, &["target", "ref"]);
             assert_eq!(COMMAND.arg("target").expect("declared").choices, TARGETS);
         }
