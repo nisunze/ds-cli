@@ -106,7 +106,7 @@ pub static GENERATE: Command = Command {
     id: "tile.global.generate",
     path: &["tile", "global", "generate"],
     contract: 1,
-    summary: "Retired cloud reference publication; refuses until an edge owner exists.",
+    summary: "Retired cloud publication; refuses until an edge owner exists.",
     purpose: "Global reference tiling is edge compute and the hosted reference worker is retired. This command refuses with native_compute_required before any credential is restored and sends nothing; no edge owner builds a new global publication yet. Existing publications stay readable through list/status and governable through access.",
     chapter: Chapter::VectorTiles,
     effect: Effect::GlobalWrite,
