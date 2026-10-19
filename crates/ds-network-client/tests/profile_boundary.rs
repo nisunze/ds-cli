@@ -112,7 +112,7 @@ fn isolated_profile_case() {
     ) {
         fs::read(required("DS_PROFILE_OPEN_FIXTURE")).unwrap()
     } else {
-        serde_json::to_vec(&NativeProfileOpenV1{schema:PROFILE_OPEN_SCHEMA.into(),package_lineage_json:None,seed_json:json!({"model_id":"fixture","history":{"initial_revision":format!("rev:{}", "1".repeat(64)),"model_revision":format!("rev:{}", "1".repeat(64)),"undo_depth":0,"redo_depth":0,"history_pin":"2".repeat(64)}}).to_string(),binding_history:None,calculated:None,analysis:None}).unwrap()
+        serde_json::to_vec(&NativeProfileOpenV1{schema:PROFILE_OPEN_SCHEMA.into(),package_lineage_json:None,seed_json:json!({"model_id":"fixture","history":{"initial_revision":format!("rev:{}", "1".repeat(64)),"model_revision":format!("rev:{}", "1".repeat(64)),"undo_depth":0,"redo_depth":0,"history_pin":"2".repeat(64)}}).to_string(),binding_history:None,binding_runs:None,calculated:None,analysis:None}).unwrap()
     };
     let start = Instant::now();
     let result = captured.open_profile_session_with_timeout(
@@ -585,7 +585,18 @@ fn isolated_profile_case() {
         assert_eq!(session.history()["redo_depth"], 1);
         let checkpoint = session.close(&|| false).unwrap().bytes;
         let document: NativeProfileOpenV1 = serde_json::from_slice(&checkpoint).unwrap();
-        assert_eq!(document.binding_history.unwrap().len(), 3);
+        // Unchanged binding states travel once, as runs over every authored state.
+        assert!(document.binding_history.is_none());
+        assert_eq!(
+            document
+                .binding_runs
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|run| run.states)
+                .sum::<u64>(),
+            3
+        );
         let original: NativeProfileOpenV1 = serde_json::from_slice(&input).unwrap();
         let old_seed: Value = serde_json::from_str(&original.seed_json).unwrap();
         let seed: Value = serde_json::from_str(&document.seed_json).unwrap();
