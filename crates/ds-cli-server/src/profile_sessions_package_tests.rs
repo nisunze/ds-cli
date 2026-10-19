@@ -444,7 +444,9 @@ fn real_profile_edits_are_durable_exact_recoverable_and_save_excluded() {
         "target_revision":target["model_revision"],"target_undo_depth":target["undo_depth"],"target_redo_depth":target["redo_depth"],"target_history_pin":target["history_pin"]}}))).unwrap();
     assert_eq!(discarded["history"], opened["history"]);
     // Post-owner authorization failure gives no success and no optimistic head.
-    // Its last committed checkpoint remains the only recoverable state.
+    // Its last committed checkpoint remains the only recoverable state. The
+    // draft already holds this exact before-state, so no preflight retention
+    // runs and the third check is the one after the native mutation.
     let count = Cell::new(0);
     let error = sessions
         .execute(
@@ -454,7 +456,7 @@ fn real_profile_edits_are_durable_exact_recoverable_and_save_excluded() {
             mutation(&discarded, "revoked"),
             &|| {
                 count.set(count.get() + 1);
-                if count.get() == 5 {
+                if count.get() == 3 {
                     Err(Failure::failed("authorization_revoked", "fixture"))
                 } else {
                     Ok(())
@@ -519,19 +521,23 @@ fn real_large_model_edits_retain_authored_rows_without_results() {
     let id = opened["session_id"].as_str().unwrap().to_owned();
     let snapshot: Value =
         serde_json::from_str(opened["payload"]["snapshot_json"].as_str().unwrap()).unwrap();
+    // The Desktop draws through the complete view with an authored style.
+    let style: Value = serde_json::from_str(include_str!(
+        "../../../../ds-command-kernel/tests/fixtures/profile-display-style.json"
+    ))
+    .unwrap();
     let draw = |receipt: &Value, cached: bool| {
         edit_request(
             receipt,
-            "scene",
-            json!({"options":{},"label_policy":{"fields":["number","type"],"orientation":"vertical"},
-                "grid_ink":{"color":"#000000","width_px":1.0,"dash_px":[]},"cached":cached}),
+            "view",
+            json!({"options":{},"patch":{},"style_document":style,"cached":cached}),
         )
     };
     let started = Instant::now();
     let scene = execute(&sessions, draw(&opened, false)).unwrap();
     let scene_bytes = serde_json::to_vec(&scene["payload"]).unwrap().len();
     eprintln!(
-        "scene: {scene_bytes} bytes in {} ms",
+        "view: {scene_bytes} bytes in {} ms",
         started.elapsed().as_millis()
     );
     assert!(
