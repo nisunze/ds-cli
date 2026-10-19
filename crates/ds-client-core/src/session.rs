@@ -65,12 +65,14 @@ pub struct AuthenticatedUser {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredAuthContext {
     uid: String,
+    email: String,
     lane: &'static str,
     credential_audience_sha256: String,
     credential_instance_sha256: String,
 }
 
 impl StoredAuthContext {
+    pub fn email(&self) -> &str { &self.email }
     pub fn uid(&self) -> &str {
         &self.uid
     }
@@ -102,6 +104,7 @@ pub fn probe_stored_refresh(
     Ok(StoredAuthContext {
         credential_instance_sha256: stored.instance(),
         uid: stored.uid.clone(),
+        email: stored.email.clone(),
         lane: profile.lane().token(),
         credential_audience_sha256: profile.credential_audience_sha256().to_owned(),
     })
