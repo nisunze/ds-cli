@@ -74,6 +74,7 @@ const REFUSALS: &[Refusal] = &[
         when: "the gateway refuses configuration access",
         remedy: "verify the selected account has project configuration permission",
     },
+    ds_cli_auth::PROJECT_CONFIGURATION_MISSING_REFUSAL,
     Refusal {
         code: "auth_transient",
         when: "configuration IO is unavailable",

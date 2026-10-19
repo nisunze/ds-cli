@@ -5163,6 +5163,15 @@ fn map_service_refusal(
         Some(sentence) => format!("{owner_message} (HTTP {}): {sentence}", refusal.status()),
         None => format!("{owner_message} (HTTP {})", refusal.status()),
     };
+    // The configuration route verified access and found nothing to serve:
+    // the project is unseeded, which no permission change can repair.
+    if kind == ErrorKind::ResourceNotFound
+        && owner_message.starts_with(PROJECT_CONFIGURATION_MISSING_PREFIX)
+    {
+        return Failure::invalid(PROJECT_CONFIGURATION_MISSING_REFUSAL.code, message)
+            .remedy(PROJECT_CONFIGURATION_MISSING_REFUSAL.remedy)
+            .next("ds design config copy plan --project <id> --source-project <template-project>");
+    }
     // Project management authored this refusal (`ds-client-core::
     // project_management::refusal` names the route in every sentence). Its
     // three conditions each have a different next step — an admin, a re-read,
@@ -5640,6 +5649,16 @@ fn map_client_kind(kind: ErrorKind, message: String) -> Failure {
 /// `ds survey query`, `ds survey entries select` and `ds survey entries
 /// changes` declare this same constant, so the contract a caller reads
 /// beforehand and the receipt they get cannot drift apart.
+/// The project holds no configuration (ds-brain's 404 after verified access).
+/// Every command that reads project Settings can meet it; `ds design config`
+/// declares it so the contract and the receipt name the same way out.
+pub const PROJECT_CONFIGURATION_MISSING_REFUSAL: Refusal = Refusal {
+    code: "project_configuration_missing",
+    when: "the project holds no configuration (Settings and network documents) yet",
+    remedy: "seed it from a template project: ds design config copy plan --project <id> --source-project <template-project>, review, then ds design config copy apply (needs project.edit on the destination)",
+};
+const PROJECT_CONFIGURATION_MISSING_PREFIX: &str = "project configuration is missing";
+
 pub const SURVEY_ROUTE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
     code: "survey_route_unavailable",
     when: "this lane's API Gateway does not publish this Survey read route",
@@ -8598,6 +8617,30 @@ mod tests {
         );
         assert_eq!(missing.code(), "print_setup_not_found");
         assert!(missing.message().contains("HTTP 404"), "{missing:?}");
+
+        // Kirehe: the configuration route verified access and found no
+        // configuration. Not a permission problem; the way out is a template
+        // copy, and the refusal names it.
+        let unseeded = map_service_refusal(
+            ErrorKind::ResourceNotFound,
+            &ServiceRefusal::new(404, None, Some("No configuration found")),
+            "project configuration is missing: the project holds no Settings documents yet",
+        );
+        assert_eq!(unseeded.code(), "project_configuration_missing");
+        assert!(unseeded.message().contains("HTTP 404"), "{unseeded:?}");
+        assert!(
+            unseeded
+                .remedy_text()
+                .is_some_and(|remedy| remedy.contains("ds design config copy plan")),
+            "{unseeded:?}"
+        );
+        assert!(
+            unseeded
+                .next_commands()
+                .iter()
+                .any(|command| command.starts_with("ds design config copy plan")),
+            "{unseeded:?}"
+        );
 
         // No code and no sentence is still better than a bare class: the
         // status alone tells a caller whether to retry.
