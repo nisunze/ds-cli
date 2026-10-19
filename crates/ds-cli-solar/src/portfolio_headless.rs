@@ -1,7 +1,7 @@
 //! Native portfolio governance and the fixed Solar owner file handoff.
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Failure, Inputs};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub const PROJECT: Arg = Arg::value(
     "project",

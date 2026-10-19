@@ -45,7 +45,15 @@ vocabulary the write commands take their state values from.",
     // `ds_cli_auth::project_management` and needs no paired application.
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[LIMIT_ARG, Arg::switch("offline", "Read the exact retained plan without network or freshness checks; captured permissions may have changed."), crate::LANE_ARG, crate::PROJECT_ARG],
+    args: &[
+        LIMIT_ARG,
+        Arg::switch(
+            "offline",
+            "Read the exact retained plan without network or freshness checks; captured permissions may have changed.",
+        ),
+        crate::LANE_ARG,
+        crate::PROJECT_ARG,
+    ],
     output: "\
 `project`, `revision`, `today`, `dashboard` with the rollups, `phases` by \
 discipline, `attention` rows with their magnitude, `recent` task changes, \
@@ -66,9 +74,21 @@ a server that predates the contract).",
     }],
     refusals: &crate::read_refusals::<20>(&[
         crate::INVALID_NUMBER,
-        Refusal {code:"pm_offline_acquisition_required",when:"no admitted retained graph matches the protected account, lane, audience, credential and exact project, or access was denied",remedy:"run this exact project plan online once under the same native identity"},
-        Refusal {code:"pm_retained_unavailable",when:"the retained canonical graph cannot be admitted or persisted",remedy:"inspect owner-only local DS data and repeat the exact online plan read"},
-        Refusal {code:"project_context_changed",when:"authority or the local mutation generation moved during graph acquisition",remedy:"repeat the intentional online plan read under the current identity"},
+        Refusal {
+            code: "pm_offline_acquisition_required",
+            when: "no admitted retained graph matches the protected account, lane, audience, credential and exact project, or access was denied",
+            remedy: "run this exact project plan online once under the same native identity",
+        },
+        Refusal {
+            code: "pm_retained_unavailable",
+            when: "the retained canonical graph cannot be admitted or persisted",
+            remedy: "inspect owner-only local DS data and repeat the exact online plan read",
+        },
+        Refusal {
+            code: "project_context_changed",
+            when: "authority or the local mutation generation moved during graph acquisition",
+            remedy: "repeat the intentional online plan read under the current identity",
+        },
     ]),
     reference: Some("docs/reference/pm.md"),
     search: &[
@@ -289,10 +309,12 @@ mod offline_plan_tests {
     fn offline_is_explicit_and_declares_missing_capture_refusal() {
         assert!(COMMAND.args.iter().any(|arg| arg.name == "offline"));
         assert!(!COMMAND.args.iter().any(|arg| arg.name == "refresh"));
-        assert!(COMMAND
-            .refusals
-            .iter()
-            .any(|refusal| refusal.code == "pm_offline_acquisition_required"));
+        assert!(
+            COMMAND
+                .refusals
+                .iter()
+                .any(|refusal| refusal.code == "pm_offline_acquisition_required")
+        );
     }
     #[test]
     fn human_projection_marks_offline_permission_unknown_and_known_invalidation() {

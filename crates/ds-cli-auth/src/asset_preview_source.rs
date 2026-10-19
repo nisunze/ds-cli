@@ -1,16 +1,17 @@
 //! Controlled source previews through the established native credential fence
 //! and common file room. Offline consumes no restored session or source grant.
 use crate::{
-    capture_layer_scope_fence_for_project, headless_identity_for_named_project,
-    headless_named_project, verify_layer_scope_fence_for_project, LayerScopeFence, NativeTransport,
+    LayerScopeFence, NativeTransport, capture_layer_scope_fence_for_project,
+    headless_identity_for_named_project, headless_named_project,
+    verify_layer_scope_fence_for_project,
 };
 use ds_cli_contract::Failure;
 use ds_client_core::asset_preview_source::{Grant, TransferControl, TransferError};
 use ds_command_kernel::asset_preview::{Request, SourceProof};
 use ds_project_data::preview_room::Room;
 use ds_report_host::{
-    asset_preview::{self, Control, Phase, Receipt, SourceFailure, SourceProvider},
     HostFailure,
+    asset_preview::{self, Control, Phase, Receipt, SourceFailure, SourceProvider},
 };
 use std::{
     cell::RefCell,

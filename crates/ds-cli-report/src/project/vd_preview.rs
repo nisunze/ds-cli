@@ -3,11 +3,11 @@
 use super::{export, hold};
 use ds_cli_contract::spec::Refusal;
 use ds_cli_contract::{Failure, Inputs};
-use ds_command_kernel::report_export::{self, held::SavedAnalysis, InputReceipt};
+use ds_command_kernel::report_export::{self, InputReceipt, held::SavedAnalysis};
 use ds_command_kernel::report_formats::DesignOutputSelection;
 use ds_project_data::preview_room::Room;
-use ds_report_host::{preview_artifact, vd_preview, HostFailure, ReportEngine};
-use serde_json::{json, Value};
+use ds_report_host::{HostFailure, ReportEngine, preview_artifact, vd_preview};
+use serde_json::{Value, json};
 use std::{io::Read, path::Path};
 
 pub(super) const MISSING: Refusal = Refusal {
@@ -37,7 +37,9 @@ pub(super) fn preflight(inputs: &Inputs) -> Result<preview_artifact::Retention, 
         || !inputs.repeated("pin-room").is_empty()
         || inputs.value("admin-bounds").is_some()
     {
-        return Err(invalid("--preview-voltage-drop requires one exact held transformer; delivery, acquisition and other preview inputs are refused"));
+        return Err(invalid(
+            "--preview-voltage-drop requires one exact held transformer; delivery, acquisition and other preview inputs are refused",
+        ));
     }
     report_export::reportable_transformer(&inputs.repeated("transformer")[0]).map_err(invalid)?;
     inputs
@@ -311,8 +313,8 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc, Barrier,
+        atomic::{AtomicUsize, Ordering},
     };
     struct Engine(AtomicUsize);
     impl ReportEngine for Engine {
@@ -437,8 +439,8 @@ mod tests {
         (room, captured, held)
     }
     #[test]
-    fn headless_cold_concurrent_warm_and_offline_consumers_share_one_saved_renderer_and_common_file(
-    ) {
+    fn headless_cold_concurrent_warm_and_offline_consumers_share_one_saved_renderer_and_common_file()
+     {
         let dir = tempfile::tempdir().unwrap();
         let (room, captured, held) = fixture(dir.path());
         let engine = Arc::new(Engine(AtomicUsize::new(0)));

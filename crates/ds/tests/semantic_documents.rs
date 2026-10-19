@@ -20,11 +20,13 @@ fn semantic_lifecycle_describes_fixed_native_effects_and_refuses_before_source_u
             assert!(description.contains("DOCX") && description.contains("XLSX"));
             assert!(description.contains("externally"));
         }
-        assert!(command["inputs"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|arg| arg["name"] == "manifest"));
+        assert!(
+            command["inputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|arg| arg["name"] == "manifest")
+        );
     }
     let (value, code) = common::json(&[
         "assets",

@@ -9,7 +9,7 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::task_geometry::ObjectIndex;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::Write;
 
 pub mod compare;
@@ -73,10 +73,8 @@ const GEOJSON_OUTPUT: Refusal = Refusal {
 };
 const GEOJSON_PAGE: Refusal = Refusal {
     code: "grid_geojson_page_invalid",
-    when:
-        "--limit is outside 1..5000, --cursor is unknown, or --alignment and --cursor are combined",
-    remedy:
-        "use 1..5000 and the exact next_cursor from a prior page; omit --cursor with --alignment",
+    when: "--limit is outside 1..5000, --cursor is unknown, or --alignment and --cursor are combined",
+    remedy: "use 1..5000 and the exact next_cursor from a prior page; omit --cursor with --alignment",
 };
 const GEOJSON_ALIGNMENT: Refusal = Refusal {
     code: "grid_geojson_alignment_not_found",

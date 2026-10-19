@@ -1,5 +1,5 @@
 //! Exact native CLI/MCP boundary for retained PDFs; no operator state or source reads.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     io::Write,
     path::Path,
@@ -42,11 +42,13 @@ fn retained_preview_declares_native_pins_and_refuses_unadmitted_profile_before_s
         "expected-sha256",
         "preview-retention",
     ] {
-        assert!(descriptor["inputs"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|i| i["name"] == name));
+        assert!(
+            descriptor["inputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|i| i["name"] == name)
+        );
     }
     for extra in [
         vec!["--retain", "--offline"],

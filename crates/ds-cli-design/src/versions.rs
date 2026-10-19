@@ -82,30 +82,30 @@ pub static COMPARE: Command = Command {
     purpose: "Compare only governed MV content-revision metadata using exact assigned versions or an explicitly consumed saved head. This path never requests geometry or snapshot bytes. LV comparison uses design version revision compare with exact immutable revision/digest pins.",
     output: "Read-only MV lineage/content-revision metadata comparison; no geometry equality claim.",
     ..command(
-    "design.version.compare",
-    &["design", "version", "compare"],
-    "Compare governed MV content-revision metadata; LV uses exact revision compare.",
-    &[
-        PROJECT,
-        Arg::value(
-            "kind",
-            "<mv_model>",
-            "Governed MV metadata only; LV uses design version revision compare.",
-        )
-        .choices(&["mv_model"])
-        .required(),
-        OBJECT,
-        Arg::value("from", "<vN>", "Exact assigned version on the left.").required(),
-        Arg::value(
-            "to",
-            "<vN|head>",
-            "Exact assigned version or saved head pinned once.",
-        )
-        .required(),
-        crate::transformer::LANE_ARG,
-    ],
-    Effect::ReadOnly,
-)
+        "design.version.compare",
+        &["design", "version", "compare"],
+        "Compare governed MV content-revision metadata; LV uses exact revision compare.",
+        &[
+            PROJECT,
+            Arg::value(
+                "kind",
+                "<mv_model>",
+                "Governed MV metadata only; LV uses design version revision compare.",
+            )
+            .choices(&["mv_model"])
+            .required(),
+            OBJECT,
+            Arg::value("from", "<vN>", "Exact assigned version on the left.").required(),
+            Arg::value(
+                "to",
+                "<vN|head>",
+                "Exact assigned version or saved head pinned once.",
+            )
+            .required(),
+            crate::transformer::LANE_ARG,
+        ],
+        Effect::ReadOnly,
+    )
 };
 
 pub static SHOW: Command = command(

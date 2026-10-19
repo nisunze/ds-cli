@@ -8,12 +8,12 @@ use ds_command_kernel::{
     assets::semantic::{self, Command, Extractor, Prepare},
 };
 use ds_report_host::{
+    HostFailure,
     asset_preview::Control,
     document_semantic as host,
     preview_artifact::{self, Retention},
-    HostFailure,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     fs,
     io::{Read, Write},

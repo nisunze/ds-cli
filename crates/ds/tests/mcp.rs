@@ -1880,7 +1880,11 @@ fn printing_profile_exposes_one_bounded_live_preview_without_export_options() {
         assert!(properties.contains_key(admitted), "{admitted}");
     }
     assert_eq!(properties["retention"]["enum"], json!(["24h", "7d"]));
-    assert!(tools.iter().all(|tool| tool["title"] != "data.city-vectors"));
+    assert!(
+        tools
+            .iter()
+            .all(|tool| tool["title"] != "data.city-vectors")
+    );
     for forbidden in ["force", "selection", "intent", "confirm", "yes"] {
         assert!(!properties.contains_key(forbidden), "{forbidden}");
     }
@@ -1892,9 +1896,14 @@ fn printing_captured_layout_preview_advertises_the_same_explicit_paired_target()
         &["--exposure", "commands", "--profile", "printing"],
         &[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})],
     );
-    let tools = response(&responses, 1)["result"]["tools"].as_array().unwrap();
+    let tools = response(&responses, 1)["result"]["tools"]
+        .as_array()
+        .unwrap();
     assert!(tools.len() <= 29);
-    let matches = tools.iter().filter(|tool| tool["name"] == "report_layout_render").collect::<Vec<_>>();
+    let matches = tools
+        .iter()
+        .filter(|tool| tool["name"] == "report_layout_render")
+        .collect::<Vec<_>>();
     assert_eq!(matches.len(), 1);
     let schema = &matches[0]["inputSchema"];
     assert_eq!(schema["additionalProperties"], false);
@@ -1904,7 +1913,10 @@ fn printing_captured_layout_preview_advertises_the_same_explicit_paired_target()
         assert!(properties.contains_key(key), "{key}");
     }
     assert_eq!(properties["preview-format"]["enum"], json!(["svg", "pdf"]));
-    assert_eq!(properties["preview-retention"]["enum"], json!(["24h", "7d"]));
+    assert_eq!(
+        properties["preview-retention"]["enum"],
+        json!(["24h", "7d"])
+    );
     for key in ["force", "seed", "model", "transformer", "command", "uid"] {
         assert!(!properties.contains_key(key), "{key}");
     }
@@ -1914,16 +1926,22 @@ fn printing_captured_layout_preview_advertises_the_same_explicit_paired_target()
 fn city_acquisition_remains_discoverable_in_its_data_chapter() {
     let (messages, _) = mcp(
         &["--exposure", "chapters"],
-        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
-            "name":"ds_data","arguments":{"operation":"describe","command":"data.city-vectors"}
-        }})],
+        &[
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+                "name":"ds_data","arguments":{"operation":"describe","command":"data.city-vectors"}
+            }}),
+        ],
     );
     let result = response(&messages, 1)["result"].clone();
     assert_ne!(result["isError"], true);
-    let described = serde_json::from_str::<Value>(result["content"][0]["text"].as_str().unwrap()).unwrap();
+    let described =
+        serde_json::from_str::<Value>(result["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(described["status"], "ok");
     assert!(described.to_string().contains("data.city-vectors"));
-    assert_eq!(cli(&["capabilities", "data.city-vectors", "--output", "json"])["data"]["command"]["chapter"], "data");
+    assert_eq!(
+        cli(&["capabilities", "data.city-vectors", "--output", "json"])["data"]["command"]["chapter"],
+        "data"
+    );
 }
 
 #[test]
@@ -2051,12 +2069,24 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         );
     }
     let checklists: BTreeSet<String> = [
-        "pm_task_checklist_read", "pm_task_checklist_edit", "pm_task_checklist_promote",
-        "pm_note_checklist_read", "pm_note_checklist_edit", "notes_checklist_read",
-        "notes_checklist_edit", "pm_document_copy", "pm_mail-thread_ingest",
-    ].into_iter().map(str::to_owned).collect();
+        "pm_task_checklist_read",
+        "pm_task_checklist_edit",
+        "pm_task_checklist_promote",
+        "pm_note_checklist_read",
+        "pm_note_checklist_edit",
+        "notes_checklist_read",
+        "notes_checklist_edit",
+        "pm_document_copy",
+        "pm_mail-thread_ingest",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
     assert_eq!(published["project-checklists"], checklists);
-    assert!(published["project"].is_disjoint(&checklists), "selected checklist/copy/mail controls must not inflate broad Project");
+    assert!(
+        published["project"].is_disjoint(&checklists),
+        "selected checklist/copy/mail controls must not inflate broad Project"
+    );
     assert!(published["printing-maps"].contains("map_print_schema"));
     assert!(published["printing-maps"].contains("desktop_printing_map_export"));
     assert!(published["printing"].contains("report_layout_edit"));
@@ -3386,8 +3416,15 @@ fn member_form_grants_project_survey_mcp_matches_cli_confirmation() {
 fn retired_general_workflow_commands_are_absent_from_mcp_discovery_and_routing() {
     let calls = [json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}})];
     let (messages, _) = mcp(&["--exposure", "commands", "--profile", "datasets"], &calls);
-    let tools = response(&messages, 1)["result"]["tools"].as_array().unwrap();
-    assert!(tools.iter().all(|tool| !tool["name"].as_str().unwrap().starts_with("data_vector_workflow_")));
+    let tools = response(&messages, 1)["result"]["tools"]
+        .as_array()
+        .unwrap();
+    assert!(tools.iter().all(|tool| {
+        !tool["name"]
+            .as_str()
+            .unwrap()
+            .starts_with("data_vector_workflow_")
+    }));
     let calls: Vec<Value> = ["describe", "validate", "run", "save", "show", "list"]
         .into_iter()
         .enumerate()
@@ -3399,7 +3436,12 @@ fn retired_general_workflow_commands_are_absent_from_mcp_discovery_and_routing()
     for id in 1..=6 {
         let refusal = &response(&messages, id)["error"];
         assert_eq!(refusal["code"], -32602);
-        assert!(refusal["message"].as_str().unwrap().contains("unknown command"));
+        assert!(
+            refusal["message"]
+                .as_str()
+                .unwrap()
+                .contains("unknown command")
+        );
     }
 }
 
@@ -3584,10 +3626,19 @@ fn deliberate_profile_save_is_in_its_bounded_workflow_and_requires_confirmation(
     );
     let tools = tools_by_title(&messages, 1);
     let tool = &tools["map.profile.save"];
-    assert_eq!(tool["inputSchema"]["properties"]["history"]["type"], "string");
-    assert_eq!(tool["inputSchema"]["properties"]["confirm"]["type"], "boolean");
+    assert_eq!(
+        tool["inputSchema"]["properties"]["history"]["type"],
+        "string"
+    );
+    assert_eq!(
+        tool["inputSchema"]["properties"]["confirm"]["type"],
+        "boolean"
+    );
     assert_eq!(tool["inputSchema"]["additionalProperties"], false);
-    assert_eq!(response(&messages, 2)["result"]["structuredContent"]["error"]["code"], "confirmation_required");
+    assert_eq!(
+        response(&messages, 2)["result"]["structuredContent"]["error"]["code"],
+        "confirmation_required"
+    );
 }
 
 #[test]
@@ -3628,22 +3679,55 @@ fn task_attachment_detach_projects_exact_cli_inputs_and_confirmation() {
 
 #[test]
 fn project_overview_mcp_declares_the_same_read_without_geometry_or_private_notes() {
-    let home=signed_out("project-overview");let messages=signed_out_mcp(&home,&["--exposure","commands","--profile","project"],&[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})]);
-    let tool=response(&messages,1)["result"]["tools"].as_array().unwrap().iter().find(|t|t["name"]=="pm_overview").expect("project overview tool");
-    let properties=tool["inputSchema"]["properties"].as_object().unwrap();assert!(properties.contains_key("project")&&properties.contains_key("limit")&&properties.contains_key("records-cursor"));
-    assert!(!properties.contains_key("geometry")&&!properties.contains_key("data")&&!properties.contains_key("personal-notes"));
+    let home = signed_out("project-overview");
+    let messages = signed_out_mcp(
+        &home,
+        &["--exposure", "commands", "--profile", "project"],
+        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})],
+    );
+    let tool = response(&messages, 1)["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "pm_overview")
+        .expect("project overview tool");
+    let properties = tool["inputSchema"]["properties"].as_object().unwrap();
+    assert!(
+        properties.contains_key("project")
+            && properties.contains_key("limit")
+            && properties.contains_key("records-cursor")
+    );
+    assert!(
+        !properties.contains_key("geometry")
+            && !properties.contains_key("data")
+            && !properties.contains_key("personal-notes")
+    );
 }
 
 #[test]
 fn pm_closure_controls_share_the_real_mcp_registry() {
     let home = signed_out("pm-closure-controls");
     let commands = [
-        "notes.create", "notes.update", "notes.list", "notes.read", "notes.retire",
-        "notes.restore", "notes.versions", "notes.version.read", "notes.version.restore",
-        "messaging.installations", "messaging.installation.revoke", "pm.plan",
-        "notes.backup", "notes.backup.read", "notes.backup.restore",
+        "notes.create",
+        "notes.update",
+        "notes.list",
+        "notes.read",
+        "notes.retire",
+        "notes.restore",
+        "notes.versions",
+        "notes.version.read",
+        "notes.version.restore",
+        "messaging.installations",
+        "messaging.installation.revoke",
+        "pm.plan",
+        "notes.backup",
+        "notes.backup.read",
+        "notes.backup.restore",
         "pm.note.create",
-        "pm.task.read", "pm.note.read", "pm.note.query", "pm.note.context",
+        "pm.task.read",
+        "pm.note.read",
+        "pm.note.query",
+        "pm.note.context",
     ];
     let mut requests = Vec::new();
     for (index, command) in commands.iter().enumerate() {
@@ -3656,8 +3740,12 @@ fn pm_closure_controls_share_the_real_mcp_registry() {
     requests.push(json!({"jsonrpc":"2.0","id":101,"method":"tools/call",
         "params":{"name":"ds_project","arguments":{"operation":"invoke","command":"messaging.installation.revoke",
             "arguments":{"installation-hash":"a".repeat(64),"epoch":"b".repeat(32)}}}}));
-    let retired = ["notes.canonicalize.prepare", "notes.canonicalize.apply",
-        "pm.note.canonicalize.prepare", "pm.note.canonicalize.apply"];
+    let retired = [
+        "notes.canonicalize.prepare",
+        "notes.canonicalize.apply",
+        "pm.note.canonicalize.prepare",
+        "pm.note.canonicalize.apply",
+    ];
     for (index, command) in retired.iter().enumerate() {
         requests.push(json!({"jsonrpc":"2.0","id":102+index,"method":"tools/call",
             "params":{"name":"ds_project","arguments":{"operation":"invoke","command":command,
@@ -3665,25 +3753,70 @@ fn pm_closure_controls_share_the_real_mcp_registry() {
     }
     let messages = signed_out_mcp(&home, &["--exposure", "chapters"], &requests);
     for (index, id) in commands.iter().enumerate() {
-        let spec = &structured(&messages, (index+1) as i64)["data"]["command"];
+        let spec = &structured(&messages, (index + 1) as i64)["data"]["command"];
         assert_eq!(spec["id"], *id, "real registry leaf {id}");
-        assert_eq!(spec["authority"], if id.starts_with("pm.") {"headless_project"} else {"headless_user"});
-        if ["notes.create", "notes.update", "notes.retire", "notes.restore", "notes.version.restore", "messaging.installation.revoke", "notes.backup", "notes.backup.restore", "pm.note.create"].contains(id) {
+        assert_eq!(
+            spec["authority"],
+            if id.starts_with("pm.") {
+                "headless_project"
+            } else {
+                "headless_user"
+            }
+        );
+        if [
+            "notes.create",
+            "notes.update",
+            "notes.retire",
+            "notes.restore",
+            "notes.version.restore",
+            "messaging.installation.revoke",
+            "notes.backup",
+            "notes.backup.restore",
+            "pm.note.create",
+        ]
+        .contains(id)
+        {
             assert_eq!(spec["confirmation_required"], true, "explicit effect {id}");
         }
     }
-    for (index,id) in commands.iter().enumerate() {
-        if ["pm.plan","pm.task.read","pm.note.read","pm.note.query","pm.note.context"].contains(id) {
-            let read=&structured(&messages,(index+1) as i64)["data"]["command"];
-            assert!(read["inputs"].as_array().unwrap().iter().any(|arg|arg["name"]=="offline"),"retained read {id}");
+    for (index, id) in commands.iter().enumerate() {
+        if [
+            "pm.plan",
+            "pm.task.read",
+            "pm.note.read",
+            "pm.note.query",
+            "pm.note.context",
+        ]
+        .contains(id)
+        {
+            let read = &structured(&messages, (index + 1) as i64)["data"]["command"];
+            assert!(
+                read["inputs"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|arg| arg["name"] == "offline"),
+                "retained read {id}"
+            );
         }
     }
-    assert_eq!(structured(&messages, 100)["error"]["code"], "confirmation_required");
-    assert_eq!(structured(&messages, 101)["error"]["code"], "confirmation_required");
+    assert_eq!(
+        structured(&messages, 100)["error"]["code"],
+        "confirmation_required"
+    );
+    assert_eq!(
+        structured(&messages, 101)["error"]["code"],
+        "confirmation_required"
+    );
     for index in 0..retired.len() {
-        let refusal = &response(&messages, (102+index) as i64)["error"];
+        let refusal = &response(&messages, (102 + index) as i64)["error"];
         assert_eq!(refusal["code"], -32602);
-        assert!(refusal["message"].as_str().unwrap().contains("unknown command"));
+        assert!(
+            refusal["message"]
+                .as_str()
+                .unwrap()
+                .contains("unknown command")
+        );
     }
 }
 

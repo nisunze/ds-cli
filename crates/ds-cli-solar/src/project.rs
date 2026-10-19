@@ -295,7 +295,9 @@ pub fn outbox(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     invoke(json!({"operation":"outbox","workspace":i.require("workspace")?}))
 }
 pub fn clean(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    invoke(json!({"operation":"clean","command":{"workspace":i.require("workspace")?,"project_id":i.require("project")?}}))
+    invoke(
+        json!({"operation":"clean","command":{"workspace":i.require("workspace")?,"project_id":i.require("project")?}}),
+    )
 }
 
 pub(crate) fn invoke(request: Value) -> Result<Value, Failure> {

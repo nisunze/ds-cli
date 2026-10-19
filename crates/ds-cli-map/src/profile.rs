@@ -7,7 +7,7 @@ use ds_cli_contract::{Context, Inputs};
 use ds_network_contracts::{
     profile_control::ProfileEditModeRequest, profile_scene::ProfileAtlasAttachmentRef,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
@@ -885,12 +885,14 @@ mod tests {
         assert!(parse_visibility(r#"{"auto_analysis":false}"#).is_err());
         let visibility = SET.args.iter().find(|arg| arg.name == "visibility");
         assert!(visibility.unwrap().summary.contains("analysis."));
-        assert!(SET
-            .purpose
-            .contains("Report visibility schedules no analysis"));
-        assert!(VIEW
-            .output
-            .contains("analysis_state: due/current/off/not_applicable"));
+        assert!(
+            SET.purpose
+                .contains("Report visibility schedules no analysis")
+        );
+        assert!(
+            VIEW.output
+                .contains("analysis_state: due/current/off/not_applicable")
+        );
         assert!(VIEW.output.contains("computed_revision,required,scope"));
     }
 
@@ -971,11 +973,10 @@ mod tests {
         );
         assert_eq!(SET.effect, Effect::LocalUi);
         assert_eq!(SET.authority, Authority::DesktopPairing);
-        assert!(ds_cli_contract::args::parse(
-            &SET,
-            &["--action".into(), "compute-arbitrary".into()]
-        )
-        .is_err());
+        assert!(
+            ds_cli_contract::args::parse(&SET, &["--action".into(), "compute-arbitrary".into()])
+                .is_err()
+        );
     }
 
     #[test]

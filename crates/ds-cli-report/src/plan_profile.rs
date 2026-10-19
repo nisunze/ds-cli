@@ -324,7 +324,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         page,
         inputs.value("preview-retention").is_some(),
     )
-    .map_err(|error|mode_invalid(error.to_string()).remedy(error.remedy))?;
+    .map_err(|error| mode_invalid(error.to_string()).remedy(error.remedy))?;
     if let ds_command_kernel::printing::mv_preview::Action::Read { input_sha256, page } = action {
         return run_job_read(inputs, &input_sha256, page);
     }

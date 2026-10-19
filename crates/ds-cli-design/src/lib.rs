@@ -79,6 +79,7 @@ pub mod force_gate;
 pub mod group;
 pub mod grouping;
 pub mod headless;
+pub mod history_import;
 pub mod intake_upload;
 pub mod known_columns;
 pub mod lv;
@@ -95,7 +96,6 @@ pub mod repair;
 pub mod selection;
 pub mod tag;
 pub mod transformer;
-pub mod history_import;
 pub mod version_catalog;
 pub mod versions;
 

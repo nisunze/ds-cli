@@ -4,10 +4,10 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::{
-    asset_preview::{Request, Retention, REQUEST_SCHEMA},
+    asset_preview::{REQUEST_SCHEMA, Request, Retention},
     assets::semantic::{self, Extractor},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 const MANIFEST: Arg = Arg::value(
     "manifest",
     "<native-export.json>",
@@ -263,10 +263,12 @@ mod tests {
         for command in [&EXPORT, &LOOKUP, &READ, &IMPORT] {
             assert_eq!(command.authority, Authority::HeadlessProject);
             assert!(command.args.iter().any(|arg| arg.name == "manifest"));
-            assert!(!command
-                .args
-                .iter()
-                .any(|arg| matches!(arg.name, "executable" | "command" | "url")));
+            assert!(
+                !command
+                    .args
+                    .iter()
+                    .any(|arg| matches!(arg.name, "executable" | "command" | "url"))
+            );
         }
         assert_eq!(EXPORT.effect, Effect::LocalFileWrite);
         assert_eq!(IMPORT.effect, Effect::GlobalWrite);

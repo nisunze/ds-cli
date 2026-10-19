@@ -25,7 +25,7 @@
 use ds_cli_contract::Failure;
 use serde_json::Value;
 
-use super::{headless_named_project_with, map_client, now, pm_graph_source, HeadlessNamedProject};
+use super::{HeadlessNamedProject, headless_named_project_with, map_client, now, pm_graph_source};
 
 /// One correspondence action for the project named on this request.
 pub fn project_correspondence_for_project(

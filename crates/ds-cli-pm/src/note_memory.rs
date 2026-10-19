@@ -1,11 +1,11 @@
 //! Thin native adapters for recoverable shared Project Notes.
 use ds_cli_contract::{
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
     Context, Failure, Inputs,
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use ds_client_core::project_management::Command as PM;
 use ds_command_kernel::project_management::project_notes as owner;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::Read;
 pub(super) const INPUT:Arg=Arg::value("input","<json-file>","Closed native note request JSON, at most 256 KiB; see the Shared Project Notes request examples in docs/reference/pm.md. No transport envelope, author or timestamp overrides.").required();
 const NOTE: Arg = Arg::value("note", "<note-id>", "Exact same-project note identity.").required();
@@ -92,12 +92,8 @@ const HISTORY: Refusal = Refusal {
     when: "current canonical authored head has no immutable retained snapshot",
     remedy: "recover the exact verified immutable head; ordinary reads, edits and backups never fabricate history",
 };
-const REFUSALS: &[Refusal] = &crate::correspondence_refusals::<25>(&[
-    INVALID,
-    UNREADABLE,
-    MIGRATION,
-    HISTORY,
-]);
+const REFUSALS: &[Refusal] =
+    &crate::correspondence_refusals::<25>(&[INVALID, UNREADABLE, MIGRATION, HISTORY]);
 pub(super) const fn descriptor(
     id: &'static str,
     path: &'static [&'static str],
@@ -172,14 +168,26 @@ pub static READ: Command = {
     command
 };
 
-const OFFLINE_PAGE: Arg = Arg::switch("offline", "Read only the exact retained last page with zero network; no implicit next page, permissions are capture-time and source freshness is unknown.");
+const OFFLINE_PAGE: Arg = Arg::switch(
+    "offline",
+    "Read only the exact retained last page with zero network; no implicit next page, permissions are capture-time and source freshness is unknown.",
+);
 const PAGE_REFUSALS: &[Refusal] = &crate::correspondence_refusals::<27>(&[
-        INVALID, UNREADABLE, MIGRATION, HISTORY,
-        Refusal { code:"pm_offline_acquisition_required", when:"no exact retained page matches protected identity/project or filters, cursor, limit and scope, or access was denied",
-            remedy:"read the exact page online once; another selection replaces this single page room" },
-        Refusal { code:"pm_retained_unavailable", when:"the bounded retained page cannot be admitted or persisted",
-            remedy:"inspect owner-only DS data and repeat the exact intentional online read" },
-    ]);
+    INVALID,
+    UNREADABLE,
+    MIGRATION,
+    HISTORY,
+    Refusal {
+        code: "pm_offline_acquisition_required",
+        when: "no exact retained page matches protected identity/project or filters, cursor, limit and scope, or access was denied",
+        remedy: "read the exact page online once; another selection replaces this single page room",
+    },
+    Refusal {
+        code: "pm_retained_unavailable",
+        when: "the bounded retained page cannot be admitted or persisted",
+        remedy: "inspect owner-only DS data and repeat the exact intentional online read",
+    },
+]);
 
 const fn retained_page_descriptor(
     id: &'static str,
@@ -519,35 +527,45 @@ mod tests {
         assert_eq!(i.value("note"), Some("n"));
         assert_eq!(i.value("version"), Some("2"));
         assert_eq!(i.value("claim"), Some("c"));
-        assert!(READ
-            .refusals
-            .iter()
-            .any(|r| r.code == "pm_offline_acquisition_required"));
-        assert!(READ
-            .refusals
-            .iter()
-            .any(|r| r.code == "pm_retained_unavailable"));
+        assert!(
+            READ.refusals
+                .iter()
+                .any(|r| r.code == "pm_offline_acquisition_required")
+        );
+        assert!(
+            READ.refusals
+                .iter()
+                .any(|r| r.code == "pm_retained_unavailable")
+        );
         assert!(!parse(&READ, &["--project", "p", "--note", "n"]).switch("offline"));
         for command in [&CONTEXT, &QUERY] {
             assert!(command.args.iter().any(|a| a.name == "offline"));
-            assert!(command
-                .refusals
-                .iter()
-                .any(|r| r.code == "pm_offline_acquisition_required"));
-            assert!(command
-                .refusals
-                .iter()
-                .any(|r| r.code == "pm_retained_unavailable"));
+            assert!(
+                command
+                    .refusals
+                    .iter()
+                    .any(|r| r.code == "pm_offline_acquisition_required")
+            );
+            assert!(
+                command
+                    .refusals
+                    .iter()
+                    .any(|r| r.code == "pm_retained_unavailable")
+            );
         }
-        assert!(parse(
-            &QUERY,
-            &["--project", "p", "--cursor", "exact-boundary", "--offline"]
-        )
-        .switch("offline"));
-        assert!(parse(
-            &CONTEXT,
-            &["--project", "p", "--input", "not-opened.json", "--offline"]
-        )
-        .switch("offline"));
+        assert!(
+            parse(
+                &QUERY,
+                &["--project", "p", "--cursor", "exact-boundary", "--offline"]
+            )
+            .switch("offline")
+        );
+        assert!(
+            parse(
+                &CONTEXT,
+                &["--project", "p", "--input", "not-opened.json", "--offline"]
+            )
+            .switch("offline")
+        );
     }
 }

@@ -115,7 +115,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("server.sync.status", "read_only", "headless_user"),
     ("server.sync.retry", "global_write", "headless_user"),
     ("server.sync.sanitize.preview", "read_only", "headless_user"),
-    ("server.sync.sanitize.apply", "global_write", "headless_user"),
+    (
+        "server.sync.sanitize.apply",
+        "global_write",
+        "headless_user",
+    ),
     // The native server requires its owner's headless identity. The control
     // credential only connects to that host; it grants no Desktop authority.
     ("server.serve", "local_file_write", "headless_user"),
@@ -1287,7 +1291,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("pm.task.block", "global_write", "headless_project"),
     ("pm.task.checklist.read", "read_only", "headless_project"),
     ("pm.task.checklist.edit", "global_write", "headless_project"),
-    ("pm.task.checklist.promote", "global_write", "headless_project"),
+    (
+        "pm.task.checklist.promote",
+        "global_write",
+        "headless_project",
+    ),
     ("pm.task.create", "global_write", "headless_project"),
     ("pm.task.delete", "global_write", "headless_project"),
     ("pm.task.decline", "global_write", "headless_project"),
@@ -1383,7 +1391,10 @@ fn one_operation_has_one_command_id_whichever_host_executes_it() {
                 panic!("`{id}` reads a job or a project and must declare --project")
             });
         if id.starts_with("server.sync.") {
-            assert_eq!(project["required"], true, "`{id}` captures its explicit project");
+            assert_eq!(
+                project["required"], true,
+                "`{id}` captures its explicit project"
+            );
             assert!(project["default"].is_null());
         } else {
             assert_eq!(
@@ -1529,9 +1540,11 @@ fn every_shipping_command_has_a_pinned_semantic_contract_and_safe_invocation() {
 
 #[test]
 fn solar_and_native_sync_semantics_cover_the_live_surface() {
-    let expected: BTreeMap<_, _> = EXPECTED.iter()
+    let expected: BTreeMap<_, _> = EXPECTED
+        .iter()
         .filter(|(id, _, _)| id.starts_with("solar.") || id.starts_with("server.sync."))
-        .map(|(id, effect, authority)| (*id, (*effect, *authority))).collect();
+        .map(|(id, effect, authority)| (*id, (*effect, *authority)))
+        .collect();
     let mut actual = BTreeMap::new();
     for domain in ["solar", "server"] {
         let commands = json(&["capabilities", domain, "--output", "json"]);
@@ -1543,7 +1556,10 @@ fn solar_and_native_sync_semantics_cover_the_live_surface() {
             }
         }
     }
-    assert_eq!(actual.keys().map(String::as_str).collect::<BTreeSet<_>>(), expected.keys().copied().collect());
+    assert_eq!(
+        actual.keys().map(String::as_str).collect::<BTreeSet<_>>(),
+        expected.keys().copied().collect()
+    );
     for (id, descriptor) in actual {
         let (effect, authority) = expected[id.as_str()];
         assert_eq!(descriptor["effect"], effect, "{id}");

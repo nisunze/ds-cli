@@ -24,8 +24,8 @@ pub mod purge;
 pub mod query;
 pub mod read;
 pub mod templates;
-pub mod validate;
 pub mod update;
+pub mod validate;
 pub mod working_area;
 
 use std::io::Read;

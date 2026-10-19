@@ -1,10 +1,10 @@
 //! Prepare the paired application's project printing workflow; Brain owns saves.
 use crate::ops::{self, BridgeOp, DESCRIPTOR_ARG, TARGET_ARG};
 use ds_cli_contract::{
-    spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
     Context, Failure, Inputs,
+    spec::{Arg, ArgKind, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{io::Read, time::Duration};
 
 pub const PREPARE_OP: BridgeOp = BridgeOp {
@@ -104,7 +104,14 @@ pub const EXPORT_OP: BridgeOp = BridgeOp {
 };
 pub const PREVIEW_OP: BridgeOp = BridgeOp {
     operation: "printing.preview",
-    arguments: &["project", "transformer", "layout", "template", "out", "retention"],
+    arguments: &[
+        "project",
+        "transformer",
+        "layout",
+        "template",
+        "out",
+        "retention",
+    ],
 };
 pub static PREVIEW_COMMAND: Command = Command {
     id: "desktop.printing.preview",
@@ -117,20 +124,53 @@ pub static PREVIEW_COMMAND: Command = Command {
     authority: Authority::DesktopUser,
     execution: Execution::Sync,
     args: &[
-        Arg::value("project", "<exact-id>", "Exact current Desktop project; a mismatch refuses without switching it.").required(),
-        Arg::value("transformer", "<name>", "One canonical individual transformer name; combined_transformer is refused.").required(),
-        Arg::value("layout", "<json-file>", "Full draft layout, at most800KB; mutually exclusive with --template."),
-        Arg::value("template", "<json-file>", "Exact layout Location from desktop printing view --catalogue; mutually exclusive with --layout."),
-        Arg::value("out", "<absolute.svg>", "Optional new absolute SVG copy; existing paths refuse."),
-        Arg::value("retention", "<24h|7d>", "Managed cache lifetime, default24h; reuse keeps original expiry.").choices(&["24h","7d"]),
+        Arg::value(
+            "project",
+            "<exact-id>",
+            "Exact current Desktop project; a mismatch refuses without switching it.",
+        )
+        .required(),
+        Arg::value(
+            "transformer",
+            "<name>",
+            "One canonical individual transformer name; combined_transformer is refused.",
+        )
+        .required(),
+        Arg::value(
+            "layout",
+            "<json-file>",
+            "Full draft layout, at most800KB; mutually exclusive with --template.",
+        ),
+        Arg::value(
+            "template",
+            "<json-file>",
+            "Exact layout Location from desktop printing view --catalogue; mutually exclusive with --layout.",
+        ),
+        Arg::value(
+            "out",
+            "<absolute.svg>",
+            "Optional new absolute SVG copy; existing paths refuse.",
+        ),
+        Arg::value(
+            "retention",
+            "<24h|7d>",
+            "Managed cache lifetime, default24h; reuse keeps original expiry.",
+        )
+        .choices(&["24h", "7d"]),
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
     output: "Project, pinned preview identity, ordered native file manifest (path,SHA-256,size,contenttype,scope/result pins,expiry), diagnostics,warnings,omissions and optionalout. Metadata bridge bound8MiB; no inlineSVG.",
     examples: &[],
     refusals: &[
-        ops::NOT_PAIRED, ops::AMBIGUOUS, ops::UNREACHABLE, ops::PAIRING_REJECTED,
-        ops::REFUSED, ops::UNSUPPORTED, ops::UNREADABLE, ops::SIGNED_OUT,
+        ops::NOT_PAIRED,
+        ops::AMBIGUOUS,
+        ops::UNREACHABLE,
+        ops::PAIRING_REJECTED,
+        ops::REFUSED,
+        ops::UNSUPPORTED,
+        ops::UNREADABLE,
+        ops::SIGNED_OUT,
         PRINTING_READ_INVALID,
     ],
     reference: Some("docs/reference/desktop.printing.md"),
@@ -367,7 +407,9 @@ fn export_arguments(inputs: &Inputs) -> Result<Value, Failure> {
     let mut arguments = json!({"project": project, "force": inputs.switch("force")});
     if let Some(retention) = inputs.value("preview-retention") {
         if inputs.value("intent") != Some("preview") {
-            return Err(invalid_read("--preview-retention requires --intent preview selecting only voltage_drop_pdf"));
+            return Err(invalid_read(
+                "--preview-retention requires --intent preview selecting only voltage_drop_pdf",
+            ));
         }
         arguments["preview_retention"] = json!(retention);
     }
@@ -429,50 +471,94 @@ fn preview_arguments(inputs: &Inputs, layout: Value) -> Result<Value, Failure> {
         serde_json::from_value(layout.clone()).map_err(|error| invalid_read(error.to_string()))?;
     ds_command_kernel::printing::validate(&parsed).map_err(invalid_read)?;
     let mut arguments = json!({"project":project,"transformer":transformer,"layout":layout});
-    preview_delivery_arguments(inputs,&mut arguments)?;
+    preview_delivery_arguments(inputs, &mut arguments)?;
     Ok(arguments)
 }
 
-fn preview_delivery_arguments(inputs: &Inputs, arguments: &mut Value) -> Result<(),Failure> {
+fn preview_delivery_arguments(inputs: &Inputs, arguments: &mut Value) -> Result<(), Failure> {
     if let Some(raw) = inputs.value("out") {
         let path = std::path::Path::new(raw);
-        if raw.is_empty() || raw.len()>4096 || raw.chars().any(char::is_control) || !path.is_absolute()
-            || path.extension().and_then(|v|v.to_str()) != Some("svg") || std::fs::symlink_metadata(path).is_ok()
-            || !path.parent().is_some_and(|parent|std::fs::symlink_metadata(parent).is_ok_and(|m|m.is_dir()&&!m.file_type().is_symlink())) {
-            return Err(invalid_read("preview output must be a new absolute .svg in an existing real directory"));
+        if raw.is_empty()
+            || raw.len() > 4096
+            || raw.chars().any(char::is_control)
+            || !path.is_absolute()
+            || path.extension().and_then(|v| v.to_str()) != Some("svg")
+            || std::fs::symlink_metadata(path).is_ok()
+            || !path.parent().is_some_and(|parent| {
+                std::fs::symlink_metadata(parent)
+                    .is_ok_and(|m| m.is_dir() && !m.file_type().is_symlink())
+            })
+        {
+            return Err(invalid_read(
+                "preview output must be a new absolute .svg in an existing real directory",
+            ));
         }
         arguments["out"] = json!(raw);
     }
-    if let Some(value) = inputs.value("retention") { arguments["retention"] = json!(value); }
+    if let Some(value) = inputs.value("retention") {
+        arguments["retention"] = json!(value);
+    }
     Ok(())
 }
-fn preview_template_arguments(inputs: &Inputs, template: Value) -> Result<Value,Failure> {
+fn preview_template_arguments(inputs: &Inputs, template: Value) -> Result<Value, Failure> {
     let project = bounded_project(inputs.require("project")?)?;
     let transformer = bounded_transformer(inputs.require("transformer")?)?;
-    if transformer=="combined_transformer" { return Err(invalid_read("live sheet preview requires one individual transformer")); }
-    let location = serde_json::from_value(template.clone()).map_err(|e|invalid_read(format!("invalid template location: {e}")))?;
+    if transformer == "combined_transformer" {
+        return Err(invalid_read(
+            "live sheet preview requires one individual transformer",
+        ));
+    }
+    let location = serde_json::from_value(template.clone())
+        .map_err(|e| invalid_read(format!("invalid template location: {e}")))?;
     ds_command_kernel::printing::template_read::admit_location(&location).map_err(invalid_read)?;
     let mut arguments = json!({"project":project,"transformer":transformer,"template":template});
-    preview_delivery_arguments(inputs,&mut arguments)?;
+    preview_delivery_arguments(inputs, &mut arguments)?;
     Ok(arguments)
 }
 
-fn admit_preview_result(inputs: &Inputs, data: Value) -> Result<Value,Failure> {
-    let rows = data["results"].as_array().ok_or_else(||invalid_read("native preview result rows are missing"))?;
-    let digest = |v:&Value|v.as_str().is_some_and(|s|s.len()==64&&s.bytes().all(|b|b.is_ascii_digit()||(b'a'..=b'f').contains(&b)));
-    let row = rows.first().ok_or_else(||invalid_read("native preview page is missing"))?;
+fn admit_preview_result(inputs: &Inputs, data: Value) -> Result<Value, Failure> {
+    let rows = data["results"]
+        .as_array()
+        .ok_or_else(|| invalid_read("native preview result rows are missing"))?;
+    let digest = |v: &Value| {
+        v.as_str().is_some_and(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })
+    };
+    let row = rows
+        .first()
+        .ok_or_else(|| invalid_read("native preview page is missing"))?;
     let page = &row["page"];
     let retained = page["retention_ms"].as_u64();
-    if data["project"] != inputs.require("project")? || rows.len()!=1 || row["transformer"]!=inputs.require("transformer")?
-        || data["preview"]["artifact_schema"]!="ds.print-preview-artifact/v1"
-        || page["schema"]!="ds.print-preview-artifact/v1" || page.get("svg").is_some() || page.get("png_data_url").is_some()
-        || !page["path"].as_str().is_some_and(|s|std::path::Path::new(s).is_absolute())
-        || !digest(&page["sha256"]) || !digest(&page["authority_sha256"]) || !digest(&page["result_sha256"])
-        || !digest(&data["preview"]["layout_sha256"]) || page["sha256"]!=row["sha256"] || page["size_bytes"]!=row["size_bytes"]
-        || page["content_type"]!="image/svg+xml" || !page["size_bytes"].as_u64().is_some_and(|n|n>0&&n<=96*1024*1024)
-        || !retained.is_some_and(|n|[86_400_000,604_800_000].contains(&n))
-        || page["created_at_unix_ms"].as_u64().and_then(|v|v.checked_add(retained?))!=page["expires_at_unix_ms"].as_u64()
-        || inputs.value("out").is_some_and(|out|row["out"]!=out) {
+    if data["project"] != inputs.require("project")?
+        || rows.len() != 1
+        || row["transformer"] != inputs.require("transformer")?
+        || data["preview"]["artifact_schema"] != "ds.print-preview-artifact/v1"
+        || page["schema"] != "ds.print-preview-artifact/v1"
+        || page.get("svg").is_some()
+        || page.get("png_data_url").is_some()
+        || !page["path"]
+            .as_str()
+            .is_some_and(|s| std::path::Path::new(s).is_absolute())
+        || !digest(&page["sha256"])
+        || !digest(&page["authority_sha256"])
+        || !digest(&page["result_sha256"])
+        || !digest(&data["preview"]["layout_sha256"])
+        || page["sha256"] != row["sha256"]
+        || page["size_bytes"] != row["size_bytes"]
+        || page["content_type"] != "image/svg+xml"
+        || !page["size_bytes"]
+            .as_u64()
+            .is_some_and(|n| n > 0 && n <= 96 * 1024 * 1024)
+        || !retained.is_some_and(|n| [86_400_000, 604_800_000].contains(&n))
+        || page["created_at_unix_ms"]
+            .as_u64()
+            .and_then(|v| v.checked_add(retained?))
+            != page["expires_at_unix_ms"].as_u64()
+        || inputs.value("out").is_some_and(|out| row["out"] != out)
+    {
         return Err(Failure::failed("desktop_unreadable","The native preview file receipt differs from the explicit request or its digest/expiry pins.")
             .remedy("use matching Desktop/CLI and retain any written preview file; no inline SVG is admitted"));
     }
@@ -483,10 +569,19 @@ pub fn preview(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     // Project/name/document validation precedes pairing or any application call.
     bounded_project(inputs.require("project")?)?;
     bounded_transformer(inputs.require("transformer")?)?;
-    let arguments = match (inputs.value("layout"),inputs.value("template")) {
-        (Some(path),None)=>preview_arguments(inputs,read_request(path,"provide a draft layout at most800KB")?)?,
-        (None,Some(path))=>preview_template_arguments(inputs,read_request(path,"provide the exact layout Location from desktop printing view --catalogue")?)?,
-        _=>return Err(invalid_read("supply exactly one --layout or --template")),
+    let arguments = match (inputs.value("layout"), inputs.value("template")) {
+        (Some(path), None) => preview_arguments(
+            inputs,
+            read_request(path, "provide a draft layout at most800KB")?,
+        )?,
+        (None, Some(path)) => preview_template_arguments(
+            inputs,
+            read_request(
+                path,
+                "provide the exact layout Location from desktop printing view --catalogue",
+            )?,
+        )?,
+        _ => return Err(invalid_read("supply exactly one --layout or --template")),
     };
     let result = ops::invoke(
         &ops::paired(inputs.value("desktop-descriptor"))?,
@@ -495,7 +590,7 @@ pub fn preview(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         Duration::from_secs(30 * 60),
     )
     .map_err(ops::classify_signed_out)?;
-    admit_preview_result(inputs,result)
+    admit_preview_result(inputs, result)
 }
 
 pub fn export(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -546,7 +641,17 @@ mod tests {
     #[test]
     fn read_operations_declare_explicit_project_without_a_switch_operation() {
         assert_eq!(TRANSFORMERS_OP.arguments, ["project", "limit"]);
-        assert_eq!(PREVIEW_OP.arguments, ["project", "transformer", "layout", "template", "out", "retention"]);
+        assert_eq!(
+            PREVIEW_OP.arguments,
+            [
+                "project",
+                "transformer",
+                "layout",
+                "template",
+                "out",
+                "retention"
+            ]
+        );
         assert_eq!(
             EXPORT_OP.arguments,
             [
@@ -555,7 +660,8 @@ mod tests {
                 "transformers",
                 "force",
                 "selection",
-                "intent", "preview_retention"
+                "intent",
+                "preview_retention"
             ]
         );
     }
@@ -580,16 +686,18 @@ mod tests {
             "--acquire",
             "--refresh",
         ] {
-            assert!(preview_inputs(&[
-                "--project",
-                "huye",
-                "--transformer",
-                "agasharu",
-                "--layout",
-                "draft.json",
-                extra
-            ])
-            .is_err());
+            assert!(
+                preview_inputs(&[
+                    "--project",
+                    "huye",
+                    "--transformer",
+                    "agasharu",
+                    "--layout",
+                    "draft.json",
+                    extra
+                ])
+                .is_err()
+            );
         }
         let layout = serde_json::to_value(ds_command_kernel::printing::default_layout()).unwrap();
         for name in ["combined_transformer", "AGASHARU", "../agasharu"] {
@@ -645,30 +753,100 @@ mod tests {
 
     #[test]
     fn live_preview_template_and_delivery_controls_are_closed_before_pairing() {
-        let dir=tempfile::tempdir().unwrap(); let output=dir.path().join("new.svg");
-        let inputs=preview_inputs(&["--project","huye","--transformer","agasharu","--template","location.json","--out",output.to_str().unwrap(),"--retention","7d"]).unwrap();
-        assert_eq!(preview_template_arguments(&inputs,json!({"kind":"layout","id":"focus-a0"})).unwrap(),
-            json!({"project":"huye","transformer":"agasharu","template":{"kind":"layout","id":"focus-a0"},"out":output,"retention":"7d"}));
-        for location in [json!({"kind":"layout","id":"../other"}),json!({"kind":"layout","id":"a0","extra":true}),json!({"kind":"governed_html","id":"a4"})] {
-            assert!(preview_template_arguments(&inputs,location).is_err());
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("new.svg");
+        let inputs = preview_inputs(&[
+            "--project",
+            "huye",
+            "--transformer",
+            "agasharu",
+            "--template",
+            "location.json",
+            "--out",
+            output.to_str().unwrap(),
+            "--retention",
+            "7d",
+        ])
+        .unwrap();
+        assert_eq!(
+            preview_template_arguments(&inputs, json!({"kind":"layout","id":"focus-a0"})).unwrap(),
+            json!({"project":"huye","transformer":"agasharu","template":{"kind":"layout","id":"focus-a0"},"out":output,"retention":"7d"})
+        );
+        for location in [
+            json!({"kind":"layout","id":"../other"}),
+            json!({"kind":"layout","id":"a0","extra":true}),
+            json!({"kind":"governed_html","id":"a4"}),
+        ] {
+            assert!(preview_template_arguments(&inputs, location).is_err());
         }
-        std::fs::write(&output,b"keep").unwrap();
-        assert!(preview_template_arguments(&inputs,json!({"kind":"layout","id":"focus-a0"})).is_err());
-        assert_eq!(std::fs::read(output).unwrap(),b"keep");
-        for args in [vec!["--project","huye","--transformer","agasharu"],vec!["--project","huye","--transformer","agasharu","--layout","draft.json","--template","location.json"]] {
-            let inputs=preview_inputs(&args).unwrap(); assert!(preview(&inputs,&Context { confirmed:false, output:ds_cli_contract::Output::resolve(ds_cli_contract::Format::Json,false,true) }).is_err());
+        std::fs::write(&output, b"keep").unwrap();
+        assert!(
+            preview_template_arguments(&inputs, json!({"kind":"layout","id":"focus-a0"})).is_err()
+        );
+        assert_eq!(std::fs::read(output).unwrap(), b"keep");
+        for args in [
+            vec!["--project", "huye", "--transformer", "agasharu"],
+            vec![
+                "--project",
+                "huye",
+                "--transformer",
+                "agasharu",
+                "--layout",
+                "draft.json",
+                "--template",
+                "location.json",
+            ],
+        ] {
+            let inputs = preview_inputs(&args).unwrap();
+            assert!(
+                preview(
+                    &inputs,
+                    &Context {
+                        confirmed: false,
+                        output: ds_cli_contract::Output::resolve(
+                            ds_cli_contract::Format::Json,
+                            false,
+                            true
+                        )
+                    }
+                )
+                .is_err()
+            );
         }
     }
 
     #[test]
     fn live_preview_cannot_admit_inline_or_crossed_native_file_receipts() {
-        let inputs=preview_inputs(&["--project","huye","--transformer","agasharu","--layout","draft.json"]).unwrap();
-        let artifact=json!({"schema":"ds.print-preview-artifact/v1","path":"/native/preview.svg","sha256":"a".repeat(64),"size_bytes":9*1024*1024,
+        let inputs = preview_inputs(&[
+            "--project",
+            "huye",
+            "--transformer",
+            "agasharu",
+            "--layout",
+            "draft.json",
+        ])
+        .unwrap();
+        let artifact = json!({"schema":"ds.print-preview-artifact/v1","path":"/native/preview.svg","sha256":"a".repeat(64),"size_bytes":9*1024*1024,
             "content_type":"image/svg+xml","authority_sha256":"b".repeat(64),"result_sha256":"c".repeat(64),"created_at_unix_ms":100,"expires_at_unix_ms":86_400_100,"retention_ms":86_400_000});
-        let result=json!({"project":"huye","preview":{"layout_sha256":"d".repeat(64),"artifact_schema":"ds.print-preview-artifact/v1"},"results":[{"transformer":"agasharu","page":artifact,"sha256":"a".repeat(64),"size_bytes":9*1024*1024}]});
-        assert_eq!(admit_preview_result(&inputs,result.clone()).unwrap(),result);
-        for field in ["path","sha256","size_bytes","expires_at_unix_ms","authority_sha256"] {let mut bad=result.clone();bad["results"][0]["page"][field]=json!("other");assert!(admit_preview_result(&inputs,bad).is_err());}
-        let mut bad=result;bad["results"][0]["page"]["svg"]=json!("<svg/>");assert!(admit_preview_result(&inputs,bad).is_err());
+        let result = json!({"project":"huye","preview":{"layout_sha256":"d".repeat(64),"artifact_schema":"ds.print-preview-artifact/v1"},"results":[{"transformer":"agasharu","page":artifact,"sha256":"a".repeat(64),"size_bytes":9*1024*1024}]});
+        assert_eq!(
+            admit_preview_result(&inputs, result.clone()).unwrap(),
+            result
+        );
+        for field in [
+            "path",
+            "sha256",
+            "size_bytes",
+            "expires_at_unix_ms",
+            "authority_sha256",
+        ] {
+            let mut bad = result.clone();
+            bad["results"][0]["page"][field] = json!("other");
+            assert!(admit_preview_result(&inputs, bad).is_err());
+        }
+        let mut bad = result;
+        bad["results"][0]["page"]["svg"] = json!("<svg/>");
+        assert!(admit_preview_result(&inputs, bad).is_err());
     }
 
     #[test]
@@ -697,16 +875,20 @@ mod tests {
                 serde_json::from_str(&ds_command_kernel::printing::evaluate(&request).unwrap())
                     .unwrap();
             assert_eq!(native["acquire_missing"], false);
-            assert!(native["contexts"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|row| row["source"]["kind"] == "google_open_buildings"));
-            assert!(native["contexts"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|row| row["source"]["kind"] == "elevation_contours"));
+            assert!(
+                native["contexts"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|row| row["source"]["kind"] == "google_open_buildings")
+            );
+            assert!(
+                native["contexts"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|row| row["source"]["kind"] == "elevation_contours")
+            );
         }
         assert_eq!(arguments["layout"], layout);
     }
@@ -714,10 +896,12 @@ mod tests {
     #[test]
     fn request_writes_require_the_exact_project_locally() {
         let prepare = json!({"layout": {}, "expectedRevision": "", "selection": {}});
-        assert!(require_request_project(&prepare, "printing.prepare")
-            .expect_err("prepare project is required")
-            .message()
-            .contains("explicit project"));
+        assert!(
+            require_request_project(&prepare, "printing.prepare")
+                .expect_err("prepare project is required")
+                .message()
+                .contains("explicit project")
+        );
         assert_eq!(
             require_request_project(&json!({"project":"huye"}), "printing.prepare").unwrap(),
             "huye"
@@ -773,11 +957,47 @@ mod tests {
     }
     #[test]
     fn a4_preview_retention_is_declared_and_main_export_refuses_before_pairing() {
-        let preview=export_inputs(&["--project","huye","--transformer","agasharu","--intent","preview","--preview-retention","7d"]).unwrap();
-        assert_eq!(export_arguments(&preview).unwrap()["preview_retention"],"7d");
-        let main=export_inputs(&["--project","huye","--transformer","agasharu","--preview-retention","7d"]).unwrap();
-        assert_eq!(export_arguments(&main).unwrap_err().code(),"printing_request_invalid");
-        assert!(export_inputs(&["--project","huye","--transformer","agasharu","--intent","preview","--preview-retention","30d"]).is_err());
+        let preview = export_inputs(&[
+            "--project",
+            "huye",
+            "--transformer",
+            "agasharu",
+            "--intent",
+            "preview",
+            "--preview-retention",
+            "7d",
+        ])
+        .unwrap();
+        assert_eq!(
+            export_arguments(&preview).unwrap()["preview_retention"],
+            "7d"
+        );
+        let main = export_inputs(&[
+            "--project",
+            "huye",
+            "--transformer",
+            "agasharu",
+            "--preview-retention",
+            "7d",
+        ])
+        .unwrap();
+        assert_eq!(
+            export_arguments(&main).unwrap_err().code(),
+            "printing_request_invalid"
+        );
+        assert!(
+            export_inputs(&[
+                "--project",
+                "huye",
+                "--transformer",
+                "agasharu",
+                "--intent",
+                "preview",
+                "--preview-retention",
+                "30d"
+            ])
+            .is_err()
+        );
     }
 
     #[test]

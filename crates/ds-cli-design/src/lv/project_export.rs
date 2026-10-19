@@ -7,8 +7,7 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_network_contracts::lv_processing::{
-    NativeLvError, encode_native_lv_request_from_layers,
-    encode_native_lv_request_with_config,
+    NativeLvError, encode_native_lv_request_from_layers, encode_native_lv_request_with_config,
 };
 use serde_json::{Value, json};
 

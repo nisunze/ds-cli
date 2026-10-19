@@ -326,7 +326,7 @@ fn selected_read(
             Some(_) => {
                 return Err(local(
                     "only explicit read selections may enter retained PM rooms",
-                ))
+                ));
             }
             None => pm_graph_catalogue::consume(&root, &binding, offline, time, &mut source),
         }
@@ -522,12 +522,14 @@ mod tests {
         assert!(denied(&error));
         let mut wrong = context;
         wrong["task_id"] = json!("other");
-        assert!(acquire_task("p", &selection, |request| match request {
-            TaskRequest::Graph => Ok(graph.clone()),
-            TaskRequest::Records => Ok(wrong.clone()),
-            TaskRequest::Timeline => panic!("wrong scope blocks timeline"),
-        })
-        .is_err());
+        assert!(
+            acquire_task("p", &selection, |request| match request {
+                TaskRequest::Graph => Ok(graph.clone()),
+                TaskRequest::Records => Ok(wrong.clone()),
+                TaskRequest::Timeline => panic!("wrong scope blocks timeline"),
+            })
+            .is_err()
+        );
     }
     #[test]
     fn task_receipt_admission_refuses_selection_scope_and_missing_completeness() {

@@ -1,13 +1,16 @@
 //! Argument/terminal binding only for the native source-preview owner.
 use ds_cli_contract::spec::{Arg, Refusal};
 use ds_cli_contract::{Failure, Inputs};
-use ds_command_kernel::asset_preview::{Request, REQUEST_SCHEMA};
-use serde_json::{json, Value};
+use ds_command_kernel::asset_preview::{REQUEST_SCHEMA, Request};
+use serde_json::{Value, json};
 pub const RETAIN: Arg = Arg::switch(
     "retain",
     "Acquire one whole PDF, DOCX or XLSX document through the shared native file room (PDF 32 MiB; Office 8 MiB); return exact source/file pins.",
 );
-pub const OFFLINE:Arg=Arg::switch("offline","Consume retained document only; requires --retain and all three expected source pins; zero source/auth refresh calls.");
+pub const OFFLINE: Arg = Arg::switch(
+    "offline",
+    "Consume retained document only; requires --retain and all three expected source pins; zero source/auth refresh calls.",
+);
 pub const REVISION: Arg = Arg::value(
     "expected-revision",
     "<native-revision>",

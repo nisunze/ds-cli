@@ -54,21 +54,21 @@
 //! **A window path.** `--desktop-descriptor` is not an input of any `ds pm`
 //! command.
 
-pub mod checklist_notes;
-pub mod documents;
 pub mod authoring;
+pub mod checklist_notes;
 pub mod collaboration;
 pub mod deletion;
+pub mod documents;
 pub mod geometry;
 pub mod member;
 pub mod model_link;
 pub mod note;
 pub mod note_memory;
-pub mod private_notes;
-pub mod private_note_backups;
+pub mod overview;
 pub mod party;
 pub mod plan;
-pub mod overview;
+pub mod private_note_backups;
+pub mod private_notes;
 pub mod record;
 pub mod task;
 

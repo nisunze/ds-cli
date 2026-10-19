@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::{LANE_ARG, TASK_ARG};
 
@@ -29,7 +29,16 @@ Headless: the named project of the signed-in native credential, no window.",
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
-    args: &[TASK_ARG, TIMELINE_ARG, Arg::switch("offline", "Read this exact retained task/timeline selection without network or freshness checks; captured permissions may have changed."), LANE_ARG, crate::PROJECT_ARG],
+    args: &[
+        TASK_ARG,
+        TIMELINE_ARG,
+        Arg::switch(
+            "offline",
+            "Read this exact retained task/timeline selection without network or freshness checks; captured permissions may have changed.",
+        ),
+        LANE_ARG,
+        crate::PROJECT_ARG,
+    ],
     output: "\
 `task` with the canonical fields — including `awaitingCorrespondence`, \
 `blockedRecordIds` and every `correspondenceBlockers` entry with who set \
@@ -46,9 +55,21 @@ and per-source counts. `retained` reports capture-only permission/source freshne
     }],
     refusals: &crate::correspondence_refusals::<25>(&[
         crate::TASK_NOT_FOUND,
-        Refusal {code:"pm_offline_acquisition_required",when:"no admitted retained task matches the protected account/project and exact task/timeline selection, or access was denied",remedy:"read this exact task and timeline selection online once under the same account"},
-        Refusal {code:"pm_retained_unavailable",when:"the bounded retained task receipts cannot be verified or persisted",remedy:"inspect owner-only local DS data and repeat the exact online task read"},
-        Refusal {code:"project_context_changed",when:"authority or the local mutation generation changed during task acquisition",remedy:"repeat the entire intentional task read under the intended account"},
+        Refusal {
+            code: "pm_offline_acquisition_required",
+            when: "no admitted retained task matches the protected account/project and exact task/timeline selection, or access was denied",
+            remedy: "read this exact task and timeline selection online once under the same account",
+        },
+        Refusal {
+            code: "pm_retained_unavailable",
+            when: "the bounded retained task receipts cannot be verified or persisted",
+            remedy: "inspect owner-only local DS data and repeat the exact online task read",
+        },
+        Refusal {
+            code: "project_context_changed",
+            when: "authority or the local mutation generation changed during task acquisition",
+            remedy: "repeat the entire intentional task read under the intended account",
+        },
     ]),
     reference: Some("docs/reference/pm.md"),
     search: &[
@@ -204,10 +225,12 @@ mod tests {
     #[test]
     fn task_offline_is_explicit_and_projection_retains_partial_capture_qualifications() {
         assert!(COMMAND.args.iter().any(|arg| arg.name == "offline"));
-        assert!(COMMAND
-            .refusals
-            .iter()
-            .any(|r| r.code == "pm_offline_acquisition_required"));
+        assert!(
+            COMMAND
+                .refusals
+                .iter()
+                .any(|r| r.code == "pm_offline_acquisition_required")
+        );
         let mut raw = captured_task(true);
         raw["records_context"]["records"] = json!([]);
         raw["timeline_receipt"] =

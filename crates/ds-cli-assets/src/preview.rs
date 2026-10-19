@@ -10,7 +10,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 use crate::{ASSET_ARG, LANE_ARG, MEMBER_ARG, PAGES_ARG, PROJECT_ARG, ROWS_ARG, SHEET_ARG};
 
@@ -124,9 +124,15 @@ Encrypted/malformed content refused. --retain consumes a whole catalogue or PM P
         crate::retained_preview::RETENTION,
         MEMBER_ARG,
         SHEET_ARG,
-        Arg { default: None, ..PAGES_ARG },
+        Arg {
+            default: None,
+            ..PAGES_ARG
+        },
         PDF_TEXT_PAGES,
-        Arg { default: None, ..ROWS_ARG },
+        Arg {
+            default: None,
+            ..ROWS_ARG
+        },
         LANE_ARG,
         PROJECT_ARG,
     ],
@@ -164,10 +170,22 @@ empty image. Retained PDF: ds.asset-preview.receipt/v1 with exact source revisio
         PDF_REFUSALS[4],
         PDF_REFUSALS[5],
         PDF_REFUSALS[6],
-        crate::retained_preview::REFUSALS[0],crate::retained_preview::REFUSALS[1],crate::retained_preview::REFUSALS[2],crate::retained_preview::REFUSALS[3],
-        crate::retained_preview::REFUSALS[4],crate::retained_preview::REFUSALS[5],crate::retained_preview::REFUSALS[6],crate::retained_preview::REFUSALS[7],
-        crate::retained_preview::REFUSALS[8],crate::retained_preview::REFUSALS[9],crate::retained_preview::REFUSALS[10],crate::retained_preview::REFUSALS[11],
-        crate::retained_preview::REFUSALS[12],crate::retained_preview::REFUSALS[13],crate::retained_preview::REFUSALS[14],crate::retained_preview::REFUSALS[15],
+        crate::retained_preview::REFUSALS[0],
+        crate::retained_preview::REFUSALS[1],
+        crate::retained_preview::REFUSALS[2],
+        crate::retained_preview::REFUSALS[3],
+        crate::retained_preview::REFUSALS[4],
+        crate::retained_preview::REFUSALS[5],
+        crate::retained_preview::REFUSALS[6],
+        crate::retained_preview::REFUSALS[7],
+        crate::retained_preview::REFUSALS[8],
+        crate::retained_preview::REFUSALS[9],
+        crate::retained_preview::REFUSALS[10],
+        crate::retained_preview::REFUSALS[11],
+        crate::retained_preview::REFUSALS[12],
+        crate::retained_preview::REFUSALS[13],
+        crate::retained_preview::REFUSALS[14],
+        crate::retained_preview::REFUSALS[15],
     ]),
     reference: Some("docs/reference/assets.md"),
     search: &[],

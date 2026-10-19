@@ -192,7 +192,7 @@ pub(crate) fn selected(
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::os::unix::fs::{symlink, PermissionsExt};
+    use std::os::unix::fs::{PermissionsExt, symlink};
 
     static OWNER: External = External {
         name: "ds-network",
