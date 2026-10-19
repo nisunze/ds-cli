@@ -14435,7 +14435,7 @@ fn version_catalog_publication_uses_closed_bulk_route_once_without_content_or_re
     let command=Command::Publish {object_id:"TR-1".into(),mutation:Mutation{version_id:None,task_id:None,source_record_id:None,display_ordinal:Some(1),insert_before_version_id:None,expected_catalog_revision:"a".repeat(64),expected_source_revision:"2026-10-12T12:00:00Z".into(),reason:"Freeze reviewed current".into(),idempotency_key:"freeze1".into()}};
     client.design_version_catalog("active-project",&command,NOW+1).unwrap();
     let calls=transport.calls();assert_eq!(calls.len(),2,"only sign-in and single publication: {calls:?}");let call=calls.last().unwrap();
-    for expected in ["path=/bulk/api/v1/data","publish_transformer_version_revision","catalog_publication","eds_project_id","transformer_id","correlation=true"] {assert!(call.contains(expected),"{call}");}
+    for expected in ["path=/api/v1/data","publish_transformer_version_revision","catalog_publication","eds_project_id","transformer_id","correlation=true"] {assert!(call.contains(expected),"{call}");}
     assert!(!call.contains("gdfs")&&!call.contains("snapshot")&&!call.contains("layers"),"no caller content: {call}");
     transport.push_design_versions(409,br#"{"success":false,"error":{"code":"VERSION_CATALOG_SOURCE_MOVED","message":"Exact source moved"}}"#);
     let error=client.design_version_catalog("active-project",&command,NOW+2).unwrap_err();
@@ -14457,7 +14457,7 @@ fn historical_import_uses_one_closed_bulk_write_and_rejects_moved_acknowledgemen
     client.transformer_history_import("active-project",&input,NOW+1).unwrap();
     let calls=transport.calls();assert_eq!(calls.len(),2);
     let call=calls.last().unwrap();
-    for expected in ["import_transformer_version","path=/bulk/api/v1/data","active-project","TR-1"] {assert!(call.contains(expected),"{call}");}
+    for expected in ["import_transformer_version","path=/api/v1/data","active-project","TR-1"] {assert!(call.contains(expected),"{call}");}
     assert!(!calls.iter().any(|c|c.contains("transformer_context ")||c.contains("project_configuration")));
     let mut moved=ack;moved["version"]["source"]["member_sha256"]=json!("d".repeat(64));
     transport.push_design_versions(200,&selection_envelope(moved));
@@ -14517,7 +14517,7 @@ fn safe_version_promotion_uses_one_closed_bulk_call_and_verifies_original_backup
     );
     let call = calls.last().unwrap();
     for expected in [
-        "path=/bulk/api/v1/data",
+        "path=/api/v1/data",
         "promote_transformer_version_revision",
         "catalog_promotion",
         "transformer_id",
@@ -14606,7 +14606,7 @@ fn exact_revision_comparison_consumes_only_two_bulk_reads_and_offline_reuse_none
     );
     for call in &calls[1..] {
         assert!(
-            call.contains("path=/bulk/api/v1/data")
+            call.contains("path=/api/v1/data")
                 && call.contains("get_transformer_version_revision"),
             "{call}"
         );

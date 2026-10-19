@@ -18,7 +18,7 @@ pub const SCHEMA_VERSION: &str = "ds-web.gateway-registry/v1";
 
 /// sha256 of the exact `routing/operations.json` bytes these rows came from.
 pub const DESCRIPTOR_SHA256: &str =
-    "833ea64567be8c1967c2d0bf469223c52e0c0ce3d833c74b907dc1d5c23d1eab";
+    "fa6dbe829df228f2d5e69cb4465357be5876c39f228664cffd0287cc64afa861";
 
 /// Every declared operation that has a gateway route, sorted by id.
 pub const OPERATIONS: &[GatewayOperation] = &[
@@ -101,7 +101,7 @@ pub const OPERATIONS: &[GatewayOperation] = &[
     GatewayOperation {
         id: "domains.assets.semantic_finalize",
         method: "POST",
-        path: "/bulk/api/v1/data",
+        path: "/api/v1/data",
         path_params: &[],
         action_key: "action",
         actions: &["finalize_asset_semantic"],
@@ -500,7 +500,7 @@ pub const OPERATIONS: &[GatewayOperation] = &[
     GatewayOperation {
         id: "domains.design_versions.import",
         method: "POST",
-        path: "/bulk/api/v1/data",
+        path: "/api/v1/data",
         path_params: &[],
         action_key: "action",
         actions: &["import_transformer_version"],
@@ -519,7 +519,7 @@ pub const OPERATIONS: &[GatewayOperation] = &[
     GatewayOperation {
         id: "domains.design_versions.promote_revision",
         method: "POST",
-        path: "/bulk/api/v1/data",
+        path: "/api/v1/data",
         path_params: &[],
         action_key: "action",
         actions: &["promote_transformer_version_revision"],
@@ -538,7 +538,7 @@ pub const OPERATIONS: &[GatewayOperation] = &[
     GatewayOperation {
         id: "domains.design_versions.publish_revision",
         method: "POST",
-        path: "/bulk/api/v1/data",
+        path: "/api/v1/data",
         path_params: &[],
         action_key: "action",
         actions: &["publish_transformer_version_revision"],
@@ -557,7 +557,7 @@ pub const OPERATIONS: &[GatewayOperation] = &[
     GatewayOperation {
         id: "domains.design_versions.read_revision",
         method: "POST",
-        path: "/bulk/api/v1/data",
+        path: "/api/v1/data",
         path_params: &[],
         action_key: "action",
         actions: &["get_transformer_version_revision"],
@@ -979,44 +979,6 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         native_command: "",
     },
     GatewayOperation {
-        id: "domains.solar.compute",
-        method: "POST",
-        path: "/api/v1/solar",
-        path_params: &[],
-        action_key: "action",
-        actions: &[],
-        transport: "json",
-        authority: "gateway",
-        principal: "user",
-        lane_header: false,
-        idempotency: "unsafe",
-        retry_class: "none",
-        timeout_s: 30,
-        response_cap_bytes: 1048576,
-        resolution_web: "unavailable",
-        resolution_desktop: "native",
-        native_command: "solar_native_calculate",
-    },
-    GatewayOperation {
-        id: "domains.solar.compute_batch",
-        method: "POST",
-        path: "/api/v1/solar",
-        path_params: &[],
-        action_key: "action",
-        actions: &[],
-        transport: "json",
-        authority: "gateway",
-        principal: "user",
-        lane_header: false,
-        idempotency: "unsafe",
-        retry_class: "none",
-        timeout_s: 30,
-        response_cap_bytes: 1048576,
-        resolution_web: "unavailable",
-        resolution_desktop: "native",
-        native_command: "solar_native_calculate_batch",
-    },
-    GatewayOperation {
         id: "domains.solar.data.locality",
         method: "GET",
         path: "/api/v1/solar/locality",
@@ -1153,25 +1115,6 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         id: "domains.solar.portfolio.update",
         method: "POST",
         path: "/api/v1/solar",
-        path_params: &[],
-        action_key: "action",
-        actions: &[],
-        transport: "json",
-        authority: "gateway",
-        principal: "user",
-        lane_header: false,
-        idempotency: "unsafe",
-        retry_class: "none",
-        timeout_s: 30,
-        response_cap_bytes: 1048576,
-        resolution_web: "gateway",
-        resolution_desktop: "gateway",
-        native_command: "",
-    },
-    GatewayOperation {
-        id: "domains.solar.reference_unit",
-        method: "POST",
-        path: "/api/v1/solar/reference-unit",
         path_params: &[],
         action_key: "action",
         actions: &[],
@@ -1506,4 +1449,9 @@ pub const OPERATIONS: &[GatewayOperation] = &[
 ];
 
 /// Declared operations with no gateway route at all — native-only doors.
-pub const NATIVE_ONLY_OPERATIONS: &[&str] = &["domains.solar.report.generate"];
+pub const NATIVE_ONLY_OPERATIONS: &[&str] = &[
+    "domains.solar.compute",
+    "domains.solar.compute_batch",
+    "domains.solar.reference_unit",
+    "domains.solar.report.generate",
+];

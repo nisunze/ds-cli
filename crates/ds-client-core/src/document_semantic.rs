@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn semantic_finalize_registry_is_a_single_fixed_bulk_admission() {
         let route = crate::gateway_operation("domains.assets.semantic_finalize").unwrap();
-        assert_eq!(route.path, "/bulk/api/v1/data");
+        assert_eq!(route.path, "/api/v1/data");
         assert_eq!(route.method, "POST");
         assert_eq!(route.actions, ["finalize_asset_semantic"]);
         assert_eq!(route.response_cap_bytes, 1024 * 1024);
@@ -488,7 +488,7 @@ mod tests {
         assert_eq!(source.uploaded, 1);
         assert_eq!(source.calls.len(), 2);
         assert_eq!(source.calls[0].0, "/api/v1/assets");
-        assert_eq!(source.calls[1].0, "/bulk/api/v1/data");
+        assert_eq!(source.calls[1].0, "/api/v1/data");
         assert!(source.calls[1].1.get("ds_project").is_none());
         assert_eq!(source.calls[1].1["eds_project_id"], "project");
         let mut replay = Source {

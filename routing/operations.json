@@ -16,12 +16,16 @@
     "     into the generated public manifest. The browser learns one origin:",
     "     the lane's EDS API Gateway (or its own origin in local development).",
     "  2. A retired service may never appear. ds-solar-calc and ds-solar-reporter",
-    "     are retired; Python is out of the application stack except for",
-    "     ds-solar-weather, which is private and reached only by ds-brain."
+    "     are retired, and so is all hosted compute (2026-10-19): ds-solar,",
+    "     ds-solar-weather and ds-network-reporter are deleted. Every computation",
+    "     runs on an edge; ds-brain only authorizes, retrieves, saves and manages."
   ],
   "retired_services": [
     "ds-solar-calc",
-    "ds-solar-reporter"
+    "ds-solar-reporter",
+    "ds-solar",
+    "ds-solar-weather",
+    "ds-network-reporter"
   ],
   "operation_defaults": {
     "doc": [
@@ -69,24 +73,6 @@
       "language": "go",
       "exposure": "private",
       "note": "The only backend the public gateway routes browser traffic to."
-    },
-    "ds_solar_weather_url": {
-      "service": "ds-solar-weather",
-      "language": "python",
-      "exposure": "private",
-      "note": "The sole sanctioned Python service. Reached ONLY as a bounded ds-brain relay; it has no gateway surface of its own."
-    },
-    "ds_solar_engine_url": {
-      "service": "ds-solar",
-      "language": "rust",
-      "exposure": "private",
-      "note": "The Cloud Run adapter over the same Rust runtime linked into the installed application. Reached only through ds-brain."
-    },
-    "ds_network_reporter_url": {
-      "service": "ds-network-reporter",
-      "language": "rust",
-      "exposure": "private",
-      "note": "Report worker. ds-brain orchestrates it; the browser never addresses it."
     }
   },
   "targets": {
@@ -346,19 +332,16 @@
         "reference_unit": {
           "summary": "Seal one city's reference PV unit and return its artifact inventory.",
           "doc": [
-            "gateway -> ds-brain -> ds-solar-weather. ds-brain adds Cloud Run service",
-            "identity and relays a closed request; the response is an inventory of",
-            "signed URLs. This is the ONLY route in the product that ends at Python,",
-            "and it is a reference unit, never a calculation."
+            "Retired 2026-10-19 with the hosted ds-solar-weather service: the gateway",
+            "declares no route and ds-brain relays nothing. A reference unit is",
+            "produced on an edge by the pinned reference producer and imported."
           ],
           "transport": "json",
-          "gateway": {
-            "method": "POST",
-            "path": "/api/v1/solar/reference-unit",
-            "backend": "ds_brain_url",
-            "relays_to": "ds_solar_weather_url"
-          },
-          "resolution": { "web": "gateway", "desktop": "gateway" }
+          "resolution": { "web": "unavailable", "desktop": "unavailable" },
+          "unavailable_reason": {
+            "web": "The hosted reference-unit service is retired; reference units are prepared on an edge and imported (DS GridDesign Desktop or `ds solar`).",
+            "desktop": "The hosted reference-unit service is retired; reference units are prepared on an edge and imported through the native Solar commands."
+          }
         },
         "compute": {
           "summary": "Calculate one city.",
@@ -367,12 +350,6 @@
             "Web: closed until browser parity exists; Brain computes no Solar (edge-only compute)."
           ],
           "transport": "json",
-          "gateway": {
-            "method": "POST",
-            "path": "/api/v1/solar",
-            "backend": "ds_brain_url",
-            "relays_to": "ds_solar_engine_url"
-          },
           "native": { "command": "solar_native_calculate" },
           "resolution": { "web": "unavailable", "desktop": "native" },
           "unavailable_reason": {
@@ -382,12 +359,6 @@
         "compute_batch": {
           "summary": "Calculate a selected set of cities as one closed batch.",
           "transport": "json",
-          "gateway": {
-            "method": "POST",
-            "path": "/api/v1/solar",
-            "backend": "ds_brain_url",
-            "relays_to": "ds_solar_engine_url"
-          },
           "native": { "command": "solar_native_calculate_batch" },
           "resolution": { "web": "unavailable", "desktop": "native" },
           "unavailable_reason": {
@@ -438,8 +409,7 @@
           "gateway": {
             "method": "POST",
             "path": "/api/v1/pipeline",
-            "backend": "ds_brain_url",
-            "relays_to": "ds_network_reporter_url"
+            "backend": "ds_brain_bulk_url"
           },
           "resolution": { "web": "gateway", "desktop": "gateway" }
         }
@@ -546,7 +516,7 @@
           "retry_class": "none",
           "timeout_s": 120,
           "response_cap_bytes": 1048576,
-          "gateway": { "method": "POST", "path": "/bulk/api/v1/data", "backend": "ds_brain_bulk_url" },
+          "gateway": { "method": "POST", "path": "/api/v1/data", "backend": "ds_brain_bulk_url" },
           "resolution": { "web": "gateway", "desktop": "gateway" }
         }
       }
@@ -1174,7 +1144,7 @@
           "retry_class": "none",
           "timeout_s": 120,
           "response_cap_bytes": 67108864,
-          "gateway": { "method": "POST", "path": "/bulk/api/v1/data", "backend": "ds_brain_bulk_url" },
+          "gateway": { "method": "POST", "path": "/api/v1/data", "backend": "ds_brain_bulk_url" },
           "resolution": { "web": "gateway", "desktop": "gateway" }
         },
         "publish_revision": {
@@ -1186,7 +1156,7 @@
           "retry_class": "none",
           "timeout_s": 120,
           "response_cap_bytes": 1048576,
-          "gateway": { "method": "POST", "path": "/bulk/api/v1/data", "backend": "ds_brain_bulk_url" },
+          "gateway": { "method": "POST", "path": "/api/v1/data", "backend": "ds_brain_bulk_url" },
           "resolution": { "web": "gateway", "desktop": "gateway" }
         },
         "import": {
@@ -1198,7 +1168,7 @@
           "retry_class": "none",
           "timeout_s": 120,
           "response_cap_bytes": 67108864,
-          "gateway": { "method": "POST", "path": "/bulk/api/v1/data", "backend": "ds_brain_bulk_url" },
+          "gateway": { "method": "POST", "path": "/api/v1/data", "backend": "ds_brain_bulk_url" },
           "resolution": { "web": "gateway", "desktop": "gateway" }
         },
         "promote_revision": {
@@ -1212,7 +1182,7 @@
           "retry_class": "none",
           "timeout_s": 120,
           "response_cap_bytes": 1048576,
-          "gateway": { "method": "POST", "path": "/bulk/api/v1/data", "backend": "ds_brain_bulk_url" },
+          "gateway": { "method": "POST", "path": "/api/v1/data", "backend": "ds_brain_bulk_url" },
           "resolution": { "web": "gateway", "desktop": "gateway" }
         }
       }
@@ -1440,7 +1410,7 @@
           "gateway": {
             "method": "POST",
             "path": "/report",
-            "backend": "ds_brain_url"
+            "backend": "ds_brain_bulk_url"
           },
           "resolution": { "web": "gateway", "desktop": "gateway" }
         }
