@@ -104,24 +104,7 @@ impl Operation for PrintScalingValidate {
     }
 }
 
-/// Plan one governed printing template's legacy style_refs → style_keys
-/// migration for ds-brain, which holds the stored template and the governed
-/// catalogue and persists only a `migrate` answer's layout.
-pub struct PrintStyleKeysPlan;
-impl Operation for PrintStyleKeysPlan {
-    const NAME: &'static str = "print_style_keys.plan";
-    type Input = crate::printing::style_migration::Request;
-    type Output = crate::printing::style_migration::Answer;
-    fn run(request: Self::Input) -> Result<Self::Output, Refusal> {
-        crate::printing::style_migration::answer(request)
-            .map_err(|e| Refusal::new("print_style_keys_invalid", e, false))
-    }
-}
-
-pub static OPERATIONS: &[OperationSpec] = &[
-    OperationSpec::of::<PrintScalingValidate>(),
-    OperationSpec::of::<PrintStyleKeysPlan>(),
-];
+pub static OPERATIONS: &[OperationSpec] = &[OperationSpec::of::<PrintScalingValidate>()];
 
 pub fn dispatch(request: Request) -> Result<Response, Refusal> {
     if request
@@ -191,39 +174,6 @@ mod tests {
             (OPERATIONS[0].output_schema)().as_value()["additionalProperties"],
             false
         );
-    }
-    #[test]
-    fn print_style_keys_plan_is_one_registered_operation() {
-        let mut layout = crate::printing::default_layout();
-        layout
-            .style_refs
-            .insert("lv_lines".into(), "master/lv_lines_print".into());
-        let key = json!({"entity_class":"lv_lines","source_kind":"saved_design","target":"print","role":"project"});
-        let catalogue = json!({"revision_id":"c".repeat(64),
-            "bindings":[{"key":key,"style_ref":"master/lv_lines_print"}]});
-        let call = |catalogue: Value| {
-            dispatch(Request {
-                operation: PrintStyleKeysPlan::NAME.into(),
-                kernel_version: Some(KERNEL_VERSION.into()),
-                input: serde_json::value::to_raw_value(
-                    &json!({"layout":layout,"catalogue":catalogue}),
-                )
-                .unwrap(),
-            })
-        };
-        let response = call(catalogue.clone()).unwrap();
-        assert_eq!(
-            response.sha256,
-            format!("{:x}", Sha256::digest(response.answer.get()))
-        );
-        let answer: Value = serde_json::from_str(response.answer.get()).unwrap();
-        assert_eq!(answer["plan"]["status"], "migrate");
-        assert_eq!(answer["plan"]["catalogue_revision"], "c".repeat(64));
-        assert_eq!(answer["layout"]["style_keys"]["lv_lines"], key);
-        assert_eq!(answer["layout"]["style_refs"], json!({}));
-        let mut unpinned = catalogue;
-        unpinned["revision_id"] = json!("not-a-digest");
-        assert_eq!(call(unpinned).unwrap_err().code, "print_style_keys_invalid");
     }
     #[test]
     fn invalid_inputs_and_pins_are_terminal_refusals() {

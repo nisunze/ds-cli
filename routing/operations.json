@@ -184,10 +184,10 @@
           }
         },
         "style_keys.read": {
-          "summary": "Plan one printing library's Kernel-decided legacy style_refs to style_keys migration, or page a census of every library.",
+          "summary": "Page the printing library ids a platform administrator's template style-key census plans in Core; ds-brain computes no plan.",
           "transport": "json",
           "action_key": "action",
-          "actions": ["plan", "census"],
+          "actions": ["libraries"],
           "idempotency": "idempotent",
           "retry_class": "none",
           "timeout_s": 120,
@@ -203,9 +203,9 @@
           }
         },
         "style_keys.apply": {
-          "summary": "Apply exactly a reviewed printing-template style-key migration plan, keeping each replaced setup.",
+          "summary": "Save the layouts of a Core-computed, reviewed printing-template style-key plan under each setup's planned revision, keeping each replaced setup.",
           "transport": "json",
-          "action": "apply",
+          "action": "save",
           "idempotency": "unsafe",
           "retry_class": "none",
           "timeout_s": 120,

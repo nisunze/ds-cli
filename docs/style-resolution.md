@@ -70,10 +70,15 @@ migrations of 2026-10-02 are reproduced exactly. Anything else — no such key,
 a key naming another document, several keys — is a named finding that lists
 the governed candidates and blocks the whole template. Only an owner's explicit
 choice of one declared key settles a finding, and a choice that prints another
-document is reported as a document change. ds-brain holds the stored template
-and the catalogue, asks the Kernel through dispatch operation
-`print_style_keys.plan`, and persists only a `migrate` answer's layout, keeping
-the replaced revision.
+document is reported as a document change. `style_migration::plan_library`
+plans a whole project library from the stored setups and the project's governed
+resolution table and digests what the owner reviews; it is pure, so native Core
+and a browser WASM host decide identically. Core reads both inputs through the
+authorized printing and style-table routes, and an apply re-plans and refuses
+unless the reviewed `plan_sha256` still holds. ds-brain computes nothing: its
+`/api/v1/printing/style_keys` route only pages library ids for a census and
+saves a reviewed plan's migrated layouts, each under the revision it was
+planned from, beside an immutable copy of the setup it replaces.
 
 Screen ordering uses the API's declarative presentation tier. Casing remains
 beneath its primary line and labels remain its companions. Saved `user_order`

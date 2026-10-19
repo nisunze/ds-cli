@@ -387,6 +387,246 @@ fn chosen(
     }
 }
 
+/// The reviewed library plan's schema, as `ds report layout style-keys plan`
+/// answers it.
+pub const LIBRARY_PLAN_SCHEMA: &str = "ds.print-style-key-migration/v1";
+
+/// Owner choices for a library: setup id → layer id → exact governed key.
+pub type LibraryChoices = BTreeMap<String, BTreeMap<String, Key>>;
+
+/// One stored printing setup as the governed library read returns it. The
+/// layout stays raw so a layout this Kernel cannot read is a `refused` setup,
+/// not a failed library plan.
+#[derive(Debug, Clone)]
+pub struct StoredSetup {
+    pub id: String,
+    pub name: String,
+    pub revision: String,
+    pub layout: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum SetupStatus {
+    Current,
+    Migrate,
+    Blocked,
+    /// The stored layout is unreadable to this Kernel; it stays untouched.
+    Refused,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SetupRefusal {
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SetupPlan {
+    pub id: String,
+    pub name: String,
+    pub revision: String,
+    pub status: SetupStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan: Option<Plan>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<SetupRefusal>,
+    /// The layout to save, only for `migrate`; never shown or digested.
+    #[serde(skip)]
+    pub layout: Option<Layout>,
+}
+
+/// Every setup of one project library (or one setup in it), decided against
+/// one catalogue, and the digest an apply must present unchanged.
+#[derive(Debug, Clone, Serialize)]
+pub struct LibraryPlan {
+    pub schema: &'static str,
+    pub scope: &'static str,
+    pub project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub catalogue_revision: String,
+    /// Which decider computed the plan: provenance, never digested.
+    pub kernel_version: String,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub choices: LibraryChoices,
+    pub setups: Vec<SetupPlan>,
+    pub counts: BTreeMap<SetupStatus, usize>,
+    pub plan_sha256: String,
+}
+
+/// One migrated layout a reviewed apply hands the store, fenced by the
+/// revision it was planned from.
+#[derive(Debug, Clone, Serialize)]
+pub struct SetupWrite {
+    pub id: String,
+    pub from_revision: String,
+    pub layout: Layout,
+}
+
+fn bounded_message(text: &str) -> String {
+    let mut end = text.len().min(400);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].to_owned()
+}
+
+fn setup_plan(
+    stored: StoredSetup,
+    catalogue: &Catalogue,
+    choices: &BTreeMap<String, Key>,
+) -> SetupPlan {
+    let mut entry = SetupPlan {
+        id: stored.id,
+        name: stored.name,
+        revision: stored.revision,
+        status: SetupStatus::Refused,
+        plan: None,
+        refusal: None,
+        layout: None,
+    };
+    let decided = serde_json::from_value::<Layout>(stored.layout)
+        .map_err(|error| format!("print_style_keys_invalid: stored layout: {error}"))
+        .and_then(|layout| plan(layout, catalogue, choices));
+    match decided {
+        Ok((plan, layout)) => {
+            entry.status = match plan.status {
+                Status::Current => SetupStatus::Current,
+                Status::Migrate => SetupStatus::Migrate,
+                Status::Blocked => SetupStatus::Blocked,
+            };
+            entry.layout = layout;
+            entry.plan = Some(plan);
+        }
+        Err(error) => {
+            entry.refusal = Some(SetupRefusal {
+                code: "print_style_keys_invalid".into(),
+                message: bounded_message(&error),
+            })
+        }
+    }
+    entry
+}
+
+/// Plan one project library. Pure: the host reads the setups and the
+/// governed table through its authorized routes and passes them in, so the
+/// native Core and a browser WASM host decide identically. Choices naming a
+/// setup the plan does not cover refuse with `print_style_keys_choice_unplanned`.
+pub fn plan_library(
+    project: &str,
+    id: Option<&str>,
+    catalogue: &Catalogue,
+    mut stored: Vec<StoredSetup>,
+    choices: &LibraryChoices,
+    decider: &str,
+) -> Result<LibraryPlan, String> {
+    catalogue.validate()?;
+    stored.sort_by(|a, b| a.id.cmp(&b.id));
+    if let Some(setup) = choices
+        .keys()
+        .find(|setup| !stored.iter().any(|row| &row.id == *setup))
+    {
+        return Err(format!(
+            "print_style_keys_choice_unplanned: choices name setup {setup}, which this plan does not cover"
+        ));
+    }
+    let empty = BTreeMap::new();
+    let setups: Vec<SetupPlan> = stored
+        .into_iter()
+        .map(|row| {
+            let chosen = choices.get(&row.id).unwrap_or(&empty);
+            setup_plan(row, catalogue, chosen)
+        })
+        .collect();
+    let mut counts: BTreeMap<SetupStatus, usize> = [
+        SetupStatus::Current,
+        SetupStatus::Migrate,
+        SetupStatus::Blocked,
+        SetupStatus::Refused,
+    ]
+    .into_iter()
+    .map(|status| (status, 0))
+    .collect();
+    for setup in &setups {
+        *counts.entry(setup.status).or_default() += 1;
+    }
+    let mut library = LibraryPlan {
+        schema: LIBRARY_PLAN_SCHEMA,
+        scope: "project",
+        project_id: project.into(),
+        id: id.map(str::to_owned),
+        catalogue_revision: catalogue.revision_id.clone(),
+        kernel_version: decider.into(),
+        choices: choices.clone(),
+        setups,
+        counts,
+        plan_sha256: String::new(),
+    };
+    // The digest binds what the owner reviews — the library, its setup
+    // revisions, the catalogue, the choices and every decision — not which
+    // build computed it.
+    let reviewed = serde_json::json!({
+        "schema": library.schema, "scope": library.scope, "project_id": library.project_id,
+        "id": library.id, "catalogue_revision": library.catalogue_revision,
+        "choices": library.choices, "setups": library.setups,
+    });
+    use sha2::Digest;
+    library.plan_sha256 = format!(
+        "{:x}",
+        sha2::Sha256::digest(serde_json::to_vec(&reviewed).map_err(|e| e.to_string())?)
+    );
+    Ok(library)
+}
+
+impl LibraryPlan {
+    /// What a reviewed apply writes, and the setup ids it leaves current or
+    /// not migrated (blocked or refused).
+    pub fn writes(&self) -> (Vec<SetupWrite>, Vec<String>, Vec<String>) {
+        let (mut writes, mut unchanged, mut not_migrated) = (Vec::new(), Vec::new(), Vec::new());
+        for setup in &self.setups {
+            match (setup.status, &setup.layout) {
+                (SetupStatus::Migrate, Some(layout)) => writes.push(SetupWrite {
+                    id: setup.id.clone(),
+                    from_revision: setup.revision.clone(),
+                    layout: layout.clone(),
+                }),
+                (SetupStatus::Current, _) => unchanged.push(setup.id.clone()),
+                _ => not_migrated.push(setup.id.clone()),
+            }
+        }
+        (writes, unchanged, not_migrated)
+    }
+
+    /// The condensed per-setup rows a library census shows.
+    pub fn census_setups(&self) -> Vec<serde_json::Value> {
+        self.setups
+            .iter()
+            .map(|setup| {
+                let mut row = serde_json::json!({"id": setup.id, "name": setup.name,
+                    "revision": setup.revision, "status": setup.status});
+                if let Some(plan) = &setup.plan {
+                    row["legacy_refs"] = serde_json::json!(plan.legacy_refs);
+                    if !plan.document_changes.is_empty() {
+                        row["document_changes"] = serde_json::json!(plan.document_changes.len());
+                    }
+                    if !plan.findings.is_empty() {
+                        row["findings"] = plan
+                            .findings
+                            .iter()
+                            .map(|f| serde_json::json!({"layer": f.layer, "style_ref": f.style_ref, "code": f.code}))
+                            .collect();
+                    }
+                }
+                if let Some(refusal) = &setup.refusal {
+                    row["refusal"] = serde_json::json!(refusal);
+                }
+                row
+            })
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -863,5 +1103,133 @@ mod tests {
         let migrated = migrated.unwrap();
         assert!(migrated.style_refs.is_empty());
         assert_eq!(migrated.style_keys["tr"].role, "focused");
+    }
+
+    #[test]
+    fn a_library_plan_is_pure_digested_and_names_every_setup() {
+        let catalogue = governed_catalogue();
+        let stored = |id: &str, revision: char, layout: Value| StoredSetup {
+            id: id.into(),
+            name: id.to_uppercase(),
+            revision: revision.to_string().repeat(64),
+            layout,
+        };
+        let raw = |refs: Value| serde_json::to_value(legacy(&refs)).unwrap();
+        let setups = vec![
+            stored("b", '2', raw(json!({"lv_lines": "master/lv_lines_print"}))),
+            stored(
+                "a",
+                '1',
+                raw(evidence()["gisagara_a0"]["style_refs"].clone()),
+            ),
+            stored("c", '3', raw(json!({}))),
+            stored("d", '4', json!({"id": "d", "unknown_field": true})),
+        ];
+        let library = plan_library(
+            "czgmdwth_gisagara",
+            None,
+            &catalogue,
+            setups.clone(),
+            &BTreeMap::new(),
+            "test",
+        )
+        .unwrap();
+        let statuses: Vec<_> = library
+            .setups
+            .iter()
+            .map(|s| (s.id.as_str(), s.status))
+            .collect();
+        assert_eq!(
+            statuses,
+            [
+                ("a", SetupStatus::Blocked),
+                ("b", SetupStatus::Migrate),
+                ("c", SetupStatus::Current),
+                ("d", SetupStatus::Refused),
+            ]
+        );
+        assert_eq!(
+            library.counts.values().copied().collect::<Vec<_>>(),
+            [1, 1, 1, 1]
+        );
+        let shown = serde_json::to_value(&library).unwrap();
+        assert_eq!(shown["schema"], LIBRARY_PLAN_SCHEMA);
+        assert_eq!(
+            shown["counts"],
+            json!({"current":1,"migrate":1,"blocked":1,"refused":1})
+        );
+        assert!(shown["setups"][1].get("layout").is_none());
+        assert_eq!(
+            shown["setups"][3]["refusal"]["code"],
+            "print_style_keys_invalid"
+        );
+
+        // The decider is provenance; anything reviewed moves the digest.
+        let same = plan_library(
+            "czgmdwth_gisagara",
+            None,
+            &catalogue,
+            setups.clone(),
+            &BTreeMap::new(),
+            "other",
+        )
+        .unwrap();
+        assert_eq!(same.plan_sha256, library.plan_sha256);
+        let mut moved = setups.clone();
+        moved[2].revision = "9".repeat(64);
+        let moved = plan_library(
+            "czgmdwth_gisagara",
+            None,
+            &catalogue,
+            moved,
+            &BTreeMap::new(),
+            "test",
+        )
+        .unwrap();
+        assert_ne!(moved.plan_sha256, library.plan_sha256);
+
+        let (writes, unchanged, not_migrated) = library.writes();
+        assert_eq!(writes.len(), 1);
+        assert_eq!(
+            (writes[0].id.as_str(), writes[0].from_revision.as_str()),
+            ("b", "2".repeat(64).as_str())
+        );
+        assert!(writes[0].layout.style_refs.is_empty());
+        // Preview refused the stored template; it resolves once saved.
+        let stored: Layout = serde_json::from_value(setups[0].layout.clone()).unwrap();
+        let refusal = resolve_style_documents(stored, &table(&catalogue)).unwrap_err();
+        assert!(
+            refusal.starts_with("style_resolution_required"),
+            "{refusal}"
+        );
+        resolve_style_documents(writes[0].layout.clone(), &table(&catalogue))
+            .expect("the saved template resolves its preview styles");
+        assert_eq!(unchanged, ["c"]);
+        assert_eq!(not_migrated, ["a", "d"]);
+        assert_eq!(
+            library.census_setups()[0]["findings"][0]["layer"],
+            "bounding_rectangles"
+        );
+
+        let stray = BTreeMap::from([(
+            "z".to_string(),
+            BTreeMap::from([(
+                "lv_lines".to_string(),
+                key("lv_lines", "saved_design", "project"),
+            )]),
+        )]);
+        let refused = plan_library(
+            "czgmdwth_gisagara",
+            None,
+            &catalogue,
+            setups,
+            &stray,
+            "test",
+        )
+        .unwrap_err();
+        assert!(
+            refused.starts_with("print_style_keys_choice_unplanned"),
+            "{refused}"
+        );
     }
 }
