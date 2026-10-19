@@ -15,7 +15,9 @@ fn survey_queue_is_a_registered_native_survey_mutation_with_a_closed_private_fil
     let envelope: Value = serde_json::from_slice(&result.stdout).unwrap();
     let descriptor = &envelope["data"]["command"];
     assert_eq!(descriptor["id"], "core.survey.queue");
-    assert_eq!(descriptor["contract"], 1);
+    // Contract 2 (2026-10-18): create preparation and receipt bind the direct
+    // Firestore commit effect; every other action keeps its contract-1 shape.
+    assert_eq!(descriptor["contract"], 2);
     assert_eq!(descriptor["authority"], "headless_user");
     assert_eq!(descriptor["effect"], "local_auth_state");
     let args = descriptor["inputs"].as_array().unwrap();
