@@ -227,7 +227,7 @@ pub fn classify_geometry_failure(
         "ambiguous_feature",
         "the id matched zero features, or more than one",
     )
-    .remedy("read ids from `ds map design select`; a geometry write addresses exactly one")
+    .remedy(geometry::AMBIGUOUS_FEATURE_REMEDY)
 }
 
 /// The closing line that keeps staging and saving distinguishable.

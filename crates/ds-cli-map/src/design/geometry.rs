@@ -23,8 +23,14 @@ const GEOMETRY_ID_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "The one feature whose geometry to replace.",
+    summary: "The one feature whose geometry to replace: its id, or `<layer>#<id>` when the id repeats across layers.",
 };
+
+const GEOMETRY_LAYER_ARG: Arg = Arg::value(
+    "layer",
+    "<layer>",
+    "Design layer the --id belongs to (ids repeat across layers); same as `--id <layer>#<id>`.",
+);
 
 const GEOMETRY_ARG: Arg = Arg {
     name: "geometry",
@@ -45,8 +51,9 @@ pub static COMMAND: Command = Command {
 Replaces the geometry of exactly one design feature — move a pole, re-route a \
 line — in the transformer's local room and marks it dirty; the project is \
 untouched until `ds map design save`. One feature per call, always: an id \
-that matches more than one feature is refused, never guessed. Coordinates are \
-[lon, lat] degrees.",
+that matches more than one feature is refused, never guessed. Ids repeat \
+across layers (a pole and a line can both be 41): qualify one with --layer or \
+as `<layer>#<id>`. Coordinates are [lon, lat] degrees.",
     chapter: Chapter::Design,
     effect: Effect::LocalUi,
     authority: Authority::Project,
@@ -54,6 +61,7 @@ that matches more than one feature is refused, never guessed. Coordinates are \
     args: &[
         TRANSFORMER_ARG,
         GEOMETRY_ID_ARG,
+        GEOMETRY_LAYER_ARG,
         GEOMETRY_ARG,
         Arg::switch(
             "dry-run",
@@ -65,11 +73,18 @@ that matches more than one feature is refused, never guessed. Coordinates are \
     output: "\
 The layer and id addressed, the geometry type written, and `staged` and \
 `persisted` separately — `persisted` is false here always.",
-    examples: &[Example {
-        command: r#"ds map design geometry --transformer T-1042 --id lv_poles#41 --geometry '{"type":"Point","coordinates":[30.06,-1.95]}'"#,
-        note: "Move one pole. Stage only; save is a separate confirmed push.",
-        runnable: false,
-    }],
+    examples: &[
+        Example {
+            command: r#"ds map design geometry --transformer T-1042 --id lv_poles#41 --geometry '{"type":"Point","coordinates":[30.06,-1.95]}'"#,
+            note: "Move pole 41 of lv_poles. Stage only; save is a separate confirmed push.",
+            runnable: false,
+        },
+        Example {
+            command: r#"ds map design geometry --transformer T-1042 --layer lv_lines --id 41 --geometry '{"type":"LineString","coordinates":[[30.06,-1.95],[30.07,-1.95]]}'"#,
+            note: "Re-route line 41 of lv_lines when a pole also carries id 41.",
+            runnable: false,
+        },
+    ],
     refusals: &[
         crate::NOT_PAIRED,
         crate::PROJECT_NOT_OPEN,
@@ -88,7 +103,7 @@ The layer and id addressed, the geometry type written, and `staged` and \
         Refusal {
             code: "ambiguous_feature",
             when: "the id matched zero features, or more than one",
-            remedy: "read ids from `ds map design select`; a geometry write addresses exactly one",
+            remedy: AMBIGUOUS_FEATURE_REMEDY,
         },
     ],
     reference: Some("docs/reference/map.md"),
@@ -96,6 +111,29 @@ The layer and id addressed, the geometry type written, and `staged` and \
     requires: Requires::Window,
     availability: crate::paired_availability,
 };
+
+pub(super) const AMBIGUOUS_FEATURE_REMEDY: &str = "read ids from `ds map design select`; qualify an id that repeats across layers with --layer or `<layer>#<id>`; a geometry write addresses exactly one";
+
+/// The closed `design.features.set_geometry` arguments. The id travels
+/// verbatim — the window resolves `<layer>#<id>` against its own room layers,
+/// so an id that itself contains `#` is never split blindly here.
+fn bridge_arguments(
+    transformer: &str,
+    id: &str,
+    layer: Option<&str>,
+    geometry: Value,
+    dry_run: bool,
+) -> Value {
+    let mut arguments = Map::new();
+    arguments.insert("transformer".into(), json!(transformer));
+    if let Some(layer) = layer {
+        arguments.insert("layers".into(), json!([layer]));
+    }
+    arguments.insert("ids".into(), json!([id]));
+    arguments.insert("geometry".into(), geometry);
+    arguments.insert("dryRun".into(), json!(dry_run));
+    Value::Object(arguments)
+}
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let transformer = inputs.require("transformer")?;
@@ -118,17 +156,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .remedy(r#"e.g. '{"type":"Point","coordinates":[30.06,-1.95]}'"#));
     }
 
-    let mut arguments = Map::new();
-    arguments.insert("transformer".into(), json!(transformer));
-    arguments.insert("ids".into(), json!([id]));
-    arguments.insert("geometry".into(), geometry);
-    arguments.insert("dryRun".into(), json!(dry_run));
+    let arguments = bridge_arguments(transformer, id, inputs.value("layer"), geometry, dry_run);
 
     let descriptor = crate::paired(inputs.value("desktop-descriptor"))?;
     let result = crate::invoke(
         &descriptor,
         &crate::DESIGN_GEOMETRY,
-        Value::Object(arguments),
+        arguments,
         crate::DESIGN_STAGE_TIMEOUT,
     )
     .map_err(|failure| super::classify_geometry_failure(crate::classify_design_failure(failure)))?;
@@ -159,4 +193,49 @@ pub fn render(data: &Value) -> String {
     out.push('\n');
     out.push_str(super::staging_note(data));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// e9c31772: the documented `--id lv_poles#41` reaches the window
+    /// verbatim (it resolves the layer against its room), and `--layer`
+    /// travels as the closed `layers` argument the window admits.
+    #[test]
+    fn a_layer_qualified_address_crosses_the_bridge_inside_the_closed_contract() {
+        let point = json!({"type":"Point","coordinates":[30.06,-1.95]});
+        let qualified = bridge_arguments("T-1042", "lv_poles#41", None, point.clone(), true);
+        assert_eq!(qualified["ids"], json!(["lv_poles#41"]));
+        assert!(qualified.get("layers").is_none());
+        let layered = bridge_arguments("T-1042", "41", Some("lv_lines"), point, false);
+        assert_eq!(layered["layers"], json!(["lv_lines"]));
+        assert_eq!(layered["ids"], json!(["41"]));
+        for arguments in [&qualified, &layered] {
+            for key in arguments.as_object().unwrap().keys() {
+                assert!(
+                    crate::DESIGN_GEOMETRY.arguments.contains(&key.as_str()),
+                    "{key} is outside design.features.set_geometry"
+                );
+            }
+        }
+        assert!(COMMAND.args.iter().any(|arg| arg.name == "layer"));
+        assert!(
+            COMMAND
+                .examples
+                .iter()
+                .any(|example| example.command.contains("--id lv_poles#41"))
+        );
+    }
+
+    #[test]
+    fn an_ambiguous_window_refusal_names_the_qualified_way_out() {
+        let failure = super::super::classify_geometry_failure(
+            Failure::failed("desktop_refused", "refused").detail(json!({
+                "detail": "ids must address exactly one feature; matched 2."
+            })),
+        );
+        assert_eq!(failure.code(), "ambiguous_feature");
+        assert!(failure.remedy_text().unwrap().contains("--layer"));
+    }
 }

@@ -402,7 +402,7 @@ pub const DESIGN_DELETE: BridgeOp = BridgeOp {
 };
 pub const DESIGN_GEOMETRY: BridgeOp = BridgeOp {
     operation: "design.features.set_geometry",
-    arguments: &["transformer", "ids", "geometry", "dryRun"],
+    arguments: &["transformer", "layers", "ids", "geometry", "dryRun"],
 };
 pub const DESIGN_LIST: BridgeOp = BridgeOp {
     operation: "design.transformer.list",
