@@ -689,9 +689,11 @@ fn batch_analysis_refusal(failure: &Failure) -> Option<BatchAnalysis> {
     if detail["http_status"] != 409 {
         return None;
     }
-    match detail["service_code"].as_str()? {
-        "TRANSFORMER_ANALYSIS_MISSING" => Some(BatchAnalysis::Missing),
-        "TRANSFORMER_ANALYSIS_STALE" => Some(BatchAnalysis::Stale),
+    // ds-client-core carries the data route's codes in the lowercase refusal
+    // vocabulary; older receipts named them as the server spells them.
+    match detail["service_code"].as_str()?.to_ascii_lowercase().as_str() {
+        "transformer_analysis_missing" => Some(BatchAnalysis::Missing),
+        "transformer_analysis_stale" => Some(BatchAnalysis::Stale),
         _ => None,
     }
 }
@@ -4366,6 +4368,9 @@ mod tests {
         for (code, missing) in [
             ("TRANSFORMER_ANALYSIS_MISSING", true),
             ("TRANSFORMER_ANALYSIS_STALE", false),
+            // What ds-client-core now carries (be552f2b).
+            ("transformer_analysis_missing", true),
+            ("transformer_analysis_stale", false),
         ] {
             let failure = Failure::failed("auth_response_unreadable", "fenced read refused")
                 .detail(json!({"http_status":409,"service_code":code}));

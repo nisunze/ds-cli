@@ -5131,12 +5131,22 @@ fn map_client(error: ClientError) -> Failure {
         Some(refusal) => map_service_refusal(error.kind(), refusal, &message),
         None => map_client_kind(error.kind(), message.clone()),
     };
+    // "did not match its closed contract" is nothing a caller can act on;
+    // which contract the answer broke (a pin, a header, a bound, a field) is.
+    // ClientError messages are static owner text, never response bytes.
+    let failure = if error.kind() == ErrorKind::UnreadableResponse && refusal.is_none() {
+        let named = format!("{}: {message}", failure.message());
+        let failure = failure.with_message(named);
+        if !route_diagnostic_prefixed(&message) {
+            return failure.detail(json!({"owner_message": message}));
+        }
+        failure
+    } else {
+        failure
+    };
     // ClientError messages are static, owner-authored text, never response
     // bodies. Preserve these bounded route diagnostics for data/config calls.
-    if message.starts_with("the transformer context route")
-        || message.starts_with("project configuration")
-        || message.starts_with("feeder settings were saved")
-    {
+    if route_diagnostic_prefixed(&message) {
         let diagnostic = route_diagnostic(&message);
         let mut detail = serde_json::json!({"owner_message":message});
         // The status and the service's own sentence are the difference
@@ -5593,6 +5603,14 @@ pub fn map_project_management_refusal(
 /// obvious one: the credential was verified for this very call, so
 /// re-authenticating changes nothing. Taking the message as the input keeps
 /// this testable — `ClientError` is `pub(crate)` to construct.
+/// The data/config routes whose static diagnostics travel with their status
+/// and the service's own sentence.
+fn route_diagnostic_prefixed(message: &str) -> bool {
+    message.starts_with("the transformer context route")
+        || message.starts_with("project configuration")
+        || message.starts_with("feeder settings were saved")
+}
+
 fn route_diagnostic(message: &str) -> Option<(&'static str, &'static str)> {
     message
         .starts_with("the transformer context route")
@@ -8679,6 +8697,25 @@ mod tests {
         );
         assert_eq!(bare.code(), "auth_rejected");
         assert!(bare.message().ends_with("(HTTP 403)"), "{bare:?}");
+    }
+
+    /// be552f2b: a Gisagara export failed per transformer with only "did not
+    /// match its closed contract". The static owner diagnostic says which
+    /// contract the answer broke, and now travels with the code.
+    #[test]
+    fn an_unreadable_answer_names_the_contract_it_broke() {
+        let failure = map_client(ClientError::from(
+            ds_client_core::TransformerAnalysisTransportError::ResponseTooLarge,
+        ));
+        assert_eq!(failure.code(), "auth_response_unreadable");
+        assert!(
+            failure.message().ends_with(": analysis response exceeds 32 MiB"),
+            "{failure:?}"
+        );
+        assert_eq!(
+            failure.detail_value().unwrap()["owner_message"],
+            "analysis response exceeds 32 MiB"
+        );
     }
 
     /// A moved index is not a moved row: restarting the listing is the
