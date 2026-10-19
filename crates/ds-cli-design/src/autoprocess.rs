@@ -334,7 +334,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     }
     let mut out = json!({});
     for op in known {
-        if let Some(body) = sections.get(op) {
+        if sections.contains_key(op) {
             out[op] = if op == "differential_scope" {
                 differential_section(raw_sections[op].get().as_bytes())?
             } else {
