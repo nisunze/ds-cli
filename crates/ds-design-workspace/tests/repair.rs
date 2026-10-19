@@ -3,7 +3,7 @@ use ds_command_kernel::{
     design_repair::{self, ApplySelection, Proposal},
 };
 use ds_design_workspace::{Error, Workspace};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 fn setup() -> (tempfile::TempDir, Workspace) {
     let temp = tempfile::tempdir().unwrap();

@@ -13,9 +13,9 @@ use std::{
 };
 
 pub mod grid_publication;
-mod run;
 mod network_staging;
 mod repair;
+mod run;
 pub use repair::RepairRequest;
 pub use run::RunReceipt;
 
@@ -61,7 +61,9 @@ fn preserve_import_approved(retained: &Snapshot, replacement: &Snapshot) -> Resu
             .map(Vec::as_slice)
             .unwrap_or(&[]);
         ds_network_contracts::import_admission::preserve_approved_rows(
-            layer, existing, replacement,
+            layer,
+            existing,
+            replacement,
         )
         .map_err(invalid)?;
     }

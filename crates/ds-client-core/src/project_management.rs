@@ -28,7 +28,7 @@
 //! ds-brain decodes with `DisallowUnknownFields`, so a key this file does not
 //! write is a key the request cannot carry.
 
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 pub mod checklist;
 pub mod create_attached;
@@ -38,8 +38,8 @@ mod overview;
 pub mod project_notes;
 
 use crate::{
-    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, ProjectManagementCall,
-    ServiceRefusal, authorized::Authority,
+    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
+    ProjectManagementCall, ServiceRefusal,
 };
 
 /// The largest plan answer this owner will read. A project's whole graph —
@@ -1149,7 +1149,8 @@ pub fn verify_graph(project: &str, graph: &Value) -> Result<(), ClientError> {
     if let Some(c) = graph.get("correspondence").filter(|c| !c.is_null()) {
         let records = c["records"].as_array().ok_or_else(invalid)?;
         let total = c["records_total"].as_u64().ok_or_else(invalid)?;
-        if !c["truncated"].is_boolean() || total < records.len() as u64
+        if !c["truncated"].is_boolean()
+            || total < records.len() as u64
             || !c["blocked_tasks"].is_array()
             || c["as_of"].as_str().is_none_or(str::is_empty)
             || c["due_window_days"].as_u64().is_none()
@@ -1246,24 +1247,20 @@ mod collaboration_contract_tests {
             command.payload(""),
             json!({"action":"list_public_projects","status":"active","cursor":"next-id","limit":50})
         );
-        assert!(
-            Command::PublicProjects {
-                status: "all".into(),
-                cursor: String::new(),
-                limit: 50
-            }
-            .validate()
-            .is_err()
-        );
-        assert!(
-            Command::PublicProjects {
-                status: "active".into(),
-                cursor: String::new(),
-                limit: 101
-            }
-            .validate()
-            .is_err()
-        );
+        assert!(Command::PublicProjects {
+            status: "all".into(),
+            cursor: String::new(),
+            limit: 50
+        }
+        .validate()
+        .is_err());
+        assert!(Command::PublicProjects {
+            status: "active".into(),
+            cursor: String::new(),
+            limit: 101
+        }
+        .validate()
+        .is_err());
     }
     #[test]
     fn task_comment_is_scoped_and_cursors_use_the_existing_collection_name() {
@@ -1286,24 +1283,20 @@ mod collaboration_contract_tests {
             page.payload("p")["cursors"],
             json!({"pm_comments":"old-comment"})
         );
-        assert!(
-            Command::TaskCommentCreate {
-                task_id: "t".into(),
-                id: "comment-1".into(),
-                body: " ".into()
-            }
-            .validate()
-            .is_err()
-        );
-        assert!(
-            Command::TaskCommentCreate {
-                task_id: "t".into(),
-                id: "comment-1".into(),
-                body: "é".repeat(2001)
-            }
-            .validate()
-            .is_err()
-        );
+        assert!(Command::TaskCommentCreate {
+            task_id: "t".into(),
+            id: "comment-1".into(),
+            body: " ".into()
+        }
+        .validate()
+        .is_err());
+        assert!(Command::TaskCommentCreate {
+            task_id: "t".into(),
+            id: "comment-1".into(),
+            body: "é".repeat(2001)
+        }
+        .validate()
+        .is_err());
     }
 }
 
@@ -1454,15 +1447,13 @@ mod tests {
             ErrorKind::InvalidInput
         );
         let good = json!({"kind": "accept_assignment", "accept_assignment": {"task_id": "t"}});
-        assert!(
-            Command::Commit {
-                command_id: "pm-1_a.b".into(),
-                base_revision: 0,
-                command: good.clone()
-            }
-            .validate()
-            .is_ok()
-        );
+        assert!(Command::Commit {
+            command_id: "pm-1_a.b".into(),
+            base_revision: 0,
+            command: good.clone()
+        }
+        .validate()
+        .is_ok());
         assert_eq!(
             kind(Command::Commit {
                 command_id: "".into(),
@@ -1835,12 +1826,10 @@ mod tests {
                 "finalize_attachment_upload"
             ]
         );
-        assert!(
-            transport
-                .payloads
-                .iter()
-                .all(|p| p["ds_project"] == "project-a")
-        );
+        assert!(transport
+            .payloads
+            .iter()
+            .all(|p| p["ds_project"] == "project-a"));
         assert!(!answer.to_string().contains("upload_id"));
         assert!(!answer.to_string().contains("bearer"));
     }
@@ -2326,14 +2315,12 @@ mod tests {
             AttachmentFile::new("a.pdf", None, vec![7; 4]).unwrap()
         );
         assert!(debug.contains("bytes: 4"), "{debug}");
-        assert!(
-            Command::TaskAttach {
-                task_id: "a/b".into(),
-                file: AttachmentFile::new("a.pdf", None, vec![1]).unwrap()
-            }
-            .validate()
-            .is_err()
-        );
+        assert!(Command::TaskAttach {
+            task_id: "a/b".into(),
+            file: AttachmentFile::new("a.pdf", None, vec![1]).unwrap()
+        }
+        .validate()
+        .is_err());
     }
 }
 
@@ -2423,7 +2410,10 @@ mod retained_graph_tests {
         partial["correspondence"] = json!({"records":[],"truncated":true,"records_total":10,"as_of":"2026-10-13","due_window_days":7,"blocked_tasks":[],"counters":{"recordsOutstanding":10,"recordsOverdue":1,"tasksAwaitingCorrespondence":0}});
         verify_graph("p", &partial).unwrap();
         assert_eq!(partial["correspondence"]["truncated"], true);
-        partial["correspondence"].as_object_mut().unwrap().remove("truncated");
+        partial["correspondence"]
+            .as_object_mut()
+            .unwrap()
+            .remove("truncated");
         assert!(verify_graph("p", &partial).is_err());
     }
 }

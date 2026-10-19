@@ -268,7 +268,13 @@ fn analysis_invalidation_accumulates_across_profile_calculation_and_navigation()
 
 #[test]
 fn terrain_weather_unavailable_and_replacement_seeds_cannot_reuse_analysis_facts() {
-    for change in ["terrain", "weather", "replacement", "unavailable", "criterion"] {
+    for change in [
+        "terrain",
+        "weather",
+        "replacement",
+        "unavailable",
+        "criterion",
+    ] {
         let mut snapshot = connected_fixture(2);
         if change == "unavailable" {
             snapshot.criterion_sets.push(CriterionSetRow {
@@ -322,10 +328,12 @@ fn terrain_weather_unavailable_and_replacement_seeds_cannot_reuse_analysis_facts
         if change == "replacement" {
             let mut untraced = request_for(worker.snapshot().clone());
             untraced.scope = input.scope.clone();
-            runtime.execute(crate::ReleaseRequest {
-                scope: input.scope.clone(),
-                model_id: "profile-test".into(),
-            }).unwrap();
+            runtime
+                .execute(crate::ReleaseRequest {
+                    scope: input.scope.clone(),
+                    model_id: "profile-test".into(),
+                })
+                .unwrap();
             runtime.execute(untraced).unwrap();
         } else {
             observe(&mut runtime, &input, &worker);

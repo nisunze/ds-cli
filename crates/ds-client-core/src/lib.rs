@@ -46,11 +46,11 @@ pub use solar_snapshot::{HeldSessionSnapshotRead, SolarMediaDownloadCall};
 mod status_processing;
 mod styles;
 mod survey_delete;
-mod survey_update;
 mod survey_entries_changes;
 pub mod survey_entries_read;
 mod survey_entries_select;
 mod survey_entry_create;
+mod survey_update;
 pub use survey_delete::{SurveyDeleteCall, SurveyDeleteRequest};
 pub use survey_update::{SurveyUpdateCall, SurveyUpdateRequest};
 mod survey_form_read;
@@ -289,9 +289,9 @@ pub use transport::ReportArtifactCall;
 pub use transport::{SreEventsCall, SreOverviewCall};
 
 pub mod design_attachments;
-pub mod transformer_history_import;
 pub mod design_version_catalog;
 pub mod design_versions;
+pub mod transformer_history_import;
 pub use transport::{DesignAttachmentsCall, DesignVersionsCall};
 
 pub mod design_migration;
@@ -304,23 +304,23 @@ pub use transport::DesignTagsCall;
 pub mod survey_migration;
 pub use transport::SurveyMigrationCall;
 
-/// Tags, groups, consumer groupings, enrichment and comment threads on the
-/// design annotations route — reachable without a window.
-pub mod design_annotations;
-/// The project's known-column visibility on the config route.
-pub mod known_columns;
 /// The project's document catalogue — folders, rows, bytes, classification,
 /// links and ingest — reachable without a window.
 pub mod asset_preview_source;
-pub mod project_assets;
+/// Tags, groups, consumer groupings, enrichment and comment threads on the
+/// design annotations route — reachable without a window.
+pub mod design_annotations;
 pub mod document_semantic;
+/// The project's known-column visibility on the config route.
+pub mod known_columns;
+pub mod project_assets;
 pub mod shared_assets;
 mod shared_map_publish;
 pub use transport::ProjectManagementCall;
 pub use transport::SharedAssetsCall;
 
-mod transformer_save;
 pub mod transformer_repair;
+mod transformer_save;
 pub use transformer_repair::TransformerRepairPublication;
 pub use transformer_save::{
     TransformerSaveBatch, TransformerSaveCall, TransformerSaveItem, TransformerSaveReceipt,
@@ -329,6 +329,5 @@ pub use transformer_save::{
 
 pub mod feedback;
 pub use transport::FeedbackCall;
-
 
 pub mod messaging;

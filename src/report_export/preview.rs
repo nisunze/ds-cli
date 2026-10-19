@@ -294,11 +294,19 @@ mod tests {
             .is_err_and(|error| error.contains("exactly one named SVG")));
         let mut delivery = preview.receipt.clone();
         delivery.local_print_recipe = None;
-        let layers = BTreeMap::from([("lv_poles".into(), json!({"type":"FeatureCollection",
-            "features":[{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[30.,-2.]}}]}))]);
+        let layers = BTreeMap::from([(
+            "lv_poles".into(),
+            json!({"type":"FeatureCollection",
+            "features":[{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[30.,-2.]}}]}),
+        )]);
         for selection in [&preview.selection, &mixed] {
             let error = crate::report_export::plan_transformer_export(
-                "proj-1", &delivery, "tx_a", 1, &layers, Some(selection),
+                "proj-1",
+                &delivery,
+                "tx_a",
+                1,
+                &layers,
+                Some(selection),
             )
             .unwrap_err();
             assert!(error.contains("svg is the shared print preview"));

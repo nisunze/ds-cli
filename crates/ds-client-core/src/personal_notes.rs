@@ -1,8 +1,8 @@
 //! Account-private note controls through the fixed notes owner.
 //! This boundary carries selected intent; it never lists projects or prefetches notes.
 use crate::project_management::checklist::Edit;
-use crate::{AuthorizedTransport, ClientError, ClientProfile, ErrorKind, authorized::Authority};
-use serde_json::{Value, json};
+use crate::{authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind};
+use serde_json::{json, Value};
 
 mod backup;
 mod draft;
@@ -884,24 +884,20 @@ mod tests {
         data["source_head_version"] = json!(7);
         data["versions"][0]["retained"] = json!(false);
         assert!(decode(&next, response(data)).is_err());
-        assert!(
-            Action::Versions {
-                id: "private".into(),
-                limit: 101,
-                cursor: None
-            }
-            .validate()
-            .is_err()
-        );
-        assert!(
-            Action::Versions {
-                id: "private".into(),
-                limit: 1,
-                cursor: Some(" ".into())
-            }
-            .validate()
-            .is_err()
-        );
+        assert!(Action::Versions {
+            id: "private".into(),
+            limit: 101,
+            cursor: None
+        }
+        .validate()
+        .is_err());
+        assert!(Action::Versions {
+            id: "private".into(),
+            limit: 1,
+            cursor: Some(" ".into())
+        }
+        .validate()
+        .is_err());
     }
     #[test]
     fn historic_restore_receipt_matches_selected_content_and_preserved_current_controls() {
@@ -927,13 +923,11 @@ mod tests {
             id: "private".into(),
             source_version: 2,
         };
-        assert!(
-            decode(
-                &read,
-                response(json!({"note":note("private",2,false),"sha256":sha,"retained":true}))
-            )
-            .is_ok()
-        );
+        assert!(decode(
+            &read,
+            response(json!({"note":note("private",2,false),"sha256":sha,"retained":true}))
+        )
+        .is_ok());
     }
     #[test]
     fn private_reads_refuse_hidden_uid_and_wrong_attachment_owner() {
@@ -1003,13 +997,11 @@ mod tests {
             json!({"action":"checklist_edit","id":"n","expected_version":7,"command_id":"note-edit-001","checklist":{"action":"check","item_id":"i","answer":"verified"}})
         );
         assert!(decode(&action, response(json!({"note":{"id":"n","version":8}}))).is_ok());
-        assert!(
-            decode(
-                &action,
-                response(json!({"note":{"id":"other","version":8}}))
-            )
-            .is_err()
-        );
+        assert!(decode(
+            &action,
+            response(json!({"note":{"id":"other","version":8}}))
+        )
+        .is_err());
         assert!(decode(&action, response(json!({"note":{"id":"n","version":9}}))).is_err());
     }
     #[test]

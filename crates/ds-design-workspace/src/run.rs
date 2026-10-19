@@ -242,7 +242,8 @@ impl Workspace {
                 .query_row("SELECT cancel FROM runs WHERE id=?1", [id], |r| r.get(0))?;
         if cancelled == 0 && !jobs.is_empty() {
             let pin = decode_engine_pin(&engine)?;
-            let captured = CapturedNetworkClient::from_pin(&pin, &|| false).map_err(network_failure)?;
+            let captured =
+                CapturedNetworkClient::from_pin(&pin, &|| false).map_err(network_failure)?;
             let pool = rayon::ThreadPoolBuilder::new()
                 .num_threads(width)
                 .build()
@@ -513,7 +514,8 @@ fn process_job(
             .db
             .query_row("SELECT cancel FROM runs WHERE id=?1", [id], |r| {
                 r.get::<_, i64>(0)
-            }) != Ok(0)
+            })
+            != Ok(0)
     };
     let result = captured.process_design_snapshot(&compute_input(&snapshot)?, root, &cancel);
     let (state, bytes) = match result {

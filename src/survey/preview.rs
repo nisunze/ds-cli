@@ -44,14 +44,24 @@ pub fn validate(bytes: &[u8]) -> Result<Value, String> {
         .iter()
         .filter_map(Value::as_str)
         .collect();
-    let hidden = request.fields.iter().filter(|field| !super::fields::is_display_only(field)).filter_map(|field| {
-        let key = field["key"].as_str()?;
-        (!visible.contains(key)).then_some(key)
-    }).collect::<Vec<_>>();
-    let required_visible = request.fields.iter().filter(|field| !super::fields::is_display_only(field)).filter_map(|field| {
-        let key = field["key"].as_str()?;
-        (visible.contains(key) && field["required"] == true).then_some(key)
-    }).collect::<Vec<_>>();
+    let hidden = request
+        .fields
+        .iter()
+        .filter(|field| !super::fields::is_display_only(field))
+        .filter_map(|field| {
+            let key = field["key"].as_str()?;
+            (!visible.contains(key)).then_some(key)
+        })
+        .collect::<Vec<_>>();
+    let required_visible = request
+        .fields
+        .iter()
+        .filter(|field| !super::fields::is_display_only(field))
+        .filter_map(|field| {
+            let key = field["key"].as_str()?;
+            (visible.contains(key) && field["required"] == true).then_some(key)
+        })
+        .collect::<Vec<_>>();
     Ok(json!({
         "schema": "ds.survey-form-validation-result/v1",
         "form_revision": request.form_revision,
@@ -81,10 +91,26 @@ mod tests {
     #[test]
     fn preview_proves_visible_hidden_other_and_valid_rules_with_submission_parity() {
         for (values, expected_errors, hidden) in [
-            (json!({"count":0}), json!({"category":"Category is required"}), json!(["other_detail"])),
-            (json!({"category":"Residential","count":0}), json!({}), json!(["other_detail"])),
-            (json!({"category":"Other","count":0}), json!({"other_detail":"Other detail is required"}), json!([])),
-            (json!({"category":"Other","other_detail":"Clinic","count":0}), json!({}), json!([])),
+            (
+                json!({"count":0}),
+                json!({"category":"Category is required"}),
+                json!(["other_detail"]),
+            ),
+            (
+                json!({"category":"Residential","count":0}),
+                json!({}),
+                json!(["other_detail"]),
+            ),
+            (
+                json!({"category":"Other","count":0}),
+                json!({"other_detail":"Other detail is required"}),
+                json!([]),
+            ),
+            (
+                json!({"category":"Other","other_detail":"Clinic","count":0}),
+                json!({}),
+                json!([]),
+            ),
         ] {
             let request = document(values);
             let bytes = serde_json::to_vec(&request).unwrap();
@@ -93,10 +119,14 @@ mod tests {
             let submission = super::super::fill::evaluate(&json!({
                 "mode":"submission","form_revision":request["form_revision"],
                 "fields":request["fields"],"values":request["values"]
-            })).unwrap();
+            }))
+            .unwrap();
             assert_eq!(preview["errors"], expected_errors);
             assert_eq!(preview["hidden_keys"], hidden);
-            assert_eq!(preview["valid"], expected_errors.as_object().unwrap().is_empty());
+            assert_eq!(
+                preview["valid"],
+                expected_errors.as_object().unwrap().is_empty()
+            );
             assert_eq!(preview["errors"], submission["errors"]);
             assert_eq!(preview["visible_keys"], submission["visible_keys"]);
             assert_eq!(preview["effects"], "none");

@@ -38,9 +38,9 @@ pub mod classify;
 pub mod container;
 pub mod format;
 pub mod index_read;
-pub mod semantic;
 pub mod mail_container;
 pub mod preview;
+pub mod semantic;
 pub mod tag_maps;
 pub mod tree;
 

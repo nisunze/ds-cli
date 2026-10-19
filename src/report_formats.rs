@@ -1383,7 +1383,8 @@ fn selected_plan_for_purpose(
     }
     if outputs.len() > 32 {
         return Err(
-            "Report exceeds 32 selected output artifacts including the saved-analysis companion".into(),
+            "Report exceeds 32 selected output artifacts including the saved-analysis companion"
+                .into(),
         );
     }
     outputs.sort_by(|a, b| {
@@ -2636,7 +2637,10 @@ mod tests {
         let sheets = json!({"project_settings":[{"parameter":"report_formats","value":"gpkg"}]});
         for (tokens, expected) in [
             (json!(["xlsx"]), vec!["xlsx"]),
-            (json!(["xlsx", "voltage_drop"]), vec!["xlsx", "voltage_drop"]),
+            (
+                json!(["xlsx", "voltage_drop"]),
+                vec!["xlsx", "voltage_drop"],
+            ),
         ] {
             let selection = selection(tokens);
             let original = serde_json::to_value(&selection).unwrap();
@@ -2677,7 +2681,9 @@ mod tests {
         let sheets = json!({"printing_setups":layouts});
         let outputs = selected_plan(&sheets, false, Some(&selection)).unwrap();
         assert_eq!(outputs.len(), 32);
-        assert!(!outputs.iter().any(|output| output.output_id == "voltage_drop"));
+        assert!(!outputs
+            .iter()
+            .any(|output| output.output_id == "voltage_drop"));
         selection.geospatial.push("voltage_drop_pdf".into());
         assert!(selected_plan(&sheets, false, Some(&selection)).is_err());
         selection.prints.pop();

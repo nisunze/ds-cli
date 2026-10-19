@@ -739,29 +739,25 @@ mod tests {
         for field in ["project_id", "id", "revision_id", "content_sha256"] {
             let mut bad = capture.clone();
             bad["source"][field] = json!("tampered");
-            assert!(
-                execute(
-                    engine.as_ref(),
-                    &room,
-                    &bad,
-                    preview_artifact::Retention::Hours24,
-                    &room.root.join("scratch")
-                )
-                .is_err()
-            );
-        }
-        let mut bad = capture.clone();
-        bad["render"]["layout"]["name"] = json!("changed body");
-        assert!(
-            execute(
+            assert!(execute(
                 engine.as_ref(),
                 &room,
                 &bad,
                 preview_artifact::Retention::Hours24,
                 &room.root.join("scratch")
             )
-            .is_err()
-        );
+            .is_err());
+        }
+        let mut bad = capture.clone();
+        bad["render"]["layout"]["name"] = json!("changed body");
+        assert!(execute(
+            engine.as_ref(),
+            &room,
+            &bad,
+            preview_artifact::Retention::Hours24,
+            &room.root.join("scratch")
+        )
+        .is_err());
         assert_eq!(engine.renders.load(Ordering::SeqCst), 0);
         std::thread::scope(|threads| {
             for _ in 0..8 {

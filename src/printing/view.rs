@@ -250,7 +250,8 @@ mod tests {
         ask.page = Some(7);
         let input = serde_json::json!({"op":"view_plan","request":ask,"facts":held});
         let response: serde_json::Value =
-            serde_json::from_str(&super::super::evaluate(input.to_string().as_bytes()).unwrap()).unwrap();
+            serde_json::from_str(&super::super::evaluate(input.to_string().as_bytes()).unwrap())
+                .unwrap();
         assert_eq!(
             response,
             serde_json::json!({"load":null,"page":7,"refusal":null})

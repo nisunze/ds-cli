@@ -30,6 +30,7 @@ pub mod pens;
 pub mod placement;
 pub mod pole_categories;
 pub mod preview;
+pub mod preview_progress;
 pub mod project_crs;
 pub mod project_sources;
 pub mod renderer_defaults;
@@ -39,10 +40,8 @@ pub mod retained_reads;
 pub mod session;
 pub mod sheet_margin;
 pub mod sheet_status;
-pub mod standards;
 pub mod standard_read;
-pub mod template_read;
-pub mod preview_progress;
+pub mod standards;
 pub mod structure_descriptions;
 pub mod style_capture;
 pub mod style_migration;
@@ -51,6 +50,7 @@ pub mod table_columns;
 pub mod table_headings;
 pub mod table_rows;
 pub mod table_values;
+pub mod template_read;
 pub mod view;
 pub mod voltage_drop_pages;
 use schemars::JsonSchema;
@@ -2839,7 +2839,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     }));
                 }
             }
-            if layer_count == 0 && preview::expected_subject(&layout) != preview::SubjectKind::Layout {
+            if layer_count == 0
+                && preview::expected_subject(&layout) != preview::SubjectKind::Layout
+            {
                 refusals.push(json!({
                     "code": "print_preview_needs_layers",
                     "message_key": "printing_preview_needs_layers",
@@ -2989,9 +2991,13 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             serde_json::to_value(standard_read::admit(&location, &response)?)
                 .map_err(|e| e.to_string())?
         }
-        Command::CaptureGovernedStandardPreview { location, document, resolution, text, date } => {
-            standard_read::capture_preview(location, document, &resolution, text, date)?
-        }
+        Command::CaptureGovernedStandardPreview {
+            location,
+            document,
+            resolution,
+            text,
+            date,
+        } => standard_read::capture_preview(location, document, &resolution, text, date)?,
         Command::CaptureProjectLayoutPreview {
             project,
             response,

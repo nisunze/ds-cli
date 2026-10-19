@@ -420,8 +420,12 @@ impl Snapshot {
             if collection["type"] != "FeatureCollection" {
                 return Err("layer must be a FeatureCollection".into());
             }
-            let rows = collection["features"].as_array().ok_or("features must be an array")?;
-            count = count.checked_add(rows.len()).ok_or("feature count overflow")?;
+            let rows = collection["features"]
+                .as_array()
+                .ok_or("features must be an array")?;
+            count = count
+                .checked_add(rows.len())
+                .ok_or("feature count overflow")?;
             let mut ids = BTreeSet::new();
             for feature in rows {
                 if feature["type"] != "Feature" || !feature["properties"].is_object() {
@@ -431,7 +435,7 @@ impl Snapshot {
                 if let Some(id) = feature.get("id") {
                     match id {
                         Value::String(id) => identifier(id)?,
-                        Value::Number(_) => {},
+                        Value::Number(_) => {}
                         _ => return Err("feature id must be a nonempty string or number".into()),
                     }
                     if !ids.insert(serde_json::to_string(id).map_err(|e| e.to_string())?) {
@@ -449,8 +453,12 @@ impl Snapshot {
             if source.collection["type"] != "FeatureCollection" {
                 return Err("source must be a FeatureCollection".into());
             }
-            let rows = source.collection["features"].as_array().ok_or("source features must be an array")?;
-            count = count.checked_add(rows.len()).ok_or("feature count overflow")?;
+            let rows = source.collection["features"]
+                .as_array()
+                .ok_or("source features must be an array")?;
+            count = count
+                .checked_add(rows.len())
+                .ok_or("feature count overflow")?;
             for feature in rows {
                 if feature["type"] != "Feature" || !feature["properties"].is_object() {
                     return Err("invalid source feature".into());
@@ -469,8 +477,15 @@ impl Snapshot {
         if count > MAX_FEATURES {
             return Err("snapshot exceeds 100,000 aggregate features".into());
         }
-        if !self.include_design_customers && !self.sources.iter().any(|source| matches!(source.role, SourceRole::Customers | SourceRole::Buildings)) {
-            return Err("table-only customer mode requires an explicit source (which may be empty)".into());
+        if !self.include_design_customers
+            && !self
+                .sources
+                .iter()
+                .any(|source| matches!(source.role, SourceRole::Customers | SourceRole::Buildings))
+        {
+            return Err(
+                "table-only customer mode requires an explicit source (which may be empty)".into(),
+            );
         }
         if serde_json::to_vec(self).map_err(|e| e.to_string())?.len() > MAX_BYTES {
             return Err("snapshot exceeds 64 MiB".into());

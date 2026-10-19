@@ -4,8 +4,8 @@
 use crate::transport::{AuthorizedTransport, CallAuthority, SecretRequestBody};
 use crate::{ClientError, ClientProfile, ErrorKind, TransportResponse};
 use serde::Deserialize;
-use serde_json::{Map, Value, json};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use serde_json::{json, Map, Value};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -281,17 +281,15 @@ mod tests {
         let mut mirrored = document();
         mirrored["prior"].as_object_mut().unwrap().remove("id");
         mirrored["prior"]["properties"]["id"] = json!("n");
-        assert!(
-            SurveyUpdateRequest::new(
-                "p",
-                "customers",
-                "n",
-                "stable-key",
-                "2026-10-12T00:00:00Z",
-                mirrored
-            )
-            .is_ok()
-        );
+        assert!(SurveyUpdateRequest::new(
+            "p",
+            "customers",
+            "n",
+            "stable-key",
+            "2026-10-12T00:00:00Z",
+            mirrored
+        )
+        .is_ok());
         assert_eq!(r.payload["updated_data"], json!({"type":"Church"}));
         for key in [
             "updated_geometry",
@@ -320,10 +318,15 @@ mod tests {
                 3 => d["changes"] = json!({"undeclared":1}),
                 _ => d["prior"]["properties"]["metadata"]["is_deleted"] = json!(true),
             }
-            assert!(
-                SurveyUpdateRequest::new("p", "customers", "n", "key", "2026-10-12T00:00:00Z", d)
-                    .is_err()
-            );
+            assert!(SurveyUpdateRequest::new(
+                "p",
+                "customers",
+                "n",
+                "key",
+                "2026-10-12T00:00:00Z",
+                d
+            )
+            .is_err());
         }
     }
     #[test]

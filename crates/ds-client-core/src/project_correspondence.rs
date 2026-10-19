@@ -18,11 +18,11 @@
 //! reason is the code a caller plans against, with the ids and numbers the
 //! rule named beside it.
 
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 use crate::{
-    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, ProjectManagementCall,
-    ServiceRefusal, authorized::Authority,
+    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
+    ProjectManagementCall, ServiceRefusal,
 };
 
 /// The largest answer this door will read: a thread of records with their
@@ -1067,22 +1067,18 @@ mod tests {
             }),
             ErrorKind::InvalidInput
         );
-        assert!(
-            Action::Commit {
-                command_id: "c".into(),
-                base_revision: 1,
-                command: json!({"kind": "create_task", "create_task": {"id": "T", "title": "t"}}),
-            }
-            .validate()
-            .is_ok()
-        );
-        assert!(
-            Action::RecordThread {
-                record_id: "R1".into()
-            }
-            .validate()
-            .is_ok()
-        );
+        assert!(Action::Commit {
+            command_id: "c".into(),
+            base_revision: 1,
+            command: json!({"kind": "create_task", "create_task": {"id": "T", "title": "t"}}),
+        }
+        .validate()
+        .is_ok());
+        assert!(Action::RecordThread {
+            record_id: "R1".into()
+        }
+        .validate()
+        .is_ok());
     }
 
     /// The contract's token is the code; the ids the rule named ride beside it.

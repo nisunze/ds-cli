@@ -1,9 +1,9 @@
 //! Private backup receipts: Brain owns capture/restore; native checks selected
 //! scope and exact portable bytes. Revision hashes remain server-only UID pins.
-use super::{Action, note_id_valid, sha_valid, unreadable, validate_note};
+use super::{note_id_valid, sha_valid, unreadable, validate_note, Action};
 use crate::ClientError;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 pub const MAX_ARCHIVE_BYTES: usize = 512 << 10;

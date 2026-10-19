@@ -1769,7 +1769,10 @@ mod tests {
             assert_eq!(reserved.verdict.as_deref(), Some("reserved"));
             assert_eq!(reserved.label_key, "dsr_vd_reserved");
             assert_eq!(reserved.tone, "slate");
-            assert_eq!(reserved.reason.as_deref(), Some("Existing network not fully surveyed"));
+            assert_eq!(
+                reserved.reason.as_deref(),
+                Some("Existing network not fully surveyed")
+            );
 
             // A positive calculation override can produce a real failure for
             // either nature. Its saved verdict must still be shown in red.
@@ -1794,7 +1797,10 @@ mod tests {
             assert!(!unavailable.calculated);
             assert_eq!(unavailable.verdict.as_deref(), Some("refused"));
             assert_eq!(unavailable.tone, "amber");
-            assert_eq!(unavailable.reason.as_deref(), Some("Missing transformer node"));
+            assert_eq!(
+                unavailable.reason.as_deref(),
+                Some("Missing transformer node")
+            );
         }
     }
 

@@ -211,16 +211,16 @@ pub fn sqlite_path(path: &Path) -> Result<PathBuf, String> {
 }
 
 pub mod asset_catalogue;
-pub mod pm_graph_catalogue;
-pub mod local_models;
 pub mod grid_project_catalogue;
+pub mod local_models;
+pub mod pm_graph_catalogue;
 pub mod prepared;
 pub mod private;
 pub mod project_dataset_cache;
 pub mod project_snapshot;
-pub mod snapshot_privacy;
 pub mod reference_cache;
 pub mod scoped;
+pub mod snapshot_privacy;
 pub mod visibility;
 pub mod working_area_forms;
 

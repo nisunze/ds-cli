@@ -40,16 +40,14 @@ mod tests {
         assert_eq!(encoded, json!({"model":"GPT-6"}));
         assert!(encoded.get("version").is_none());
         assert!(encoded.get("strength").is_none());
-        assert!(
-            serde_json::from_value::<AuthoringModel>(json!({"model":"GPT-6","source":"verified"}))
-                .is_err()
-        );
-        assert!(
-            serde_json::from_value::<AuthoringModel>(
-                json!({"model":"GPT-6","kind":"self_declared","signature":"proof"})
-            )
-            .is_err()
-        );
+        assert!(serde_json::from_value::<AuthoringModel>(
+            json!({"model":"GPT-6","source":"verified"})
+        )
+        .is_err());
+        assert!(serde_json::from_value::<AuthoringModel>(
+            json!({"model":"GPT-6","kind":"self_declared","signature":"proof"})
+        )
+        .is_err());
     }
     #[test]
     fn empty_unknown_or_out_of_bound_labels_do_not_become_a_writer() {

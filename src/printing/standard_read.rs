@@ -1,7 +1,7 @@
 //! Read-only admission of one project-owned front-matter page against its
 //! catalogue location. Composition and project identity binding stay separate.
-use super::catalogue::{FRONT_MATTER_ROLES, Location};
-use super::standards::{TEMPLATE_SCHEMA, TemplateDocument, Templates};
+use super::catalogue::{Location, FRONT_MATTER_ROLES};
+use super::standards::{TemplateDocument, Templates, TEMPLATE_SCHEMA};
 use serde_json::Value;
 
 pub fn preview_subject(document: &TemplateDocument) -> Result<super::preview::SubjectKind, String> {
@@ -316,7 +316,7 @@ pub fn admit(location: &Location, response: &Value) -> Result<TemplateDocument, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::printing::{ElementKind, Paper, default_layout};
+    use crate::printing::{default_layout, ElementKind, Paper};
     use serde_json::json;
     use std::collections::BTreeMap;
 
@@ -427,19 +427,15 @@ mod tests {
             super::super::preview::SubjectKind::Layout
         );
         let rendered = source.render_layout();
-        assert!(
-            !rendered
-                .elements
-                .iter()
-                .any(|element| element.id == "client-logo")
-        );
-        assert!(
-            document
-                .layout
-                .elements
-                .iter()
-                .any(|element| element.id == "client-logo")
-        );
+        assert!(!rendered
+            .elements
+            .iter()
+            .any(|element| element.id == "client-logo"));
+        assert!(document
+            .layout
+            .elements
+            .iter()
+            .any(|element| element.id == "client-logo"));
         let defaults: Value = serde_json::from_str(include_str!(
             "../../tests/fixtures/governed-renderer-defaults.json"
         ))
@@ -471,16 +467,14 @@ mod tests {
         assert_eq!(transported, capture);
         let mut crossed = resolution.clone();
         crossed.project_id = "foreign".into();
-        assert!(
-            capture_preview(
-                location.clone(),
-                document.clone(),
-                &crossed,
-                json!({}),
-                String::new()
-            )
-            .is_err()
-        );
+        assert!(capture_preview(
+            location.clone(),
+            document.clone(),
+            &crossed,
+            json!({}),
+            String::new()
+        )
+        .is_err());
         let mut missing = resolution;
         missing.bindings.clear();
         assert!(capture_preview(location, document, &missing, json!({}), String::new()).is_err());
@@ -501,11 +495,9 @@ mod tests {
         if let Location::GovernedStandard { content_sha256, .. } = &mut location {
             *content_sha256 = None;
         }
-        assert!(
-            admit_location(&location)
-                .unwrap_err()
-                .contains("refresh the template library")
-        );
+        assert!(admit_location(&location)
+            .unwrap_err()
+            .contains("refresh the template library"));
     }
     #[test]
     fn saved_static_project_pages_capture_original_receipts_without_model_inputs() {
@@ -570,16 +562,14 @@ mod tests {
             }
             let mut bad = response;
             bad["revision"] = json!("");
-            assert!(
-                capture_project_preview(
-                    "project".into(),
-                    bad,
-                    &resolution,
-                    json!({}),
-                    String::new()
-                )
-                .is_err()
-            );
+            assert!(capture_project_preview(
+                "project".into(),
+                bad,
+                &resolution,
+                json!({}),
+                String::new()
+            )
+            .is_err());
         }
     }
 }
