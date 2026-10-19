@@ -672,6 +672,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn findings_list_every_coded_warning_the_process_recorded() {
+        let warning = |code: &str, count: u64, message: &str| json!({"code": code, "count": count, "severity": "warning", "layer": "lv_poles", "message": message});
+        let list = TransformerStatusList::from_observation(json!([{
+            "name": "upgrade_t",
+            "process_metadata": {
+                "status": "warning",
+                "warning": warning("unconnected_customers", 3, "3 customer(s) could not be connected"),
+                "warnings": [
+                    warning("unconnected_customers", 3, "3 customer(s) could not be connected"),
+                    warning("struct_type_material_unresolved", 1, "Pole material is missing for: C850."),
+                    warning("pole_engineering_attributes_missing", 90, "90 pole(s) have no recorded engineering value"),
+                    json!({"code": "welded_lv_lines", "count": 6, "severity": "info"})
+                ]
+            }
+        }]))
+        .unwrap();
+
+        let data = status_json(&list, true);
+        let findings = data["findings"].as_array().unwrap();
+        assert_eq!(
+            findings
+                .iter()
+                .map(|finding| (
+                    finding["transformer"].as_str().unwrap(),
+                    finding["code"].as_str().unwrap()
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                ("upgrade_t", "unconnected_customers"),
+                ("upgrade_t", "struct_type_material_unresolved"),
+                ("upgrade_t", "pole_engineering_attributes_missing"),
+            ]
+        );
+        assert_eq!(
+            findings[1]["message"],
+            "Pole material is missing for: C850."
+        );
+        assert_eq!(findings[2]["count"], 90);
+        assert_eq!(data["transformers"][0]["health"]["warning_count"], 3);
+    }
+
+    #[test]
     fn explicit_read_modes_are_additive_and_closed() {
         let parse = |extra: &[&str]| {
             let mut args = vec!["--project".to_string(), "p_one".to_string()];
