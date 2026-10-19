@@ -558,6 +558,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // answer is built from, on the same native credential class as the
     // inventory because restoring the native session may rotate it.
     ("design.status", "local_auth_state", "headless_project"),
+    // The retained MV catalogue: Kernel SQLite rows on this machine; a
+    // refresh restores the native session, which may rotate the credential.
+    ("design.model.catalog", "local_auth_state", "headless_project"),
     ("design.collisions", "local_auth_state", "headless_project"),
     // ONE design-domain migration, `kind` transformer|dsgrid. The plan writes
     // nothing; the apply writes into the SELECTED project, so it is a project

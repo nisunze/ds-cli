@@ -7225,7 +7225,8 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
         // the governed tag project-list read, and LV analysis availability,
         // plus the two network document copy commands (2026-10-06).
         // Seven native repair controls, source resolution and verified backup/restore.
-        120,
+        // Plus the retained MV model catalogue (2026-10-19).
+        121,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -7795,6 +7796,9 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 && !id.starts_with("design.activities.")
                 // Native repair is a file workflow; only publish is project-owned.
                 && !id.starts_with("design.repair.")
+                // Saved MV model reads, packages and the retained catalogue are
+                // native grid-owner operations, not bridge collaboration records.
+                && !id.starts_with("design.model.")
         })
         .collect();
     let expected: BTreeSet<&str> = [

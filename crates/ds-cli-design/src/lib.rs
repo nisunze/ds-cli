@@ -85,6 +85,7 @@ pub mod known_columns;
 pub mod lv;
 pub mod materials;
 pub mod migrate;
+pub mod model_catalog;
 pub mod models;
 pub mod models_publish;
 pub mod native_tags;
@@ -113,6 +114,7 @@ pub static DOMAIN: Domain = Domain {
     commands: &[
         &models::LIST,
         &models::EXPORT,
+        &model_catalog::COMMAND,
         &models_publish::COMMAND,
         &native_tags::DEFINITIONS,
         &native_tags::PROJECTION,

@@ -27,6 +27,22 @@ the file atomically without replacing existing bytes. Its receipt preserves
 project, lane and immutable revision identity. Pass the resulting local package
 to `ds report plan-profile` after reading that command's live descriptor.
 
+`ds design model catalog --project <exact-id>` reads the project's retained
+model catalogue from this machine's Kernel SQLite rows (`--read held`, the
+default): no transport and no credential refresh, so it answers offline.
+`--read refresh` makes one authorized listing and compares its source basis
+with the held one: an equal basis moves only the observation time; otherwise a
+head seen for the first time is persisted at once (`changes.added`), changed
+heads move (keeping their retained exact version until a new one is recorded)
+and heads the listing no longer names are retired. A listing that fails after
+sign-in returns the held rows with `observation.state = held` and
+`refresh_error`; an unreachable or refused sign-in refuses with its own code
+and leaves the rows as they were. `--retain
+<version.json>` (held only) records the exact version whose verified bytes this
+host holds for one held head. No package bytes are downloaded. The Desktop
+reads the same rows through this command; the browser runs the same Kernel
+schema and step on its own SQLite.
+
 `ds design model publish` saves a reviewed checkpoint into an existing MV
 model's current version. Supply explicit `--project`, `--lane`, `--model`,
 `--expected-head`, `--file <absolute.dsgrid>` and `--reason`, then confirm with
