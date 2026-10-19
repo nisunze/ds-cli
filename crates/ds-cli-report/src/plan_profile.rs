@@ -22,7 +22,7 @@ pub static COMMAND: Command = Command {
     id: "report.plan-profile",
     path: &["report", "plan-profile"],
     contract: 8,
-    summary: "Render DS Grid plan/profile sheets from a pinned model or scene and plan.",
+    summary: "Render DS Grid plan/profile sheets from a pinned model or scene.",
     purpose: "Resolve the named project's adopted MV setup and render a digest/revision-pinned model or same-revision projections into its ordered local publication. Exact alignment IDs narrow projection scope; model mode prints the complete model and refuses alignment/template-job preview flags. Text, logos, scales, fonts and issue policy inherit that setup; allowed model differences are explicit. Missing inputs refuse before output. --request alone runs a complete native request without project reads. --preview-layout renders a saved or draft template sample into the scoped native disk cache, with exact input/style/engine fences and 24h or 7d retention. Responses contain file receipts and station metadata, never inline SVG. No model, layout, selection or publication is saved by a template preview.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,

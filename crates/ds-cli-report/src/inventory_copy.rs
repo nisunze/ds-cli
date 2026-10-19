@@ -13,7 +13,7 @@ pub static COMMAND: Command = Command {
     id: "report.inventory.copy",
     path: &["report", "inventory", "copy"],
     contract: 1,
-    summary: "Copy exact already retained report bytes without network or generation.",
+    summary: "Copy exact retained report bytes without network or generation.",
     purpose: "Selects committed local producer bytes or a verified Sync download explicitly. Checks the native account/project/immutable output pins, exact retained head for downloaded bytes and physical SHA/size before returning a fresh private destination. No publication, cloud call, fallback or generation.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,

@@ -29,7 +29,7 @@ pub static COMMAND: Command = Command {
     id: "data.reference.read",
     path: &["data", "reference", "read"],
     contract: 1,
-    summary: "Read installed global reference cache metadata and bounded spatial features offline.",
+    summary: "Read installed reference cache metadata and bounded features offline.",
     purpose: "Reads the configured shared reference cache with no account, project, network or paired Desktop. --request is an ordinary JSON file up to 16 MiB: action storage_status has no other fields; status takes identity {resource_id,version}; versions takes identity {resource_id,version?} (any supplied version is validated and retained); query takes identity, area (GeoJSON Polygon/MultiPolygon), optional limit (1-10000; omitted 5000). Resource/version identities are exact lowercase SHA-256 hex. Unknown fields and every write action refuse before calling storage. --out writes the exact serialized owner result to a new absolute JSON file, bounded to 64 MiB, for results too large for process stdout.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,

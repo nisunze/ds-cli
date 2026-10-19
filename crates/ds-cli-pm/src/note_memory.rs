@@ -275,7 +275,7 @@ pub static RESTORE: Command = descriptor(
 pub static CONSOLIDATE: Command = descriptor(
     "pm.note.consolidate",
     &["pm", "note", "consolidate"],
-    "Publish concise context with exact source versions, leaving sources intact.",
+    "Publish concise context from exact source versions; sources stay.",
     "Closed Consolidate JSON: operation_id,id,reason,draft,sources[{id,version}]. Draft must be active context_consolidation memory with explicit claim provenance/scope/evidence. Consolidation preserves disagreements, unresolved questions and immutable source refs; it never promotes a proposal into an accepted decision or retires sources. Retirement is a separate verified-backup operation.",
     Effect::GlobalWrite,
     crate::authored_args![INPUT, crate::LANE_ARG, crate::PROJECT_ARG],

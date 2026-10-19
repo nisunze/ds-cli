@@ -92,7 +92,7 @@ pub static EDIT: Command = Command {
     id: "pm.task.checklist.edit",
     path: &["pm", "task", "checklist", "edit"],
     contract: 1,
-    summary: "Add, edit, answer, move or remove one task or milestone checklist item.",
+    summary: "Add, edit, answer, move or remove one task/milestone checklist item.",
     purpose: "Apply one closed JSON edit to one stable task or milestone checklist item through the existing project command. The input contains action add|edit|check|uncheck|move|remove and item_id; optional checklist_kind, text, body, answer, geometry, clear_geometry, links, attachment_ids and zero-based index. Omitted fields stay unchanged. attachment_ids reference assets already held by this task; no upload, ownership transfer or project-wide overwrite occurs. Preserve --id, --base-revision and the exact authored input for retries. Permissions, list state, attachment authority and promotion fences are checked by the server.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,

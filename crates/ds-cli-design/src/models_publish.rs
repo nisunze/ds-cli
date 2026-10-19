@@ -261,7 +261,7 @@ pub static COMMAND: Command = Command {
     id: "design.model.publish",
     path: &["design", "model", "publish"],
     contract: 1,
-    summary: "Save a reviewed .dsgrid checkpoint to an existing MV model (needs --yes).",
+    summary: "Save a reviewed .dsgrid checkpoint to an MV model (needs --yes).",
     purpose: "Publish one exact local package as an immutable revision of an existing mv_line model in the explicitly named project and credential lane. Native Network preparation validates the opaque package and derives its source identity; the authenticated owner uploads, commits against --expected-head and verifies exact revision readback. This saves into the current version without renaming, creating a model or changing a local active model. Report upload is a separate workflow. A failed acknowledgement is never retried automatically.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,

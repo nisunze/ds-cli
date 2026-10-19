@@ -128,7 +128,7 @@ pub static REVISION_SHOW: Command = descriptor(
 pub static REVISION_PUBLISH: Command = descriptor(
     "design.version.revision.publish",
     &["design", "version", "revision", "publish"],
-    "Freeze saved LV content as an immutable catalog revision (needs --yes).",
+    "Freeze saved LV content as an immutable revision (needs --yes).",
     &[
         PROJECT,
         OBJECT,
@@ -152,7 +152,7 @@ pub static REVISION_PUBLISH: Command = descriptor(
 pub static RENUMBER: Command = descriptor(
     "design.version.renumber",
     &["design", "version", "renumber"],
-    "Change an LV display ordinal without changing immutable references (needs --yes).",
+    "Change an LV display ordinal; references stay immutable (needs --yes).",
     &[
         PROJECT,
         OBJECT,
@@ -171,7 +171,7 @@ pub static RENUMBER: Command = descriptor(
 pub static REVISION_BIND: Command = descriptor(
     "design.version.revision.bind",
     &["design", "version", "revision", "bind"],
-    "Bind an exact immutable revision to an issued PM record or milestone (needs --yes).",
+    "Bind an immutable revision to a PM record or milestone (needs --yes).",
     &[PROJECT, OBJECT, Arg::value("file", "<binding.json>", "Closed binding pins: version_id,revision_id,purpose,record_id/expected_record_revision,milestone_id,assets,expected_catalog_revision,expected_source_revision,reason,idempotency_key. Submission requires issued record and delivered assets; at most 32 asset pins.").required(), LANE],
     Effect::GlobalWrite,
 );
@@ -182,7 +182,7 @@ pub static REVISION_PROMOTE: Command = Command {
     ..descriptor(
     "design.version.revision.promote",
     &["design", "version", "revision", "promote"],
-    "Promote an exact immutable runtime revision after backing up current source (needs --yes).",
+    "Promote an immutable revision after a source backup (needs --yes).",
     &[PROJECT, OBJECT, Arg::value("file", "<promotion.json>", "Closed promotion pins: version_id,revision_id,expected_catalog_revision,expected_source_revision,task_ids?,source_record_ids?,reason,idempotency_key. Server retains original frame backup and tracked change before replacing Latest; exported-design and metadata-only snapshots refuse.").required(), LANE],
     Effect::GlobalWrite,
 )

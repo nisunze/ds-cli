@@ -84,7 +84,7 @@ pub static COMPARE: Command = Command {
     ..command(
         "design.version.compare",
         &["design", "version", "compare"],
-        "Compare governed MV content-revision metadata; LV uses exact revision compare.",
+        "Compare governed MV revision metadata; LV uses exact revision compare.",
         &[
             PROJECT,
             Arg::value(

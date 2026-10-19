@@ -39,7 +39,7 @@ pub static READ: Command = Command {
     id: "core.sync.read",
     path: &["core", "sync", "read"],
     contract: 1,
-    summary: "Read retained Sync Center projects or one project's store without starting Core.",
+    summary: "Read retained Sync Center projects or one project's store offline.",
     purpose: "Read the existing lane's native SQLite store under its protected account, deployment and installation. No Core daemon, network, credential refresh, saved project, store initialization or repair is involved. Missing stores are valid empty views. Only the public native projection and retained compute activity are written to a new private file, bounded to 64 MiB; upload transport state and signed grant bytes remain private. Recheck the exact protected identity before acknowledging the file.",
     chapter: Chapter::Workstation,
     effect: Effect::LocalFileWrite,
