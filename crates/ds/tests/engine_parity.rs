@@ -16,7 +16,7 @@
 //! rather than passing quietly: every skip names the binary, the three places
 //! the lookup looked, and the override that fixes it. CI builds `ds-report`
 //! from the `ds-network-reporter` checkout and `ds-solar` from the `ds-solar`
-//! checkout, points `DS_REPORT_BIN` / `DS_SOLAR_BIN` at them, re-runs this
+//! checkout, points `DS_REPORT_BIN` / `DS_SOLAR_ENGINE_BIN` at them, re-runs this
 //! suite with `--nocapture` and fails the job if `SKIPPED` appears — so a skip
 //! is a local condition and never a green CI run.
 
@@ -28,7 +28,7 @@ use serde_json::Value;
 /// The reporter engine: the binary name `ds` looks for, and its override.
 const REPORT: (&str, &str) = ("reporter", "DS_REPORT_BIN");
 /// The solar engine, likewise.
-const SOLAR: (&str, &str) = ("ds-solar", "DS_SOLAR_BIN");
+const SOLAR: (&str, &str) = ("solar", "DS_SOLAR_ENGINE_BIN");
 
 fn ds(args: &[&str]) -> (Value, i32) {
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
@@ -77,22 +77,14 @@ fn engine(name: &str, env_override: &str) -> Option<PathBuf> {
 
 /// Whether an engine is reachable.
 ///
-/// `ds`'s own descriptor is the authority on availability rather than a second
-/// copy of the rule, and the resolved path is asserted to agree with it: an
-/// engine `ds` can see but this suite cannot invoke — or the reverse — is
-/// exactly the drift that made the two lookups diverge before.
+/// Reporter and Solar are independently installed addons captured per lane by
+/// the handler (26af8f46), so a command's descriptor stays `available` with no
+/// engine installed and is no longer an engine-presence signal. The command
+/// must still be registered; the engine itself is resolved here.
 fn available(command: &str, (name, env_override): (&str, &str)) -> bool {
     let (descriptor, code) = ds(&["capabilities", command, "--output", "json"]);
-    let declared = code == 0 && descriptor["data"]["command"]["availability"] == "available";
-    let resolved = engine(name, env_override);
-    assert_eq!(
-        declared,
-        resolved.is_some(),
-        "`ds` reports `{command}` as available={declared}, but this suite resolved \
-         `{name}` as {resolved:?}. The engine lookups have drifted; fix this \
-         helper against ds_cli_exec::External::locate."
-    );
-    declared
+    assert_eq!(code, 0, "`{command}` is not registered: {descriptor}");
+    engine(name, env_override).is_some()
 }
 
 fn reporter_available() -> bool {

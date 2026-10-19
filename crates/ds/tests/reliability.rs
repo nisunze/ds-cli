@@ -167,7 +167,9 @@ fn host_context_reaches_the_event_without_changing_the_answer() {
     let baseline = ds(&state_root("host-off"), "off", &[], REFUSED);
     for (host, expected) in [
         ("desktop", "desktop"),
-        ("server", "server"),
+        ("core", "server"),
+        // The retired `server` launcher token is no longer a host kind.
+        ("server", "headless"),
         ("headless", "headless"),
         ("invalid", "headless"),
     ] {
@@ -209,7 +211,7 @@ fn a_signed_out_server_is_a_local_refusal_not_a_platform_failure() {
         ("DS_CLI_SURFACE", "mcp"),
     ];
     let args = [
-        "server",
+        "core",
         "serve",
         "--lane",
         "stable",

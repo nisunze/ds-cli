@@ -1,30 +1,20 @@
-//! The headless command is usable without pairing and its input is closed.
+//! Transient Canvas computation left the native CLI (47583283): it belongs to
+//! ds-interactions in the window, so `ds map canvas` is retired, and retired
+//! means unreachable rather than a second name that still works.
 mod common;
-use serde_json::{Value, json};
 #[test]
-fn camera_runs_without_desktop_and_refuses_unknown_fields() {
-    let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("camera.json");
-    std::fs::write(&path, r#"{"operation":"fit"}"#).unwrap();
-    let args = [
+fn retired_canvas_camera_is_not_a_command() {
+    let run = common::invoke(&[
         "map",
         "canvas",
         "camera",
         "--request",
-        path.to_str().unwrap(),
+        "/nonexistent.json",
         "--output",
         "json",
-    ];
-    let run = common::invoke(&args);
-    assert_eq!(run.code, 0, "{}", run.stdout);
-    let result: Value = serde_json::from_str(&run.stdout).unwrap();
-    assert_eq!(result["data"], json!({"zoom":1.,"pan_x":0.,"pan_y":0.}));
-    std::fs::write(&path, r#"{"operation":"fit","unknown":true}"#).unwrap();
-    let bad = common::invoke(&args);
-    assert_ne!(bad.code, 0);
-    assert!(
-        bad.stdout.contains("canvas_request_invalid"),
-        "{}",
-        bad.stdout
-    );
+    ]);
+    assert_ne!(run.code, 0, "{}", run.stdout);
+    assert!(run.stdout.contains("unknown_command"), "{}", run.stdout);
+    let help = common::invoke(&["map", "--help"]);
+    assert!(!help.stdout.contains("canvas"), "{}", help.stdout);
 }

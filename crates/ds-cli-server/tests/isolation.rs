@@ -1725,7 +1725,7 @@ fn activity_scope_is_one_entry_per_project_that_holds_work() {
     let answer = host.raw("GET", "/v1/activity", None);
     assert_eq!(answer.status, 409, "{:?}", answer.json());
     assert!(
-        answer.stringify().contains("before server startup"),
+        answer.stringify().contains("before Core startup"),
         "the pre-startup refusal, named: {}",
         answer.stringify()
     );
@@ -2766,7 +2766,7 @@ fn an_activity_query_with_a_device_name_project_is_a_grammar_refusal() {
         let projection = host.raw("GET", &path, None);
         assert_eq!(projection.status, 409, "{path}: {}", projection.stringify());
         assert_eq!(projection.code(), "server_refused");
-        assert!(projection.stringify().contains("before server startup"));
+        assert!(projection.stringify().contains("before Core startup"));
     }
 
     for device in ["CON", "con.json", "NUL", "Com1.txt", "lpt9"] {
@@ -2789,7 +2789,7 @@ fn an_activity_query_with_a_device_name_project_is_a_grammar_refusal() {
             refused.stringify()
         );
         assert!(
-            !refused.stringify().contains("before server startup"),
+            !refused.stringify().contains("before Core startup"),
             "{device}: the grammar was decided after the projection was asked for: {}",
             refused.stringify()
         );

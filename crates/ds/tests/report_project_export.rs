@@ -68,12 +68,17 @@ fn the_descriptor_is_a_headless_project_fenced_local_file_write() {
         inputs,
         [
             "transformer",
+            // Held saved-selection preview and export (1146d3c5).
+            "held-preview",
+            "held-export",
             "out-dir",
             "concurrency",
             "admin-bounds",
             "selection",
             "print-layout",
             "preview-layout",
+            "preview-retention",
+            "preview-voltage-drop",
             "context-vectors",
             "pin-room",
             "seed",
@@ -258,7 +263,7 @@ fn local_refusals_are_decided_before_any_credential_is_restored() {
 }
 
 #[test]
-fn an_absent_engine_is_refused_by_the_availability_gate() {
+fn an_absent_engine_is_never_selected_before_the_credential_gate() {
     let out = tempfile::tempdir().expect("out dir");
     let envelope = headless(
         &[
@@ -272,5 +277,9 @@ fn an_absent_engine_is_refused_by_the_availability_gate() {
         ],
         Some("/nonexistent/ds-report"),
     );
-    assert_eq!(code(&envelope), "reporter_engine_missing", "{envelope}");
+    // The Reporter is a lane-captured addon resolved after the native
+    // credential (26af8f46), so a signed-out caller meets the credential gate
+    // first; the engine is never selected and nothing is written.
+    assert_eq!(code(&envelope), "headless_signed_out", "{envelope}");
+    assert!(std::fs::read_dir(out.path()).expect("out dir").next().is_none());
 }

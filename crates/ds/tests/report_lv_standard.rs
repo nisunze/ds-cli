@@ -75,22 +75,32 @@ fn standard_registry_and_missing_job_have_named_refusals() {
     ] {
         assert!(text.contains(value), "{value} absent from registry");
     }
+    // The Reporter is a lane-captured addon (26af8f46): the command is always
+    // available and the handler resolves the engine. A missing job is refused
+    // before any engine lookup, whether or not an executable is present...
+    for engine in ["/nonexistent", "/bin/false"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_ds"))
+            .args(["report", "export", "--task", "lv-standard", "--output", "json"])
+            .env("DS_REPORT_BIN", engine)
+            .output()
+            .unwrap();
+        let answer: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(answer["error"]["code"], json!("missing_input"), "{engine}");
+    }
+    // ...and a complete request with an absent engine is refused by name.
+    let root = tempfile::tempdir().unwrap();
+    let request = root.path().join("job.json");
+    std::fs::write(&request, b"{}").unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
-        .args([
-            "report",
-            "export",
-            "--task",
-            "lv-standard",
-            "--output",
-            "json",
-        ])
+        .args(["report", "export", "--task", "lv-standard", "--request"])
+        .arg(&request)
+        .args(["--output", "json"])
         .env("DS_REPORT_BIN", "/nonexistent")
         .output()
         .unwrap();
     let answer: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(answer["error"]["code"], json!("reporter_engine_missing"));
-    // The platform availability gate precedes the handler. With an executable
-    // present, the missing job is refused before any engine task is invoked.
+    // The engine is present but the job is absent: refused before any task.
     let output = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args([
             "report",

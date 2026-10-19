@@ -307,10 +307,13 @@ fn core_engine_reports_the_installed_solar_owner_without_auth_or_server() {
     expected.schemas = ds_solar_contracts::EngineIdentity::stamped_schema_inventory();
     assert_eq!(expected.name, "ds-solar-engine");
     assert!(!expected.schemas.is_empty());
-    assert_eq!(
-        result.envelope["data"],
-        serde_json::to_value(expected).unwrap()
-    );
+    // The installed addon answers with its build identity (ds.engine-build/v1):
+    // the same engine name and version, and the stamped schemas it serves.
+    let data = &result.envelope["data"];
+    assert_eq!(data["schema"], "ds.engine-build/v1");
+    assert_eq!(data["name"], expected.name);
+    assert_eq!(data["version"], expected.version);
+    assert_eq!(data["schemas"], serde_json::to_value(&expected.schemas).unwrap());
 }
 
 #[test]

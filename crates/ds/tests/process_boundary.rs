@@ -132,6 +132,15 @@ fn spawning_files() -> BTreeSet<String> {
 
     let mut found = BTreeSet::new();
     for path in sources {
+        // Sibling test modules (`<name>_tests.rs`, `tests.rs`) compile only
+        // under `#[cfg(test)] #[path = ...] mod tests;` in their parent file.
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        if name.ends_with("_tests.rs") || name == "tests.rs" {
+            continue;
+        }
         let text = std::fs::read_to_string(&path).expect("a UTF-8 source file");
         let shipped = text.split("#[cfg(test)]").next().unwrap_or_default();
         if CONSTRUCTORS

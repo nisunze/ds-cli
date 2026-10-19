@@ -38,7 +38,9 @@ fn every_messaging_command_declares_a_headless_owner_and_real_refusal() {
     let (index, code) = invoke(&["capabilities", "messaging", "--output", "json"]);
     assert_eq!(code, 0);
     let commands = index["data"]["commands"].as_array().unwrap();
-    assert_eq!(commands.len(), 12);
+    // Twelve conversation and inbox commands plus the two push-installation
+    // controls (f18df584).
+    assert_eq!(commands.len(), 14);
     for command in commands {
         let id = command["id"].as_str().unwrap();
         let (descriptor, code) = invoke(&["capabilities", id, "--output", "json"]);

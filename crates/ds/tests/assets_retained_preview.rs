@@ -22,7 +22,7 @@ fn cli(config: &Path, args: &[&str]) -> Value {
         .unwrap_or_else(|_| panic!("non-JSON CLI: {}", String::from_utf8_lossy(&out.stdout)))
 }
 #[test]
-fn retained_preview_declares_native_pins_and_refuses_unadmitted_profile_before_source() {
+fn retained_preview_declares_native_pins_and_refuses_unpinned_reads_before_source() {
     // The maintained development catalog is deliberately held v30; compiled
     // v31 must refuse it, not fabricate an admitted release or source read.
     // Argument/source semantics are tested directly in the owning modules.
@@ -67,8 +67,11 @@ fn retained_preview_declares_native_pins_and_refuses_unadmitted_profile_before_s
         args.extend(extra);
         args.extend(["--output", "json"]);
         let envelope = cli(config.path(), &args);
+        // The development catalogue admits the compiled profile, so the
+        // missing exact revision/generation/SHA pins are refused locally,
+        // before any credential or source read.
         assert_eq!(
-            envelope["error"]["code"], "native_profile_not_configured",
+            envelope["error"]["code"], "asset_preview_pins_invalid",
             "{envelope}"
         );
         assert!(envelope["data"].is_null());
@@ -93,7 +96,7 @@ fn retained_preview_declares_native_pins_and_refuses_unadmitted_profile_before_s
             ],
         );
         assert_eq!(
-            rejected["error"]["code"], "native_profile_not_configured",
+            rejected["error"]["code"], "asset_preview_pins_invalid",
             "{rejected}"
         );
     }
@@ -111,10 +114,8 @@ fn retained_preview_declares_native_pins_and_refuses_unadmitted_profile_before_s
             "json",
         ],
     );
-    assert_eq!(
-        online["error"]["code"], "native_profile_not_configured",
-        "{online}"
-    );
+    // A well-formed online retained read stops at the absent native account.
+    assert_eq!(online["error"]["code"], "headless_signed_out", "{online}");
 }
 #[test]
 fn retained_preview_mcp_uses_the_same_native_descriptor_and_refusal() {

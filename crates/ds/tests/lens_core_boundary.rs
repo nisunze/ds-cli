@@ -762,7 +762,7 @@ const ROOM_HEADLESS_OWNERS: &[(&str, &[&str])] = &[
     // Retained versions on the map ↔ their headless list and compare.
     (
         "map.design.version.play",
-        &["design.version.list", "design.version.restore"],
+        &["design.version.list", "design.version.revision.show"],
     ),
     ("map.design.version.compare", &["design.version.compare"]),
     // Native uploads ↔ the headless intake, which cleans, stages and saves.
