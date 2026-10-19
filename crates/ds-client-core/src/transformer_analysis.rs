@@ -314,13 +314,27 @@ fn refusal(response: &TransportResponse) -> ClientError {
         Ok(envelope) => envelope,
         Err(_) => return unreadable("analysis refusal is not a standard error envelope"),
     };
+    // ds-brain's data route spells its codes in SCREAMING_SNAKE
+    // (`TRANSFORMER_ANALYSIS_STALE`, `NOT_FOUND`); the refusal vocabulary is
+    // lowercase. Refusing every such answer as "no valid service code" turned
+    // each missing or stale analysis into an unreadable response.
+    let code = if envelope
+        .error
+        .code
+        .bytes()
+        .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+    {
+        envelope.error.code.to_ascii_lowercase()
+    } else {
+        envelope.error.code.clone()
+    };
     let refusal = ServiceRefusal::with_details(
         response.status,
-        Some(&envelope.error.code),
+        Some(&code),
         envelope.error.message.as_deref(),
         envelope.error.details.as_ref(),
     );
-    if refusal.code() != Some(envelope.error.code.as_str()) {
+    if refusal.code() != Some(code.as_str()) {
         return unreadable("analysis refusal has no valid service code");
     }
     // Keep missing and moved-fence/stale 409 codes intact. A 409 is never an
@@ -372,5 +386,45 @@ mod saved_receipt_tests {
                 .unwrap()
                 .is_none());
         }
+    }
+
+    /// be552f2b: ds-brain's data route answers a moved head with 409
+    /// `TRANSFORMER_ANALYSIS_STALE`. The uppercase code was refused as "no
+    /// valid service code", so every such transformer failed its export as
+    /// an unreadable response instead of reporting a stale analysis.
+    #[test]
+    fn the_data_routes_uppercase_refusal_codes_are_read_not_refused() {
+        for (status, code, kind) in [
+            (
+                409,
+                "TRANSFORMER_ANALYSIS_STALE",
+                ErrorKind::UnreadableResponse,
+            ),
+            (
+                409,
+                "TRANSFORMER_ANALYSIS_MISSING",
+                ErrorKind::UnreadableResponse,
+            ),
+            (400, "TRANSFORMER_ANALYSIS_INVALID", ErrorKind::InvalidInput),
+            (404, "NOT_FOUND", ErrorKind::ResourceNotFound),
+        ] {
+            let body =
+                json!({"success":false,"error":{"code":code,"message":"analysis head moved"}});
+            let error = refusal(&TransportResponse::new(
+                status,
+                serde_json::to_vec(&body).unwrap(),
+            ));
+            assert_eq!(error.kind(), kind, "{code}");
+            let refusal = error
+                .service_refusal()
+                .expect("the server's refusal travels");
+            assert_eq!(refusal.status(), status);
+            assert_eq!(refusal.code(), Some(code.to_ascii_lowercase().as_str()));
+            assert_eq!(refusal.message(), Some("analysis head moved"));
+        }
+        // A body that is not the standard envelope is still unreadable.
+        let error = refusal(&TransportResponse::new(409, b"<html>".to_vec()));
+        assert_eq!(error.kind(), ErrorKind::UnreadableResponse);
+        assert!(error.service_refusal().is_none());
     }
 }
