@@ -1968,6 +1968,7 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "project",
         "project-task-operations",
         "project-checklists",
+        "notes",
         "correspondence",
         "messaging",
         "solar-input",
@@ -1995,8 +1996,11 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // create-from-template and the three working-area form leaves
             // (read, choose, forget which forms the map loads); the photo
             // leaves moved to survey-media.
-            // The two cascade leaves join the existing entry workflow.
-            "survey-projects" => 26,
+            // The two cascade leaves join the existing entry workflow, and the
+            // version-fenced correction plan/apply (2026-10-19) completes it.
+            "survey-projects" => 28,
+            // Private and shared project notes, split from `project`.
+            "notes" => 24,
             // Held survey photos (list, read), the one rotation and its
             // publication, and the offline file rotation, plus bootstrap.
             "survey-media" => 10,
@@ -2020,7 +2024,8 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // also carries this machine's prepared local layer catalogue,
             // which is the same "one host's own layers" workflow as the local
             // tile references beside it.
-            "layers" => 19,
+            // Plus the retained overlay registry read and its local edit.
+            "layers" => 21,
             // Seventeen operations leaves plus bootstrap. The one that raised
             // this from eighteen on 2026-10-09 is `ds feedback draft --last`:
             // every failed envelope names it as the next command, so the
@@ -2342,6 +2347,8 @@ fn auth_context_profile_hands_off_only_non_secret_native_identity_commands() {
             "auth_link_status",
             "auth_project_list",
             "auth_status",
+            "messaging_installation_revoke",
+            "messaging_installations",
         ]
     );
     assert_eq!(
@@ -2389,9 +2396,9 @@ fn auth_context_profile_hands_off_only_non_secret_native_identity_commands() {
         .collect::<Vec<_>>();
     assert!(!broad_names.contains(&"auth_login"));
     assert!(!broad_names.contains(&"auth_link_approve"));
-    assert!(!broad_names.contains(&"server_serve"));
-    assert!(broad_names.contains(&"server_submit"));
-    assert!(broad_names.contains(&"server_status"));
+    assert!(!broad_names.contains(&"core_serve"));
+    assert!(broad_names.contains(&"core_submit"));
+    assert!(broad_names.contains(&"core_status"));
     assert_eq!(response(&broad, 2)["error"]["code"], -32602);
     assert_eq!(response(&broad, 3)["error"]["code"], -32602);
 }
@@ -2447,7 +2454,7 @@ fn the_instance_enumeration_is_projected_and_never_gated_on_what_it_reports() {
         .iter()
         .find(|input| input["name"] == "target")
         .expect("`ds desktop status` publishes the host it runs against");
-    assert_eq!(target["value"], "<desktop|desktop:instance|server>");
+    assert_eq!(target["value"], "<desktop|desktop:instance|core>");
     assert!(
         target["summary"]
             .as_str()
@@ -2481,7 +2488,7 @@ fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
         // dimension; it does not select the machine that executes it.
         "style.purpose.index",
     ];
-    const HOST_PLACEHOLDER: &str = "<desktop|desktop:instance|server>";
+    const HOST_PLACEHOLDER: &str = "<desktop|desktop:instance|core>";
     /// `ds mcp install --host` names an MCP host *program* — Claude Code,
     /// Codex — which is a different thing from the machine that runs a
     /// command. It is a published contract and is listed rather than renamed;
@@ -2525,7 +2532,7 @@ fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
                     assert!(
                         input["name"] != "host" || OLDER_HOST_SPELLING.contains(&id.as_str()),
                         "`{id}` chooses an execution host as `--host`. The host \
-                         is `--target <desktop|desktop:instance|server>`; only \
+                         is `--target <desktop|desktop:instance|core>`; only \
                          the commands that shipped the older spelling keep it."
                     );
                     continue;
@@ -2566,7 +2573,7 @@ fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
 #[test]
 fn every_paired_command_accepts_the_flag_its_ambiguity_refusal_names() {
     const DESCRIPTOR_ONLY: &[&str] = &["map.ui.open"];
-    const HOST_PLACEHOLDER: &str = "<desktop|desktop:instance|server>";
+    const HOST_PLACEHOLDER: &str = "<desktop|desktop:instance|core>";
 
     let index = cli(&["capabilities", "--output", "json"]);
     let mut checked = 0usize;
@@ -2866,7 +2873,7 @@ fn typed_schemas_are_generated_from_the_live_descriptors() {
             .unwrap()
             .contains("Required unless `dry-run` is true")
     );
-    for job in ["solar.run.start", "server.submit"] {
+    for job in ["solar.run.start", "core.submit"] {
         assert!(
             leaf(&tools, job)["description"]
                 .as_str()
@@ -3368,8 +3375,8 @@ fn member_form_grants_project_survey_mcp_matches_cli_confirmation() {
     let tools = response(&responses, 1)["result"]["tools"]
         .as_array()
         .unwrap();
-    // Cascade preview and delete add two leaves to this existing profile.
-    assert!(tools.len() <= 26);
+    // Cascade preview and delete, then correction plan/apply, join this profile.
+    assert!(tools.len() <= 28);
     for verb in ["read", "plan", "apply"] {
         let name = format!("survey_member-grant_{verb}");
         let tool = tools

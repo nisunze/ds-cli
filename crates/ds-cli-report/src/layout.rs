@@ -532,7 +532,7 @@ pub static RENDER: Command = Command {
         ),
         Arg::value(
             "target",
-            "<core|desktop|desktop:instance>",
+            "<desktop|desktop:instance|core>",
             "Preview host; default Core. Explicit core uses the native account and overrides DS_TARGET; retired server is refused.",
         ),
         ds_cli_desktop::ops::DESCRIPTOR_ARG,
@@ -1289,7 +1289,7 @@ mod tests {
     #[test]
     fn render_target_descriptor_matches_canonical_owner_parser() {
         let target = RENDER.args.iter().find(|arg| arg.name == "target").unwrap();
-        assert_eq!(target.value, "<core|desktop|desktop:instance>");
+        assert_eq!(target.value, "<desktop|desktop:instance|core>");
         assert!(matches!(
             ds_cli_desktop::ops::host(Some("core")).unwrap(),
             ds_cli_desktop::ops::Host::Server

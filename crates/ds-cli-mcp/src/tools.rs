@@ -86,7 +86,7 @@ pub const NEVER_TOOLS: &[(&str, &str)] = &[
         "approving a device link is the signed-in Desktop's act; a host approving its own link would authorize itself",
     ),
     (
-        "server.serve",
+        "core.serve",
         "a foreground host never returns a tool response; operators start it through the launcher or service",
     ),
     (

@@ -91,6 +91,7 @@ pub const PROFILE_IDS: &[&str] = &[
     "project",
     "project-task-operations",
     "project-checklists",
+    "notes",
     "correspondence",
     "messaging",
     "solar-input",
@@ -152,6 +153,7 @@ pub enum Profile {
     Project,
     ProjectTaskOperations,
     ProjectChecklists,
+    Notes,
     Correspondence,
     Messaging,
     SolarInput,
@@ -191,6 +193,7 @@ impl Profile {
             "project" => Some(Self::Project),
             "project-task-operations" => Some(Self::ProjectTaskOperations),
             "project-checklists" => Some(Self::ProjectChecklists),
+            "notes" => Some(Self::Notes),
             "correspondence" => Some(Self::Correspondence),
             "messaging" => Some(Self::Messaging),
             "solar-input" => Some(Self::SolarInput),
@@ -231,6 +234,7 @@ impl Profile {
             Self::Project => "project",
             Self::ProjectTaskOperations => "project-task-operations",
             Self::ProjectChecklists => "project-checklists",
+            Self::Notes => "notes",
             Self::Correspondence => "correspondence",
             Self::Messaging => "messaging",
             Self::SolarInput => "solar-input",
@@ -262,7 +266,11 @@ impl Profile {
             // Single-target finite member grants add read/plan/apply.
             // Cascade preview and native delete complete the existing entry
             // workflow without displacing project bindings or template tools.
-            Self::SurveyProjects => 26,
+            // Raised to 28 on 2026-10-19 for `survey.entries.update-plan` and
+            // `survey.entries.update` (34f36747): the version-fenced correction
+            // is the same governed entry lifecycle as create and delete, so
+            // splitting it out would put one entry's lifecycle in two profiles.
+            Self::SurveyProjects => 28,
             // Twenty-one governed design-edit leaves plus the two bootstrap
             // tools. Version history and the pinned Working set project the
             // same bounded desktop-owned workflow without transporting
@@ -285,7 +293,9 @@ impl Profile {
             // Preparing, renaming and removing a local layer is the same
             // operator workflow as the local tile references beside it — one
             // host's own layers — so it is not a second profile.
-            Self::Layers => 19,
+            // Raised to 21 on 2026-10-19 by the retained overlay registry read
+            // and its local edit: the same machine-local layer workflow.
+            Self::Layers => 21,
             // Seventeen leaves plus both bootstrap tools. The one that raised
             // this from eighteen on 2026-10-09 is `ds feedback draft --last`:
             // every failed envelope names it as its next command, so a profile
@@ -326,6 +336,9 @@ impl Profile {
             // One bounded task/milestone/record/note overview joins the existing leaves.
             // Actual discovery is now 27 tools including both bootstrap tools.
             Self::Project => 27,
+            // Twelve private-note and ten shared project-note leaves plus both
+            // bootstrap tools: one note-keeping workflow split from `project`.
+            Self::Notes => 24,
             Self::Messaging => 14,
             // Task creation with typed geometry, geometry edits, and
             // admission/field-hours steps: nine leaves plus two bootstrap tools.
@@ -389,6 +402,10 @@ impl Profile {
             Self::Project => {
                 tool.chapter == Chapter::Project
                     && !tool.id.starts_with("auth.")
+                    // The native runtime domain (renamed from `server`) is
+                    // machine state, not project workflow.
+                    && !tool.id.starts_with("core.")
+                    && !NOTES_COMMANDS.contains(&tool.id.as_str())
                     && !tool.id.starts_with("account.")
                     && !tool.id.starts_with("messaging.")
                     && !PROJECT_CHECKLIST_COMMANDS.contains(&tool.id.as_str())
@@ -401,11 +418,22 @@ impl Profile {
                 PROJECT_TASK_OPERATIONS_COMMANDS.contains(&tool.id.as_str())
             }
             Self::ProjectChecklists => PROJECT_CHECKLIST_COMMANDS.contains(&tool.id.as_str()),
+            Self::Notes => NOTES_COMMANDS.contains(&tool.id.as_str()),
             Self::Correspondence => CORRESPONDENCE_COMMANDS.contains(&tool.id.as_str()),
-            Self::Messaging => tool.id.starts_with("messaging."),
+            // Push installations are this account's trusted receivers, listed
+            // and revoked beside its trusted devices in `auth-context`.
+            Self::Messaging => {
+                tool.id.starts_with("messaging.")
+                    && !AUTH_CONTEXT_COMMANDS.contains(&tool.id.as_str())
+            }
             Self::Operations => {
                 tool.chapter == Chapter::Operations
                     && !INSTALLATION_COMMANDS.contains(&tool.id.as_str())
+                    // Native runtime administration (`core.*`, renamed from
+                    // `server`) such as retiring a stopped Core's cache is a
+                    // machine-owner step outside the running reliability
+                    // workflow; it stays on the broad chapter surface.
+                    && !tool.id.starts_with("core.")
             }
             Self::DesignEdit => DESIGN_EDIT_COMMANDS.contains(&tool.id.as_str()),
             Self::DesignRun => DESIGN_RUN_COMMANDS.contains(&tool.id.as_str()),
@@ -459,6 +487,7 @@ impl Profile {
             Self::ProjectOperations => PROJECT_OPERATIONS_COMMANDS,
             Self::ProjectTaskOperations => PROJECT_TASK_OPERATIONS_COMMANDS,
             Self::ProjectChecklists => PROJECT_CHECKLIST_COMMANDS,
+            Self::Notes => NOTES_COMMANDS,
             Self::Correspondence => CORRESPONDENCE_COMMANDS,
             Self::Map | Self::Tiling | Self::Project | Self::Messaging | Self::Operations => &[],
         }
@@ -492,6 +521,7 @@ impl Profile {
             Self::Project
             | Self::ProjectTaskOperations
             | Self::ProjectChecklists
+            | Self::Notes
             | Self::Correspondence
             | Self::Messaging => chapter == Chapter::Project,
             Self::SolarInput
@@ -524,6 +554,10 @@ const AUTH_CONTEXT_COMMANDS: &[&str] = &[
     "auth.device.read",
     "auth.device.revoke",
     "auth.project.list",
+    // The account's push installations: which receivers it trusts and
+    // revoking one, beside its trusted devices (moved from `messaging`).
+    "messaging.installations",
+    "messaging.installation.revoke",
 ];
 
 /// The installation inventory is its own operator workflow, not part of the
@@ -654,6 +688,8 @@ const SURVEY_MAP_COMMANDS: &[&str] = &[
     "map.outliers",
     "map.line-difference",
     "map.survey.download",
+    // The retained native Survey entry queue this machine captured offline.
+    "core.survey.queue",
 ];
 
 const LAYER_COMMANDS: &[&str] = &[
@@ -674,6 +710,9 @@ const LAYER_COMMANDS: &[&str] = &[
     "map.local.register",
     "map.local.rename",
     "map.local.remove",
+    // The retained overlay registry (6ccc4c9c): read it, edit it locally.
+    "map.layer.registry",
+    "map.layer.registry-edit",
 ];
 
 const FORM_FACTORY_COMMANDS: &[&str] = &[
@@ -800,6 +839,35 @@ const PROJECT_CHECKLIST_COMMANDS: &[&str] = &[
     "pm.mail-thread.ingest",
 ];
 
+/// Private notes and shared project notes as one note-keeping workflow: write,
+/// read, query, version, back up, retire, restore and consolidate. Their
+/// checklist leaves stay in `project-checklists`. Split out of `project` on
+/// 2026-10-19 when the two note families took it past its bound.
+const NOTES_COMMANDS: &[&str] = &[
+    "notes.create",
+    "notes.update",
+    "notes.list",
+    "notes.read",
+    "notes.versions",
+    "notes.version.read",
+    "notes.version.restore",
+    "notes.retire",
+    "notes.restore",
+    "notes.backup",
+    "notes.backup.read",
+    "notes.backup.restore",
+    "pm.note.create",
+    "pm.note.read",
+    "pm.note.query",
+    "pm.note.context",
+    "pm.note.versions",
+    "pm.note.update",
+    "pm.note.backup",
+    "pm.note.retire",
+    "pm.note.restore",
+    "pm.note.consolidate",
+];
+
 /// Task creation with typed geometry, plus task geometry and execution
 /// decisions. Kept apart from correspondence and broad project planning.
 const PROJECT_TASK_OPERATIONS_COMMANDS: &[&str] = &[
@@ -872,6 +940,8 @@ const SOLAR_RUN_COMMANDS: &[&str] = &[
     // exceed the bounded leaf-tool surface and silently change existing hosts.
     "solar.prepare",
     "solar.run",
+    // Offline calculation of one prepared city: the same run, one file task.
+    "solar.calculate-prepared",
     "solar.run.start",
     "solar.run.progress",
     "solar.run.result",
@@ -1540,14 +1610,24 @@ fn catalog_search_score(tool: &Tool, terms: &[String]) -> Option<[usize; 4]> {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_lowercase();
+    // Whole words, so `in` does not match `machine` and `sign` does not match
+    // `design`; a term that itself carries punctuation (an id fragment such as
+    // `solar.run`) still matches as written.
+    let matches = |text: &str, term: &str| {
+        if term.chars().all(char::is_alphanumeric) {
+            text.split(|c: char| !c.is_alphanumeric()).any(|word| word == term)
+        } else {
+            text.contains(term)
+        }
+    };
     let mut score = [0; 4];
     for term in terms {
-        let in_id = id.contains(term.as_str());
-        let in_summary = summary.contains(term.as_str());
+        let in_id = matches(&id, term);
+        let in_summary = matches(&summary, term);
         score[0] += usize::from(in_id || in_summary);
         score[1] += usize::from(in_id);
         score[2] += usize::from(in_summary);
-        score[3] += usize::from(purpose.contains(term.as_str()));
+        score[3] += usize::from(matches(&purpose, term));
     }
     score.iter().any(|count| *count > 0).then_some(score)
 }

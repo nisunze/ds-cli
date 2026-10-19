@@ -65,7 +65,12 @@ ds mcp serve --exposure commands --profile grid-profile
 Read the current profile choices from `ds capabilities mcp.serve --output json`.
 `project` owns the plan and ordinary task workflow; `project-task-operations`
 retains task geometry read/clear and admission steps. Task creation stays in
-both. `datasets` groups catalog discovery, held-layer GeoJSON, planned BigQuery
+both. `notes` owns private notes (`notes.*`) and shared project notes
+(`pm.note.*`): write, read, query, versions, backup, retirement, restore and
+consolidation; their checklist leaves stay in `project-checklists`.
+`auth-context` also lists and revokes this account's push installations.
+Native runtime administration (`core.*`) is reached through the chapter surface.
+`datasets` groups catalog discovery, held-layer GeoJSON, planned BigQuery
 geography, local-layer registration and sector workbook delivery. `printing`
 owns report production and output selection; `printing-maps` owns map composition
 and publication. `print-styles` includes catalogue migration and binding alongside
@@ -159,7 +164,7 @@ metadata. An explicit describe or invocation still resolves live availability
 through the CLI. Build identity also comes from this executable's native owner. Excluded:
 the `mcp` domain itself, and `tools::NEVER_TOOLS`, each with its reason —
 `auth.login` (a password at a trusted terminal), `auth.link.approve` (the
-signed-in Desktop's act) and `server.serve` (a foreground host never answers).
+signed-in Desktop's act) and `core.serve` (a foreground host never answers).
 
 The per-verb table — command, typed tool, chapter router, effect, hints,
 confirmation shape, desktop gate and status — is
