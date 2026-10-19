@@ -387,7 +387,7 @@ impl Workspace {
             requested.iter().map(String::as_str).collect();
         if requested.len() != requested_set.len() || requested_set != expected {
             return Err(invalid(
-                "report selection must include the mandatory saved voltage-drop JSON",
+                "report selection must be exact and keep the A4 voltage-drop PDF's saved-analysis companion",
             ));
         }
         let root = fs::canonicalize(root.join("artifacts"))?;
@@ -441,7 +441,7 @@ impl Workspace {
             if artifact["sha256"] != sha || artifact["bytes"].as_u64() != Some(bytes.len() as u64) {
                 return Err(invalid("report artifact digest or size mismatch"));
             }
-            if format == ds_command_kernel::report_formats::MANDATORY_INDIVIDUAL_OUTPUT
+            if format == ds_command_kernel::report_formats::VOLTAGE_DROP_ANALYSIS_OUTPUT
                 && bytes != analysis
             {
                 return Err(invalid("voltage_drop_result_stale: delivered JSON differs from the saved producer source"));
@@ -450,7 +450,9 @@ impl Workspace {
             records.push(json!({"filename":filename,"format":artifact["format"],"bytes":artifact["bytes"],"sha256":artifact["sha256"]}));
         }
         if formats != expected {
-            return Err(invalid("completed report is missing a requested artifact or mandatory saved voltage-drop JSON"));
+            return Err(invalid(
+                "completed report artifacts differ from its requested outputs",
+            ));
         }
         let manifest = json!({"schema":"ds.design.delivery/v1","run_id":id,"transformer":transformer,"input_revision":revision,
             "result_sha256":result_sha,"country":report["country"],"formats_requested":report["formats_requested"],"artifacts":records});
@@ -742,7 +744,7 @@ mod report_source_tests {
             "artifacts":[artifact(&root,"xlsx",b"test workbook bytes"),artifact(&root,"voltage_drop",&source)]});
         let before = workspace.outbox(0, 100).unwrap();
         for case in [
-            "no_mandatory_selection",
+            "unrequested_analysis",
             "missing_artifact",
             "duplicate",
             "extra",
@@ -754,7 +756,7 @@ mod report_source_tests {
         ] {
             let mut bad = report.clone();
             match case {
-                "no_mandatory_selection" => bad["formats_requested"] = json!(["xlsx"]),
+                "unrequested_analysis" => bad["formats_requested"] = json!(["xlsx"]),
                 "missing_artifact" => {
                     bad["artifacts"].as_array_mut().unwrap().pop();
                 }

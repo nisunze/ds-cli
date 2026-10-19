@@ -267,11 +267,11 @@ mod tests {
                 .is_err_and(|error| error.contains("source receipt digest"))
         );
         // A delivery planner cannot claim this caller-authored SVG list is an
-        // authoring preview: delivery still includes the saved analysis.
+        // authoring preview: delivery plans exactly the selected page, and a
+        // saved analysis the selection does not name is never added.
         let policy = report_formats::plan(&sheets, false).unwrap();
-        assert_eq!(policy.len(), 2);
-        assert_eq!(policy[0].output_id, "voltage_drop");
-        assert_eq!(policy[1].output_id, "svg__draft-a3");
+        assert_eq!(policy.len(), 1);
+        assert_eq!(policy[0].output_id, "svg__draft-a3");
     }
 
     #[test]

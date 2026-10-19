@@ -1416,8 +1416,8 @@ pub(crate) mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
 
-    const SHEETS: &str =
-        r#"{"project_settings":[{"parameter":"design_export_format","value":["shp","xlsx"]}]}"#;
+    // The project's own selection exports the saved analysis beside its data.
+    const SHEETS: &str = r#"{"project_settings":[{"parameter":"design_export_format","value":["shp","xlsx","voltage_drop"]}]}"#;
 
     pub(crate) fn receipt(country: &str) -> InputReceipt {
         InputReceipt {

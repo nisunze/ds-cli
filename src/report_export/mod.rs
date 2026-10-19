@@ -3108,7 +3108,7 @@ mod tests {
     fn a_plan_binds_the_run_to_its_inputs_and_policy() {
         let receipt = simple_receipt("Benin");
         let plan = plan_transformer_export("proj-1", &receipt, "tx_a", 7, &layers(), None).unwrap();
-        assert_eq!(plan.formats, vec!["shp", "xlsx", "voltage_drop"]);
+        assert_eq!(plan.formats, vec!["shp", "xlsx"]);
         assert_eq!(plan.outputs[0].output_id, "shp");
         assert!(!plan.requires_admin_bounds);
         assert_eq!(
@@ -3211,7 +3211,7 @@ mod tests {
                 "country": "Rwanda",
                 "admin_bounds_asset": admin_asset,
                 "admin_bounds_sha256": "d".repeat(64),
-                "formats": ["shp", "xlsx", "voltage_drop"],
+                "formats": ["shp", "xlsx"],
             })
         );
         let without = StagedInputs {
@@ -3446,13 +3446,20 @@ mod tests {
 
     #[test]
     fn a_result_is_verified_against_its_plan_and_refused_typed() {
+        // The run explicitly selects the saved analysis beside its data.
+        let selection = report_formats::normalize_output_selection(
+            None,
+            Some(vec!["shp".into(), "xlsx".into(), "voltage_drop".into()]),
+            None,
+        )
+        .unwrap();
         let plan = plan_transformer_export(
             "proj-1",
             &simple_receipt("Benin"),
             "tx_a",
             7,
             &layers(),
-            None,
+            Some(&selection),
         )
         .unwrap();
         let out_dir = PathBuf::from("/tmp/run/out");
@@ -3581,13 +3588,20 @@ mod tests {
     /// permitted" is.
     #[test]
     fn a_partial_run_keeps_what_completed_and_names_the_sheet_that_failed() {
+        // Gisagara's own selection exports the saved analysis.
+        let selection = report_formats::normalize_output_selection(
+            None,
+            Some(vec!["shp".into(), "xlsx".into(), "voltage_drop".into()]),
+            None,
+        )
+        .unwrap();
         let mut plan = plan_transformer_export(
             "gisagara",
             &simple_receipt("Rwanda"),
             "upgrade_ruturo",
             7,
             &layers(),
-            None,
+            Some(&selection),
         )
         .unwrap();
         let a0 = "pdf__a0-landscape-gisagara-cjic";

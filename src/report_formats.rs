@@ -4,10 +4,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The outputs an absent or empty default selection produces. Default/project
-/// policy delivers saved voltage-drop JSON; an explicit invocation selecting
-/// only other outputs does not add it. Reporting never recalculates analysis.
+/// The outputs a project that stores no recognised selection produces. Saved
+/// voltage-drop JSON is one of them, but like every other output it is
+/// exported only when the project's selection (or an explicit invocation)
+/// names it. Reporting never recalculates analysis.
 pub const DEFAULT_INDIVIDUAL: &[&str] = &["shp", "kmz", "xlsx", "voltage_drop"];
+/// What an individual report invocation that names no outputs produces before
+/// the project's own voltage-drop choice is applied ([`invocation_selection`]).
+/// Prints are never implicit: each run names its papers.
+pub const INVOCATION_DATA_DEFAULTS: &[&str] = &["shp", "kmz", "xlsx"];
 pub const INDIVIDUAL: &[&str] = &[
     "shp",
     "kmz",
@@ -20,9 +25,14 @@ pub const INDIVIDUAL: &[&str] = &[
     "voltage_drop",
     "voltage_drop_pdf",
 ];
-/// The saved-analysis output retained by default/project LV report policy,
-/// and the existing companion to a selected A4 voltage-drop PDF.
-pub const MANDATORY_INDIVIDUAL_OUTPUT: &str = "voltage_drop";
+/// The saved voltage-drop analysis JSON. Every LV process computes the
+/// analysis; exporting it is a project output choice like any other (owner
+/// correction 2026-10-19). It is produced when a selection names it and as the
+/// exact companion of a selected A4 voltage-drop PDF, never as a requirement
+/// of an unrelated output.
+pub const VOLTAGE_DROP_ANALYSIS_OUTPUT: &str = "voltage_drop";
+/// The analytical A4 voltage-drop PDF, rendered from the saved analysis.
+pub const VOLTAGE_DROP_PDF_OUTPUT: &str = "voltage_drop_pdf";
 /// The tabular outputs, one list for every reader that classes a token.
 pub const TABULAR: &[&str] = &["xlsx", "network_information", "voltage_drop"];
 /// Public archive/download filters, consumed directly by CLI declarations.
@@ -292,17 +302,12 @@ impl DesignOutputSelection {
         Ok(())
     }
 
-    /// Which runtimes may produce one output of this selection. The mandatory
-    /// saved voltage-drop JSON is available on both report hosts regardless of
-    /// a stored suppression. Prints — fixed
+    /// Which runtimes may produce one output of this selection. Prints — fixed
     /// A0/A3/A4 PDFs and every named spelling — always use
-    /// [`PRINT_PLACEMENTS`]. Data outputs use ds-brain's precedence: exact
-    /// output id, class, `*`, then both. An empty list refuses a data output
-    /// on every lane, except the mandatory voltage-drop JSON.
+    /// [`PRINT_PLACEMENTS`]. Data outputs, the saved voltage-drop JSON
+    /// included, use ds-brain's precedence: exact output id, class, `*`, then
+    /// both. An empty list refuses a data output on every lane.
     pub fn placements(&self, output_id: &str) -> &[Placement] {
-        if output_id == MANDATORY_INDIVIDUAL_OUTPUT {
-            return BOTH_PLACEMENTS;
-        }
         let class = output_class(output_id);
         if class == "print" {
             return PRINT_PLACEMENTS;
@@ -1099,18 +1104,21 @@ pub fn normalize(values: &[String]) -> Vec<String> {
         })
         .collect();
     // Preserve the established absent/empty/unknown-only policy default.
-    // A recognized selection keeps its optional outputs and always includes
-    // the exact saved voltage-drop analysis, in the same policy order.
+    // A recognized selection keeps exactly its outputs, in policy order: the
+    // saved voltage-drop JSON only when selected, or as the companion of a
+    // selected A4 voltage-drop PDF.
     if !selected
         .iter()
         .any(|token| INDIVIDUAL.contains(&token.as_str()) || named_print_output(token).is_some())
     {
         return DEFAULT_INDIVIDUAL.iter().map(|s| s.to_string()).collect();
     }
+    let companion = selected.iter().any(|v| v == VOLTAGE_DROP_PDF_OUTPUT);
     let mut ordered: Vec<_> = INDIVIDUAL
         .iter()
         .filter(|format| {
-            **format == MANDATORY_INDIVIDUAL_OUTPUT || selected.iter().any(|v| v == **format)
+            (companion && **format == VOLTAGE_DROP_ANALYSIS_OUTPUT)
+                || selected.iter().any(|v| v == **format)
         })
         .map(|s| s.to_string())
         .collect();
@@ -1372,14 +1380,14 @@ fn selected_plan_for_purpose(
         outputs.push(output);
     }
     // An explicit delivery or review selection needs the saved-analysis
-    // companion only beside the selected A4 voltage-drop PDF. Other selected
-    // outputs do not ask for analysis; default/project policy is separate.
+    // companion only beside the selected A4 voltage-drop PDF, the same rule
+    // as the project policy. Other selected outputs do not ask for analysis.
     // Validate authored tokens first so a companion never admits an empty
     // or invalid selection.
     let needs_analysis =
-        purpose != OutputPurpose::AuthoringPreview && seen.contains("voltage_drop_pdf");
-    if needs_analysis && !seen.contains(MANDATORY_INDIVIDUAL_OUTPUT) {
-        outputs.push(output(MANDATORY_INDIVIDUAL_OUTPUT)?);
+        purpose != OutputPurpose::AuthoringPreview && seen.contains(VOLTAGE_DROP_PDF_OUTPUT);
+    if needs_analysis && !seen.contains(VOLTAGE_DROP_ANALYSIS_OUTPUT) {
+        outputs.push(output(VOLTAGE_DROP_ANALYSIS_OUTPUT)?);
     }
     if outputs.len() > 32 {
         return Err(
@@ -1486,6 +1494,53 @@ fn selected_formats(sheets: &Value) -> Result<Vec<String>, String> {
         .transpose()?
         .unwrap_or_default();
     Ok(normalize(&raw))
+}
+
+/// Whether producing these outputs reads the saved voltage-drop analysis: the
+/// analysis JSON and the A4 PDF rendered from it, nothing else. This is the
+/// one export requirement rule every host consumes before acquiring a saved
+/// analysis or a transformer-nature projection. No other output waits on,
+/// acquires, or becomes partial because of a missing, stale or failed analysis.
+pub fn requires_voltage_drop_analysis<S: AsRef<str>>(outputs: &[S]) -> bool {
+    outputs.iter().any(|output| {
+        matches!(
+            output.as_ref(),
+            VOLTAGE_DROP_ANALYSIS_OUTPUT | VOLTAGE_DROP_PDF_OUTPUT
+        )
+    })
+}
+
+/// Whether the project's own output policy exports the saved voltage-drop
+/// JSON: its stored selection names it (or the A4 PDF it accompanies), or the
+/// project stores no recognised selection and [`DEFAULT_INDIVIDUAL`] applies.
+pub fn project_exports_voltage_drop(sheets: &Value) -> Result<bool, String> {
+    Ok(selected_formats(sheets)?
+        .iter()
+        .any(|format| format == VOLTAGE_DROP_ANALYSIS_OUTPUT))
+}
+
+/// The selection one individual report invocation runs. An explicit selection
+/// is that run's inventory, exactly. Without one, the run produces
+/// [`INVOCATION_DATA_DEFAULTS`] and exports the saved voltage-drop JSON
+/// exactly when the project's output policy does. Exporting voltage drop is
+/// the project's output choice like every other output; it is never a
+/// requirement of the outputs that do not read it. Every native host (CLI,
+/// Server and Desktop) resolves an omitted selection here.
+pub fn invocation_selection(
+    sheets: &Value,
+    explicit: Option<DesignOutputSelection>,
+) -> Result<DesignOutputSelection, String> {
+    if let Some(selection) = explicit {
+        return Ok(selection);
+    }
+    let mut tokens: Vec<String> = INVOCATION_DATA_DEFAULTS
+        .iter()
+        .map(|token| (*token).to_owned())
+        .collect();
+    if project_exports_voltage_drop(sheets)? {
+        tokens.push(VOLTAGE_DROP_ANALYSIS_OUTPUT.to_owned());
+    }
+    normalize_output_selection(None, Some(tokens), None)
 }
 
 /// Whether an output needs the local print runtime: a named print setup, an
@@ -1747,7 +1802,7 @@ mod tests {
             .into_iter()
             .map(|output| output.output_id)
             .collect();
-        assert_eq!(planned, ["xlsx", "pdf_a3", "voltage_drop"]);
+        assert_eq!(planned, ["xlsx", "pdf_a3"]);
         // The class the grant filters on is the class this selection answers
         // for, so a project that keeps prints on the desktop keeps this one
         // there too.
@@ -1846,7 +1901,7 @@ mod tests {
             vec!["pdf__detail"]
         );
         assert_eq!(sheets, original);
-        assert_eq!(selected_plan(&sheets, false, None).unwrap().len(), 3);
+        assert_eq!(selected_plan(&sheets, false, None).unwrap().len(), 2);
         assert!(selected_plan(&json!({}), false, Some(&selection)).is_err());
         assert!(selected_plan(&sheets, true, Some(&selection)).is_err());
         let empty = DesignOutputSelection {
@@ -1912,9 +1967,9 @@ mod tests {
                 .iter()
                 .map(|o| o.output_id.as_str())
                 .collect::<Vec<_>>(),
-            ["xlsx", "voltage_drop", "pdf__detail"]
+            ["xlsx", "pdf__detail"]
         );
-        assert_eq!(outputs[2].suffix, ".detail.pdf");
+        assert_eq!(outputs[1].suffix, ".detail.pdf");
         sheets["printing_setups"][0]["layout"]["name"] = json!("Renamed");
         assert_eq!(plan(&sheets, false).unwrap(), outputs);
         assert_eq!(
@@ -1946,7 +2001,7 @@ mod tests {
                 .iter()
                 .map(|o| o.output_id.as_str())
                 .collect::<Vec<_>>(),
-            ["xlsx", "pdf_a3", "voltage_drop"]
+            ["xlsx", "pdf_a3"]
         );
         assert_eq!(
             plan(&sheets, true)
@@ -1985,7 +2040,7 @@ mod tests {
                     .iter()
                     .map(|o| o.output_id.as_str())
                     .collect::<Vec<_>>(),
-                ["xlsx", "pdf_a3", "voltage_drop"]
+                ["xlsx", "pdf_a3"]
             );
         }
         assert!(plan(&json!({"project_settings":{}}), false).is_err());
@@ -2016,16 +2071,10 @@ mod tests {
                 .iter()
                 .map(|item| item.output_id.as_str())
                 .collect::<Vec<_>>(),
-            [
-                "xlsx",
-                "gpkg",
-                "voltage_drop",
-                "jpeg__aderm-a3",
-                "pdf__aderm-a3"
-            ]
+            ["xlsx", "gpkg", "jpeg__aderm-a3", "pdf__aderm-a3"]
         );
-        assert_eq!(outputs[3].content_type, "image/jpeg");
-        assert_eq!(outputs[3].suffix, ".aderm-a3.jpg");
+        assert_eq!(outputs[2].content_type, "image/jpeg");
+        assert_eq!(outputs[2].suffix, ".aderm-a3.jpg");
     }
 
     /// ds-brain's precedence for a data output, reproduced: exact output id,
@@ -2326,7 +2375,7 @@ mod tests {
                 .iter()
                 .map(|output| output.output_id.as_str())
                 .collect::<Vec<_>>(),
-            ["gpkg", "voltage_drop"]
+            ["gpkg"]
         );
     }
 
@@ -2449,12 +2498,9 @@ mod tests {
             .tokens()
             .unwrap()
             .contains(&"voltage_drop_pdf".into()));
-        // The stored entry stays as authored, but the mandatory saved analysis
-        // is effective on both report hosts (owner ruling 2026-10-02).
-        assert_eq!(
-            selection.placements("voltage_drop"),
-            vec![Placement::Desktop, Placement::Web]
-        );
+        // The stored entry stays as authored and places the saved analysis
+        // like any other data output (owner correction 2026-10-19).
+        assert_eq!(selection.placements("voltage_drop"), vec![Placement::Web]);
         assert_eq!(
             selection.placements("network_information"),
             vec![Placement::Web]
@@ -2486,13 +2532,15 @@ mod tests {
         assert!(normalize_output_selection(None, Some(vec!["gif__a3".into()]), None).is_err());
     }
 
-    /// Every individual LV report delivers the saved JSON analysis, even if
-    /// the project chose only other outputs. Optional PDFs keep their type.
+    /// The saved JSON analysis is an ordinary tabular output: delivered by the
+    /// defaults and whenever a selection names it, never forced into a
+    /// project's selection of other outputs (owner correction 2026-10-19).
     #[test]
-    fn voltage_drop_is_a_mandatory_tabular_json_output() {
+    fn voltage_drop_is_an_ordinary_selectable_tabular_json_output() {
         assert_eq!(normalize(&[]), ["shp", "kmz", "xlsx", "voltage_drop"]);
+        assert_eq!(normalize(&["shp".into(), "xlsx".into()]), ["shp", "xlsx"]);
         assert_eq!(
-            normalize(&["shp".into(), "xlsx".into()]),
+            normalize(&["shp".into(), "voltage_drop".into(), "xlsx".into()]),
             ["shp", "xlsx", "voltage_drop"]
         );
         let definition = output("voltage_drop").unwrap();
@@ -2517,16 +2565,17 @@ mod tests {
     }
 
     #[test]
-    fn mandatory_analysis_preserves_defaults_aliases_optional_outputs_and_order() {
+    fn selected_analysis_preserves_defaults_aliases_optional_outputs_and_order() {
         for (raw, expected) in [
             (vec![], vec!["shp", "kmz", "xlsx", "voltage_drop"]),
             (vec!["unknown"], vec!["shp", "kmz", "xlsx", "voltage_drop"]),
-            (vec![" SHP ", "excel"], vec!["shp", "xlsx", "voltage_drop"]),
+            (vec![" SHP ", "excel"], vec!["shp", "xlsx"]),
             (
                 vec!["VOLtage_drop", "voltage_drop", "xlsx"],
                 vec!["xlsx", "voltage_drop"],
             ),
-            (vec!["pdf__detail"], vec!["voltage_drop", "pdf__detail"]),
+            (vec!["pdf__detail"], vec!["pdf__detail"]),
+            // The A4 PDF keeps its exact saved-analysis companion.
             (
                 vec!["voltage_drop_pdf"],
                 vec!["voltage_drop", "voltage_drop_pdf"],
@@ -2538,7 +2587,7 @@ mod tests {
     }
 
     #[test]
-    fn mandatory_analysis_does_not_rewrite_saved_selection_or_its_layout_choice() {
+    fn unselected_analysis_is_not_exported_and_the_saved_selection_stays_as_authored() {
         let raw = json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],
             "geospatial":["gpkg"],"tabular":[],"execution":{"voltage_drop":[],"*":[]},
             "voltage_drop_report":"brief"});
@@ -2548,11 +2597,12 @@ mod tests {
         assert_eq!(selection.tokens().unwrap(), ["gpkg"]);
         assert_eq!(serde_json::to_value(&selection).unwrap(), raw);
         assert_eq!(selection.placements("gpkg"), [] as [Placement; 0]);
-        assert_eq!(selection.placements("voltage_drop"), BOTH_PLACEMENTS);
+        assert_eq!(selection.placements("voltage_drop"), [] as [Placement; 0]);
         assert_eq!(
             project_voltage_drop_report_format(&sheets).unwrap(),
             VoltageDropReportFormat::Brief
         );
+        assert!(!project_exports_voltage_drop(&sheets).unwrap());
         for outputs in [
             plan(&sheets, false).unwrap(),
             plan_data_outputs(&sheets).unwrap(),
@@ -2562,7 +2612,7 @@ mod tests {
                     .iter()
                     .map(|output| output.output_id.as_str())
                     .collect::<Vec<_>>(),
-                ["gpkg", "voltage_drop"]
+                ["gpkg"]
             );
         }
         assert_eq!(
@@ -2591,21 +2641,27 @@ mod tests {
     }
 
     #[test]
-    fn only_mandatory_analysis_ignores_stored_placement_suppression() {
-        for execution in [
-            json!({"voltage_drop":[]}),
-            json!({"voltage_drop":["desktop"],"tabular":[]}),
-            json!({"voltage_drop":["web"],"tabular":[]}),
-            json!({"tabular":[]}),
-            json!({"*":["web"]}),
-            json!({"*":[]}),
+    fn analysis_placement_follows_the_brains_precedence_like_every_data_output() {
+        for (execution, analysis) in [
+            (json!({"voltage_drop":[]}), vec![]),
+            (
+                json!({"voltage_drop":["desktop"],"tabular":[]}),
+                vec![Placement::Desktop],
+            ),
+            (
+                json!({"voltage_drop":["web"],"tabular":[]}),
+                vec![Placement::Web],
+            ),
+            (json!({"tabular":[]}), vec![]),
+            (json!({"*":["web"]}), vec![Placement::Web]),
+            (json!({"*":[]}), vec![]),
         ] {
             let raw = json!({"schema":OUTPUT_SELECTION_SCHEMA,"prints":[],
-                "geospatial":[],"tabular":["xlsx"],"execution":execution});
+                "geospatial":[],"tabular":["xlsx","voltage_drop"],"execution":execution});
             let selection = stored_output_selection(&raw).unwrap();
             assert_eq!(
                 selection.placements("voltage_drop"),
-                BOTH_PLACEMENTS,
+                analysis,
                 "{execution}"
             );
             let ordinary = execution.get("tabular").or_else(|| execution.get("*"));
@@ -2626,6 +2682,77 @@ mod tests {
             "execution":{"voltage_drop":["cloud"]}}))
             .is_err()
         );
+    }
+
+    #[test]
+    fn only_the_analysis_outputs_require_the_saved_voltage_drop_analysis() {
+        for outputs in [
+            vec![],
+            vec!["shp", "kmz", "xlsx"],
+            vec![
+                "gpkg",
+                "geojson",
+                "network_information",
+                "pdf_a0",
+                "pdf_a3",
+                "pdf__detail",
+                "png__detail",
+            ],
+        ] {
+            assert!(!requires_voltage_drop_analysis(&outputs), "{outputs:?}");
+        }
+        assert!(requires_voltage_drop_analysis(&["shp", "voltage_drop"]));
+        assert!(requires_voltage_drop_analysis(&["voltage_drop_pdf"]));
+        assert!(!requires_voltage_drop_analysis(&["xlsx".to_string()]));
+    }
+
+    #[test]
+    fn an_invocation_without_a_selection_exports_analysis_only_when_the_project_does() {
+        let tokens = |sheets: &Value| {
+            invocation_selection(sheets, None)
+                .unwrap()
+                .tokens()
+                .unwrap()
+        };
+        // No stored selection: the defaults, which include the analysis.
+        assert_eq!(tokens(&json!({})), ["shp", "kmz", "xlsx", "voltage_drop"]);
+        // A legacy row naming only GIS outputs exports no analysis.
+        let legacy = json!({"project_settings":[{"parameter":"design_export_format",
+            "value":{"geojson":false,"gpkg":false,"kmz":true,"shp":true,"xlsx":true}}]});
+        assert!(!project_exports_voltage_drop(&legacy).unwrap());
+        assert_eq!(tokens(&legacy), ["shp", "kmz", "xlsx"]);
+        // A versioned selection naming the analysis exports it.
+        let selected = json!({"project_settings":[{"parameter":"design_export_format",
+            "value":{"schema":OUTPUT_SELECTION_SCHEMA,"prints":[{"layout_id":"a0","formats":["pdf"]}],
+            "geospatial":["kmz","shp"],"tabular":["xlsx","voltage_drop"]}}]});
+        assert_eq!(tokens(&selected), ["shp", "kmz", "xlsx", "voltage_drop"]);
+        // The A4 PDF brings its companion; the invocation prints nothing implicitly.
+        let a4 = json!({"project_settings":[{"parameter":"design_export_format",
+            "value":["voltage_drop_pdf","xlsx"]}]});
+        let selection = invocation_selection(&a4, None).unwrap();
+        assert!(selection.prints.is_empty());
+        assert_eq!(
+            selection.tokens().unwrap(),
+            ["shp", "kmz", "xlsx", "voltage_drop"]
+        );
+        // An explicit selection is the run's exact inventory, whatever the
+        // project stores, and it requires no analysis.
+        let explicit: DesignOutputSelection = serde_json::from_value(json!({
+            "schema":OUTPUT_SELECTION_SCHEMA,"geospatial":["shp","kmz"],"tabular":["xlsx"]}))
+        .unwrap();
+        let resolved = invocation_selection(&selected, Some(explicit.clone())).unwrap();
+        assert_eq!(resolved, explicit);
+        let planned = selected_plan(&json!({}), false, Some(&resolved)).unwrap();
+        let ids: Vec<_> = planned.iter().map(|o| o.output_id.as_str()).collect();
+        assert_eq!(ids, ["shp", "kmz", "xlsx"]);
+        assert!(!requires_voltage_drop_analysis(&ids));
+        // An unreadable stored selection is named, never guessed around.
+        assert!(invocation_selection(
+            &json!({"project_settings":[{"parameter":"design_export_format",
+                "value":{"schema":OUTPUT_SELECTION_SCHEMA,"tabular":"xlsx"}}]}),
+            None
+        )
+        .is_err());
     }
 
     #[test]

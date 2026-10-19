@@ -10,11 +10,14 @@ optional geometry does not require a reserved colour palette or label override.
 An explicit `ds.design-output-selection/v1` delivery invocation consumes its
 selected output inventory. A PDF-only map selection does not request, inspect
 or export saved voltage-drop analysis and completes when all its selected
-artifacts complete. Default/project LV report policy still includes saved
-voltage-drop JSON; explicitly selecting it still names missing or invalid
-analysis. The A4 voltage-drop PDF keeps its existing exact saved-analysis
-companion. Reporting never recalculates that analysis. Native Desktop and
-headless report hosts consume the same `report_formats::selected_plan`.
+artifacts complete. Saved voltage-drop JSON is exported when the project's
+output selection (or an explicit invocation) names it; selecting it still
+names missing or invalid analysis as that one output's failure. The A4
+voltage-drop PDF keeps its existing exact saved-analysis companion. Reporting
+never recalculates that analysis. Native Desktop and headless report hosts
+consume the same `report_formats::selected_plan`,
+`report_formats::invocation_selection` and
+`report_formats::requires_voltage_drop_analysis`.
 
 The 2026-10-02 style-resolution ruling supersedes any older instruction below
 that constructs a style id, borrows a source sibling, or selects reserved pens
@@ -151,17 +154,32 @@ sharing and expected-revision saves. This module owns no storage or network IO.
 
 ## Individual saved voltage-drop analysis
 
-Every individual LV report includes `voltage_drop`, the exact saved producer
-JSON with the suffix `.voltage-drop.json`. An explicit project selection or
-local override cannot omit it. Missing or stale analysis remains a report
-blocker; reporting never runs the solver or repairs the saved analysis.
+Owner correction, 2026-10-19: every LV process computes its voltage-drop
+analysis, and exporting it is a project output setting like every other
+export. `voltage_drop`, the exact saved producer JSON with the suffix
+`.voltage-drop.json`, is produced when the project's output selection names
+it, when an explicit invocation selects it, and as the exact companion of a
+selected A4 `voltage_drop_pdf`. A project that stores no recognised selection
+gets `DEFAULT_INDIVIDUAL`, which includes it.
 
-The effective policy keeps this artifact available on both declared data-report
-hosts (`desktop`, including the headless Linux Server, and `web`). A historical
-execution entry that suppresses this mandatory artifact cannot disable it.
-The selection, execution matrix and voltage-drop presentation choice remain
-stored as authored; other outputs retain their placement rules. The separate
-A4 `voltage_drop_pdf` remains optional and uses the local print runtime.
+`report_formats::requires_voltage_drop_analysis` is the one export requirement
+rule: only `voltage_drop` and `voltage_drop_pdf` read the saved analysis. No
+other output acquires it, waits on it, or becomes partial because it is
+missing, stale or failed; a selected analysis output that cannot be produced
+fails alone with `voltage_drop_result_missing`/`_stale` and its remedy, while
+the other formats complete. Reporting never runs the solver or repairs the
+saved analysis.
+
+`report_formats::invocation_selection` resolves a run that names no outputs:
+SHP, KMZ and XLSX, plus `voltage_drop` exactly when the project's output policy
+exports it. An explicit selection is the run's exact inventory. The ordinary
+Desktop held export is a GIS export; without a selection it produces SHP, KMZ
+and XLSX (`report_export::held_export::default_selection`).
+
+The analysis JSON follows the execution matrix like every other data output:
+exact output id, `tabular`, `*`, then both declared data-report hosts. The
+selection, execution matrix and voltage-drop presentation choice remain stored
+as authored. The A4 `voltage_drop_pdf` uses the local print runtime.
 
 ## Combined report output
 

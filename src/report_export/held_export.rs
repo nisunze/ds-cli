@@ -82,14 +82,32 @@ impl Capture {
             content_digest: jcs::layers_content_digest(&room.layers).map_err(invalid)?,
             receipt: self.receipt,
             layers: room.layers,
-            selection: self.selection.ok_or_else(|| {
-                invalid("Select SHP, KMZ and/or XLSX explicitly for this held export")
-            })?,
+            selection: match self.selection {
+                Some(selection) => selection,
+                None => default_selection().map_err(invalid)?,
+            },
             media_grant: self.media_grant,
         };
         request.validate()?;
         Ok(request)
     }
+}
+/// The selection an ordinary held export runs when its caller names none:
+/// the GIS outputs this export produces (SHP, KMZ and XLSX). The saved
+/// voltage-drop JSON is a project output exported through the project report
+/// owner, which follows the project's own selection; it is never a
+/// requirement of these outputs, so its absence cannot fail them.
+pub fn default_selection() -> Result<DesignOutputSelection, String> {
+    crate::report_formats::normalize_output_selection(
+        None,
+        Some(
+            crate::report_formats::INVOCATION_DATA_DEFAULTS
+                .iter()
+                .map(|format| (*format).to_owned())
+                .collect(),
+        ),
+        None,
+    )
 }
 #[derive(Debug, PartialEq, Eq)]
 pub struct Refusal {
@@ -216,6 +234,41 @@ mod tests {
             .is_ok());
         assert!(admitted.media_document().is_none());
     }
+    #[test]
+    fn an_unselected_capture_runs_the_gis_defaults_and_never_requires_analysis() {
+        let source = request();
+        let capture = |selection: Option<DesignOutputSelection>| Capture {
+            project: source.project.clone(),
+            transformer: source.transformer.clone(),
+            room: Some(Room {
+                source: "lv".into(),
+                transformer_name: source.transformer.clone(),
+                server_known: true,
+                local_dirty: false,
+                server_version: Some(source.server_version),
+                layers: source.layers.clone(),
+            }),
+            receipt: source.receipt.clone(),
+            selection,
+            media_grant: None,
+        };
+        // The project stores a voltage-drop selection; the GIS export still
+        // completes its own outputs without asking for the analysis.
+        let prepared = capture(None)
+            .prepare("canary", "owner", &"a".repeat(64))
+            .unwrap();
+        let tokens = prepared.selection.tokens().unwrap();
+        assert_eq!(tokens, ["shp", "kmz", "xlsx"]);
+        assert!(!crate::report_formats::requires_voltage_drop_analysis(
+            &tokens
+        ));
+        let explicit = source.selection.clone();
+        let prepared = capture(Some(explicit.clone()))
+            .prepare("canary", "owner", &"a".repeat(64))
+            .unwrap();
+        assert_eq!(prepared.selection, explicit);
+    }
+
     #[test]
     fn dirty_unsaved_and_changed_sources_refuse_before_execution() {
         for change in [0, 1, 2] {
