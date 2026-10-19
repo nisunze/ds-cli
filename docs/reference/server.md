@@ -3,7 +3,11 @@
 Discover the independently installed runtime through `ds capabilities core`.
 The supported background-mode entry point is `ds core serve --lane stable` or
 `ds core serve --lane canary`; the process remains in the foreground until
-stopped. See [Core](core.md) for component selection and removal.
+stopped. An installed Core package already runs it for its lane: the Linux
+systemd user unit and the Windows per-account logon task start it at login and
+after every install or update, and retry while the account is signed out. Run
+it by hand only with an explicit `--state-dir` or in development. See
+[Core](core.md) for component selection and removal.
 
 ## Native addon staging and retained selection
 
@@ -339,12 +343,14 @@ say what to do; neither hangs:
 | Older `ds` client, Core started by the new `ds` | The older client cannot read the new record and fails at once with `invalid protected Core connection`. Upgrade that `ds`. |
 | Older `ds core serve` over a new record | Refused at start with `invalid protected Core connection`. Use the new `ds`. |
 
-**Where there are no Unix sockets.** `ds core serve` has only ever been
-available on Linux, and its protected state is Unix-only. On Windows nothing
-changes: the Core commands remain unavailable (`server_platform_unsupported`),
-nothing listens and nothing is sent. Windows Desktop attachment therefore
-requires an admitted Windows Core transport; a separate Desktop bridge cannot
-substitute for that owner or establish shared authentication/storage.
+**Where there are no Unix sockets.** On Windows the same door is a local-only
+named pipe that admits only the owner's SID, with mutual process-account checks
+and the same single-host state fence. The default state root there is
+`%LOCALAPPDATA%\ds\server\<lane>` unless `XDG_STATE_HOME` or `HOME` is set. Git
+Bash sets `HOME`, so check the installed background Core from PowerShell. Other
+targets refuse `server_platform_unsupported`: nothing listens and nothing is
+sent. A separate Desktop bridge cannot substitute for that owner or establish
+shared authentication or storage.
 
 ## Protected state and authority
 

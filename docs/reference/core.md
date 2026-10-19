@@ -3,7 +3,9 @@
 Core is the independently installed `ds` native runtime. Desktop is an optional
 client of that owner. Run its background mode with `ds core serve --lane stable`
 or `ds core serve --lane canary` under the intended operating-system account.
-The process remains in the foreground until stopped. Discover `core.serve` for
+The process remains in the foreground until stopped. An installed Core package
+already runs it at login: the Linux systemd user unit and the Windows
+per-account logon task. Discover `core.serve` for
 its complete flags and admission contract; see [background runtime](server.md)
 for job, project and synchronization controls.
 
