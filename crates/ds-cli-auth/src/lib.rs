@@ -6180,12 +6180,12 @@ fn map_printing_standard(error: ClientError) -> Failure {
 pub use ds_client_core::{PrintStyleKeyChoices, PrintStyleKeysRequest};
 pub const PRINT_STYLE_KEYS_REQUEST_INVALID_REFUSAL: Refusal = Refusal {
     code: "print_style_keys_request_invalid",
-    when: "the setup id, choices or plan digest are malformed, or ds-brain refused one by name",
+    when: "the library, setup id, choices or plan digest are malformed, a choice names a setup outside the plan, one save would exceed its bound, or ds-brain refused one by name",
     remedy: "choose only a key the plan lists for a listed setup",
 };
 pub const PRINT_STYLE_KEYS_PLAN_CHANGED_REFUSAL: Refusal = Refusal {
     code: "print_style_keys_plan_changed",
-    when: "the library, a setup, the governed catalogue or a Kernel decision moved since the plan was reviewed",
+    when: "the library, a setup, the governed style table or a Kernel decision moved since the plan was reviewed",
     remedy: "plan again with the same scope and choices, review it, then apply its new plan_sha256",
 };
 pub const PRINT_STYLE_KEYS_SETUP_CHANGED_REFUSAL: Refusal = Refusal {
@@ -6198,20 +6198,15 @@ pub const PRINT_STYLE_KEYS_CATALOGUE_UNSEEDED_REFUSAL: Refusal = Refusal {
     when: "the governed style catalogue is not persisted on this deployment",
     remedy: "seed it with style.catalogue.seed.plan and style.catalogue.seed.apply, then plan again",
 };
-pub const PRINT_STYLE_KEYS_KERNEL_UNAVAILABLE_REFUSAL: Refusal = Refusal {
-    code: "print_kernel_unavailable",
-    when: "the deployment's Kernel bridge is unconfigured, busy or refused the plan",
-    remedy: "retry once; if it persists, the deployment needs a reporter that serves print_style_keys.plan",
-};
 pub const PRINT_STYLE_KEYS_ROUTE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
     code: "print_style_keys_route_unavailable",
-    when: "this lane's API Gateway does not publish the printing template migration",
-    remedy: "update ds; if it persists, the route is unpublished on this lane",
+    when: "this lane's API Gateway does not publish the template migration route, or its ds-brain predates saving Core-computed plans",
+    remedy: "plans still work; for apply or --all-projects, update ds, and if it persists the lane needs the ds-brain release that saves Core-computed plans",
 };
 
-/// The printing template migration of one library: the global library
-/// without a project, a project library with its explicit `--project`, or the
-/// all-library census (never a project).
+/// The printing template migration of one project library, computed in Core
+/// from governed reads (`--project` is required: the global library is
+/// retired), or the all-library census (never a project).
 pub fn print_style_keys(
     lane_value: &str,
     project: Option<&str>,
@@ -6267,16 +6262,6 @@ fn map_print_style_keys(error: ClientError) -> Failure {
             Failure::unavailable(PRINT_STYLE_KEYS_CATALOGUE_UNSEEDED_REFUSAL.code, message)
                 .remedy(PRINT_STYLE_KEYS_CATALOGUE_UNSEEDED_REFUSAL.remedy)
         }
-        (
-            _,
-            Some(
-                "print_kernel_unavailable"
-                | "print_kernel_busy"
-                | "print_kernel_refused"
-                | "print_kernel_answer_invalid",
-            ),
-        ) => Failure::unavailable(PRINT_STYLE_KEYS_KERNEL_UNAVAILABLE_REFUSAL.code, message)
-            .remedy(PRINT_STYLE_KEYS_KERNEL_UNAVAILABLE_REFUSAL.remedy),
         (ErrorKind::RouteUnavailable, _) => {
             Failure::failed(PRINT_STYLE_KEYS_ROUTE_UNAVAILABLE_REFUSAL.code, message)
                 .remedy(PRINT_STYLE_KEYS_ROUTE_UNAVAILABLE_REFUSAL.remedy)
@@ -6376,33 +6361,31 @@ mod print_style_keys_tests {
     use crate::test_support::{FixtureTransport, linked_device};
     use ds_client_core::TransportResponse;
 
+    /// Plans and applies are computed in Core from governed reads (proved in
+    /// ds-client-core); ds-brain is only reached to page census libraries
+    /// and to save a reviewed plan, so its refusals are proved on the census.
     #[test]
     fn the_template_migration_answers_or_refuses_by_name() {
         let transport = FixtureTransport::default();
-        let digest = "a".repeat(64);
-        let plan = json!({"success":true,"data":{"schema":"ds.print-style-key-migration/v1",
-            "scope":"project","project_id":"czgmdwth_gisagara","setups":[],"plan_sha256":digest}});
+        let page = json!({"success":true,"data":{"schema":"ds.print-style-key-libraries/v1",
+            "total_libraries":0,"libraries":[]}});
         for (status, body) in [
-            (200, plan.clone()),
-            (
-                409,
-                json!({"success":false,"error":{"code":"print_style_keys_plan_changed","message":"review"}}),
-            ),
+            (200, page),
             (
                 409,
                 json!({"success":false,"error":{"code":"print_style_keys_setup_changed","message":"setup moved"}}),
             ),
             (
-                412,
-                json!({"success":false,"error":{"code":"print_style_catalogue_unseeded","message":"seed"}}),
-            ),
-            (
-                503,
-                json!({"success":false,"error":{"code":"print_kernel_unavailable","message":"bridge"}}),
+                400,
+                json!({"success":false,"error":{"code":"VALIDATION_FAILED","message":"Unknown template migration action"}}),
             ),
             (
                 404,
                 json!({"code":404,"message":"The current request is not defined by this API."}),
+            ),
+            (
+                400,
+                json!({"success":false,"error":{"code":"print_style_keys_core_computed","message":"update ds"}}),
             ),
         ] {
             transport
@@ -6414,59 +6397,42 @@ mod print_style_keys_tests {
                 ));
         }
         let mut device = linked_device(transport.clone(), now());
-        let request = PrintStyleKeysRequest::Plan {
-            id: None,
-            choices: PrintStyleKeyChoices::new(),
-        };
-        assert_eq!(
-            device
-                .print_style_keys("czgmdwth_gisagara", &request)
-                .unwrap(),
-            plan["data"]
-        );
-        let apply = PrintStyleKeysRequest::Apply {
-            id: None,
-            choices: PrintStyleKeyChoices::new(),
-            expected_plan_sha256: digest.clone(),
-        };
-        for code in [
-            "print_style_keys_plan_changed",
-            "print_style_keys_setup_changed",
-            "print_style_catalogue_unseeded",
-            "print_kernel_unavailable",
-            "print_style_keys_route_unavailable",
-        ] {
-            let refused = map_print_style_keys(
-                device
-                    .print_style_keys("czgmdwth_gisagara", &apply)
-                    .unwrap_err(),
-            );
-            assert_eq!(refused.code(), code);
-        }
         let census = PrintStyleKeysRequest::Census {
             cursor: None,
-            limit: None,
+            limit: Some(5),
         };
+        let answered = device.print_style_keys("", &census).unwrap();
+        assert_eq!(answered["schema"], "ds.print-style-key-census/v1");
+        assert_eq!(answered["libraries"], json!([]));
+        for code in [
+            "print_style_keys_setup_changed",
+            "print_style_keys_route_unavailable",
+            "print_style_keys_route_unavailable",
+            "print_style_keys_request_invalid",
+        ] {
+            let refused = map_print_style_keys(device.print_style_keys("", &census).unwrap_err());
+            assert_eq!(refused.code(), code);
+        }
+        // A census with a project, and a plan of the retired global library,
+        // never leave.
         let refused = map_print_style_keys(
             device
                 .print_style_keys("czgmdwth_gisagara", &census)
                 .unwrap_err(),
         );
         assert_eq!(refused.code(), "print_style_keys_request_invalid");
+        let global = PrintStyleKeysRequest::Plan {
+            id: None,
+            choices: PrintStyleKeyChoices::new(),
+        };
+        let refused = map_print_style_keys(device.print_style_keys("", &global).unwrap_err());
+        assert_eq!(refused.code(), "print_style_keys_request_invalid");
         let script = transport.lock();
         assert_eq!(
             script.print_style_keys_bodies[0],
-            json!({"action":"plan","scope":"project","project_id":"czgmdwth_gisagara"})
+            json!({"action":"libraries","limit":5})
         );
-        assert_eq!(
-            script.print_style_keys_bodies[1],
-            json!({"action":"apply","scope":"project","project_id":"czgmdwth_gisagara","expected_plan_sha256":digest})
-        );
-        assert_eq!(
-            script.print_style_keys_bodies.len(),
-            6,
-            "a census with a project never leaves"
-        );
+        assert_eq!(script.print_style_keys_bodies.len(), 5);
     }
 }
 

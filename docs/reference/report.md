@@ -486,6 +486,46 @@ group exits non-zero as `combined_groups_partial` with every receipt in
 itself. The folder layout inside each archive still follows `--file-level`,
 `--combine-per-group` and the project's applied `report_archive` grouping.
 
+## The Combined Report on this machine
+
+`ds report project combined --project <exact-id> --out-dir <dir>` produces the
+project's Combined Report — the `combined_transformer` data set — on this
+machine and seals it into the same Sync queue an individual export uses. It is
+data only: SHP, XLSX and GeoJSONSeq, plus GPKG or Network Information when the
+project's saved output selection names them (`ds-command-kernel`'s
+`report_formats::plan` for a combined run); no PDF is ever produced.
+
+Core reads the lifecycle inventory and the configuration receipt (or this
+machine's held copy when offline), then every active LV transformer's saved
+room through the same held copy `report project export` keeps: a held room
+whose head has not moved is reused and only a missing or moved room is read.
+Each room is projected onto the report layers, staged and released, so the
+project is never held in memory. `--transformer` narrows the run to exact
+active names. A room with no report feature is named in `scope.emptyRooms`
+and contributes nothing; any room that cannot be read or held refuses the whole
+run as `combined_report_rooms_unavailable`, naming each one — a partial project
+is never a Combined Report.
+
+Before any room is read, the kernel's collision gate consumes the project's
+stored collision result (the same `collisions` row `ds design collisions`
+reads) under the project settings `allow_combined_reports_with_collisions` and
+`max_collision_rows_for_combined_reports` (defaults: allowed, 10 rows). A
+blocked gate refuses as `combined_report_collision_limit_exceeded` with the
+Info Center sentence; nothing detects collisions here.
+
+Voltage drop is never computed or required: the receipt's `voltageDrop.warnings`
+names each transformer whose saved analysis is missing, stale or not
+calculated. When the rooms reference photos, the Reporter's read-only media
+scope decides whether the project's report media grant is needed; photos stored
+under another project refuse as `combined_report_media_scope_unsupported`. The
+Reporter must build every planned format or nothing is sealed. The receipt
+(`ds.report-combined-result/v1`) carries the Sync batch and publish ids, the
+artifact digests and locators, the input fingerprint (an identical rerun is the
+same publication) and phase timings; `--dry-run` writes the package and says it
+published nothing. Like a held export, this command runs no unrelated project
+reconciliation: the Sync Center or `ds report outbox drain` publishes the set.
+The Desktop's Combined Report action is a typed client of this command.
+
 ## Combined desktop reports
 
 `ds report bundle --request <file>` invokes the reporter-owned
@@ -722,16 +762,23 @@ confirmation. Rendering a held layout does not mutate its shared template.
 
 A printing template that still names its pens through legacy `style_refs` refuses
 every preview with `style_resolution_required`. `report.layout.style-keys.plan`
-asks ds-command-kernel to decide each template of one library (the global library
-without `--project`, a project library with it, or `--all-projects` for a census):
-every layer takes the one governed project-role print key that prints the
-document it prints today; anything else is a named finding listing the governed
-candidates, and that template stays unchanged. Settle a finding only by choosing a
-listed key in `--choices`; a choice that prints another document is reported as a
-document change. Plans write nothing. `report.layout.style-keys.apply` writes
-exactly the reviewed `plan_sha256` and keeps every replaced template; a moved
-library, setup, catalogue or Kernel decision refuses as
-`print_style_keys_plan_changed`.
+is computed here, in Core: it reads one project library (`--scope project
+--project <exact-id>`, optionally one `--id`) and the project's governed style
+table through their authorized read routes, and ds-command-kernel's
+`style_migration` decides every template — ds-brain computes nothing. Every
+layer takes the one governed project-role print key that prints the document it
+prints today; anything else is a named finding listing the governed candidates,
+and that template stays unchanged. Settle a finding only by choosing a listed key
+in `--choices`; a choice that prints another document is reported as a document
+change. Plans write nothing. `--all-projects` (platform administrators) pages
+library ids from ds-brain and plans each one here. The global printing library is
+retired: `--scope global` refuses as `printing_invalid` before authentication.
+`report.layout.style-keys.apply` re-plans, refuses as
+`print_style_keys_plan_changed` unless the fresh plan still has the reviewed
+`plan_sha256`, and then has ds-brain save exactly its migrated templates, each
+under the revision it was planned from and beside an immutable copy of what it
+replaced; a template that moved before the write refuses as
+`print_style_keys_setup_changed` and nothing is written.
 
 ## Context layers
 
@@ -953,13 +1000,21 @@ the verified path automatically. It is the door a local operator calls.
 Decisions and fingerprints come from
 `ds-command-kernel::report_export`; the shared native IO host is
 `ds-command-kernel/crates/ds-report-host`, and the engine is the installed `ds-report`.
-The command starts with SHP, KMZ, XLSX and saved voltage-drop JSON. A stored
-`design_export_format` row does not select this run, its printing inputs or
-neighboring-circuit acquisition. Supply `--selection <json-file>` for an
-explicit `ds.design-output-selection/v1` matrix. `--print-layout` names local
-PDF proofs; without `--selection`, those proof layouts are added to the
-command defaults. No project setting is changed. The local `report export
---task transformer` door uses the same defaults, including when a full
+Without `--selection` the command produces SHP, KMZ and XLSX, plus the saved
+voltage-drop JSON exactly when the project's output selection exports it (or
+the project stores no selection): exporting voltage drop is a project output
+setting like every other export (owner correction 2026-10-19), resolved by the
+kernel's `report_formats::invocation_selection`. Only `voltage_drop` and
+`voltage_drop_pdf` read the saved analysis; every other output completes
+whether that analysis is current, missing, stale or failed, and a selected
+analysis output that cannot be produced fails alone with its remedy. A stored
+`design_export_format` row never selects prints, printing inputs or
+neighboring-circuit acquisition for this run. Supply `--selection <json-file>`
+for an explicit `ds.design-output-selection/v1` matrix; it is the run's exact
+inventory. `--print-layout` names local PDF proofs; without `--selection`,
+those proof layouts are added to the command defaults. No project setting is
+changed. The local `report export --task transformer` door keeps its own
+defaults (SHP, KMZ, XLSX and saved voltage-drop JSON), including when a full
 `--request` omits `formats`; an explicit format array is preserved.
 Both local input encodings use that current run selection; a saved output set
 cannot veto it. `report export --task combined` always includes SHP, XLSX and

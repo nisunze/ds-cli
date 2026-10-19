@@ -1,14 +1,14 @@
 //! `ds report layout style-keys` — migrate legacy printing templates to exact
 //! governed style keys. A template that still names its pens through legacy
 //! `style_refs` refuses every preview with `style_resolution_required`.
-//! ds-command-kernel decides each template; ds-brain holds the templates and
-//! the governed catalogue, fences the reviewed plan and keeps every replaced
-//! template. This domain only reads plans and applies a reviewed one.
+//! Core computes each plan: it reads the project library and the governed
+//! style table, and ds-command-kernel's `style_migration` decides every
+//! template. ds-brain only saves a reviewed plan's templates under their
+//! planned revisions (keeping every replaced one) and pages census libraries.
 use ds_cli_auth::{
-    PRINT_STYLE_KEYS_CATALOGUE_UNSEEDED_REFUSAL, PRINT_STYLE_KEYS_KERNEL_UNAVAILABLE_REFUSAL,
-    PRINT_STYLE_KEYS_PLAN_CHANGED_REFUSAL, PRINT_STYLE_KEYS_REQUEST_INVALID_REFUSAL,
-    PRINT_STYLE_KEYS_ROUTE_UNAVAILABLE_REFUSAL, PRINT_STYLE_KEYS_SETUP_CHANGED_REFUSAL,
-    PrintStyleKeyChoices, PrintStyleKeysRequest,
+    PRINT_STYLE_KEYS_CATALOGUE_UNSEEDED_REFUSAL, PRINT_STYLE_KEYS_PLAN_CHANGED_REFUSAL,
+    PRINT_STYLE_KEYS_REQUEST_INVALID_REFUSAL, PRINT_STYLE_KEYS_ROUTE_UNAVAILABLE_REFUSAL,
+    PRINT_STYLE_KEYS_SETUP_CHANGED_REFUSAL, PrintStyleKeyChoices, PrintStyleKeysRequest,
 };
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -25,7 +25,7 @@ const LANE: Arg = ds_cli_contract::spec::LANE
 const SCOPE: Arg = Arg::value(
     "scope",
     "<scope>",
-    "The global template library, or the library of the project named by --project.",
+    "The library of the project named by --project. The retired global library is refused before authentication.",
 )
 .choices(&["global", "project"]);
 const PROJECT: Arg = Arg::value(
@@ -43,7 +43,7 @@ const CHOICES: Arg = Arg::value(
     "<json-file>",
     "Owner choices: {\"<template id>\": {\"<layer>\": <a key from the plan's candidates>}}.",
 );
-const PURPOSE: &str = "Moves printing templates whose pens still use legacy style_refs (previews refuse with style_resolution_required) to the governed print keys ds-command-kernel decides. An undecidable layer is a named finding settled only by --choices. Plans write nothing; apply writes exactly a reviewed plan_sha256 and keeps every replaced template.";
+const PURPOSE: &str = "Moves printing templates whose pens still use legacy style_refs (previews refuse with style_resolution_required) to the governed print keys ds-command-kernel decides here, in Core, from the library and governed style table. An undecidable layer is a named finding settled only by --choices. Plans write nothing; apply writes exactly a reviewed plan_sha256 and keeps every replaced template.";
 
 const NOT_FOUND: Refusal = Refusal {
     code: "print_setup_not_found",
@@ -52,13 +52,13 @@ const NOT_FOUND: Refusal = Refusal {
 };
 const PROJECT_REQUIRED: Refusal = Refusal {
     code: "project_required",
-    when: "--scope project names no --project, or --scope global names one",
-    remedy: "pass --scope project with --project <exact-id>, or --scope global alone; the saved selection is never read",
+    when: "--scope project names no --project",
+    remedy: "pass --scope project with --project <exact-id>; the saved selection is never read",
 };
 const INPUT_INVALID: Refusal = Refusal {
     code: "printing_invalid",
-    when: "the flags do not name one library, or the choices file is not one bounded JSON object of exact keys",
-    remedy: "pass --scope (and --project), or --all-projects alone; write --choices from the plan's candidates",
+    when: "the flags do not name one project library (the global library is retired), or the choices file is not one bounded JSON object of exact keys",
+    remedy: "pass --scope project --project <exact-id>, or --all-projects alone; write --choices from the plan's candidates",
 };
 const REFUSALS: &[Refusal] = &[
     INPUT_INVALID,
@@ -68,7 +68,6 @@ const REFUSALS: &[Refusal] = &[
     PRINT_STYLE_KEYS_PLAN_CHANGED_REFUSAL,
     PRINT_STYLE_KEYS_SETUP_CHANGED_REFUSAL,
     PRINT_STYLE_KEYS_CATALOGUE_UNSEEDED_REFUSAL,
-    PRINT_STYLE_KEYS_KERNEL_UNAVAILABLE_REFUSAL,
     PRINT_STYLE_KEYS_ROUTE_UNAVAILABLE_REFUSAL,
 ];
 
@@ -170,20 +169,20 @@ fn invalid(message: impl Into<String>) -> Failure {
     Failure::invalid(INPUT_INVALID.code, message.into()).remedy(INPUT_INVALID.remedy)
 }
 
-/// The library the flags name: `None` for the global one.
-fn library(i: &Inputs) -> Result<Option<String>, Failure> {
-    let refuse = |message: &str| {
-        Failure::invalid(PROJECT_REQUIRED.code, message.to_owned()).remedy(PROJECT_REQUIRED.remedy)
-    };
+/// The project library the flags name. The global library is retired and
+/// refused here, before any authentication, as `report layout list` does.
+fn library(i: &Inputs) -> Result<String, Failure> {
     match (i.value("scope"), i.value("project")) {
-        (Some("global"), None) => Ok(None),
-        (Some("project"), Some(project)) => Ok(Some(project.to_owned())),
-        (Some("project"), None) => Err(refuse(
+        (Some("global"), _) => Err(invalid("Global printing runtime scope is retired")
+            .remedy("pass --scope project and --project <exact-id>; template projects are ordinary projects")),
+        (Some("project"), Some(project)) => Ok(project.to_owned()),
+        (Some("project"), None) => Err(Failure::invalid(
+            PROJECT_REQUIRED.code,
             "--scope project addresses the library named by --project",
-        )),
-        (Some(_), Some(_)) => Err(refuse("--scope global names no --project")),
+        )
+        .remedy(PROJECT_REQUIRED.remedy)),
         _ => Err(invalid(
-            "name one library with --scope, or pass --all-projects alone",
+            "name one project library with --scope project --project <exact-id>, or pass --all-projects alone",
         )),
     }
 }
@@ -242,7 +241,7 @@ pub fn plan(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         id: setup(i),
         choices: choices(i)?,
     };
-    ds_cli_auth::print_style_keys(lane, project.as_deref(), &request)
+    ds_cli_auth::print_style_keys(lane, Some(&project), &request)
 }
 
 pub fn apply(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
@@ -252,7 +251,7 @@ pub fn apply(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         choices: choices(i)?,
         expected_plan_sha256: i.require("expected-plan")?.to_owned(),
     };
-    ds_cli_auth::print_style_keys(i.require("lane")?, project.as_deref(), &request)
+    ds_cli_auth::print_style_keys(i.require("lane")?, Some(&project), &request)
 }
 
 /// A plan reads as one line per template; a census as one line per library;
@@ -345,28 +344,40 @@ mod tests {
 
     #[test]
     fn the_flags_name_exactly_one_library_before_anything_is_sent() {
-        assert_eq!(
-            library(&parse(&PLAN, &["--scope", "global"])).unwrap(),
-            None
-        );
+        // The retired global library refuses by name, with or without a
+        // project, before any read: the misleading request_invalid is gone.
+        for args in [
+            &["--scope", "global"][..],
+            &["--scope", "global", "--project", "p"][..],
+        ] {
+            let refused = library(&parse(&PLAN, args)).unwrap_err();
+            assert_eq!(refused.code(), "printing_invalid");
+            assert!(
+                refused
+                    .message()
+                    .contains("Global printing runtime scope is retired")
+            );
+            let refused = plan(&parse(&PLAN, args), &context()).unwrap_err();
+            assert_eq!(refused.code(), "printing_invalid");
+            let digest = "a".repeat(64);
+            let with_plan = [args, &["--expected-plan", digest.as_str()][..]].concat();
+            let refused = apply(&parse(&APPLY, &with_plan), &context()).unwrap_err();
+            assert_eq!(refused.code(), "printing_invalid");
+        }
         assert_eq!(
             library(&parse(
                 &PLAN,
                 &["--scope", "project", "--project", "czgmdwth_gisagara"]
             ))
-            .unwrap()
-            .as_deref(),
-            Some("czgmdwth_gisagara")
+            .unwrap(),
+            "czgmdwth_gisagara"
         );
-        for args in [
-            &["--scope", "project"][..],
-            &["--scope", "global", "--project", "p"][..],
-        ] {
-            assert_eq!(
-                library(&parse(&PLAN, args)).unwrap_err().code(),
-                "project_required"
-            );
-        }
+        assert_eq!(
+            library(&parse(&PLAN, &["--scope", "project"]))
+                .unwrap_err()
+                .code(),
+            "project_required"
+        );
         assert_eq!(
             library(&parse(&PLAN, &[])).unwrap_err().code(),
             "printing_invalid"
