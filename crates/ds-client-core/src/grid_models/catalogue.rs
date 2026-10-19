@@ -2,6 +2,7 @@
 //! A consuming catalogue read walks metadata only; it never downloads a model.
 use super::*;
 use crate::SecretRequestBody;
+use ds_command_kernel::grid_project_catalog as catalog;
 
 pub struct Read {
     project: String,
@@ -48,89 +49,42 @@ impl Read {
     }
     pub fn decode(&self, response: TransportResponse) -> Result<Receipt, ClientError> {
         let data = decode_response(response, "list_models", false)?;
-        list_receipt(&self.project, 100, &data)
+        let page = catalog::page_from_data(&self.project, &data, usize::from(catalog::PAGE_SIZE))
+            .map_err(|_| bad())?;
+        Ok(Receipt {
+            data: json!({"project":self.project,"models":page.models,"more":page.more,"next_cursor":page.next_cursor}),
+            bytes: None,
+        })
     }
 }
 
-/// One complete bounded metadata walk. Empty pages with `more:true` continue;
-/// repeated cursors and duplicate logical identities are refused.
+/// One complete bounded metadata walk through the Kernel's single page walk:
+/// empty pages with `more:true` continue; repeated cursors, crossed projects
+/// and duplicate logical identities are refused.
 pub fn collect(
     project: &str,
     mut page: impl FnMut(Option<String>) -> Result<Receipt, ClientError>,
 ) -> Result<Value, ClientError> {
     Read::new(project, None)?;
-    let mut cursor = None;
-    let mut seen_cursors = std::collections::BTreeSet::new();
-    let mut ids = std::collections::BTreeSet::new();
-    let mut rows = Vec::new();
-    for _ in 0..64 {
-        let result = page(cursor.clone())?.data;
-        if result["project"] != project {
+    let mut walk = catalog::Walk::new(project).map_err(|_| bad())?;
+    loop {
+        let data = page(walk.cursor().map(str::to_owned))?.data;
+        if data["project"] != project {
             return Err(bad());
         }
-        let batch = result["models"].as_array().ok_or_else(bad)?;
-        for row in batch {
-            if !row["model_id"]
-                .as_str()
-                .is_some_and(|v| ids.insert(v.to_owned()))
-            {
-                return Err(bad());
-            }
-            rows.push(row.clone());
-        }
-        if rows.len() > ds_command_kernel::printing::mv_models::MAX_MODELS {
-            return Err(bad());
-        }
-        match result["more"].as_bool() {
-            Some(false) => {
-                return Ok(json!({"project":project,"models":rows,"more":false,"next_cursor":""}))
-            }
-            Some(true) => {
-                let next = result["next_cursor"]
-                    .as_str()
-                    .filter(|v| {
-                        !v.is_empty() && v.len() <= 4096 && seen_cursors.insert(v.to_string())
-                    })
-                    .ok_or_else(bad)?;
-                cursor = Some(next.into());
-            }
-            None => return Err(bad()),
+        let models = data["models"].as_array().ok_or_else(bad)?.clone();
+        let next = catalog::Page {
+            models,
+            more: data["more"].as_bool().ok_or_else(bad)?,
+            next_cursor: data["next_cursor"].as_str().unwrap_or("").to_owned(),
+        };
+        match walk.accept(next).map_err(|_| bad())? {
+            catalog::Walked::More(more) => walk = more,
+            catalog::Walked::Complete(listing) => return Ok(listing),
         }
     }
-    Err(bad())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn paired_read_uses_the_same_native_list_decoder_and_rejects_crossed_projects() {
-        let read = Read::new("template", None).unwrap();
-        let body: Value = serde_json::from_slice(read.body().as_bytes()).unwrap();
-        assert_eq!(
-            body,
-            json!({"action":"list_models","project_id":"template","page_size":100,"cursor":"","include_deleted":false})
-        );
-        let answer = |project: &str| {
-            TransportResponse::new(200,serde_json::to_vec(&json!({"success":true,"data":{"models":[{"model_id":"model-1","project_id":project}],"has_more":false,"next_cursor":""}})).unwrap())
-        };
-        assert_eq!(
-            read.decode(answer("template")).unwrap().data["models"][0]["model_id"],
-            "model-1"
-        );
-        assert!(read.decode(answer("foreign")).is_err());
-        assert!(Read::new("template", Some("bad\ncursor".into())).is_err());
-    }
-    #[test]
-    fn a_consuming_walk_follows_empty_pages_without_downloading_and_refuses_cycles() {
-        let mut calls = Vec::new();
-        let complete=collect("template",|cursor| { calls.push(cursor.clone()); Ok(Receipt{data:if cursor.is_none() {json!({"project":"template","models":[],"more":true,"next_cursor":"next"})} else {json!({"project":"template","models":[{"model_id":"model-1"}],"more":false,"next_cursor":""})},bytes:None}) }).unwrap();
-        assert_eq!(calls, vec![None, Some("next".into())]);
-        assert_eq!(complete["models"].as_array().unwrap().len(), 1);
-        assert!(collect("template", |_| Ok(Receipt {
-            data: json!({"project":"template","models":[],"more":true,"next_cursor":"same"}),
-            bytes: None
-        }))
-        .is_err());
-    }
-}
+#[path = "catalogue_tests.rs"]
+mod tests;

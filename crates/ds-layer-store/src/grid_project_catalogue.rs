@@ -1,22 +1,29 @@
-//! Private retained project-head metadata, shared by native CLI and Desktop.
-//! Invalidation writes a marker only. The consuming reader coalesces and may
-//! acquire missing/invalidated metadata; offline reads retain exact old pins.
+//! Private retained project-head catalogue, shared by native Core and Desktop.
+//! Storage is the Kernel-owned SQLite schema
+//! (`ds_command_kernel::grid_project_catalog`): this adapter executes its
+//! bounded SQL, one transaction per operation, and decides nothing. A head the
+//! authorized listing names for the first time is persisted at once; offline
+//! reads paint every held head; invalidation writes a marker only; the
+//! consuming reader coalesces and may acquire missing/invalidated metadata.
+//! The browser runs the same schema and SQL on OPFS.
 use ds_command_kernel::{
+    grid_project_catalog::{self as kernel, Changes, Held, Operation, Source, Step},
     printing::mv_models,
     printing::retained_reads::{Demand, Failure as ReadFailure, Host, Reads},
 };
+use rusqlite::{Connection, OpenFlags, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
-    io::Read,
     path::{Path, PathBuf},
     sync::OnceLock,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const SCHEMA: &str = "ds.grid-project-catalogue/v1";
-const MAX_BYTES: u64 = 8 * 1024 * 1024;
+const DATABASE: &str = "catalog.sqlite";
+const USER_VERSION: i64 = 1;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Scope {
@@ -38,6 +45,14 @@ impl Scope {
         }
         Ok(hash(&serde_json::to_vec(self).map_err(|e| e.to_string())?))
     }
+    fn kernel(&self) -> kernel::Scope {
+        kernel::Scope {
+            principal: self.principal.clone(),
+            lane: self.lane.clone(),
+            audience: self.audience_sha256.clone(),
+            project: self.project.clone(),
+        }
+    }
 }
 #[derive(Debug)]
 pub enum Failure<E> {
@@ -50,29 +65,16 @@ pub enum Failure<E> {
 fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
-fn directory(root: &Path, scope: &Scope) -> Result<PathBuf, String> {
+fn catalogue_root(root: &Path) -> Result<PathBuf, String> {
     if !root.is_absolute() {
         return Err("catalogue root must be absolute".into());
     }
-    Ok(root.join("grid-project-catalogue").join(scope.key()?))
+    Ok(root.join("grid-project-catalogue"))
 }
-fn bytes(path: &Path) -> Option<Vec<u8>> {
-    let meta = fs::symlink_metadata(path).ok()?;
-    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > MAX_BYTES {
-        return None;
-    }
-    let mut bytes = Vec::new();
-    crate::private::open_options()
-        .read(true)
-        .open(path)
-        .ok()?
-        .take(MAX_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    (bytes.len() as u64 <= MAX_BYTES).then_some(bytes)
-}
-fn write(path: &Path, value: &[u8]) -> Result<(), String> {
-    crate::private::write_atomic(path, value).map_err(|e| e.to_string())
+/// The scope's private lock directory; it serialises one scope's acquisition
+/// across processes and holds no catalogue data.
+fn directory(root: &Path, scope: &Scope) -> Result<PathBuf, String> {
+    Ok(catalogue_root(root)?.join(scope.key()?))
 }
 fn owned_directory(directory: &Path) -> Result<(), String> {
     let parent = directory
@@ -90,13 +92,206 @@ fn owned_directory(directory: &Path) -> Result<(), String> {
     }
     Ok(())
 }
+fn sql(error: rusqlite::Error) -> String {
+    format!("project model catalogue store: {error}")
+}
+fn exists(path: &Path) -> Result<bool, String> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => {
+            crate::snapshot_privacy::file(path)?;
+            Ok(true)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.to_string()),
+    }
+}
+/// Open the one catalogue database. A read never creates it; an unsupported
+/// schema refuses rather than being rewritten.
+fn open(root: &Path, writable: bool) -> Result<Option<Connection>, String> {
+    let path = catalogue_root(root)?.join(DATABASE);
+    let present = exists(&path)?;
+    if !present && !writable {
+        return Ok(None);
+    }
+    if !present {
+        let parent = path.parent().ok_or("catalogue has no private parent")?;
+        if fs::symlink_metadata(parent).is_ok_and(|m| !m.is_dir() || m.file_type().is_symlink()) {
+            return Err("catalogue directory is foreign or a link".into());
+        }
+        crate::private::create_dir_all(parent).map_err(|e| e.to_string())?;
+        let file = crate::private::open_options()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .or_else(|error| {
+                // A concurrent first writer created it; admit it like any file.
+                if error.kind() == std::io::ErrorKind::AlreadyExists {
+                    crate::private::open_options().read(true).open(&path)
+                } else {
+                    Err(error)
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        drop(file);
+        crate::snapshot_privacy::file(&path)?;
+    }
+    for suffix in ["-wal", "-shm", "-journal"] {
+        exists(&PathBuf::from(format!("{}{suffix}", path.display())))?;
+    }
+    let flags = if writable {
+        OpenFlags::SQLITE_OPEN_READ_WRITE
+    } else {
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+    };
+    let connection = Connection::open_with_flags(crate::sqlite_path(&path)?, flags).map_err(sql)?;
+    connection
+        .busy_timeout(Duration::from_secs(10))
+        .map_err(sql)?;
+    let version: i64 = connection
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .map_err(sql)?;
+    if writable && version == 0 {
+        connection
+            .execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;")
+            .map_err(sql)?;
+        run(&connection, Operation::Schema, true)?;
+        connection
+            .pragma_update(None, "user_version", USER_VERSION)
+            .map_err(sql)?;
+    } else if version == 0 {
+        // Created by a writer that has not committed its schema yet.
+        return Ok(None);
+    } else if version != USER_VERSION {
+        return Err("project model catalogue store has an unsupported schema".into());
+    }
+    Ok(Some(connection))
+}
+/// Mechanical execution of one bounded Kernel statement (the same effect the
+/// browser worker and `ds-sync-store` execute); no decision lives here.
+fn execute(
+    connection: &Connection,
+    effect: &ds_command_kernel::sql_effect::Statement,
+) -> Result<ds_command_kernel::sql_effect::ResultRows, String> {
+    use rusqlite::types::{Value as SqlValue, ValueRef};
+    effect.validate()?;
+    let values = effect
+        .bind
+        .iter()
+        .map(|value| match value {
+            Value::Null => Ok(SqlValue::Null),
+            Value::String(text) => Ok(SqlValue::Text(text.clone())),
+            Value::Number(number) => number
+                .as_i64()
+                .map(SqlValue::Integer)
+                .or_else(|| number.as_f64().map(SqlValue::Real))
+                .ok_or_else(|| "invalid SQL number".to_string()),
+            _ => Err("invalid SQL scalar".to_string()),
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let mut statement = connection.prepare(&effect.sql).map_err(sql)?;
+    let columns = statement.column_count();
+    let mut cursor = statement
+        .query(rusqlite::params_from_iter(values))
+        .map_err(sql)?;
+    let mut rows = Vec::new();
+    let mut bytes = 2usize;
+    while let Some(row) = cursor.next().map_err(sql)? {
+        if rows.len() >= effect.max_rows as usize {
+            return Err("SQLite row bound exceeded".into());
+        }
+        let mut values = Vec::with_capacity(columns);
+        for column in 0..columns {
+            let value = match row.get_ref(column).map_err(sql)? {
+                ValueRef::Null => Value::Null,
+                ValueRef::Integer(n) => Value::from(n),
+                ValueRef::Real(n) => Value::from(n),
+                ValueRef::Text(text) => {
+                    Value::String(std::str::from_utf8(text).map_err(|e| e.to_string())?.into())
+                }
+                ValueRef::Blob(_) => return Err("SQLite blob needs a byte-handle effect".into()),
+            };
+            bytes += serde_json::to_vec(&value).map_err(|e| e.to_string())?.len() + 1;
+            if bytes > effect.max_bytes as usize {
+                return Err("SQLite byte bound exceeded".into());
+            }
+            values.push(value);
+        }
+        rows.push(values);
+    }
+    let result = ds_command_kernel::sql_effect::ResultRows {
+        rows,
+        changes: connection.changes(),
+    };
+    result.validate(effect)?;
+    Ok(result)
+}
+/// One Kernel operation in one transaction; the host only executes its SQL.
+fn run(
+    connection: &Connection,
+    operation: Operation,
+    write: bool,
+) -> Result<(Option<Held>, Option<Changes>), String> {
+    let transaction = rusqlite::Transaction::new_unchecked(
+        connection,
+        if write {
+            TransactionBehavior::Immediate
+        } else {
+            TransactionBehavior::Deferred
+        },
+    )
+    .map_err(sql)?;
+    let mut step = kernel::start(operation)?;
+    for _ in 0..16 {
+        match step {
+            Step::Done { held, changes } => {
+                transaction.commit().map_err(sql)?;
+                return Ok((held, changes));
+            }
+            Step::Sql {
+                statement,
+                continuation,
+            } => {
+                step = kernel::resume(continuation, execute(&transaction, &statement)?)?;
+            }
+        }
+    }
+    Err("project model catalogue exceeded its bounded continuation".into())
+}
+fn held(root: &Path, scope: &Scope) -> Result<Option<Held>, String> {
+    match open(root, false)? {
+        None => Ok(None),
+        Some(connection) => Ok(run(
+            &connection,
+            Operation::Read {
+                scope: scope.kernel(),
+            },
+            false,
+        )?
+        .0),
+    }
+}
+fn write(root: &Path, operation: Operation) -> Result<(Option<Held>, Option<Changes>), String> {
+    let connection = open(root, true)?.ok_or("project model catalogue store is unavailable")?;
+    run(&connection, operation, true)
+}
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or_default()
+}
 struct Store<'a, E, L, A> {
+    root: PathBuf,
     directory: PathBuf,
     scope: &'a Scope,
     gate: Option<fs::File>,
     lock_error: Option<String>,
     load: Option<L>,
     unauthorized: A,
+    /// The fence the next commit must find: the revision this read observed.
+    expected: Option<u64>,
+    held: Option<Held>,
+    changes: Option<Changes>,
     _error: std::marker::PhantomData<E>,
 }
 impl<E, L, A> Store<'_, E, L, A> {
@@ -109,11 +304,14 @@ impl<E, L, A> Store<'_, E, L, A> {
         }
         Ok(())
     }
-    fn generation(&self) -> Vec<u8> {
-        bytes(&self.directory.join("invalidation")).unwrap_or_default()
-    }
-    fn revoked(&self) -> bool {
-        self.directory.join("revoked").exists()
+    fn settle(&mut self, operation: Operation) -> Result<(), String> {
+        let (held, changes) = write(&self.root, operation)?;
+        self.expected = held.as_ref().map(|v| v.observation.revision);
+        self.held = held;
+        if changes.is_some() {
+            self.changes = changes;
+        }
+        Ok(())
     }
 }
 impl<E, L: FnOnce() -> Result<Value, E>, A: Fn(&E) -> bool> Host<Value> for Store<'_, E, L, A> {
@@ -123,27 +321,25 @@ impl<E, L: FnOnce() -> Result<Value, E>, A: Fn(&E) -> bool> Host<Value> for Stor
             self.lock_error = Some(e);
             return None;
         }
-        if self.revoked() {
-            return None;
-        }
-        let held: Value =
-            serde_json::from_slice(&bytes(&self.directory.join("catalogue.json"))?).ok()?;
-        let data = held["data"].clone();
-        if held["schema"] != SCHEMA
-            || held["scope"] != serde_json::to_value(self.scope).ok()?
-            || held["sha256"] != hash(&serde_json::to_vec(&data).ok()?)
-            || mv_models::project(&self.scope.project, &self.scope.principal, &data, None).is_err()
-        {
-            return None;
-        }
-        Some((data, held["generation"] != json!(self.generation())))
+        let held = match held(&self.root, self.scope) {
+            Ok(held) => held,
+            Err(e) => {
+                self.lock_error = Some(e);
+                return None;
+            }
+        };
+        self.expected = held.as_ref().map(|v| v.observation.revision);
+        self.held = held.clone();
+        let held = held.filter(Held::servable)?;
+        let listing = held.listing(&self.scope.project);
+        mv_models::project(&self.scope.project, &self.scope.principal, &listing, None).ok()?;
+        Some((listing, held.observation.needs_refresh))
     }
     fn invalidate(&mut self) -> Result<(), Self::Error> {
         self.ensure_lock().map_err(Failure::Storage)?;
-        write(
-            &self.directory.join("invalidation"),
-            uuid::Uuid::new_v4().as_bytes(),
-        )
+        self.settle(Operation::Invalidate {
+            scope: self.scope.kernel(),
+        })
         .map_err(Failure::Storage)
     }
     fn acquire(&mut self, _key: &str) -> Result<Value, Self::Error> {
@@ -154,10 +350,17 @@ impl<E, L: FnOnce() -> Result<Value, E>, A: Fn(&E) -> bool> Host<Value> for Stor
         match self.load.take().expect("one consuming acquisition")() {
             Ok(value) => Ok(value),
             Err(error) => {
-                if (self.unauthorized)(&error) {
-                    write(&self.directory.join("revoked"), b"access refused")
-                        .map_err(Failure::Storage)?;
-                }
+                let operation = if (self.unauthorized)(&error) {
+                    Operation::Revoke {
+                        scope: self.scope.kernel(),
+                    }
+                } else {
+                    Operation::MarkFailed {
+                        scope: self.scope.kernel(),
+                        expected: self.expected,
+                    }
+                };
+                self.settle(operation).map_err(Failure::Storage)?;
                 Err(Failure::Remote(error))
             }
         }
@@ -165,22 +368,64 @@ impl<E, L: FnOnce() -> Result<Value, E>, A: Fn(&E) -> bool> Host<Value> for Stor
     fn retain(&mut self, _key: &str, data: &Value) -> Result<(), Self::Error> {
         mv_models::project(&self.scope.project, &self.scope.principal, data, None)
             .map_err(|e| Failure::Storage(e.into()))?;
-        let held = json!({"schema":SCHEMA,"scope":self.scope,"data":data,"generation":self.generation(),"sha256":hash(&serde_json::to_vec(data).map_err(|e|Failure::Storage(e.to_string()))?)});
-        let held = serde_json::to_vec(&held).map_err(|e| Failure::Storage(e.to_string()))?;
-        if held.len() as u64 > MAX_BYTES {
-            return Err(Failure::Storage(
-                "bounded project catalogue exceeded8MiB".into(),
-            ));
-        }
-        write(&self.directory.join("catalogue.json"), &held).map_err(Failure::Storage)?;
-        if self.revoked() {
-            fs::remove_file(self.directory.join("revoked"))
-                .map_err(|e| Failure::Storage(e.to_string()))?;
-        }
-        Ok(())
+        self.settle(Operation::Commit {
+            scope: self.scope.kernel(),
+            listing: data.clone(),
+            now: now(),
+            expected: self.expected,
+        })
+        .map_err(Failure::Storage)
     }
 }
 static READS: OnceLock<Reads> = OnceLock::new();
+fn coordinated<'a, E, L: FnOnce() -> Result<Value, E>, A: Fn(&E) -> bool>(
+    root: &Path,
+    scope: &'a Scope,
+    demand: Demand,
+    load: L,
+    unauthorized: A,
+) -> Result<(Value, Store<'a, E, L, A>), (Failure<E>, Option<Held>)> {
+    let directory = directory(root, scope).map_err(|e| (Failure::Storage(e), None))?;
+    let mut store = Store {
+        root: root.to_path_buf(),
+        directory,
+        scope,
+        gate: None,
+        lock_error: None,
+        load: Some(load),
+        unauthorized,
+        expected: None,
+        held: None,
+        changes: None,
+        _error: std::marker::PhantomData,
+    };
+    let revoked = held(root, scope)
+        .map_err(|e| (Failure::Storage(e), None))?
+        .is_some_and(|held| held.observation.revoked);
+    if revoked && !(demand.refresh && demand.online && demand.acquire) {
+        return Err((Failure::AccessRevoked, None));
+    }
+    let room = hash(store.directory.as_os_str().as_encoded_bytes());
+    match READS
+        .get_or_init(Reads::default)
+        .read(&room, "heads", demand, &mut store)
+    {
+        Ok(value) => Ok((value, store)),
+        Err(e) => {
+            let held = store.held.take();
+            Err((
+                match e {
+                    ReadFailure::AcquisitionRequired => Failure::AcquisitionRequired,
+                    ReadFailure::GateUnavailable => {
+                        Failure::Storage("catalogue coordinator unavailable".into())
+                    }
+                    ReadFailure::Unavailable(e) => e,
+                },
+                held,
+            ))
+        }
+    }
+}
 pub fn read<E>(
     root: &Path,
     scope: &Scope,
@@ -188,43 +433,114 @@ pub fn read<E>(
     load: impl FnOnce() -> Result<Value, E>,
     unauthorized: impl Fn(&E) -> bool,
 ) -> Result<Value, Failure<E>> {
-    let directory = directory(root, scope).map_err(Failure::Storage)?;
-    let mut store = Store {
-        directory,
-        scope,
-        gate: None,
-        lock_error: None,
-        load: Some(load),
-        unauthorized,
-        _error: std::marker::PhantomData,
-    };
-    if store.revoked() && !(demand.refresh && demand.online && demand.acquire) {
-        return Err(Failure::AccessRevoked);
+    coordinated(root, scope, demand, load, unauthorized)
+        .map(|(value, _)| value)
+        .map_err(|(failure, _)| failure)
+}
+/// One answer of the catalogue projection and, when a deliberate refresh
+/// failed while rows are held, the failure that left them labelled.
+pub struct CatalogRead<E> {
+    pub catalog: Value,
+    pub refresh_failure: Option<Failure<E>>,
+}
+/// The Kernel's catalogue projection for Design, Project Control and printing.
+/// An offline demand reads only retained rows (never-observed is `unread`); a
+/// refresh is one authorized listing compared with the held source basis.
+pub fn catalog<E>(
+    root: &Path,
+    scope: &Scope,
+    demand: Demand,
+    load: impl FnOnce() -> Result<Value, E>,
+    unauthorized: impl Fn(&E) -> bool,
+) -> Result<CatalogRead<E>, Failure<E>> {
+    let project = scope.project.as_str();
+    if !(demand.online && demand.acquire) {
+        let held = held(root, scope).map_err(Failure::Storage)?;
+        return Ok(CatalogRead {
+            catalog: kernel::view(project, held.as_ref(), Source::Held, None, None)
+                .map_err(Failure::Storage)?,
+            refresh_failure: None,
+        });
     }
-    READS
-        .get_or_init(Reads::default)
-        .read(
-            &hash(store.directory.as_os_str().as_encoded_bytes()),
-            "heads",
-            demand,
-            &mut store,
-        )
-        .map_err(|e| match e {
-            ReadFailure::AcquisitionRequired => Failure::AcquisitionRequired,
-            ReadFailure::GateUnavailable => {
-                Failure::Storage("catalogue coordinator unavailable".into())
-            }
-            ReadFailure::Unavailable(e) => e,
-        })
+    match coordinated(root, scope, demand, load, unauthorized) {
+        Ok((_, store)) => {
+            let held = match store.held {
+                Some(held) => Some(held),
+                None => held(root, scope).map_err(Failure::Storage)?,
+            };
+            let refreshed = store.changes.as_ref().is_some_and(|c| !c.superseded);
+            Ok(CatalogRead {
+                catalog: kernel::view(
+                    project,
+                    held.as_ref(),
+                    if refreshed {
+                        Source::Refresh
+                    } else {
+                        Source::Held
+                    },
+                    None,
+                    store.changes.as_ref(),
+                )
+                .map_err(Failure::Storage)?,
+                refresh_failure: None,
+            })
+        }
+        Err((failure @ Failure::Remote(_), held)) => match held.filter(Held::servable) {
+            Some(held) => Ok(CatalogRead {
+                catalog: kernel::view(
+                    project,
+                    Some(&held),
+                    Source::Held,
+                    Some(kernel::REFRESH_FAILED),
+                    None,
+                )
+                .map_err(Failure::Storage)?,
+                refresh_failure: Some(failure),
+            }),
+            None => Err(failure),
+        },
+        Err((failure, _)) => Err(failure),
+    }
+}
+/// Record the exact version whose verified bytes this host's bytes owner
+/// holds for one held head. No acquisition; a moved or retired head refuses.
+pub fn retain_version(
+    root: &Path,
+    scope: &Scope,
+    model_id: &str,
+    version: Value,
+) -> Result<Value, Failure<()>> {
+    let directory = directory(root, scope).map_err(Failure::Storage)?;
+    owned_directory(&directory).map_err(Failure::Storage)?;
+    let _gate =
+        crate::exclusive_lock(&directory.join("catalogue.lock")).map_err(Failure::Storage)?;
+    let (held, _) = write(
+        root,
+        Operation::RetainVersion {
+            scope: scope.kernel(),
+            model_id: model_id.into(),
+            version,
+        },
+    )
+    .map_err(|e| match e.as_str() {
+        kernel::VERSION_STALE => Failure::Admission(kernel::VERSION_STALE),
+        kernel::REVOKED => Failure::AccessRevoked,
+        kernel::INVALID => Failure::Admission(kernel::INVALID),
+        _ => Failure::Storage(e),
+    })?;
+    kernel::view(&scope.project, held.as_ref(), Source::Held, None, None).map_err(Failure::Storage)
 }
 pub fn invalidate(root: &Path, scope: &Scope) -> Result<(), String> {
     let directory = directory(root, scope)?;
     owned_directory(&directory)?;
     let _gate = crate::exclusive_lock(&directory.join("catalogue.lock"))?;
     write(
-        &directory.join("invalidation"),
-        uuid::Uuid::new_v4().as_bytes(),
+        root,
+        Operation::Invalidate {
+            scope: scope.kernel(),
+        },
     )
+    .map(|_| ())
 }
 /// One consuming catalogue/control path for both native hosts. Context and
 /// selected-source admission precede cache or transport access.
@@ -270,224 +586,5 @@ pub fn consume<E>(
     Ok(catalogue)
 }
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    };
-    fn scope(project: &str) -> Scope {
-        Scope {
-            principal: "owner".into(),
-            project: project.into(),
-            lane: "local".into(),
-            audience_sha256: "a".repeat(64),
-        }
-    }
-    fn answer(project: &str) -> Value {
-        json!({"project":project,"models":[],"more":false})
-    }
-    fn demand() -> Demand {
-        Demand {
-            online: true,
-            acquire: true,
-            refresh: false,
-        }
-    }
-    #[test]
-    fn real_adapter_coalesces_warm_offline_and_unused_invalidation_without_remote_reads() {
-        let root = tempfile::tempdir().unwrap();
-        let requests = Arc::new(AtomicUsize::new(0));
-        let room = scope("template");
-        std::thread::scope(|threads| {
-            for _ in 0..6 {
-                let requests = requests.clone();
-                let room = room.clone();
-                let path = root.path();
-                threads.spawn(move || {
-                    read(
-                        path,
-                        &room,
-                        demand(),
-                        || {
-                            requests.fetch_add(1, Ordering::SeqCst);
-                            std::thread::sleep(std::time::Duration::from_millis(20));
-                            Ok::<_, &str>(answer("template"))
-                        },
-                        |_| false,
-                    )
-                    .unwrap()
-                });
-            }
-        });
-        assert_eq!(requests.load(Ordering::SeqCst), 1);
-        invalidate(root.path(), &room).unwrap();
-        assert_eq!(requests.load(Ordering::SeqCst), 1);
-        for online in [false, false] {
-            read(
-                root.path(),
-                &room,
-                Demand {
-                    online,
-                    acquire: false,
-                    refresh: false,
-                },
-                || panic!("offline performs no transport"),
-                |_: &&str| false,
-            )
-            .unwrap();
-        }
-        assert_eq!(requests.load(Ordering::SeqCst), 1);
-        read(
-            root.path(),
-            &room,
-            demand(),
-            || {
-                requests.fetch_add(1, Ordering::SeqCst);
-                Ok::<_, &str>(answer("template"))
-            },
-            |_| false,
-        )
-        .unwrap();
-        assert_eq!(requests.load(Ordering::SeqCst), 2);
-        assert!(matches!(
-            read(
-                root.path(),
-                &scope("foreign"),
-                Demand {
-                    online: false,
-                    acquire: false,
-                    refresh: false
-                },
-                || panic!("missing offline project does not acquire"),
-                |_: &&str| false
-            ),
-            Err(Failure::AcquisitionRequired)
-        ));
-    }
-    #[test]
-    fn incomplete_or_foreign_selected_sources_refuse_before_cache_or_transport_access() {
-        let root = tempfile::tempdir().unwrap();
-        let scope = scope("template");
-        let source = mv_models::SourceBinding {
-            project_id: "foreign".into(),
-            model_id: "head".into(),
-            revision_id: "rev".into(),
-            content_sha256: "a".repeat(64),
-            version: 1,
-            worker_id: "local".into(),
-            worker_model_id: "native".into(),
-            worker_revision: "rev:1".into(),
-            history_pin: "pin".into(),
-            coordinate_system: "EPSG:32736".into(),
-            read_only: false,
-        };
-        let calls = AtomicUsize::new(0);
-        let context = json!({"account":"owner","project":"template","generation":1});
-        let inventory = ds_command_kernel::grid_held_models::admit(json!({"captured_context":context,"context":context,"total":0,"rows":[],"mutated":false})).unwrap();
-        let mut unbound = source.clone();
-        unbound.project_id = "template".into();
-        for (inventory, source) in [(Some(inventory), source), (None, unbound)] {
-            assert!(matches!(
-                consume(
-                    root.path(),
-                    &scope,
-                    demand(),
-                    inventory,
-                    Some(source),
-                    || {
-                        calls.fetch_add(1, Ordering::SeqCst);
-                        Ok::<_, &str>(answer("template"))
-                    },
-                    |_| false
-                ),
-                Err(Failure::Admission(mv_models::STALE))
-            ));
-        }
-        assert_eq!(calls.load(Ordering::SeqCst), 0);
-        assert!(!root.path().join("grid-project-catalogue").exists());
-    }
-    #[cfg(unix)]
-    #[test]
-    fn foreign_scope_links_are_not_followed_or_written() {
-        let root = tempfile::tempdir().unwrap();
-        let foreign = tempfile::tempdir().unwrap();
-        let scope = scope("template");
-        let owned = directory(root.path(), &scope).unwrap();
-        fs::create_dir_all(owned.parent().unwrap()).unwrap();
-        std::os::unix::fs::symlink(foreign.path(), &owned).unwrap();
-        assert!(matches!(
-            read(
-                root.path(),
-                &scope,
-                demand(),
-                || panic!("foreign path does not acquire"),
-                |_: &&str| false
-            ),
-            Err(Failure::Storage(_))
-        ));
-        assert_eq!(fs::read_dir(foreign.path()).unwrap().count(), 0);
-    }
-    #[test]
-    fn revoked_or_crossed_scope_never_reuses_a_previous_success() {
-        let root = tempfile::tempdir().unwrap();
-        let room = scope("template");
-        read(
-            root.path(),
-            &room,
-            demand(),
-            || Ok::<_, &str>(answer("template")),
-            |_| false,
-        )
-        .unwrap();
-        assert!(matches!(
-            read(
-                root.path(),
-                &room,
-                Demand {
-                    refresh: true,
-                    ..demand()
-                },
-                || Err("unauthorized"),
-                |e| *e == "unauthorized"
-            ),
-            Err(Failure::Remote(_))
-        ));
-        assert!(matches!(
-            read(
-                root.path(),
-                &room,
-                Demand {
-                    online: false,
-                    acquire: false,
-                    refresh: false
-                },
-                || panic!("revoked does not acquire"),
-                |_: &&str| false
-            ),
-            Err(Failure::AccessRevoked)
-        ));
-        for changed in 0..3 {
-            let mut other = room.clone();
-            match changed {
-                0 => other.principal = "peer".into(),
-                1 => other.lane = "other".into(),
-                _ => other.audience_sha256 = "b".repeat(64),
-            };
-            assert!(matches!(
-                read(
-                    root.path(),
-                    &other,
-                    Demand {
-                        online: false,
-                        acquire: false,
-                        refresh: false
-                    },
-                    || panic!("scope does not acquire"),
-                    |_: &&str| false
-                ),
-                Err(Failure::AcquisitionRequired)
-            ));
-        }
-    }
-}
+#[path = "grid_project_catalogue_tests.rs"]
+mod tests;

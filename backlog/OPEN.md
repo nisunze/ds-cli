@@ -30,7 +30,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 7 |
 | [22. Operations product code](#22-operations-product-code) | 5 |
-| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 4 |
+| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 5 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 6 |
 | [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 5 |
 <!-- /toc -->
@@ -513,6 +513,8 @@ Rules: [PRINCIPLES.md ยง5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) โ
 - **Sidebar gateway bypasses** (ds-web `docs/layer-domain-claude-handoff.md`): Tiles/Files (`api/userData.ts`, `api/projectData.ts`), global tiles, survey pipeline/reports, basemap, Design section, PM context and drawer chrome still call API Gateway from TypeScript. One complete vertical each: kernel decides, native/WASM parity, negative controls, retired TS deleted. Then the local sketch-layer lifecycle (`docs/prompts/claude-local-sketch-layer-lifecycle.md`) and authenticated browser-to-Server transport (loopback/SSH only today).
 
 - **One Rust communication authority** (`docs/prompts/rust-communications-refactor.md`): every request to API Gateway goes through one shared Rust client (identity/lane, auth, retries, cancellation, resumable transfer, durable scheduling) and the TypeScript copies go. The transfer protocol landed 2026-09-10; live acceptance and the remaining TS callers are unverified.
+
+- **DS Grid project model bytes and the remaining TypeScript listing callers** (2026-10-19): the retained project catalogue is Kernel SQLite on every edge ([grid-project-catalog.md](../docs/contracts/grid-project-catalog.md)), but verified MV package bytes and their exact-version cache are still TypeScript and IndexedDB (`ds-web/src/lib/grid/version-cache.ts`, `ds-grid-catalog` `remote_versions`; `getGridModelVersion` and the signed-URL download in `models-api.ts`). Move acquisition and the byte store to the Rust owner (Core on Desktop, OPFS in the browser) and delete those modules. `listGridModelsForProject` still serves publication (`cli-dsgrid.ts`, `GridCreateVersionDialog.svelte`, include-deleted), `GridCombineDialog.svelte`, the assets index and the `grid-catalog` route: move each to the Kernel catalogue or a Core read and delete the TypeScript walk. Printing's MV picker still asks the closed shell door `dsgrid.project.list --mv-picker`; read it through Core once that command returns.
 
 - **Project and instance isolation** (`docs/prompts/claude-project-instance-isolation.md`; contract `project-and-instance-isolation-contract.md`): after the Server execution context: live Desktop instance discovery and CLI/MCP routing that refuses stale or ambiguous targets; generation-fenced UI session state; multi-principal authority and fair capacity across Solar, printing and a third operation on one Server.
 
