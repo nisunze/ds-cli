@@ -1513,7 +1513,7 @@ mod tests {
     }
     fn page_capture(context: bool) -> Value {
         let mut page = json!({"project_id":"p","items":[],"scanned":2,"complete":false,"truncated":false,
-            "context_revision":"b".repeat(64),"migration_required":["plain-note"],"next_cursor":"exact-boundary"});
+            "context_revision":11,"migration_required":["plain-note"],"next_cursor":"exact-boundary"});
         if context {
             page["claims"] = json!([]);
             page["conflicts"] = json!([]);
@@ -1573,7 +1573,7 @@ mod tests {
         let mut qs = PageSource::new(calls.clone(), false);
         let mut cs = PageSource::new(calls.clone(), true);
         let q = consume_query(temp.path(), &binding(), &query, false, 1, &mut qs).unwrap();
-        cs.value["context_revision"] = json!("c".repeat(64));
+        cs.value["context_revision"] = json!(12);
         let c = consume_context(temp.path(), &binding(), &context, false, 2, &mut cs).unwrap();
         assert_ne!(q["context_revision"], c["context_revision"]);
         for held in [

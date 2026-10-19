@@ -65,7 +65,7 @@ mod epoch_tests {
     }
     #[test]
     fn server_numeric_note_epoch_passes_fixed_transport_without_relaxing_page_admission() {
-        let command = Command::Query(serde_json::from_value(json!({"limit":5})).unwrap());
+        let command = Command::Query(serde_json::from_value(json!({"tag_match":"any","sort":"updated","direction":"desc","limit":5})).unwrap());
         let page = json!({"project_id":"p","items":[],"scanned":0,"truncated":false,"complete":true,"migration_required":[],"context_revision":0});
         for (field, value, accepted) in [
             ("context_revision",json!(0),true), ("context_revision",json!(17),true),
