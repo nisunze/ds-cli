@@ -481,6 +481,12 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 
 - `7519c28b` (major): Windows headless PDF report promotion fails with Access is denied.
 
+- **Windows Core state root depends on `HOME`** (found 2026-10-19): the Windows Core state directory is chosen by `ds_compute_runtime::server_state_directory` (and the matching `state_root` in `ds-cli-auth/src/reliability.rs`). Both try `XDG_STATE_HOME`, then `HOME`, then `%LOCALAPPDATA%`, so one account can end up with two Core state directories:
+  - The logon-task background Core, Desktop and PowerShell carry no `HOME`, so they use `%LOCALAPPDATA%\ds\server\<lane>`.
+  - Git Bash exports `HOME`, so `ds core …` from Git Bash looks in `%USERPROFILE%\.local\state\ds\server\<lane>` and reports "no Core answers".
+
+  On Windows, select `%LOCALAPPDATA%` first in both places. Because a Windows state directory may already exist under `HOME`, give that case an explicit migration or refusal rather than silently changing the root. Prove that Git Bash and PowerShell reach the same background Core on Windows. Until then the runbook ([windows-release-first-build.md §4.4](../../ds-web/docs/windows-release-first-build.md#44-install-on-this-machine-and-verify)) checks Core from PowerShell.
+
 ## 22. Operations product code
 
 - **Local Brain detached-snapshot VCS stamping** (ds-brain `build_backend_image.sh`, 2026-10-12): the captured clean source `1113fd0f9b54079a8fbbf2bda4dc423e8d77cca5` passed all 442 mandatory emulator tests, then Go 1.26.5 refused its release worktree build with `error obtaining VCS status: exit status 128`. The same clean canonical source compiled with the correct embedded revision and `vcs.modified=false`. Reproduce the detached-snapshot boundary with bounded Git diagnostics and fix/prove the owning local builder; preserve exact source attribution and sealed gate provenance. Do not default to disabling VCS stamping, weaken the mandatory gate or launch remote builds. The canonical artifact is admitted for the incident deployment; this item concerns the reusable release builder.
