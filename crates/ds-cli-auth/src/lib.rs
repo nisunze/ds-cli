@@ -7215,10 +7215,30 @@ pub use ds_client_core::shared_assets::Command as SharedAssetsCommand;
 
 /// A feedback response failed after the native credential was admitted.
 pub const FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
-    code: ds_client_core::feedback::SERVICE_UNAVAILABLE,
+    // Spelled out so the refusal scan can read it; equal to
+    // ds_client_core::feedback::SERVICE_UNAVAILABLE (pinned below).
+    code: "feedback_service_unavailable",
     when: "the feedback endpoint answers a retryable service error",
     remedy: "retry the read after service recovery; for a write, first inspect its outcome",
 };
+const _: () = assert!(const_str_eq(
+    FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL.code,
+    ds_client_core::feedback::SERVICE_UNAVAILABLE
+));
+const fn const_str_eq(left: &str, right: &str) -> bool {
+    let (left, right) = (left.as_bytes(), right.as_bytes());
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if left[index] != right[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
 
 fn map_feedback_client(
     error: ds_client_core::ClientError,

@@ -41,7 +41,7 @@ published state.",
 pub fn run(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let refusal = crate::PROJECT_TILES_NATIVE_COMPUTE_REQUIRED;
     Err(Failure::unavailable(
-        refusal.code,
+        crate::PROJECT_TILES_NATIVE_COMPUTE_REQUIRED.code,
         "project tile generation no longer runs in the cloud; nothing was sent",
     )
     .remedy(refusal.remedy)

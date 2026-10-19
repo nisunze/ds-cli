@@ -268,7 +268,7 @@ pub fn list(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 pub fn generate(_: &Inputs, _: &Context) -> Result<Value, Failure> {
     let refusal = crate::GLOBAL_TILES_NATIVE_COMPUTE_REQUIRED;
     Err(Failure::unavailable(
-        refusal.code,
+        crate::GLOBAL_TILES_NATIVE_COMPUTE_REQUIRED.code,
         "global reference publication no longer runs in the cloud and has no edge owner yet; nothing was sent",
     )
     .remedy(refusal.remedy))

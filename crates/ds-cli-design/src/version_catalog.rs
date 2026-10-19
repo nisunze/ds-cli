@@ -213,6 +213,18 @@ pub fn promote(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 }
 
 pub static REVISION_COMPARE: Command = Command {
+    refusals: &[
+        Refusal {
+            code: "version_catalog_refused",
+            when: "The server refuses catalog/source fences, occupied display ordinal, immutable identity or revision policy",
+            remedy: "Read the nested server cause, refresh the named catalog/head, and review before changing the request; retry only an identical uncertain mutation",
+        },
+        Refusal {
+            code: "revision_comparison_refused",
+            when: "an offline comparison's retained files do not prove the declared scope, pins or bytes",
+            remedy: "retain the exact pinned revisions with retain_reads, or compare online",
+        },
+    ],
     purpose: "Consume only two explicitly pinned immutable LV revisions through Bulk, or reuse verified retained read envelopes without network reads. Retained JSON proves declared scope/pins/bytes, not fresh cloud authorization, currentness or approval. Runtime geometry comparison uses the pure comparator; exported layouts require explicit verified_bytes mode without runtime correspondence claims.",
     availability: || Availability::Available,
     authority: Authority::None,

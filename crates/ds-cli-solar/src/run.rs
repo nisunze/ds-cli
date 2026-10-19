@@ -194,12 +194,13 @@ fn remaining(deadline: Instant) -> Result<Duration, Failure> {
         .ok_or_else(timeout_failure)
 }
 fn process_failure(error: ProcessFailure) -> Failure {
-    let code = if error.kind == ProcessFailureKind::Deadline {
-        "callee_timed_out"
+    let message = format!("selected Solar task was not accepted: {}", error.message);
+    let failure = if error.kind == ProcessFailureKind::Deadline {
+        Failure::failed("callee_timed_out", message)
     } else {
-        "engine_refused"
+        Failure::failed("engine_refused", message)
     };
-    Failure::failed(code, format!("selected Solar task was not accepted: {}", error.message))
+    failure
         .remedy("inspect the typed failure and any completed scope before explicitly retrying; no engine fallback was attempted")
         .detail(json!({"native": error.refusal, "kind": format!("{:?}",error.kind)}))
 }

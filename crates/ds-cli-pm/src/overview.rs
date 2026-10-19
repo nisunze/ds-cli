@@ -47,7 +47,7 @@ fn options(inputs: &Inputs) -> Result<Options, Failure> {
         records_cursor: inputs.value("records-cursor").map(str::to_owned),
     };
     options.validate().map_err(|message| {
-        Failure::invalid(crate::INVALID_NUMBER.code, message)
+        Failure::invalid("invalid_number", message)
             .remedy("use 1..100 rows and an exact returned records cursor")
     })?;
     Ok(options)

@@ -103,7 +103,12 @@ fn cached(
 }
 fn map_error(error: cache::Failure<ClientError>) -> Failure {
     match error {
-        cache::Failure::Admission(code) => Failure::conflict(code, code),
+        // The kernel admission codes, named so their refusals stay declared.
+        cache::Failure::Admission(code) => match code {
+            "grid_catalog_version_stale" => Failure::conflict("grid_catalog_version_stale", code),
+            "mv_model_source_stale" => Failure::conflict("mv_model_source_stale", code),
+            _ => Failure::failed("mv_model_catalogue_invalid", code),
+        },
         cache::Failure::Remote(error) => map_grid_publication(error),
         cache::Failure::AcquisitionRequired => Failure::unavailable(
             "project_model_catalogue_acquisition_required",
@@ -229,8 +234,12 @@ pub fn retain_catalog_version(
         cache::retain_version(root, scope, model, version)
             .map(|_| ())
             .map_err(|error| match error {
-                cache::Failure::Admission(code) => Failure::conflict(
-                    code,
+                cache::Failure::Admission("grid_catalog_invalid") => Failure::failed(
+                    "mv_model_catalogue_invalid",
+                    "The retained catalogue refused the version as invalid.",
+                ),
+                cache::Failure::Admission(_) => Failure::conflict(
+                    "grid_catalog_version_stale",
                     "The retained version does not name the held head of that model.",
                 )
                 .remedy("refresh the catalogue, then retain the exact current head version"),

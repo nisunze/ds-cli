@@ -93,6 +93,37 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
         "catalog_action_not_allowed",
         "raised only if a parser-validated global catalog action escapes the exact read/write allowlist that declared it",
     ),
+    (
+        "module_component_invalid",
+        "every --component argument is a closed choice the parser enforces, and \
+         managed selection is only asked for the three declared addons; the \
+         decoder refusal is a defensive invariant a caller cannot reach",
+    ),
+    (
+        "module_inventory_invalid",
+        "raised only if Core's own module inventory names a component or asset \
+         its kernel cannot decode — an internal invariant, not caller input",
+    ),
+    (
+        "module_result_invalid",
+        "an internal failure to encode an already validated kernel module \
+         result, reported as a defect (class internal), never a refusal",
+    ),
+    (
+        "headless_owner_unavailable",
+        "serialising the (uid, lane, audience) owner tuple cannot fail; the code \
+         names that impossibility rather than a caller situation",
+    ),
+    (
+        "module_lane_invalid",
+        "every lane input is the closed stable|canary choice the parser enforces; \
+         the exec capture refuses any other lane only as a defensive invariant",
+    ),
+    (
+        "desktop_dev_request_encoding",
+        "an internal failure to serialise an already typed development request, \
+         reported as a defect (class internal), never a refusal",
+    ),
 ];
 
 /// Call sites whose code argument this scan cannot read, and why.
@@ -205,6 +236,60 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
          `APPLY_REFUSALS` in this same file — which the `expect` beside the \
          match requires. The two named arms above it this scan does resolve",
     ),
+    (
+        "ds-cli-design/src/autoprocess.rs",
+        "the engine-missing case is the literal network_engine_missing; any other \
+         code is relayed from ds-network-client's closed NetworkFailure vocabulary \
+         and gains its remedy only from this command's declared REFUSALS",
+    ),
+    (
+        "ds-cli-design/src/model_catalog.rs",
+        "invalid() takes one of this module's declared Refusal constants, so each \
+         code is written beside its when and remedy",
+    ),
+    (
+        "ds-cli-report/src/layout_preview.rs",
+        "host_failure relays ds-report-host's HostFailure code through \
+         PreviewRefusal; codes this command declares take their remedy from REFUSALS",
+    ),
+    (
+        "ds-cli-report/src/project/held_preview.rs",
+        "the style capture refusal is the kernel style_resolution::Error code, \
+         declared once by the shared resolver vocabulary",
+    ),
+    (
+        "ds-cli-report/src/project/held_export.rs",
+        "refusals come from the kernel held_export policy (policy::Refusal and \
+         policy::INVALID), the one owner of that vocabulary",
+    ),
+    (
+        "ds-cli-server/src/survey_queue.rs",
+        "failure() takes one of this command's declared Refusal constants",
+    ),
+    (
+        "ds-cli-server/src/sync_read.rs",
+        "failure() takes one of this command's declared Refusal constants",
+    ),
+    (
+        "ds-cli-server/src/lib.rs",
+        "require_native_host_for relays the code of native_host_availability's \
+         Unavailable answer, the declared platform refusal",
+    ),
+    (
+        "ds-cli-server/src/module_updates.rs",
+        "named arms dispatch the module-update codes this command declares; the \
+         fallback relays any other kernel module-update code unchanged",
+    ),
+    (
+        "ds-cli-exec/src/default_resolution.rs",
+        "`missing_code` is declared by each External the caller names, as in \
+         ds-cli-exec/src/lib.rs",
+    ),
+    (
+        "ds-cli-exec/src/session.rs",
+        "`missing_code` is declared by the captured External's owner, as in \
+         ds-cli-exec/src/lib.rs",
+    ),
 ];
 
 fn ds(args: &[&str]) -> Value {
@@ -268,11 +353,35 @@ fn declared_codes() -> (BTreeMap<String, BTreeSet<String>>, BTreeSet<String>) {
 /// routinely passes `NAME.code` for a constant declared in the crate root, and
 /// a scan that cannot follow that reports nothing for a whole domain.
 fn constructed_codes(dir: &Path) -> (BTreeSet<String>, Vec<(PathBuf, String)>) {
+    // Shipped code only: a test fixture that builds a refusal from a table of
+    // codes mints nothing a caller can receive. Sibling test modules
+    // (`<name>_tests.rs`, `tests.rs`) and a trailing `#[cfg(test)] mod` are skipped,
+    // as process_boundary.rs does for the same reason.
     let sources: Vec<(PathBuf, String)> = rust_files(dir)
         .into_iter()
+        .filter(|file| {
+            let name = file
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default();
+            !(name.ends_with("_tests.rs") || name == "tests.rs")
+        })
         .map(|file| {
             let source = std::fs::read_to_string(&file).expect("read source");
-            (file, source)
+            // Only the trailing test module is dropped; a `#[cfg(test)]` helper
+            // above shipped code keeps that code in the scan.
+            let marker = "\n#[cfg(test)]\nmod ";
+            let inline_tests = source.match_indices(marker).map(|(at, _)| at).filter(|at| {
+                source[at + marker.len()..]
+                    .lines()
+                    .next()
+                    .is_some_and(|line| line.trim_end().ends_with('{'))
+            }).last();
+            let shipped = match inline_tests {
+                Some(at) => source[..at].to_owned(),
+                None => source,
+            };
+            (file, shipped)
         })
         .collect();
 
@@ -817,9 +926,9 @@ fn every_constructible_refusal_code_is_documented() {
         // layer owner's, re-raised across that transport, by `ds map layer …`.
         // The working-area form owner's travel the same transport for
         // `ds survey working-area … --target server`, declared there.
-        ("ds-cli-server", &["core", "server", "map", "survey"]),
+        ("ds-cli-server", &["core", "map", "survey"]),
         ("ds-cli-solar", &["solar"]),
-        ("ds-cli-pm", &["pm"]),
+        ("ds-cli-pm", &["pm", "notes"]),
         ("ds-cli-messaging", &["messaging"]),
         ("ds-cli-assets", &["assets"]),
         ("ds-cli-sre", &["sre"]),
@@ -1491,14 +1600,19 @@ export const settings = { code: 'metric', label: 'Settings' };
 /// The application-side counterpart of [`CODE_NOT_A_LITERAL`]: a mint whose
 /// code this scan cannot read, because the code is not the file's to choose.
 ///
-/// Empty since the slice 2 unwind: the one entry it held was
+/// Emptied in the slice 2 unwind: the one entry it held was
 /// `src/lib/desktop/context-generation.ts`, which re-raised
 /// `desktop_instance::admit_result`'s code; that module was removed with the
 /// browser half, and the shell (`src-tauri/src/cli_bridge.rs`) now relays the
 /// kernel's decision, which the Rust relays above account for. Keep the shape:
 /// a file listed here is a file whose *new* codes would be invisible, so
 /// nothing belongs here that mints a code of its own.
-const APPLICATION_CODE_NOT_A_LITERAL: &[(&str, &str)] = &[];
+const APPLICATION_CODE_NOT_A_LITERAL: &[(&str, &str)] = &[(
+    "src/lib/components/printing/PrintingSetup.svelte",
+    "the held print view relays planPrintingView's refusal unchanged; the \
+     kernel printing::view plan owns that code (template unavailable or the \
+     draft guard's refusal), and the file's own codes remain literals",
+)];
 
 /// Codes the application still mints for a bridge domain `ds` no longer
 /// sends to, with why.

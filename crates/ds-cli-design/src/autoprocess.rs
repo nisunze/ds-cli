@@ -270,7 +270,7 @@ fn network_failure(error: ds_network_client::NetworkFailure) -> Failure {
     }
     let code = error.code();
     let failure = if code == "network_engine_missing" {
-        Failure::unavailable(code, error.to_string())
+        Failure::unavailable("network_engine_missing", error.to_string())
     } else {
         Failure::failed(code, error.to_string())
     };
