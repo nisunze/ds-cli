@@ -85,7 +85,7 @@ const PUBLISHER_INPUT_ARG: Arg = Arg::value(
 
 const REMOTE_CONTEXT_ARG: Arg = Arg::switch(
     "remote-context",
-    "Explicitly acquire missing Google buildings/elevation contours through the governed remote service with exact authored parameters. Exclusive with --local-source/--publisher-input.",
+    "Retired: buildings/contours are no longer computed in the cloud. Always refuses with native_compute_required; supply them with --local-source or --publisher-input.",
 );
 
 const LANE_ARG: ds_cli_contract::spec::Arg =
@@ -212,6 +212,12 @@ refusal!(
     "reference_bundle_unavailable",
     "the catalogue row publishes no verified bundle, or it could not be installed",
     "publish the dataset's bundle, then seed again"
+);
+refusal!(
+    REMOTE_CONTEXT_RETIRED,
+    "native_compute_required",
+    "--remote-context was given: buildings and contours are no longer computed in the cloud",
+    "supply pinned inputs with --local-source or --publisher-input; no cloud fallback exists"
 );
 refusal!(
     RETIRED,
@@ -445,6 +451,7 @@ const STATUS_REFUSALS: &[Refusal] = &[
 
 const SEED_REFUSALS: &[Refusal] = &[
     NETWORK_ENGINE_MISSING,
+    REMOTE_CONTEXT_RETIRED,
     NETWORK_ENGINE_INCOMPATIBLE,
     INVALID_SCOPE,
     RETIRED,
@@ -561,7 +568,7 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Seeds design/MV coverage under authorized --project. --local-source selects analytical input; --publisher-input converts pinned Google CSV.gz/Microsoft GeoJSONL.gz. Both skip catalogue/remote compute. --remote-context explicitly admits governed remote buildings/contours for missing coverage; otherwise they require local input. Seeds declared datasets plus what it holds. --refresh repeats. Incomplete results refuse with detail.result.",
+    purpose: "Seeds design/MV coverage under authorized --project. --local-source selects analytical input; --publisher-input converts pinned Google CSV.gz/Microsoft GeoJSONL.gz. Both skip catalogue/remote compute. Buildings/contours require local input; --remote-context is retired and refuses. Seeds declared datasets plus what it holds. --refresh repeats. Incomplete results refuse with detail.result.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
@@ -1668,12 +1675,9 @@ fn catalog_seed(
         Failure::unavailable(STORE_FAILED.code, error).remedy(STORE_FAILED.remedy)
     })?;
     policy.sheets = both_orientations();
-    let mut provider = remote_context::SeedProvider {
-        local: CliProvider {
-            lane,
-            project: &project,
-        },
-        enabled: inputs.switch("remote-context"),
+    let mut provider = CliProvider {
+        lane,
+        project: &project,
     };
     let mut fetch = bundle_fetch(lane);
     let mut rows = Vec::new();
