@@ -216,7 +216,8 @@ pub const DIRECTORY_SCHEMA: &str = "ds.design-activities-directory/v1";
 /// The root under which the kernel's segments are joined.
 ///
 /// `--state-dir` when the caller passed one, otherwise `$XDG_STATE_HOME/ds`,
-/// otherwise `$HOME/.local/state/ds`. The credentials namespace
+/// otherwise `$HOME/.local/state/ds` on Unix and `%LOCALAPPDATA%\ds` on
+/// Windows (`ds_command_kernel::native_state`). The credentials namespace
 /// (`DS_CONFIG_HOME`) is deliberately not used: this is a machine cache of
 /// governed reads, not a credential.
 pub fn state_root(inputs: &ds_cli_contract::Inputs) -> Result<PathBuf, Failure> {
@@ -231,22 +232,20 @@ pub fn state_root(inputs: &ds_cli_contract::Inputs) -> Result<PathBuf, Failure> 
         }
         return Ok(path);
     }
-    let base = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .filter(|path| path.is_absolute())
-                .map(|home| home.join(".local").join("state"))
-        })
-        .ok_or_else(|| {
-            Failure::failed(
-                STORE_UNAVAILABLE.code,
-                "no absolute XDG state root or home directory is available",
-            )
-            .remedy(STORE_UNAVAILABLE.remedy)
-        })?;
+    let base = ds_command_kernel::native_state::state_base(
+        std::env::var_os("XDG_STATE_HOME"),
+        std::env::var_os("HOME"),
+        std::env::var_os("LOCALAPPDATA"),
+        cfg!(windows),
+    )
+    .filter(|path| path.is_absolute())
+    .ok_or_else(|| {
+        Failure::failed(
+            STORE_UNAVAILABLE.code,
+            "no absolute per-user state root is available",
+        )
+        .remedy(STORE_UNAVAILABLE.remedy)
+    })?;
     let root = base.join("ds");
     // DS's own state namespace is private (owner rule
     // `ds_layer_store::private`, inline): one an older build created with

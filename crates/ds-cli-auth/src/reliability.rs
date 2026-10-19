@@ -98,19 +98,25 @@ impl FileStore {
     }
 }
 
-/// `$XDG_STATE_HOME/ds`, otherwise `$HOME/.local/state/ds`, otherwise (on
-/// Windows) `%LOCALAPPDATA%\ds\state`: the same private root as the other DS
+/// `$XDG_STATE_HOME/ds`, otherwise `$HOME/.local/state/ds` on Unix and
+/// `%LOCALAPPDATA%\ds\state` on Windows (never a Git Bash `HOME`; see
+/// `ds_command_kernel::native_state`): the same private root as the other DS
 /// machine state, never a credential namespace.
 fn state_root() -> Option<PathBuf> {
-    let absolute = |name: &str| {
-        std::env::var_os(name)
-            .map(PathBuf::from)
-            .filter(|path| path.is_absolute())
-    };
-    absolute("XDG_STATE_HOME")
-        .map(|base| base.join("ds"))
-        .or_else(|| absolute("HOME").map(|home| home.join(".local").join("state").join("ds")))
-        .or_else(|| absolute("LOCALAPPDATA").map(|base| base.join("ds").join("state")))
+    let explicit = std::env::var_os("XDG_STATE_HOME").filter(|value| !value.is_empty());
+    let windows_default = cfg!(windows) && explicit.is_none();
+    let base = ds_command_kernel::native_state::state_base(
+        explicit,
+        std::env::var_os("HOME"),
+        std::env::var_os("LOCALAPPDATA"),
+        cfg!(windows),
+    )
+    .filter(|path| path.is_absolute())?;
+    Some(if windows_default {
+        base.join("ds").join("state")
+    } else {
+        base.join("ds")
+    })
 }
 
 fn unavailable() -> ReporterStoreError {
