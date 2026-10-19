@@ -2370,7 +2370,8 @@ fn percent_decoded(value: &str) -> Option<String> {
 }
 
 /// The durable identity behind a listed artifact locator: `gs://bucket/object`,
-/// a storage URL `https://storage.googleapis.com/bucket/object?…`, or a legacy
+/// a storage URL `https://storage.googleapis.com/bucket/object?…` (or its
+/// browser form on `storage.cloud.google.com`), or a legacy
 /// Firebase URL `https://firebasestorage.googleapis.com/v0/b/bucket/o/<object>?…`.
 /// Any bearer query is dropped: only the identity is ever sent for signing.
 pub fn artifact_identity(locator: &str) -> Option<ArtifactIdentity> {
@@ -2383,7 +2384,10 @@ pub fn artifact_identity(locator: &str) -> Option<ArtifactIdentity> {
             return None;
         }
         match url.host_str()? {
-            "storage.googleapis.com" => {
+            // `storage.cloud.google.com` is the browser (cookie-authenticated)
+            // form of the same `/bucket/object` path, which older report rows
+            // still list; it names exactly the same stored object.
+            "storage.googleapis.com" | "storage.cloud.google.com" => {
                 let path = percent_decoded(url.path().strip_prefix('/')?)?;
                 let (bucket, object) = path.split_once('/')?;
                 (bucket.to_owned(), object.to_owned())
@@ -2962,7 +2966,19 @@ mod artifact_download_tests {
         .unwrap();
         assert_eq!(firebase, gs);
         assert!(!firebase.locator().contains("token"));
+        // The browser form older report rows list (Kayonza-Gatsibo's plan) is
+        // the same object, under the same scheme and authority checks.
+        let browser = artifact_identity(&format!(
+            "https://storage.cloud.google.com/{BUCKET}/p1/report_lv/TX%201/report.xlsx"
+        ))
+        .unwrap();
+        assert_eq!(browser, gs);
         for bad in [
+            "http://storage.cloud.google.com/bucket/a.pdf",
+            "https://storage.cloud.google.com:8443/bucket/a.pdf",
+            "https://user@storage.cloud.google.com/bucket/a.pdf",
+            "https://storage.cloud.google.com/bucket",
+            "https://storage.cloud.google.com/bucket/../a.pdf",
             "",
             "gs://bucket",
             "gs://bucket/a/../b.pdf",
