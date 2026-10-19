@@ -873,10 +873,27 @@ fn a_legacy_transformer_row_is_readable_but_never_recovered_into_the_saved_selec
     assert_eq!(readable.json()["job"]["phase"], "queued");
     assert!(readable.json()["job"]["context"].is_null());
 
-    // And it is never claimed. Asked directly of the durable queue — the same
-    // call a worker makes — the recovered Solar row is claimable and the
-    // nameless one is passed over, whatever the caller does.
+    // Both rows predate native addon capture, so recovery parks them with the
+    // typed `compute_engine_pin_required` answer and its one remedy instead of
+    // borrowing today's addon for released work (kernel 16b89bd).
+    assert_eq!(recovery.unpinned_count, 2, "{recovery:?}");
+    for id in [legacy_solar_id(), legacy_transformer_id()] {
+        assert!(recovery.unpinned_ids.contains(&id), "{recovery:?}");
+    }
     let mut store = host.store();
+    let solar = store
+        .job(&host.identity.caller(None), &legacy_solar_id())
+        .expect("read")
+        .expect("the recovered Solar row");
+    assert!(solar.context.is_some(), "Solar still names its own project");
+    assert_eq!(
+        ds_command_kernel::compute_jobs::validate_engine_pin(&solar),
+        Err("compute_engine_pin_required")
+    );
+
+    // And neither is ever claimed. Asked directly of the durable queue — the
+    // same call a worker makes — the recovered Solar row waits for its pin and
+    // the nameless one is passed over, whatever the caller does.
     let mut claimed = Vec::new();
     for attempt in 0..3 {
         let taken = store
@@ -893,10 +910,9 @@ fn a_legacy_transformer_row_is_readable_but_never_recovered_into_the_saved_selec
             None => break,
         }
     }
-    assert_eq!(
-        claimed,
-        vec![legacy_solar_id()],
-        "only the row that names its own project is ever claimed"
+    assert!(
+        claimed.is_empty(),
+        "a released row is never claimed without its addon pin: {claimed:?}"
     );
 
     // Deliberately resubmitting its exact bytes under its released id is the
