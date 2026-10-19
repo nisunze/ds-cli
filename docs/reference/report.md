@@ -170,8 +170,9 @@ Discover its installed request contract, author the request outside the
 repository, then invoke the wrapper once:
 
 The typed combined request defaults `include_fill_in_upgrade_rows` to `false`.
-Exact saved reserved fill-ins and upgrades are summarized by counts; set this
-boolean to `true` to include their individual rows. The full roster coverage and
+Saved fill-ins and upgrades are summarized by counts, whether calculated or
+reserved before 2026-10-19; set this boolean to `true` to include their
+individual rows. The full roster coverage and
 source receipt remain retained, and unknown natures or genuine refusals stay visible.
 
 ```bash

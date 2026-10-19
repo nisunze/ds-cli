@@ -52,11 +52,14 @@ and the `ds` receipt and artifact are verified.
 
 ## Read it in this order
 
-1. **Is it calculated?** `vd_summary.status: reserved` means the transformer's
-   authoritative `transformer_nature` tag (fill-in or upgrade) excludes it:
-   its existing network is not fully surveyed. Say so, quote
-   `vd_summary.calculation`, and stop. The nature comes from the tag, never
-   from the transformer's name. A transformer's own `vd_calculate` overrides.
+1. **Is it calculated?** Every transformer is, fill-ins and upgrades included;
+   `vd_summary.calculation` names the reason, and nothing switches it off.
+   A fill-in or upgrade carries a `voltage_drop_partly_surveyed` warning: its
+   existing network is only partly surveyed, so the result covers the
+   surveyed part. Say so. The nature comes from the authoritative
+   `transformer_nature` tag, never from the transformer's name.
+   `vd_summary.status: reserved` only appears on an analysis saved before
+   2026-10-19. Quote its `calculation` and say that a reprocess calculates it.
 2. **The verdict** (`vd_summary.verdict`):
    - `complies` — every customer is within the limit at the design year.
    - `complies_with_reinforcement` — fails as drawn, and the proposed
