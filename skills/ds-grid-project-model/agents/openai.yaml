@@ -1,4 +1,4 @@
 interface:
-  display_name: "DS Grid Profile"
-  short_description: "Review retained native Profile context and published design attachments"
-  default_prompt: "Use $ds-grid-project-model to discover the installed native Profile controls for an already opened model, or inspect its published design attachments."
+  display_name: "DS Grid Project Model"
+  short_description: "Discover project models and manage local working copies"
+  default_prompt: "Use $ds-grid-project-model to discover a project's DS Grid models, create or import a local working copy, select it, and make typed revision-pinned edits through the installed Network addon."

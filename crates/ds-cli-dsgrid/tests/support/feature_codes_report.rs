@@ -113,10 +113,10 @@ fn fixture(rich: bool) -> Vec<u8> {
             id: BreaklineId::new("breakline").unwrap(),
             feature_class: "GROUND".into(),
             vertices: vec![
-                vertex.clone(),
+                vertex,
                 Vertex3 {
                     x_m: 500_001.0,
-                    ..vertex.clone()
+                    ..vertex
                 },
             ],
         });
@@ -542,7 +542,7 @@ fn isolated_report() {
 // Former production adapter retained only as the independently computed oracle.
 fn old_owner_output(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let limit = package::parse_limit(inputs.value("limit"))?;
-    let (target, opened) = super::super::open_read_only(inputs)?;
+    let (target, opened) = crate::linked_oracle::open_read_only(inputs)?;
     let report = ds_grid_engine::feature_code_report(opened.session.snapshot());
     let (codes, codes_withheld) = package::take(report.codes.clone(), limit);
     let (unresolved, unresolved_withheld) = package::take(report.unresolved_tokens.clone(), limit);

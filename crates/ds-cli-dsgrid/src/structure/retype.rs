@@ -14,15 +14,14 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::{
-    FINDING_STRUCTURE_TYPE_NOT_ALLOWED, GridCommand, StructureFinding,
-    evaluate_structure_retype_batch, report_structures,
-};
-use ds_grid_model::StructureId;
-use serde_json::{Value, json};
+use ds_network_contracts::grid_operation::TypedMutationVerbV1;
+use serde_json::Value;
 
-use crate::mutation::{self, Planned, Target};
-use crate::structure::{resolve_structure, resolve_structure_type, structure_json, type_name};
+use crate::mutation::{self, Target};
+
+/// The one REG finding a selection may be drawn from; a hand copy held to
+/// the owner by `finding_choice_matches_the_owner`.
+const FINDING_STRUCTURE_TYPE_NOT_ALLOWED: &str = "structure_type_not_allowed";
 
 const STRUCTURE_ARG: Arg = Arg::repeated(
     "structure",
@@ -178,186 +177,20 @@ in `detail.receipt` with `persisted: false`.",
 pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     let writing = mutation::write_mode(inputs, context)?;
     let target = Target::resolve(inputs, writing)?;
-    let opened = mutation::open(target, inputs)?;
-    let snapshot = opened.session.snapshot();
-
-    let new_type = resolve_structure_type(snapshot, inputs.require("type")?)?;
-    let new_type_name = type_name(snapshot, &new_type);
-
-    // Selection: explicit structures, then the finding's carriers.
-    let mut selected: Vec<(StructureId, &'static str)> = Vec::new();
-    for raw in inputs.repeated("structure") {
-        let row = resolve_structure(snapshot, raw)?;
-        if !selected.iter().any(|(id, _)| *id == row.id) {
-            selected.push((row.id.clone(), "explicit"));
-        }
-    }
-    if let Some(finding) = inputs.value("from-finding") {
-        let report = report_structures(snapshot, None).map_err(rules_error)?;
-        for row in &report.rows {
-            if row.findings.iter().any(|f| f.finding == finding)
-                && !selected.iter().any(|(id, _)| *id == row.structure_id)
-            {
-                selected.push((row.structure_id.clone(), "from_finding"));
-            }
-        }
-    }
-    let mut skipped = Vec::new();
-    for raw in inputs.repeated("skip") {
-        let row = resolve_structure(snapshot, raw)?;
-        if let Some(index) = selected.iter().position(|(id, _)| *id == row.id) {
-            selected.remove(index);
-            skipped.push(row.id.as_str().to_string());
-        }
-    }
-    if selected.is_empty() {
-        return Err(Failure::invalid(
-            "structure_required",
-            "no structure was selected",
-        )
-        .remedy("name at least one --structure, or a --from-finding that some structure carries")
-        .next("ds dsgrid report structures"));
-    }
-    // CLI and Desktop inspect the same selected batch. Route angles, standard
-    // and baseline sequence are built once, rather than once per candidate.
-    let selected_ids = selected
-        .iter()
-        .map(|(id, _)| id.clone())
-        .collect::<Vec<_>>();
-    let evaluations =
-        evaluate_structure_retype_batch(snapshot, &selected_ids, &new_type).map_err(rules_error)?;
-    let report_identity = json!({
-        "standard": evaluations.standard,
-        "assumptions": evaluations.assumptions,
-        "verification_level": evaluations.verification_level,
-    });
-    let mut structures = Vec::with_capacity(selected.len());
-    let mut cleared: Vec<StructureFinding> = Vec::new();
-    let mut remaining: Vec<StructureFinding> = Vec::new();
-    let mut created: Vec<StructureFinding> = Vec::new();
-    let mut warnings = Vec::new();
-    let mut planned = Vec::with_capacity(selected.len());
-    for ((id, how), evaluation) in selected.iter().zip(evaluations.rows) {
-        let row = snapshot
-            .structures
-            .iter()
-            .find(|row| row.id == *id)
-            .expect("selected from this snapshot");
-        let before = evaluation.findings_before;
-        let after = evaluation.findings_after;
-        for finding in &before {
-            if after.iter().any(|f| f.finding == finding.finding) {
-                remaining.push(finding.clone());
-            } else {
-                cleared.push(finding.clone());
-            }
-        }
-        for finding in &after {
-            if !before.iter().any(|f| f.finding == finding.finding) {
-                created.push(finding.clone());
-            }
-        }
-        let current_type = type_name(snapshot, &row.structure_type_id);
-        if row.structure_type_id == new_type {
-            warnings.push(json!({
-                "code": "type_unchanged",
-                "structure": id.as_str(),
-                "message": format!("{} is already {new_type_name}", id.as_str()),
-            }));
-        }
-        let mut entry = structure_json(row, &current_type);
-        entry["selected_by"] = json!(how);
-        entry["line_angle_deg"] = json!(evaluation.line_angle_deg);
-        entry["type_before"] = json!(current_type);
-        entry["type_after"] = json!(new_type_name);
-        entry["findings_before"] =
-            json!(before.iter().map(|f| f.finding.clone()).collect::<Vec<_>>());
-        entry["findings_after"] =
-            json!(after.iter().map(|f| f.finding.clone()).collect::<Vec<_>>());
-        structures.push(entry);
-        planned.push(Planned {
-            command_id: mutation::command_id(
-                "retype",
-                &opened.head,
-                &format!("{}\0{}", id.as_str(), new_type.as_str()),
-            ),
-            command: GridCommand::RetypeStructure {
-                id: id.clone(),
-                structure_type_id: new_type.clone(),
-            },
-        });
-    }
-
-    let blocking: Vec<&StructureFinding> = remaining
-        .iter()
-        .chain(created.iter())
-        .filter(|f| f.finding == FINDING_STRUCTURE_TYPE_NOT_ALLOWED)
-        .collect();
-    if writing && !blocking.is_empty() {
-        return Err(Failure::invalid(
-            "structure_type_not_allowed",
-            format!(
-                "retyping to {new_type_name} would leave or create {} unsupported single pole(s) in the 10°–60° band",
-                blocking.len()
-            ),
-        )
-        .remedy("choose an H-pole or a stayed steel strain assembly for these structures")
-        .detail(json!({
-            "rule": report_identity,
-            "created": created,
-            "remaining": remaining,
-        })));
-    }
-    let refusal_on_write = (!blocking.is_empty()).then_some(FINDING_STRUCTURE_TYPE_NOT_ALLOWED);
-    if let Some(code) = refusal_on_write {
-        warnings.push(json!({
-            "code": code,
-            "message": format!(
-                "a write would be refused: {} structure(s) would remain or become an unsupported single pole in the 10°–60° band",
-                blocking.len()
-            ),
-        }));
-    }
-
-    let extra = json!({
-        "type": { "id": new_type.as_str(), "name": new_type_name },
-        "selection": {
-            "explicit": selected.iter().filter(|(_, how)| *how == "explicit").count(),
-            "from_finding": selected.iter().filter(|(_, how)| *how == "from_finding").count(),
-            "finding": inputs.value("from-finding"),
-            "skipped": skipped,
-        },
-        "structures": structures,
-        "findings": {
-            "rule": report_identity,
-            "cleared": cleared,
-            "remaining": remaining,
-            "created": created,
-        },
-        "refusal_on_write": refusal_on_write,
-    });
     // A retype changes the structure-file reference in the line file's
     // structure record; the structure files themselves are untouched.
-    mutation::run(opened, planned, writing, extra, warnings, &["DON"])
-}
-
-fn rules_error(error: ds_grid_engine::StructureRulesError) -> Failure {
-    match error {
-        ds_grid_engine::StructureRulesError::RuleSourceMissing { expected, found } => {
-            Failure::failed(
-                "rule_source_missing",
-                "the REG structure-rules standard is not the owner-issued bytes",
-            )
-            .remedy("rebuild ds from a clean checkout")
-            .detail(json!({ "expected_digest": expected, "found_digest": found }))
-        }
-        other => Failure::failed(
-            "operation_failed",
-            "the structure rules could not be evaluated",
-        )
-        .remedy("read detail.engine")
-        .detail(json!({ "engine": other.to_string() })),
-    }
+    mutation::run(
+        target,
+        TypedMutationVerbV1::StructureRetype {
+            structures: inputs.repeated("structure").to_vec(),
+            skip: inputs.repeated("skip").to_vec(),
+            from_finding: inputs.value("from-finding").map(str::to_owned),
+            structure_type: inputs.require("type")?.to_owned(),
+        },
+        inputs,
+        writing,
+        &[],
+    )
 }
 
 pub fn render(data: &Value) -> String {

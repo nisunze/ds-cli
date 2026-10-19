@@ -27,7 +27,10 @@
 //!   families the change affects, named TYPE VERSION from that link
 //!   (`DON 57`); null and empty for an unlinked copy or a package.
 //!
-//! Adding a typed command means: parse its inputs into `GridCommand`s, call
+//! The engine half of every verb is one closed Network operation
+//! (`typed_mutation`): it decodes the exact package, checks the pin, plans
+//! and applies the transaction and emits the package. Adding a typed command
+//! means: declare its inputs, add its verb to the closed operation, call
 //! [`run`], and render. Nothing else.
 
 use std::path::Path;
@@ -36,10 +39,9 @@ use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::local_models::{LocalModel, Op};
-use ds_grid_engine::descriptor::operation_descriptors;
-use ds_grid_engine::{CommandError, GridCommand, GridSession, RevisionId, TransactionOutcome};
-use ds_grid_exchange::package::GridPackage;
-use ds_grid_exchange::{PackOptions, dsgrid};
+use ds_network_contracts::grid_operation::{
+    GridOperationV1, TypedMutationParamsV1, TypedMutationResultV1, TypedMutationVerbV1,
+};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -81,8 +83,13 @@ pub const ACCOUNT_ARG: Arg = Arg::value(
 );
 
 /// The declared refusals every typed mutation shares, spliced into each
-/// command's own list so the vocabulary is written once.
-pub const REFUSALS: &[Refusal] = &[
+/// command's own list so the vocabulary is written once: the family's own
+/// codes and the captured addon's transport refusals.
+pub const REFUSALS: &[Refusal] = &crate::native::extend_refusals::<
+    { OWN_REFUSALS.len() + crate::native::REFUSALS.len() },
+>(OWN_REFUSALS);
+
+const OWN_REFUSALS: &[Refusal] = &[
     package::PLS_SECTION_IDENTITY_UNRESOLVED,
     package::PROTECTED_MODEL,
     Refusal {
@@ -310,235 +317,111 @@ impl Target {
     }
 }
 
-/// The opened target: its decoded package and the engine session over it.
-pub struct Opened {
-    pub target: Target,
-    pub bytes: Vec<u8>,
-    pub package: GridPackage,
-    pub session: GridSession,
-    pub head: RevisionId,
-}
-
-/// Read the target once and open the engine on it. The revision pin is
-/// checked here, before any command is built, so a stale caller learns the
-/// head without paying for anything else.
-pub fn open(target: Target, inputs: &Inputs) -> Result<Opened, Failure> {
-    let path = target.path();
-    let bytes = package::read_bytes(&path)?;
-    let package = package::decode(&path, &bytes)?;
-    let session = ds_grid_exchange::linked_models::open_session(&package);
-    let head = session.current_revision().revision_id.clone();
-    if let Some(pinned) = inputs.value("revision").map(str::trim)
-        && pinned != head.as_str()
-    {
-        return Err(Failure::conflict(
-            "revision_conflict",
-            "the head moved since the revision you observed",
-        )
-        .remedy("re-read the head and decide again against it")
-        .detail(json!({
-            "expected_revision": pinned,
-            "actual_revision": head.as_str(),
-        })));
+/// The target's narrow identity on a receipt whose verb planned nothing.
+fn short_target(target: &Target) -> Value {
+    match target {
+        Target::WorkingCopy { row, .. } => json!({ "kind": "working_copy", "model": row.id }),
+        Target::Package { path, .. } => json!({ "kind": "package", "path": path }),
     }
-    Ok(Opened {
-        target,
-        bytes,
-        package,
-        session,
-        head,
-    })
 }
 
-// ── Applying ────────────────────────────────────────────────────────────
-
-/// One typed command with the id it journals under.
-pub struct Planned {
-    pub command_id: String,
-    pub command: GridCommand,
-}
-
-/// A caller-supplied note that travels into the receipt beside the engine's
-/// own delta: what the command found before it acted.
-pub type Warnings = Vec<Value>;
-
-/// Apply (or simulate) the planned commands as ONE revision of the target and
-/// return the family's receipt. `pls_families` names the native member
-/// families (`DON`, `STRUCT`, `CRI`, …) the commands change when the working
-/// copy is linked to a PLS-CADD workspace; the receipt resolves them to
-/// `TYPE VERSION` from the link.
-pub fn run(
-    opened: Opened,
-    planned: Vec<Planned>,
-    writing: bool,
-    extra: Value,
-    mut warnings: Warnings,
-    pls_families: &[&str],
-) -> Result<Value, Failure> {
-    let Opened {
-        target,
-        bytes,
-        package,
-        mut session,
-        head,
-    } = opened;
-    let operations = operation_identities(&planned);
-    let commands: Vec<(String, GridCommand)> = planned
-        .into_iter()
-        .map(|item| (item.command_id, item.command))
-        .collect();
-    let command_count = commands.len();
-
-    // This session belongs to this invocation. Both modes exercise the same
-    // atomic engine transaction; the dry-run return below precedes all file
-    // and catalogue writes, so cloning the entire session serves no fence.
-    let outcome: TransactionOutcome = session
-        .apply_transaction_at_head(head.clone(), commands)
-        .map_err(map_command_error)?;
-    let deltas = outcome
-        .outcomes
-        .iter()
-        .map(|command| command.delta.clone())
-        .collect::<Vec<_>>();
-    let exchange_bindings = package::admit_command_bindings(
-        &package.exchange_bindings,
-        &deltas,
-        outcome.idempotent_replay,
-    )?;
-
-    let resulting = outcome.final_revision.revision_id.clone();
-    let touched = touched_counts(&outcome);
-    let unresolved_count: usize = outcome
-        .outcomes
-        .iter()
-        .map(|o| o.delta.unresolved_retype_attachments.len())
-        .sum();
-    if unresolved_count > 0 {
-        warnings.push(json!({
-            "code": "unresolved_retype_attachments",
-            "message": format!(
-                "Draft retype leaves {unresolved_count} unresolved attachment(s). Repair the listed section/sequence supports explicitly with verified attachment points for the chosen type; full validation, package export and publication require repair."
-            ),
-        }));
-    }
-    let (pls_source, pls_members_affected) = match &target {
+/// The working copy's PLS-CADD link and the native member families `families`
+/// changes, named `TYPE VERSION` from that link; null and empty for an
+/// unlinked copy or a package.
+fn pls_link(target: &Target, families: &[String]) -> (Value, Vec<String>) {
+    match target {
         Target::WorkingCopy { row, .. } => match &row.pls_source {
             Some(link) => (
                 serde_json::to_value(link).unwrap_or(Value::Null),
-                pls_families
+                families
                     .iter()
-                    .map(|family| match link.member_versions.get(*family) {
+                    .map(|family| match link.member_versions.get(family) {
                         Some(version) => format!("{family} {version}"),
                         None => format!("{family} (version not recorded on the link)"),
                     })
-                    .collect::<Vec<_>>(),
+                    .collect(),
             ),
             None => (Value::Null, Vec::new()),
         },
         Target::Package { .. } => (Value::Null, Vec::new()),
-    };
-    let mut receipt = json!({
-        "target": target.describe(),
-        "dry_run": !writing,
-        "persisted": false,
-        "operations": operations,
-        "commands": command_count,
-        "source_revision": head.as_str(),
-        "resulting_revision": resulting.as_str(),
-        "changed": resulting != head,
-        "idempotent_replay": outcome.idempotent_replay,
-        "touched": touched,
-        "deltas": outcome.outcomes.iter().map(|o| {
-            let mut delta = json!({
-                "command_id": o.delta.command_id,
-                "command_kind": o.delta.command_kind,
-                "affected_entities": o.delta.affected_entities,
-                "changed_tables": o.delta.changed_tables,
-            });
-            if !o.delta.unresolved_retype_attachments.is_empty() {
-                delta["unresolved_retype_attachments"] = json!(o.delta.unresolved_retype_attachments);
-            }
-            delta
-        }).collect::<Vec<_>>(),
-        "warnings": warnings,
-        "pls_source": pls_source,
-        "pls_members_affected": pls_members_affected,
-    });
-    if let Value::Object(map) = extra {
-        for (key, value) in map {
-            receipt[key] = value;
-        }
     }
+}
+
+/// Evaluate (or apply) one typed edit through the addon as ONE revision of
+/// the target and return the family's receipt. The addon decodes the exact
+/// bytes, checks the revision pin, plans and applies the transaction and
+/// emits the package; this host adds the target, mode and link facts and
+/// performs the one write: a new package for an immutable target, or the
+/// working copy's next revision under the store's digest fence.
+pub fn run(
+    target: Target,
+    verb: TypedMutationVerbV1,
+    inputs: &Inputs,
+    writing: bool,
+    staged: &[(String, Vec<u8>)],
+) -> Result<Value, Failure> {
+    let path = target.path();
+    let bytes = package::read_bytes(&path)?;
+    let call = GridOperationV1::TypedMutation(TypedMutationParamsV1 {
+        verb,
+        expected_revision: inputs.value("revision").map(str::to_owned),
+        write: writing,
+    });
+    let mut outcome = crate::native::operation(&call, Some(&bytes), staged)
+        .map_err(|failure| crate::native::at_path(failure, &path))
+        .map_err(|failure| emit_refusal(failure, &target))?;
+    let typed: TypedMutationResultV1 = serde_json::from_value(outcome.result.result.clone())
+        .map_err(|error| Failure::failed("network_result_invalid", error.to_string()))?;
+    let mut receipt = typed.receipt;
+    receipt["dry_run"] = json!(!writing);
+    receipt["persisted"] = json!(false);
+    if !typed.planned {
+        receipt["target"] = short_target(&target);
+        return Ok(receipt);
+    }
+    let (pls_source, pls_members_affected) = pls_link(&target, &typed.pls_families);
+    receipt["target"] = target.describe();
+    receipt["pls_source"] = pls_source;
+    receipt["pls_members_affected"] = json!(pls_members_affected);
     if !writing {
         return Ok(receipt);
     }
-    if resulting == head {
+    if !typed.changed {
         // Nothing moved (an idempotent replay, or a value already held): a
         // revision that equals its parent is not written, so a repeated
         // command never advances the package revision for no change.
         receipt["warnings"]
             .as_array_mut()
-            .expect("warnings is an array")
+            .ok_or_else(|| Failure::failed("network_result_invalid", "warnings is not an array"))?
             .push(json!({
                 "code": "no_change",
                 "message": "the target already holds this state; no revision was written",
             }));
         return Ok(receipt);
     }
-
-    // Persist: a new package for the immutable target, or the working copy's
-    // next revision in place.
-    let checkpoint = session
-        .save_checkpoint()
-        .map_err(crate::apply::map_command_error)?;
-    let source_package_revision = package.manifest.model.model_revision;
-    let options = PackOptions {
-        presentation: package.manifest.model.presentation.clone(),
-        model_id: package.manifest.model.model_id.clone(),
-        model_revision: source_package_revision + checkpoint.sequence,
-        coordinate_system: package.manifest.model.coordinate_system.clone(),
-        // The emitter verifies retained exact definitions; an ordinary edit
-        // must never silently detach the authored library identity.
-        library_pins: package.manifest.model.library_pins.clone(),
-        library_needs: package.manifest.model.library_needs.clone(),
-        assets: package.assets.clone(),
-        exchange_bindings,
-    };
-    let (plan, _report) = dsgrid::emit(&checkpoint.snapshot, &options).map_err(|error| {
-        let detail = if unresolved_count > 0 {
-            json!({ "engine": error.to_string(), "receipt": receipt })
-        } else {
-            json!({ "engine": error.to_string() })
-        };
-        Failure::failed(
-            "package_emit_failed",
-            "the revised package could not be emitted",
-        )
-        .remedy(if unresolved_count > 0 {
-            "repair the unresolved section supports in a native draft session before exporting or publishing; this package target cannot persist an invalid draft"
-        } else {
-            "report this engine failure with the model and the command receipt"
-        })
-        .detail(detail)
-    })?;
-    let artifact = plan.artifacts.first().ok_or_else(|| {
+    let artifact = outcome.take_artifact("model.dsgrid").ok_or_else(|| {
         Failure::failed(
             "package_emit_failed",
             "the package emitter returned no artifact",
         )
         .remedy("report this engine failure")
     })?;
-    let new_digest = format!("{:x}", Sha256::digest(&artifact.bytes));
-
+    let package_revision = typed.package_revision.ok_or_else(|| {
+        Failure::failed(
+            "network_result_invalid",
+            "an emitted package carries no package revision",
+        )
+    })?;
+    let new_digest = format!("{:x}", Sha256::digest(&artifact));
     match target {
         Target::Package { out, .. } => {
             let out = out.expect("resolve() required --out for a writing package target");
-            crate::apply::write_new(&out, &artifact.bytes)?;
+            crate::apply::write_new(&out, &artifact)?;
             receipt["persisted"] = json!(true);
             receipt["artifact"] = json!({
                 "path": out,
-                "package_revision": options.model_revision,
-                "byte_len": artifact.bytes.len(),
+                "package_revision": package_revision,
+                "byte_len": artifact.len(),
                 "sha256": format!("sha256:{new_digest}"),
             });
         }
@@ -547,14 +430,14 @@ pub fn run(
             let op = Op::Revise {
                 id: row.id.clone(),
                 expected_sha256: Some(expected),
-                model_revision: options.model_revision,
-                bytes: artifact.bytes.len() as u64,
+                model_revision: package_revision,
+                bytes: artifact.len() as u64,
                 sha256: new_digest.clone(),
-                head_revision: Some(resulting.as_str().to_string()),
+                head_revision: Some(typed.resulting_revision.clone()),
                 revised_at: None,
             };
             let outcome =
-                workspace::execute_in(&scope, op, Some(&artifact.bytes)).map_err(revise_refusal)?;
+                workspace::execute_in(&scope, op, Some(&artifact)).map_err(revise_refusal)?;
             let revised = outcome.model.as_ref().ok_or_else(|| {
                 Failure::internal("local_model_store_unavailable", "nothing was revised")
             })?;
@@ -573,64 +456,30 @@ pub fn run(
     Ok(receipt)
 }
 
-/// The engine descriptors the planned commands route through, each with the
-/// SHA-256 of its published descriptor, so a receipt names exactly which
-/// contract of the engine it exercised.
-fn operation_identities(planned: &[Planned]) -> Vec<Value> {
-    let descriptors = operation_descriptors();
-    let mut seen: Vec<&str> = Vec::new();
-    let mut identities = Vec::new();
-    for item in planned {
-        let kind = item.command.command_kind();
-        if seen.contains(&kind) {
-            continue;
-        }
-        seen.push(kind);
-        let descriptor = descriptors
-            .iter()
-            .find(|descriptor| descriptor.operation_id == kind);
-        let digest = descriptor
-            .and_then(|descriptor| serde_json::to_vec(descriptor).ok())
-            .map(|bytes| format!("sha256:{:x}", Sha256::digest(&bytes)));
-        identities.push(json!({
-            "operation_id": kind,
-            "engine": ds_grid_engine::ENGINE_VERSION,
-            "semantic_version": descriptor.map(|d| d.semantic_version),
-            "descriptor_digest": digest,
-            "journaled": descriptor.map(|d| d.journaled),
-        }));
+/// An emit refusal over unresolved retype attachments carries the receipt it
+/// would have written and the native families it touches; restore the host's
+/// target, mode and link facts on that receipt.
+fn emit_refusal(failure: Failure, target: &Target) -> Failure {
+    if failure.code() != "package_emit_failed" {
+        return failure;
     }
-    identities
-}
-
-/// Counts a reader can plan on: distinct entities and tables the transaction
-/// changed, and how many commands actually moved something.
-fn touched_counts(outcome: &TransactionOutcome) -> Value {
-    let mut entities: Vec<&str> = Vec::new();
-    let mut tables: Vec<String> = Vec::new();
-    let mut effective = 0usize;
-    for item in &outcome.outcomes {
-        if !item.delta.changed_tables.is_empty() {
-            effective += 1;
-        }
-        for entity in &item.delta.affected_entities {
-            if !entities.contains(&entity.as_str()) {
-                entities.push(entity.as_str());
-            }
-        }
-        for table in &item.delta.changed_tables {
-            let token = crate::package::table_token(*table);
-            if !tables.contains(&token) {
-                tables.push(token);
-            }
-        }
+    let Some(mut detail) = failure.detail_value().cloned() else {
+        return failure;
+    };
+    let families: Vec<String> = detail
+        .as_object_mut()
+        .and_then(|map| map.remove("pls_families"))
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default();
+    if detail["receipt"].is_object() {
+        let (pls_source, pls_members_affected) = pls_link(target, &families);
+        detail["receipt"]["target"] = target.describe();
+        detail["receipt"]["dry_run"] = json!(false);
+        detail["receipt"]["persisted"] = json!(false);
+        detail["receipt"]["pls_source"] = pls_source;
+        detail["receipt"]["pls_members_affected"] = json!(pls_members_affected);
     }
-    json!({
-        "commands": outcome.outcomes.len(),
-        "commands_with_effect": effective,
-        "entities": entities.len(),
-        "tables": tables,
-    })
+    failure.detail(detail)
 }
 
 fn revise_refusal(failure: Failure) -> Failure {
@@ -643,63 +492,6 @@ fn revise_refusal(failure: Failure) -> Failure {
         .detail(json!({ "store": failure.message() }));
     }
     failure
-}
-
-/// The engine's refusals under the family's declared names.
-pub fn map_command_error(error: CommandError) -> Failure {
-    match error {
-        CommandError::StaleRevision { expected, actual } => Failure::conflict(
-            "revision_conflict",
-            "the command was built against a different revision",
-        )
-        .remedy("re-read the head and decide again against it")
-        .detail(json!({
-            "expected_revision": expected.as_str(),
-            "actual_revision": actual.as_str(),
-        })),
-        CommandError::TargetNotFound { kind, id } => Failure::invalid(
-            "target_not_found",
-            format!("the command targets missing {kind} `{id}`"),
-        )
-        .remedy("use an id projected from this exact revision"),
-        CommandError::InvalidInput { operation, message } => Failure::invalid(
-            "command_invalid",
-            format!("the engine rejected `{operation}`"),
-        )
-        .remedy("read the live command descriptor; do not approximate missing values")
-        .detail(json!({ "engine": message })),
-        CommandError::TerrainAcquisitionRequired {
-            alignment_id,
-            station_m,
-        } => Failure::failed(
-            "terrain_acquisition_required",
-            "the requested station has no effective ground coverage",
-        )
-        .remedy("author a verified terrain source and observations before interpolation")
-        .detail(json!({ "alignment_id": alignment_id, "station_m": station_m })),
-        CommandError::Validation { issues } => Failure::failed(
-            "model_validation_failed",
-            "the command would introduce new canonical model errors",
-        )
-        .remedy("revise the command; nothing was written")
-        .detail(json!({ "issues": issues })),
-        CommandError::PartialTransactionOverlap {
-            already_applied,
-            fresh,
-        } => Failure::conflict(
-            "command_replay_conflict",
-            "the transaction only partially overlaps prior work",
-        )
-        .remedy("refresh the model and submit one fresh intent")
-        .detail(json!({ "already_applied": already_applied, "fresh": fresh })),
-    }
-}
-
-/// A journal id for one typed command: stable for the same intent against
-/// the same head, so a replay is idempotent rather than a second edit.
-pub fn command_id(verb: &str, head: &RevisionId, subject: &str) -> String {
-    let digest = Sha256::digest(format!("{verb}\0{}\0{subject}", head.as_str()).as_bytes());
-    format!("ds-{verb}-{:x}", digest)[..40].to_string()
 }
 
 /// The path of the target, for a receipt or a read-only report over the

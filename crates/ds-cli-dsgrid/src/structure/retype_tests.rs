@@ -2,9 +2,10 @@
 
 use super::*;
 use ds_cli_contract::{Format, Output, parse};
-use ds_grid_engine::GridSession;
+use ds_grid_engine::{GridCommand, GridSession};
 use ds_grid_exchange::{PackOptions, package::pack};
 use ds_grid_model::*;
+use serde_json::json;
 
 const SINGLE: &str = "l-w-stay-S255.012";
 const REPLACEMENT: &str = "j-w-60d-S325.014";
@@ -218,6 +219,7 @@ fn inputs(
 }
 
 #[test]
+#[ignore = "requires the explicitly selected compatible Network executable"]
 fn retype_dry_run_and_failed_package_write_expose_exact_native_draft_delta() {
     let original = fixture();
     let mut session = GridSession::open(original.clone());
@@ -321,6 +323,7 @@ fn retype_dry_run_and_failed_package_write_expose_exact_native_draft_delta() {
 }
 
 #[test]
+#[ignore = "requires the explicitly selected compatible Network executable"]
 fn retype_keeps_reg_revision_target_and_unrelated_validation_gates() {
     let mut model = fixture();
     // The replacement's matched set has an extra unstrung slot, an error
@@ -398,6 +401,7 @@ fn retype_keeps_reg_revision_target_and_unrelated_validation_gates() {
 }
 
 #[test]
+#[ignore = "requires the explicitly selected compatible Network executable"]
 fn retype_with_complete_slots_persists_without_draft_warning() {
     let mut model = fixture();
     for (label, count) in [("phase-back", 3), ("phase-ahead", 3), ("GW", 1)] {
@@ -436,14 +440,14 @@ fn retype_with_complete_slots_persists_without_draft_warning() {
     );
     assert_eq!(write["warnings"], json!([]));
     assert_eq!(write["persisted"], true);
-    let result =
-        crate::package::decode(out.to_str().unwrap(), &std::fs::read(&out).unwrap()).unwrap();
+    let result = ds_grid_exchange::package::unpack(&std::fs::read(&out).unwrap()).unwrap();
     assert!(validate_snapshot(&result.snapshot).is_valid());
     assert_eq!(result.snapshot.tension_sections, fixture().tension_sections);
     assert_eq!(std::fs::read(&path).unwrap(), bytes);
 }
 
 #[test]
+#[ignore = "requires the explicitly selected compatible Network executable"]
 fn selected_batch_receipt_matches_native_evaluation_and_keeps_selection_order() {
     let model = fixture();
     let dir = tempfile::tempdir().unwrap();
@@ -516,4 +520,12 @@ fn selected_batch_receipt_matches_native_evaluation_and_keeps_selection_order() 
     }
     assert!(std::fs::read(&path).unwrap() == source);
     assert!(!out.exists());
+}
+
+#[test]
+fn finding_choice_matches_the_owner() {
+    assert_eq!(
+        FINDING_STRUCTURE_TYPE_NOT_ALLOWED,
+        ds_grid_engine::FINDING_STRUCTURE_TYPE_NOT_ALLOWED
+    );
 }

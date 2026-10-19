@@ -94,6 +94,7 @@ struct App {
     materialize: Source,
     analysis: Source,
     dsgrid: Source,
+    dsgrid_contract: Source,
     style_fill_pattern: Source,
     style_kernel: Source,
     style_renderer: Source,
@@ -132,6 +133,7 @@ fn app() -> App {
         materialize: read("src/lib/search-place/materialize.ts"),
         analysis: read("src/lib/analysis/outliers.ts"),
         dsgrid: read("src/lib/desktop/cli-dsgrid.ts"),
+        dsgrid_contract: read("docs/dsgrid-local-model-and-project-publication-contract.md"),
         style_fill_pattern: read("src/lib/styles/fill-pattern.ts"),
         style_kernel: read("src/lib/styles/kernel.ts"),
         style_renderer: read("src/lib/api/styles.ts"),
@@ -937,6 +939,16 @@ fn a_failed_portfolio_publication_stays_a_sync_lane_fact_on_a_succeeded_receipt(
 
 /// The four operations that must remain reachable without any project, and the
 /// project operations that must not be among them.
+/// The four model-management operations that left this door on 2026-09-18.
+/// A working copy is a fact about a machine, so `ds dsgrid model list|
+/// create-local|import-external|set-active` answer from the CLI's own
+/// catalogue and the desktop carries nothing for them.
+const DSGRID_RETIRED_OPERATIONS: &[&str] = &[
+    "dsgrid.model.list",
+    "dsgrid.model.create",
+    "dsgrid.model.import",
+    "dsgrid.model.set_active",
+];
 /// `dsgrid.model.prepare_project` left this door on 2026-09-20: readiness
 /// is a fact about this machine's catalogue against the project's governed
 /// heads, and a missing head is downloaded through `ds dsgrid project
@@ -946,6 +958,79 @@ fn a_failed_portfolio_publication_stays_a_sync_lane_fact_on_a_succeeded_receipt(
 /// reads no project — the copy is a fact about the machine — so it is the
 /// one project-independent operation the adapter admits.
 const DSGRID_PROJECT_OPERATIONS: &[&str] = &["dsgrid.model.publish", "dsgrid.profile.open"];
+
+#[test]
+fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments() {
+    let app = app();
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    assert!(
+        !allowlist.trim().is_empty(),
+        "the desktop CLI operation allowlist is absent"
+    );
+
+    let mut seen = BTreeSet::new();
+    assert!(
+        !ds_cli_dsgrid::model::BRIDGE_OPS.is_empty(),
+        "ds_cli_dsgrid::model::BRIDGE_OPS must declare operations for this parity check"
+    );
+    for operation in ds_cli_dsgrid::model::BRIDGE_OPS {
+        assert!(
+            seen.insert(operation.operation),
+            "`{}` is declared twice by ds dsgrid; one semantic operation has one owner",
+            operation.operation
+        );
+        assert_eq!(
+            count(allowlist, &format!("\"{}\"", operation.operation)),
+            1,
+            "`{}` must appear exactly once in the desktop allowlist",
+            operation.operation
+        );
+        assert_eq!(
+            switch_case_count(&app.frontend, operation.operation),
+            1,
+            "`{}` must have exactly one frontend handler",
+            operation.operation
+        );
+        // Exact set, not containment: an argument the adapter accepts but `ds`
+        // never sends is a door nothing here has reviewed, and an argument
+        // `ds` sends that the adapter rejects is a runtime failure with a
+        // compile-time cause.
+        let accepted = quoted_contract_items(operation_contract(&app.dsgrid, operation.operation));
+        let declared: BTreeSet<String> = operation
+            .arguments
+            .iter()
+            .map(|argument| (*argument).to_string())
+            .collect();
+        assert_eq!(
+            accepted, declared,
+            "`{}` arguments drifted between ds and the desktop",
+            operation.operation
+        );
+    }
+    assert_eq!(
+        seen.len(),
+        DSGRID_PROJECT_OPERATIONS.len(),
+        "the family sends exactly the two operations that are about the application's own \
+         window: publish, and profile open"
+    );
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    for retired in DSGRID_RETIRED_OPERATIONS {
+        assert_eq!(
+            count(allowlist, &format!("\"{retired}\"")),
+            0,
+            "{retired} is still admitted as a CLI bridge operation, but `ds dsgrid model` \
+             no longer sends it"
+        );
+    }
+}
 
 #[test]
 fn the_dsgrid_project_operations_still_name_the_applications_own_project() {
@@ -969,6 +1054,130 @@ fn the_dsgrid_project_operations_still_name_the_applications_own_project() {
             "`{operation}` names a project of its own"
         );
     }
+}
+
+// `dsgrid_publication_refuses_rename_coupling_exactly_as_the_desktop_does`
+// returns with `ds dsgrid publish-version` (Architecture DECOUPLING-003); the
+// publication refusals it pins belong to that still-retired command.
+
+#[test]
+fn dsgrid_bounds_and_typed_refusal_markers_match_the_desktop_owner() {
+    let app = app();
+    // The list bound this used to hold in step belonged to `dsgrid.model.list`,
+    // which no longer crosses this door: `ds dsgrid model list` pages its own
+    // catalogue, so the two sides have no shared bound left to drift.
+    let kinds = between(
+        &app.dsgrid,
+        "MODEL_KINDS: readonly GridModelKind[] = [",
+        "]",
+    );
+    assert!(!kinds.trim().is_empty(), "the model-kind list is absent");
+    assert_eq!(
+        quoted_contract_items(kinds),
+        ds_cli_dsgrid::model::MODEL_KINDS
+            .iter()
+            .map(|kind| (*kind).to_string())
+            .collect::<BTreeSet<_>>(),
+        "`--kind` choices drifted from the project catalogue's own kinds"
+    );
+
+    // Every prose marker `ds` keys a named refusal on must still be prose the
+    // application actually emits. An unmatched marker is not a silent
+    // mistranslation here — the untranslated `desktop_refused` survives — but
+    // it is a remedy a caller stops being given.
+    let lowered = app.dsgrid.to_ascii_lowercase();
+    for marker in ds_cli_dsgrid::model::LOCAL_MODEL_MISSING_MARKERS
+        .iter()
+        .chain(ds_cli_dsgrid::model::EAGER_READ_MARKERS)
+        .chain(ds_cli_dsgrid::model::PROJECT_MODEL_MISSING_MARKERS)
+        .chain(ds_cli_dsgrid::model::HEAD_MOVED_MARKERS)
+    {
+        assert!(
+            lowered.contains(marker),
+            "the desktop DS Grid owner no longer emits `{marker}`"
+        );
+    }
+}
+
+#[test]
+fn the_dsgrid_bridge_admits_no_conversion_verb_no_revision_activation_and_no_bytes() {
+    let app = app();
+    let allowlist = between(
+        &app.transport,
+        "pub const CLI_OPERATIONS: &[&str] = &[",
+        "];",
+    );
+    assert!(!allowlist.trim().is_empty());
+    // The reverted family's mistake, in operation names, on both sides.
+    for forbidden in [
+        "dsgrid.model.convert",
+        "dsgrid.convert",
+        "dsgrid.model.activate",
+        "dsgrid.project.activate",
+        "dsgrid.revision.activate",
+        "dsgrid.model.register",
+    ] {
+        assert!(
+            !allowlist.contains(&format!("\"{forbidden}\"")),
+            "`{forbidden}` is admitted by the desktop allowlist"
+        );
+        assert_eq!(switch_case_count(&app.frontend, forbidden), 0);
+        assert!(
+            ds_cli_dsgrid::model::BRIDGE_OPS
+                .iter()
+                .all(|op| op.operation != forbidden),
+            "`{forbidden}` is sent by ds"
+        );
+    }
+    // PLS-CADD workspaces and `.bak` backups stay at the exchange boundary, and
+    // both sides say so rather than accepting one quietly.
+    assert!(
+        app.dsgrid.contains(
+            "PLS-CADD workspaces and .bak backups convert through the DS Grid exchange boundary"
+        ),
+        "the desktop owner no longer routes conversion sources to the exchange boundary"
+    );
+
+    // Bytes never travel. The declared argument contract is the exact place a
+    // content field would have to appear to become transportable.
+    let contract_block = between(
+        &app.dsgrid,
+        "export const CLI_DSGRID_OPERATION_CONTRACT",
+        "export const CLI_DSGRID_OPERATION_NAMES",
+    );
+    assert!(!contract_block.trim().is_empty());
+    for forbidden in ["bytes", "content", "base64", "blob"] {
+        assert!(
+            !contract_block.contains(forbidden),
+            "the DS Grid operation contract admits a `{forbidden}` field"
+        );
+    }
+    for op in ds_cli_dsgrid::model::BRIDGE_OPS {
+        for argument in op.arguments {
+            assert!(
+                !matches!(*argument, "bytes" | "content" | "base64" | "blob" | "data"),
+                "`{}` sends a content-carrying argument `{argument}`",
+                op.operation
+            );
+        }
+    }
+
+    // Publication is project state only, and the receipt fields `ds` renders
+    // are what keep "published" from reading as "now current". The two that
+    // belonged to the retired local family — `became_active: false` on an
+    // acquisition and `status: 'unchanged'` on an idempotent open — are now
+    // facts about the CLI's own catalogue, asserted where that store lives.
+    for field in ["active_model_changed:", "binding_recorded"] {
+        assert!(
+            app.dsgrid.contains(field),
+            "the desktop DS Grid receipt no longer publishes `{field}`"
+        );
+    }
+    assert!(
+        app.dsgrid_contract
+            .contains("There is **no durable exclusive project revision activation"),
+        "the owning contract no longer denies a durable project revision activation authority"
+    );
 }
 
 #[test]

@@ -5,11 +5,11 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_exchange::staking_table::{StakingTableOptions, StakingTableXlsx, build_staking_table};
+use ds_network_contracts::grid_operation::{GridOperationV1, ReportStakingParamsV1};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::mutation;
+use crate::{mutation, native};
 
 const OUT_ARG: Arg = Arg::value(
     "out",
@@ -72,6 +72,8 @@ const SHARED: &[Refusal] = &[
 ];
 
 const REFUSALS: &[Refusal; OWN.len() + SHARED.len()] = &splice();
+const ALL_REFUSALS: &[Refusal] =
+    &native::extend_refusals::<{ REFUSALS.len() + native::REFUSALS.len() }>(REFUSALS);
 const fn splice() -> [Refusal; OWN.len() + SHARED.len()] {
     let mut all = [OWN[0]; OWN.len() + SHARED.len()];
     let mut index = 0;
@@ -112,7 +114,7 @@ pub static COMMAND: Command = Command {
         note: "Write a new client table with the shipped defaults.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: ALL_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &[
         "staking table",
@@ -136,75 +138,59 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     crate::apply::validate_output_path(out)?;
     let limit = crate::package::parse_limit(inputs.value("limit"))?;
-    let options: StakingTableOptions = match inputs.value("options") {
-        Some(path) => {
-            let bytes = std::fs::read(path).map_err(|error| {
+    // The options file is read here; its StakingTableOptions shape is the
+    // owner's and is admitted by the addon.
+    let options = match inputs.value("options") {
+        Some(path) => Some((
+            path,
+            std::fs::read(path).map_err(|error| {
                 Failure::invalid("staking_options_invalid", format!("cannot read {path}"))
                     .detail(json!({"error": error.to_string()}))
-            })?;
-            serde_json::from_slice(&bytes).map_err(|error| {
-                Failure::invalid("staking_options_invalid", format!("invalid {path}"))
-                    .detail(json!({"error": error.to_string()}))
-            })?
-        }
-        None => StakingTableOptions::default(),
+            })?,
+        )),
+        None => None,
     };
     let (target, path) = mutation::read_target_path(inputs)?;
     let source = crate::package::read_bytes(&path)?;
-    let package = crate::package::decode(&path, &source)?;
-    let revision = ds_grid_engine::GridSession::open(package.snapshot.clone())
-        .current_revision()
-        .revision_id
-        .as_str()
-        .to_string();
-    let options_bytes = serde_json::to_vec(&options)
-        .map_err(|error| Failure::internal("staking_options_invalid", error.to_string()))?;
-    let policy_identity = options.policy.as_ref().map(|policy| {
-        json!({
-            "id": policy.id,
-            "version": policy.version,
-            "source_sha256": policy.source_sha256,
-            "type_bom_count": policy.type_bom.len(),
-            "site_rule_count": policy.site.len(),
-            "protection_rule_count": policy.transformer_protection.len(),
-            "intermediate_dof_count": policy.intermediate_dof.len(),
-        })
-    });
-    let table = build_staking_table(&package.snapshot, &options).map_err(|detail| {
+    let (params, staged) = match options {
+        Some((label, bytes)) => (
+            ReportStakingParamsV1 {
+                options_input: Some("options.json".into()),
+                options_label: Some(label.to_owned()),
+            },
+            vec![("options.json".to_owned(), bytes)],
+        ),
+        None => (
+            ReportStakingParamsV1 {
+                options_input: None,
+                options_label: None,
+            },
+            Vec::new(),
+        ),
+    };
+    let mut outcome = native::operation(
+        &GridOperationV1::ReportStaking(params),
+        Some(&source),
+        &staged,
+    )
+    .map_err(|failure| native::at_path(failure, &path))?;
+    let table = std::mem::take(&mut outcome.result.result);
+    let bytes = outcome.take_artifact("staking.xlsx").ok_or_else(|| {
         Failure::failed(
-            "staking_projection_failed",
-            "the staking table could not be built",
+            "network_result_invalid",
+            "the staking table returned no workbook",
         )
-        .detail(json!({"detail": detail}))
-    })?;
-    let bytes = table.to_xlsx().map_err(|detail| {
-        Failure::failed(
-            "staking_write_failed",
-            "the staking workbook could not be encoded",
-        )
-        .detail(json!({"detail": detail}))
     })?;
     crate::apply::write_new(out, &bytes)?;
+    let warnings = table["warnings"].as_array().cloned().unwrap_or_default();
     Ok(json!({
         "target": target,
-        "revision": revision,
-        "rows": table.rows.len(),
-        "columns": table.columns.len(),
-        "warnings": table.warnings.iter().take(limit).collect::<Vec<_>>(),
-        "more": {"withheld": table.warnings.len().saturating_sub(limit), "total": table.warnings.len()},
-        "options": {
-            "sha256": format!("sha256:{:x}", Sha256::digest(&options_bytes)),
-            "conductor_by_span": options.conductor_by_span.len(),
-            "conductor_by_cable": options.conductor_by_cable.len(),
-            "actual_span_by_structure": options.actual_span_by_structure.len(),
-            "admin_by_structure": options.admin_by_structure.len(),
-            "location_from_comments": options.location_from_comments,
-            "conductor_length_factor": options.conductor_length_factor,
-            "conductor_quantity_factors": options.conductor_quantity_factors,
-            "policy": policy_identity,
-            "strut_allowance_fraction": options.strut_allowance_fraction,
-            "flying_allowance_fraction": options.flying_allowance_fraction,
-        },
+        "revision": table["revision"],
+        "rows": table["rows"],
+        "columns": table["columns"],
+        "warnings": warnings.iter().take(limit).collect::<Vec<_>>(),
+        "more": {"withheld": warnings.len().saturating_sub(limit), "total": warnings.len()},
+        "options": table["options"],
         "artifact": {
             "path": out,
             "byte_len": bytes.len(),

@@ -26,9 +26,9 @@ declared once on every canonical command and appears in its live descriptor.
 
 ## Exposure modes
 
-The default broad server publishes thirteen stable tools: `ds_catalog`, the
+The default broad server publishes fourteen stable tools: `ds_catalog`, the
 bounded `ds_diagnostics` bootstrap, plus one router per non-catalogue chapter —
-`ds_data`, `ds_project`, `ds_assets`,
+`ds_data`, `ds_project`, `ds_assets`, `ds_grid_model`,
 `ds_survey`, `ds_design`, `ds_map_presentation`, `ds_vector_tiles`,
 `ds_solar`, `ds_reports`, `ds_operations` and `ds_workstation`. Adding a
 command does not enlarge this list.
@@ -50,7 +50,7 @@ canonical ID as the deterministic tie-break. Generated host/authority/refusal
 guidance does not create matches. Chapter filtering, exact-command routing,
 the ten-summary bound and the full matched count are unchanged.
 
-Specialized profiles publish bounded typed leaf tools for one workflow.
+Specialized profiles publish bounded typed leaf tools for one workflow. The larger `grid-local-model` lifecycle instead publishes four tools: `ds_catalog`, `ds_diagnostics`, `ds_grid_model` and `ds_design`. Its exact command allowlist is unchanged; discover one command and load its canonical contract with `operation=describe` before `operation=invoke`. The routers reject commands outside that allowlist even when they share a chapter.
 
 `grid-profile` publishes the retained Profile workflow, including native job
 tickets and cached results. Its ten command leaves plus two bootstrap tools
@@ -112,10 +112,22 @@ commands are unavailable and authority, effects, confirmation, output, and
 refusals are unchanged. Plain `--exposure commands` retains the previous
 all-command publication temporarily for compatibility.
 
-Grid file authoring, clearance, exchange, PLS-CADD, and engineering library
-profiles are absent from Core. `grid-profile` retains the admitted native Profile
-controls; it does not restore those command domains. See the
-[restoration boundary](dsgrid.md).
+`grid-native` contains native `.dsgrid` file creation, inspection, validation,
+command discovery, reads/solves and revision-gated edits, all executed by the
+captured Network addon; its leaves need no desktop or signed-in project.
+`grid-local-model` retains the working-copy lifecycle, the governed head's
+lifecycle (`dsgrid project versions|retire|restore`), the typed edits and the
+structure list; `clearance` is the feature-code and clearance workflow over one
+working copy (`dsgrid feature-codes report`, `dsgrid criteria show|clearance
+set`, `dsgrid analyse clearance`); the broad `grid` router keeps its budget and
+leaves the typed edits and the clearance workflow to those two profiles.
+`grid-corrections` is the bounded typed surface for review comments on an
+already spotted model: exact package inspection, command discovery, graph and
+report reads, clearance analysis and mandatory-guard `dsgrid.apply-correction`.
+Commands of these allowlists that are not yet restored through the addon are
+simply absent from the published tools. The PLS-CADD, exchange and engineering
+library profiles (`pls`, `pls-desktop`, `pls-library`, `library-governance`)
+remain retired with their commands; see the [restoration boundary](dsgrid.md).
 
 The `design-edit` profile includes the same canonical `map.design.open`,
 map-owned `map.design.pin` Working-set operation, and

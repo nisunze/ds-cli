@@ -7,11 +7,15 @@ use ds_cli_contract::spec::{
     Authority, Availability, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::criteria_clearance_view;
+use ds_network_contracts::grid_operation::GridOperationV1;
 use serde_json::{Value, json};
 
 use crate::feature_codes;
-use crate::mutation;
+use crate::{mutation, native};
+
+const REFUSALS: &[ds_cli_contract::spec::Refusal] = &native::extend_refusals::<
+    { feature_codes::READ_REFUSALS.len() + native::REFUSALS.len() },
+>(feature_codes::READ_REFUSALS);
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.criteria.show",
@@ -47,7 +51,7 @@ the standard's value; the findings.",
         note: "Read the weather labels before `criteria clearance set`, and the 60 °C finding.",
         runnable: false,
     }],
-    refusals: feature_codes::READ_REFUSALS,
+    refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &[
         "clearance voltage",
@@ -61,16 +65,25 @@ the standard's value; the findings.",
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let (target, opened) = feature_codes::open_read_only(inputs)?;
-    let standard = ds_grid_engine::FeatureCodeStandard::bundled().ok();
-    let view = criteria_clearance_view(opened.session.snapshot(), standard.as_ref());
+    let target = mutation::Target::resolve(inputs, false)?;
+    let path = target.path();
+    let bytes = crate::package::read_bytes(&path)?;
+    let view = native::operation(&GridOperationV1::CriteriaShow, Some(&bytes), &[])
+        .map_err(|failure| native::at_path(failure, &path))?
+        .result
+        .result;
     Ok(json!({
-        "target": target,
-        "engine": ds_grid_engine::ENGINE_VERSION,
-        "sets": view.sets,
-        "weather_cases": view.weather_cases,
-        "max_conductor_temperature": view.max_conductor_temperature,
-        "findings": view.findings,
+        "target": {
+            "path": path,
+            "model_id": view["model_id"],
+            "package_revision": view["package_revision"],
+            "authored_revision": view["authored_revision"],
+        },
+        "engine": view["engine"],
+        "sets": view["sets"],
+        "weather_cases": view["weather_cases"],
+        "max_conductor_temperature": view["max_conductor_temperature"],
+        "findings": view["findings"],
         "staged": false,
         "persisted": false,
     }))

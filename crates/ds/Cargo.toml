@@ -20,6 +20,9 @@ ds-cli-design = { workspace = true }
 ds-cli-desktop = { workspace = true }
 ds-cli-feedback = { workspace = true }
 ds-cli-map = { workspace = true }
+# DS Grid file commands reach the Network addon through the closed process
+# client only; this crate links no Grid engine (DECOUPLING-003).
+ds-cli-dsgrid = { workspace = true }
 ds-cli-report = { workspace = true }
 ds-cli-shell = { workspace = true }
 ds-cli-workstation = { workspace = true }

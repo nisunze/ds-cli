@@ -1,16 +1,768 @@
-# `ds dsgrid` availability
+# `ds dsgrid` — reference
 
-This command surface is absent from Core. The linked Grid model engineering command adapters
-were removed to keep Core independent of engineering implementation crates.
-Their independent owning crates remain in the workspace.
+Tier-4 reference. `ds dsgrid <command> --help` is the contract.
+`dsgrid inspect` has its own page: [`dsgrid.inspect.md`](dsgrid.inspect.md).
 
-Use `ds capabilities --output json` for the installed surface. Retained native
-Profile controls are described by `ds capabilities map.profile.view --output json`
-and the `grid-profile` MCP profile. Project tasks, checklist controls, and task
-geometry read/clear remain available. They do not restore package authoring,
-conversion, library operations, or PLS-CADD automation.
+## Two owners, kept separate
 
-A request for this removed workflow stops at the owning component boundary.
-There is no Core linked fallback or hidden feature to enable it.
+Core links no Grid engine. Every decode, validation, plan, transaction,
+emitted package and engineering report comes from the independently installed
+Network addon, reached through the closed typed process client
+(`ds-network-client`): the fixed `grid-read`, `grid-inspect`, `grid-manifest`,
+`grid-query`, `grid-apply`, `grid-apply-batch`, `grid-catalog`, `grid-create`
+and `grid-write-admission` tasks, and the closed `grid-operation` calls
+(`package_migrate`, `package_pls_source`, `pls_workspace_facts`,
+`typed_mutation`, `report_structures`, `report_staking`, `criteria_show`,
+`spotting_receipt`, `batch_parse`) under the `grid_file_operations_v1`
+capability. A missing addon refuses `network_engine_missing`; an older one
+refuses `network_engine_incompatible` after its identity probe and before any
+work is staged. Core keeps what Core owns: argument admission, target
+resolution, this machine's working-copy catalogue, project authority and
+credentials, confirmation, output files and bounded presentation. The addon
+never receives a host path, credential or catalogue; it receives the exact
+staged bytes of one package and named inputs. Restoration of the retired
+surface is tracked in the shared
+[decoupling backlog](../../../ds-architecture/backlog/DECOUPLING.md#decoupling-003--restore-retired-grid-exchange-library-and-pls-surfaces).
 
-Restoration is tracked in the shared [decoupling backlog](../../../ds-architecture/backlog/DECOUPLING.md#decoupling-003--restore-retired-grid-exchange-library-and-pls-surfaces).
+Not restored in Core yet, and refused as unknown commands: `dsgrid asset
+list|extract|attach|detach`, `dsgrid project asset list|extract`, `dsgrid
+project compare|geojson`, `dsgrid backup preview`, `dsgrid template
+compile|inspect|apply`, `dsgrid import-structure`, `dsgrid replace-structure`,
+`dsgrid reconcile-cable-source`, `dsgrid model combine`, `dsgrid
+publish-version`, `dsgrid structure admin-refresh|staking-enrich`, `dsgrid
+profile labels show|set`, `dsgrid alignment gap show|set` and `dsgrid
+feature-codes cleared-forest-offset set|import|migrate|export`. Their sections
+below describe the retained linked contract each restoration must preserve.
+
+The working-copy commands answer from THIS machine. A working copy is a fact
+about a machine — a lane, a DS account and a directory beside the local-layer
+catalogue — decided by `ds_command_kernel::local_models` and persisted by
+`ds-layer-store`: `model list`, `model show`, `model create-local`, `model
+import-external` and `model set-active` need no application, project or
+window (since 2026-09-18). `model list`, `model forget` and `model unlink` of
+an ordinary copy need no addon either; engine admission runs only for a
+declared combined identity. `model prepare-project` (since 2026-09-20) reads
+the governed MV heads of the project named by `--project` under the native
+credential and answers which of them this machine holds as exact working
+copies; with `--download-missing` it fills the rest, one verified download at
+a time, each registered as a project-pinned copy and never activated.
+
+These file commands provide native model creation, engineering reads/solves,
+revision-gated mutation and persistence. They do not make the paired model
+catalogue, active-model selection or project publication headless; those
+commands retain their explicitly declared authority below.
+## Library identity across edits
+
+`dsgrid profile open --live` captures the model already occupying Desktop
+Profile, even when the CLI catalogue does not contain it. Supply a new absolute
+`--checkpoint-out` and the complete `--expect-history` from `map profile view`.
+The native session fences content, cursor, redo depth and retained journal;
+returning to the same authored revision through Undo does not admit old history.
+This path neither imports, focuses, saves nor adopts the working model. Its
+receipt names the captured revision/history and artifact digest/length. Explicit
+`model import-external` on that artifact creates an independent working copy.
+Ordinary `profile open` continues to resolve a machine working copy first.
+
+Command emission also admits the native package-side section-binding effects.
+When an engine delta splits a PLS section, only the child retaining its ordered
+support-path origin inherits the exact native section number/group-slot rows.
+Both characterized native sag/display cache rows retire; the other child gains
+no invented identity. `apply`, `apply-batch`, typed mutations and spotting
+receipt application use the same Exchange owner, including dry runs. A
+`pls_section_identity_unresolved` refusal retains the native reason and evidence
+in `detail`, leaves the source unchanged and writes no output. Commands without
+split deltas invent no lineage; genuine deletion retains the ordinary package
+retirement rule. No source workspace, library seed or engineering result is
+rewritten by this metadata admission.
+
+Typed mutations, command-envelope apply, spotting receipt applies and
+visualization previews retain the source package's exact library pins and
+element needs, assets and exchange bindings. The native emitter verifies the
+retained release cache and definitions before exposing new bytes. Editing a placed
+instance does not detach its library or confer solver approval. A change that contradicts an
+exact pinned definition must satisfy the native library contract; silently
+dropping the pin is never an edit remedy. Dry runs leave source bytes intact.
+
+## Template spotting default
+
+`dsgrid template compile` accepts an optional, human-editable spotting settings
+v1 JSON file. It validates the typed document, then stores canonical JSON as
+`setup/spotting-default.json` in the new `.dsgrid-template`. The manifest
+attests that member's digest; `template inspect` verifies the whole container
+and reads back the exact settings and member digest. Changing a setting changes
+the immutable template revision ID. Existing templates without the member
+continue to read with `spotting_default.present: false`.
+
+```bash
+ds dsgrid template compile --source reference.dsgrid --spotting-default spotting-default.json --out standards.dsgrid-template --output json
+ds dsgrid template inspect --template standards.dsgrid-template --output json
+```
+
+The setup is a suggestion carried by the template. Creating a model from it
+does not author spotting settings. Apply reviewed settings to the model through
+the revision-gated `set_spotting_settings` engine command; references must
+resolve against that model.
+
+## Extracting a package asset
+
+`ds dsgrid asset extract` writes exact asset bytes to a new local file and
+leaves the package unchanged. Use `--leaf` when it selects one asset. When
+leaves are shared, use `--resource-id`, `--expected-digest` and an explicit
+`--role` (`resource` for the current row or `origin_resource` for its preserved
+resource-graph origin). Read current IDs and digests with
+`ds dsgrid run --operation project_table --params` using
+`{"table_kind":"resources"}`. For historical origin attestations, extract
+`origin-authorities.v1.json`. An origin selection must name a current resource
+ID in `interpreted_entity_ids` and the same asset leaf. Ambiguous leaf-only
+selection and library-pinned packages refuse; there is no re-conversion or
+fallback.
+
+## Local acquisition, activity, and publication
+
+These words are deliberately not interchangeable:
+
+| Command | Meaning | Authority |
+|---|---|---|
+| `ds dsgrid model list` | List this machine's working copies and the active one. | none (`--lane`, `--account`) |
+| `ds dsgrid model create-local` | Create one empty working copy and open it as active. | none |
+| `ds dsgrid model import-external` | Acquire one external `.dsgrid`; it does not become active. | none |
+| `ds dsgrid model set-active` | Open one existing working copy as the active one; idempotent when already active. | none |
+| `ds dsgrid model prepare-project` | Show which exact governed MV heads of the named project this machine holds and, with `--download-missing`, fill the rest as project-pinned working copies. | headless_project |
+| `ds dsgrid project retire` | Retire one superseded project model with explicit project, head revision, digest and reason; a byte-verified separate backup is mandatory, the receipt names it (`backup`: bucket, object, generation, digest, byte_length), and without it the command refuses `grid_retire_backup_unconfirmed`. Immutable revisions remain. | headless_project + `--yes` |
+| `ds dsgrid project restore` | Restore the exact retired head after verifying its separate backup; version-bound attachments retain their pins. | headless_project + `--yes` |
+| `ds dsgrid project list --include-deleted` | Include retired heads and their exact revision and digest for restoration; every row carries `head_version`, approval and update/retirement fields. | headless_project |
+| `ds dsgrid project show` | One model's current version, its revision count and the head's ordinal, plus a read-only management receipt separating the exact working head from the canonical named version and legacy content group; with `--revision`, one revision's metadata. No bytes. | headless_project |
+| `ds dsgrid project versions` | A model's versions, each with its revisions in save order and their ordinals. | headless_project |
+| `ds dsgrid project geojson` | Verify one immutable project revision and export its authored MV alignments as WGS84 GeoJSON. | headless_project |
+| `ds dsgrid project compare` | Entities added, changed and removed between two revisions or local packages. | headless_project |
+| `ds dsgrid project exports list\|publish\|download` | The immutable export files one revision carries. | headless_project (+ `--yes` to publish) |
+| `ds dsgrid project bump-version` | Start the next version from the head's exact bytes, uploading nothing. | headless_project + `--yes` |
+| `ds dsgrid project update` | Rename or re-describe a model; revisions keep the name they were saved under. | headless_project + `--yes` |
+| `ds dsgrid project set-approval` | Append a review decision to one existing revision (head or historic). | headless_project + `--yes` |
+| `ds dsgrid project backup download` | Read a retired model's byte-verified backup into a new local file. | headless_project |
+| `ds dsgrid publish-version` | Save one immutable revision into the model's current version, or `--bump-version` to start the next; never changes local activity. | headless_project + `--yes` |
+
+The local commands never accept a project. Publication never accepts arbitrary
+model bytes: it names an absolute `.dsgrid` path (or, with
+`--replace-content`, a PLS-CADD `.bak` with `--crs`) with an explicit
+`--project`, or an opaque local model of the
+paired Desktop, which supplies its own selected project. The descriptor
+declares the native route (`headless_project`); dispatch arbitrates the paired
+fallback without `--path` as a `project` command, so the Desktop's project
+must be the caller's.
+
+`prepare-project` is the headless form of the desktop's project MV cache:
+a head is *held* when a working copy pinned to exactly that project, model,
+revision and digest exists, or when any copy's bytes are that digest; a copy
+edited since it was pinned is not the head. The receipt names each head's
+`local_id` and `bytes` when held, `downloaded` ids for this run, and
+`complete`. Over 1000 heads it refuses `grid_project_inventory_unbounded`
+rather than fold a partial listing as complete; a head whose bytes do not
+match its declared digest is `grid_project_head_unverified` and nothing is
+registered for it.
+
+```bash
+ds dsgrid model prepare-project --lane canary --project <exact-id> --output json
+ds dsgrid model prepare-project --lane canary --project <exact-id> --download-missing --output json
+ds dsgrid model list --lane canary --account <uid>       # the copies, origin "project"
+```
+PLS-CADD workspaces and `.bak` files remain under `ds dsgrid-exchange inspect`,
+`plan`, and `convert`; there is no second conversion verb here.
+
+## An exact MV corridor source
+
+`project geojson` downloads the named immutable revision through the native
+project owner and projects only its authored routed alignments. The GeoJSON
+contains 2D longitude/latitude LineStrings with the governed project, model,
+revision and verified package digest on every feature. It does not include
+existing power lines, roads, or the model's context layers. The output is a
+source document for local vector operations such as `data vector buffer`.
+
+```bash
+ds dsgrid project list --project <project> --lane canary --output json
+ds dsgrid project geojson --project <project> --lane canary \
+  --model <model-id> --revision <revision-id> --out ./mv-alignments.geojson --output json
+ds data vector buffer --source ./mv-alignments.geojson --radius-m 6 \
+  --out ./mv-corridor.geojson --output json
+```
+
+For a large model, `--limit` exports a bounded page of alignments. Use the
+receipt's `next_cursor` as `--cursor` with a fresh `--out` path for the next
+page. `--alignment` exports one exact routed alignment when a caller needs a
+single branch. Each page is a complete GeoJSON FeatureCollection and the
+receipt reports whether more alignments remain.
+
+## Versions and submissions
+
+Four things are called a "version" somewhere in the stack. They are kept
+apart deliberately:
+
+| Word | What it is | Where it lives | Commands |
+|---|---|---|---|
+| **Revision** | One save: exact, immutable, content-addressed `.dsgrid` bytes (`revision_id` `rev-…`, model digest). | Project catalog | `publish-version`, `project show --revision`, `project download`, `project compare` |
+| **Version** (`head_version`, the app's v1, v2) | An ordered run of revisions. A save joins the current version; only `--bump-version` starts the next. A version is never frozen: it takes saves until a higher version supersedes it. | Project catalog | `project show`, `project versions`, `publish-version --bump-version` |
+| **Governance vN** | A deliberate marker over the model identity (a submission) that pins the head revision and digest it observed. A separate counter from the version above. | `/api/v1/design/versions` | `design version begin\|show\|list\|status\|compare\|begin-batch\|summaries --kind mv_model` |
+| **Attachment / export** | A file carried by one exact content revision — never by a vN. An attachment is revisioned and archivable; an export is an immutable derived output pinned to the revision's digest. | `/api/v1/design/attachments`, catalog exports | `publish-version --attach`, `design attachment …`, `project exports …` |
+
+A designer saves thousands of times within one version: each
+`publish-version` is a revision, and its receipt says where it landed —
+`version`, `revision_ordinal_within_version` (1 for the revision that started
+the version), `version_revision_count` and `version_started`. The Server
+stores the ordinal on every revision and the count on the head, and those are
+used as they are. Against a Server that predates stored ordinals, the ordinal
+is read from the parent chain (that Server orders revisions inside a version
+by content hash, not by time); when a version holds more saves than the
+bounded walk reads (2000), the count is a lower bound (`count_exact: false`)
+and no ordinal is claimed. `project versions` groups one page by version,
+newest first, each version's revisions in save order; only against an older
+Server can the last group of a page with `more: true` report null ordinals.
+
+A revision records its own governance: `--milestone`, `--description`,
+`--design-stage`, `--detail-level`, `--approval draft|submitted|approved|rejected`
+(a decision needs `--approval-level` and `--approval-reason` and the approving
+capability), repeated `--operation-summary`, and ordered
+`--composition-source <model:revision>` (2 to 100; each digest is read from the
+catalog). A NEW model published from a package that `ds dsgrid-exchange
+convert` produced records typed `migration_source` from the package's own
+origin record — kind `pls_cadd_workspace`, the source leaf, the SHA-256 of the
+exact preserved workspace and the manifest id. The catalog admits that on a
+model's first revision only, so a `.bak` or `.dsgrid` imported with
+`--replace-content` states the same lineage (kind `pls_cadd_bak` or
+`dsgrid_package`, the file name, its SHA-256) as one `operation_summary` line.
+
+### The submission recipe
+
+v1 is the incoming model; v2 is our submitted design on top of it.
+
+```bash
+# v1: convert the incoming .bak, then publish it as a new model; the
+# package's origin record becomes the revision's migration_source.
+ds dsgrid-exchange convert --source /work/incoming.bak --target dsgrid \
+  --crs EPSG:32735 --out /work/v1
+ds dsgrid publish-version --path /work/v1/incoming.dsgrid \
+  --project <p> --name "Kamonyi MV" --kind mv_line --yes
+
+# Iterate: every save is a revision of the current version (no bump).
+ds dsgrid publish-version --path /work/route.dsgrid --project <p> \
+  --project-model <m> --expected-head <head> --kind mv_line \
+  --reason "Respotted span 14" --yes
+
+# Submit: start the next version with the submitted revision, record the
+# milestone and review state, and attach the delivered backup to it.
+ds dsgrid publish-version --path /work/route.dsgrid --project <p> \
+  --project-model <m> --expected-head <head> --kind mv_line --bump-version \
+  --milestone "Submission 2 to REG" --approval submitted \
+  --attach /work/delivered.bak:native_workspace --yes
+
+# Mark the submission as a governance vN pinned to exactly that revision.
+ds design version begin --project <p> --kind mv_model --object <m> \
+  --reason "Submitted to REG" --milestone "Submission 2" \
+  --expected-source <revision-from-the-receipt> --idempotency-key submission-2 --yes
+```
+
+`--attach` runs after the revision commits and targets the NEW revision; the
+revision stands whatever happens to an attachment, and the receipt names each
+file with its outcome (`attachments_failed`, and a `retry` command for any that
+failed). Every `--attach` file is read and bounded before anything is
+uploaded. To record a file as an immutable derived output instead, use
+`ds dsgrid project exports publish --model <m> --revision <rev> --file
+delivered.bak --output-id pls-delivered-workspace --format pls_cadd_bak --yes`;
+an export id can never be rewritten, and `exports download` reads it back
+digest-verified.
+
+`ds design version show --kind mv_model --object <m> --version v2` resolves a
+vN to the content revision (`content_revision`) that its attachments bind to.
+
+When the content that goes out is already the head, start the version without
+uploading anything: `ds dsgrid project bump-version --model <m> --expected-head
+<head> --reason "Submitted to REG" --milestone "Submission 2" --yes`. Its first
+revision re-pins the head's exact bytes (`content_changed: false`), its
+approval restarts as `draft`, and one head can start at most one next version.
+A decision taken after the fact is `ds dsgrid project set-approval --model <m>
+--revision <rev> --expected-head <head> --status approved --level <id>
+--reason <text> --yes`: the revision stays immutable, the decision is appended
+beside it, and `project show --revision` reports `effective_approval` and every
+`approval_decisions` entry. `ds dsgrid project update --name` renames a model
+(`publish-version --name` never does).
+
+### Older Servers
+
+`--bump-version`, `exports download`, `project bump-version`, `update`,
+`set-approval` and `backup download` use a field or an action newer than some
+deployed Servers. Such a Server refuses them as `server_action_unsupported`;
+nothing is retried or reshaped. A Server that predates explicit bumps also
+numbers every save as a new version, which the receipt shows as
+`version_started: true` on a plain save.
+
+## The link to a PLS-CADD workspace
+
+```bash
+ds dsgrid model link --model local-<id> --workspace "/srv/pls/Nyamagabe" --account <uid>
+ds dsgrid model show --model local-<id> --account <uid>
+```
+
+A working copy converted from a PLS-CADD folder knows the bytes it came from
+— the package preserves the original member tree — but not where they live.
+`link` records where, on the catalogue row, as `pls_source`: the folder, the
+exchange digest of its member tree (the digest `ds dsgrid-exchange inspect`
+prints), the PLS-CADD program version (`16.81`), every member family's
+version (`DON 57`, `NUM 14`, `CRI 94`, `FEA 15`, `STRUCT 13`, `XYZ 5`, `TIN
+5`, `PPS 57` …), the member count and when. The folder must digest to the
+workspace the package was imported from; any other folder is
+`workspace_not_this_package`, because a sync into it would write edits
+computed against a different baseline. Relinking replaces the link;
+`ds dsgrid model unlink --model local-<id>` removes it (the copy, its package
+and the folder are untouched, and a copy with no link is refused as
+`local_model_request_invalid`).
+
+`import-external` links automatically when the package sits beside the
+`exchange-report.json` `convert` wrote, the report names one PLS-CADD folder
+source with its pinned digest, the package preserved a tree digesting to that
+pin, and the folder still digests to it now. Anything short of that leaves
+the copy unlinked with the reason in `auto_link`, and `link` is the explicit
+act. `list` prints the link under the row; `show` prints the row, the package
+identity as its bytes declare it now, and the link in full.
+
+The link is what `ds dsgrid-exchange sync` writes into; see
+[`dsgrid-exchange.md`](dsgrid-exchange.md).
+
+## `validate` answers two questions, not one
+
+A `.dsgrid` can be a sound container holding an unsound model, and the two are
+fixed in completely different ways. So they are reported apart:
+
+| Field | Question | Failure means |
+|---|---|---|
+| `container.verified` | does every member match the manifest's byte length, digest, row count and schema fingerprint? | the file is damaged or was written by an incompatible release |
+| `model.valid` | is the authored content sound by `ds-grid-model`'s own rules? | the file is intact and the content is wrong |
+
+A damaged container is reported as a **result**, not a refusal — exit 0 with
+`container.verified: false` and `model: null`. The caller asked whether the
+package is sound; answering "no" is this command working. `model` is null
+rather than absent because the model was not judged unsound either; it was not
+judged at all.
+
+## `describe` is the engine describing itself
+
+`ds-grid-engine` publishes four catalogs: journaled `commands`, all
+`operations`, `projections`, and the parameter `types` they declare. Each
+operation entry carries its parameters, its effect class, whether it is
+journaled, and its result type; each type entry carries its exact shape.
+
+The descriptors currently come from the engine compiled into this binary.
+The separately captured executable admits its own complete descriptor on each
+query; a Grid catalog transport is still required to migrate `describe` itself.
+
+The catalog is large, so it is tiered the same way `ds` tiers its own help:
+
+```bash
+ds dsgrid describe                       # the operation index
+ds dsgrid describe --kind commands       # journaled mutations only
+ds dsgrid describe --id create_alignment # one full descriptor
+```
+
+Two small translations, both deliberate. The engine spells the effect field
+`effect_class`; `ds` reports it as `effect`, because `ds` uses that word for
+the same idea everywhere else and a caller should not learn a second one at a
+single command. And the three catalogs do not agree on how to spell an id
+(`operation_id`, `command_id`, `projection_id`), so `ds` normalizes to `id`.
+
+### Parameter types: the shape of a row
+
+A descriptor names its parameter types — `author_design_policy` takes
+`row: DesignPolicyRow` and `duty_profiles: Vec<StructureDutyProfileRow>` —
+and the fourth catalog, `types`, says what each of those is:
+
+```bash
+ds dsgrid describe --kind types                                   # declared types, with the operations that take them
+ds dsgrid describe --kind types --id StructureDutyProfileRow      # fields, required marks, enum values
+ds dsgrid describe --kind types --id StructureDutyProfileRow --output json   # the JSON Schema
+```
+
+Each entry is a JSON Schema (draft 2020-12) of the engine's deserialize
+contract, derived from the Rust type itself: field names as serde spells
+them, `required` for the fields that must be present, every enum's exact
+values, tagged unions by their tag, each field's documentation (including the
+validation rules a row must also meet), and every type it references under
+`$defs`. The index lists the types an operation declares; the types those
+reach (`StructureMaterialClass`, `StructureDuty`, …) are inside each schema
+and answer `--id` too. Write a batch from this, not from trial dry runs.
+
+## Running native non-mutating operations
+
+`ds dsgrid run` captures one compatible Network executable and transports one
+typed opaque-package query to its read, solve or proposal owner. It never admits journaled mutations,
+imports, or exports, and never writes the source `.dsgrid` package.
+
+Discover the exact operation and parameter contract before invoking it:
+
+```text
+ds dsgrid describe --kind operations --id project_profile
+ds dsgrid run --model model.dsgrid --operation project_profile --params profile.json --output json
+```
+
+For structure usage, discover `analyze_model_defaults`,
+`screen_structure_usage`, `structure_capacity_tables`, and
+`engineering_issue_layer` through `ds dsgrid describe --kind operations --id <id>`.
+Analyze and Issues report `structure_screening_needs_inputs` as a blocking
+finding with the full affected-structure count and named blockers.
+Profile index requests use the default native atlas: copy its revision and axis
+pin from `project_profile_atlas` with default options.
+
+Optimum structure spotting uses the same mapless path. Discover the exact
+request first, then provide only authored ids and bounds from that model
+revision:
+
+```text
+ds dsgrid describe --kind operations --id plan_optimum_spotting --output json
+ds dsgrid run --model model.dsgrid --operation plan_optimum_spotting --params spotting.json --output json
+```
+
+Whole-support resistance evidence starts from one structure's native binding.
+`support_resistance_binding` reads the exact realization, placement,
+applied-load and analysis-case pins an external resistance check must cite;
+it authors nothing:
+
+```text
+ds dsgrid run --model model.dsgrid --operation support_resistance_binding --params support-binding.json --output json
+```
+
+with `{"request": {"structure_id": "<structure id>"}}` as the parameters.
+
+A successful proposal includes the objective, structures, spans, per-span and
+per-structure engineering evidence, bounded rejected alternatives,
+infeasibility when applicable, and atomic canonical commands. A planning
+refusal keeps a stable reason at `error.detail.refusal.code` with the exact
+missing or rejected facts under `error.detail.refusal.detail`; callers do not
+need to parse the human-readable `error.detail.engine` sentence. Rendering the
+proposal on a map is optional and contributes no engineering authority.
+
+Every response identifies the package bytes and authored revision that were
+read, reports `staged: false` and `persisted: false`, and recursively bounds
+large arrays with exact `more.truncated` receipts. A spotting plan sealed by
+its `plan_digest` is never shortened: cutting its rejected rows would leave a
+plan no digest-verified apply can check. Size it with the request's
+`max_reported_rejections` instead.
+
+A long spotting run can be watched: `--progress` streams the planner's own
+progress events (stage, alignment, pass, work counters and its ETA estimate,
+plus the elapsed milliseconds) as one JSON line each on stderr. The sealed
+plans on stdout are the same with or without it, and because `dsgrid run`
+writes nothing, interrupting the process after any event is a safe
+cancellation.
+
+A whole-model run (`plan_whole_model_spotting`) can carry far more diagnostic
+rows than the 16 MiB `--params` bound admits, so its plans are not handed back
+through `spotting_layout_application`. Land the receipt itself:
+
+```text
+ds dsgrid spotting apply-receipt --model model.dsgrid --receipt whole-model.json --receipt-sha256 <sha256> --dry-run --output json
+ds dsgrid spotting apply-receipt --model model.dsgrid --receipt whole-model.json --receipt-sha256 <sha256> --out spotted.dsgrid --output json
+```
+
+The receipt is the exact `dsgrid run` output, plain or `.json.zst`, pinned by
+its file SHA-256 and bounded at 512 MiB. It must name this exact package and
+revision and hold every requested alignment's plan; the engine re-verifies
+each plan digest and builds one `apply_spotting_layouts` revision under the
+application's own journal identity. Nothing is re-planned or trimmed. A
+receipt that withholds rows refuses `receipt_truncated`: `dsgrid spotting
+preview-receipt` can still show it as a visualization-only package.
+
+`ds dsgrid validate` always
+reports the authored revision. The cheap inspect path exposes it on demand
+with `--include authored-revision`, which deliberately decodes the model.
+
+## Applying one canonical revision
+
+`dsgrid apply` revises an existing model file. It consumes the
+engine's own `CommandEnvelope`, evaluates its expected authored revision and
+model invariants, and writes a new package. It never edits the source and
+never overwrites an existing output. Assets and PLS exchange bindings survive
+unchanged unless the engine command itself deliberately changes canonical
+model state.
+
+Use `--dry-run` first for engineering edits. A successful dry run proves the
+envelope addresses the current revision and introduces no new validation
+errors; it does not prove that a later PLS-CADD export opens natively.
+
+Read the live command catalog before constructing an envelope:
+
+```bash
+ds dsgrid describe --kind commands
+ds dsgrid describe --kind commands --id insert_terrain_point_at_station
+```
+
+The expected revision is the authored revision returned by the package's
+engine session, not the package's monotonic `model_revision`. They are
+reported separately in the apply receipt and must never be substituted.
+
+## Typed edits of a working copy: `structure describe|retype`, `report structures`
+
+The first typed mutations over the engine (program contract 01 §2, landed
+2026-09-20 for the Nyamagabe resubmission). They share one plumbing,
+`ds-cli-dsgrid::mutation`, and therefore one vocabulary:
+
+| Input | Meaning |
+|---|---|
+| `--model <local-id>` | one of this machine's working copies (`ds dsgrid model list`); the edit becomes its **next revision in place**, same id, package revision +1, `head_revision` updated on the row |
+| `--package <path> --out <path>` | an immutable `.dsgrid` file; a new file is written, never over the source |
+| `--revision <rev>` | the authored head you observed (`ds dsgrid model show --model <id>` prints it); a moved head refuses `revision_conflict` |
+| `--dry-run` / `--yes` | exactly one: evaluate against the exact head and write nothing, or write |
+
+The receipt names the engine operation(s) with the SHA-256 of their published
+descriptors, `source_revision → resulting_revision`, the counts touched, the
+warnings, the working copy's `pls_source` link (contract 02; null until
+`model link`) and `pls_members_affected` as `TYPE VERSION` from that link.
+
+```bash
+ds dsgrid model list --account <uid>                       # ids and heads
+ds dsgrid model show --model local-…                       # the live head to pin
+ds dsgrid structure describe --model local-… --structure 230     --text "W045S-A0101-11 MV H-Poles Assembly, 12 m wooden, 10–60°, 2 stays" --dry-run
+ds dsgrid structure describe --model local-… --structure 230 --text "…" --yes
+ds dsgrid structure retype --model local-… --structure 3 --type j-w-60d-S190.012 --dry-run
+ds dsgrid structure retype --model local-… --from-finding structure_type_not_allowed     --skip 346 --skip 446 --type j-w-60d-S190.012 --dry-run     # then --yes: ONE revision
+ds dsgrid report structures --model local-… --out structures.csv     # or .xlsx
+ds dsgrid report structures --model local-… --only-findings --output json
+ds dsgrid report staking --package design.dsgrid --out staking.xlsx
+ds dsgrid report staking --package design.dsgrid --options client-staking.json --out staking-client.xlsx
+```
+
+`--structure` takes a structure id (`str-…`) or, when unique, the engineering
+number the sheet prints; `--type` a type id (`st-…`) or the exact library name
+(`j-w-60d-S325.014`). An engineer types what they read; the receipt carries
+the id.
+
+**What the engine decides.** `describe_structure` stores one trimmed line of
+at most 500 characters on the placed structure (`StructureRow.description`,
+distinct from the library type's description; contract 02 exports it into the
+DON 57 structure record on sync). `retype_structure` re-binds every strung
+support of the structure to the new type's attachment point with the same set
+label and slot — what PLS-CADD keeps on a structure-file substitution — and
+refuses by name when the new type lacks a strung set (a T-off's `30kV [set 4]`
+cannot become a plain H-pole: `--skip` it or choose a type carrying the set).
+Before a retype is written the REG v7 angle-pole rule is evaluated: the dry-run
+receipt lists `findings {cleared, remaining, created}` and a write that would
+leave or create `structure_type_not_allowed` (a single pole carrying
+10° ≤ |line angle| < 60°) is refused with that code.
+
+**The client MV staking table** (`report staking`) projects a canonical
+`.dsgrid` into the two-row PLS-CADD + quantity-matrix workbook. The model's
+structure name, comments 1–3, ahead span, cable and transformer kVA determine
+the matrix; the last row contains totals for later BOQ references. It retains
+legacy imported rows with explicit warnings where a name or source field
+cannot be classified. `--options` reads project JSON for conductor mappings
+(including shield/OPGW), optional actual spans, location source, conductor
+factor and stay allowances; omitted options use the shipped defaults. The
+command creates a new workbook and does not change the model.
+
+**The structure list** (`report structures`, contract 04 §5) is the engine's
+`report_structures` read: one row per placed structure — id, number,
+alignment, station, line angle from the model's own alignment geometry (right
+turn positive, as PLS-CADD prints it; the native source's recorded angle beside
+it), structure type, the structure's own description and the library's, pole
+family / material / height / class / stays parsed from the type name, the
+assembly drawing number when a description carries one, REG Table 14
+foundation depth/width by pole height, and the findings with rule id, source
+clause and an empty reason slot. CSV always (UTF-8 BOM); XLSX through the
+stack's shared `ds-io` workbook writer. The receipt carries the standard's
+`{schema, version, issued, digest}`, the `assumptions[]` the engine evaluated
+in the standard's silence (`assumed: true`: the JSON carries the angle-pole
+classes but not the 10°–60° band, which is declared in code from EDCL drawing
+-04 "Not recommended"), `verification_level: proposal`, and a bounded page of
+rows (`--limit`, `more.withheld`); the file is whole.
+
+**Packages written before 2026-09-20** predate the `description` column and
+still open: the column is additive, every description reads as absent, and
+`inspect`, `validate` and `model show` name the member under
+`prior_schema_members[] {member, table, columns, current_columns}`
+(`tables/structures.arrow`, 15 of 16). The first write (`structure describe`,
+`structure retype`, any revision) carries the current schema; nothing is
+re-converted. `package_decode_failed` is kept for a package that is damaged
+or carries a table schema this build does not decode at all.
+## Feature codes and clearance (program contract 03)
+
+PLS-CADD's clearance check knows only what the feature-code table tells it:
+per survey point, the code's required vertical (RV) and horizontal (RH)
+clearance at the weather cases named under Criteria › Survey Point
+Clearances. The DS feature-code standard (`pls-feature-codes.v1.json`,
+owner-issued, bundled into `ds`, digest-verified, never edited by code) is 60
+codes with RV/RH per voltage class from the REG Reticulation Standards,
+ground = 200, unknown = 999, 376 aliases and the legacy code maps of the
+models we migrate. The verbs below run over a working copy (`--model
+local-…`, revised in place) or an immutable package (`--package … --out …`)
+through the same plumbing as every typed mutation: `--revision` pin,
+`--dry-run` xor `--yes`, one receipt shape.
+
+`feature-codes report` is read-only. It captures the installed lane's Network
+component once and sends opaque package bytes to its `grid-query` operation
+`feature_code_table_report`, admitted only by the captured
+`grid_feature_code_table_report_v1` capability. Network owns decoding, counts, row ordering and engine
+version; Core keeps local target selection and the declared output limits.
+Missing or incompatible Network refuses without a linked calculation fallback.
+The report leaves the package and local catalogue unchanged and returns
+`staged: false`, `persisted: false`.
+
+```bash
+ds dsgrid feature-codes report  --model local-<id> --output json
+ds dsgrid feature-codes import  --model local-<id> --standard pls-feature-codes.v1.json --voltage-class MV --yes
+ds dsgrid feature-codes migrate --model local-<id> --standard pls-feature-codes.v1.json --yes      # --deliver refuses while any 999 remains
+ds dsgrid feature-codes cleared-forest-offset set --model local-<id> --code FOREST_EDGE --additional-clearance-m 2.5 --dry-run
+ds dsgrid criteria show         --model local-<id>
+ds dsgrid criteria clearance set --model local-<id> --voltage-class MV \
+    --vertical-case "Maximum Conductor Temperature" --horizontal-case "High wind" --yes
+ds dsgrid analyse clearance     --model local-<id> --output json --limit 500
+ds dsgrid feature-codes export  --model local-<id> --voltage-class MV --out ./nyamagabe-mv.fea
+```
+
+`report` lists every code (number, RV/RH, ground/obstacle, class, assumed,
+usage) and the survey tokens no code resolves, by name and count. `import`
+authors the standard's codes with one class's clearances (updating by name,
+retiring the rest unless `--merge`). `migrate` classifies every survey token
+exactly as the standard's classifier script — normalise, exact alias,
+heuristics, residue — joins legacy FEA numbers through the standard's legacy
+map, renders each point's description from the code's template, and lists
+the mapping, the counts per code and the UNKNOWN tokens; `--deliver` refuses
+`feature_code_unknown_in_delivery`.
+
+`cleared-forest-offset set` stores a nonnegative DS model allowance for
+`FOREST_EDGE` or `FOREST_INSIDE`; absent or zero means no allowance. Cleared
+forest points retain their surveyed elevation, use the model's `GROUND`
+vertical clearance plus this allowance, and never use survey `h=` or a
+standing-tree height. The standard's authored FEA values remain pinned in
+the model. Native clearance analysis, Profile/print and spotting read one
+effective rule; FEA export projects the same effective ground RV/RH and TIN
+membership for PLS-CADD without changing the issued standard bytes. A
+standard reimport preserves the model allowance.
+
+`criteria clearance set` fills the
+criterion set's clearance voltage, survey-point vertical and horizontal cases
+and wire clearance line from the class; a label the model's weather set does
+not carry is `clearance_case_missing`, and a vertical case colder than the
+75 °C REG rates conductors at is a finding. `analyse clearance` is the
+engine's `clearance_report`: every corridor point of every span against its
+code's RV/RH (obstacle height applied) at the survey-point cases — vertical
+at the maximum-temperature case, horizontal blow-out at the high-wind case,
+solved in the load plane — with deficits, violations, per-alignment and
+per-code totals; verification level `proposal` (PLS-CADD's Terrain ›
+Clearances confirms). `export` writes the table as
+FEA 15 for PLS-CADD 16.81; the workspace sync (`dsgrid-exchange sync`,
+contract 02) rewrites FEA 15 and CRI 94 from the same model.
+
+On `dsgrid-exchange convert`, a workspace's `.fea` member becomes the
+model's feature-code definitions and every survey point resolves to its
+definition by number; the receipt names `FEA 15` and the unresolved tokens.
+
+## Making a `.dsgrid`, and exporting one
+
+Classification, planning and conversion are not in this domain. They are
+`ds dsgrid-exchange` — see
+[`dsgrid-exchange.md`](dsgrid-exchange.md).
+
+The split is by source boundary, not just file extension. The exchange domain
+manufactures a canonical package from foreign sources or exports it to a
+foreign format. `dsgrid apply` revises one already-canonical package through
+the engine's journaled command contract. A reader who only wants model
+identity still reaches it without loading exchange planning.
+
+## Ownership
+
+`ds` computes none of this. It reads bytes and calls:
+
+| Command | Owner |
+|---|---|
+| `create` | `ds_grid_exchange::create_blank_model` |
+| `inspect` | Network `grid-manifest` and explicitly requested `grid-inspect`; host presentation only |
+| `validate` | `ds_grid_exchange::package::unpack`, `ds_grid_model::validate_snapshot` |
+| `describe` | `ds_grid_engine::{describe_commands, describe_operations, describe_projections, describe_types}` |
+| `run` | Network `grid-query`, its complete owning descriptor and typed result; host output bounds only |
+| `apply` | `ds_grid_engine::GridSession`, `ds_grid_exchange::dsgrid::emit` |
+| `model list/show/create-local/import-external/set-active` | `ds_command_kernel::local_models` over `ds_layer_store::local_models` (this machine's catalogue); `show` opens the package with `ds_grid_engine::GridSession` |
+| `structure describe/retype` | `ds_grid_engine::GridSession::apply_transaction_at_head` (`describe_structure`, `retype_structure`), `ds_grid_engine::evaluate_structure_type`, `ds_grid_exchange::dsgrid::emit`, `local_models::Op::Revise` |
+| `report structures` | `ds_grid_engine::report_structures` (+ `structure_rules::load_standard`), `ds_io::layers_to_xlsx` |
+| `report staking` | `ds_grid_exchange::staking_table::build_staking_table`, `ds_io::table_to_xlsx` |
+| `publish-version` | paired Desktop `dsgrid.model.publish`, composing its existing project version flow |
+| `feature-codes report` | Captured Network `grid-query` / `feature_code_table_report`; host target selection and output bounds only |
+| `feature-codes import/migrate` | `ds_grid_engine::feature_code_ops` over `ds_grid_engine::feature_code_standard` (the bundled standard and its classifier) |
+| `feature-codes export` | `ds_grid_exchange::feature_code_fea::export_fea`, `ds_io::pls_cadd_fea::write_fea` |
+| `criteria show`, `criteria clearance set` | `ds_grid_engine::clearance_criteria` |
+| `analyse clearance` | `ds_grid_engine::clearance_report` (engine operation `clearance_report`) |
+
+There is no second implementation of the `.dsgrid` format, model validation,
+source classification, browser-local session state, or project publication in
+this repository, and there must not be one: two owners with two tolerances or
+two notions of "active" disagree silently, and the caller receives a different
+answer rather than a disagreement.
+
+## A model's structures as a task's geometry
+
+`ds pm task create --geometry-from dsgrid:local-<id>:structure:74,76,77` and
+`ds pm task geometry set --from …` read a working copy from this machine's
+catalogue (or a `.dsgrid` named with `--package`) and give a Project Work
+task the geometry of the named structures or alignment, with one `ds_object`
+link per object. The engine's own projection supplies every position; the
+kernel resolves and shapes; nothing in this domain is computed twice.
+`docs/reference/pm.md` has the grammar and the shaping rules.
+
+## Interactive model Profile labels
+
+The model Profile is the interactive engineering view. Its ordered structure-label fields, separator, per-field affixes, and orientation are typed presentation data in the `.dsgrid` manifest, independent of an open Desktop or browser storage. The default fields are `number,type,comment1,comment2,comment3`; chainage is omitted. `comment1`–`comment3` come from canonical structure staking attributes in the Rust profile projection.
+
+```bash
+ds dsgrid profile labels show --model ./design.dsgrid --output json
+ds dsgrid profile labels set --model ./design.dsgrid --fields number,type,comment1,comment2,comment3 --out ./design-labelled.dsgrid --output json
+ds dsgrid profile labels set --model ./design.dsgrid --fields number,type,comment1 --separator "" --affixes ./label-affixes.json --out ./design-concatenated.dsgrid --output json
+```
+
+The optional affix file is a JSON array such as `[{"field":"number","prefix":"P","suffix":" "},{"field":"type","prefix":"(","suffix":")"}]`. The empty separator concatenates nonempty fields; `\n` selects a new line. Rust composes the resulting text and marks missing numbers `UNNUMBERED`; the canvas only paints it. `show` reports the effective policy without opening the model Profile.
+
+`set` writes a new model revision and preserves the engineering snapshot and package bindings. It never replaces the source package. Later engineering edits preserve this policy. Sheet Profile and sheet Plan are fixed-paper outputs with separate page composition; neither inherits this interactive setting.
+
+Command descriptors include `params[].type_schemas`: compact, self-contained
+JSON Schemas derived from Rust row types, with required fields, nullable or
+optional fields, exact enum tokens and SI field units. For example,
+`ds dsgrid describe --kind commands --id create_route_node --output json`
+includes `RouteNodeRow` fields and `RouteNodeRole` values. Inline schemas are
+bounded to 24 KiB per command; `more_type_schemas` explicitly names deferred
+types. Read `--kind types --id <type>` for their fully documented schemas.
+
+## Explicit package format migration
+
+`ds dsgrid package migrate` verifies a historical package and produces a current-format local package through `ds_grid_exchange::package_migration::migrate_with_resources`. The normal reader accepts current schema only; this explicit boundary retains the original bytes.
+
+The one external migration verifies exact historical source schema, safe membership, every member digest, counts and content fingerprints before transforming named typed fields. Authored revision, voltages, engineering values, qualification, existing native assets and attachment/history bytes remain unchanged. Explicit SHA-pinned supplemental resources may restore only absent embedded bytes already exactly named by original resource facts; no automatic lookup or execution qualification occurs. Original derived geometry pins may move only after historical input verification and actual current engine recomputation with exact physical-row equality, preserving original computed members as history. Dry-run emits the exact source/output SHA and preservation receipt without writing. --yes writes a new local directory containing model.dsgrid and migration.receipt.json; the source is never overwritten. No project publication or version bump occurs. Old artifacts cannot read migrated production heads; retain the current-format artifact floor and use a governed expected-head publication of migrated prior engineering facts for restoration.
+
+Source/output SHA, original/current schema, strict output verification, exact transformations and preserved metadata; source_modified=false, published=false. Successful materialization returns model.dsgrid and migration.receipt.json. Receipt written last commits the local directory; directories without a receipt are incomplete and never opened.
+
+Read the source SHA from its captured receipt. With `--supplemental-resources`, also supply `--expected-supplemental-sha256`; each supplement must retain its explicit extraction receipt and exactly match the resource facts in the original package.
+
+```bash
+ds dsgrid package migrate --path /disk/original.dsgrid --expected-source-sha256 <captured-sha256> --dry-run --output json
+ds dsgrid package migrate --path /disk/original.dsgrid --expected-source-sha256 <captured-sha256> --out /disk/reviewed-current-package --yes --output json
+```
+
+The output directory must be new, absolute and writable. Confirmation applies only to local materialization; project publication requires its separate governed expected-head boundary.
+
+### Explicit format migration successor
+
+Opt-in `dsgrid package migrate --successor` additionally requires
+`--current-path`, `--expected-current-sha256`, `--migration-receipt`, and
+`--expected-migration-receipt-sha256`, alongside the original source path/SHA.
+It independently repeats the governed external migration and checks exact
+current bytes and the original receipt. The existing import-as-version owner
+then advances only the native manifest revision by one, preserving native
+model identity, decoded facts, assets and bindings. Original schema migration
+preservation controls above remain in force; this mode is not a legacy reader.
+Materialization archives `original.dsgrid` and commits the receipt last after
+fsync and exact readback. Its receipt records migration and lineage identities.
+Dry-run does not write. Neither mode publishes or establishes server-owned
+project-head lineage; publication requires a separate authorized expected-head
+operation.
+
+`dsgrid project list --mv-picker` returns the native `ds.mv-model-catalogue/v1`
+project-head/held-copy projection (contract2), using retained metadata. It never
+downloads or opens model bytes. Pass `--refresh` for intentional acquisition.
+Optional `--held-inventory <json>` consumes a declared `map profile view
+--include-held` result; `--source-binding <json>` admits one exact native candidate
+from that inventory. Multiple matching copies require an explicit choice; absent,
+historical, foreign or incomplete copies report a load need. Dirty local copies
+remain held. The ordinary paged list keeps its `models/more/next_cursor` output.

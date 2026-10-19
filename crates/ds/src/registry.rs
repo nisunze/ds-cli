@@ -126,7 +126,221 @@ static AUTH_ENTRIES: &[Entry] = &[
 /// verbatim, so the index doubles as the procedure — a reader who works down
 /// the list is following the safe sequence rather than reconstructing it.
 
-
+/// The DS Grid file domain, restored through the captured Network addon
+/// (DECOUPLING-003): every entry's engine work is one closed native process
+/// operation, and Core links no Grid engine. Ordered as the domain lists them.
+static DSGRID_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_dsgrid::package_migrate::COMMAND,
+        handler: ds_cli_dsgrid::package_migrate::run,
+        render: ds_cli_dsgrid::package_migrate::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::LIST,
+        handler: ds_cli_dsgrid::project::list,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::SHOW,
+        handler: ds_cli_dsgrid::project::show,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::VERSIONS,
+        handler: ds_cli_dsgrid::project::versions,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::DOWNLOAD,
+        handler: ds_cli_dsgrid::project::download,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::exports::LIST,
+        handler: ds_cli_dsgrid::project::exports::list,
+        render: ds_cli_dsgrid::project::exports::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::exports::PUBLISH,
+        handler: ds_cli_dsgrid::project::exports::publish,
+        render: ds_cli_dsgrid::project::exports::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::exports::DOWNLOAD,
+        handler: ds_cli_dsgrid::project::exports::download,
+        render: ds_cli_dsgrid::project::exports::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::governance::BUMP_VERSION,
+        handler: ds_cli_dsgrid::project::governance::bump_version,
+        render: ds_cli_dsgrid::project::governance::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::governance::UPDATE,
+        handler: ds_cli_dsgrid::project::governance::update,
+        render: ds_cli_dsgrid::project::governance::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::governance::SET_APPROVAL,
+        handler: ds_cli_dsgrid::project::governance::set_approval,
+        render: ds_cli_dsgrid::project::governance::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::governance::BACKUP_DOWNLOAD,
+        handler: ds_cli_dsgrid::project::governance::backup_download,
+        render: ds_cli_dsgrid::project::governance::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::RETIRE,
+        handler: ds_cli_dsgrid::project::retire,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::project::RESTORE,
+        handler: ds_cli_dsgrid::project::restore,
+        render: ds_cli_dsgrid::project::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::create::COMMAND,
+        handler: ds_cli_dsgrid::create::run,
+        render: ds_cli_dsgrid::create::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::inspect::COMMAND,
+        handler: ds_cli_dsgrid::inspect::run,
+        render: ds_cli_dsgrid::inspect::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::validate::COMMAND,
+        handler: ds_cli_dsgrid::validate::run,
+        render: ds_cli_dsgrid::validate::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::describe::COMMAND,
+        handler: ds_cli_dsgrid::describe::run,
+        render: ds_cli_dsgrid::describe::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::run::COMMAND,
+        handler: ds_cli_dsgrid::run::run,
+        render: ds_cli_dsgrid::run::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::preview_receipt::COMMAND,
+        handler: ds_cli_dsgrid::preview_receipt::run,
+        render: ds_cli_dsgrid::preview_receipt::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::apply_receipt::COMMAND,
+        handler: ds_cli_dsgrid::apply_receipt::run,
+        render: ds_cli_dsgrid::apply_receipt::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::apply::COMMAND,
+        handler: ds_cli_dsgrid::apply::run,
+        render: ds_cli_dsgrid::apply::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::apply_batch::COMMAND,
+        handler: ds_cli_dsgrid::apply_batch::run,
+        render: ds_cli_dsgrid::apply_batch::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::apply_batch::CORRECTION,
+        handler: ds_cli_dsgrid::apply_batch::run_correction,
+        render: ds_cli_dsgrid::apply_batch::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::profile::open::COMMAND,
+        handler: ds_cli_dsgrid::profile::open::run,
+        render: ds_cli_dsgrid::profile::open::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::list::COMMAND,
+        handler: ds_cli_dsgrid::model::list::run,
+        render: ds_cli_dsgrid::model::list::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::show::COMMAND,
+        handler: ds_cli_dsgrid::model::show::run,
+        render: ds_cli_dsgrid::model::show::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::create_local::COMMAND,
+        handler: ds_cli_dsgrid::model::create_local::run,
+        render: ds_cli_dsgrid::model::create_local::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::import_external::COMMAND,
+        handler: ds_cli_dsgrid::model::import_external::run,
+        render: ds_cli_dsgrid::model::import_external::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::link::COMMAND,
+        handler: ds_cli_dsgrid::model::link::run,
+        render: ds_cli_dsgrid::model::link::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::unlink::COMMAND,
+        handler: ds_cli_dsgrid::model::unlink::run,
+        render: ds_cli_dsgrid::model::unlink::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::set_active::COMMAND,
+        handler: ds_cli_dsgrid::model::set_active::run,
+        render: ds_cli_dsgrid::model::set_active::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::forget::COMMAND,
+        handler: ds_cli_dsgrid::model::forget::run,
+        render: ds_cli_dsgrid::model::forget::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::model::prepare_project::COMMAND,
+        handler: ds_cli_dsgrid::model::prepare_project::run,
+        render: ds_cli_dsgrid::model::prepare_project::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::structure::describe::COMMAND,
+        handler: ds_cli_dsgrid::structure::describe::run,
+        render: ds_cli_dsgrid::structure::describe::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::structure::retype::COMMAND,
+        handler: ds_cli_dsgrid::structure::retype::run,
+        render: ds_cli_dsgrid::structure::retype::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::report::structures::COMMAND,
+        handler: ds_cli_dsgrid::report::structures::run,
+        render: ds_cli_dsgrid::report::structures::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::report::staking::COMMAND,
+        handler: ds_cli_dsgrid::report::staking::run,
+        render: ds_cli_dsgrid::report::staking::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::feature_codes::report::COMMAND,
+        handler: ds_cli_dsgrid::feature_codes::report::run,
+        render: ds_cli_dsgrid::feature_codes::report::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::criteria::show::COMMAND,
+        handler: ds_cli_dsgrid::criteria::show::run,
+        render: ds_cli_dsgrid::criteria::show::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::criteria::clearance_set::COMMAND,
+        handler: ds_cli_dsgrid::criteria::clearance_set::run,
+        render: ds_cli_dsgrid::criteria::clearance_set::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid::analyse::clearance::COMMAND,
+        handler: ds_cli_dsgrid::analyse::clearance::run,
+        render: ds_cli_dsgrid::analyse::clearance::render,
+    },
+];
 
 static REPORT_ENTRIES: &[Entry] = &[
     Entry {
@@ -3426,6 +3640,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_server::DOMAIN,
         entries: SERVER_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_dsgrid::DOMAIN,
+        entries: DSGRID_ENTRIES,
     },
     Registered {
         domain: &ds_cli_solar::DOMAIN,

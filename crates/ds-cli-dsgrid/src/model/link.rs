@@ -116,9 +116,24 @@ folder is on a streamed or network drive.",
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let id = inputs.require("model")?.trim().to_owned();
     let opened = pls_source::open(inputs, &id)?;
-    crate::package::authorize_write(&opened.package, "link")?;
-    let source = pls_source::pls_source(&id, &opened.package)?;
-    let workspace_read = pls_source::read_workspace(inputs.require("workspace")?)?;
+    let client = crate::native::capture()?;
+    // Decode, then protected-mode admission, then provenance: the order the
+    // linked command refused in.
+    let origin = pls_source::package_origin(&client, &id, &opened.package_bytes)?;
+    crate::package::authorize_write_bytes(
+        &client,
+        &opened.package_path.to_string_lossy(),
+        &opened.package_bytes,
+        "link",
+    )?;
+    let source = origin.ok_or_else(|| {
+        Failure::invalid(
+            "model_not_from_pls",
+            format!("`{id}` was not imported from a PLS-CADD workspace"),
+        )
+        .remedy(MODEL_NOT_FROM_PLS.remedy)
+    })?;
+    let workspace_read = pls_source::read_workspace(&client, inputs.require("workspace")?)?;
     if workspace_read.digest != source.origin_digest {
         return Err(Failure::conflict(
             "workspace_not_this_package",
@@ -134,7 +149,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "workspace_digest": workspace_read.digest,
             "package_origin_digest": source.origin_digest,
             "workspace_members": workspace_read.members.len(),
-            "package_members": source.original_members.len(),
+            "package_members": source.original_members,
         })));
     }
     let replaced = opened.row.pls_source.clone();

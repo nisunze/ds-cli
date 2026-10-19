@@ -2,7 +2,7 @@
 name: ds-mv-corridor-ground
 description: "Seed or reseed sparse MV corridor ground through ds with reproducible scattered sampling, adaptive density and bounded surface footprints. Use for corridor DEM or survey ground, including Gisagara Model 3; not a continuous project DEM grid, triangulator implementation or implicit model publication."
 metadata:
-  ds-chapters: data
+  ds-chapters: data, grid-model
 ---
 
 # Seed natural MV corridor ground
@@ -99,12 +99,15 @@ plan plus centerline/side profiles at relevant scales. Check separated corridors
 overlap/junctions, route ends, a steep cross-slope and a sharp crest. Dry-run
 validates the plan only; it cannot establish provider coverage.
 
-Acquisition does not edit a model. Core no longer exposes the Grid file
-materialization commands. For an authorized import/reseed, hand the exact
-sampling artifacts and receipts to the independent engineering owner. It must
-preserve original observations, source classes, explicit stations, supported-run
-boundaries, provenance and ground basis. Save and project publication remain
-separate authorized effects; this skill authorizes neither.
+Acquisition does not edit a model. For an authorized import/reseed, follow
+`ds-grid-project-model` and discover the live terrain materialization and
+alignment ground-basis commands. Preserve original observations and their source
+classes. Bind derived cuts with explicit stations and supported-run boundaries;
+profile, pole ground, attachments, spotting and clearance must consume the same
+resolved ground. Preview at the exact head, apply through the native transaction,
+and read back provenance, basis, counts and gaps. Save and project publication
+are separate authorized effects. A request for this skill alone authorizes none
+of those model changes.
 
 The October 8 transactional Profile contract describes required bounded domains,
 not proof that an installed binary implements them. If the live surface cannot

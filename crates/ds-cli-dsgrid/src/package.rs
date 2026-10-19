@@ -1,18 +1,16 @@
 //! Reading a `.dsgrid` package, once.
 //!
-//! Every command in this domain starts by turning a path into bytes and then
-//! into either a manifest or a decoded snapshot. Doing that in one place is
-//! not only less code — it is the only way the domain's refusals stay
-//! identical. A caller who learns `model_not_found` from `ds dsgrid inspect`
-//! must get the same code, with the same remedy, from `ds dsgrid validate`.
+//! Every command in this domain starts by turning a path into bounded bytes
+//! the Network addon then admits. Doing that in one place is not only less
+//! code — it is the only way the domain's refusals stay identical. A caller
+//! who learns `model_not_found` from `ds dsgrid inspect` must get the same
+//! code, with the same remedy, from `ds dsgrid validate`. Decoding,
+//! verification and protected-mode policy stay with the addon.
 
-use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::Path;
 
 use ds_cli_contract::outcome::Failure;
-use ds_grid_exchange::dsgrid;
-use ds_grid_exchange::package::{GridPackage, PackageManifest, unpack};
 use serde_json::json;
 
 /// Refuse a file larger than this before reading it. A `.dsgrid` is a zip of
@@ -21,9 +19,10 @@ use serde_json::json;
 /// instead of exhausting memory.
 pub const MAX_PACKAGE_BYTES: u64 = 512 * 1024 * 1024;
 
-/// Native protected-mode policy, projected by every mutating command.
+/// Native protected-mode policy, projected by every mutating command. The
+/// code is the owner's own, held to it by `protected_mode_code_is_the_owner_code`.
 pub const PROTECTED_MODEL: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
-    code: ds_grid_engine::model_protection::PROTECTED_CODE,
+    code: "composite_model_protected",
     when: "the target is the automatic combined model in protected mode",
     remedy: "edit the owning submodel named in the refusal, then reconcile; combined models remain available for reads, status, tiling and reports",
 };
@@ -35,36 +34,6 @@ pub const PLS_SECTION_IDENTITY_UNRESOLVED: ds_cli_contract::spec::Refusal =
         when: "the native section split cannot carry its PLS identities or paired display-cache evidence without guessing",
         remedy: "inspect the native detail and repair the source binding group before retrying",
     };
-
-/// Stage package metadata from the engine's ordered split deltas. Exchange
-/// owns all lineage/cache rules. Failure leaves the input bindings untouched;
-/// genuine deletion still retires bindings at the ordinary package emitter.
-pub(crate) fn admit_command_bindings(
-    current: &BTreeMap<String, Vec<ds_grid_model::ExchangeBindingRow>>,
-    deltas: &[ds_grid_engine::CommandDelta],
-    idempotent_replay: bool,
-) -> Result<BTreeMap<String, Vec<ds_grid_model::ExchangeBindingRow>>, Failure> {
-    let mut staged = current.clone();
-    if !idempotent_replay && let Some(bindings) = staged.get_mut("pls_cadd") {
-        ds_grid_exchange::carry_forward_pls_section_bindings(bindings, deltas).map_err(
-            |error| {
-                Failure::invalid(PLS_SECTION_IDENTITY_UNRESOLVED.code, error.to_string())
-                    .remedy(PLS_SECTION_IDENTITY_UNRESOLVED.remedy)
-                    .detail(json!(error))
-            },
-        )?;
-    }
-    Ok(staged)
-}
-
-pub fn authorize_write(package: &GridPackage, operation: &str) -> Result<(), Failure> {
-    ds_grid_exchange::linked_models::authorize_package_write(package, operation, &[]).map_err(
-        |error| {
-            Failure::invalid("composite_model_protected", error.message)
-                .remedy(PROTECTED_MODEL.remedy)
-        },
-    )
-}
 
 /// Opaque byte guard for the local catalogue. Reuse the operation's captured
 /// executable; decoding and protected-package policy remain in Network.
@@ -172,57 +141,24 @@ pub fn read_bytes(raw_path: &str) -> Result<Vec<u8>, Failure> {
     Ok(bytes)
 }
 
-/// The cheap read: the package manifest, with no Arrow table decoded.
-pub fn read_manifest(raw_path: &str, bytes: &[u8]) -> Result<PackageManifest, Failure> {
-    let inspection = dsgrid::inspect(bytes).map_err(|error| {
-        Failure::invalid(
-            "not_a_dsgrid_package",
-            format!("`{raw_path}` is not a readable .dsgrid package"),
-        )
-        .remedy("a .dsgrid is a zip containing manifest.json")
-        .detail(json!({ "detail": error.to_string() }))
-    })?;
-
-    if !inspection.readable {
-        return Err(Failure::invalid(
-            "not_a_dsgrid_package",
-            format!("`{raw_path}` has no package manifest"),
-        )
-        .remedy("re-export the model as .dsgrid"));
+/// The model identity a package declares in its manifest, read from the
+/// container without decoding any table. Bytes that are not a readable
+/// package, or a manifest without an identity, declare none. Used only to
+/// decide whether a catalogue operation needs the addon's write admission.
+pub fn declared_model_id(bytes: &[u8]) -> Option<String> {
+    const MAX_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).ok()?;
+    let member = archive.by_name("manifest.json").ok()?;
+    if member.size() > MAX_MANIFEST_BYTES {
+        return None;
     }
-
-    serde_json::from_value(
-        inspection
-            .detail
-            .get("manifest")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null),
-    )
-    .map_err(|error| {
-        Failure::failed(
-            "manifest_unreadable",
-            "the package manifest does not match this build's schema",
-        )
-        .remedy("rebuild the package with a matching ds-network release")
-        .detail(json!({ "detail": error.to_string() }))
-    })
-}
-
-/// The expensive read: full verification and decode.
-///
-/// `unpack` verifies every member against the manifest's attestations before
-/// returning, so a package that decodes here has already proved its bytes
-/// match what it claims. That is why `ds dsgrid validate` can report the
-/// container and the model as two separate answers.
-pub fn decode(raw_path: &str, bytes: &[u8]) -> Result<GridPackage, Failure> {
-    unpack(bytes).map_err(|error| {
-        Failure::failed(
-            "package_decode_failed",
-            format!("`{raw_path}` did not decode"),
-        )
-        .remedy("the canonical reader accepts current schema only; retain the original and use `ds dsgrid package migrate --path <source> --expected-source-sha256 <capture> --dry-run`, then open the saved current package")
-        .detail(json!({ "detail": error.to_string() }))
-    })
+    let mut raw = Vec::new();
+    member
+        .take(MAX_MANIFEST_BYTES + 1)
+        .read_to_end(&mut raw)
+        .ok()?;
+    let manifest: serde_json::Value = serde_json::from_slice(&raw).ok()?;
+    manifest["model"]["model_id"].as_str().map(str::to_owned)
 }
 
 /// The canonical serialized token for a table kind — taken from the model
@@ -266,71 +202,5 @@ pub fn parse_limit(raw: Option<&str>) -> Result<usize, Failure> {
 }
 
 #[cfg(test)]
-mod binding_tests {
-    use super::*;
-    use ds_grid_model::{EntityId, ExchangeBindingRow};
-
-    fn row(entity: &str, namespace: &str, key: &str) -> ExchangeBindingRow {
-        ExchangeBindingRow {
-            entity_id: EntityId::new(entity).unwrap(),
-            system: "pls_cadd".into(),
-            namespace: namespace.into(),
-            key: key.into(),
-            raw: None,
-        }
-    }
-    fn split(old: &str, origin: &str) -> ds_grid_engine::CommandDelta {
-        serde_json::from_value(json!({"command_id":format!("split-{old}"),"command_kind":"create_structure",
-            "affected_entities":[],"declared_write_tables":[],"changed_tables":[],"changed_dependency_tokens":[],"projection_refreshes":[],
-            "tension_section_splits":[{"retired_section_id":old,"retired_support_structure_ids":["str-a","str-b"],
-                "derived_sections":[{"section_id":origin,"support_structure_ids":["str-a","str-x"],"retains_ordered_path_origin":true},
-                {"section_id":format!("{old}-suffix"),"support_structure_ids":["str-x","str-b"],"retains_ordered_path_origin":false}]}]})).unwrap()
-    }
-    #[test]
-    fn command_binding_refusals_keep_exact_native_detail_and_source_atomicity() {
-        let cases = [
-            (
-                vec![row("old", "section_group_slot", "wrong")],
-                vec![split("old", "origin")],
-            ),
-            (
-                vec![
-                    row("old", "section_number", "7"),
-                    row("old", "section_group_slot", "7:0"),
-                    row("other-phase", "section_group_slot", "7:1"),
-                ],
-                vec![split("old", "origin")],
-            ),
-            // The first delta succeeds; the second collides. Admission still
-            // publishes none of the first delta's package metadata.
-            (
-                vec![
-                    row("old", "section_number", "1"),
-                    row("later", "section_number", "2"),
-                    row("occupied", "section_number", "9"),
-                ],
-                vec![split("old", "origin"), split("later", "occupied")],
-            ),
-        ];
-        for (rows, deltas) in cases {
-            let input = BTreeMap::from([
-                ("pls_cadd".into(), rows.clone()),
-                ("other_adapter".into(), Vec::new()),
-            ]);
-            let before = serde_json::to_vec(&input).unwrap();
-            let mut native_rows = rows;
-            let native =
-                ds_grid_exchange::carry_forward_pls_section_bindings(&mut native_rows, &deltas)
-                    .unwrap_err();
-            let refused = admit_command_bindings(&input, &deltas, false).unwrap_err();
-            assert_eq!(refused.code(), PLS_SECTION_IDENTITY_UNRESOLVED.code);
-            assert_eq!(refused.detail_value(), Some(&json!(native)));
-            assert_eq!(serde_json::to_vec(&input).unwrap(), before);
-            assert_eq!(
-                admit_command_bindings(&input, &deltas, true).unwrap(),
-                input,
-                "idempotent replay never repeats split effects"
-            );
-        }
-    }
-}
+#[path = "package_tests.rs"]
+mod tests;

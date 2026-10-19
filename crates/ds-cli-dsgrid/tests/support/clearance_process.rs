@@ -1,6 +1,6 @@
 // Test-only pre-process adapter: exact response/refusal parity, never a runtime fallback.
 use super::*;
-use crate::criteria::clearance_set::map_error as map_set_error;
+use crate::linked_oracle::map_set_error;
 use ds_grid_engine::{ClearanceCase, ClearanceReportError, ClearanceReportOptions};
 
 fn old_owner_output(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -40,7 +40,7 @@ fn old_owner_output(inputs: &Inputs, _context: &Context) -> Result<Value, Failur
         ),
         None => None,
     };
-    let (target, opened) = feature_codes::open_read_only(inputs)?;
+    let (target, opened) = crate::linked_oracle::open_read_only(inputs)?;
     let report = opened
         .session
         .clearance_report(&ClearanceReportOptions {

@@ -6,17 +6,15 @@
 //! Every value comes from the engine's `report_structures` operation; this
 //! module writes the file and bounds what it prints.
 
-use std::io::Write;
-
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::{StructureReport, StructureReportRow, report_structures};
-use serde_json::{Map, Value, json};
+use ds_network_contracts::grid_operation::{GridOperationV1, ReportStructuresParamsV1};
+use serde_json::{Value, json};
 
-use crate::mutation;
+use crate::{mutation, native};
 
 const OUT_ARG: Arg = Arg::value(
     "out",
@@ -29,35 +27,6 @@ const ONLY_FINDINGS_ARG: Arg = Arg::switch(
     "only-findings",
     "Keep only structures that carry at least one finding.",
 );
-
-/// The CSV columns, in the order a staking-table reader expects them.
-pub const COLUMNS: &[&str] = &[
-    "structure_id",
-    "number",
-    "alignment_id",
-    "station_m",
-    "line_angle_deg",
-    "line_angle_source_deg",
-    "structure_type",
-    "description",
-    "type_description",
-    "family",
-    "pole_count",
-    "material",
-    "pole_height_m",
-    "pole_class",
-    "stays",
-    "angle_class_deg",
-    "assembly_drawing",
-    "foundation_depth_m",
-    "foundation_width_m",
-    "findings",
-    "finding_rules",
-    "allowed_families",
-    "reasons",
-    "x_m",
-    "y_m",
-];
 
 const OWN: &[Refusal] = &[
     Refusal {
@@ -97,6 +66,8 @@ const SHARED: &[Refusal] = &[
 ];
 
 const REFUSALS: &[Refusal; OWN.len() + SHARED.len()] = &splice();
+const ALL_REFUSALS: &[Refusal] =
+    &native::extend_refusals::<{ REFUSALS.len() + native::REFUSALS.len() }>(REFUSALS);
 const fn splice() -> [Refusal; OWN.len() + SHARED.len()] {
     let mut all = [OWN[0]; OWN.len() + SHARED.len()];
     let mut index = 0;
@@ -161,7 +132,7 @@ format, rows, byte_len, sha256} when --out was given.",
             runnable: false,
         },
     ],
-    refusals: REFUSALS,
+    refusals: ALL_REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &[
         "staking table",
@@ -188,72 +159,55 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let (target, path) = mutation::read_target_path(inputs)?;
     let bytes = crate::package::read_bytes(&path)?;
-    let package = crate::package::decode(&path, &bytes)?;
-    let evidence = package
-        .assets
-        .iter()
-        .find(|asset| {
-            asset.invariant_leaf
-                == ds_grid_exchange::engineering_table_evidence::ENGINEERING_ATTRIBUTE_EVIDENCE_LEAF
-        })
-        .and_then(|asset| {
-            ds_grid_exchange::engineering_table_evidence::decode_engineering_attribute_evidence(
-                &asset.bytes,
-            )
-            .ok()
-        });
-    let session = ds_grid_engine::GridSession::open(package.snapshot.clone());
-    let revision = session.current_revision().revision_id.as_str().to_string();
-    let mut report =
-        report_structures(session.snapshot(), evidence.as_ref()).map_err(|error| match error {
-            ds_grid_engine::StructureRulesError::RuleSourceMissing { expected, found } => {
-                Failure::failed(
-                    "rule_source_missing",
-                    "the REG structure-rules standard is not the owner-issued bytes",
-                )
-                .remedy("rebuild ds from a clean checkout")
-                .detail(json!({ "expected_digest": expected, "found_digest": found }))
-            }
-            other => Failure::failed("operation_failed", "the structure list could not be built")
-                .remedy("run `ds dsgrid validate` on the package")
-                .detail(json!({ "engine": other.to_string() })),
-        })?;
-    if inputs.switch("only-findings") {
-        report.rows.retain(|row| !row.findings.is_empty());
-    }
+    let only_findings = inputs.switch("only-findings");
+    let mut outcome = native::operation(
+        &GridOperationV1::ReportStructures(ReportStructuresParamsV1 {
+            only_findings,
+            format: format.map(str::to_owned),
+        }),
+        Some(&bytes),
+        &[],
+    )
+    .map_err(|failure| native::at_path(failure, &path))?;
+    let report = std::mem::take(&mut outcome.result.result);
+    let rows = report["rows"].as_array().cloned().unwrap_or_default();
 
     let mut artifact = Value::Null;
     if let (Some(path), Some(format)) = (out, format) {
-        let bytes = match format {
-            "csv" => csv_bytes(&report),
-            _ => xlsx_bytes(&report)?,
-        };
+        let bytes = outcome
+            .take_artifact(&format!("structures.{format}"))
+            .ok_or_else(|| {
+                Failure::failed(
+                    "network_result_invalid",
+                    "the structure list returned no file for the requested format",
+                )
+            })?;
         crate::apply::write_new(path, &bytes)?;
         artifact = json!({
             "path": path,
             "format": format,
-            "rows": report.rows.len(),
-            "columns": COLUMNS,
+            "rows": rows.len(),
+            "columns": report["columns"],
             "byte_len": bytes.len(),
             "sha256": format!("sha256:{:x}", <sha2::Sha256 as sha2::Digest>::digest(&bytes)),
         });
     }
 
-    let total_rows = report.rows.len();
-    let rows: Vec<Value> = report.rows.iter().take(limit).map(row_json).collect();
-    let withheld = total_rows.saturating_sub(rows.len());
+    let total_rows = rows.len();
+    let shown: Vec<Value> = rows.into_iter().take(limit).collect();
+    let withheld = total_rows.saturating_sub(shown.len());
     Ok(json!({
         "target": target,
-        "revision": revision,
-        "operation": report.operation_id,
-        "engine": ds_grid_engine::ENGINE_VERSION,
-        "verification_level": report.verification_level,
-        "standard": report.standard,
-        "assumptions": report.assumptions,
-        "line_angle_definition": report.line_angle_definition,
-        "counts": report.counts,
-        "only_findings": inputs.switch("only-findings"),
-        "rows": rows,
+        "revision": report["revision"],
+        "operation": report["operation"],
+        "engine": report["engine"],
+        "verification_level": report["verification_level"],
+        "standard": report["standard"],
+        "assumptions": report["assumptions"],
+        "line_angle_definition": report["line_angle_definition"],
+        "counts": report["counts"],
+        "only_findings": only_findings,
+        "rows": shown,
         "more": { "withheld": withheld, "total": total_rows },
         "artifact": artifact,
         "pls_source": target["pls_source"].clone(),
@@ -273,153 +227,6 @@ fn output_format(path: &str) -> Result<&'static str, Failure> {
         )
         .remedy("name a .csv or .xlsx file"))
     }
-}
-
-fn material(row: &StructureReportRow) -> Option<&'static str> {
-    row.family.material.map(|m| match m {
-        ds_grid_engine::structure_rules::PoleMaterial::Wooden => "wooden",
-        ds_grid_engine::structure_rules::PoleMaterial::Steel => "steel",
-        ds_grid_engine::structure_rules::PoleMaterial::Concrete => "concrete",
-    })
-}
-
-fn family(row: &StructureReportRow) -> &'static str {
-    match row.family.kind {
-        ds_grid_engine::FamilyKind::SinglePole => "single_pole",
-        ds_grid_engine::FamilyKind::HPole => "h_pole",
-        ds_grid_engine::FamilyKind::Transformer => "transformer",
-        ds_grid_engine::FamilyKind::Tapping => "tapping",
-        ds_grid_engine::FamilyKind::Unknown => "unknown",
-    }
-}
-
-/// One row as the receipt prints it: the columns of the CSV, typed.
-fn row_json(row: &StructureReportRow) -> Value {
-    let mut map = Map::new();
-    for (column, value) in cells(row) {
-        map.insert(column.to_string(), value);
-    }
-    map.insert("findings_detail".into(), json!(row.findings));
-    Value::Object(map)
-}
-
-fn cells(row: &StructureReportRow) -> Vec<(&'static str, Value)> {
-    let joined = |values: Vec<String>| -> Value {
-        if values.is_empty() {
-            Value::Null
-        } else {
-            json!(values.join("; "))
-        }
-    };
-    vec![
-        ("structure_id", json!(row.structure_id.as_str())),
-        ("number", json!(row.engineering_number)),
-        (
-            "alignment_id",
-            json!(row.alignment_id.as_ref().map(|id| id.as_str())),
-        ),
-        ("station_m", json!(row.station_m)),
-        ("line_angle_deg", json!(row.line_angle_deg)),
-        ("line_angle_source_deg", json!(row.line_angle_source_deg)),
-        ("structure_type", json!(row.structure_type)),
-        ("description", json!(row.description)),
-        ("type_description", json!(row.type_description)),
-        ("family", json!(family(row))),
-        ("pole_count", json!(row.family.pole_count)),
-        ("material", json!(material(row))),
-        ("pole_height_m", json!(row.family.pole_height_m)),
-        ("pole_class", json!(row.family.pole_class)),
-        ("stays", json!(row.family.stays)),
-        ("angle_class_deg", json!(row.family.angle_class_deg)),
-        ("assembly_drawing", json!(row.assembly_drawing)),
-        ("foundation_depth_m", json!(row.foundation_depth_m)),
-        ("foundation_width_m", json!(row.foundation_width_m)),
-        (
-            "findings",
-            joined(row.findings.iter().map(|f| f.finding.clone()).collect()),
-        ),
-        (
-            "finding_rules",
-            joined(row.findings.iter().map(|f| f.rule_id.clone()).collect()),
-        ),
-        (
-            "allowed_families",
-            joined(
-                row.findings
-                    .iter()
-                    .flat_map(|f| f.allowed_families.iter().cloned())
-                    .collect(),
-            ),
-        ),
-        (
-            "reasons",
-            joined(
-                row.findings
-                    .iter()
-                    .filter_map(|f| f.reason.clone())
-                    .collect(),
-            ),
-        ),
-        ("x_m", json!(row.x_m)),
-        ("y_m", json!(row.y_m)),
-    ]
-}
-
-fn csv_field(value: &Value) -> String {
-    let text = match value {
-        Value::Null => return String::new(),
-        Value::String(text) => text.clone(),
-        other => other.to_string(),
-    };
-    if text.contains([',', '"', '\n', '\r']) {
-        format!("\"{}\"", text.replace('"', "\"\""))
-    } else {
-        text
-    }
-}
-
-fn csv_bytes(report: &StructureReport) -> Vec<u8> {
-    let mut out = Vec::new();
-    // A UTF-8 BOM so Excel reads the degree signs and dashes in descriptions.
-    out.extend_from_slice(b"\xEF\xBB\xBF");
-    let _ = writeln!(out, "{}", COLUMNS.join(","));
-    for row in &report.rows {
-        let line: Vec<String> = cells(row).iter().map(|(_, v)| csv_field(v)).collect();
-        let _ = writeln!(out, "{}", line.join(","));
-    }
-    out
-}
-
-/// The shared workbook writer: one sheet, the CSV columns as properties, the
-/// plan coordinate as the geometry column it always adds.
-fn xlsx_bytes(report: &StructureReport) -> Result<Vec<u8>, Failure> {
-    let features: Vec<Value> = report
-        .rows
-        .iter()
-        .map(|row| {
-            let mut properties = Map::new();
-            for (column, value) in cells(row) {
-                properties.insert(column.to_string(), value);
-            }
-            json!({
-                "type": "Feature",
-                "geometry": { "type": "Point", "coordinates": [row.x_m, row.y_m] },
-                "properties": Value::Object(properties),
-            })
-        })
-        .collect();
-    let input: ds_io::GeoLayerExportInput = serde_json::from_value(json!({
-        "layers": [{
-            "name": "structures",
-            "geojson": { "type": "FeatureCollection", "features": features },
-        }]
-    }))
-    .map_err(|error| Failure::internal("output_unwritable", error.to_string()))?;
-    ds_io::layers_to_xlsx(input).map_err(|error| {
-        Failure::failed("output_unwritable", "the workbook could not be built")
-            .remedy("write the list as .csv instead")
-            .detail(json!({ "detail": error }))
-    })
 }
 
 pub fn render(data: &Value) -> String {

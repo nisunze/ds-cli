@@ -6,12 +6,12 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::{ClearanceSetError, ClearanceSetOptions, plan_clearance_set};
 use ds_grid_model::CriterionSetId;
-use serde_json::{Value, json};
+use ds_network_contracts::grid_operation::{StandardInputV1, TypedMutationVerbV1};
+use serde_json::Value;
 
 use crate::feature_codes;
-use crate::mutation::{self, Planned};
+use crate::mutation;
 
 const OWN: &[Refusal] = &[
     feature_codes::STANDARD_REFUSALS[0],
@@ -141,8 +141,8 @@ wire clearance line, the rows authored/updated and the findings.",
 
 pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     let writing = mutation::write_mode(inputs, context)?;
-    let standard = feature_codes::load_standard(inputs)?;
-    let voltage_class = feature_codes::voltage_class(inputs, &standard)?;
+    let standard = feature_codes::standard_input(inputs)?;
+    let voltage_class = inputs.require("voltage-class")?.trim().to_string();
     let voltage_kv = match inputs.value("voltage-kv") {
         Some(raw) => Some(
             raw.trim()
@@ -157,111 +157,42 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         None => None,
     };
     let criterion_set_id = match inputs.value("criterion-set") {
-        Some(raw) => Some(CriterionSetId::new(raw.trim()).map_err(|error| {
-            Failure::invalid("criterion_set_not_found", error.to_string())
-                .remedy("pass an id from `ds dsgrid criteria show`")
-        })?),
+        Some(raw) => Some(
+            CriterionSetId::new(raw.trim())
+                .map_err(|error| {
+                    Failure::invalid("criterion_set_not_found", error.to_string())
+                        .remedy("pass an id from `ds dsgrid criteria show`")
+                })?
+                .as_str()
+                .to_owned(),
+        ),
         None => None,
     };
     let target = mutation::Target::resolve(inputs, writing)?;
-    let opened = mutation::open(target, inputs)?;
-    let plan = plan_clearance_set(
-        opened.session.snapshot(),
-        &standard,
-        &ClearanceSetOptions {
-            voltage_class: voltage_class.clone(),
+    let (standard, staged) = match standard {
+        None => (None, Vec::new()),
+        Some((label, bytes)) => (
+            Some(StandardInputV1 {
+                input: "standard.json".into(),
+                label,
+            }),
+            vec![("standard.json".to_owned(), bytes)],
+        ),
+    };
+    mutation::run(
+        target,
+        TypedMutationVerbV1::CriteriaClearanceSet {
+            standard,
+            voltage_class,
             vertical_case: inputs.require("vertical-case")?.to_string(),
             horizontal_case: inputs.require("horizontal-case")?.to_string(),
             voltage_kv,
             criterion_set_id,
         },
+        inputs,
+        writing,
+        &staged,
     )
-    .map_err(map_error)?;
-    let head = opened.head.clone();
-    let planned: Vec<Planned> = plan
-        .commands
-        .iter()
-        .enumerate()
-        .map(|(index, command)| Planned {
-            command_id: mutation::command_id(
-                "criteria-clearance-set",
-                &head,
-                &format!("{voltage_class}:{}:{index}", plan.criterion_set_id),
-            ),
-            command: command.clone(),
-        })
-        .collect();
-    let warnings: Vec<Value> = plan
-        .findings
-        .iter()
-        .map(|finding| json!({ "code": finding.code, "message": finding.detail }))
-        .collect();
-    let extra = json!({
-        "standard": feature_codes::standard_receipt(&standard),
-        "criterion_set_id": plan.criterion_set_id,
-        "criterion_set_label": plan.criterion_set_label,
-        "voltage_class": plan.voltage_class,
-        "clearance_voltage_kv": plan.clearance_voltage_kv,
-        "vertical": plan.vertical,
-        "horizontal": plan.horizontal,
-        "wire_clearance_line_m": plan.wire_clearance_line_m,
-        "authored": plan.authored,
-        "updated": plan.updated,
-        "findings": plan.findings,
-    });
-    if planned.is_empty() {
-        let mut receipt = json!({
-            "target": match &opened.target {
-                mutation::Target::WorkingCopy { row, .. } => json!({ "kind": "working_copy", "model": row.id }),
-                mutation::Target::Package { path, .. } => json!({ "kind": "package", "path": path }),
-            },
-            "dry_run": !writing,
-            "persisted": false,
-            "commands": 0,
-            "source_revision": head.as_str(),
-            "resulting_revision": head.as_str(),
-            "changed": false,
-            "warnings": warnings,
-        });
-        if let Value::Object(map) = extra {
-            for (key, value) in map {
-                receipt[key] = value;
-            }
-        }
-        return Ok(receipt);
-    }
-    mutation::run(opened, planned, writing, extra, warnings, &["CRI"])
-}
-
-pub fn map_error(error: ClearanceSetError) -> Failure {
-    match error {
-        ClearanceSetError::Standard(error) => feature_codes::map_standard_error(error),
-        ClearanceSetError::CriterionSetMissing => {
-            Failure::invalid("criterion_set_missing", "the model has no criterion set")
-                .remedy("convert the workspace with its CRI member first")
-        }
-        ClearanceSetError::CriterionSetAmbiguous { available } => Failure::invalid(
-            "criterion_set_ambiguous",
-            "the model has several criterion sets",
-        )
-        .remedy("pass --criterion-set <id>")
-        .detail(json!({ "available": available })),
-        ClearanceSetError::CriterionSetNotFound(id) => Failure::invalid(
-            "criterion_set_not_found",
-            format!("criterion set `{id}` is not in the model"),
-        )
-        .remedy("pass an id from `ds dsgrid criteria show`"),
-        ClearanceSetError::ClearanceCaseMissing {
-            which,
-            label,
-            available,
-        } => Failure::invalid(
-            "clearance_case_missing",
-            format!("weather case {label:?} for the {which} clearance is not in the model"),
-        )
-        .remedy("use one of the model's weather labels")
-        .detail(json!({ "which": which, "label": label, "available": available })),
-    }
 }
 
 pub fn render(data: &Value) -> String {

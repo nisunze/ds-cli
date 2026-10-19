@@ -18,18 +18,13 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::{
-    CommandEnvelope, GridCommand, SpottingLayoutApplyError, SpottingLayoutApplyRequest,
-    SpottingPlan, spotting_layout_application, spotting_layout_command_id,
+use ds_network_contracts::grid_operation::{
+    GridOperationV1, SpottingReceiptModeV1, SpottingReceiptParamsV1,
 };
-use ds_grid_exchange::{PackOptions, dsgrid};
 use serde_json::{Value, json};
 
-use crate::spotting_receipt::{
-    self, PinnedReceipt, ReceiptBounds, ReceiptEncoding, sha256_hex, verify_complete_batch,
-    verify_revision, verify_source_package,
-};
-use crate::{apply, package};
+use crate::spotting_receipt::{self, PinnedReceipt, RECEIPT_INPUT, ReceiptBounds, ReceiptEncoding};
+use crate::{apply, native, package};
 
 /// A complete receipt carries every plan's diagnostic rows. Its bound is the
 /// package read bound, on disk and once expanded.
@@ -37,7 +32,113 @@ const BOUNDS: ReceiptBounds = ReceiptBounds {
     file_bytes: package::MAX_PACKAGE_BYTES,
     expanded_bytes: package::MAX_PACKAGE_BYTES,
 };
-const VERIFICATION_LEVEL: &str = "digest_verified_plans";
+
+const OWN_REFUSALS: &[Refusal] = &[
+    package::PLS_SECTION_IDENTITY_UNRESOLVED,
+    Refusal {
+        code: "model_not_found",
+        when: "the source path does not exist or is not a file",
+        remedy: "check the path; --model takes one .dsgrid file",
+    },
+    Refusal {
+        code: "model_too_large",
+        when: "the source is above the 512 MiB read bound",
+        remedy: "confirm the file is a .dsgrid package and not a disk image",
+    },
+    Refusal {
+        code: "package_decode_failed",
+        when: "the source manifest or canonical tables do not verify",
+        remedy: "run `ds dsgrid validate --model <path>` and repair the package",
+    },
+    package::PROTECTED_MODEL,
+    Refusal {
+        code: "receipt_not_found",
+        when: "receipt path does not name a regular file",
+        remedy: "pass one spotting receipt file",
+    },
+    Refusal {
+        code: "receipt_too_large",
+        when: "the receipt file or its expansion exceeds the 512 MiB bound",
+        remedy: "use one bounded spotting receipt",
+    },
+    Refusal {
+        code: "receipt_unreadable",
+        when: "receipt bytes cannot be read",
+        remedy: "check the path and preserve the original receipt",
+    },
+    Refusal {
+        code: "receipt_digest_invalid",
+        when: "expected digest is not a SHA-256 hex digest",
+        remedy: "copy the raw receipt SHA-256 from its manifest",
+    },
+    Refusal {
+        code: "receipt_digest_mismatch",
+        when: "receipt file bytes do not match the supplied digest",
+        remedy: "use the receipt whose bytes match the manifest digest",
+    },
+    Refusal {
+        code: "receipt_invalid",
+        when: "bytes are not a successful read-only whole-model spotting receipt",
+        remedy: "use one successful dsgrid.run whole-model spotting receipt",
+    },
+    Refusal {
+        code: "receipt_truncated",
+        when: "the receipt withholds rows, so its sealed plans cannot be verified",
+        remedy: "apply the complete receipt dsgrid run wrote, or preview this one with dsgrid spotting preview-receipt",
+    },
+    Refusal {
+        code: "receipt_model_mismatch",
+        when: "receipt model identity/package revision/SHA differs from the base package",
+        remedy: "use the exact base package named by the receipt",
+    },
+    Refusal {
+        code: "receipt_revision_mismatch",
+        when: "plans were authored against another model revision",
+        remedy: "use the exact base package revision named by the receipt",
+    },
+    Refusal {
+        code: "receipt_incomplete",
+        when: "batch has refused, missing or duplicate alignment plans",
+        remedy: "use a complete successful whole-model proposal receipt",
+    },
+    Refusal {
+        code: "spotting_application_refused",
+        when: "the engine refuses a plan: edited digest, stale revision, schema, status or layout conflict",
+        remedy: "read detail.refusal; re-plan only the alignments it names on this exact revision",
+    },
+    Refusal {
+        code: "model_validation_failed",
+        when: "the application would introduce new canonical model errors",
+        remedy: "read detail.issues; no output was written",
+    },
+    Refusal {
+        code: "output_required",
+        when: "an apply omits --out",
+        remedy: "name a new .dsgrid file, or pass --dry-run",
+    },
+    Refusal {
+        code: "output_exists",
+        when: "--out already exists",
+        remedy: "choose a new path; apply never overwrites the source or an earlier result",
+    },
+    Refusal {
+        code: "output_parent_missing",
+        when: "the output parent directory does not exist",
+        remedy: "create the intended directory, then retry",
+    },
+    Refusal {
+        code: "package_emit_failed",
+        when: "the spotted snapshot cannot be packaged with its retained assets",
+        remedy: "report the source model and receipt digests with detail.engine",
+    },
+    Refusal {
+        code: "output_unwritable",
+        when: "the new package cannot be written",
+        remedy: "check the parent path and permissions; a partial file is removed",
+    },
+];
+const REFUSALS: &[Refusal] =
+    &native::extend_refusals::<{ OWN_REFUSALS.len() + native::REFUSALS.len() }>(OWN_REFUSALS);
 
 pub static COMMAND: Command = Command {
     id: "dsgrid.spotting.apply-receipt",
@@ -101,110 +202,7 @@ package path, package revision, byte length and SHA-256.",
             runnable: false,
         },
     ],
-    refusals: &[
-        package::PLS_SECTION_IDENTITY_UNRESOLVED,
-        Refusal {
-            code: "model_not_found",
-            when: "the source path does not exist or is not a file",
-            remedy: "check the path; --model takes one .dsgrid file",
-        },
-        Refusal {
-            code: "model_too_large",
-            when: "the source is above the 512 MiB read bound",
-            remedy: "confirm the file is a .dsgrid package and not a disk image",
-        },
-        Refusal {
-            code: "package_decode_failed",
-            when: "the source manifest or canonical tables do not verify",
-            remedy: "run `ds dsgrid validate --model <path>` and repair the package",
-        },
-        package::PROTECTED_MODEL,
-        Refusal {
-            code: "receipt_not_found",
-            when: "receipt path does not name a regular file",
-            remedy: "pass one spotting receipt file",
-        },
-        Refusal {
-            code: "receipt_too_large",
-            when: "the receipt file or its expansion exceeds the 512 MiB bound",
-            remedy: "use one bounded spotting receipt",
-        },
-        Refusal {
-            code: "receipt_unreadable",
-            when: "receipt bytes cannot be read",
-            remedy: "check the path and preserve the original receipt",
-        },
-        Refusal {
-            code: "receipt_digest_invalid",
-            when: "expected digest is not a SHA-256 hex digest",
-            remedy: "copy the raw receipt SHA-256 from its manifest",
-        },
-        Refusal {
-            code: "receipt_digest_mismatch",
-            when: "receipt file bytes do not match the supplied digest",
-            remedy: "use the receipt whose bytes match the manifest digest",
-        },
-        Refusal {
-            code: "receipt_invalid",
-            when: "bytes are not a successful read-only whole-model spotting receipt",
-            remedy: "use one successful dsgrid.run whole-model spotting receipt",
-        },
-        Refusal {
-            code: "receipt_truncated",
-            when: "the receipt withholds rows, so its sealed plans cannot be verified",
-            remedy: "apply the complete receipt dsgrid run wrote, or preview this one with dsgrid spotting preview-receipt",
-        },
-        Refusal {
-            code: "receipt_model_mismatch",
-            when: "receipt model identity/package revision/SHA differs from the base package",
-            remedy: "use the exact base package named by the receipt",
-        },
-        Refusal {
-            code: "receipt_revision_mismatch",
-            when: "plans were authored against another model revision",
-            remedy: "use the exact base package revision named by the receipt",
-        },
-        Refusal {
-            code: "receipt_incomplete",
-            when: "batch has refused, missing or duplicate alignment plans",
-            remedy: "use a complete successful whole-model proposal receipt",
-        },
-        Refusal {
-            code: "spotting_application_refused",
-            when: "the engine refuses a plan: edited digest, stale revision, schema, status or layout conflict",
-            remedy: "read detail.refusal; re-plan only the alignments it names on this exact revision",
-        },
-        Refusal {
-            code: "model_validation_failed",
-            when: "the application would introduce new canonical model errors",
-            remedy: "read detail.issues; no output was written",
-        },
-        Refusal {
-            code: "output_required",
-            when: "an apply omits --out",
-            remedy: "name a new .dsgrid file, or pass --dry-run",
-        },
-        Refusal {
-            code: "output_exists",
-            when: "--out already exists",
-            remedy: "choose a new path; apply never overwrites the source or an earlier result",
-        },
-        Refusal {
-            code: "output_parent_missing",
-            when: "the output parent directory does not exist",
-            remedy: "create the intended directory, then retry",
-        },
-        Refusal {
-            code: "package_emit_failed",
-            when: "the spotted snapshot cannot be packaged with its retained assets",
-            remedy: "report the source model and receipt digests with detail.engine",
-        },
-        Refusal {
-            code: "output_unwritable",
-            when: "the new package cannot be written",
-            remedy: "check the parent path and permissions; a partial file is removed",
-        },
-    ],
+    refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
     search: &["spotting receipt", "apply spotting", "whole-model spotting"],
     requires: Requires::Server,
@@ -235,178 +233,40 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
 
     let model_bytes = package::read_bytes(model_path)?;
-    let model = package::decode(model_path, &model_bytes)?;
-    package::authorize_write(&model, "apply spotting receipt")?;
-
-    let PinnedReceipt {
-        sha256: receipt_sha,
-        receipt,
-    } = spotting_receipt::read_pinned(
+    let PinnedReceipt { sha256, json } = spotting_receipt::read_pinned(
         receipt_path,
         expected_receipt_sha,
         ReceiptEncoding::CompressedOrPlain,
         BOUNDS,
     )?;
-    // A sealed plan is verified over every row it carries; one withheld row
-    // leaves a plan no digest check can pass.
-    let truncated = &receipt.data.more.truncated;
-    if !truncated.is_empty() {
-        return Err(Failure::invalid(
-            "receipt_truncated",
-            "the receipt withholds rows, so its sealed plans cannot be verified",
-        )
-        .remedy("apply the complete receipt dsgrid run wrote, or preview this one with dsgrid spotting preview-receipt")
-        .detail(json!({
-            "truncation_count": truncated.len(),
-            "fields": truncated.iter().map(|entry| &entry.field).collect::<Vec<_>>(),
-        })));
-    }
-    let source_package_sha = verify_source_package(&receipt, &model, &model_bytes)?;
-
-    let source_model_id = model.manifest.model.model_id.clone();
-    let source_package_revision = model.manifest.model.model_revision;
-    let mut session = ds_grid_exchange::linked_models::open_session(&model);
-    let current_revision = session.current_revision().revision_id.clone();
-    verify_revision(&receipt, current_revision.as_str())?;
-    verify_complete_batch(&receipt)?;
-
-    // The plans move out of the receipt: a whole model's diagnostics are
-    // read once, never copied.
-    let receipt_operation_id = receipt.data.operation.id;
-    let batch = receipt.data.result.batch;
-    let batch_operation_id = batch.operation_id;
-    let plans: Vec<SpottingPlan> = batch.items.into_iter().map(|item| item.plan).collect();
-    let plan_digests: Vec<String> = plans.iter().map(|plan| plan.plan_digest.clone()).collect();
-    let request = SpottingLayoutApplyRequest {
-        plans,
-        fixed_structure_retypes: Default::default(),
-        prior_warnings: Default::default(),
-        warning_band_half_width_m: None,
-    };
-    let application =
-        spotting_layout_application(session.snapshot(), session.current_revision(), &request)
-            .map_err(application_refused)?;
-    let command_id = spotting_layout_command_id(&request);
-    drop(request);
-    let application_digest = application.apply_digest.clone();
-    let alignment_count = application.alignments.len();
-    let proposed_structure_count = application.structures.len();
-    let envelope = CommandEnvelope::new(
-        command_id.clone(),
-        current_revision.clone(),
-        GridCommand::ApplySpottingLayouts { application },
-    );
-
-    let source = json!({
-        "path": model_path,
-        "model_id": source_model_id.as_str(),
-        "package_revision": source_package_revision,
-        "authored_revision": current_revision.as_str(),
-        "package_sha256": source_package_sha,
-    });
-    let proposal = json!({
-        "operation_id": receipt_operation_id,
-        "batch_operation_id": batch_operation_id,
-        "alignment_count": alignment_count,
-        "proposed_structure_count": proposed_structure_count,
-        "plan_digests": plan_digests,
-        "application_digest": application_digest,
-        "command_id": command_id,
-    });
-    let receipt_ref = json!({"path": receipt_path, "sha256": receipt_sha});
-
-    let Some(out_path) = out_path else {
-        let simulation = session
-            .simulate_command(&envelope)
-            .map_err(apply::map_command_error)?;
-        package::admit_command_bindings(
-            &model.exchange_bindings,
-            std::slice::from_ref(&simulation.delta),
-            false,
-        )?;
-        return Ok(json!({
-            "verification_level": VERIFICATION_LEVEL,
-            "dry_run": true,
-            "persisted": false,
-            "source": source,
-            "receipt": receipt_ref,
-            "proposal": proposal,
-            "would_apply": simulation.new_validation_issues.is_empty(),
-            "resulting_revision": simulation.resulting_revision.revision_id.as_str(),
-            "new_validation_issues": simulation.new_validation_issues,
-        }));
-    };
-
-    let outcome = session
-        .apply_command(envelope)
-        .map_err(apply::map_command_error)?;
-    let exchange_bindings = package::admit_command_bindings(
-        &model.exchange_bindings,
-        std::slice::from_ref(&outcome.delta),
-        outcome.idempotent_replay,
-    )?;
-    let checkpoint = session
-        .save_checkpoint()
-        .map_err(apply::map_command_error)?;
-    let options = PackOptions {
-        presentation: model.manifest.model.presentation.clone(),
-        model_id: source_model_id.clone(),
-        model_revision: source_package_revision + checkpoint.sequence,
-        coordinate_system: model.manifest.model.coordinate_system.clone(),
-        library_pins: model.manifest.model.library_pins.clone(),
-        library_needs: model.manifest.model.library_needs.clone(),
-        assets: model.assets.clone(),
-        exchange_bindings,
-    };
-    let (package_plan, _report) =
-        dsgrid::emit(&checkpoint.snapshot, &options).map_err(|error| {
+    // The owner reads the plans straight from the pinned receipt, verifies
+    // every plan digest and builds the one apply_spotting_layouts revision.
+    let mut outcome = native::operation(
+        &GridOperationV1::SpottingReceipt(SpottingReceiptParamsV1 {
+            mode: SpottingReceiptModeV1::Apply,
+            receipt_input: RECEIPT_INPUT.into(),
+            receipt_sha256: sha256,
+            write: out_path.is_some(),
+        }),
+        Some(&model_bytes),
+        &[(RECEIPT_INPUT.to_owned(), json)],
+    )
+    .map_err(|failure| native::at_path(failure, model_path))?;
+    let mut result = std::mem::take(&mut outcome.result.result);
+    result["source"]["path"] = json!(model_path);
+    result["receipt"]["path"] = json!(receipt_path);
+    if let Some(out_path) = out_path {
+        let bytes = outcome.take_artifact("model.dsgrid").ok_or_else(|| {
             Failure::failed(
                 "package_emit_failed",
-                "the spotted package could not be emitted",
+                "the package emitter returned no artifact",
             )
-            .remedy("report the source model and receipt digests with detail.engine")
-            .detail(json!({"engine": error.to_string()}))
+            .remedy("report this engine failure with the source model and receipt digests")
         })?;
-    let artifact = package_plan.artifacts.first().ok_or_else(|| {
-        Failure::failed(
-            "package_emit_failed",
-            "the package emitter returned no artifact",
-        )
-        .remedy("report this engine failure with the source model and receipt digests")
-    })?;
-    apply::write_new(out_path, &artifact.bytes)?;
-
-    Ok(json!({
-        "verification_level": VERIFICATION_LEVEL,
-        "dry_run": false,
-        "persisted": true,
-        "source": source,
-        "receipt": receipt_ref,
-        "proposal": proposal,
-        "idempotent_replay": outcome.idempotent_replay,
-        "parent_revision": outcome.parent_revision.as_str(),
-        "resulting_revision": outcome.revision.revision_id.as_str(),
-        "artifact": {
-            "path": out_path,
-            "package_revision": options.model_revision,
-            "byte_len": artifact.bytes.len(),
-            "sha256": sha256_hex(&artifact.bytes),
-        },
-    }))
-}
-
-/// The engine's own refusal to land the plans: an edited plan digest, a stale
-/// revision, an unsupported schema or status, or a layout conflict.
-fn application_refused(error: SpottingLayoutApplyError) -> Failure {
-    Failure::failed(
-        "spotting_application_refused",
-        "the engine refused to land these plans",
-    )
-    .remedy("read detail.refusal; re-plan only the alignments it names on this exact revision")
-    .detail(json!({
-        "engine": error.to_string(),
-        "refusal": serde_json::to_value(&error).unwrap_or(Value::Null),
-    }))
+        apply::write_new(out_path, &bytes)?;
+        result["artifact"]["path"] = json!(out_path);
+    }
+    Ok(result)
 }
 
 pub fn render(data: &Value) -> String {

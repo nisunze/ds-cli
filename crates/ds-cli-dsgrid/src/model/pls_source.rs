@@ -5,9 +5,9 @@
 //! model show|list` print the pin; `ds dsgrid-exchange sync` writes into
 //! the pinned folder. All of them open the same package from the same store
 //! and read the same folder with the same walk, so the digest one prints is
-//! the digest the others check. That is what this module holds — nothing
-//! here decides what a sync writes; `ds_grid_exchange::pls_cadd_workspace_sync`
-//! does.
+//! the digest the others check. That is what this module holds; the exchange
+//! digest, the program and member versions and the package's preserved origin
+//! are read by the Network addon, and nothing here decides what a sync writes.
 
 use std::path::{Path, PathBuf};
 
@@ -15,9 +15,9 @@ use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::Refusal;
 use ds_command_kernel::local_models::{LocalModel, PlsSourceLink};
-use ds_grid_exchange::conversion::{PlsPackageSource, SourceCandidate, dsgrid_package_pls_source};
-use ds_grid_exchange::package::{GridPackage, unpack};
-use ds_grid_exchange::pls_cadd_workspace_sync::{declared_program_version, member_versions};
+use ds_network_contracts::grid_operation::{
+    GridOperationV1, PackagePlsSourceResultV1, PlsOriginV1, PlsWorkspaceFactsResultV1,
+};
 use serde_json::{Value, json};
 
 use crate::folder;
@@ -50,17 +50,16 @@ pub const MODEL_NOT_FROM_PLS: Refusal = Refusal {
     remedy: "only a copy converted from PLS-CADD links or syncs; export a DS-authored model with `convert --target pls-folder`",
 };
 
-/// The working copy's catalogue row and its package, opened once.
+/// The working copy's catalogue row and its package bytes, read once.
 pub struct OpenedModel {
     pub row: LocalModel,
-    pub package: GridPackage,
     pub package_bytes: Vec<u8>,
     pub package_path: PathBuf,
     pub active: Option<String>,
 }
 
-/// Open one working copy by id: the row from this machine's catalogue, the
-/// package from its store, verified by the engine.
+/// Open one working copy by id: the row from this machine's catalogue and
+/// the package bytes from its store. The addon decodes them when asked.
 pub fn open(inputs: &Inputs, id: &str) -> Result<OpenedModel, Failure> {
     let catalogue = workspace::read(inputs)?;
     let row = catalogue
@@ -94,48 +93,56 @@ pub fn open(inputs: &Inputs, id: &str) -> Result<OpenedModel, Failure> {
         )
         .remedy(STORE_UNAVAILABLE.remedy)
     })?;
-    let package = unpack(&package_bytes).map_err(|error| {
-        Failure::invalid("not_a_dsgrid_package", error.to_string())
-            .remedy("the store holds bytes this build's engine cannot open; re-import the package")
-    })?;
     Ok(OpenedModel {
         row,
-        package,
         package_bytes,
         package_path,
         active: catalogue.active,
     })
 }
 
-/// The PLS provenance the package carries, or the named refusal when it
-/// was not imported from PLS-CADD.
-pub fn pls_source(id: &str, package: &GridPackage) -> Result<PlsPackageSource, Failure> {
-    dsgrid_package_pls_source(package)
-        .map_err(|detail| {
-            Failure::failed(
-                "not_a_dsgrid_package",
-                format!("the package of `{id}` carries unreadable PLS provenance"),
-            )
-            .detail(json!({ "detail": detail }))
-        })?
-        .ok_or_else(|| {
-            Failure::invalid(
-                "model_not_from_pls",
-                format!("`{id}` was not imported from a PLS-CADD workspace"),
-            )
-            .remedy(MODEL_NOT_FROM_PLS.remedy)
-        })
+/// The preserved PLS-CADD origin, or `None` for a package authored in DS
+/// Grid or converted from another source.
+pub fn package_origin(
+    client: &ds_network_client::CapturedNetworkClient,
+    id: &str,
+    package_bytes: &[u8],
+) -> Result<Option<PlsOriginV1>, Failure> {
+    let outcome = crate::native::operation_with(
+        client,
+        &GridOperationV1::PackagePlsSource,
+        Some(package_bytes),
+        &[],
+    )
+    .map_err(|failure| {
+        if failure.code() == "not_a_dsgrid_package" && failure.detail_value().is_some() {
+            failure.with_message(format!(
+                "the package of `{id}` carries unreadable PLS provenance"
+            ))
+        } else {
+            failure
+        }
+    })?;
+    let source: PackagePlsSourceResultV1 = serde_json::from_value(outcome.result.result)
+        .map_err(|error| Failure::failed("network_result_invalid", error.to_string()))?;
+    Ok(source.source)
 }
 
-/// A workspace folder read the way `inspect` reads it, with its digest.
+/// A workspace folder read the way `inspect` reads it, with the exchange
+/// identity the addon derives from its members.
 pub struct ReadWorkspace {
     pub path: PathBuf,
     pub members: Vec<(String, Vec<u8>)>,
     pub digest: String,
+    pub pls_version: String,
+    pub member_versions: std::collections::BTreeMap<String, String>,
     pub streamed_volume: Option<String>,
 }
 
-pub fn read_workspace(raw: &str) -> Result<ReadWorkspace, Failure> {
+pub fn read_workspace(
+    client: &ds_network_client::CapturedNetworkClient,
+    raw: &str,
+) -> Result<ReadWorkspace, Failure> {
     let path = Path::new(raw);
     if !path.is_dir() {
         return Err(
@@ -153,12 +160,23 @@ pub fn read_workspace(raw: &str) -> Result<ReadWorkspace, Failure> {
     let mut byte_len = 0u64;
     let mut file_count = 0usize;
     let members = folder::read_folder(&absolute, &mut byte_len, &mut file_count)?;
-    let digest = SourceCandidate::folder("", members.clone()).digest();
+    let outcome =
+        crate::native::operation_with(client, &GridOperationV1::PlsWorkspaceFacts, None, &members)?;
+    let facts: PlsWorkspaceFactsResultV1 = serde_json::from_value(outcome.result.result)
+        .map_err(|error| Failure::failed("network_result_invalid", error.to_string()))?;
+    if facts.member_count != members.len() as u64 {
+        return Err(Failure::failed(
+            "network_result_invalid",
+            "the workspace facts describe another member set",
+        ));
+    }
     Ok(ReadWorkspace {
         streamed_volume: folder::streamed_volume_hint(&absolute),
         path: absolute,
         members,
-        digest,
+        digest: facts.digest,
+        pls_version: facts.pls_version,
+        member_versions: facts.member_versions,
     })
 }
 
@@ -167,8 +185,8 @@ pub fn link_for(workspace: &ReadWorkspace) -> PlsSourceLink {
     PlsSourceLink {
         path: workspace.path.to_string_lossy().into_owned(),
         digest: workspace.digest.clone(),
-        pls_version: declared_program_version(&workspace.members),
-        member_versions: member_versions(&workspace.members),
+        pls_version: workspace.pls_version.clone(),
+        member_versions: workspace.member_versions.clone(),
         member_count: workspace.members.len() as u64,
         // The store stamps its clock.
         linked_at: String::new(),

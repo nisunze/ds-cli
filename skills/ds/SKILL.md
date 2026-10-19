@@ -79,7 +79,7 @@ Rule out a stop, try other vocabulary, then report. You may filter/compare
 - Maps — `ds-map-composition`, `ds-map-local-data`, `ds-style-composite`.
 - Geometry and terrain — `ds-terrain-sampling`,
   `ds-mv-corridor-ground`.
-- Design and delivery — `ds-lv-design-revision`,
+- Design and delivery — `ds-grid-spotting`, `ds-lv-design-revision`,
   `ds-lv-voltage-drop`, `ds-pls-cadd-backup-delivery`, `ds-pls-cadd-native-dialogs`,
   `ds-report-consumption`, `ds-boq-staking-table`, `ds-boq-combined-report`.
 - Surface and backlog — `ds-mcp-host`, `ds-workstation-setup`,

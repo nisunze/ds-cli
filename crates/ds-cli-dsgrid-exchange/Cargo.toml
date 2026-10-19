@@ -17,6 +17,8 @@ ds-grid-exchange = { workspace = true }
 # The working-copy catalogue and the one folder walk `link` and `sync` share
 # with `inspect|plan|convert`. Both live in the `dsgrid` domain's crate.
 ds-cli-dsgrid = { workspace = true }
+# The working-copy row type the interim linked provenance read returns.
+ds-command-kernel = { workspace = true }
 ds-io = { workspace = true }
 serde = { workspace = true }
 tempfile = "3"

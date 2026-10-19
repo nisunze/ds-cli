@@ -89,8 +89,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "types" => GridCatalogKind::Types,
         _ => GridCatalogKind::Operations,
     };
-    let captured = ds_network_client::CapturedNetworkClient::capture(1, &|| false)
-        .map_err(crate::native::map_failure)?;
+    // The lane's managed addon selection, exactly as every Grid task uses.
+    let captured = crate::native::capture()?;
     let scratch = crate::native::scratch()?;
     let result = captured
         .grid_catalog(

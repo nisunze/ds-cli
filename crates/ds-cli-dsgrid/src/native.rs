@@ -1,6 +1,10 @@
 //! Shared native Grid transport; no model decode or engineering decisions.
 use ds_cli_contract::{Failure, spec::Refusal};
-use ds_network_client::{CapturedNetworkClient, NetworkFailure};
+use ds_network_client::{CapturedNetworkClient, GridOperationOutcome, NetworkFailure};
+use ds_network_contracts::grid_operation::{
+    GRID_OPERATION_REFUSAL_SCHEMA_V1, GridOperationRefusalClassV1, GridOperationRefusalV1,
+    GridOperationV1,
+};
 use std::path::PathBuf;
 
 pub fn capture() -> Result<CapturedNetworkClient, Failure> {
@@ -40,6 +44,68 @@ pub fn scratch() -> Result<tempfile::TempDir, Failure> {
         .prefix("grid-query-")
         .tempdir_in(parent)
         .map_err(|error| Failure::failed("network_scratch_invalid", error.to_string()))
+}
+
+/// Run one closed Grid file operation through an already captured addon.
+pub(crate) fn operation_with(
+    client: &CapturedNetworkClient,
+    call: &GridOperationV1,
+    model: Option<&[u8]>,
+    inputs: &[(String, Vec<u8>)],
+) -> Result<GridOperationOutcome, Failure> {
+    let scratch = scratch()?;
+    client
+        .grid_operation(call, model, inputs, scratch.path(), &|| false)
+        .map_err(operation_failure)
+}
+
+/// Capture the lane's addon and run one closed Grid file operation.
+pub(crate) fn operation(
+    call: &GridOperationV1,
+    model: Option<&[u8]>,
+    inputs: &[(String, Vec<u8>)],
+) -> Result<GridOperationOutcome, Failure> {
+    operation_with(&capture()?, call, model, inputs)
+}
+
+/// An owner refusal from a closed operation keeps its exit class, follow-up
+/// commands and detail exactly as the linked command raised them.
+pub(crate) fn operation_failure(error: NetworkFailure) -> Failure {
+    let envelope = error
+        .owner_detail
+        .as_deref()
+        .and_then(|detail| serde_json::from_value::<GridOperationRefusalV1>(detail.clone()).ok())
+        .filter(|envelope| envelope.schema == GRID_OPERATION_REFUSAL_SCHEMA_V1);
+    let Some(envelope) = envelope else {
+        return map_failure(error);
+    };
+    let code = error.owner_code().unwrap_or(error.code()).to_owned();
+    let message = error.message.clone();
+    let mut failure = match envelope.class {
+        GridOperationRefusalClassV1::Invalid => Failure::invalid(code, message),
+        GridOperationRefusalClassV1::Failed => Failure::failed(code, message),
+        GridOperationRefusalClassV1::Conflict => Failure::conflict(code, message),
+        GridOperationRefusalClassV1::Unavailable => Failure::unavailable(code, message),
+        GridOperationRefusalClassV1::Internal => Failure::internal(code, message),
+    };
+    if let Some(remedy) = error.owner_remedy {
+        failure = failure.remedy(remedy.into_string());
+    }
+    for next in envelope.next {
+        failure = failure.next(next);
+    }
+    if let Some(detail) = envelope.detail {
+        failure = failure.detail(detail);
+    }
+    failure
+}
+
+/// Restate the owner's path-free package refusal with the path the host read.
+pub(crate) fn at_path(failure: Failure, path: &str) -> Failure {
+    match failure.code() {
+        "package_decode_failed" => failure.with_message(format!("`{path}` did not decode")),
+        _ => failure,
+    }
 }
 
 pub fn map_failure(error: NetworkFailure) -> Failure {
@@ -258,6 +324,11 @@ pub const REFUSALS: &[Refusal] = &[
         remedy: "inspect the intended source revision before retrying",
     },
     Refusal {
+        code: "grid_operation_request_invalid",
+        when: "the closed Grid file operation or its staged inputs do not match this addon's contract",
+        remedy: "use matching host and Network releases",
+    },
+    Refusal {
         code: "serialize_failed",
         when: "Network cannot encode its complete result",
         remedy: "retain the unchanged source and report the owning encoding failure",
@@ -281,29 +352,8 @@ pub const fn extend_refusals<const N: usize>(base: &[Refusal]) -> [Refusal; N] {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn structured_owner_refusals_keep_code_class_detail_and_remedy() {
-        let detail = serde_json::json!({"refusal":{"code":"missing_basis","structure_id":"S1"}});
-        let failure = map_failure(NetworkFailure {
-            code: "network_engine_refused",
-            message: "owner message".into(),
-            owner_error: None,
-            owner_code: Some("operation_failed".into()),
-            owner_detail: Some(Box::new(detail.clone())),
-            owner_remedy: Some("author the exact missing basis".into()),
-            owner_invalid_input: Some(false),
-        });
-        assert_eq!(failure.code(), "operation_failed");
-        assert_eq!(failure.class(), ds_cli_contract::ExitClass::Failed);
-        assert_eq!(failure.detail_value(), Some(&detail));
-        assert_eq!(
-            failure.remedy_text(),
-            Some("author the exact missing basis")
-        );
-    }
-}
+#[path = "native_tests.rs"]
+mod tests;
 
 #[cfg(all(test, target_os = "linux", target_arch = "x86_64"))]
 #[path = "../tests/support/native_admission.rs"]

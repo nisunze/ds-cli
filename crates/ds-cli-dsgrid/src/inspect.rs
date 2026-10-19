@@ -25,6 +25,23 @@ use crate::native;
 use crate::package::{self, DEFAULT_LIMIT, parse_limit, table_token, take};
 use serde_json::{Map, Value, json};
 
+/// The container format token the package owner reports for `.dsgrid`; a
+/// hand copy held to it by `format_token_matches_the_owner`.
+const FORMAT: &str = "dsgrid";
+
+/// The manifest fields this read projects, deserialized from the addon's
+/// verbatim manifest. Unknown fields are the owner's and are ignored here.
+#[derive(serde::Deserialize)]
+struct ManifestView {
+    model: ds_grid_model::GridManifest,
+    members: std::collections::BTreeMap<String, MemberView>,
+}
+
+#[derive(serde::Deserialize)]
+struct MemberView {
+    byte_len: u64,
+}
+
 const INCLUDE_CHOICES: &[&str] = &[
     "tables",
     "members",
@@ -148,14 +165,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .grid_manifest(&bytes, scratch.path(), &|| false)
         .map_err(native::map_failure)?
         .result;
-    let manifest: ds_grid_exchange::package::PackageManifest =
-        serde_json::from_value(manifest_result.manifest)
-            .map_err(|error| Failure::failed("network_result_invalid", error.to_string()))?;
+    let manifest: ManifestView = serde_json::from_value(manifest_result.manifest)
+        .map_err(|error| Failure::failed("network_result_invalid", error.to_string()))?;
 
     let mut answer = Map::new();
     answer.insert("path".into(), json!(raw_path));
     answer.insert("byte_len".into(), json!(bytes.len()));
-    answer.insert("format".into(), json!(ds_grid_exchange::dsgrid::FORMAT));
+    answer.insert("format".into(), json!(FORMAT));
     answer.insert(
         "model".into(),
         json!({
@@ -391,3 +407,7 @@ fn extent_json(extent: ds_grid_model::Extent3) -> Value {
         "max_z_m": extent.max_z_m,
     })
 }
+
+#[cfg(test)]
+#[path = "inspect_tests.rs"]
+mod tests;

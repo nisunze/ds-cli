@@ -1,0 +1,4 @@
+interface:
+  display_name: "DS Grid Spotting"
+  short_description: "Spot once, then repair local clearance and strength findings"
+  default_prompt: "Use the live ds contracts to spot a DS Grid line, then inspect and revise only affected angle-to-angle intervals and tension sections."

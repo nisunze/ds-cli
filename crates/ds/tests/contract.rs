@@ -87,6 +87,8 @@ const CHAPTERS: &[&str] = &[
     // `project`, because an agent asked for a contract, a preview or a folder
     // is not asking about the plan, and the family is nine commands wide.
     "assets",
+    // Restored 2026-10-19 with the DS Grid file commands (DECOUPLING-003).
+    "grid-model",
     "survey",
     "design",
     "map-presentation",

@@ -1,6 +1,6 @@
 [package]
 name = "ds-cli-dsgrid"
-description = "The `ds dsgrid` domain: canonical `.dsgrid` model identity, inventory and validation, over the authoritative ds-network crates."
+description = "The `ds dsgrid` domain: canonical `.dsgrid` model identity, inventory, validation and typed edits through the captured Network addon."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,43 +11,43 @@ publish.workspace = true
 [dependencies]
 ds-cli-contract = { workspace = true }
 ds-network-contracts = { workspace = true }
+# Every engine operation reaches the independently installed Network addon
+# through this closed typed process client (DECOUPLING-003). Core links no
+# Grid engine, exchange or composition crate: the normal/build graph gate in
+# ds-web/scripts/desktop/assert-shell-only.mjs proves it for `ds`.
 ds-network-client = { workspace = true }
 # A DS Grid model held locally by the running application is a live session,
 # not a file: the application owns which one occupies Profile, and it alone
 # can publish a revision under the identity it already holds. That family is
 # one named semantic operation each, over the shared paired-session surface.
 ds-cli-desktop = { workspace = true }
-# The authoritative owners. This crate holds argument handling, projection
-# and refusal mapping — and no engineering logic of its own. Every number it
-# reports was computed by one of these two crates.
+# Pure model vocabulary only: ids, table kinds and the manifest shape. No
+# decode, session, engine or exchange code is reachable through it.
 ds-grid-model = { workspace = true }
-ds-grid-engine = { workspace = true }
-ds-rwanda-admin-bounds = { path = "../../../ds-network-reporter/crates/ds-rwanda-admin-bounds" }
-ds-grid-exchange = { workspace = true }
-ds-grid-composition = { workspace = true }
-# The one reprojection this stack has: a model CRS to WGS84, exactly as the
-# MV print projection reprojects. The task-geometry index reads it here.
-ds-geo = { workspace = true }
-# The shared workbook writer every tabular export in the stack uses; the
-# structure list reaches .xlsx through it and through nothing else. Also the
-# native member headers (TYPE/VERSION/UNITS) and digests for the PLS-CADD
-# link a working copy carries.
-ds-io = { workspace = true }
 serde = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 serde_json = { workspace = true }
+# A whole-model spotting receipt is stored as Zstandard JSON; the host
+# expands it under its bound before staging the plain bytes for Network.
 zstd = { workspace = true }
 sha2 = { workspace = true }
-# The engine derives each command's JSON Schema; a malformed batch row is
-# located against it (apply_batch::shape), never against a copied field list.
-schemars = "1.2.2"
+# Read only the manifest identity of a held package, so ordinary catalogue
+# metadata operations need no addon probe; tables are never decoded here.
+zip = { workspace = true }
 
 ds-cli-auth = { workspace = true }
 ds-command-kernel = { workspace = true }
 ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
-ds-design-workspace = { workspace = true }
 tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
 # The host memory figure a spotting batch budgets against.
 windows-sys = { workspace = true }
+
+[dev-dependencies]
+# Test-only owners: fixtures are built, and pre-extraction linked answers are
+# reproduced as oracles, through the authoritative crates. They never enter
+# the normal/build closure of `ds`.
+ds-grid-engine = { workspace = true }
+ds-grid-exchange = { workspace = true }
+schemars = "1.2.2"

@@ -1,27 +1,17 @@
-//! `ds dsgrid feature-codes report|import|migrate|export` — the feature-code
-//! table of a model against the owner-issued standard (program contract 03
-//! §2–§4).
+//! `ds dsgrid feature-codes report` — the feature-code table of a model
+//! against the owner-issued standard (program contract 03 §2), and the
+//! standard arguments the clearance criteria verbs share.
 //!
-//! Every verb is typed inputs and a receipt over the engine's plans
-//! (`ds_grid_engine::feature_code_ops`) and the exchange's FEA writer; the
-//! classifier, the legacy map and the clearances per class live in the
-//! standard the engine bundles. The mutating verbs (`import`, `migrate`)
-//! ride the family's [`crate::mutation`] plumbing: `--model` working copy
-//! revised in place or `--package` → `--out`, the revision pin, `--dry-run`
-//! xor `--yes`, one receipt shape.
+//! The classifier, the legacy map and the clearances per class live in the
+//! standard the Network owner bundles; this module only names which standard
+//! an operator chose and reads an issued file's bytes for the owner.
 
-pub mod cleared_forest_offset;
-pub mod export;
-pub mod import;
-pub mod migrate;
 pub mod report;
 
 use ds_cli_contract::Inputs;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Arg, Refusal};
-use ds_grid_engine::feature_code_standard::{BUNDLED_STANDARD_NAME, VOLTAGE_CLASSES};
-use ds_grid_engine::{FeatureCodeStandard, StandardError};
-use serde_json::{Value, json};
+use serde_json::json;
 
 /// The name the owner's file carries; `--standard` resolves it (and the
 /// engine's own bundled name) without a path.
@@ -125,100 +115,39 @@ pub const READ_REFUSALS: &[Refusal] = &[
     },
 ];
 
-/// Load the standard named by `--standard`.
-pub fn load_standard(inputs: &Inputs) -> Result<FeatureCodeStandard, Failure> {
+/// The engine's own name for its bundled standard. A hand copy held to the
+/// owner by `bundled_standard_names_match_the_owner`.
+pub const BUNDLED_STANDARD_NAME: &str = "feature-codes.v1.json";
+
+/// Which standard `--standard` names: `None` for the bundled one, or the
+/// issued file's bytes and the label the operator typed. The standard's
+/// schema, digest and classes are checked by the Network owner.
+pub fn standard_input(inputs: &Inputs) -> Result<Option<(String, Vec<u8>)>, Failure> {
     let raw = inputs
         .value("standard")
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or(OWNER_STANDARD_NAME);
     let bundled = raw == OWNER_STANDARD_NAME || raw == BUNDLED_STANDARD_NAME;
-    let result = if bundled && !std::path::Path::new(raw).is_file() {
-        FeatureCodeStandard::bundled()
-    } else {
-        let path = std::path::Path::new(raw);
-        if !path.is_file() {
-            return Err(Failure::invalid(
-                "standard_not_found",
-                format!("`{raw}` is neither the bundled standard nor a file"),
-            )
-            .remedy("pass `pls-feature-codes.v1.json` or the path of an issued file"));
-        }
-        let bytes = std::fs::read(path).map_err(|error| {
-            Failure::failed("standard_not_found", format!("cannot read `{raw}`"))
-                .remedy("check file permissions")
-                .detail(json!({ "detail": error.kind().to_string() }))
-        })?;
-        FeatureCodeStandard::from_bytes(&bytes, raw)
-    };
-    result.map_err(map_standard_error)
-}
-
-pub fn map_standard_error(error: StandardError) -> Failure {
-    match error {
-        StandardError::Unreadable(detail) => {
-            Failure::invalid("standard_invalid", "the standard is not readable JSON")
-                .remedy("issue the standard with its build tool")
-                .detail(json!({ "detail": detail }))
-        }
-        StandardError::WrongSchema(detail) => Failure::invalid(
-            "standard_invalid",
-            "the file does not carry the feature-code standard schema",
-        )
-        .remedy("pass an issued ds.pls-feature-codes/v1 file")
-        .detail(json!({ "detail": detail })),
-        StandardError::DigestMismatch {
-            version,
-            expected,
-            found,
-        } => Failure::invalid(
-            "standard_digest_mismatch",
-            format!("standard version {version} was edited outside the owner's build"),
-        )
-        .remedy("use the bundled standard or the owner's issued file; report a wrong value as a finding")
-        .detail(json!({ "version": version, "expected": expected, "found": found })),
-        StandardError::VoltageClassUnknown(class) => Failure::invalid(
-            "voltage_class_unknown",
-            format!("`{class}` is not a voltage class of the standard"),
-        )
-        .remedy(format!("pass one of {}", VOLTAGE_CLASSES.join(", "))),
+    if bundled && !std::path::Path::new(raw).is_file() {
+        return Ok(None);
     }
+    let path = std::path::Path::new(raw);
+    if !path.is_file() {
+        return Err(Failure::invalid(
+            "standard_not_found",
+            format!("`{raw}` is neither the bundled standard nor a file"),
+        )
+        .remedy("pass `pls-feature-codes.v1.json` or the path of an issued file"));
+    }
+    let bytes = std::fs::read(path).map_err(|error| {
+        Failure::failed("standard_not_found", format!("cannot read `{raw}`"))
+            .remedy("check file permissions")
+            .detail(json!({ "detail": error.kind().to_string() }))
+    })?;
+    Ok(Some((raw.to_owned(), bytes)))
 }
 
-/// The class named by `--voltage-class`, validated against the standard.
-pub fn voltage_class(inputs: &Inputs, standard: &FeatureCodeStandard) -> Result<String, Failure> {
-    let class = inputs.require("voltage-class")?.trim().to_string();
-    standard.voltage_class(&class).map_err(map_standard_error)?;
-    Ok(class)
-}
-
-/// The standard's identity for a receipt.
-pub fn standard_receipt(standard: &FeatureCodeStandard) -> Value {
-    json!({
-        "name": OWNER_STANDARD_NAME,
-        "schema": standard.schema,
-        "version": standard.version,
-        "issued": standard.issued,
-        "digest": standard.digest,
-        "pinned": standard.pinned,
-        "origin": standard.origin,
-        "codes": standard.codes.len(),
-    })
-}
-
-/// Open the target read-only through the family's selection rules
-/// (`--model <local-id>` or `--package <path>`).
-pub fn open_read_only(inputs: &Inputs) -> Result<(Value, crate::mutation::Opened), Failure> {
-    let target = crate::mutation::Target::resolve(inputs, false)?;
-    let opened = crate::mutation::open(target, inputs)?;
-    let describe = json!({
-        "path": match &opened.target {
-            crate::mutation::Target::WorkingCopy { path, .. } => path.display().to_string(),
-            crate::mutation::Target::Package { path, .. } => path.clone(),
-        },
-        "model_id": opened.package.manifest.model.model_id.as_str(),
-        "package_revision": opened.package.manifest.model.model_revision,
-        "authored_revision": opened.head.as_str(),
-    });
-    Ok((describe, opened))
-}
+#[cfg(test)]
+#[path = "feature_codes_tests.rs"]
+mod tests;

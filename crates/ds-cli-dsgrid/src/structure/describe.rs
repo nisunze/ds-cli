@@ -6,11 +6,10 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::{GridCommand, MAX_STRUCTURE_DESCRIPTION_CHARS};
-use serde_json::{Value, json};
+use ds_network_contracts::grid_operation::TypedMutationVerbV1;
+use serde_json::Value;
 
-use crate::mutation::{self, Planned, Target};
-use crate::structure::{id_of, resolve_structure, structure_json, type_name};
+use crate::mutation::{self, Target};
 
 const STRUCTURE_ARG: Arg = Arg::value(
     "structure",
@@ -121,6 +120,10 @@ until the copy is linked), plus `structure` before and after. A write adds \
     availability: || Availability::Available,
 };
 
+/// The engine's bound on one structure description; a hand copy held to it
+/// by `description_bound_matches_the_owner`, checked before any IO.
+const MAX_STRUCTURE_DESCRIPTION_CHARS: usize = 500;
+
 pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     let writing = mutation::write_mode(inputs, context)?;
     let text = inputs
@@ -150,40 +153,17 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         )
         .remedy("shorten the description to one line"));
     }
-
     let target = Target::resolve(inputs, writing)?;
-    let opened = mutation::open(target, inputs)?;
-    let snapshot = opened.session.snapshot();
-    let structure = resolve_structure(snapshot, inputs.require("structure")?)?;
-    let before = structure_json(
-        structure,
-        &type_name(snapshot, &structure.structure_type_id),
-    );
-    let id = id_of(structure);
-    let mut warnings = Vec::new();
-    if structure.description == description {
-        warnings.push(json!({
-            "code": "description_unchanged",
-            "message": "the structure already carries exactly this description",
-        }));
-    }
-    let planned = vec![Planned {
-        command_id: mutation::command_id("describe", &opened.head, id.as_str()),
-        command: GridCommand::DescribeStructure {
-            id,
-            description: description.clone(),
-        },
-    }];
-    let mut after = before.clone();
-    after["description"] = json!(description);
     // The description lives in the native structure record of the line file.
     mutation::run(
-        opened,
-        planned,
+        target,
+        TypedMutationVerbV1::StructureDescribe {
+            structure: inputs.require("structure")?.to_owned(),
+            description,
+        },
+        inputs,
         writing,
-        json!({ "structure": { "before": before, "after": after } }),
-        warnings,
-        &["DON"],
+        &[],
     )
 }
 
@@ -206,3 +186,7 @@ pub fn render(data: &Value) -> String {
     ));
     out
 }
+
+#[cfg(test)]
+#[path = "describe_tests.rs"]
+mod tests;

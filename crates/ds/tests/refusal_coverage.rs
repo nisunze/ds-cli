@@ -196,6 +196,13 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
          literal lives with the command that owns the executable",
     ),
     (
+        "ds-cli-dsgrid/src/native.rs",
+        "the code is the Network addon's own refusal, re-raised with its exit \
+         class (DECOUPLING-003): `native::REFUSALS` declares the process \
+         port's codes and each `ds dsgrid` command extends it with the owner \
+         codes its task or Grid file operation can return",
+    ),
+    (
         "ds-cli-report/src/project/export.rs",
         "the preview refusal code is ds-report-host's `PreviewRefusal::code()` \
          (a kernel `printing::preview`/`held_context` code or a host code), \
@@ -913,10 +920,11 @@ fn every_constructible_refusal_code_is_documented() {
         ("ds-cli-data", &["data"]),
         ("ds-cli-design", &["design"]),
         ("ds-cli-map", &["map"]),
-        // The DS Grid domain also builds the object index `ds pm task …
-        // --geometry-from` resolves against (task-geometry-from-objects.md);
-        // the reprojection refusal that read can raise is declared by the pm
-        // commands that reach it.
+        // The DS Grid file domain keeps host IO, catalogue and confirmation in
+        // Core; the engineering refusals it re-raises from the Network addon's
+        // closed `grid-operation` port are declared by the `ds dsgrid`
+        // commands that reach them.
+        ("ds-cli-dsgrid", &["dsgrid"]),
         ("ds-cli-report", &["report"]),
         // Two surfaces, and it is the same crate on purpose. `ds server …` is
         // host administration, and this crate also owns the owner-only socket
@@ -980,14 +988,7 @@ fn every_constructible_refusal_code_is_documented() {
             continue;
         }
         // These independent crates have no public Core command registrations or normal dependency.
-        if [
-            "ds-cli-dsgrid",
-            "ds-cli-dsgrid-exchange",
-            "ds-cli-library",
-            "ds-cli-pls",
-        ]
-        .contains(&name.as_str())
-        {
+        if ["ds-cli-dsgrid-exchange", "ds-cli-library", "ds-cli-pls"].contains(&name.as_str()) {
             let manifest = std::fs::read_to_string(root.join("ds/Cargo.toml")).unwrap();
             let normal = manifest
                 .split("[dependencies]")

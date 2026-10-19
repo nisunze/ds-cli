@@ -71,7 +71,7 @@ fn real_engine_identity_matches_full_package_crs_revision_digest_and_authored_he
         })
         .expect("fixture table member");
     corrupt[header] ^= 0x7f;
-    assert!(crate::package::read_manifest("corrupt-table.dsgrid", &corrupt).is_ok());
+    assert!(crate::package::declared_model_id(&corrupt).is_some());
     assert!(ds_grid_exchange::package::unpack(&corrupt).is_err());
     assert!(identity_with_client(&corrupt, &client).is_err());
 }

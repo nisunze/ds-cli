@@ -2,20 +2,17 @@
 //!
 //! A project model has versions (v1, v2, …) and every save is a revision of
 //! the version current when it was saved; only an explicit bump starts the
-//! next version. `show`, `versions` and `compare` read that history; each
+//! next version. `show` and `versions` read that history; each
 //! revision may also carry immutable exports ([`exports`]).
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
-use ds_command_kernel::task_geometry::ObjectIndex;
 use serde_json::{Value, json};
 use std::io::Write;
 
-pub mod compare;
 pub mod exports;
 pub mod governance;
-pub use compare::COMMAND as COMPARE;
 
 const LOCAL: Refusal = Refusal {
     code: "grid_project_output_invalid",
@@ -66,45 +63,6 @@ const RETIRE_BACKUP: Refusal = Refusal {
     remedy: "run dsgrid project list --include-deleted: retry a head still active unchanged; read a retired head's backup with dsgrid project backup download",
 };
 const RETIRE_REFUSALS: &[Refusal] = &with_shared([RETIRE_BACKUP; 1 + SHARED], 1);
-const GEOJSON_OUTPUT: Refusal = Refusal {
-    code: "grid_geojson_output_invalid",
-    when: "the GeoJSON destination exists or cannot be written",
-    remedy: "choose a fresh --out path in a writable directory",
-};
-const GEOJSON_PAGE: Refusal = Refusal {
-    code: "grid_geojson_page_invalid",
-    when: "--limit is outside 1..5000, --cursor is unknown, or --alignment and --cursor are combined",
-    remedy: "use 1..5000 and the exact next_cursor from a prior page; omit --cursor with --alignment",
-};
-const GEOJSON_ALIGNMENT: Refusal = Refusal {
-    code: "grid_geojson_alignment_not_found",
-    when: "--alignment is not a routed authored alignment of the exact revision",
-    remedy: "omit --alignment to list routed alignment IDs, then use one returned ID",
-};
-const GEOJSON_RESPONSE: Refusal = Refusal {
-    code: "grid_project_response_invalid",
-    when: "the project owner returned incomplete or mismatched verified model evidence",
-    remedy: "retry once, then update the native client if the exact revision still fails",
-};
-const fn geojson_refusals() -> [Refusal; 6 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len()] {
-    let mut r = [GEOJSON_OUTPUT; 6 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len()];
-    r[1] = GEOJSON_PAGE;
-    r[2] = GEOJSON_ALIGNMENT;
-    r[3] = GEOJSON_RESPONSE;
-    r[4] = Refusal {
-        code: "package_decode_failed",
-        when: "the verified model bytes cannot be decoded by this grid engine",
-        remedy: "update ds to a release compatible with this model revision",
-    };
-    r[5] = crate::objects::MODEL_CRS_UNSUPPORTED;
-    let mut n = 0;
-    while n < ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() {
-        r[n + 6] = ds_cli_auth::PROJECT_STATUS_COMMAND.refusals[n];
-        n += 1;
-    }
-    r
-}
-const GEOJSON_REFUSALS: &[Refusal] = &geojson_refusals();
 pub(crate) const LANE: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::LANE.summary("Native authentication lane.");
 pub(crate) const PROJECT: Arg =
@@ -280,7 +238,7 @@ pub static SHOW: Command = Command {
     path: &["dsgrid", "project", "show"],
     contract: 1,
     summary: "Show one project DS Grid model: current version and head.",
-    purpose: "Read one model head without downloading bytes: its current version, how many revisions that version holds and the head's ordinal in it, plus approval, stage, detail and update fields. With --revision, read one revision's metadata instead: parent, reason, milestone, approval, digest, publisher, time, migration and composition sources. A retired model reads as not found; restore it first or name one of its revisions.",
+    purpose: "Read one model head without downloading bytes: its current version, that version's revision count and the head's ordinal in it, plus approval, stage, detail and update fields. With --revision, read one revision's metadata instead: parent, reason, milestone, approval, digest, publisher, time, migration and composition sources. A retired model reads as not found; restore it first or name one of its revisions.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
@@ -295,7 +253,7 @@ pub static SHOW: Command = Command {
             "Show this revision's metadata instead of the head (no bytes fetched).",
         ),
     ],
-    output: "Head: model {head_revision_id, head_version, head_model_digest, approval_status, design_stage_id, updated_at, …}, current_version {version, version_revision_count, revision_ordinal_within_version, count_exact}, and management {working_head {revision_id, digest, revision_count}, named_version {version, label}, content_version, mutated:false}. named_version is the canonical LV/MV marker (0 means Unversioned); content_version is the legacy source group. Revision: the revision record and its position in its version. Never a signed locator.",
+    output: "Head: model {head_revision_id, head_version, head_model_digest, approval_status, design_stage_id, updated_at, …}, current_version {version, version_revision_count, revision_ordinal_within_version, count_exact}, and management {working_head {revision_id, digest, revision_count}, named_version {version, label}, content_version, mutated:false}. named_version is the LV/MV marker (0 = Unversioned); content_version is the legacy source group. Revision: the record and its position in its version. Never a signed locator.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/dsgrid.md"),
@@ -341,43 +299,6 @@ pub fn show(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     };
     Ok(shown)
 }
-pub static GEOJSON: Command = Command {
-    id: "dsgrid.project.geojson",
-    path: &["dsgrid", "project", "geojson"],
-    contract: 1,
-    summary: "Export exact project MV alignments as WGS84 GeoJSON.",
-    purpose: "Download and verify one immutable project DS Grid model revision, then export only its routed, authored MV alignments as 2D WGS84 LineStrings. Each feature carries project, governed model/revision, package identity, source digest and alignment ID. Use the GeoJSON with `ds data vector buffer --radius-m 6` for an MV corridor. Page by alignment ID when a model is large; each page writes its own complete GeoJSON file.",
-    chapter: Chapter::GridModel,
-    effect: Effect::LocalFileWrite,
-    authority: Authority::HeadlessProject,
-    execution: Execution::Sync,
-    args: &[
-        PROJECT,
-        LANE,
-        Arg::value("model", "<id>", "Exact model ID from project list.").required(),
-        Arg::value("revision", "<id>", "Exact immutable revision ID.").required(),
-        Arg::value("out", "<file.geojson>", "Fresh GeoJSON output path.").required(),
-        Arg::value("alignment", "<id>", "Export one exact routed alignment."),
-        Arg::value("limit", "<1..5000>", "Maximum alignments in this file.").default("50"),
-        Arg::value(
-            "cursor",
-            "<alignment-id>",
-            "Exact next cursor from the previous page.",
-        ),
-    ],
-    output: "GeoJSON path, exact verified source identity, alignment IDs and counts, plus more and next_cursor for omitted alignments. Every file is a valid FeatureCollection.",
-    examples: &[],
-    refusals: GEOJSON_REFUSALS,
-    reference: Some("docs/reference/dsgrid.md"),
-    search: &[
-        "mv alignment",
-        "alignment geojson",
-        "route corridor",
-        "parcel buffer",
-    ],
-    requires: Requires::Server,
-    availability: ds_cli_auth::native_availability,
-};
 fn failure(e: impl std::fmt::Display) -> Failure {
     Failure::invalid("grid_project_output_invalid", e.to_string()).remedy(LOCAL.remedy)
 }
@@ -427,7 +348,8 @@ pub fn list(i: &Inputs, _: &Context) -> Result<Value, Failure> {
                     i.require("project")?,
                     &source,
                 )
-                .map_err(|e| Failure::invalid(e, e))?;
+                // The kernel admission has one refusal; the message stays its code.
+                .map_err(|code| Failure::invalid("mv_model_source_stale", code))?;
                 Ok::<_, Failure>(source)
             })
             .transpose()?;
@@ -518,212 +440,6 @@ pub fn download(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     r.data["out"] = serde_json::json!(out);
     Ok(r.data)
 }
-pub fn geojson(i: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let out = std::path::Path::new(i.require("out")?);
-    if std::fs::symlink_metadata(out).is_ok() {
-        return Err(
-            Failure::invalid(GEOJSON_OUTPUT.code, "destination already exists")
-                .remedy(GEOJSON_OUTPUT.remedy),
-        );
-    }
-    let limit = i
-        .require("limit")?
-        .parse::<usize>()
-        .ok()
-        .filter(|limit| (1..=5_000).contains(limit))
-        .ok_or_else(|| {
-            Failure::invalid(GEOJSON_PAGE.code, "--limit must be in 1..5000")
-                .remedy(GEOJSON_PAGE.remedy)
-        })?;
-    if i.value("alignment").is_some() && i.value("cursor").is_some() {
-        return Err(Failure::invalid(
-            GEOJSON_PAGE.code,
-            "--alignment and --cursor cannot be combined",
-        )
-        .remedy(GEOJSON_PAGE.remedy));
-    }
-    let project = i.require("project")?;
-    let model = i.require("model")?;
-    let revision = i.require("revision")?;
-    let mut response = ds_cli_auth::grid_models_for_project(
-        i.require("lane")?,
-        project,
-        &ds_cli_auth::GridModelsCommand::Download {
-            model: model.into(),
-            revision: revision.into(),
-        },
-    )?;
-    let evidence = &response.data;
-    if evidence["verified"] != true
-        || evidence["project"].as_str() != Some(project)
-        || evidence["model_id"].as_str() != Some(model)
-        || evidence["revision_id"].as_str() != Some(revision)
-        || evidence["sha256"]
-            .as_str()
-            .is_none_or(|sha| sha.len() != 64)
-    {
-        return Err(Failure::failed(
-            GEOJSON_RESPONSE.code,
-            "project model evidence did not match the requested immutable revision",
-        )
-        .remedy(GEOJSON_RESPONSE.remedy));
-    }
-    let digest = evidence["sha256"].as_str().unwrap().to_owned();
-    let bytes = response.bytes.take().ok_or_else(|| {
-        Failure::failed(
-            GEOJSON_RESPONSE.code,
-            "verified owner returned no model bytes",
-        )
-        .remedy(GEOJSON_RESPONSE.remedy)
-    })?;
-    let reference = format!("project:{project}:model:{model}:revision:{revision}");
-    let index = crate::objects::index_bytes(&reference, &reference, &bytes, None)?;
-    let page = geojson_page(
-        &index,
-        SourceIdentity {
-            project,
-            model,
-            revision,
-            digest: &digest,
-        },
-        i.value("alignment"),
-        i.value("cursor"),
-        limit,
-    )?;
-    let parent = out
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(std::path::Path::new("."));
-    std::fs::create_dir_all(parent).map_err(|error| {
-        Failure::failed(GEOJSON_OUTPUT.code, error.to_string()).remedy(GEOJSON_OUTPUT.remedy)
-    })?;
-    let mut staged = tempfile::NamedTempFile::new_in(parent).map_err(|error| {
-        Failure::failed(GEOJSON_OUTPUT.code, error.to_string()).remedy(GEOJSON_OUTPUT.remedy)
-    })?;
-    serde_json::to_writer(&mut staged, &page.document).map_err(|error| {
-        Failure::failed(GEOJSON_OUTPUT.code, error.to_string()).remedy(GEOJSON_OUTPUT.remedy)
-    })?;
-    staged.write_all(b"\n").map_err(|error| {
-        Failure::failed(GEOJSON_OUTPUT.code, error.to_string()).remedy(GEOJSON_OUTPUT.remedy)
-    })?;
-    staged.as_file().sync_all().map_err(|error| {
-        Failure::failed(GEOJSON_OUTPUT.code, error.to_string()).remedy(GEOJSON_OUTPUT.remedy)
-    })?;
-    staged.persist_noclobber(out).map_err(|error| {
-        Failure::failed(GEOJSON_OUTPUT.code, error.to_string()).remedy(GEOJSON_OUTPUT.remedy)
-    })?;
-    Ok(json!({
-        "project": project,
-        "model_id": model,
-        "revision_id": revision,
-        "sha256": digest,
-        "verified": true,
-        "package_model_id": index.model_id,
-        "package_model_revision": index.model_revision,
-        "snapshot_fingerprint": index.fingerprint,
-        "source_crs": index.crs,
-        "geometry_crs": "EPSG:4326",
-        "out": out,
-        "total_routed_alignments": page.total,
-        "shown": page.alignment_ids.len(),
-        "alignment_ids": page.alignment_ids,
-        "more": page.next_cursor.is_some(),
-        "next_cursor": page.next_cursor
-    }))
-}
-
-struct SourceIdentity<'a> {
-    project: &'a str,
-    model: &'a str,
-    revision: &'a str,
-    digest: &'a str,
-}
-
-struct GeoJsonPage {
-    document: Value,
-    total: usize,
-    alignment_ids: Vec<String>,
-    next_cursor: Option<String>,
-}
-
-fn geojson_page(
-    index: &ObjectIndex,
-    source: SourceIdentity<'_>,
-    alignment: Option<&str>,
-    cursor: Option<&str>,
-    limit: usize,
-) -> Result<GeoJsonPage, Failure> {
-    let mut routed: Vec<_> = index.alignments.iter().collect();
-    routed.sort_by(|a, b| a.id.cmp(&b.id));
-    let total = routed.len();
-    let selected: Vec<_> = if let Some(id) = alignment {
-        vec![*routed.iter().find(|a| a.id == id).ok_or_else(|| {
-            Failure::invalid(
-                GEOJSON_ALIGNMENT.code,
-                format!("`{id}` is not a routed alignment of this revision"),
-            )
-            .remedy(GEOJSON_ALIGNMENT.remedy)
-        })?]
-    } else {
-        let start = match cursor {
-            Some(id) => routed.iter().position(|a| a.id == id).ok_or_else(|| {
-                Failure::invalid(
-                    GEOJSON_PAGE.code,
-                    format!("`{id}` is not an alignment cursor of this revision"),
-                )
-                .remedy(GEOJSON_PAGE.remedy)
-            })?,
-            None => 0,
-        };
-        routed.iter().skip(start).take(limit).copied().collect()
-    };
-    let next_cursor = if alignment.is_none() {
-        let start = cursor
-            .and_then(|id| routed.iter().position(|a| a.id == id))
-            .unwrap_or(0);
-        routed.get(start + selected.len()).map(|a| a.id.clone())
-    } else {
-        None
-    };
-    let alignment_ids = selected.iter().map(|a| a.id.clone()).collect();
-    let features: Vec<Value> = selected
-        .iter()
-        .map(|alignment| {
-            let coordinates: Vec<_> = alignment
-                .vertices
-                .iter()
-                .map(|vertex| json!([vertex[0], vertex[1]]))
-                .collect();
-            json!({
-                "type": "Feature",
-                "id": alignment.id,
-                "geometry": {"type": "LineString", "coordinates": coordinates},
-                "properties": {
-                    "project": source.project,
-                    "project_model_id": source.model,
-                    "project_revision_id": source.revision,
-                    "package_model_id": index.model_id,
-                    "package_model_revision": index.model_revision,
-                    "snapshot_fingerprint": index.fingerprint,
-                    "package_sha256": source.digest,
-                    "alignment_id": alignment.id,
-                    "alignment_label": alignment.label,
-                    "route_length_m": alignment.vertices.last().map(|vertex| vertex[2]),
-                    "feature_kind": "designed_mv_alignment",
-                    "voltage_class": "MV",
-                    "source_crs": index.crs,
-                    "geometry_crs": "EPSG:4326"
-                }
-            })
-        })
-        .collect();
-    Ok(GeoJsonPage {
-        document: json!({"type": "FeatureCollection", "features": features}),
-        total,
-        alignment_ids,
-        next_cursor,
-    })
-}
 pub fn retire(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let project = i.require("project")?;
     let expected_digest = i.require("expected-digest")?;
@@ -794,244 +510,5 @@ pub fn render(v: &Value) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn mv_picker_consumes_the_declared_held_inventory_envelope_and_refuses_other_answers() {
-        let context = json!({"account":"owner","project":"project","generation":1});
-        let inventory = json!({"captured_context":context,"context":context,"total":0,"rows":[],"mutated":false});
-        let envelope = json!({"v":1,"command":"map.profile.view","status":"ok","data":{"held_models":inventory}});
-        assert_eq!(held_inventory(envelope.clone()).unwrap().total, 0);
-        assert_eq!(held_inventory(inventory).unwrap().total, 0);
-        for (field, value) in [
-            ("command", json!("another.command")),
-            ("status", json!("error")),
-        ] {
-            let mut other = envelope.clone();
-            other[field] = value;
-            assert!(held_inventory(other).is_err());
-        }
-    }
-
-    #[test]
-    fn mv_picker_refuses_mixed_modes_before_authentication_and_bounds_input_files() {
-        let context = Context {
-            confirmed: false,
-            output: ds_cli_contract::Output::resolve(ds_cli_contract::Format::Json, false, true),
-        };
-        for flags in [
-            vec!["--mv-picker", "--cursor", "old"],
-            vec!["--refresh"],
-            vec!["--source-binding", "missing.json"],
-        ] {
-            let mut tokens: Vec<String> = vec![
-                "--project".into(),
-                "project".into(),
-                "--lane".into(),
-                "stable".into(),
-            ];
-            tokens.extend(flags.into_iter().map(str::to_owned));
-            let inputs = ds_cli_contract::args::parse(&LIST, &tokens).unwrap();
-            assert_eq!(
-                list(&inputs, &context).unwrap_err().code(),
-                "grid_project_output_invalid"
-            );
-        }
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("bounded.json");
-        std::fs::write(&path, b"{\"a\":1}").unwrap();
-        assert_eq!(owned_json(path.to_str().unwrap(), 7).unwrap()["a"], 1);
-        assert!(owned_json(path.to_str().unwrap(), 6).is_err());
-        let source_path = dir.path().join("source.json");
-        std::fs::write(&source_path,serde_json::to_vec(&json!({"project_id":"project","model_id":"head","revision_id":"rev","content_sha256":"a".repeat(64),"version":1,"worker_id":"local","worker_model_id":"native","worker_revision":"rev:1","history_pin":"pin","coordinate_system":"EPSG:32736","read_only":false})).unwrap()).unwrap();
-        let inputs = ds_cli_contract::args::parse(
-            &LIST,
-            &[
-                "--project".into(),
-                "project".into(),
-                "--lane".into(),
-                "stable".into(),
-                "--mv-picker".into(),
-                "--source-binding".into(),
-                source_path.to_str().unwrap().into(),
-            ],
-        )
-        .unwrap();
-        assert_eq!(
-            list(&inputs, &context).unwrap_err().code(),
-            "grid_project_output_invalid"
-        );
-        #[cfg(unix)]
-        {
-            let link = dir.path().join("alias.json");
-            std::os::unix::fs::symlink(&path, &link).unwrap();
-            assert!(owned_json(link.to_str().unwrap(), 100).is_err());
-        }
-    }
-
-    fn fixture_index() -> ObjectIndex {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid");
-        let bytes = std::fs::read(&path).expect("real grid fixture");
-        crate::objects::index_bytes("fixture", &path.display().to_string(), &bytes, None)
-            .expect("index through the same in-memory path as project export")
-    }
-
-    fn identity() -> SourceIdentity<'static> {
-        SourceIdentity {
-            project: "project-1",
-            model: "model-1",
-            revision: "revision-1",
-            digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-        }
-    }
-
-    const HEAD_DIGEST: &str = "1111111111111111111111111111111111111111111111111111111111111111";
-
-    fn backup() -> Value {
-        json!({
-            "bucket": "ds-grid-model-backups",
-            "object": format!("project-grid-models/v1/project-1/model-1/revision-1/{HEAD_DIGEST}.dsgrid"),
-            "generation": 1_758_870_000_123_456_i64,
-            "digest": HEAD_DIGEST,
-            "byte_length": 4096
-        })
-    }
-
-    /// The Server's `deletion` answer, as ds-brain writes it.
-    fn deletion(backup: Value) -> Value {
-        json!({
-            "project_id": "project-1",
-            "model_id": "model-1",
-            "head_revision_id": "revision-1",
-            "head_model_digest": HEAD_DIGEST,
-            "deleted_at": "2026-09-26T07:00:00Z",
-            "revisions_retained": true,
-            "model_object_retained": true,
-            "backup": backup
-        })
-    }
-
-    #[test]
-    fn retire_refuses_when_no_verified_backup_of_the_head_is_confirmed() {
-        // The Server takes and verifies the backup before it retires the
-        // head; when it cannot, it answers 5xx and the head stays active.
-        // That reached the caller as an authentication hiccup.
-        for cause in [
-            Failure::unavailable(
-                "auth_transient",
-                "the native authentication service is temporarily unavailable",
-            ),
-            Failure::unavailable(
-                "auth_response_unreadable",
-                "the authentication or project response did not match its closed contract",
-            ),
-        ] {
-            let refused = retired(Err(cause), HEAD_DIGEST).expect_err("no backup, no receipt");
-            assert_eq!(refused.code(), RETIRE_BACKUP.code);
-            assert_eq!(refused.remedy_text(), Some(RETIRE_BACKUP.remedy));
-        }
-        // An answer without the backup, or with another head's backup, is
-        // never accepted as a retirement.
-        let mut other = backup();
-        other["digest"] = json!("2".repeat(64));
-        let mut unwritten = backup();
-        unwritten["generation"] = json!(0);
-        let mut empty = backup();
-        empty["byte_length"] = json!(0);
-        for backup in [Value::Null, other, unwritten, empty] {
-            let refused =
-                retired(Ok(deletion(backup)), HEAD_DIGEST).expect_err("unverified backup");
-            assert_eq!(refused.code(), RETIRE_BACKUP.code);
-        }
-        // The Server's own named refusals keep their names.
-        let fenced = retired(
-            Err(Failure::invalid("grid_request_refused", "moved head")),
-            HEAD_DIGEST,
-        )
-        .expect_err("refused");
-        assert_eq!(fenced.code(), "grid_request_refused");
-        let declared = RETIRE
-            .refusals
-            .iter()
-            .find(|r| r.code == RETIRE_BACKUP.code)
-            .expect("retire declares the backup refusal");
-        assert!(declared.when.contains("backup") && declared.remedy.len() > 10);
-    }
-
-    #[test]
-    fn retire_envelope_names_the_verified_backup_identity() {
-        let envelope =
-            retired(Ok(deletion(backup())), HEAD_DIGEST).expect("verified backup accepted");
-        assert_eq!(envelope["backup"], backup());
-        assert_eq!(envelope["head_model_digest"], HEAD_DIGEST);
-        assert_eq!(envelope["revisions_retained"], true);
-        for field in ["backup", "bucket", "object", "generation", "byte_length"] {
-            assert!(
-                RETIRE.output.contains(field),
-                "retire's output contract must name `{field}`"
-            );
-        }
-    }
-
-    #[test]
-    fn authored_alignment_geojson_is_two_dimensional_wgs84_with_exact_source() {
-        let index = fixture_index();
-        let page = geojson_page(&index, identity(), None, None, 50).expect("page");
-        assert_eq!(page.total, 1);
-        assert_eq!(page.alignment_ids, vec!["aln-e9bc0619ae359761-1"]);
-        assert!(page.next_cursor.is_none());
-        let feature = &page.document["features"][0];
-        assert_eq!(feature["geometry"]["type"], "LineString");
-        let points = feature["geometry"]["coordinates"].as_array().unwrap();
-        assert_eq!(points.len(), 3);
-        for point in points {
-            let coordinates = point.as_array().unwrap();
-            assert_eq!(
-                coordinates.len(),
-                2,
-                "chainage must not become GeoJSON altitude"
-            );
-            let lon = coordinates[0].as_f64().unwrap();
-            let lat = coordinates[1].as_f64().unwrap();
-            assert!((26.0..28.0).contains(&lon) && (-90.0..0.0).contains(&lat));
-        }
-        assert_eq!(feature["properties"]["project"], "project-1");
-        assert_eq!(feature["properties"]["project_revision_id"], "revision-1");
-        assert_eq!(feature["properties"]["geometry_crs"], "EPSG:4326");
-        assert_eq!(feature["properties"]["route_length_m"], 400.0);
-        assert_eq!(feature["properties"]["package_model_id"], index.model_id);
-    }
-
-    #[test]
-    fn alignment_pages_resume_at_the_first_omitted_id_without_duplication() {
-        let mut index = fixture_index();
-        for id in ["alignment-b", "alignment-a"] {
-            let mut another = index.alignments[0].clone();
-            another.id = id.into();
-            index.alignments.push(another);
-        }
-        let first = geojson_page(&index, identity(), None, None, 2).expect("first page");
-        assert_eq!(first.alignment_ids, vec!["alignment-a", "alignment-b"]);
-        assert_eq!(first.next_cursor.as_deref(), Some("aln-e9bc0619ae359761-1"));
-        let second = geojson_page(&index, identity(), None, first.next_cursor.as_deref(), 2)
-            .expect("second page");
-        assert_eq!(second.alignment_ids, vec!["aln-e9bc0619ae359761-1"]);
-        assert!(second.next_cursor.is_none());
-        assert_eq!(
-            geojson_page(&index, identity(), Some("missing"), None, 1)
-                .err()
-                .unwrap()
-                .code(),
-            GEOJSON_ALIGNMENT.code
-        );
-        assert_eq!(
-            geojson_page(&index, identity(), None, Some("missing"), 1)
-                .err()
-                .unwrap()
-                .code(),
-            GEOJSON_PAGE.code
-        );
-    }
-}
+#[path = "project_tests.rs"]
+mod tests;

@@ -32,6 +32,7 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use crate::linked_pls;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -41,7 +42,7 @@ use ds_cli_dsgrid::model::pls_source::{
     MODEL_NOT_FROM_PLS, WORKSPACE_DIGEST_MOVED, WORKSPACE_NOT_FOUND, WORKSPACE_NOT_LINKED,
     WORKSPACE_NOT_THIS_PACKAGE,
 };
-use ds_cli_dsgrid::model::{pls_source, workspace};
+use ds_cli_dsgrid::model::workspace;
 use ds_grid_exchange::pls_cadd_workspace_sync::{
     SyncAction, WorkspaceSyncError, WorkspaceSyncInput, WorkspaceSyncPlan, plan_workspace_sync,
 };
@@ -244,7 +245,7 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
         _ => None,
     };
 
-    let opened = pls_source::open(inputs, &id)?;
+    let opened = linked_pls::open(inputs, &id)?;
     let link = opened.row.pls_source.clone().ok_or_else(|| {
         Failure::invalid(
             "workspace_not_linked",
@@ -255,12 +256,12 @@ pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
             "ds dsgrid model link --model {id} --workspace <folder>"
         ))
     })?;
-    let source = pls_source::pls_source(&id, &opened.package)?;
+    let source = linked_pls::pls_source(&id, &opened.package)?;
     let target = inputs
         .value("into")
         .unwrap_or(link.path.as_str())
         .to_string();
-    let workspace_read = pls_source::read_workspace(&target)?;
+    let workspace_read = linked_pls::read_workspace(&target)?;
     if matches!(mode, Mode::Write) && backup_out.is_none() {
         ensure_workspace_closed(&workspace_read.path)?;
     }
@@ -536,7 +537,7 @@ fn identity_json(
 fn project(
     plan: &WorkspaceSyncPlan,
     id: &str,
-    workspace_read: &pls_source::ReadWorkspace,
+    workspace_read: &linked_pls::ReadWorkspace,
     pinned_digest: &str,
     mode: &str,
     written: Vec<String>,

@@ -12,7 +12,7 @@ no identity, project state, command schema, or authority.
 ## Choose one installation shape
 
 For a general agent, install the broad default. It advertises `ds_catalog` and
-`ds_diagnostics` plus eleven operator-intent chapter routers (13 tools total),
+`ds_diagnostics` plus twelve operator-intent chapter routers (14 tools total),
 even as commands grow:
 
 ```text
@@ -43,9 +43,10 @@ both bootstrap tools, `ds_catalog` and `ds_diagnostics`, plus bounded
 typed leaves. Do not install every profile: that duplicates discovery and
 recreates selection ambiguity.
 
-Core no longer exposes Grid file authoring, PLS-CADD automation, or engineering
-library profiles. A profile only projects available commands and cannot enable
-an excluded component. Find a changed operation through `ds_catalog` rather
+Use `grid`, `grid-native`, `grid-local-model`, `grid-corrections` or `clearance`
+for DS Grid file work, which runs in the installed Network addon. Core does not
+yet restore the PLS-CADD automation or engineering library profiles. A profile
+only projects available commands and cannot enable an excluded component. Find a changed operation through `ds_catalog` rather
 than guessing its generated tool name.
 
 The entry belongs in the user profile on the PC where DS GridDesign is

@@ -1,67 +1,60 @@
 //! `ds dsgrid` — the canonical grid model.
 //!
 //! This domain answers questions about a `.dsgrid` package someone already
-//! has: what is it, what is in it, and is it sound. It is a transport, not an
-//! engine. It reads bytes, hands them to the `ds-network` crates the desktop
-//! application already links, and shapes the result into a bounded
-//! projection. It computes nothing: every count, fingerprint, extent and
-//! validation issue it prints came out of `ds-grid-model`, `ds-grid-engine`
-//! or `ds-grid-exchange`. A second implementation of any of that here would
-//! be a second answer to a question that must have one.
+//! has — what is it, what is in it, is it sound — and makes typed,
+//! revision-pinned edits to one. It is a transport, not an engine. Every
+//! decode, count, fingerprint, validation issue, plan, transaction and emitted
+//! package comes from the independently installed Network addon, reached
+//! through the closed typed process client in `ds-network-client`
+//! (DECOUPLING-003). Core keeps what Core owns: argument admission, target
+//! resolution, this machine's working-copy catalogue, project authority,
+//! confirmation, output files and bounded presentation. No Grid engine,
+//! exchange or composition crate is linked; a missing or older addon refuses
+//! before any work.
 //!
-//! Manufacturing a `.dsgrid` — classifying foreign sources, planning a
-//! conversion, executing one — is deliberately *not* here. It lives in
-//! `ds-cli-dsgrid-exchange`. The split is not tidiness: every command in this
-//! domain creates a blank canonical package or reads/revision-gates an
-//! existing one. `create` calls the shared blank-model authority; `apply`
-//! writes a new package, never the source. Conversion from a foreign format
-//! remains in the exchange domain.
+//! Manufacturing a `.dsgrid` from a foreign source — classifying, planning
+//! and executing a conversion — is deliberately *not* here; it belongs to the
+//! exchange domain. `create` asks the addon for the shared blank model;
+//! every edit writes a new package or the working copy's next revision,
+//! never the source in place.
 //!
-//! One family in this domain reaches an owner instead of linking one. A
-//! *local model* is a live session and a durable store inside the running
-//! application, not a file, so [`model`] asks the paired application for each
-//! named transition. Its module header states the boundary that family holds;
-//! nothing in it manufactures a `.dsgrid` either.
+//! One family in this domain reaches the paired application instead: a live
+//! Profile session ([`profile`]) and project publication of a held model are
+//! the application's own transitions.
 //!
-//! The typed command family (`structure describe|retype`, `report
-//! structures`, program contract 01 §2) shares one plumbing, [`mutation`]:
-//! target selection (`--model` working copy revised in place, or `--package`
-//! → `--out`), the revision pin, dry-run/--yes, and one receipt shape. A new
-//! typed verb is its inputs, its engine commands and its render; nothing
-//! else.
+//! The typed command family (`structure describe|retype`, `criteria
+//! clearance set`) shares one host plumbing, [`mutation`]: target selection
+//! (`--model` working copy revised in place, or `--package` → `--out`), the
+//! revision pin, dry-run/--yes, and one receipt shape. The engine half of each
+//! verb is one closed Network operation.
+//!
+//! Commands of the linked surface that have not yet been restored through the
+//! addon are recorded in `ds-architecture/backlog/DECOUPLING.md`
+//! (DECOUPLING-003) with the source revision that retains them.
 
-pub mod alignment;
 pub mod analyse;
 pub mod apply;
 pub mod apply_batch;
 pub mod apply_receipt;
-pub mod asset;
-pub mod backup;
-mod command_shape;
 pub mod create;
 pub mod criteria;
 pub mod describe;
 pub mod feature_codes;
 pub mod folder;
 mod host_memory;
-pub mod import_structure;
 pub mod inspect;
 pub mod model;
 pub mod mutation;
 mod native;
-pub mod objects;
 pub mod package;
 pub mod package_migrate;
 pub mod preview_receipt;
 pub mod profile;
 pub mod project;
-pub mod reconcile_cable_source;
-pub mod replace_structure;
 pub mod report;
 pub mod run;
 mod spotting_receipt;
 pub mod structure;
-pub mod template;
 pub mod validate;
 
 use ds_cli_contract::spec::Domain;
@@ -70,14 +63,11 @@ pub static DOMAIN: Domain = Domain {
     id: "dsgrid",
     summary: "Canonical .dsgrid models: inspect, validate, revise, publish.",
     commands: &[
-        &backup::COMMAND,
         &package_migrate::COMMAND,
         &project::LIST,
         &project::SHOW,
         &project::VERSIONS,
         &project::DOWNLOAD,
-        &project::GEOJSON,
-        &project::COMPARE,
         &project::exports::LIST,
         &project::exports::PUBLISH,
         &project::exports::DOWNLOAD,
@@ -87,18 +77,7 @@ pub static DOMAIN: Domain = Domain {
         &project::governance::BACKUP_DOWNLOAD,
         &project::RETIRE,
         &project::RESTORE,
-        &asset::PROJECT_LIST,
-        &asset::PROJECT_EXTRACT,
-        &asset::LIST,
-        &asset::EXTRACT,
-        &asset::ATTACH,
-        &asset::DETACH,
         &create::COMMAND,
-        &template::COMMAND,
-        &template::INSPECT,
-        &template::APPLY,
-        &import_structure::COMMAND,
-        &replace_structure::COMMAND,
         &inspect::COMMAND,
         &validate::COMMAND,
         &describe::COMMAND,
@@ -106,37 +85,29 @@ pub static DOMAIN: Domain = Domain {
         &preview_receipt::COMMAND,
         &apply_receipt::COMMAND,
         &apply::COMMAND,
-        &reconcile_cable_source::COMMAND,
         &apply_batch::COMMAND,
         &apply_batch::CORRECTION,
-        &profile::labels::SHOW,
-        &profile::labels::SET,
-        &alignment::gap::SHOW,
-        &alignment::gap::SET,
+        &profile::open::COMMAND,
         &model::list::COMMAND,
         &model::show::COMMAND,
         &model::create_local::COMMAND,
         &model::import_external::COMMAND,
         &model::link::COMMAND,
-        &model::combine::COMMAND,
         &model::unlink::COMMAND,
         &model::set_active::COMMAND,
         &model::forget::COMMAND,
         &model::prepare_project::COMMAND,
-        &model::publish_version::COMMAND,
-        &structure::admin_refresh::COMMAND,
         &structure::describe::COMMAND,
         &structure::retype::COMMAND,
-        &structure::staking_enrich::COMMAND,
         &report::structures::COMMAND,
         &report::staking::COMMAND,
         &feature_codes::report::COMMAND,
-        &feature_codes::cleared_forest_offset::COMMAND,
-        &feature_codes::import::COMMAND,
-        &feature_codes::migrate::COMMAND,
-        &feature_codes::export::COMMAND,
         &criteria::show::COMMAND,
         &criteria::clearance_set::COMMAND,
         &analyse::clearance::COMMAND,
     ],
 };
+
+#[cfg(test)]
+#[path = "../tests/support/linked_oracle.rs"]
+mod linked_oracle;

@@ -192,7 +192,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // still digests to it now, the copy is linked without the operator
     // re-typing the path. Anything short of that leaves the copy unlinked
     // and says why — `ds dsgrid model link` is the explicit act.
-    let auto_link = auto_link(inputs, &imported.id, &bytes, file)?;
+    let auto_link = auto_link(&client, &imported.id, &bytes, file)?;
     if let AutoLink::Linked(link) = &auto_link {
         let relinked = workspace::execute(
             inputs,
@@ -237,12 +237,11 @@ impl AutoLink {
 /// The sibling `exchange-report.json` of an exchange output, when the
 /// package sits where `convert` wrote it.
 fn auto_link(
-    inputs: &Inputs,
+    client: &ds_network_client::CapturedNetworkClient,
     id: &str,
     package_bytes: &[u8],
     package_file: &std::path::Path,
 ) -> Result<AutoLink, Failure> {
-    let _ = inputs;
     let report_path = package_file
         .parent()
         .map(|dir| dir.join("exchange-report.json"))
@@ -278,11 +277,8 @@ fn auto_link(
             folder_sources.len()
         )));
     };
-    let package = ds_grid_exchange::package::unpack(package_bytes).map_err(|error| {
-        Failure::invalid(NOT_A_PACKAGE.code, error.to_string()).remedy(NOT_A_PACKAGE.remedy)
-    })?;
-    let Some(source) = ds_grid_exchange::conversion::dsgrid_package_pls_source(&package)
-        .map_err(|detail| Failure::failed(NOT_A_PACKAGE.code, detail))?
+    let Some(source) = crate::model::pls_source::package_origin(client, id, package_bytes)
+        .map_err(|failure| failure.remedy(NOT_A_PACKAGE.remedy))?
     else {
         return Ok(AutoLink::Skipped(
             "the package preserved no PLS-CADD workspace".to_string(),
@@ -294,7 +290,7 @@ fn auto_link(
             source.origin_digest
         )));
     }
-    let workspace_read = match crate::model::pls_source::read_workspace(path) {
+    let workspace_read = match crate::model::pls_source::read_workspace(client, path) {
         Ok(read) => read,
         Err(failure) => {
             return Ok(AutoLink::Skipped(format!(
@@ -309,7 +305,6 @@ fn auto_link(
             workspace_read.digest
         )));
     }
-    let _ = id;
     Ok(AutoLink::Linked(crate::model::pls_source::link_for(
         &workspace_read,
     )))

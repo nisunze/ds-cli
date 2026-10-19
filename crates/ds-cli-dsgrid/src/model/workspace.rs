@@ -161,18 +161,6 @@ pub(crate) fn execute_in_with_client(
 ) -> Result<Outcome, Failure> {
     let root = root()?;
     let mut captured = None;
-    let mut guard = |path: &str, bytes: &[u8], operation: &str| {
-        let client = match client {
-            Some(client) => client,
-            None => {
-                if captured.is_none() {
-                    captured = Some(crate::native::capture()?);
-                }
-                captured.as_ref().expect("captured above")
-            }
-        };
-        crate::package::authorize_write_bytes(client, path, bytes, operation)
-    };
     let guarded = match &op {
         // Acquiring a verified project revision is a read view, not model creation.
         Op::Register {
@@ -198,22 +186,40 @@ pub(crate) fn execute_in_with_client(
             let path = ds_layer_store::local_models::package_path(&dir, id).map_err(refuse)?;
             let bytes = crate::package::read_bytes(&path.to_string_lossy())?;
             // Catalogue metadata operations also govern opaque/historical
-            // ordinary payloads. Decode engineering only for a combined identity.
-            if crate::package::read_manifest(&path.to_string_lossy(), &bytes).is_ok_and(
-                |manifest| {
-                    ds_network_contracts::grid::is_combined_identity(
-                        manifest.model.model_id.as_str(),
-                    )
-                },
-            ) {
-                guard(&path.to_string_lossy(), &bytes, operation)?;
+            // ordinary payloads with zero addon probes. Engineering admission
+            // runs only for a declared combined identity.
+            if crate::package::declared_model_id(&bytes)
+                .is_some_and(|id| ds_network_contracts::grid::is_combined_identity(&id))
+            {
+                let owner = lazy_owner(client, &mut captured)?;
+                crate::package::authorize_write_bytes(
+                    owner,
+                    &path.to_string_lossy(),
+                    &bytes,
+                    operation,
+                )?;
             }
         }
         if let Some(bytes) = package {
-            guard("working copy", bytes, operation)?;
+            let owner = lazy_owner(client, &mut captured)?;
+            crate::package::authorize_write_bytes(owner, "working copy", bytes, operation)?;
         }
     }
     ds_layer_store::local_models::execute_at(&root, scope, op, package).map_err(refuse)
+}
+
+/// The invocation's captured owner, or the lane's addon captured once.
+fn lazy_owner<'a>(
+    client: Option<&'a ds_network_client::CapturedNetworkClient>,
+    captured: &'a mut Option<ds_network_client::CapturedNetworkClient>,
+) -> Result<&'a ds_network_client::CapturedNetworkClient, Failure> {
+    if let Some(client) = client {
+        return Ok(client);
+    }
+    if captured.is_none() {
+        *captured = Some(crate::native::capture()?);
+    }
+    Ok(captured.as_ref().expect("captured above"))
 }
 
 /// One working copy found on this machine: its catalogue, its row and the
@@ -383,53 +389,8 @@ pub fn row(model: &LocalModel, active: Option<&str>) -> Value {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_minted_id_is_one_path_segment() {
-        for _ in 0..16 {
-            let id = mint_id();
-            assert!(
-                ds_command_kernel::local_models::id_is_safe(&id),
-                "{id} is not one safe path segment"
-            );
-        }
-    }
-
-    #[test]
-    fn every_kernel_refusal_this_family_can_raise_is_documented() {
-        // The kernel's vocabulary is closed; a code it can return that no
-        // command documents is exactly what `refusal_coverage.rs` refuses.
-        for code in [
-            ds_command_kernel::local_models::UNKNOWN_MODEL,
-            ds_command_kernel::local_models::DUPLICATE_NAME,
-            ds_command_kernel::local_models::CATALOGUE_FULL,
-            ds_command_kernel::local_models::MALFORMED,
-            ds_command_kernel::local_models::SCOPE_MISMATCH,
-        ] {
-            assert!(
-                REFUSALS.iter().any(|refusal| refusal.code == code),
-                "the kernel can refuse with `{code}` and no command says so"
-            );
-        }
-    }
-
-    #[test]
-    fn a_refusal_keeps_the_kernels_own_name() {
-        let refused = refuse(StoreError::Refused {
-            code: ds_command_kernel::local_models::UNKNOWN_MODEL.to_owned(),
-            message: "no local model m-9 on this machine".into(),
-        });
-        assert_eq!(
-            refused.code(),
-            ds_command_kernel::local_models::UNKNOWN_MODEL
-        );
-
-        let unavailable = refuse(StoreError::Store("disk is full".into()));
-        assert_eq!(unavailable.code(), STORE_UNAVAILABLE.code);
-    }
-}
+#[path = "workspace_tests.rs"]
+mod tests;
 
 /// The meaningful local model-open boundary. Every subsequent operation uses
 /// the saved strict-current package. Raw/library/template readers are untouched.
@@ -441,6 +402,9 @@ fn prepare_open_at(
     root_path: &std::path::Path,
     located: &Located,
 ) -> Result<Option<Value>, Failure> {
+    use ds_network_contracts::grid_operation::{
+        GridOperationV1, PackageMigrateParamsV1, PackageMigrateResultV1,
+    };
     let source = crate::package::read_bytes(
         located
             .path
@@ -455,12 +419,25 @@ fn prepare_open_at(
         )
         .remedy(REVISION_CONFLICT.remedy));
     }
-    let output = ds_grid_exchange::package_migration::migrate(&source).map_err(|error| {
-        Failure::invalid("package_migration_invalid", error.to_string()).remedy(
-            "retain the original package; unsupported historical facts require an owning migration",
-        )
+    let client = crate::native::capture()?;
+    let mut outcome = crate::native::operation_with(
+        &client,
+        &GridOperationV1::PackageMigrate(PackageMigrateParamsV1::default()),
+        Some(&source),
+        &[],
+    )
+    .map_err(|failure| {
+        if failure.code() == "package_migration_invalid" {
+            failure.remedy(
+                "retain the original package; unsupported historical facts require an owning migration",
+            )
+        } else {
+            failure
+        }
     })?;
-    if output.receipt.already_current {
+    let migrated: PackageMigrateResultV1 = serde_json::from_value(outcome.result.result.clone())
+        .map_err(|error| Failure::failed("network_result_invalid", error.to_string()))?;
+    if migrated.already_current {
         return Ok(None);
     }
     // A draft has its own immutable base/checkpoint graph; do not rebase it as
@@ -472,32 +449,33 @@ fn prepare_open_at(
         )
         .remedy(DRAFT_PENDING.remedy));
     }
-    let identity = identity(&output.bytes)?;
+    let bytes = outcome.take_artifact("model.dsgrid").ok_or_else(|| {
+        Failure::failed(
+            "network_result_invalid",
+            "the format migration returned no current package",
+        )
+    })?;
+    let identity = identity_with_client(&bytes, &client)?;
     if identity.model_revision != located.row.model_revision {
         return Err(Failure::invalid(
             "package_migration_invalid",
             "format migration changed authored package revision",
         ));
     }
-    let codec = serde_json::to_vec(&output.receipt.output_codec_fingerprints)
-        .map_err(|error| Failure::internal("package_migration_invalid", error.to_string()))?;
-    let codec_sha = format!("{:x}", Sha256::digest(codec));
     let cache_root = root_path.join("model-format-migrations");
     std::fs::create_dir_all(&cache_root)
         .map_err(|error| Failure::failed("package_migration_output", error.to_string()))?;
-    let cache = cache_root.join(format!("{}-{}", source_sha, codec_sha));
+    let cache = cache_root.join(format!("{}-{}", source_sha, migrated.output_codec_sha256));
     let files = if cache.exists() {
         let saved_source = std::fs::read(cache.join("original.dsgrid"));
         let saved_output = std::fs::read(cache.join("model.dsgrid"));
         let saved_receipt = std::fs::read(cache.join("migration.receipt.json"));
         let valid = saved_source.as_ref().is_ok_and(|b| b == &source)
-            && saved_output.as_ref().is_ok_and(|b| b == &output.bytes)
+            && saved_output.as_ref().is_ok_and(|b| b == &bytes)
             && saved_receipt
                 .ok()
                 .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-                == Some(serde_json::to_value(&output.receipt).map_err(|error| {
-                    Failure::internal("package_migration_invalid", error.to_string())
-                })?);
+                == Some(migrated.receipt.clone());
         if !valid {
             return Err(Failure::invalid(
                 "package_migration_output",
@@ -506,7 +484,13 @@ fn prepare_open_at(
         }
         json!({"package_path":cache.join("model.dsgrid"), "receipt_path":cache.join("migration.receipt.json")})
     } else {
-        crate::package_migrate::materialize_preserving_source(&cache, &output, Some(&source))?
+        crate::package_migrate::materialize_preserving_source(
+            &cache,
+            &bytes,
+            &migrated.receipt,
+            &migrated.source_sha256,
+            Some(&source),
+        )?
     };
     // Original/current bytes and receipt exist before the authoritative SHA
     // fence. A racing writer or pending draft refuses without replacing it.
@@ -522,188 +506,20 @@ fn prepare_open_at(
             head_revision: Some(identity.authored_revision.clone()),
             revised_at: None,
         },
-        Some(&output.bytes),
+        Some(&bytes),
     )
     .map_err(refuse)?;
     Ok(Some(
         json!({"source_sha256":source_sha,"current_sha256":identity.sha256,
         "source_authored_revision":located.row.head_revision,"current_authored_revision":identity.authored_revision,
         "original_package_path":cache.join("original.dsgrid"),"files":files,
-        "receipt":output.receipt,"published":false,"authored_model_revision_advanced":false}),
+        "receipt":migrated.receipt,"published":false,"authored_model_revision_advanced":false}),
     ))
 }
 
 #[cfg(test)]
-mod format_open_tests {
-    use super::*;
-    use ds_layer_store::local_models::{execute_at, package_path, read_at, scope_dir};
-    fn held(root: &std::path::Path, bytes: &[u8], revision: u64) -> Located {
-        let scope = Scope {
-            lane: "stable".into(),
-            uid: "local-migration-test".into(),
-        };
-        let outcome = execute_at(
-            root,
-            &scope,
-            Op::Register {
-                id: "local-migration-test".into(),
-                display_name: "Original named copy".into(),
-                origin: Origin::Imported,
-                crs: "EPSG:32735".into(),
-                model_revision: revision,
-                bytes: bytes.len() as u64,
-                sha256: format!("{:x}", Sha256::digest(bytes)),
-                created_at: None,
-                project: None,
-                head_revision: None,
-                activate: true,
-            },
-            Some(bytes),
-        )
-        .unwrap();
-        let row = outcome.model.unwrap();
-        let path = package_path(&scope_dir(root, &scope).unwrap(), &row.id).unwrap();
-        Located { scope, row, path }
-    }
-    fn current() -> Vec<u8> {
-        ds_grid_exchange::create_blank_model(&ds_grid_exchange::BlankModelRequest {
-            coordinate_system: Some("EPSG:32735"),
-            ..Default::default()
-        })
-        .unwrap()
-        .bytes
-    }
-    #[test]
-    fn current_named_open_is_noop_and_keeps_original_identity() {
-        let root = tempfile::tempdir().unwrap();
-        let bytes = current();
-        let revision = ds_grid_exchange::package::unpack(&bytes)
-            .unwrap()
-            .manifest
-            .model
-            .model_revision;
-        let located = held(root.path(), &bytes, revision);
-        let before = read_at(root.path(), &located.scope).unwrap();
-        assert!(prepare_open_at(root.path(), &located).unwrap().is_none());
-        assert_eq!(read_at(root.path(), &located.scope).unwrap(), before);
-        assert_eq!(std::fs::read(&located.path).unwrap(), bytes);
-        assert!(!root.path().join("model-format-migrations").exists());
-    }
-    #[test]
-    fn mismatched_catalogue_package_pin_refuses_without_effect() {
-        let root = tempfile::tempdir().unwrap();
-        let bytes = current();
-        let mut located = held(
-            root.path(),
-            &bytes,
-            ds_grid_exchange::package::unpack(&bytes)
-                .unwrap()
-                .manifest
-                .model
-                .model_revision,
-        );
-        located.row.sha256 = "a".repeat(64);
-        assert!(prepare_open_at(root.path(), &located).is_err());
-        assert_eq!(std::fs::read(&located.path).unwrap(), bytes);
-        assert!(!root.path().join("model-format-migrations").exists());
-    }
-    #[test]
-    #[ignore = "mandatory genuine old package local-open gate; execute explicitly with DS_GRID_LOCAL_OPEN_SOURCE and its pinned SHA"]
-    fn genuine_old_named_open_preserves_archive_saves_current_and_is_idempotent() {
-        let source_path = std::env::var("DS_GRID_LOCAL_OPEN_SOURCE").unwrap();
-        let expected = std::env::var("DS_GRID_LOCAL_OPEN_SOURCE_SHA256").unwrap();
-        let bytes = std::fs::read(source_path).unwrap();
-        assert_eq!(format!("{:x}", Sha256::digest(&bytes)), expected);
-        let output = ds_grid_exchange::package_migration::migrate(&bytes).unwrap();
-        assert!(!output.receipt.already_current);
-        let target = identity(&output.bytes).unwrap();
-        let root = tempfile::tempdir().unwrap();
-        let located = held(root.path(), &bytes, target.model_revision);
-        let old_row = located.row.clone();
-        let receipt = prepare_open_at(root.path(), &located)
-            .unwrap()
-            .expect("actual migration");
-        assert_eq!(receipt["source_sha256"], expected);
-        assert_eq!(receipt["current_sha256"], target.sha256);
-        assert_eq!(
-            std::fs::read(receipt["original_package_path"].as_str().unwrap()).unwrap(),
-            bytes
-        );
-        assert_eq!(std::fs::read(&located.path).unwrap(), output.bytes);
-        let catalogue = read_at(root.path(), &located.scope).unwrap();
-        let row = catalogue
-            .models
-            .iter()
-            .find(|row| row.id == old_row.id)
-            .unwrap()
-            .clone();
-        assert_eq!(row.model_revision, old_row.model_revision);
-        assert_eq!(row.display_name, old_row.display_name);
-        assert_eq!(row.origin, old_row.origin);
-        assert_eq!(row.crs, old_row.crs);
-        assert_eq!(row.project, old_row.project);
-        assert_eq!(row.created_at, old_row.created_at);
-        assert_eq!(row.pls_source, old_row.pls_source);
-        let current = Located {
-            scope: located.scope,
-            row,
-            path: located.path,
-        };
-        assert!(prepare_open_at(root.path(), &current).unwrap().is_none());
-        assert_eq!(read_at(root.path(), &current.scope).unwrap(), catalogue);
-        // A stale captured row cannot overwrite the already migrated package.
-        let stale = Located {
-            scope: current.scope.clone(),
-            row: old_row,
-            path: current.path.clone(),
-        };
-        assert!(prepare_open_at(root.path(), &stale).is_err());
-        assert_eq!(std::fs::read(&current.path).unwrap(), output.bytes);
-    }
-    #[test]
-    #[ignore = "mandatory old package pending-draft control; same pinned DS_GRID_LOCAL_OPEN_SOURCE"]
-    fn old_named_open_does_not_rebase_a_pending_draft_or_overwrite_incomplete_cache() {
-        let bytes = std::fs::read(std::env::var("DS_GRID_LOCAL_OPEN_SOURCE").unwrap()).unwrap();
-        assert_eq!(
-            format!("{:x}", Sha256::digest(&bytes)),
-            std::env::var("DS_GRID_LOCAL_OPEN_SOURCE_SHA256").unwrap()
-        );
-        let output = ds_grid_exchange::package_migration::migrate(&bytes).unwrap();
-        assert!(!output.receipt.already_current);
-        let root = tempfile::tempdir().unwrap();
-        let mut located = held(
-            root.path(),
-            &bytes,
-            identity(&output.bytes).unwrap().model_revision,
-        );
-        located.row.draft = Some(ds_command_kernel::local_models::LocalDraft {
-            bytes: 1,
-            pin: ds_command_kernel::local_models::DraftCheckpointPin {
-                binding: ds_command_kernel::local_models::DraftBinding {
-                    local_model_id: located.row.id.clone(),
-                    base_artifact_sha256: located.row.sha256.clone(),
-                },
-                head_revision: format!("rev:{}", "a".repeat(64)),
-                sequence: 1,
-                content_digest: "b".repeat(64),
-            },
-        });
-        assert!(prepare_open_at(root.path(), &located).is_err());
-        assert!(!root.path().join("model-format-migrations").exists());
-        located.row.draft = None;
-        let codec = serde_json::to_vec(&output.receipt.output_codec_fingerprints).unwrap();
-        let cache = root.path().join("model-format-migrations").join(format!(
-            "{}-{:x}",
-            located.row.sha256,
-            Sha256::digest(codec)
-        ));
-        std::fs::create_dir_all(&cache).unwrap();
-        std::fs::write(cache.join("original.dsgrid"), &bytes).unwrap();
-        assert!(prepare_open_at(root.path(), &located).is_err());
-        assert_eq!(std::fs::read(&located.path).unwrap(), bytes);
-        assert!(!cache.join("migration.receipt.json").exists());
-    }
-}
+#[path = "workspace_format_open_tests.rs"]
+mod format_open_tests;
 
 #[cfg(test)]
 #[path = "../../tests/support/workspace_identity.rs"]

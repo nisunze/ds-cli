@@ -14,7 +14,6 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_engine::{CommandError, GridCommand};
 use serde_json::{Value, json};
 
 use crate::package;
@@ -250,19 +249,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     Ok(projection)
 }
 
-/// The generic JSON lane cannot prove that a named village came from the
-/// exact local index. Only the typed admin-refresh adapter resolves that proof.
-pub(crate) fn guard_admin_refresh(command: &GridCommand) -> Result<(), Failure> {
-    if matches!(command, GridCommand::RefreshRwandaAdmin { .. }) {
-        return Err(Failure::invalid(
-            "admin_authority_required",
-            "Rwanda admin refresh needs exact village-index resolution",
-        )
-        .remedy("use ds dsgrid structure admin-refresh with a verified village index"));
-    }
-    Ok(())
-}
-
 fn read_envelope(raw_path: &str) -> Result<Value, Failure> {
     let path = Path::new(raw_path);
     let metadata = std::fs::metadata(path).map_err(|error| {
@@ -310,61 +296,6 @@ fn read_envelope(raw_path: &str) -> Result<Value, Failure> {
         .remedy("read the live command descriptor and rebuild the envelope")
         .detail(json!({ "detail": error.to_string() }))
     })
-}
-
-pub(crate) fn map_command_error(error: CommandError) -> Failure {
-    match error {
-        CommandError::InvalidInput { operation, message }
-            if operation == ds_grid_engine::model_protection::PROTECTED_CODE =>
-        {
-            Failure::invalid("composite_model_protected", message)
-                .remedy(package::PROTECTED_MODEL.remedy)
-        }
-        CommandError::StaleRevision { expected, actual } => Failure::conflict(
-            "revision_conflict",
-            "the command envelope was authored against a different revision",
-        )
-        .remedy("re-read the model and deliberately rebuild the envelope")
-        .detail(json!({
-            "expected_revision": expected.as_str(),
-            "actual_revision": actual.as_str(),
-        })),
-        CommandError::TargetNotFound { kind, id } => Failure::invalid(
-            "target_not_found",
-            format!("the command targets missing {kind} `{id}`"),
-        )
-        .remedy("use an id projected from this exact package revision"),
-        CommandError::InvalidInput { operation, message } => Failure::invalid(
-            "command_invalid",
-            format!("the engine rejected `{operation}`"),
-        )
-        .remedy("read the live command descriptor; do not approximate missing values")
-        .detail(json!({ "engine": message })),
-        CommandError::TerrainAcquisitionRequired {
-            alignment_id,
-            station_m,
-        } => Failure::failed(
-            "terrain_acquisition_required",
-            "the requested station has no effective ground coverage",
-        )
-        .remedy("author a verified terrain source and observations before interpolation")
-        .detail(json!({ "alignment_id": alignment_id, "station_m": station_m })),
-        CommandError::Validation { issues } => Failure::failed(
-            "model_validation_failed",
-            "the command would introduce new canonical model errors",
-        )
-        .remedy("revise the command; no output was written")
-        .detail(json!({ "issues": issues })),
-        CommandError::PartialTransactionOverlap {
-            already_applied,
-            fresh,
-        } => Failure::conflict(
-            "command_replay_conflict",
-            "the command transaction only partially overlaps prior work",
-        )
-        .remedy("refresh the model and submit one fresh intent")
-        .detail(json!({ "already_applied": already_applied, "fresh": fresh })),
-    }
 }
 
 pub(crate) fn validate_output_path(raw_path: &str) -> Result<(), Failure> {
@@ -438,27 +369,4 @@ pub fn render(data: &Value) -> String {
         data["artifact"]["path"].as_str().unwrap_or("?"),
         data["artifact"]["sha256"].as_str().unwrap_or("?"),
     )
-}
-
-#[cfg(test)]
-mod admin_guard_tests {
-    use super::*;
-
-    #[test]
-    fn generic_envelope_refuses_unverified_admin_names() {
-        let forged = GridCommand::RefreshRwandaAdmin {
-            authority_sha256: "unverified".into(),
-            rows: Vec::new(),
-            preview_token: "unverified".into(),
-            accept_existing_conflicts: false,
-        };
-        let error = guard_admin_refresh(&forged).unwrap_err();
-        assert_eq!(error.code(), "admin_authority_required");
-    }
-
-    #[test]
-    fn generic_envelope_keeps_unrelated_commands_available() {
-        let ordinary = GridCommand::EditEntityProperties { edits: Vec::new() };
-        assert!(guard_admin_refresh(&ordinary).is_ok());
-    }
 }
