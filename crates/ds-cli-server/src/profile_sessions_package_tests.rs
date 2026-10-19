@@ -321,7 +321,7 @@ fn real_profile_edits_are_durable_exact_recoverable_and_save_excluded() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        retained.draft.as_ref().unwrap().0.history,
+        *retained.draft.as_ref().unwrap().history(),
         edited["history"]
     );
     drop(sessions);
@@ -398,7 +398,11 @@ fn real_profile_edits_are_durable_exact_recoverable_and_save_excluded() {
         .profile_recovery(&source_scope(&scope()), &id)
         .unwrap()
         .unwrap();
-    let checkpoint: Value = serde_json::from_slice(&retained.draft.unwrap().1).unwrap();
+    let checkpoint: Value = match retained.draft.unwrap() {
+        ds_sync_store::ProfileDraft::Checkpoint { bytes, .. } => serde_json::from_slice(&bytes),
+        ds_sync_store::ProfileDraft::Journal(journal) => serde_json::from_slice(&journal.metadata),
+    }
+    .unwrap();
     let lineage: Value =
         serde_json::from_str(checkpoint["package_lineage_json"].as_str().unwrap()).unwrap();
     assert_eq!(lineage["model_revision"], 38);
@@ -469,5 +473,162 @@ fn real_profile_edits_are_durable_exact_recoverable_and_save_excluded() {
             .profile_recovery(&source_scope(&scope()), &id)
             .unwrap()
             .is_none()
+    );
+}
+
+fn journal_of(database: &Path, id: &str) -> ds_sync_store::ProfileJournalDraft {
+    match Store::open(database)
+        .unwrap()
+        .profile_recovery(&source_scope(&scope()), id)
+        .unwrap()
+        .unwrap()
+        .draft
+    {
+        Some(ds_sync_store::ProfileDraft::Journal(journal)) => journal,
+        other => panic!("expected an authored journal draft, found {other:?}"),
+    }
+}
+fn database_bytes(database: &Path) -> u64 {
+    ["", "-wal"]
+        .iter()
+        .filter_map(|suffix| fs::metadata(format!("{}{suffix}", database.display())).ok())
+        .map(|metadata| metadata.len())
+        .sum()
+}
+
+/// Owner failure 2026-10-19: drawing Gisagara Model 1 and entering edit mode
+/// refused `Profile recovery checkpoint exceeds the protected 64 MiB bound`,
+/// because the opaque checkpoint carried ~93 MB of calculated scene results.
+/// With an older engine (`DS_PROFILE_EXPECT_LEGACY_REFUSAL=1`) this reproduces
+/// that refusal; with an authored-recovery Network it retains only commands.
+#[test]
+#[ignore = "requires an explicit native Network and a large real .dsgrid package"]
+fn real_large_model_edits_retain_authored_rows_without_results() {
+    let bytes =
+        fs::read(std::env::var_os("DS_PROFILE_LARGE_PACKAGE").expect("explicit package")).unwrap();
+    assert!(std::env::var_os("DS_NETWORK_ENGINE_BIN").is_some());
+    let root = private_root();
+    let scratch = root.path().join("scratch");
+    fs::create_dir(&scratch).unwrap();
+    let database = root.path().join("state.sqlite");
+    let sessions = Sessions::default();
+    let execute = |sessions: &Sessions, request| {
+        sessions.execute(scope(), &scratch, &database, request, &|| Ok(()))
+    };
+    let opened = execute(&sessions, open(&bytes)).unwrap();
+    let id = opened["session_id"].as_str().unwrap().to_owned();
+    let snapshot: Value =
+        serde_json::from_str(opened["payload"]["snapshot_json"].as_str().unwrap()).unwrap();
+    let draw = |receipt: &Value, cached: bool| {
+        edit_request(
+            receipt,
+            "scene",
+            json!({"options":{},"label_policy":{"fields":["number","type"],"orientation":"vertical"},
+                "grid_ink":{"color":"#000000","width_px":1.0,"dash_px":[]},"cached":cached}),
+        )
+    };
+    let started = Instant::now();
+    let scene = execute(&sessions, draw(&opened, false)).unwrap();
+    let scene_bytes = serde_json::to_vec(&scene["payload"]).unwrap().len();
+    eprintln!(
+        "scene: {scene_bytes} bytes in {} ms",
+        started.elapsed().as_millis()
+    );
+    assert!(
+        scene_bytes > 1024 * 1024,
+        "a large model's calculated scene"
+    );
+    let admitted = execute(
+        &sessions,
+        edit_request(&opened, "edit_mode", json!({"enabled":true})),
+    );
+    if std::env::var("DS_PROFILE_EXPECT_LEGACY_REFUSAL").as_deref() == Ok("1") {
+        let error = admitted.unwrap_err();
+        assert_eq!(error.code(), "core_profile_request_invalid");
+        assert!(error.to_string().contains("64 MiB"), "{error}");
+        eprintln!("legacy engine refused as observed: {error}");
+        return;
+    }
+    let mut receipt = admitted.unwrap();
+    let empty = journal_of(&database, &id);
+    assert!(empty.entries.is_empty());
+    assert!(
+        empty.metadata.len() < 64 * 1024,
+        "no results in authored state"
+    );
+    let structures = snapshot["structures"].as_array().unwrap();
+    let mut elapsed = Vec::new();
+    for (index, structure) in structures.iter().skip(2).take(20).enumerate() {
+        let command = json!({"command_kind":"move_structure","id":structure["id"],
+            "x_m":structure["x_m"].as_f64().unwrap() + 0.5,"y_m":structure["y_m"],
+            "z_m":structure["z_m"],"orientation_rad":structure["orientation_rad"]});
+        let started = Instant::now();
+        receipt = execute(
+            &sessions,
+            edit_request(
+                &receipt,
+                "control",
+                json!({"operation":{"action":"apply_transaction","commands":[
+                    {"command_id":format!("move-{index}"),"command":command}]}}),
+            ),
+        )
+        .unwrap();
+        elapsed.push(started.elapsed().as_millis());
+        assert_eq!(receipt["history"]["undo_depth"], index + 1);
+    }
+    let journal = journal_of(&database, &id);
+    assert_eq!(journal.entries.len(), 20);
+    assert_eq!(journal.header.history, receipt["history"]);
+    let authored: usize =
+        journal.metadata.len() + journal.entries.iter().map(|e| e.bytes.len()).sum::<usize>();
+    eprintln!(
+        "20 moves: authored recovery {authored} bytes, store {} bytes, per-edit ms {elapsed:?}",
+        database_bytes(&database)
+    );
+    assert!(
+        authored < 256 * 1024,
+        "authored rows, not the model or results"
+    );
+    let undone = execute(
+        &sessions,
+        edit_request(&receipt, "control", json!({"operation":{"action":"undo"}})),
+    )
+    .unwrap();
+    let after_undo = journal_of(&database, &id);
+    assert_eq!(after_undo.entries, journal.entries, "undo writes no row");
+    assert_eq!(after_undo.header.history, undone["history"]);
+
+    // Restart: the exact head returns from the original plus authored rows.
+    drop(sessions);
+    assert_eq!(fs::read_dir(&scratch).unwrap().count(), 0);
+    let sessions = Sessions::default();
+    let mut recovery = open(&bytes);
+    if let Operation::Open { recover, .. } = &mut recovery.operation {
+        *recover = true;
+    }
+    let started = Instant::now();
+    let resumed = execute(&sessions, recovery).unwrap();
+    eprintln!("restart recovery in {} ms", started.elapsed().as_millis());
+    assert_eq!(resumed["recovered_draft"], true);
+    assert_eq!(resumed["session_id"], id);
+    assert_eq!(resumed["history"], undone["history"]);
+    let state = execute(&sessions, control(&resumed, "state")).unwrap();
+    assert_eq!(state["payload"]["calculation_requests"], 0);
+    assert!(state["payload"]["calculated_signature"].is_null());
+    // Results were discarded: a cached draw refuses until an explicit draw.
+    let error = execute(&sessions, draw(&resumed, true)).unwrap_err();
+    assert_eq!(error.code(), "core_profile_native_refused");
+    let redrawn = execute(&sessions, draw(&resumed, false)).unwrap();
+    assert_eq!(redrawn["history"], undone["history"]);
+    let redone = execute(
+        &sessions,
+        edit_request(&redrawn, "control", json!({"operation":{"action":"redo"}})),
+    )
+    .unwrap();
+    assert_eq!(redone["history"], receipt["history"]);
+    execute(&sessions, control(&redone, "close")).unwrap();
+    assert_eq!(
+        journal_of(&database, &id).header.history,
+        receipt["history"]
     );
 }

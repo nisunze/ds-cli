@@ -388,6 +388,33 @@ An original-only rebind does not recover a checkpoint, undo history, edited head
 or calculated result. A qualified successor Core is required for live behavior;
 independent Shell, Network and other component versions are not globally pinned.
 
+### Authored Profile recovery without results
+
+Owner report, 2026-10-19: drawing Gisagara Model 1 and entering edit mode
+refused `core_profile_request_invalid: Profile recovery checkpoint exceeds the
+protected 64 MiB bound`. One view had grown the opaque recovery checkpoint from
+7.9 MB to 100.7 MB, 92% of it calculated scene, case and usage results.
+
+`core.profile-session` contract 1 keeps its actions and receipts. When the
+captured Network declares `profile_authored_checkpoint_v1`, Core retains each
+acknowledged history as a `ds.core.profile-draft/v2` journal in the protected
+Kernel SQLite store: the retained original package plus one row per authored
+command, the five-field history and opaque Network lineage/binding metadata.
+Each acknowledgment writes only the commands after the durable prefix; a move
+adds about 1.3 KB, while drawing, undo, redo and edit-mode entry write no row.
+The preflight before-state is skipped when the draft already holds that exact
+history. Calculated results stay in the worker's RAM, so `checkpoint` and
+`close` payloads are authored-only open documents.
+
+Restart or `open recover:true` prepares the exact original through the stored
+engine pin, verifies every row's digest and the chain, and replays the commands
+through Network, which verifies chain, replay, binding state and lineage before
+adopting them. The first view after recovery is an explicit calculation; a
+cached request refuses through `core_profile_native_refused`. A captured Network
+without the capability keeps the v1 opaque checkpoint and its 64 MiB bound,
+whose refusal now names the required Network update. Older Core refuses a v2
+draft instead of reopening the original.
+
 ### Intentional Profile style demand
 
 The existing contract-1 View `style_document` now uses JSON `null` to demand the

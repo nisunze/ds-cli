@@ -429,6 +429,7 @@ fn open_original(
         style: None,
         touched: Instant::now(),
         retained_history: source.initial_history.clone(),
+        retained_journal: None,
         has_draft: false,
         saving: false,
         source,
@@ -553,6 +554,7 @@ struct Held {
     touched: Instant,
     source: ProfileSourceHeader,
     retained_history: Value,
+    retained_journal: Option<controls::RetainedJournal>,
     has_draft: bool,
     saving: bool,
     session: ProfileSession,
@@ -616,10 +618,10 @@ impl Sessions {
                     .flatten();
                 if let Some(recovery) = source {
                     let header = recovery.source.clone();
-                    let retained_history = recovery
-                        .draft
-                        .as_ref()
-                        .map_or(&header.initial_history, |(draft, _)| &draft.history);
+                    let retained_history = recovery.draft.as_ref().map_or(
+                        &header.initial_history,
+                        ds_sync_store::ProfileDraft::history,
+                    );
                     if header.model_id != model || retained_history != expected {
                         return Err(Failure::conflict(
                             "core_profile_history_conflict",
@@ -1000,12 +1002,10 @@ impl Sessions {
                         .map_err(source_error)?;
                     if current.as_ref().map(|recovery| &recovery.source) != Some(&session.source)
                         || current.as_ref().map(|recovery| {
-                            recovery
-                                .draft
-                                .as_ref()
-                                .map_or(&recovery.source.initial_history, |(draft, _)| {
-                                    &draft.history
-                                })
+                            recovery.draft.as_ref().map_or(
+                                &recovery.source.initial_history,
+                                ds_sync_store::ProfileDraft::history,
+                            )
                         }) != Some(&session.retained_history)
                     {
                         return Err(Failure::conflict(

@@ -303,6 +303,22 @@ Network delegates the complete operation to the existing typed Profile control
 owner. History, authorization, confirmation, atomic transaction, Save exclusion,
 reply validation and durable checkpoint rules remain the same.
 
+## Retained Profile authored recovery
+
+When the captured engine declares `profile_authored_checkpoint_v1`, Core's
+durable Profile recovery uses the `authored_checkpoint` operation instead of a
+full checkpoint. Its control frame names the durable prefix (entry count and
+chain digest); the reply artifact carries only later journal entries, so it
+stays small and never contains calculated results. Core verifies the merged
+chain before writing rows through the Kernel Store. Recovery prepares the
+retained original through the pinned engine and stages one complete authored
+document as the fixed-sequence `profile-input-NNNNNNNNNN.json` for
+`restore_authored`, bounded at 256 MiB and pinned by schema, exact size and
+SHA-256; the client re-reads and removes it after the reply. The replay deadline
+grows with the retained command count (30 s plus 250 ms per command, at most
+30 minutes). An engine without the capability keeps the full-checkpoint
+recovery and its 64 MiB bound.
+
 ## Survey queue audited discard
 
 `core.survey.queue` contract 1 keeps its protected input/output, captured
