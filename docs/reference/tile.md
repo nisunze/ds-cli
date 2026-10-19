@@ -36,17 +36,20 @@ what `--force` is for:
 ds tile status --project <id> --lane stable                                  # what is published, dirty, running
 ds tile preflight --project <id> --type design --lane stable                 # the sources a run would read
 ds tile plan --project <id> --type design --force --lane stable              # status + preflight, nothing started
-ds tile generate --project <id> --type design --force --lane stable --yes    # fixed backend generation call
-ds tile status --project <id> --type design --lane stable                    # follow the run
+ds core tile submit --input tiles.prepared.json --key tiles-001             # edge build on this machine
 ```
 
 `plan` never dispatches. It reads status, applies the same conservative
 staleness ordering as the Pipeline panel (already running → no new run;
 otherwise force, never published or dirty → run), and performs preflight only
 when a run would dispatch. Because those are separate authenticated reads, it
-refuses if the selected-project receipt changes between them. `generate`
-requires `--yes` and calls the fixed backend generation action directly;
-ds-brain repeats the authoritative staleness, preflight and lease decisions.
+refuses if the selected-project receipt changes between them.
+
+Tiling is edge compute. `ds tile generate` no longer reaches the retired hosted
+tile worker: it refuses with `native_compute_required` and names
+`ds core tile submit`, which builds tiles from a prepared `ds.tiles.prepared/v1`
+input with the Core on this machine. No edge step yet prepares that input from
+project survey/design data.
 
 During a run ds-brain normalises every policed categorical column to the
 project's canonical values (aliases → clean value, blank → the declared
@@ -69,11 +72,13 @@ of these commands takes `--lane` and nothing about a host.
 
 ```bash
 ds tile global catalog --domain network_template --search school   # eligible sources
-ds tile global generate --domain network_template --name "Rwanda schools"     --country Rwanda --source engineering-data-solutions.reference.schools     --maxzoom 12 --yes                                             # publish
-ds tile global status --tile <tile-id>                             # follow the run
+ds tile global status --tile <tile-id>                             # one publication job
 ds tile global list --domain network_template                      # what is live
 ds tile global access --tile <tile-id> --mode restricted --yes     # stop it being mounted
 ```
+
+`ds tile global generate` refuses with `native_compute_required`: the hosted
+reference worker is retired and no edge owner publishes a new global archive yet.
 
 A publication exposes one layer per source table, and a layer's style document
 is keyed by that layer name — `gt/<layer>`, with `gt/<layer>_print` for paper.

@@ -22,9 +22,10 @@ never touch storage directly.
    or `--force`); when true, `.data.preflight` shows the sources — read
    `.data.preflight.status` (`ready` / `empty` / `blocked`) and
    `.data.preflight.empty_layers` back to the user.
-3. Run only with the user's intent: the same flags with
-   `ds tile generate --project <id> … --yes`. It returns when ds-brain accepts the job;
-   follow with `ds tile status --project <id> --type <type>` (minutes, not seconds).
+3. Building tiles is edge compute. `ds tile generate` refuses with
+   `native_compute_required`; the Core on this machine builds tiles from a
+   prepared input through `ds core tile submit`. No edge step yet prepares that
+   input from project data, so report a needed rebuild instead of forcing one.
 4. Catalogue: `ds tile list --project <id> [--global]`; `ds tile add --project <id> --type <type>
    --source-project <id> --yes`; `ds tile remove --project <id> --tile-id <id> --yes`.
 
@@ -34,7 +35,7 @@ rebuilt for the legend and the categorical styling to reflect the project's
 vocabulary. Do not force a run on a clean, unchanged output.
 
 Order of a restyle campaign: catalogs (the project's vocabulary, edited in the
-application) → `ds style` → `ds tile generate --project <id> --force --yes` per output.
+application) → `ds style` → a rebuild of each output on an edge.
 
 Do not run `generate` while `in_progress` is true. Do not read `blocked` as a
 transient error — it names a source problem to fix first.

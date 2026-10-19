@@ -42,9 +42,10 @@ ds style cartography plan --project <id> --ref gt/wetlands_print --fill-pattern 
 ```
 
 The wetland example requires an actual published source and style; it does not
-create geography. Discover missing sources with `tile global catalog`, publish
-eligible sources with `tile global generate`, poll `tile global status`, then
-reconcile and install through `desktop data rwanda`. Use the opaque resource ID
+create geography. Discover sources with `tile global catalog` and live
+publications with `tile global list`, then reconcile and install through
+`desktop data rwanda`. New publications wait for an edge owner (`tile global
+generate` refuses with `native_compute_required`). Use the opaque resource ID
 returned by status for installation, not its human layer name.
 
 `style cartography` also controls visibility and geometry opacity. Polygon

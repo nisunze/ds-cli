@@ -209,6 +209,27 @@ native_refusal!(
     "retry once, then update ds if it persists"
 );
 
+/// Tiling is edge compute (development philosophy §2): the hosted tile
+/// worker is retired and nothing falls back to it. A project's tiles are
+/// built by the Core on this machine from a prepared input.
+pub const PROJECT_TILES_NATIVE_COMPUTE_REQUIRED: Refusal = Refusal {
+    code: "native_compute_required",
+    when: "always: project tile generation no longer runs in the cloud, and no edge step yet prepares project survey/design data into a tiling input",
+    remedy: "queue a prepared ds.tiles.prepared/v1 input on this machine with `ds core tile submit --input <path> --key <key>`, then follow `ds core status`",
+};
+/// Global reference publication has no edge owner yet; the hosted worker is
+/// retired, so the command refuses rather than reaching it.
+pub const GLOBAL_TILES_NATIVE_COMPUTE_REQUIRED: Refusal = Refusal {
+    code: "native_compute_required",
+    when: "always: global reference publication no longer runs in the cloud and has no edge owner yet",
+    remedy: "keep using the active publications (`ds tile global list`); a new publication waits for its edge owner",
+};
+
+/// `ds tile generate` refuses before any credential is restored, so the only
+/// refusals it can return are its own and the confirmation gate.
+pub const GENERATE_REFUSALS: &[Refusal] =
+    &[PROJECT_TILES_NATIVE_COMPUTE_REQUIRED, CONFIRMATION_REQUIRED];
+
 pub const NATIVE_REFUSALS: &[Refusal] = &[
     NATIVE_PROFILE,
     NATIVE_PROFILE_DIGEST,
@@ -610,16 +631,15 @@ mod tests {
     }
 
     #[test]
-    fn plan_never_dispatches_and_generate_uses_only_the_fixed_write() {
+    fn plan_never_dispatches_and_generate_reaches_no_service() {
         let plan = include_str!("plan.rs");
         assert!(plan.contains("ds_cli_auth::tile_status"));
         assert!(plan.contains("ds_cli_auth::tile_preflight"));
         assert!(!plan.contains("ds_cli_auth::tile_generate"));
 
         let generate = include_str!("generate.rs");
-        assert!(generate.contains("ds_cli_auth::tile_generate"));
-        assert!(!generate.contains("ds_cli_auth::tile_status"));
-        assert!(!generate.contains("ds_cli_auth::tile_preflight"));
+        assert!(!generate.contains("ds_cli_auth::tile_"));
+        assert!(generate.contains("ds core tile submit"));
     }
 
     #[test]

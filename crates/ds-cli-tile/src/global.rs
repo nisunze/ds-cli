@@ -10,7 +10,7 @@ use ds_cli_contract::{
     Context, Failure, Inputs,
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
-use ds_client_core::global_tiles::{Allowlists, Command as Global, Domain, Source, Visibility};
+use ds_client_core::global_tiles::{Allowlists, Command as Global, Domain, Visibility};
 use serde_json::Value;
 
 const DOMAIN: Arg = Arg::value("domain", "<domain>", "Governed Reference Layers domain.")
@@ -41,6 +41,12 @@ const fn refusals() -> [Refusal; 2 + ds_cli_auth::PROJECT_LIST_COMMAND.refusals.
 }
 const REFUSAL_SET: [Refusal; 2 + ds_cli_auth::PROJECT_LIST_COMMAND.refusals.len()] = refusals();
 const REFUSALS: &[Refusal] = &REFUSAL_SET;
+/// Publication refuses before a credential is restored, so only its own
+/// refusal and the confirmation gate can answer.
+const GENERATE_REFUSALS: &[Refusal] = &[
+    crate::GLOBAL_TILES_NATIVE_COMPUTE_REQUIRED,
+    crate::CONFIRMATION_REQUIRED,
+];
 const LANE: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::LANE.summary("Native authentication lane.");
 
@@ -100,8 +106,8 @@ pub static GENERATE: Command = Command {
     id: "tile.global.generate",
     path: &["tile", "global", "generate"],
     contract: 1,
-    summary: "Publish a new global reference tile archive and Desktop datasets.",
-    purpose: "Starts the existing governed reference worker for 1..50 explicit catalog project.dataset.table sources. Creates a new publication; does not replace an existing tile or change its access policy. Layer names are the source table names and must be distinct. Uses minzoom 0, explicit maxzoom/basezoom and no density dropping. The server validates source eligibility and global_tiles.manage. Follow the returned tile_id with status; started is not completed.",
+    summary: "Retired cloud reference publication; refuses until an edge owner exists.",
+    purpose: "Global reference tiling is edge compute and the hosted reference worker is retired. This command refuses with native_compute_required before any credential is restored and sends nothing; no edge owner builds a new global publication yet. Existing publications stay readable through list/status and governable through access.",
     chapter: Chapter::VectorTiles,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
@@ -129,9 +135,9 @@ pub static GENERATE: Command = Command {
         Arg::value("maxzoom", "<zoom>", "Maximum and base zoom, integer 1..22.").required(),
         LANE,
     ],
-    output: "Publication tile_id, status, phase and message. Poll global status for completion or failure before reconciling the Desktop catalog.",
+    output: "None: the command always refuses with native_compute_required.",
     examples: &[],
-    refusals: REFUSALS,
+    refusals: GENERATE_REFUSALS,
     reference: Some("docs/reference/tile.md"),
     search: &[],
     requires: Requires::Server,
@@ -257,26 +263,15 @@ pub fn list(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
 }
 
-pub fn generate(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
-    let maxzoom = ds_cli_contract::args::integer(inputs.require("maxzoom")?, "maxzoom", 1, 22)?;
-    // Each source is an exact catalog identity, and its table name becomes the
-    // published layer's, so two sources sharing one table name are refused
-    // here rather than after a publication job has started.
-    let sources = inputs
-        .repeated("source")
-        .iter()
-        .map(|value| Source::parse(value).map_err(selection))
-        .collect::<Result<Vec<_>, Failure>>()?;
-    run(
-        inputs,
-        Global::Generate {
-            domain: domain(inputs)?,
-            name: inputs.require("name")?.to_owned(),
-            country: inputs.require("country")?.to_owned(),
-            sources,
-            maxzoom: maxzoom as u8,
-        },
+/// Hosted reference publication is retired and no edge owner exists yet, so
+/// nothing is validated, restored or sent.
+pub fn generate(_: &Inputs, _: &Context) -> Result<Value, Failure> {
+    let refusal = crate::GLOBAL_TILES_NATIVE_COMPUTE_REQUIRED;
+    Err(Failure::unavailable(
+        refusal.code,
+        "global reference publication no longer runs in the cloud and has no edge owner yet; nothing was sent",
     )
+    .remedy(refusal.remedy))
 }
 
 pub fn status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {

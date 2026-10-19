@@ -1,4 +1,4 @@
-//! `ds tile generate` — start one fixed backend run after CLI confirmation.
+//! `ds tile generate` — retired hosted tiling; refuses and names the edge path.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Example, Execution, Requires};
@@ -11,54 +11,80 @@ pub static COMMAND: Command = Command {
     id: "tile.generate",
     path: &["tile", "generate"],
     contract: 1,
-    summary: "Regenerate one output's vector tiles (needs --yes).",
+    summary: "Retired cloud tiling; refuses and names the Core tile queue.",
     purpose: "\
-After CLI confirmation, restores the native user and calls the fixed tile \
-generation operation for the project --project names (the saved selection is never read). ds-brain \
-owns the staleness decision, preflight, lease and dispatch. Returns as soon as \
-the backend answers; follow it with `ds tile status`. Use --force after a \
-restyle or Data-cleaning catalog change. No Desktop descriptor, URL, \
-body or action override is accepted.",
+Project tiling is edge compute: the hosted tile worker is retired and this \
+command never reaches it. It refuses with native_compute_required before any \
+credential is restored, sends nothing and starts nothing. Tiles are built by \
+the Core on this machine from a prepared ds.tiles.prepared/v1 input through \
+`ds core tile submit`; no edge step yet prepares that input from project \
+survey/design data. `ds tile status` and `ds tile plan` still read the \
+published state.",
     chapter: Chapter::VectorTiles,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[PROJECT_ARG, TYPE_ARG, FORCE_ARG, LANE_ARG],
-    output: "\
-Lane and selected-project identity/status, `type`, `force`, whether work was \
-dispatched, and the fixed backend result including status, decision, \
-timestamps and bounded diagnostics.",
+    output: "None: the command always refuses with native_compute_required.",
     examples: &[Example {
-        command: "ds tile generate --type design --force --yes",
-        note: "Runs take minutes; `ds tile status --type design` reports progress.",
+        command: "ds core tile submit --input tiles.prepared.json --key tiles-001",
+        note: "The edge path: the Core on this machine builds the tiles from a prepared input.",
         runnable: false,
     }],
-    refusals: crate::NATIVE_WRITE_REFUSALS,
+    refusals: crate::GENERATE_REFUSALS,
     reference: Some("docs/reference/tile.md"),
     search: &[],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let kind = crate::tile_type(inputs.require("type")?);
-    let force = inputs.switch("force");
-    let headless = ds_cli_auth::tile_generate(
-        inputs.require("lane")?,
-        inputs.require("project")?,
-        kind,
-        force,
-    )?;
-    let result = headless.result();
-    let mut output = crate::operation_project(&headless);
-    output["type"] = Value::String(kind.token().to_owned());
-    output["force"] = Value::Bool(force);
-    output["dispatched"] =
-        Value::Bool(result.status() == ds_cli_auth::TileOperationStatus::Started);
-    output["result"] = crate::operation_json(result);
-    Ok(output)
+pub fn run(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+    let refusal = crate::PROJECT_TILES_NATIVE_COMPUTE_REQUIRED;
+    Err(Failure::unavailable(
+        refusal.code,
+        "project tile generation no longer runs in the cloud; nothing was sent",
+    )
+    .remedy(refusal.remedy)
+    .next("ds core tile submit"))
 }
 
 pub fn render(data: &Value) -> String {
     crate::plan::render_decision(data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generation_refuses_without_reaching_any_service() {
+        let inputs = ds_cli_contract::parse(
+            &COMMAND,
+            &[
+                "--project".into(),
+                "p-test".into(),
+                "--type".into(),
+                "design".into(),
+            ],
+        )
+        .expect("declared arguments parse");
+        let context = Context {
+            confirmed: true,
+            output: ds_cli_contract::Output::resolve(ds_cli_contract::Format::Json, false, true),
+        };
+        let failure = run(&inputs, &context).expect_err("hosted tiling is retired");
+        assert_eq!(failure.code(), "native_compute_required");
+        assert!(
+            failure
+                .remedy_text()
+                .is_some_and(|remedy| remedy.contains("ds core tile submit"))
+        );
+        assert!(
+            COMMAND
+                .refusals
+                .iter()
+                .any(|refusal| refusal.code == failure.code()),
+            "the refusal is declared"
+        );
+    }
 }
