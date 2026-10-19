@@ -6801,6 +6801,74 @@ pub fn save_transformers(
     Ok(receipt)
 }
 
+/// Publish one edge-computed collisions result for the explicitly named
+/// project. ds-brain stores it only when it was computed from the project's
+/// current transformer heads; it never computes collisions itself.
+pub fn save_collisions(
+    lane: &str,
+    project: &str,
+    publication: &ds_client_core::CollisionsPublication,
+) -> Result<HeadlessNamedProject<ds_client_core::CollisionsPublicationReceipt>, Failure> {
+    let saved = headless_named_project_with(
+        lane,
+        project,
+        map_collisions_publication,
+        |device, project| device.save_collisions(project, publication),
+        |client, project| client.save_collisions(project, publication, now()),
+    )?;
+    metadata::invalidate(
+        saved.identity(),
+        project,
+        ds_project_data::metadata::Kind::TransformerStatus,
+    )?;
+    Ok(saved)
+}
+
+/// The publication's own refusals keep their names; everything else is the
+/// shared client mapping (credentials, reachability, authority).
+fn map_collisions_publication(error: ClientError) -> Failure {
+    if let Some(refusal) = error.service_refusal() {
+        let counts = |name: &str| refusal.detail_integer(name).unwrap_or(0);
+        match refusal.code() {
+            Some("collisions_basis_stale") => {
+                return Failure::conflict(
+                    "collisions_basis_stale",
+                    "the collisions result was computed from transformer versions that are no longer current",
+                )
+                .remedy("run ds design collisions detect again, then publish its new result")
+                .detail(json!({
+                    "moved_count": counts("moved_count"),
+                    "missing_count": counts("missing_count"),
+                    "unknown_count": counts("unknown_count"),
+                }));
+            }
+            Some("collisions_publication_invalid") => {
+                return Failure::invalid(
+                    "collisions_publication_invalid",
+                    refusal
+                        .message()
+                        .unwrap_or("the collisions publication was refused"),
+                )
+                .remedy("publish the unmodified result file ds design collisions detect wrote");
+            }
+            _ => {}
+        }
+    }
+    // The client's own preflight (shape, and the save route's byte bound) is
+    // the same refusal: the file is not a publishable result.
+    if matches!(
+        error.to_string().as_str(),
+        "collisions_publication_invalid" | "collisions_publication_too_large"
+    ) {
+        return Failure::invalid(
+            "collisions_publication_invalid",
+            "the collisions result is not a publishable shape within the save bound",
+        )
+        .remedy("publish the unmodified result file ds design collisions detect wrote");
+    }
+    map_client(error)
+}
+
 /// Execute a shared-asset operation using only the caller's explicit project.
 pub fn shared_assets_for_project(
     lane_value: &str,
