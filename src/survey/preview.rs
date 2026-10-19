@@ -135,6 +135,39 @@ mod tests {
         }
     }
 
+    /// b7ae5c73: a choice value outside the field's options is not valid,
+    /// and the error names the field and the allowed values.
+    #[test]
+    fn a_choice_outside_the_declared_options_is_invalid_and_names_them() {
+        let request = document(json!({"category":"Industrial","count":0}));
+        let preview = validate(&serde_json::to_vec(&request).unwrap()).unwrap();
+        assert_eq!(preview["valid"], false);
+        assert_eq!(
+            preview["errors"],
+            json!({"category":"Category must be one of: Residential, Productive, Other"})
+        );
+        let submission = super::super::fill::evaluate(&json!({
+            "mode":"submission","form_revision":request["form_revision"],
+            "fields":request["fields"],"values":request["values"]
+        }))
+        .unwrap();
+        assert_eq!(preview["errors"], submission["errors"]);
+
+        let multi = json!({"schema":SCHEMA,"form_revision":"draft:4","fields":[
+            {"key":"loads","label":"Loads","type":"multiselect","options":["Lighting","Mill"]},
+            {"key":"kind","label":"Kind","type":"dropdown","options":["A","B"]}
+        ],"values":{"loads":["Lighting","Welding"],"kind":"B"}});
+        let preview = validate(&serde_json::to_vec(&multi).unwrap()).unwrap();
+        assert_eq!(
+            preview["errors"],
+            json!({"loads":"Loads must be one of: Lighting, Mill"})
+        );
+        let mut accepted = multi.clone();
+        accepted["values"]["loads"] = json!(["Mill", "Lighting"]);
+        let preview = validate(&serde_json::to_vec(&accepted).unwrap()).unwrap();
+        assert_eq!(preview["valid"], true);
+    }
+
     #[test]
     fn exact_document_bound_and_closed_shape_refuse_without_host_access() {
         let mut value = document(json!({}));

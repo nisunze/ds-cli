@@ -234,6 +234,27 @@ fn validate(field: &Value, value: &Value) -> Option<String> {
                 }
             }
         }
+        // A choice answer is one of the field's declared options: a value
+        // outside them (a renamed option, a typed-in category) never passes.
+        "radio" | "dropdown" | "multiselect" => {
+            let options: Vec<&str> = field["options"]
+                .as_array()
+                .map(|items| items.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            let chosen: Vec<String> = match value {
+                Value::Array(items) if kind == "multiselect" => {
+                    items.iter().filter(|v| !absent(v)).map(string).collect()
+                }
+                _ => vec![text.clone()],
+            };
+            if !options.is_empty() && chosen.iter().any(|v| !options.contains(&v.as_str())) {
+                return Some(format!(
+                    "{} must be one of: {}",
+                    string(&field["label"]),
+                    options.join(", ")
+                ));
+            }
+        }
         _ if media => {
             if field["minCount"]
                 .as_u64()
