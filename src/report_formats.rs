@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The outputs a project that stores no recognised selection produces. Saved
-/// voltage-drop JSON is one of them, but like every other output it is
-/// exported only when the project's selection (or an explicit invocation)
-/// names it. Reporting never recalculates analysis.
+/// The outputs a project that stores no recognised selection produces, the
+/// saved voltage-drop JSON included. A project that stores a selection exports
+/// exactly what it names, like every other output (owner correction
+/// 2026-10-19). Reporting never recalculates analysis.
 pub const DEFAULT_INDIVIDUAL: &[&str] = &["shp", "kmz", "xlsx", "voltage_drop"];
 /// What an individual report invocation that names no outputs produces before
 /// the project's own voltage-drop choice is applied ([`invocation_selection`]).
