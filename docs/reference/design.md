@@ -1510,7 +1510,12 @@ lived), fetched, and written under a new or empty `--out-dir` at its stored
 object path, with `manifest.json` naming every file's `gs://` identity, bytes
 and SHA-256. A bearer link the plan carried is never used. Objects the signer
 refuses or storage fails are listed in the manifest and the command answers
-`download_incomplete`; at most 200 objects per run.
+`download_incomplete`; at most 200 objects per run (`download_too_large`).
+`--source sketch|draft|process` fetches the in-scope rows' original uploads
+(the plan's `source_entries`) instead of report artifacts, through the same
+signer and manifest; it is not combined with `--format`. Listed locators may
+be `gs://`, `storage.googleapis.com`, `storage.cloud.google.com` or Firebase
+Storage URLs; any other form is refused as `download_locator_unsupported`.
 
 ### Governed design history
 

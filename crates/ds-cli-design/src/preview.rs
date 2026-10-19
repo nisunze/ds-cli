@@ -323,10 +323,30 @@ pub const DOWNLOAD_DIR_INVALID: Refusal = Refusal {
     when: "--out-dir exists and is not an empty directory, or a file under it could not be written",
     remedy: "pass a new or empty directory; nothing already there is overwritten",
 };
+const SOURCE_ARG: Arg = Arg::repeated(
+    "source",
+    "<kind>",
+    "Fetch the in-scope rows' original uploads of this kind (sketch, draft or process) instead of report artifacts; repeat to combine. Not with --format.",
+)
+.choices(SOURCE_KINDS);
+
+/// The upload kinds the plan lists as `source_entries` (`<kind>/<file>`).
+const SOURCE_KINDS: &[&str] = &["sketch", "draft", "process"];
+
 pub const DOWNLOAD_TOO_LARGE: Refusal = Refusal {
     code: "download_too_large",
-    when: "the plan lists more than 200 artifacts, or a listed locator does not name one stored object",
+    when: "the plan lists more than 200 artifacts",
     remedy: "narrow the plan with --transformer or --format and fetch in parts",
+};
+pub const DOWNLOAD_LOCATOR_UNSUPPORTED: Refusal = Refusal {
+    code: "download_locator_unsupported",
+    when: "a listed locator is not a gs://, Cloud Storage (storage.googleapis.com, storage.cloud.google.com) or Firebase Storage object URL",
+    remedy: "narrow --transformer or --format to fetch the rest; the named locator is a DS defect to report, not a link to fetch by hand",
+};
+pub const DOWNLOAD_SELECTION_INVALID: Refusal = Refusal {
+    code: "download_selection_invalid",
+    when: "--source was combined with --format; original uploads are not filtered by report format",
+    remedy: "fetch report formats and original uploads in separate runs into separate directories",
 };
 pub const DOWNLOAD_INCOMPLETE: Refusal = Refusal {
     code: "download_incomplete",
@@ -347,6 +367,8 @@ const FETCH_REFUSALS: &[Refusal] = &[
     PLAN_INVALID,
     DOWNLOAD_DIR_INVALID,
     DOWNLOAD_TOO_LARGE,
+    DOWNLOAD_LOCATOR_UNSUPPORTED,
+    DOWNLOAD_SELECTION_INVALID,
     DOWNLOAD_INCOMPLETE,
 ];
 
@@ -355,7 +377,7 @@ pub static DOWNLOAD_FETCH: Command = Command {
     path: &["design", "download", "fetch"],
     contract: 1,
     summary: "Download a plan's artifacts byte-exact with a SHA-256 manifest.",
-    purpose: "Executes `ds design download plan` for the same --project, --transformer and --format: every listed report, print and archive object is signed afresh by the report service's authorized signer (project membership checked, short-lived), fetched, and written under --out-dir at its stored object path, with manifest.json naming each file's identity, size and SHA-256. Nothing is fetched by a bearer link the plan carried. Refused or failed objects are named in the manifest and the command reports `download_incomplete`. At most 200 artifacts per run; this never regenerates reports.",
+    purpose: "Executes `ds design download plan` for the same --project, --transformer and --format: every listed report, print and archive object is signed afresh by the report service's authorized signer (project membership checked, short-lived), fetched, and written under --out-dir at its stored object path, with manifest.json naming each file's identity, size and SHA-256. With --source sketch|draft|process it fetches the in-scope rows' original uploads the plan lists as `source_entries` instead, through the same signer. Nothing is fetched by a bearer link the plan carried. Refused or failed objects are named in the manifest and the command reports `download_incomplete`. At most 200 artifacts per run; this never regenerates reports.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -363,19 +385,28 @@ pub static DOWNLOAD_FETCH: Command = Command {
     args: &[
         TRANSFORMER_ARG,
         FORMAT_ARG,
+        SOURCE_ARG,
         crate::PROJECT_ARG,
         OUT_DIR_ARG,
         LANE_ARG,
     ],
     output: "\
-Lane and project, `out_dir`, counts (listed, fetched, refused, failed, bytes), \
-and the manifest: one row per fetched file (identity `gs://bucket/object`, \
-relative path, bytes, sha256) plus `refused` and `failed` rows with reasons.",
-    examples: &[Example {
-        command: "ds design download fetch --project <id> --format xlsx --out-dir ./reports --output json",
-        note: "`manifest.json` in --out-dir carries every file's SHA-256.",
-        runnable: false,
-    }],
+Lane and project, `out_dir`, `selection` (`reports` or the --source kinds), \
+counts (listed, fetched, refused, failed, bytes), and the manifest: one row \
+per fetched file (identity `gs://bucket/object`, relative path, bytes, \
+sha256) plus `refused` and `failed` rows with reasons.",
+    examples: &[
+        Example {
+            command: "ds design download fetch --project <id> --format xlsx --out-dir ./reports --output json",
+            note: "`manifest.json` in --out-dir carries every file's SHA-256.",
+            runnable: false,
+        },
+        Example {
+            command: "ds design download fetch --project <id> --transformer <tx> --source sketch --out-dir ./sketches --output json",
+            note: "The original LV sketch uploads of that transformer, SHA-256 verified in manifest.json.",
+            runnable: false,
+        },
+    ],
     refusals: FETCH_REFUSALS,
     reference: Some("docs/reference/design.md"),
     search: &[
@@ -412,6 +443,55 @@ fn fresh_dir(path: &std::path::Path) -> Result<(), Failure> {
     }
 }
 
+/// What one fetch downloads from a plan: its format-filtered report
+/// artifacts, or — with `--source` — the in-scope rows' original uploads of
+/// those kinds (`source_entries` named `<kind>/<file>`).
+fn listed_locators(plan: &Value, sources: &[String]) -> Vec<String> {
+    if sources.is_empty() {
+        return plan["filtered_urls"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect();
+    }
+    plan["source_entries"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|entry| {
+            entry["name"]
+                .as_str()
+                .and_then(|name| name.split_once('/'))
+                .is_some_and(|(kind, _)| sources.iter().any(|source| source == kind))
+        })
+        .filter_map(|entry| entry["url"].as_str())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The signer request for a listed set, refusing by name a locator that is
+/// not one stored object and, separately, a set over the per-run bound.
+fn download_request(listed: &[String]) -> Result<ds_client_core::ArtifactDownloadRequest, Failure> {
+    if let Some(locator) = listed
+        .iter()
+        .find(|locator| ds_client_core::artifact_identity(locator).is_none())
+    {
+        // Never echo a query: a legacy locator can carry a bearer token.
+        let shown = locator.split(['?', '#']).next().unwrap_or_default();
+        return Err(Failure::invalid(
+            DOWNLOAD_LOCATOR_UNSUPPORTED.code,
+            format!("the plan lists a locator that does not name one stored object: {shown}"),
+        )
+        .remedy(DOWNLOAD_LOCATOR_UNSUPPORTED.remedy));
+    }
+    ds_client_core::ArtifactDownloadRequest::new(listed).map_err(|error| {
+        Failure::invalid(DOWNLOAD_TOO_LARGE.code, error.to_string())
+            .remedy(DOWNLOAD_TOO_LARGE.remedy)
+    })
+}
+
 pub fn run_download_fetch(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     let out_dir = std::path::PathBuf::from(inputs.require("out-dir")?);
     if out_dir.exists()
@@ -424,30 +504,35 @@ pub fn run_download_fetch(inputs: &Inputs, context: &Context) -> Result<Value, F
             out_dir.display()
         )));
     }
+    let sources = inputs.repeated("source");
+    if !sources.is_empty() && !inputs.repeated("format").is_empty() {
+        return Err(Failure::invalid(
+            DOWNLOAD_SELECTION_INVALID.code,
+            "--source and --format cannot be combined",
+        )
+        .remedy(DOWNLOAD_SELECTION_INVALID.remedy));
+    }
     let planned = run_download_plan(inputs, context)?;
     let project = planned["project"]["ds_project"]
         .as_str()
         .or_else(|| inputs.value("project"))
         .unwrap_or_default()
         .to_owned();
-    let listed: Vec<String> = planned["plan"]["filtered_urls"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(str::to_owned)
-        .collect();
+    let listed = listed_locators(&planned["plan"], &sources);
+    let selection = if sources.is_empty() {
+        json!("reports")
+    } else {
+        json!(sources)
+    };
     let mut out = json!({"lane": planned["lane"], "project": planned["project"]});
     out["out_dir"] = json!(out_dir.display().to_string());
+    out["selection"] = selection.clone();
     if listed.is_empty() {
         out["counts"] = json!({"listed": 0, "fetched": 0, "refused": 0, "failed": 0, "bytes": 0});
         out["files"] = json!([]);
         return Ok(out);
     }
-    let request = ds_client_core::ArtifactDownloadRequest::new(&listed).map_err(|error| {
-        Failure::invalid(DOWNLOAD_TOO_LARGE.code, error.to_string())
-            .remedy(DOWNLOAD_TOO_LARGE.remedy)
-    })?;
+    let request = download_request(&listed)?;
     fresh_dir(&out_dir)?;
     let mut write_error: Option<String> = None;
     let mut sink = |file: ds_client_core::ArtifactFile| -> Result<(), ds_client_core::ClientError> {
@@ -506,6 +591,7 @@ pub fn run_download_fetch(inputs: &Inputs, context: &Context) -> Result<Value, F
         "schema": "ds.design-download/v1",
         "project_id": project,
         "lane": downloaded.lane(),
+        "selection": selection,
         "files": files,
         "refused": refused,
         "failed": failed,
@@ -825,4 +911,72 @@ pub fn render_presence_status(data: &Value) -> String {
         plan["budget"]["left"].as_u64().unwrap_or(0),
         plan["budget"]["limit"].as_u64().unwrap_or(0),
     )
+}
+
+#[cfg(test)]
+mod download_fetch_tests {
+    use super::*;
+
+    const BUCKET: &str = "electrification-rural.firebasestorage.app";
+
+    fn plan() -> Value {
+        json!({
+            "filtered_urls": [
+                format!("https://storage.cloud.google.com/{BUCKET}/p/report_lv/bwicaro/bwicaro.shp.zip"),
+            ],
+            "source_entries": [
+                {"url": format!("gs://{BUCKET}/p/lv_drafting/bwicaro.shp.zip"), "name": "draft/bwicaro.shp.zip"},
+                {"url": format!("gs://{BUCKET}/p/lv_sketches/bwicaro.shp.zip"), "name": "sketch/bwicaro.shp.zip"},
+            ],
+        })
+    }
+
+    /// d44f3cbc: the plan's own `storage.cloud.google.com` URLs are one
+    /// stored object each, not a size refusal.
+    #[test]
+    fn the_plans_own_browser_storage_urls_are_fetchable_identities() {
+        let listed = listed_locators(&plan(), &[]);
+        let request = download_request(&listed).expect("the plan's own URL is fetchable");
+        assert_eq!(
+            request.identities()[0].locator(),
+            format!("gs://{BUCKET}/p/report_lv/bwicaro/bwicaro.shp.zip")
+        );
+    }
+
+    /// 6db15ff3: original sketches are selectable by kind, and only them.
+    #[test]
+    fn source_selects_the_original_uploads_of_that_kind() {
+        let sketches = listed_locators(&plan(), &["sketch".to_owned()]);
+        assert_eq!(
+            sketches,
+            vec![format!("gs://{BUCKET}/p/lv_sketches/bwicaro.shp.zip")]
+        );
+        let both = listed_locators(&plan(), &["sketch".to_owned(), "draft".to_owned()]);
+        assert_eq!(both.len(), 2);
+        assert!(listed_locators(&plan(), &["process".to_owned()]).is_empty());
+        assert!(download_request(&sketches).is_ok());
+    }
+
+    /// An unsupported locator is named as such (without its query), never
+    /// as a download that is too large; the bound keeps its own code.
+    #[test]
+    fn an_unsupported_locator_and_an_oversized_plan_are_different_refusals() {
+        let unsupported =
+            download_request(&["https://example.com/bucket/a.pdf?token=secret".to_owned()])
+                .unwrap_err();
+        assert_eq!(unsupported.code(), DOWNLOAD_LOCATOR_UNSUPPORTED.code);
+        assert!(
+            unsupported
+                .message()
+                .contains("https://example.com/bucket/a.pdf")
+        );
+        assert!(!unsupported.message().contains("secret"));
+        let oversized: Vec<String> = (0..201)
+            .map(|index| format!("gs://{BUCKET}/p/report_lv/tx/{index}.pdf"))
+            .collect();
+        assert_eq!(
+            download_request(&oversized).unwrap_err().code(),
+            DOWNLOAD_TOO_LARGE.code
+        );
+    }
 }
