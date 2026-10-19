@@ -27,6 +27,22 @@ const OUT: Arg = Arg::value(
 .required();
 const LANE: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
+pub(super) const PRESET: Arg = Arg::value(
+    "preset",
+    "<preset>",
+    "Carry this preset's settings as the LV process dialog resolves them.",
+)
+.choices(&["drafting", "sketch"]);
+pub(super) const OPERATOR: Arg = Arg::value(
+    "operator",
+    "<json-file>",
+    "The operator's own toggles ({key: bool|number}) laid over --preset.",
+);
+pub(super) const PROCESS_SETTINGS_INVALID: Refusal = Refusal {
+    code: "process_settings_invalid",
+    when: "--operator is unreadable, lacks --preset, or holds a non-boolean, non-numeric value",
+    remedy: "pass --preset, and settings as {key: bool|number}",
+};
 
 macro_rules! refusal {
     ($code:literal, $when:literal, $remedy:literal) => {
@@ -43,7 +59,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "project-export"],
     contract: 1,
     summary: "Prepare one project transformer for headless LV processing.",
-    purpose: "Prepare a saved transformer for headless reprocessing. Read one exact signed-in project transformer with server version/digest fences. Use --project-config to include current project sheets, including pole material seeds, under the same identity; otherwise config is empty. Process settings remain owner defaults, so select intended settings before processing. design.lv.process accepts bounded parallel batches; design.lv.project-save publishes their verified results.",
+    purpose: "Prepare a saved transformer for headless reprocessing. Read one exact signed-in project transformer with server version/digest fences. Use --project-config to include current project sheets, including pole material seeds, under the same identity; otherwise config is empty. Process settings are owner defaults unless --preset (with optional --operator toggles) carries what the LV process dialog would send. design.lv.process accepts bounded parallel batches; design.lv.project-save publishes their verified results.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -57,8 +73,10 @@ pub static COMMAND: Command = Command {
             "project-config",
             "Include freshly read project network configuration with its SHA-256.",
         ),
+        PRESET,
+        OPERATOR,
     ],
-    output: "Output path, request SHA-256/bytes, lane/project/transformer, server version/digest, layer/job counts, owner-default settings, and configuration inclusion/digest. project.printing_label is the canonical caption from the same sealed configuration receipt, or null when unavailable; project.printing_receipt references its bounded create-new local artifact beside --out. Raw process sheets remain unchanged; raw captions are not substitutes. No layer payload is printed.",
+    output: "Output path, request SHA-256/bytes, lane/project/transformer, server version/digest, layer/job counts, process_settings (`ds-network-owner-defaults`, or {preset, operator, wire_settings}), and configuration inclusion/digest. project.printing_label is the canonical caption from the same sealed configuration receipt, or null when unavailable; project.printing_receipt references its bounded create-new local artifact beside --out. Raw process sheets remain unchanged; raw captions are not substitutes. No layer payload is printed.",
     examples: &[Example {
         command: "ds design lv project-export --project <id> --transformer T-1042 --out ./T-1042.fast-lv.json --output json",
         note: "Create a fenced one-transformer request for later native processing.",
@@ -199,6 +217,7 @@ pub static COMMAND: Command = Command {
             "the request cannot be durably written at --out",
             "choose a writable absent path and retry the unchanged transformer export"
         ),
+        PROCESS_SETTINGS_INVALID,
     ],
     reference: Some("docs/reference/design.md"),
     search: &[],
@@ -211,6 +230,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     // Do not rotate credentials or call the project service when this local
     // precondition already makes the requested effect impossible.
     ensure_absent(&output_path, &PROJECT_REQUEST)?;
+    let preset = inputs.value("preset");
+    let operator = inputs.value("operator").map(read_operator).transpose()?;
+    if preset.is_none() && operator.is_some() {
+        return Err(process_settings_invalid("--operator needs --preset"));
+    }
 
     let transformer = inputs.require("transformer")?;
     let lane = inputs.require("lane")?;
@@ -241,6 +265,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut config_sha256 = None;
     let mut printing_label = None;
     let mut printing_receipt = None;
+    let mut sheets_for_preset = None;
     let request = if inputs.switch("project-config") {
         let config = ds_cli_auth::settings_configuration_receipt(
             lane,
@@ -281,15 +306,30 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 printing_receipt = Some(json!({"path":path,"sha256":sha256(&bytes),"bytes":bytes.len(),"sheets_sha256":receipt.sheets_sha256}));
             }
         }
-        encode_native_lv_request_with_config(
+        let encoded = encode_native_lv_request_with_config(
             snapshot.transformer_name(),
             &process_layers,
             &sheets,
-        )
+        );
+        sheets_for_preset = Some(sheets);
+        encoded
     } else {
         encode_native_lv_request_from_layers(snapshot.transformer_name(), &process_layers)
     }
     .map_err(map_owner_error)?;
+    let (request, process_settings) = match preset {
+        Some(preset) => {
+            let (request, wire) = apply_process_preset(
+                &request,
+                preset,
+                operator.as_ref(),
+                sheets_for_preset.as_ref(),
+            )?;
+            let settings = json!({"preset": preset, "operator": operator, "wire_settings": wire});
+            (request, settings)
+        }
+        None => (request, json!("ds-network-owner-defaults")),
+    };
     let request_sha256 = sha256(&request);
     write_new(&output_path, &request, &PROJECT_REQUEST)?;
 
@@ -307,7 +347,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         },
         "jobs": 1,
         "layers": snapshot.layers().len(),
-        "process_settings": "ds-network-owner-defaults",
+        "process_settings": process_settings,
         "project_config": if config_sha256.is_some() { "included" } else { "not-included" },
         "project_config_sha256": config_sha256,
     }))
@@ -378,9 +418,86 @@ fn map_owner_error(error: NativeLvError) -> Failure {
     }
 }
 
+fn process_settings_invalid(message: impl std::fmt::Display) -> Failure {
+    Failure::invalid(PROCESS_SETTINGS_INVALID.code, message.to_string())
+        .remedy(PROCESS_SETTINGS_INVALID.remedy)
+}
+
+/// The operator's toggles: one bounded JSON object of setting values.
+fn read_operator(path: &str) -> Result<Value, Failure> {
+    const MAX_OPERATOR_BYTES: u64 = 64 * 1024;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|file| {
+            use std::io::Read;
+            file.take(MAX_OPERATOR_BYTES + 1).read_to_end(&mut bytes)
+        })
+        .map_err(process_settings_invalid)?;
+    if bytes.len() as u64 > MAX_OPERATOR_BYTES {
+        return Err(process_settings_invalid("--operator exceeds 64 KiB"));
+    }
+    let value: Value = serde_json::from_slice(&bytes).map_err(process_settings_invalid)?;
+    if !value.is_object() {
+        return Err(process_settings_invalid(
+            "--operator must be one {key: bool|number} object",
+        ));
+    }
+    Ok(value)
+}
+
+/// Carry the settings the LV process dialog sends for `preset` into every
+/// job: the kernel resolves them once over the engine's own catalogue and
+/// the project's preset rows, and the native owner admits the result.
+pub(super) fn apply_process_preset(
+    request: &[u8],
+    preset: &str,
+    operator: Option<&Value>,
+    sheets: Option<&std::collections::BTreeMap<String, Value>>,
+) -> Result<(Vec<u8>, Value), Failure> {
+    let catalog: Value = serde_json::from_str(ds_network_contracts::lv::PROCESSOR_PRESETS_JSON)
+        .map_err(|error| Failure::internal("fast_lv_input_invalid", error.to_string()))?;
+    let mut resolve = json!({
+        "op": "resolve",
+        "catalog": catalog,
+        "preset": preset,
+        "use_firestore_design_data": false,
+    });
+    if let Some(sheets) = sheets {
+        resolve["project_config"] = json!({ "sheets": sheets });
+    }
+    if let Some(operator) = operator {
+        resolve["operator"] = operator.clone();
+    }
+    let resolve = serde_json::to_vec(&resolve)
+        .map_err(|error| Failure::internal("fast_lv_input_invalid", error.to_string()))?;
+    let reply: Value = ds_command_kernel::process_settings::evaluate(&resolve)
+        .and_then(|reply| serde_json::from_str(&reply).map_err(|error| error.to_string()))
+        .map_err(process_settings_invalid)?;
+    let wire = reply["wire_settings"].clone();
+    if !wire.is_object() {
+        return Err(process_settings_invalid(
+            "the preset resolved to no wire settings",
+        ));
+    }
+    let mut document: Value = serde_json::from_slice(request)
+        .map_err(|error| Failure::internal("fast_lv_input_invalid", error.to_string()))?;
+    for job in document["jobs"].as_array_mut().into_iter().flatten() {
+        job["settings"] = wire.clone();
+    }
+    let bytes = serde_json::to_vec(&document)
+        .map_err(|error| Failure::internal("fast_lv_input_invalid", error.to_string()))?;
+    ds_network_contracts::lv_processing::decode_native_lv_request(&bytes)
+        .map_err(map_owner_error)?;
+    Ok((bytes, wire))
+}
+
 pub fn render(value: &Value) -> String {
+    let settings = match value["process_settings"]["preset"].as_str() {
+        Some(preset) => format!("{preset} preset"),
+        None => "owner defaults".to_string(),
+    };
     format!(
-        "LV request exported for {} ({} layer(s), owner defaults).\nRequest: {}\nSHA-256: {}",
+        "LV request exported for {} ({} layer(s), {settings}).\nRequest: {}\nSHA-256: {}",
         value["transformer"].as_str().unwrap_or(""),
         value["layers"].as_u64().unwrap_or(0),
         value["out"].as_str().unwrap_or(""),

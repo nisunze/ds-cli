@@ -160,7 +160,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "project-run"],
     contract: 2,
     summary: "Compute, save and optionally print one LV transformer to A4.",
-    purpose: "Capture the explicit project's currently fenced transformer and configuration through project-export --project-config, process once with ds-network owner defaults, then project-save the exact layers and ds.lv-voltage-drop.analysis/v1 atomically on the working head. Success requires the save owner's fresh verified layer/analysis digests. Retain the bounded output directory; --resume reuses its exact captured source/result and deterministic operation ID, never re-exports or recomputes. Named versions and backups are not changed; no compute artifacts are uploaded. With --print-a4, capture the requested lane's managed Reporter once and preflight its render_voltage_drop_result task and configured headless browser before effects, retaining that Reporter through rendering, then fetch exact saved analysis under all three save pins and call report.export voltage-drop with matching held layers and the same sealed project caption. Missing or mismatched caption refuses printing; a verified earlier ID-caption print is preserved while a fresh attempt corrects it. Print failures retain saved:true/printed:false evidence. --resume --print-a4 retries from the first verified save without saving again; moved heads refuse. Configure an existing browser once with workstation configure --component chromium --target reporter. No Desktop or browser window is opened.",
+    purpose: "Capture the explicit project's currently fenced transformer and configuration through project-export --project-config, process once with ds-network owner defaults or --preset/--operator, then project-save the exact layers and ds.lv-voltage-drop.analysis/v1 atomically on the working head. Success requires the save owner's fresh verified layer/analysis digests. Retain the bounded output directory; --resume reuses its exact captured source/result and deterministic operation ID, never re-exports or recomputes. Named versions and backups are not changed; no compute artifacts are uploaded. With --print-a4, capture the requested lane's managed Reporter once and preflight its render_voltage_drop_result task and configured headless browser before effects, retaining that Reporter through rendering, then fetch exact saved analysis under all three save pins and call report.export voltage-drop with matching held layers and the same sealed project caption. Missing or mismatched caption refuses printing; a verified earlier ID-caption print is preserved while a fresh attempt corrects it. Print failures retain saved:true/printed:false evidence. --resume --print-a4 retries from the first verified save without saving again; moved heads refuse. Configure an existing browser once with workstation configure --component chromium --target reporter. No Desktop or browser window is opened.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -196,6 +196,8 @@ pub static COMMAND: Command = Command {
             "print-a4",
             "Render verified saved analysis to local A4 PDF with the configured headless browser.",
         ),
+        project_export::PRESET,
+        project_export::OPERATOR,
     ],
     output: "Explicit project/lane/transformer, deterministic operation_id, input/result digests, captured artifact paths, and the exact verified save receipt. saved is true after owner verification; printed is true only after PDF receipt/digest/page verification. Print errors carry saved:true/printed:false and exact save evidence in detail. Generated PDFs stay local in the run directory.",
     examples: &[
@@ -435,15 +437,21 @@ fn run_with(inputs: &Inputs, context: &Context, owners: &Owners) -> Result<Value
     let source = if inputs.switch("resume") {
         read_receipt(&source_path, &project_export::COMMAND)?
     } else {
+        let mut export_args = vec![
+            ("project", project),
+            ("transformer", transformer),
+            ("lane", lane),
+            ("out", request_text.as_ref()),
+        ];
+        for key in ["preset", "operator"] {
+            if let Some(value) = inputs.value(key) {
+                export_args.push((key, value));
+            }
+        }
         let source = invoke(
             &project_export::COMMAND,
             owners.export,
-            &[
-                ("project", project),
-                ("transformer", transformer),
-                ("lane", lane),
-                ("out", &request_text),
-            ],
+            &export_args,
             &["project-config"],
             context,
         )?;

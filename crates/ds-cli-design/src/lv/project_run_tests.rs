@@ -12,6 +12,7 @@ struct Calls {
     unverified: bool,
     brief: bool,
     a4: Option<&'static str>,
+    export_settings: Vec<(Option<String>, Option<String>)>,
 }
 thread_local! { static CALLS: RefCell<Calls> = RefCell::default(); }
 
@@ -31,6 +32,12 @@ fn stage(name: &'static str) -> Result<(), Failure> {
 fn export(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     stage("export")?;
     assert!(inputs.switch("project-config"));
+    CALLS.with(|calls| {
+        calls.borrow_mut().export_settings.push((
+            inputs.value("preset").map(str::to_owned),
+            inputs.value("operator").map(str::to_owned),
+        ))
+    });
     let bytes = ds_network_contracts::lv_processing::encode_native_lv_request_with_config(
             inputs.require("transformer")?,
             &std::collections::BTreeMap::from([(
@@ -990,4 +997,51 @@ fn unsealed_or_crossed_caption_refuses_print_without_an_extra_analysis_read() {
             assert_eq!(stages.iter().filter(|s| **s == "save").count(), 1);
         });
     }
+}
+
+#[test]
+fn a_preset_and_operator_toggles_reach_the_export_and_a_resume_reuses_the_capture() {
+    reset();
+    let temp = tempfile::tempdir().unwrap();
+    let directory = temp.path().join("run");
+    let operator = temp.path().join("assign.json");
+    let operator = operator.to_str().unwrap();
+    run_with(
+        &inputs(&directory, &["--preset", "sketch", "--operator", operator]),
+        &context(true),
+        &MOCK,
+    )
+    .unwrap();
+    run_with(
+        &inputs(&directory, &["--resume", "--preset", "sketch"]),
+        &context(true),
+        &MOCK,
+    )
+    .unwrap();
+    CALLS.with(|c| {
+        assert_eq!(
+            c.borrow().export_settings,
+            vec![(Some("sketch".to_owned()), Some(operator.to_owned()))],
+            "the capture is exported once with the preset and resumed without re-export"
+        );
+    });
+    assert!(
+        COMMAND
+            .refusals
+            .iter()
+            .any(|refusal| refusal.code == "process_settings_invalid")
+    );
+}
+
+#[test]
+fn without_a_preset_the_export_keeps_owner_defaults() {
+    reset();
+    let temp = tempfile::tempdir().unwrap();
+    run_with(
+        &inputs(&temp.path().join("run"), &[]),
+        &context(true),
+        &MOCK,
+    )
+    .unwrap();
+    CALLS.with(|c| assert_eq!(c.borrow().export_settings, vec![(None, None)]));
 }

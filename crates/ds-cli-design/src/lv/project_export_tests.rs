@@ -163,3 +163,89 @@ fn canonical_receipt_keeps_project_save_raw_configuration_equivalent() {
     }
     assert!(captured_printing_receipt(&configuration, "other").is_none());
 }
+
+fn assignment_on() -> Value {
+    json!({
+        "assign_assemblies": true,
+        "assign_struct_types": true,
+        "assign_stays": true,
+        "assign_earthing": true
+    })
+}
+
+#[test]
+fn a_preset_carries_the_dialogs_settings_into_every_job_and_the_owner_admits_them() {
+    let sheets = BTreeMap::from([(
+        "transformer_settings".to_owned(),
+        json!([{ "preset": "sketch", "parameter": "renumber_poles", "value": false }]),
+    )]);
+    let request = encode_native_lv_request_with_config("T-1", &layers(), &sheets).unwrap();
+    let operator = assignment_on();
+
+    let (bytes, wire) =
+        apply_process_preset(&request, "sketch", Some(&operator), Some(&sheets)).unwrap();
+
+    let document: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(document["jobs"][0]["settings"], wire);
+    assert_eq!(wire["keep_lv_poles"], true, "the sketch preset keeps poles");
+    for key in [
+        "assign_assemblies",
+        "assign_struct_types",
+        "assign_stays",
+        "assign_earthing",
+    ] {
+        assert_eq!(wire[key], true, "{key} comes from the operator");
+    }
+    assert_eq!(
+        wire["renumber_poles"], false,
+        "the project's own preset row speaks"
+    );
+    assert_eq!(
+        document["jobs"][0]["config_dfs"],
+        serde_json::from_slice::<Value>(&request).unwrap()["jobs"][0]["config_dfs"],
+        "only settings change"
+    );
+    ds_network_contracts::lv_processing::decode_native_lv_request(&bytes).unwrap();
+}
+
+#[test]
+fn a_malformed_operator_toggle_is_refused_before_any_request_is_written() {
+    let request = encode_native_lv_request_from_layers("T-1", &layers()).unwrap();
+    let error = apply_process_preset(
+        &request,
+        "sketch",
+        Some(&json!({ "assign_assemblies": "yes" })),
+        None,
+    )
+    .unwrap_err();
+    assert_eq!(error.code(), "process_settings_invalid");
+
+    let root =
+        std::env::temp_dir().join(format!("ds-project-export-operator-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("operator.json");
+    std::fs::write(&path, b"[true]").unwrap();
+    assert_eq!(
+        read_operator(path.to_str().unwrap()).unwrap_err().code(),
+        "process_settings_invalid"
+    );
+    let _ = std::fs::remove_dir_all(root);
+    assert!(
+        COMMAND
+            .refusals
+            .iter()
+            .any(|refusal| refusal.code == "process_settings_invalid")
+    );
+}
+
+#[test]
+fn the_render_names_the_preset_a_request_carries() {
+    let text = render(&json!({
+        "transformer": "T-1",
+        "layers": 2,
+        "out": "/tmp/request.json",
+        "request_sha256": "abc",
+        "process_settings": { "preset": "sketch", "operator": assignment_on(), "wire_settings": {} },
+    }));
+    assert!(text.contains("sketch preset"), "{text}");
+}
