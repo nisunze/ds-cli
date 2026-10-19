@@ -238,7 +238,7 @@
       }
     },
     "solar": {
-      "summary": "Solar control plane. The same Rust runtime executes locally in the installed app and behind Cloud Run for the web.",
+      "summary": "Solar control plane. Calculation runs in the installed app's linked Rust runtime; the web computes no Solar.",
       "operations": {
         "portfolio.list": {
           "summary": "List governed Solar portfolios and their exact ordered membership.",
@@ -363,9 +363,8 @@
         "compute": {
           "summary": "Calculate one city.",
           "doc": [
-            "Web: gateway -> ds-brain -> private Rust ds-solar Cloud Run adapter.",
             "Desktop: the linked Rust runtime through the native command.",
-            "Both publish the same project result contract; placement is not result identity."
+            "Web: closed until browser parity exists; Brain computes no Solar (edge-only compute)."
           ],
           "transport": "json",
           "gateway": {
@@ -375,7 +374,10 @@
             "relays_to": "ds_solar_engine_url"
           },
           "native": { "command": "solar_native_calculate" },
-          "resolution": { "web": "gateway", "desktop": "native" }
+          "resolution": { "web": "unavailable", "desktop": "native" },
+          "unavailable_reason": {
+            "web": "Solar calculation runs in DS GridDesign Desktop or with `ds solar project run`. The web app does not compute Solar until browser parity exists (owner decision 2026-10-19)."
+          }
         },
         "compute_batch": {
           "summary": "Calculate a selected set of cities as one closed batch.",
@@ -387,7 +389,10 @@
             "relays_to": "ds_solar_engine_url"
           },
           "native": { "command": "solar_native_calculate_batch" },
-          "resolution": { "web": "gateway", "desktop": "native" }
+          "resolution": { "web": "unavailable", "desktop": "native" },
+          "unavailable_reason": {
+            "web": "Solar calculation runs in DS GridDesign Desktop or with `ds solar project run`. The web app does not compute Solar until browser parity exists (owner decision 2026-10-19)."
+          }
         },
         "desktop_snapshot": {
           "summary": "The installed native client's bounded Solar project snapshot.",

@@ -18,7 +18,7 @@ pub const SCHEMA_VERSION: &str = "ds-web.gateway-registry/v1";
 
 /// sha256 of the exact `routing/operations.json` bytes these rows came from.
 pub const DESCRIPTOR_SHA256: &str =
-    "ea78ae88155949d0b85b926f169098aa97289723f66c245232de9405d5e28395";
+    "148f10a1e17bbad9eaf56e6c9defc7bbd3a8039d1562e25b48e1f27d59b69414";
 
 /// Every declared operation that has a gateway route, sorted by id.
 pub const OPERATIONS: &[GatewayOperation] = &[
@@ -993,7 +993,7 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         retry_class: "none",
         timeout_s: 30,
         response_cap_bytes: 1048576,
-        resolution_web: "gateway",
+        resolution_web: "unavailable",
         resolution_desktop: "native",
         native_command: "solar_native_calculate",
     },
@@ -1012,7 +1012,7 @@ pub const OPERATIONS: &[GatewayOperation] = &[
         retry_class: "none",
         timeout_s: 30,
         response_cap_bytes: 1048576,
-        resolution_web: "gateway",
+        resolution_web: "unavailable",
         resolution_desktop: "native",
         native_command: "solar_native_calculate_batch",
     },
