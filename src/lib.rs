@@ -16,15 +16,15 @@ pub use ds_solar_contracts::is_solar_id;
 pub use time;
 pub mod asset_preview;
 pub mod assets;
-pub mod project_snapshot;
-pub mod grid_selection_controls;
 pub mod grid_held_models;
+pub mod grid_selection_controls;
 pub mod profile_controls;
 pub mod profile_display;
 pub mod profile_encoding;
 pub mod profile_inputs;
 pub mod profile_layout;
 pub mod profile_style;
+pub mod project_snapshot;
 pub use ds_kml as kml;
 pub mod solar_dashboard;
 pub mod solar_report_bundle;
@@ -128,9 +128,9 @@ pub fn execution_context_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVa
     execution_context::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 pub mod desktop_instance;
-pub mod module_release;
-pub mod module_install;
 pub mod desktop_update;
+pub mod module_install;
+pub mod module_release;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = desktopInstance)]
 pub fn desktop_instance_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
@@ -138,8 +138,8 @@ pub fn desktop_instance_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVal
 }
 pub mod connectivity;
 pub mod design;
-pub mod design_repair;
 pub mod design_attachments;
+pub mod design_repair;
 
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designAttachments)]
@@ -193,10 +193,10 @@ pub mod design_status_row;
 pub fn combined_readiness_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     combined_readiness::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
-pub mod status_upload;
 pub mod freshness;
-pub mod sync;
 pub mod sql_effect;
+pub mod status_upload;
+pub mod sync;
 pub mod transformer_status_store;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = transformerStatusStore)]
@@ -1620,13 +1620,13 @@ pub mod report_formats;
 pub mod report_messages;
 pub mod report_migrations;
 
-pub mod transformer_history_import;
-pub mod design_version_binding;
-pub mod design_version_promotion;
 pub mod design_revision_comparison;
+pub mod design_version_binding;
 pub mod design_version_catalog;
+pub mod design_version_promotion;
 pub mod design_versions;
 pub mod design_versions_headless;
+pub mod transformer_history_import;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = designVersionAuthorityCommand)]
 pub fn design_version_authority_command_wasm(

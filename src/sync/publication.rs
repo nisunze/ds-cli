@@ -17,8 +17,12 @@ impl PublicationBlock {
 
     pub fn detail(self) -> &'static str {
         match self {
-            Self::EngineUnavailable => "this publication has no registered engine policy; its bytes remain held",
-            Self::MissingSource => "this publication names no source inputs, so the record cannot tell whether it is current; produce it again",
+            Self::EngineUnavailable => {
+                "this publication has no registered engine policy; its bytes remain held"
+            }
+            Self::MissingSource => {
+                "this publication names no source inputs, so the record cannot tell whether it is current; produce it again"
+            }
         }
     }
 }
