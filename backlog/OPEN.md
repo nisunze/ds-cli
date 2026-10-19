@@ -223,6 +223,12 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - **TypeScript decides an A4 preview's saved-analysis need:** `ds-web/src/lib/reports/transformer-export.ts` (`selection?.geospatial?.includes('voltage_drop_pdf')`) duplicates `report_formats::requires_voltage_drop_analysis`. Move the decision behind the native owner and delete the TypeScript check.
 
+- **Agasharu edit-context export wiring, stopped 2026-10-19 before any code change:** installed Core reads the saved room and completes `ds-canary report project export --transformer agasharu --dry-run --lane canary --project arjgpydw_huye2` (SHP and KMZ; XLSX withheld with `report_engineering_facts_required`; the project declares only shp/kmz/xlsx). Desktop Status and edit-context exports both go through `ds-web/src/lib/reports/transformer-export.ts` `exportTransformerReport`, which sends the IndexedDB room through `networkReporterExportHeld` → `report_held_export` → `--held-export`. That path refuses with `report_held_export_source_changed` when the held room's content differs from the saved head. Remaining work:
+  - Serve `report.project.export` without `preview-layout` in `src-tauri/src/ds_invoke.rs`. It takes `transformer`, an optional `selection` and `force`, with held set to null, and calls Core `report project export --transformer --selection --out-dir --project --lane`.
+  - Resolve an omitted selection to the project's declared outputs: Core `report project settings` `.data.outputs`, then `normalize_output_selection`. `invocation_selection` omits prints.
+  - Refuse a dirty or unsaved room with `report_held_export_source_unsaved`. The signals are `getDesignTransformerHeaders` (`local_dirty`, `pending_operation_id`, `!server_known`) and `hasUnsavedChanges()`.
+  - Delete `networkReporterExportHeld`, the `report_held_export` command and `core_attachment_report_export.rs`. Put the tests in their own files.
+
 ## 11. PLS-CADD exchange round trip
 
 - **PLS engineering fidelity** (`4ed6b202`, `ef2478d4`, `0a653e07`): the native round trip must retain connected T-offs, use section ruling spans for clearance, and preserve valid cable and criteria records. Prove each against its filed PLS acceptance before issuing strength results.
