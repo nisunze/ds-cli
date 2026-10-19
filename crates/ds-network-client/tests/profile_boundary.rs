@@ -59,6 +59,11 @@ fn acceptance_profile_real_owner_retains_incremental_authored_rows_and_restores_
     isolated(&required("DS_PROFILE_REAL_ENGINE"), "authored-recovery");
 }
 #[test]
+#[ignore = "requires explicit built native Profile owner and emitted owning fixture"]
+fn acceptance_profile_real_owner_consumed_artifacts_never_end_a_long_session() {
+    isolated(&required("DS_PROFILE_REAL_ENGINE"), "long-session");
+}
+#[test]
 #[ignore = "requires explicit previous engine without profile_authored_checkpoint_v1"]
 fn acceptance_profile_old_owner_refuses_authored_recovery_before_staging() {
     isolated(
@@ -108,7 +113,12 @@ fn isolated_profile_case() {
     let captured = CapturedNetworkClient::capture(1, &|| false).unwrap();
     let input = if matches!(
         case.as_str(),
-        "real" | "authored" | "old-authored" | "authored-recovery" | "old-authored-recovery"
+        "real"
+            | "authored"
+            | "old-authored"
+            | "authored-recovery"
+            | "old-authored-recovery"
+            | "long-session"
     ) {
         fs::read(required("DS_PROFILE_OPEN_FIXTURE")).unwrap()
     } else {
@@ -126,6 +136,7 @@ fn isolated_profile_case() {
                     | "old-authored"
                     | "authored-recovery"
                     | "old-authored-recovery"
+                    | "long-session"
             ) {
                 30000
             } else {
@@ -174,6 +185,20 @@ fn isolated_profile_case() {
     }
     let mut session = result.unwrap();
     let pid = session.process_id();
+    if case == "long-session" {
+        // Every artifact is consumed, so a session outlives the former
+        // cumulative budget of MAX_PROFILE_ARTIFACTS files.
+        for _ in 0..MAX_PROFILE_ARTIFACTS + 100 {
+            state(&mut session);
+        }
+        assert!(!session.is_closed());
+        assert_eq!(session.process_id(), pid);
+        session.close(&|| false).unwrap();
+        assert_dead(pid);
+        drop(session);
+        assert_eq!(fs::read_dir(scratch.path()).unwrap().count(), 0);
+        return;
+    }
     if case == "old-authored-recovery" {
         let initial = session.history().clone();
         let refused = session.authored_checkpoint(None, &|| false).unwrap_err();

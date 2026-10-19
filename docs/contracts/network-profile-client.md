@@ -27,8 +27,9 @@ there is no retry, linked fallback or implicit recalculation.
 Successful replies carry a fixed `profile-NNNNNNNNNN.json` artifact with exact
 schema, size and digest. The private output directory must contain only that
 ordinary file. The client reads the bounded exact bytes, validates JSON without
-reserializing it, and removes the consumed staging file. Native cumulative byte,
-file and request bounds remain enforced independently. Checkpoint and Close
+reserializing it, and removes the consumed staging file. The engine bounds
+unconsumed output and request sequences; consumed artifacts are not budgeted, so
+a long editing session is never ended by results it already read. Checkpoint and Close
 additionally bind the new authored open document to the acknowledged model and
 history; current Network engines omit every calculated result from it.
 `last_checkpoint` exposes the exact bytes, hash, sequence and engine pin. An

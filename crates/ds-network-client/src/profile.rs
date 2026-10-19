@@ -32,8 +32,6 @@ pub struct ProfileSession {
     history: Value,
     initial_revision: Value,
     sequence: u64,
-    staged_bytes: usize,
-    artifacts: usize,
     last_checkpoint: Option<ProfileCheckpoint>,
     closed: bool,
 }
@@ -218,8 +216,6 @@ impl CapturedNetworkClient {
             history,
             initial_revision,
             sequence: 0,
-            staged_bytes: 0,
-            artifacts: 0,
             last_checkpoint: None,
             closed: false,
         })
@@ -1011,16 +1007,6 @@ impl ProfileSession {
                 "Profile artifact digest differs from its receipt",
             ));
         }
-        let count = self
-            .staged_bytes
-            .checked_add(bytes.len())
-            .filter(|n| *n <= MAX_PROFILE_STAGED_BYTES)
-            .ok_or_else(|| invalid("Profile staged bytes exceed their cumulative bound"))?;
-        if self.artifacts >= MAX_PROFILE_ARTIFACTS {
-            return Err(invalid(
-                "Profile artifact count exceeds its cumulative bound",
-            ));
-        }
         if checkpoint {
             let (model, history) = open_fence(&bytes)?;
             if model != self.model_id || history != reply.history {
@@ -1089,11 +1075,11 @@ impl ProfileSession {
                 ));
             }
         }
+        // The verified artifact is the only staged file and is consumed now; the
+        // engine bounds unconsumed output, so long sessions are not budgeted.
         fs::remove_file(&artifact_path).map_err(|e| invalid(e.to_string()))?;
         self.sequence = sequence;
         self.history = reply.history.clone();
-        self.staged_bytes = count;
-        self.artifacts += 1;
         if checkpoint {
             self.last_checkpoint = Some(ProfileCheckpoint {
                 engine: self.pin.clone(),
