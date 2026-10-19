@@ -144,6 +144,13 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_file_write",
         "headless_project",
     ),
+    // The Combined Report computed on this machine: like an individual
+    // export it writes a local package and seals it into the Sync queue.
+    (
+        "report.project.combined",
+        "local_file_write",
+        "headless_project",
+    ),
     (
         "design.features.select",
         "local_auth_state",

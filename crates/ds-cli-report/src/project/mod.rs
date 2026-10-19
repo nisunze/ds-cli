@@ -22,6 +22,7 @@
 
 pub mod archives;
 pub mod combined;
+pub mod combined_export;
 pub mod compute;
 pub mod crs;
 pub mod export;
@@ -536,6 +537,7 @@ mod tests {
             &scope::COMMAND,
             &crs::COMMAND,
             &combined::COMMAND,
+            &combined_export::COMMAND,
             &compute::COMMAND,
             &archives::COMMAND,
             &settings::COMMAND,

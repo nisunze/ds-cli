@@ -206,17 +206,17 @@ const NOT_ACTIVE: Refusal = Refusal {
     when: "a named transformer is retired, deleted or missing",
     remedy: "`ds report project scope` shows the lifecycle; restore or drop the name",
 };
-const PUBLISH_LOCAL_ONLY: Refusal = Refusal {
+pub(super) const PUBLISH_LOCAL_ONLY: Refusal = Refusal {
     code: "report_publish_local_only",
     when: "a development reporter build produced artifacts, and a development build may not publish",
     remedy: "run a release reporter build, or pass --dry-run to accept local-only files",
 };
-const PUBLISH_SCOPE_CHANGED: Refusal = Refusal {
+pub(super) const PUBLISH_SCOPE_CHANGED: Refusal = Refusal {
     code: "report_publish_scope_changed",
     when: "the native identity, lane, audience, project or credential generation changed before sealing",
     remedy: "repeat the export under the current native account and project",
 };
-const PUBLISH_ROOT: Refusal = Refusal {
+pub(super) const PUBLISH_ROOT: Refusal = Refusal {
     code: "report_publish_root_invalid",
     when: "the Server state root is unavailable, relative, or cannot hold a sealed publication",
     remedy: "use Server's default state root, or the same absolute --core-state-dir as ds core serve",
@@ -555,6 +555,28 @@ impl ReportEngine for CapturedCliEngine {
         result: &Path,
     ) -> Result<EngineExit, HostFailure> {
         self.render("render-grid-plan-profile", request, result)
+    }
+    fn export_combined_transformer_report(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        self.render(
+            ds_command_kernel::report_export::combined::SUBCOMMAND,
+            request,
+            result,
+        )
+    }
+    fn discover_combined_media_references(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        self.render(
+            ds_command_kernel::report_export::combined::MEDIA_SUBCOMMAND,
+            request,
+            result,
+        )
     }
     fn launch_grid_preview(
         &self,
@@ -1102,7 +1124,7 @@ pub enum SealedRun {
 /// receipts and the store row in one acknowledged step. The guard is
 /// re-checked at the durable visibility boundary; its refusal comes back
 /// as itself.
-fn seal_run_for_server(
+pub(super) fn seal_run_for_server(
     run: &ds_report_host::RunOutcome,
     owner_uid: &str,
     project_id: &str,
@@ -1184,7 +1206,15 @@ fn seal_run_for_server(
         engine_version: &run.engine.engine_version,
         engine_build_manifest_sha256: &run.engine.build_manifest_sha256,
         transformer: &run.transformer,
-        transformer_revision: receipt_revision(&run.receipt)?,
+        // A Combined Report spans many saved revisions; its batch carries the
+        // kernel's fixed publication revision instead of one room's.
+        transformer_revision: if run.transformer
+            == ds_command_kernel::report_export::combined::IDENTITY
+        {
+            ds_command_kernel::report_export::combined::PUBLICATION_REVISION
+        } else {
+            receipt_revision(&run.receipt)?
+        },
         input_base_fingerprint: receipt_text(&run.receipt, "input_base_fingerprint")?,
         room_content_sha256: receipt_text(&run.receipt, "room_content_sha256")?,
         client_run_id: &run.client_run_id,
@@ -1352,7 +1382,7 @@ fn withheld_offline(unreachable: &str) -> Value {
     })
 }
 
-fn verify_publish_scope(
+pub(super) fn verify_publish_scope(
     lane: &str,
     fence: &ds_cli_auth::LayerScopeFence,
     owner_uid: &str,

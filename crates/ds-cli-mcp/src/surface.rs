@@ -825,6 +825,8 @@ const PROJECT_OPERATIONS_COMMANDS: &[&str] = &[
     "design.transformer.restore",
     "report.project.scope",
     "report.project.compounded",
+    // The Combined Report computed on this machine and sealed into Sync.
+    "report.project.combined",
     "report.project.archives",
     "report.publication.list",
     "report.publication.show",

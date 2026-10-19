@@ -315,6 +315,11 @@ static REPORT_ENTRIES: &[Entry] = &[
         render: ds_cli_report::project::combined::render,
     },
     Entry {
+        command: &ds_cli_report::project::combined_export::COMMAND,
+        handler: ds_cli_report::project::combined_export::run,
+        render: ds_cli_report::project::combined_export::render,
+    },
+    Entry {
         command: &ds_cli_report::outbox::STATUS,
         handler: ds_cli_report::outbox::status,
         render: ds_cli_report::outbox::render,
@@ -3618,6 +3623,7 @@ fn scope_headless_identity(
 ) -> Result<ds_cli_desktop::ops::HeadlessIdentityGuard, Failure> {
     let core_lane = std::env::var_os("DS_CORE_LANE");
     scope_headless_identity_selected(command, inputs, core_lane.as_deref())
+        "report.project.combined" => ds_cli_report::project::combined_export::preflight(&inputs)?,
 }
 
 fn scope_headless_identity_selected(
@@ -3672,6 +3678,8 @@ fn scope_headless_identity_probed(
     // probing or requiring Desktop. If (and only if) a handler reaches the
     // shared typed bridge seam, `ops::invoke` snapshots the map, arbitrates,
     // and sends an atomic invocation fence.
+        // A Combined Report seals only its own run into Sync, like a held export.
+        || id == "report.project.combined"
     // `ds desktop list` is the enumeration every instance-targeted refusal
     // points at, and "which of these can serve my work" is a question only
     // this observation can answer. It declares no authority — it must answer
@@ -4214,3 +4222,22 @@ mod report_touch_tests {
         assert!(!report_held_read("report.outbox.inventory"));
     }
 }
+    #[test]
+    fn the_combined_report_seals_only_its_own_run_without_an_unrelated_touch() {
+        for args in [
+            &[
+                "--project",
+                "p",
+                "--lane",
+                "canary",
+                "--out-dir",
+                "/combined",
+            ][..],
+            &["--project", "p", "--out-dir", "/combined", "--dry-run"][..],
+        ] {
+            let combined = inputs(&ds_cli_report::project::combined_export::COMMAND, args);
+            assert!(!report_project_touch("report.project.combined", &combined));
+        }
+        assert!(!report_held_read("report.project.combined"));
+    }
+
