@@ -451,7 +451,7 @@ fn the_action_vocabularies_the_cli_may_send_are_declared() {
 }
 
 #[test]
-fn printing_is_one_profile_route_and_four_declared_operations() {
+fn printing_is_one_profile_route_and_three_declared_operations() {
     // Honest divergence, stated rather than asserted away: the profile pins one
     // printing route with a seven-action vocabulary, while the registry
     // declares one id per reviewed printing operation and carries no vocabulary
@@ -462,8 +462,8 @@ fn printing_is_one_profile_route_and_four_declared_operations() {
         "domains.printing.list",
         "domains.printing.get",
         "domains.printing.save",
-        "domains.printing.render",
     ] {
+        // domains.printing.render was retired from the descriptor (kernel fc4b79e).
         let entry = op(id);
         assert_eq!(entry.method, method, "{id} method");
         assert_eq!(entry.path, path, "{id} path");
