@@ -74,7 +74,7 @@ pub static READ: Command = Command {
         super::PROJECT_REQUIRED,
     ],
     reference: Some("docs/reference/core.md"),
-    search: &["offline", "retained", "sync", "projects"],
+    search: &[],
     requires: Requires::Server,
     availability: super::native_host_availability,
 };

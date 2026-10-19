@@ -25,7 +25,7 @@ pub static INSPECT: Command = Command {
     examples: &[],
     refusals: &[Refusal { code: "desktop_update_invalid", when: "held metadata, component/lane/platform or exact installer identity is malformed, crossed or excessive", remedy: "retain the installed application; supply the exact lane/platform metadata and real recorded identity" }],
     reference: Some("docs/reference/core.md"),
-    search: &["automatic", "update", "version", "build", "release"],
+    search: &["automatic", "version", "build", "release"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

@@ -84,7 +84,7 @@ pub static LIST: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
-    search: &["saved MV models", "plan profile source"],
+    search: &["mv models", "profile source"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -120,7 +120,7 @@ pub static EXPORT: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
-    search: &["download MV model", "plan profile source"],
+    search: &["download model", "profile source"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

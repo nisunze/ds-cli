@@ -180,7 +180,7 @@ pub static CAPTURE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
-    search: &["UI", "WASM", "loader", "capture"],
+    search: &["wasm", "frontend"],
     requires: Requires::Server,
     availability: ui_availability,
 };
@@ -227,7 +227,7 @@ pub static MEMBER: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
-    search: &["UI", "WASM", "loader", "bytes"],
+    search: &["wasm", "loader", "bytes"],
     requires: Requires::Server,
     availability: ui_availability,
 };

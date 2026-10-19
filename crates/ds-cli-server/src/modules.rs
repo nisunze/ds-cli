@@ -28,7 +28,7 @@ pub static INVENTORY: Command = Command {
     examples: &[],
     refusals: &[],
     reference: Some("docs/reference/core.md"),
-    search: &["addons", "extensions"],
+    search: &["extensions"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
@@ -82,7 +82,7 @@ pub static RELEASE: Command = Command {
         remedy: "retain the metadata; select its exact module and lane or obtain a corrected declared release",
     }],
     reference: Some("docs/reference/core.md"),
-    search: &["addons", "release"],
+    search: &["addons"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };

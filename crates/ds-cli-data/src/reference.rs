@@ -52,7 +52,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: &[INVALID, UNAVAILABLE],
     reference: Some("docs/reference/data.md"),
-    search: &["global", "rwanda", "cache", "offline"],
+    search: &["global", "rwanda"],
     requires: Requires::Server,
     availability: super::available,
 };

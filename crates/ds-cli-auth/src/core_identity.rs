@@ -33,7 +33,7 @@ pub static IDENTITY: Command = Command {
     args: &[crate::LANE],
     output: "installId, device, arch, appVersion, channel and osVersion; no private paths or credentials.",
     examples: &[], refusals: READ_REFUSALS, reference: Some("docs/reference/core.md"),
-    search: &["installation", "identity", "offline"], requires: Requires::Server,
+    search: &[], requires: Requires::Server,
     availability: crate::state::availability,
 };
 pub static AUTH_STATUS: Command = Command {
@@ -45,7 +45,7 @@ pub static AUTH_STATUS: Command = Command {
     args: &[crate::LANE],
     output: "signedIn, uid, lane, audienceSha256 and null project; never tokens, keys or credential-instance identifiers.",
     examples: &[], refusals: READ_REFUSALS, reference: Some("docs/reference/core.md"),
-    search: &["authentication", "offline"], requires: Requires::Server,
+    search: &["offline"], requires: Requires::Server,
     availability: crate::native_availability,
 };
 

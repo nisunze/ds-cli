@@ -46,7 +46,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: crate::outbox::INVENTORY.refusals,
     reference: Some("docs/reference/report.md"),
-    search: &["report files", "availability", "held", "download", "sync"],
+    search: &["report files", "availability", "download", "sync"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

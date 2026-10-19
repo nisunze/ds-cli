@@ -55,7 +55,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: crate::outbox::INVENTORY.refusals,
     reference: Some("docs/reference/report.md"),
-    search: &["offline", "download", "retained", "local report"],
+    search: &["offline", "download", "local report"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

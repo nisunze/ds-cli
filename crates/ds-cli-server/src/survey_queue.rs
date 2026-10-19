@@ -52,7 +52,7 @@ pub static COMMAND: Command = Command {
         Arg::value("out", "<absolute-new-json-file>", "New owner-only result file in an existing protected directory; never replaced, at most 64 MiB.").required()],
     output: "Bounded ds.survey-queue-file/v1 receipt with path, sha256, size_bytes, action, project, lane and safe owner context (account, deployment_sha256, install_id). The bound file is ds.survey-queue/v1 with the same context and result. Transition results retain Kernel effects after atomic persistence. Create preparation returns {expected:{fence,row_sha256},plan}; receipt verification returns {expected,receipt}. Discard prepare returns {rows:[{fence,row_sha256,row}]}; commit returns {removed:[id]}.",
     examples: &[], refusals: &[super::PLATFORM, INVALID, DISCARD, STORE, OUTPUT, CHANGED, super::CONTEXT_CORRUPT, super::PROJECT_REQUIRED],
-    reference: Some("docs/reference/core.md"), search: &["survey", "offline", "queue", "sqlite"], requires: Requires::Server, availability: super::native_host_availability,
+    reference: Some("docs/reference/core.md"), search: &["sqlite"], requires: Requires::Server, availability: super::native_host_availability,
 };
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]

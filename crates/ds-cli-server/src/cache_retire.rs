@@ -64,7 +64,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/core.md"),
-    search: &["cache", "account", "history", "retire"],
+    search: &["history", "switch account"],
     requires: Requires::Server,
     availability: crate::native_host_availability,
 };

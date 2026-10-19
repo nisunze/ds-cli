@@ -37,7 +37,7 @@ pub static PLAN: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
-    search: &["weather", "pvlib", "offline", "reference"],
+    search: &["pvlib", "offline"],
     requires: Requires::Server,
     availability: crate::project::availability,
 };
@@ -59,7 +59,7 @@ pub static IMPORT: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/solar.md"),
-    search: &["weather", "pvlib", "offline", "reference"],
+    search: &["pvlib", "offline"],
     requires: Requires::Server,
     availability: crate::project::availability,
 };

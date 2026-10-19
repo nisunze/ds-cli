@@ -459,7 +459,7 @@ pub static INSTALLATIONS: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["push", "notification", "installation", "delivery"],
+    search: &["push", "installation", "delivery"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -482,7 +482,7 @@ pub static REVOKE_INSTALLATION: Command = Command {
     }],
     refusals: &REFUSALS,
     reference: None,
-    search: &["push", "notification", "installation", "logout", "revoke"],
+    search: &["push", "logout", "unregister"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

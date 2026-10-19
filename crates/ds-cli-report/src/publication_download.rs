@@ -53,7 +53,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: crate::publication::SHOW.refusals,
     reference: Some("docs/reference/report.md"),
-    search: &["artifact", "download", "immutable", "sha256"],
+    search: &["artifact", "immutable", "sha256"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

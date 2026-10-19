@@ -84,7 +84,7 @@ pub static READ: Command = Command {
         READ_UNREADABLE,
     ]),
     reference: Some("docs/reference/pm.md"),
-    search: &["issues", "answered", "milestone"],
+    search: &["issues", "answered"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };
@@ -121,7 +121,6 @@ pub static EDIT: Command = Command {
         "uncheck",
         "item geometry",
         "item attachment",
-        "milestone",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,

@@ -85,7 +85,7 @@ pub(super) const fn declaration(
         output: "Account-private note metadata, selected content or owner-verified version/state receipt. No hidden owner UID or project catalogue.",
         examples: &[],
         reference: Some("docs/reference/pm.md"),
-        search: &["private", "notes", "history", "restore", "authoring"],
+        search: &["personal", "memo", "authoring"],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,
     }
@@ -94,7 +94,7 @@ pub static CREATE: Command = declaration(
     "notes.create",
     &["notes", "create"],
     "Create one explicitly account-private note.",
-    "Use only for deliberately private personal material; project decisions, constraints and delivery evidence belong in shared pm note create with explicit --project. Reads a closed complete authored draft JSON and creates version 1 with --yes. Markdown/checklist/links are deliberate; no automatic note hook or private-to-project copy. Existing reminder effects apply when authored. Creation allocates a fresh id and is not idempotent: after an uncertain outcome inspect notes list before retrying. No model attribution field is invented.",
+    "Use only for deliberately private material; project decisions and delivery evidence belong in shared pm note create with --project. Reads a complete draft JSON and creates version 1 with --yes; no automatic note hook or private-to-project copy. Creation allocates a fresh id and is not idempotent: after an uncertain outcome inspect notes list before retrying.",
     Effect::GlobalWrite,
     &[INPUT, crate::LANE_ARG],
 );

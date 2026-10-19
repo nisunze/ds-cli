@@ -221,7 +221,7 @@ pub static REMOVE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
-    search: &["uninstall", "addon", "remove", "component", "generation"],
+    search: &["uninstall", "addon", "generation"],
     requires: Requires::Server,
     availability: crate::native_host_availability,
 };
@@ -241,7 +241,7 @@ pub static SELECTION: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
-    search: &["component", "installed", "removed", "generation", "offline"],
+    search: &["installed", "removed"],
     requires: Requires::Server,
     availability: crate::module_updates::native_module_availability,
 };

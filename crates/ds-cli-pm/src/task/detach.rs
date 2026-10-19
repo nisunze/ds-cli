@@ -50,7 +50,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &crate::correspondence_refusals::<22>(&[INVALID]),
     reference: Some("docs/reference/pm.md"),
-    search: &["unlink", "attachment", "retain", "remove"],
+    search: &["unlink", "retain", "remove"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

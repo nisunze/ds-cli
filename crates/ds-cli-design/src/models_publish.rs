@@ -279,7 +279,7 @@ pub static COMMAND: Command = Command {
     examples: &[],
     refusals: &refusals(),
     reference: Some("docs/reference/design.md"),
-    search: &["save MV checkpoint", "publish existing model"],
+    search: &["mv checkpoint", "existing model"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

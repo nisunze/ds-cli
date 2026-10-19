@@ -101,8 +101,8 @@ const fn leaf(
         search: &[
             "document extraction",
             "extract once",
-            "MarkItDown",
-            "document Markdown",
+
+            "document markdown",
         ],
         requires: Requires::Server,
         availability: ds_cli_auth::native_availability,

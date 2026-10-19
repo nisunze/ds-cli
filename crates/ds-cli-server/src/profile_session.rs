@@ -21,7 +21,7 @@ const FILE_SCHEMA: &str = "ds.core.profile-artifact/v1";
 pub static COMMAND: Command = Command {
     id: "core.profile-session", path: &["core", "profile-session"], contract: 1,
     summary: "Open, edit, recover or read a retained native Grid Profile session.",
-    purpose: "Use the authenticated Core owner and its independently installed Network process for one exact .dsgrid package. Closed requests open, read, edit, checkpoint, recover or close a session, fenced to account/lane/project/model/history and the captured executable. Core retains authored checkpoints durably before acknowledgement; close preserves recovery. Save exclusion and package emission do not publish or persist an external model. Missing capabilities refuse without an alternate engine. Read docs/reference/core.md for request actions, bounds, recovery and style acquisition.",
+    purpose: "Use the authenticated Core owner and its installed Network process for one exact .dsgrid package. Closed requests open, read, edit, checkpoint, recover or close a session, fenced to account/lane/project/model/history and the executable. Core retains authored checkpoints durably before acknowledgement; close preserves recovery. Saving and package emission never publish an external model. Missing capabilities refuse; no alternate engine. See docs/reference/core.md for actions, bounds, recovery and styles.",
     chapter: Chapter::Design, effect: Effect::LocalFileWrite, authority: Authority::HeadlessProject,
     execution: Execution::Sync,
     args: &[crate::STATE_DIR_ARG, crate::LANE_ARG, crate::PROJECT_ARG.required(), Arg::value("request", "<json-file>", "Closed ds.core.profile-session/v1 JSON file: at most 48 MiB for Open, 8 MiB for Control, 64 KiB for other actions; exact package bytes are bounded to 32 MiB.").required(), Arg::value("out", "<absolute-new-json-file>", "Optional new absolute result file, at most 72 MiB; returns a bounded receipt. Never replaces a file.")],
@@ -42,7 +42,7 @@ pub static COMMAND: Command = Command {
         Refusal {code:"module_removed",when:"Network was explicitly removed from this lane",remedy:"explicitly reinstall the admitted Network component in the same lane"},
         Refusal {code:"network_engine_missing",when:"no admitted managed Network executable is installed",remedy:"install the admitted Network component in the same lane"},
     ],
-    reference: Some("docs/reference/core.md"), search: &["profile", "native", "dsgrid"],
+    reference: Some("docs/reference/core.md"), search: &["dsgrid"],
     requires: Requires::Server, availability: crate::native_host_availability,
 };
 

@@ -1789,15 +1789,17 @@ static NOTES_ENTRIES: &[Entry] = &[
 ];
 
 static WORK_ENTRIES: &[Entry] = &[
-    Entry {
-        command: &ds_cli_pm::overview::COMMAND,
-        handler: ds_cli_pm::overview::run,
-        render: ds_cli_pm::overview::render,
-    },
+    // The plan is the domain's entry point: help and a search for `pm` lead
+    // with it; the overview reads across the same work.
     Entry {
         command: &ds_cli_pm::plan::COMMAND,
         handler: ds_cli_pm::plan::run,
         render: ds_cli_pm::plan::render,
+    },
+    Entry {
+        command: &ds_cli_pm::overview::COMMAND,
+        handler: ds_cli_pm::overview::run,
+        render: ds_cli_pm::overview::render,
     },
     Entry {
         command: &ds_cli_pm::collaboration::PROJECTS,

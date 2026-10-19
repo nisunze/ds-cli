@@ -111,7 +111,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
-    search: &["newly created MV models", "cached project heads"],
+    search: &["new models", "cached heads"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

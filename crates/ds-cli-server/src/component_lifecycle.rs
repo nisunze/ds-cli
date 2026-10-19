@@ -46,7 +46,7 @@ pub static ACTIVATE: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
-    search: &["component", "addon", "activate", "staged", "install"],
+    search: &["addon", "install"],
     requires: Requires::Server,
     availability: crate::native_host_availability,
 };
@@ -65,7 +65,7 @@ pub static ROLLBACK: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
-    search: &["component", "addon", "rollback", "recover"],
+    search: &["addon", "recover"],
     requires: Requires::Server,
     availability: crate::native_host_availability,
 };

@@ -35,9 +35,7 @@ pub static COMMAND: Command = Command {
     search: &[
         "project overview",
         "all work",
-        "milestones",
         "project notes",
-        "records",
         "inbox",
     ],
     requires: Requires::Server,

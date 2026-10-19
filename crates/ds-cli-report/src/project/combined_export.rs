@@ -218,8 +218,8 @@ pub static COMMAND: Command = Command {
     search: &[
         "combined stats",
         "all transformers",
-        "project data set",
-        "lv summary workbook",
+        "data set",
+        "lv summary",
     ],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,

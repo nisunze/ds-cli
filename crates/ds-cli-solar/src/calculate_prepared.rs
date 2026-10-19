@@ -94,7 +94,7 @@ pub static COMMAND: Command = Command {
         },
     ],
     reference: Some("docs/reference/solar.md"),
-    search: &["prepared", "offline", "calculation", "native"],
+    search: &["calculation", "native"],
     requires: Requires::Server,
     availability,
 };

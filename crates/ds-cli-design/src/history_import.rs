@@ -42,7 +42,7 @@ const fn cmd(
             remedy: "Read the exact source and pinned receipt; do not rewrite IDs, geometry, provenance or immutable history to force acceptance",
         }],
         reference: Some("docs/reference/design.md"),
-        search: &["historical baseline", "April import"],
+        search: &["historical baseline", "historical import"],
         availability: match authority {
             Authority::HeadlessProject => ds_cli_auth::native_availability,
             _ => available,

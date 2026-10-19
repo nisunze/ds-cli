@@ -549,14 +549,30 @@ fn search(query: &str, limit: &str) -> Result<Value, Failure> {
     // For a domain-only query such as `pm`, put its shallow entry point
     // before deeper commands with the same score. Other searches retain
     // their stable id ordering.
-    let domain_query = terms.len() == 1 && registry::find_domain(&terms[0]).is_some();
+    // Among equally shallow commands, the domain's own listing order decides:
+    // help lists its entry point first, and so does a search for its name.
+    let domain = (terms.len() == 1).then(|| registry::find_domain(&terms[0])).flatten();
+    let listed = |command: &'static Command| {
+        domain
+            .and_then(|domain| {
+                domain
+                    .entries
+                    .iter()
+                    .position(|entry| std::ptr::eq(entry.command, command))
+            })
+            .unwrap_or(usize::MAX)
+    };
     scored.sort_by(|left, right| {
         right
             .0
             .cmp(&left.0)
             .then_with(|| {
-                if domain_query {
-                    left.2.path.len().cmp(&right.2.path.len())
+                if domain.is_some() {
+                    left.2
+                        .path
+                        .len()
+                        .cmp(&right.2.path.len())
+                        .then_with(|| listed(left.2).cmp(&listed(right.2)))
                 } else {
                     std::cmp::Ordering::Equal
                 }
@@ -964,30 +980,15 @@ mod tests {
         assert!(!render_doctor(&current).contains("update owned agent skills"));
     }
 
+    /// The first result of the real search, so the test cannot drift from the
+    /// ranking it guards.
     fn top_hit(query: &str) -> Option<&'static str> {
-        let words = words(query);
-        let domain_query = words.len() == 1 && registry::find_domain(&words[0]).is_some();
-        let mut scored: Vec<(u32, &'static Command)> = registry::all_commands()
+        let answer = search(query, "1").ok()?;
+        let id = answer["results"][0]["id"].as_str()?.to_owned();
+        registry::all_commands()
             .into_iter()
-            .filter_map(|command| {
-                let (score, _) = score_command(&words, command);
-                (score > 0).then_some((score, command))
-            })
-            .collect();
-        scored.sort_by(|left, right| {
-            right
-                .0
-                .cmp(&left.0)
-                .then_with(|| {
-                    if domain_query {
-                        left.1.path.len().cmp(&right.1.path.len())
-                    } else {
-                        std::cmp::Ordering::Equal
-                    }
-                })
-                .then(left.1.id.cmp(right.1.id))
-        });
-        scored.first().map(|(_, command)| command.id)
+            .find(|command| command.id == id)
+            .map(|command| command.id)
     }
 
     /// The failure this matcher was rewritten for.

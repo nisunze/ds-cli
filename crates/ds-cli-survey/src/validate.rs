@@ -25,7 +25,7 @@ pub static COMMAND: Command = Command {
         Refusal { code: "survey_form_validation_invalid", when: "the closed request shape, revision label or field schema violates the shared validator", remedy: "use schema ds.survey-form-validation/v1, a retained form_revision, at most 512 fields and a values object; correct the named field" },
     ],
     reference: Some("docs/reference/survey.md"),
-    search: &["preview", "required", "conditional", "Other", "hidden", "validation"],
+    search: &["conditional", "hidden", "validation"],
     requires: Requires::Server,
     availability: || ds_cli_contract::spec::Availability::Available,
 };
