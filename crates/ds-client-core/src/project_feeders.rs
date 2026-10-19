@@ -409,6 +409,13 @@ pub(crate) fn design_outputs(rows: &[Value]) -> Result<(), ClientError> {
     Ok(())
 }
 
+/// The project's configuration route answered that the project holds no
+/// configuration at all. Hosts recognise this static sentence (it starts with
+/// `project configuration`, like every other diagnostic of this route) and
+/// name the template-copy path instead of a permission problem.
+pub(crate) const PROJECT_CONFIGURATION_MISSING_MESSAGE: &str =
+    "project configuration is missing: the project holds no Settings documents yet";
+
 #[derive(Debug, Clone)]
 pub struct FeederConfiguration {
     pub document: Value,
@@ -438,14 +445,25 @@ pub(crate) fn decode(response: TransportResponse) -> Result<Value, ClientError> 
         // looked like on 2026-09-10: indistinguishable from an expired
         // credential, and nothing to retry against. The status and ds-brain's
         // own bounded sentence travel with the refusal.
-        let kind = match response.status {
-            500..=599 | 429 => ErrorKind::Transient,
-            _ => ErrorKind::AuthenticationRejected,
-        };
         const MESSAGE: &str =
             "project configuration request was refused; no cached configuration is substituted";
         let envelope: Option<Value> = serde_json::from_slice(&response.body).ok();
         let envelope = envelope.unwrap_or(Value::Null);
+        // ds-brain answers 404 with its own `detail` sentence only after it
+        // verified project access: the project simply holds no configuration.
+        // That is a missing seed, not a credential or permission refusal (an
+        // unrouted gateway 404 carries no `detail` and keeps the old class).
+        let missing = response.status == 404 && envelope["detail"].is_string();
+        let kind = match response.status {
+            _ if missing => ErrorKind::ResourceNotFound,
+            500..=599 | 429 => ErrorKind::Transient,
+            _ => ErrorKind::AuthenticationRejected,
+        };
+        let message = if missing {
+            PROJECT_CONFIGURATION_MISSING_MESSAGE
+        } else {
+            MESSAGE
+        };
         let refusal = crate::ServiceRefusal::new(
             response.status,
             envelope["error"]["code"].as_str(),
@@ -453,7 +471,7 @@ pub(crate) fn decode(response: TransportResponse) -> Result<Value, ClientError> 
                 .as_str()
                 .or_else(|| envelope["detail"].as_str()),
         );
-        return Err(ClientError::with_service_refusal(kind, MESSAGE, refusal));
+        return Err(ClientError::with_service_refusal(kind, message, refusal));
     }
     let mut value: Value =
         serde_json::from_slice(&response.body).map_err(|_| invalid_response())?;
@@ -691,6 +709,29 @@ mod tests {
                 .expect_err("a 429 is never served")
                 .kind(),
             ErrorKind::Transient
+        );
+        // ds-brain's 404 after verified access: the project holds no
+        // configuration. That is a missing seed, never an identity refusal.
+        let missing = decode(crate::TransportResponse::new(
+            404,
+            br#"{"detail":"No configuration found"}"#.to_vec(),
+        ))
+        .expect_err("a missing configuration is never served");
+        assert_eq!(missing.kind(), ErrorKind::ResourceNotFound);
+        assert_eq!(missing.to_string(), PROJECT_CONFIGURATION_MISSING_MESSAGE);
+        assert_eq!(
+            missing
+                .service_refusal()
+                .and_then(crate::ServiceRefusal::message),
+            Some("No configuration found")
+        );
+        // A 404 without ds-brain's sentence (an unrouted gateway) keeps its
+        // old class rather than claiming the project is unseeded.
+        assert_eq!(
+            decode(crate::TransportResponse::new(404, b"{}".to_vec()))
+                .expect_err("a bare 404 is never served")
+                .kind(),
+            ErrorKind::AuthenticationRejected
         );
         let rejected = decode(crate::TransportResponse::new(403, b"nope".to_vec()))
             .expect_err("a 403 is never served");
