@@ -7,6 +7,7 @@ mod grid_apply;
 mod grid_apply_batch;
 mod grid_catalog;
 mod grid_create;
+mod grid_operation;
 mod grid_write_admission;
 mod lv_publication;
 mod mv_projection;
@@ -34,6 +35,7 @@ pub use grid::GridOutcome;
 pub use grid_apply::GridApplyOutcome;
 pub use grid_apply_batch::GridApplyBatchOutcome;
 pub use grid_create::GridCreateOutcome;
+pub use grid_operation::GridOperationOutcome;
 pub use lv_publication::{LvAnalysisValidationOutcome, LvPublicationOutcome};
 pub use profile::{ProfileCheckpoint, ProfileOutcome, ProfileSession};
 pub use report_engineering::ReportEngineeringOutcome;
@@ -651,31 +653,5 @@ fn create_output(path: &Path) -> Result<(), NetworkFailure> {
 }
 
 #[cfg(test)]
-mod identity_capability_bound_tests {
-    use super::*;
-    #[test]
-    fn additive_capabilities_keep_a_bounded_forward_compatible_identity() {
-        let mut identity: EngineIdentity = serde_json::from_value(serde_json::json!({
-            "schema":"ds.network-engine/v1","coreVersion":"0.1.0","sourceSha":null,
-            "dependencyClosureSha256":null,"protocolMajor":1,"protocolMinor":0,
-            "environment":"native","jsonObjectOrder":"sorted",
-            "runtime":{"environment":"native","internalWorkerThreads":1,"logicalCpus":2},
-            "capabilities":["lv_processing_v1"]}))
-        .unwrap();
-        for index in 1..=64 {
-            identity
-                .capabilities
-                .push(NetworkCapability::Unknown(format!("future_{index}_v1")));
-            assert_eq!(
-                validate_identity(&identity, 1).is_ok(),
-                identity.capabilities.len() <= 64
-            );
-        }
-        identity.capabilities.truncate(64);
-        identity.capabilities.remove(0);
-        assert!(
-            validate_identity(&identity, 1).is_err(),
-            "future metadata never grants required capability"
-        );
-    }
-}
+#[path = "lib_tests.rs"]
+mod identity_capability_bound_tests;
