@@ -285,8 +285,22 @@ fn native_lv_save_refuses_missing_receipt_before_authentication() {
 }
 
 #[test]
-fn server_engine_reports_the_actual_linked_owner_without_auth_or_server() {
-    let result = native_ds(&["server", "engine", "--output", "json"]);
+fn core_engine_reports_the_installed_solar_owner_without_auth_or_server() {
+    let result = native_ds(&["core", "engine", "--output", "json"]);
+    // Solar is an independently installed addon since Core decoupling: with
+    // none installed here the answer is its named refusal, never a guess.
+    if result.envelope["error"]["code"] == "solar_engine_missing" {
+        assert_eq!(result.code, 3, "{}", result.stdout);
+        assert!(
+            result.envelope["error"]["remedy"]
+                .as_str()
+                .is_some_and(|remedy| remedy.contains("DS_SOLAR_ENGINE_BIN")),
+            "{}",
+            result.stdout
+        );
+        eprintln!("SKIPPED identity comparison: no Solar addon is installed or selected");
+        return;
+    }
     assert_eq!(result.code, 0, "{}", result.stderr);
     assert_eq!(result.envelope["status"], "ok");
     let mut expected = ds_solar_contracts::EngineIdentity::current();
@@ -306,7 +320,7 @@ fn a_server_call_names_its_project_before_it_needs_a_credential_or_a_host() {
     // server failure, and not after a round trip. Nothing here signs in,
     // reaches a socket or reads a state directory.
     let padded = native_ds(&[
-        "server",
+        "core",
         "status",
         "--project",
         " padded",
@@ -327,7 +341,7 @@ fn a_server_call_names_its_project_before_it_needs_a_credential_or_a_host() {
     // And with no project named and no saved selection to default to, the call
     // refuses here rather than letting a Server pick one. `native_ds` runs
     // against an empty DS_CONFIG_HOME, so this is the no-selection case.
-    let unscoped = native_refusal(&["server", "activity", "--output", "json"]);
+    let unscoped = native_refusal(&["core", "activity", "--output", "json"]);
     assert!(
         unscoped == "project_required" || NATIVE_AUTH_CODES.contains(&unscoped.as_str()),
         "an unscoped Server call must refuse by name, not proceed; got `{unscoped}`"
@@ -342,7 +356,7 @@ fn hosting_answers_an_impossible_share_without_signing_in() {
     // machine that can now start a host.
     for (value, expected) in [("0", "1.."), ("100000", "1.."), ("half", "whole number")] {
         let run = native_ds(&[
-            "server",
+            "core",
             "serve",
             "--per-project",
             value,
@@ -366,11 +380,11 @@ fn the_layer_drawer_has_one_command_id_and_it_is_not_the_servers() {
     // Retired, and retired means unreachable: `ds server layers …` must not
     // resolve at all, so a caller is sent to the one id that names the
     // operation instead of finding a second one that happens to still work.
-    let retired = ds(&["server", "layers", "list", "--output", "json"]);
+    let retired = ds(&["core", "layers", "list", "--output", "json"]);
     assert_ne!(retired.code, 0, "`ds server layers list` still resolves");
     assert_eq!(retired.envelope["status"], "error");
     assert!(
-        !ds(&["server", "--help"]).stdout.contains("layers"),
+        !ds(&["core", "--help"]).stdout.contains("layers"),
         "`ds server --help` still offers the retired layer commands"
     );
     // The surviving id is the one that takes a host, not a second name for it.
@@ -453,7 +467,7 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
     // parser refuses here (the saved selection is never read), rather than
     // letting a host pick.
     for args in [
-        vec!["map", "layer", "list", "--target", "server"],
+        vec!["map", "layer", "list", "--target", "core"],
         vec![
             "map",
             "layer",
@@ -461,7 +475,7 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
             "--layer",
             "survey/poles",
             "--target",
-            "server",
+            "core",
         ],
         vec![
             "map",
@@ -470,7 +484,7 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
             "--layer",
             "survey/poles",
             "--target",
-            "server",
+            "core",
         ],
         vec![
             "map",
@@ -480,7 +494,7 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
             "survey/poles=10",
             "--yes",
             "--target",
-            "server",
+            "core",
         ],
     ] {
         let mut args = args;
@@ -503,7 +517,7 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
         "--layer",
         "survey/poles",
         "--target",
-        "server",
+        "core",
         "--project",
         "project-a",
         "--state-dir",
@@ -520,7 +534,7 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
         "layer",
         "list",
         "--target",
-        "server",
+        "core",
         "--project",
         " padded",
         "--output",
@@ -604,7 +618,7 @@ fn a_map_layer_op_runs_the_same_against_the_server() {
         }
     }
     // Both of those belong to the command that DOES answer them.
-    let hosting = ok(&["capabilities", "server.serve", "--output", "json"])["command"]["refusals"]
+    let hosting = ok(&["capabilities", "core.serve", "--output", "json"])["command"]["refusals"]
         .as_array()
         .expect("refusals")
         .iter()
@@ -831,10 +845,10 @@ fn sync_sanitation_bounds_and_digest_are_checked_before_pairing() {
 #[test]
 fn native_sync_recovery_is_project_explicit_and_validates_before_server_io() {
     for (id, effect) in [
-        ("server.sync.status", "read_only"),
-        ("server.sync.retry", "global_write"),
-        ("server.sync.sanitize.preview", "read_only"),
-        ("server.sync.sanitize.apply", "global_write"),
+        ("core.sync.status", "read_only"),
+        ("core.sync.retry", "global_write"),
+        ("core.sync.sanitize.preview", "read_only"),
+        ("core.sync.sanitize.apply", "global_write"),
     ] {
         let descriptor = ok(&["capabilities", id, "--output", "json"]);
         let command = &descriptor["command"];
@@ -850,14 +864,14 @@ fn native_sync_recovery_is_project_explicit_and_validates_before_server_io() {
         assert!(project["default"].is_null());
     }
     for action in [vec!["status"], vec!["sanitize", "preview"]] {
-        let mut args = vec!["server", "sync"];
+        let mut args = vec!["core", "sync"];
         args.extend(action);
         args.extend(["--project", "project", "--limit", "201", "--output", "json"]);
         assert_eq!(refusal(&args), "sync_invalid_input");
     }
     assert_eq!(
         refusal(&[
-            "server",
+            "core",
             "sync",
             "retry",
             "--project",
@@ -871,7 +885,7 @@ fn native_sync_recovery_is_project_explicit_and_validates_before_server_io() {
     );
     assert_eq!(
         refusal(&[
-            "server",
+            "core",
             "sync",
             "retry",
             "--project",
@@ -886,7 +900,7 @@ fn native_sync_recovery_is_project_explicit_and_validates_before_server_io() {
     );
     assert_eq!(
         refusal(&[
-            "server",
+            "core",
             "sync",
             "sanitize",
             "apply",
@@ -902,7 +916,7 @@ fn native_sync_recovery_is_project_explicit_and_validates_before_server_io() {
     );
     assert_eq!(
         refusal(&[
-            "server",
+            "core",
             "sync",
             "sanitize",
             "apply",
@@ -1151,7 +1165,8 @@ fn capabilities_requires_separates_the_window_from_the_server() {
     // Profile in the window, behind `paired_availability`.
     // Owner-requested live RAM controls are a window intent. Engineering and
     // full-history admission remain the headless native engine's authority.
-    assert_eq!(window["matched"], 48, "map's window commands");
+    // 49 since `map.profile.pick` (a43c9c95) reads the mounted Profile pick.
+    assert_eq!(window["matched"], 49, "map's window commands");
     let ids: Vec<&str> = window["results"]
         .as_array()
         .expect("results")
@@ -1164,7 +1179,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
         "moving the camera is the window's own work: {ids:?}"
     );
     assert_eq!(window["more"]["shown"], 5);
-    assert_eq!(window["more"]["matched"], 48);
+    assert_eq!(window["more"]["matched"], 49);
 
     // Survey moved to the server. If a survey command ever needs the window
     // again, this is where it is noticed.
@@ -2214,7 +2229,7 @@ fn two_live_instances_refuse_without_an_explicit_target() {
     // And a host that does not perform this operation is answered by name
     // rather than by routing it somewhere that would.
     let elsewhere = machine.ds_with(
-        &[("DS_TARGET", "server")],
+        &[("DS_TARGET", "core")],
         &["desktop", "status", "--output", "json"],
     );
     assert_eq!(
@@ -3088,6 +3103,7 @@ fn map_ui_open_offers_named_panels_and_no_way_to_address_the_interface() {
             "project-printing",
             "project-control",
             "sync-center",
+            "notification-center",
             "transformers",
             "report-preview"
         ],
@@ -3410,7 +3426,9 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
                 "filter",
                 "findings",
                 "lane",
+                "out",
                 "project",
+                "read",
                 "search",
                 "sort",
                 "transformer",
@@ -4392,56 +4410,23 @@ fn design_version_begin_is_a_confirmed_headless_project_write() {
 }
 
 #[test]
-fn design_version_restore_is_a_confirmed_headless_project_write() {
-    let descriptor = ok(&["capabilities", "design.version.restore", "--output", "json"]);
-    let command = &descriptor["command"];
+fn superseded_design_version_restore_is_retired_and_unreachable() {
+    // The ordinal restore was removed (7af03397); version revisions are
+    // promoted through `design.version.revision.promote`. Retired means no
+    // descriptor and no dispatch, so nothing can reach the old write.
     assert_eq!(
-        command["path"],
-        serde_json::json!(["design", "version", "restore"])
+        refusal(&["capabilities", "design.version.restore", "--output", "json"]),
+        "unknown_selector"
     );
-    assert_eq!(command["authority"], "headless_project");
-    assert_eq!(command["effect"], "global_write");
-    assert_eq!(command["confirmation_required"], true);
-    assert_eq!(
-        command["inputs"]
-            .as_array()
-            .expect("inputs")
-            .iter()
-            .map(|input| input["name"].as_str().expect("input name"))
-            .collect::<BTreeSet<_>>(),
-        BTreeSet::from([
-            "idempotency-key",
-            "lane",
-            "reason",
-            "version",
-            "project",
-            "kind",
-            "object",
-        ])
-    );
-    let unconfirmed = native_ds(&[
-        "design",
-        "version",
-        "restore",
-        "--project",
-        "p-1",
-        "--kind",
-        "lv_transformer",
-        "--object",
-        "tx_a",
-        "--version",
-        "v1",
-        "--reason",
-        "Return to approved survey",
-        "--idempotency-key",
-        "restore-tx-a-v1-1",
+    let promote = ok(&[
+        "capabilities",
+        "design.version.revision.promote",
         "--output",
         "json",
     ]);
-    assert_eq!(
-        unconfirmed.envelope["error"]["code"],
-        "confirmation_required"
-    );
+    assert_eq!(promote["command"]["authority"], "headless_project");
+    assert_eq!(promote["command"]["effect"], "global_write");
+    assert_eq!(promote["command"]["confirmation_required"], true);
 }
 
 #[test]
@@ -4560,7 +4545,9 @@ fn design_status_reads_the_headless_project_and_never_reaches_for_a_browser() {
             "filter",
             "findings",
             "lane",
+            "out",
             "project",
+            "read",
             "search",
             "sort",
             "transformer"
@@ -5035,6 +5022,8 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.local.list",
         "map.local.register",
         "map.local.rename",
+        "map.layer.registry",
+        "map.layer.registry-edit",
         "map.local.remove",
         "map.ui.open",
         "map.evidence.capture",
@@ -5073,6 +5062,17 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         actual, expected,
         "map command coverage list changed; add a specific smoke assertion for the new command before accepting it"
     );
+    // The retained overlay registry (6ccc4c9c) is a headless machine-local
+    // read and its one local edit; neither needs a window or an account.
+    for (id, effect) in [
+        ("map.layer.registry", "read_only"),
+        ("map.layer.registry-edit", "local_file_write"),
+    ] {
+        let command = &ok(&["capabilities", id, "--output", "json"])["command"];
+        assert_eq!(command["effect"], effect, "{id}");
+        assert_eq!(command["authority"], "none", "{id}");
+        assert_eq!(command["requires"], "server", "{id}");
+    }
     let history = r#"{"model_revision":"rev:head","initial_revision":"rev:head","undo_depth":0,"redo_depth":0,"history_pin":"pin"}"#;
     assert_eq!(
         refusal(&[
@@ -5424,7 +5424,7 @@ fn map_design_version_history_is_discoverable_and_governed() {
         (
             "map.design.version.play",
             "local_ui",
-            vec!["transformer", "version", "target", "desktop-descriptor"],
+            vec!["transformer", "version", "revision", "target", "desktop-descriptor"],
         ),
         (
             "map.design.version.compare",
@@ -6078,123 +6078,10 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
     std::fs::create_dir_all(&root).unwrap();
     let output_path = root.join("request.json");
     std::fs::write(&output_path, b"operator-owned").unwrap();
-    let profile_path = root.join("catalog.json");
-    let profile = |project: &str, gateway: &str, digest: &str| {
-        json!({
-            "firebase": { "project_id": project, "api_key": "firebase-public" },
-            "gateway": { "origin": gateway, "api_key": "gateway-public" },
-            "auth_link_begin": { "method": "POST", "path": "/api/v1/auth/device/begin" },
-            "auth_link_status": { "method": "POST", "path": "/api/v1/auth/device/status" },
-            "auth_link_complete": { "method": "POST", "path": "/api/v1/auth/device/complete" },
-            "auth_device_refresh": { "method": "POST", "path": "/api/v1/auth/device/refresh" },
-            "auth_device_list": { "method": "GET", "path": "/api/v1/auth/devices" },
-            "auth_device_read": { "method": "GET", "path_template": "/api/v1/auth/devices/{device_id}" },
-            "auth_device_revoke": { "method": "DELETE", "path_template": "/api/v1/auth/devices/{device_id}" },
-            "projects_read": { "method": "GET", "path": "/api/v1/user/projects" },
-            "transformer_context": {
-                "method": "POST",
-                "path": "/report",
-                "action": "get_transformers_data",
-                "fields": "full"
-            },
-            "project_forms": {
-                "method": "POST",
-                "path": "/api/v1/project-forms",
-                "action": "activate",
-                "settings_editor_action": "settings_editor"
-            },
-            "solar_snapshot": {
-                "method": "POST",
-                "path": "/api/v1/solar",
-                "action": "desktop_snapshot"
-            },
-            "survey_query": {
-                "method": "POST",
-                "path": "/api/v1/survey/query"
-            },
-            "survey_entries_select": {
-                "method": "POST",
-                "path": "/api/v1/survey/entries/select"
-            },
-            "survey_entries_changes": {
-                "method": "POST",
-                "path": "/api/v1/survey/entries/changes"
-            },
-            "survey_entry_create": {
-                "method": "POST",
-                "path": "/v1/projects/{firebase_project}/databases/(default)/documents:commit",
-                "operation": "create"
-            },
-            "printing":{"method":"POST","path":"/api/v1/printing","actions":["list","get","create","update","save","delete","copy"]},
-            "layers":{"method":"POST","path":"/api/v1/layers","actions":["get_config","get_style_catalog","refresh","reorder","set_default_visibility"]},
-            "styles":{"method":"POST","path":"/api/v1/styles","action":"update_style"},
-            "survey_control":["POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete", "POST /api/v1/project-forms: activate,settings_editor,bulk_save", "POST /api/v1/projects/templates: list,create,set_public,delete", "GET /api/v1/projects/templates/{slug}", "POST /api/v1/projects: apply_template", "POST /api/v1/projects/from-template", "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete"],
-            "project_data":{"method":"POST","path":"/api/v1/project_data","actions":["list","upload_start","upload","delete"]},
-            "tiles": {
-                "method": "POST",
-                "path": "/api/v1/tiles",
-                "actions": ["status", "preflight", "generate", "list", "add", "remove", "global_catalog", "global_list", "global_generate", "global_status"]
-            },
-            "project_report": {
-                "method": "POST",
-                "path": "/report",
-                "actions": ["download_transfo", "list_compounded_reports", "transformer_inventory", "retire_transformer", "restore_transformer", "list_transformers_status"]
-            },
-            "design_selections": {
-                "method": "POST",
-                "path": "/api/v1/design/selections",
-                "actions": ["list", "get", "save", "archive", "promote_task"]
-            },
-            "data_distribution": {
-                "method": "POST",
-                "path": "/api/v1/data-distribution",
-                "actions": ["list_datasets", "query_print_context"]
-            },
-            "admin_bounds": {
-                "method": "GET",
-                "path": "/api/v1/admin/rwanda",
-                "actions": ["children", "geometry"]
-            },
-            "sre_overview": { "method": "GET", "path": "/api/v1/sre/overview" },
-            "sre_events": {
-                "method": "POST",
-                "path": "/api/v1/data",
-                "actions": ["query_table"]
-            },
-            "design_attachments": {
-                "method": "POST",
-                "path": "/api/v1/design/attachments",
-                "actions": ["list", "get", "start_upload", "finalize_upload", "download", "archive", "archive_revision", "set_latest", "list_project", "list_object_versions"]
-            },
-            "design_versions": {
-                "method": "POST",
-                "path": "/api/v1/design/versions",
-                "actions": ["list_versions", "get_version", "get_head", "create_version", "restore_version", "list_version_summaries", "create_versions"]
-            },
-            "provenance": { "source_revision": "abc123", "descriptor_sha256": digest }
-        })
-    };
-    std::fs::write(
-        &profile_path,
-        serde_json::to_vec(&json!({
-            "schema_version": "ds.native-client-profiles/v30",
-            "development": true,
-            "profiles": {
-                "stable": profile(
-                    "stable-project",
-                    "https://stable.ue.gateway.dev",
-                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                ),
-                "canary": profile(
-                    "canary-project",
-                    "https://ds-canary.ue.gateway.dev",
-                    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-                )
-            }
-        }))
-        .unwrap(),
-    )
-    .unwrap();
+    // The reviewed development catalogue every native smoke uses; an inline
+    // copy here fell behind the profile schema (v30 against compiled v31).
+    let profile_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../ds-cli-auth/tests/fixtures/development-catalog.json");
     let output = output_path.display().to_string();
     let run = Command::new(env!("CARGO_BIN_EXE_ds"))
         .args([
@@ -7222,9 +7109,12 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
         // the governed tag project-list read, and LV analysis availability,
         // plus the two network document copy commands (2026-10-06).
         // Seven native repair controls, source resolution and verified backup/restore.
-        // Plus local collision detection and its publication (2026-10-19).
-        // Plus the retained MV model catalogue (2026-10-19).
-        123,
+        // 2026-10-12/13: version catalogue, import (prepare and native),
+        // renumber and five revision controls replaced the ordinal restore;
+        // 2026-10-18: the three saved MV model commands; 2026-10-19: local
+        // collision detection and publication, and the retained MV model
+        // catalogue. 120 + 12 - 1 + 3.
+        134,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -7297,7 +7187,17 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.version.show"
                     | "design.version.begin-batch"
                     | "design.version.summaries"
-                    | "design.version.restore"
+                    | "design.version.catalog"
+                    | "design.version.import"
+                    | "design.version.renumber"
+                    | "design.version.revision.show"
+                    | "design.version.revision.bind"
+                    | "design.version.revision.publish"
+                    | "design.version.revision.promote"
+                    | "design.model.list"
+                    | "design.model.export"
+                    | "design.model.publish"
+                    | "design.model.catalog"
                     | "design.attachment.list"
                     | "design.attachment.list-project"
                     | "design.attachment.show"
@@ -7913,6 +7813,9 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id.starts_with("design.attachment.")
             || id.starts_with("design.activities.")
             || id.starts_with("design.repair.")
+            // Saved MV model reads/exports/publication feed printing, not
+            // collaboration records; the discoverability test pins them.
+            || id.starts_with("design.model.")
             // Project-to-project migration is a bulk service call against two
             // projects, pinned by its own test.
             || id.starts_with("design.migrate.")
@@ -8831,14 +8734,24 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "pm.task.decline",
         "pm.task.log-hours",
         "pm.task.geometry.read",
-        "pm.task.geometry.set",
         "pm.task.geometry.clear",
+        "pm.task.detach",
+        "pm.overview",
         "pm.model-link.add",
         "pm.model-link.remove",
         "pm.model-link.list",
         "pm.task.block",
         "pm.task.unblock",
         "pm.note.create",
+        "pm.note.read",
+        "pm.note.query",
+        "pm.note.context",
+        "pm.note.versions",
+        "pm.note.update",
+        "pm.note.backup",
+        "pm.note.retire",
+        "pm.note.restore",
+        "pm.note.consolidate",
         "pm.note.checklist.read",
         "pm.note.checklist.edit",
         "pm.document.copy",
@@ -8892,8 +8805,13 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
                 | "pm.task.admit"
                 | "pm.task.decline"
                 | "pm.task.log-hours"
-                | "pm.task.geometry.set"
                 | "pm.task.geometry.clear"
+                | "pm.task.detach"
+                | "pm.note.update"
+                | "pm.note.backup"
+                | "pm.note.retire"
+                | "pm.note.restore"
+                | "pm.note.consolidate"
                 | "pm.model-link.add"
                 | "pm.model-link.remove"
                 | "pm.task.block"
@@ -9355,13 +9273,13 @@ fn feedback_list_takes_an_issued_cursor_and_never_a_caller_timestamp() {
         "the difference read needs an issued token and a way to ignore it: {flags:?}"
     );
 
-    // A token the backlog never issued is refused before a round trip, with the
-    // code and the remedy a caller can act on.
+    // A token over the 4096-byte bound (d86769ae) is refused before a round
+    // trip, with the code and the remedy a caller can act on.
     let hand_built = native_ds(&[
         "feedback",
         "list",
         "--cursor",
-        &"x".repeat(513),
+        &"x".repeat(4097),
         "--output",
         "json",
     ]);
@@ -10131,6 +10049,10 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         "assets.maps",
         "assets.map.publish",
         "assets.backup.plan",
+        "assets.semantic.lookup",
+        "assets.semantic.read",
+        "assets.semantic.export",
+        "assets.semantic.import",
     ]
     .into_iter()
     .collect();
@@ -10138,6 +10060,18 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
         actual, expected,
         "assets command coverage list changed; add a specific smoke assertion for the new command before accepting it"
     );
+    // Semantic document reads stay read-only or local; only the explicit
+    // import writes the project and therefore asks for confirmation.
+    for (id, effect, confirm) in [
+        ("assets.semantic.lookup", "read_only", false),
+        ("assets.semantic.read", "local_file_write", false),
+        ("assets.semantic.export", "local_file_write", false),
+        ("assets.semantic.import", "global_write", true),
+    ] {
+        let command = &ok(&["capabilities", id, "--output", "json"])["command"];
+        assert_eq!(command["effect"], effect, "{id}");
+        assert_eq!(command["confirmation_required"], confirm, "{id}");
+    }
     for command in commands {
         assert_ne!(
             command["availability"], "requires_window",
@@ -10198,7 +10132,11 @@ fn every_assets_command_is_reachable_without_the_desktop_installed() {
             | "assets.download" | "assets.resolve" | "assets.maps" | "assets.backup.plan" => {
                 "read_only"
             }
-            "assets.read" | "assets.promote" => "local_file_write",
+            "assets.semantic.lookup" => "read_only",
+            "assets.read"
+            | "assets.promote"
+            | "assets.semantic.read"
+            | "assets.semantic.export" => "local_file_write",
             _ => "global_write",
         };
         assert_eq!(
@@ -14223,12 +14161,17 @@ fn pm_task_detach_descriptor_confirmation_and_packaging_gate_are_honest() {
     let mut invalid = base.to_vec();
     invalid[8] = "0";
     invalid.push("--yes");
-    // This deliberately held v30 fixture cannot admit the compiled v31 profile.
-    // Pure CLI/core tests separately prove invalid inputs have zero owner calls.
-    assert_eq!(native_pm_refusal(&invalid), "native_profile_not_configured");
+    // The development catalogue now admits the compiled profile, so an invalid
+    // expected version is refused locally before any credential is read, and
+    // a valid confirmed detach stops at the absent native account.
+    assert_eq!(native_pm_refusal(&invalid), "attachment_detach_invalid");
     let mut valid = base.to_vec();
     valid.push("--yes");
-    assert_eq!(native_pm_refusal(&valid), "native_profile_not_configured");
+    let signed_out = native_pm_refusal(&valid);
+    assert!(
+        NATIVE_AUTH_CODES.contains(&signed_out.as_str()),
+        "a valid detach must stop at native auth, got `{signed_out}`"
+    );
 }
 
 #[test]
@@ -14240,7 +14183,7 @@ fn project_overview_is_discoverable_bounded_and_headless() {
     let search=ok(&["capabilities","--search","project overview","--limit","50","--output","json"]);
     assert!(search["results"].as_array().unwrap().iter().any(|r|r["id"]=="pm.overview"));
     let response=native_pm_refusal(&["pm","overview","--limit","10","--output","json"]);
-    assert_eq!(response,"native_profile_not_configured","held v30 test catalog must not admit compiled v31");
+    assert!(NATIVE_AUTH_CODES.contains(&response.as_str()),"a bounded overview read stops at native auth, got `{response}`");
 }
 
 #[test]

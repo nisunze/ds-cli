@@ -453,7 +453,7 @@ pub static COMMAND: Command = Command {
         LANE_ARG,
         super::PROJECT_ARG,
     ],
-    output: "Lane/project, engine/receipt, results/artifacts and failed_formats with remedies; reuse.reused and generate reasons. A4 preview: common PDF file manifest and preview_cache lifetime/reused receipt; no publication.",
+    output: "Lane/project, engine/receipt, results/artifacts and failed_formats[{format,output_id,remedy,partial_formats,overflow/panels/row_mm}]; reuse.reused[{output_id,work_id,sha256}], generate reasons, or every output was reused. A4 preview: common PDF file manifest and preview_cache lifetime/reused receipt; no publication.",
     examples: &[
         Example {
             command: "ds report project export --out-dir ./reports --output json --project <exact-id>",

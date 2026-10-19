@@ -57,8 +57,8 @@ pub static PLAN: Command = Command {
     args: &ARGS,
     output: "A bounded ds.survey-entry-update-plan/v1: exact target, expected_version, changed field names, form revision/validation, preservation assertions, effects=none, authorized=false, cloud_freshness=unconfirmed. No source values or replay key.",
     examples: &[Example {
-        command: "ds survey entries update-plan --project demo --form customers --doc-id n --document correction.json --idempotency-key review-1 --now 2026-10-12T00:00:00Z --output json",
-        note: "Validate the held row without acquisition or effects.",
+        command: "ds survey entries update-plan --project <exact-id> --form <form-slug> --doc-id <document-id> --document correction.json --idempotency-key '<opaque-key>' --now 2026-10-12T00:00:00Z --output json",
+        note: "Validate the held row without acquisition or effects; the exact slug comes from `ds survey forms list`.",
         runnable: false,
     }],
     refusals: &[OWN[0], OWN[1]],
@@ -94,8 +94,8 @@ pub static COMMAND: Command = Command {
     ],
     output: "Exact target/lane and a bounded ds.survey-entry-update-receipt/v1: complete, committed receipt with new client_version, failure code/status and bigquery=unconfirmed. No request payload, source values, credential or replay key.",
     examples: &[Example {
-        command: "ds survey entries update --project demo --form customers --doc-id n --document correction.json --idempotency-key review-1 --now 2026-10-12T00:00:00Z --yes --output json",
-        note: "Apply the exact reviewed correction; then verify its BigQuery-backed readback.",
+        command: "ds survey entries update --project <exact-id> --form <form-slug> --doc-id <document-id> --document correction.json --idempotency-key '<opaque-key>' --now 2026-10-12T00:00:00Z --yes --output json",
+        note: "Apply the exact reviewed correction; the exact slug comes from `ds survey forms list`; then verify its BigQuery-backed readback.",
         runnable: false,
     }],
     refusals: REFUSALS,
