@@ -89,6 +89,18 @@ pub const NEVER_TOOLS: &[(&str, &str)] = &[
         "server.serve",
         "a foreground host never returns a tool response; operators start it through the launcher or service",
     ),
+    (
+        "desktop.dev.snapshot",
+        "development-only semantic page inspection belongs to the local CLI, never an MCP workflow",
+    ),
+    (
+        "desktop.dev.select",
+        "development-only semantic page selection belongs to the local CLI, never an MCP workflow",
+    ),
+    (
+        "desktop.dev.refresh",
+        "development-only semantic page refresh belongs to the local CLI, never an MCP workflow",
+    ),
 ];
 
 /// Input names `ds` reads as its own global flags wherever they appear. A
@@ -1422,6 +1434,62 @@ mod tests {
                     .unwrap()
                     .is_empty()
             );
+        }
+    }
+
+    #[test]
+    fn developer_controls_are_absent_and_unreachable_in_both_mcp_surfaces() {
+        use crate::surface::{Exposure, Surface, chapter_tool_name};
+        let executable = PathBuf::from("unreachable-developer-command-must-not-spawn");
+        for id in [
+            "desktop.dev.snapshot",
+            "desktop.dev.select",
+            "desktop.dev.refresh",
+        ] {
+            assert!(
+                NEVER_TOOLS
+                    .iter()
+                    .any(|(excluded, reason)| *excluded == id && !reason.is_empty())
+            );
+            let mut excluded = registered_command();
+            excluded.id = id;
+            let mut ordinary = registered_command();
+            ordinary.id = "desktop.status";
+            let tools = from_commands([&excluded, &ordinary]).unwrap();
+            assert_eq!(tools.len(), 1);
+            assert_eq!(
+                tools[0].id, "desktop.status",
+                "ordinary desktop commands stay exposed"
+            );
+            let leaves = Surface::new(Exposure::Commands, None, tools.clone()).unwrap();
+            assert_eq!(
+                leaves
+                    .call(&tool_name(id), &json!({}), &executable)
+                    .unwrap_err()
+                    .0,
+                -32602
+            );
+            let chapters = Surface::new(Exposure::Chapters, None, tools).unwrap();
+            assert_eq!(
+                chapters
+                    .call("ds_catalog", &json!({"command": id}), &executable)
+                    .unwrap_err()
+                    .0,
+                -32602
+            );
+            for operation in ["describe", "invoke"] {
+                assert_eq!(
+                    chapters
+                        .call(
+                            chapter_tool_name(excluded.chapter),
+                            &json!({"operation":operation, "command":id}),
+                            &executable
+                        )
+                        .unwrap_err()
+                        .0,
+                    -32602
+                );
+            }
         }
     }
 

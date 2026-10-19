@@ -30,6 +30,7 @@ pub mod bridge;
 pub mod connectivity;
 pub mod custom_print;
 pub mod data;
+pub mod dev;
 pub mod discover;
 pub mod list;
 pub mod ops;
@@ -51,6 +52,9 @@ pub static DOMAIN: Domain = Domain {
         &connectivity::SET,
         &status::COMMAND,
         &list::COMMAND,
+        &dev::SNAPSHOT,
+        &dev::SELECT,
+        &dev::REFRESH,
         &project::LIST_COMMAND,
         &project::SWITCH_COMMAND,
         &printing::SETTINGS_COMMAND,
