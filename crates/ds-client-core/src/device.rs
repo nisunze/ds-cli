@@ -1720,6 +1720,23 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::transformer_save::run(self.profile, transport, self.authority(), project, batch)
     }
+    pub fn save_collisions<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        publication: &crate::CollisionsPublication,
+        now: u64,
+    ) -> Result<crate::CollisionsPublicationReceipt, ClientError> {
+        publication.validate()?;
+        self.ensure_active(now)?;
+        crate::collisions_publish::run(
+            self.profile,
+            transport,
+            self.authority(),
+            project,
+            publication,
+        )
+    }
     pub fn feedback<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

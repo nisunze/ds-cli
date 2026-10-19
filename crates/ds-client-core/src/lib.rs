@@ -319,8 +319,12 @@ mod shared_map_publish;
 pub use transport::ProjectManagementCall;
 pub use transport::SharedAssetsCall;
 
+pub mod collisions_publish;
 pub mod transformer_repair;
 mod transformer_save;
+pub use collisions_publish::{
+    CollisionsBasisEntry, CollisionsInputError, CollisionsPublication, CollisionsPublicationReceipt,
+};
 pub use transformer_repair::TransformerRepairPublication;
 pub use transformer_save::{
     TransformerSaveBatch, TransformerSaveCall, TransformerSaveItem, TransformerSaveReceipt,

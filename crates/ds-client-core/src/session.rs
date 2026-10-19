@@ -1307,6 +1307,28 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             batch,
         )
     }
+    pub fn save_collisions(
+        &mut self,
+        project: &str,
+        publication: &crate::CollisionsPublication,
+        now: u64,
+    ) -> Result<crate::CollisionsPublicationReceipt, ClientError> {
+        publication.validate()?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::collisions_publish::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            project,
+            publication,
+        )
+    }
     pub fn feedback(
         &mut self,
         command: &crate::feedback::Command,
