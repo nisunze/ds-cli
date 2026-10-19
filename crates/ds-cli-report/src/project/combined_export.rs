@@ -57,17 +57,17 @@ const COLLISIONS_ROW: &str = "collisions";
 const ENGINE_MISSING: Refusal = Refusal {
     code: "reporter_engine_missing",
     when: "the Reporter addon is not installed for the selected lane",
-    remedy: "install the Reporter addon for the lane, or set DS_REPORT_BIN to a compatible reporter",
+    remedy: "install the lane's Reporter addon, or set DS_REPORT_BIN to a compatible one",
 };
 const COLLISIONS: Refusal = Refusal {
     code: "combined_report_collision_limit_exceeded",
-    when: "the project's stored collision result exceeds its combined-report collision policy",
-    remedy: "review and resolve the overlapping transformers, publish a fresh collision result, then retry; `ds design collisions` reads the stored count",
+    when: "the stored collision result exceeds the project's combined-report policy",
+    remedy: "resolve the overlaps and publish a fresh collision result; `ds design collisions` reads it",
 };
 const ROOMS_UNAVAILABLE: Refusal = Refusal {
     code: "combined_report_rooms_unavailable",
-    when: "one or more saved rooms in scope could not be read or held; the detail names each with its cause",
-    remedy: "retry while connected, save the named designs, or narrow the scope with --transformer",
+    when: "saved rooms in scope could not be read or held; the detail names each",
+    remedy: "retry while connected, save the named designs, or narrow --transformer",
 };
 const EMPTY: Refusal = Refusal {
     code: "combined_report_empty",
@@ -76,13 +76,13 @@ const EMPTY: Refusal = Refusal {
 };
 const MEDIA_SCOPE: Refusal = Refusal {
     code: "combined_report_media_scope_unsupported",
-    when: "the rooms reference photos stored under another project, which this run cannot grant",
-    remedy: "re-save the named rooms' photos under this project, or narrow the scope with --transformer",
+    when: "the rooms reference photos stored under another project",
+    remedy: "re-save those photos under this project, or narrow --transformer",
 };
 const MEDIA_GRANT: Refusal = Refusal {
     code: "combined_report_media_grant_unavailable",
-    when: "the rooms reference photos and the project's report media grant could not be obtained",
-    remedy: "retry while connected; photo links are minted only by the governed service",
+    when: "the project's report media grant for referenced photos could not be obtained",
+    remedy: "retry while connected",
 };
 const NOT_ACTIVE: Refusal = Refusal {
     code: "transformer_not_active",
@@ -91,8 +91,8 @@ const NOT_ACTIVE: Refusal = Refusal {
 };
 const EXPORT_BLOCKED: Refusal = Refusal {
     code: "export_blocked",
-    when: "the Reporter built less than every planned combined format; detail.blockers names each",
-    remedy: "read detail.blockers, fix the named input, and retry; a partial Combined Report is never sealed",
+    when: "the Reporter built fewer than every planned format; detail.blockers names each",
+    remedy: "fix the named inputs and retry; a partial set is never sealed",
 };
 const ENGINE_REFUSED: Refusal = Refusal {
     code: "engine_refused",
@@ -101,8 +101,8 @@ const ENGINE_REFUSED: Refusal = Refusal {
 };
 const RESULT_INVALID: Refusal = Refusal {
     code: "report_result_invalid",
-    when: "the Reporter's combined result or the bytes it declared are not this run's answer",
-    remedy: "retry; if it persists, update ds and the Reporter to matching releases",
+    when: "the Reporter's result or declared bytes are not this run's",
+    remedy: "retry; if it persists, install matching ds and Reporter releases",
 };
 const OUTPUT_EXISTS: Refusal = Refusal {
     code: "report_output_exists",
@@ -126,13 +126,13 @@ const TIMED_OUT: Refusal = Refusal {
 };
 const ADMIN_BOUNDS: Refusal = Refusal {
     code: "admin_bounds_unavailable",
-    when: "a Rwanda project's governed administrative reference asset is not installed",
+    when: "the governed Rwanda administrative reference is not installed",
     remedy: "install the governed Rwanda reference with ds workstation setup",
 };
 const UNSUPPORTED: Refusal = Refusal {
     code: "report_engine_unsupported",
     when: "the selected Reporter adapter has no combined task",
-    remedy: "install a Reporter that publishes export_combined_transformer_report",
+    remedy: "install a Reporter release with the combined task",
 };
 
 pub(super) const REFUSALS: &[Refusal] = &[
@@ -187,7 +187,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "combined"],
     contract: 1,
     summary: "Produce the Combined Report data set locally and queue it.",
-    purpose: "The project-wide combined_transformer SHP/XLSX/GeoJSONSeq set, plus GPKG or Network Information when the project's outputs name them; never a PDF. Reads every active LV transformer's saved room through the held copy (only moved rooms are re-read), refuses before compute when the stored collision result exceeds the project's policy, and seals the complete set into the Sync queue unless --dry-run. Voltage drop is never required: missing or stale analyses are receipt warnings. Runs no unrelated project reconciliation.",
+    purpose: "Builds the combined_transformer SHP, XLSX and GeoJSONSeq (plus GPKG or Network Information when the project's outputs name them; never a PDF) here from every active LV room, re-reading only moved rooms, and seals the set into the Sync queue unless --dry-run. Refuses before compute past the collision policy; missing voltage drop is only a warning.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -200,7 +200,7 @@ pub static COMMAND: Command = Command {
         LANE_ARG,
         PROJECT_ARG,
     ],
-    output: "ds.report-combined-result/v1: project, lane, scope (participating, empty rooms), rooms reused/fetched, formats, artifacts with digests (and Sync locators when queued), publicationQueued with batch/publish ids or the dry-run note, input fingerprint, collision gate, voltage-drop warnings, warnings and phase timings.",
+    output: "ds.report-combined-result/v1: scope, rooms, formats, artifacts with digests (Sync locators when queued), publicationQueued, input fingerprint, collision gate, voltage-drop warnings, timings.",
     examples: &[
         Example {
             command: "ds report project combined --out-dir ./combined --dry-run --output json --project <exact-id>",
@@ -869,180 +869,5 @@ pub fn render(data: &Value) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn parse(tokens: &[&str]) -> Inputs {
-        ds_cli_contract::args::parse(
-            &COMMAND,
-            &tokens
-                .iter()
-                .map(|token| (*token).to_owned())
-                .collect::<Vec<_>>(),
-        )
-        .unwrap()
-    }
-
-    fn row(name: &str, state: &str) -> hold::Row {
-        hold::Row {
-            name: name.into(),
-            kind: "transformer".into(),
-            state: state.into(),
-            retired: false,
-            reason: None,
-        }
-    }
-
-    #[test]
-    fn the_declaration_names_its_project_lane_scope_and_every_refusal_it_raises() {
-        assert_eq!(COMMAND.id, "report.project.combined");
-        let project = COMMAND.arg("project").unwrap();
-        assert!(project.required && project.default.is_none());
-        for arg in [
-            "transformer",
-            "out-dir",
-            "dry-run",
-            "lane",
-            "core-state-dir",
-        ] {
-            assert!(COMMAND.arg(arg).is_some(), "--{arg}");
-        }
-        let declared: Vec<&str> = REFUSALS.iter().map(|refusal| refusal.code).collect();
-        for code in [
-            "combined_report_collision_limit_exceeded",
-            "combined_report_rooms_unavailable",
-            "combined_report_empty",
-            "combined_report_media_scope_unsupported",
-            "combined_report_media_grant_unavailable",
-            "transformer_not_active",
-            "reserved_transformer_identity",
-            "export_blocked",
-            "engine_refused",
-            "report_result_invalid",
-            "report_output_exists",
-            "report_publish_scope_changed",
-            "report_room_not_held",
-            "admin_bounds_unavailable",
-        ] {
-            assert!(declared.contains(&code), "{code} undeclared");
-        }
-        assert!(COMMAND.summary.len() <= 70, "{}", COMMAND.summary);
-        assert!(COMMAND.purpose.contains("never a PDF"));
-    }
-
-    #[test]
-    fn preflight_refuses_reserved_scope_and_an_existing_package_before_any_state() {
-        let root = tempfile::tempdir().unwrap();
-        let out = root.path().join("out");
-        let out = out.to_str().unwrap();
-        assert!(preflight(&parse(&["--project", "p", "--out-dir", out])).is_ok());
-        for reserved in ["combined_transformer", "collisions", "all_transformers"] {
-            let failure = preflight(&parse(&[
-                "--project",
-                "p",
-                "--out-dir",
-                out,
-                "--transformer",
-                reserved,
-            ]))
-            .unwrap_err();
-            assert_eq!(
-                failure.code(),
-                "reserved_transformer_identity",
-                "{reserved}"
-            );
-        }
-        std::fs::create_dir_all(root.path().join("out").join("combined_transformer")).unwrap();
-        assert_eq!(
-            preflight(&parse(&["--project", "p", "--out-dir", out]))
-                .unwrap_err()
-                .code(),
-            "report_output_exists"
-        );
-    }
-
-    #[test]
-    fn the_scope_is_every_active_lv_transformer_or_exactly_the_active_names_given() {
-        let rows = vec![
-            row("tx_b", "active"),
-            row("tx_a", "active"),
-            row("tx_old", "retired"),
-            hold::Row {
-                kind: "project_level".into(),
-                ..row("mv_data", "active")
-            },
-        ];
-        assert_eq!(
-            scope_names(&rows, &TransformerSet::default()).unwrap(),
-            ["tx_a", "tx_b"]
-        );
-        let named = TransformerSet::new(["tx_b".to_string()]).unwrap();
-        assert_eq!(scope_names(&rows, &named).unwrap(), ["tx_b"]);
-        for inactive in ["tx_old", "tx_missing"] {
-            let named = TransformerSet::new([inactive.to_string()]).unwrap();
-            assert_eq!(
-                scope_names(&rows, &named).unwrap_err().code(),
-                "transformer_not_active"
-            );
-        }
-    }
-
-    #[test]
-    fn a_blocked_collision_gate_refuses_in_the_owner_words_with_the_policy() {
-        let gate = decisions::collision_gate(
-            &json!({"project_settings": []}),
-            Some(Some(&json!({"layers": {"collisions": 25}}))),
-        );
-        assert!(!gate.allowed);
-        let failure = collision_refusal(&gate);
-        assert_eq!(failure.code(), "combined_report_collision_limit_exceeded");
-        assert!(
-            failure
-                .message()
-                .starts_with("Too many transformers are overlapping")
-        );
-        let detail = failure.detail_value().unwrap();
-        assert_eq!(detail["collision_rows"], 25);
-        assert_eq!(detail["max_collision_rows"], 10);
-    }
-
-    #[test]
-    fn every_host_failure_code_maps_to_a_declared_refusal() {
-        let declared: Vec<&str> = REFUSALS.iter().map(|refusal| refusal.code).collect();
-        for code in [
-            "report_inputs_invalid",
-            "report_staging_failed",
-            "report_output_exists",
-            "report_result_invalid",
-            "report_engine_identity_changed",
-            "admin_bounds_unavailable",
-            "export_blocked",
-            "engine_refused",
-            "callee_contract_mismatch",
-            "callee_timed_out",
-            "reporter_engine_missing",
-            "report_engine_unsupported",
-        ] {
-            let failure = host_failure(HostFailure::new(code, "m"));
-            assert_eq!(failure.code(), code);
-            assert!(declared.contains(&code), "{code}");
-        }
-    }
-
-    #[test]
-    fn the_render_says_what_was_queued_and_what_was_warned() {
-        let rendered = render(&json!({
-            "project": "p", "lane": "canary", "publicationQueued": true,
-            "scope": {"participating": 2, "transformers": 3},
-            "artifacts": [{"filename": "combined_transformer.xlsx", "sizeBytes": 10}],
-            "voltageDrop": {"warningCount": 1},
-            "warnings": ["1 transformer(s) hold no report feature and contributed nothing: tx_c"],
-        }));
-        assert!(
-            rendered.contains("2 of 3 transformer(s) · queued for Sync"),
-            "{rendered}"
-        );
-        assert!(rendered.contains("combined_transformer.xlsx"), "{rendered}");
-        assert!(rendered.contains("voltage-drop"), "{rendered}");
-    }
-}
+#[path = "combined_export_tests.rs"]
+mod tests;

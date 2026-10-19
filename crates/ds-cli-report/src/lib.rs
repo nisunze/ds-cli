@@ -146,6 +146,7 @@ pub static DOMAIN: Domain = Domain {
         &retained_preview::REFRESH,
         &project::scope::COMMAND,
         &project::combined::COMMAND,
+        &project::combined_export::COMMAND,
         &project::compute::COMMAND,
         &project::archives::COMMAND,
         &project::settings::COMMAND,
