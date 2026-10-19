@@ -1,18 +1,18 @@
 //! Detached native host adapter; no Network computation is linked here.
 mod captured;
-mod differential;
 mod design_snapshot;
+mod differential;
 mod grid;
 mod grid_apply;
 mod grid_apply_batch;
 mod grid_catalog;
 mod grid_create;
 mod grid_write_admission;
+mod lv_publication;
 mod mv_projection;
 mod mv_report;
 mod profile;
 mod report_engineering;
-mod lv_publication;
 mod staging;
 pub use captured::{CapturedNetworkClient, NetworkEnginePin};
 pub use design_snapshot::{
@@ -34,11 +34,11 @@ pub use grid::GridOutcome;
 pub use grid_apply::GridApplyOutcome;
 pub use grid_apply_batch::GridApplyBatchOutcome;
 pub use grid_create::GridCreateOutcome;
+pub use lv_publication::{LvAnalysisValidationOutcome, LvPublicationOutcome};
 pub use profile::{ProfileCheckpoint, ProfileOutcome, ProfileSession};
 pub use report_engineering::ReportEngineeringOutcome;
-pub use lv_publication::{LvAnalysisValidationOutcome, LvPublicationOutcome};
-pub use staging::private_disk_stage;
 use sha2::{Digest, Sha256};
+pub use staging::private_disk_stage;
 use std::{
     ffi::OsString,
     fmt,

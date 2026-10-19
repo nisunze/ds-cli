@@ -437,6 +437,7 @@ mod tests {
             project: b.project.clone(),
         }
     }
+    type ReceiptEdit = Box<dyn FnOnce(&mut Capture) + Send>;
     struct Fake {
         b: Binding,
         calls: Arc<AtomicUsize>,
@@ -447,7 +448,7 @@ mod tests {
         with_basis: bool,
         changed: bool,
         requested_bases: Vec<Option<String>>,
-        receipt_edit: Option<Box<dyn FnOnce(&mut Capture) + Send>>,
+        receipt_edit: Option<ReceiptEdit>,
     }
     impl Fake {
         fn new(b: Binding, calls: Arc<AtomicUsize>) -> Self {

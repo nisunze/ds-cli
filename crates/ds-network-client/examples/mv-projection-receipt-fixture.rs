@@ -38,7 +38,8 @@ fn main() {
             serde_json::to_string(&NetworkBuildInfo {
                 schema: "ds.engine-build/v1".into(),
                 module: "network".into(),
-                engine_identity: identity
+                engine_identity: identity,
+                build: None
             })
             .unwrap()
         );

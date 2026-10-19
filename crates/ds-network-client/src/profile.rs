@@ -466,8 +466,7 @@ impl ProfileSession {
         if serde_json::to_vec(&request)
             .map_err(|e| invalid(e.to_string()))?
             .len()
-            + 1
-            <= MAX_PROFILE_CONTROL_BYTES
+            < MAX_PROFILE_CONTROL_BYTES
         {
             return Ok(None);
         }

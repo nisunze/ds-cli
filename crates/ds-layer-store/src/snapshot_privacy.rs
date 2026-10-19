@@ -74,18 +74,24 @@ mod native {
             return Err(error());
         }
         let root = unsafe { File::from_raw_fd(fd) };
-        ancestor(&root)?;
+        ancestor(&root, Path::new("/"))?;
         Ok(root)
     }
 
-    fn ancestor(file: &File) -> Result<(), String> {
+    fn ancestor(file: &File, path: &Path) -> Result<(), String> {
         let metadata = file.metadata().map_err(|e| e.to_string())?;
         let uid = unsafe { libc::geteuid() };
         if !metadata.is_dir()
             || (metadata.uid() != uid && metadata.uid() != 0)
             || metadata.mode() & 0o022 != 0
         {
-            return Err("snapshot privacy: unsafe directory ancestor".into());
+            // Name the directory so the operator can fix that one entry.
+            return Err(format!(
+                "snapshot privacy: unsafe directory ancestor {} (mode {:o}, owner uid {}); it must be owned by this account or root and not group- or world-writable",
+                path.display(),
+                metadata.mode() & 0o7777,
+                metadata.uid()
+            ));
         }
         Ok(())
     }
@@ -121,7 +127,9 @@ mod native {
     fn walk(path: &Path, create_directory: bool) -> Result<(), String> {
         let parts = components(path)?;
         let mut parent = root()?;
+        let mut current = std::path::PathBuf::from("/");
         for (index, part) in parts.iter().enumerate() {
+            current.push(OsStr::from_bytes(part.as_bytes()));
             let last = index + 1 == parts.len();
             let is_directory = !last || create_directory;
             let mut created = false;
@@ -166,7 +174,7 @@ mod native {
             if last {
                 private(&opened, is_directory)?;
             } else {
-                ancestor(&opened)?;
+                ancestor(&opened, &current)?;
             }
             parent = opened;
         }
