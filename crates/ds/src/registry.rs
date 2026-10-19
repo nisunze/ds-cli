@@ -3515,6 +3515,7 @@ pub fn dispatch(entry: &Entry, tokens: &[String], context: &Context) -> Result<V
     // invokes this same binary dispatch path.
     match entry.command.id {
         "report.project.compounded" => ds_cli_report::project::combined::preflight(&inputs)?,
+        "report.project.combined" => ds_cli_report::project::combined_export::preflight(&inputs)?,
         "report.project.compute" => ds_cli_report::project::compute::preflight(&inputs)?,
         "report.project.export" => ds_cli_report::project::export::preflight(&inputs)?,
         "report.project.outputs.set" => ds_cli_report::project::settings::preflight_set(&inputs)?,
@@ -3569,6 +3570,8 @@ fn report_project_touch(id: &str, inputs: &Inputs) -> bool {
         || id == "report.project.mv-setup.resolve"
         || id == "report.project.map-inputs"
         || id == "report.project.crs"
+        // A Combined Report seals only its own run into Sync, like a held export.
+        || id == "report.project.combined"
         || (id == "report.project.export"
             && (inputs.switch("dry-run")
                 || inputs.value("held-preview").is_some()
@@ -3623,7 +3626,6 @@ fn scope_headless_identity(
 ) -> Result<ds_cli_desktop::ops::HeadlessIdentityGuard, Failure> {
     let core_lane = std::env::var_os("DS_CORE_LANE");
     scope_headless_identity_selected(command, inputs, core_lane.as_deref())
-        "report.project.combined" => ds_cli_report::project::combined_export::preflight(&inputs)?,
 }
 
 fn scope_headless_identity_selected(
@@ -3678,8 +3680,6 @@ fn scope_headless_identity_probed(
     // probing or requiring Desktop. If (and only if) a handler reaches the
     // shared typed bridge seam, `ops::invoke` snapshots the map, arbitrates,
     // and sends an atomic invocation fence.
-        // A Combined Report seals only its own run into Sync, like a held export.
-        || id == "report.project.combined"
     // `ds desktop list` is the enumeration every instance-targeted refusal
     // points at, and "which of these can serve my work" is a question only
     // this observation can answer. It declares no authority — it must answer
@@ -4136,6 +4136,25 @@ mod report_touch_tests {
     }
 
     #[test]
+    fn the_combined_report_seals_only_its_own_run_without_an_unrelated_touch() {
+        for args in [
+            &[
+                "--project",
+                "p",
+                "--lane",
+                "canary",
+                "--out-dir",
+                "/combined",
+            ][..],
+            &["--project", "p", "--out-dir", "/combined", "--dry-run"][..],
+        ] {
+            let combined = inputs(&ds_cli_report::project::combined_export::COMMAND, args);
+            assert!(!report_project_touch("report.project.combined", &combined));
+        }
+        assert!(!report_held_read("report.project.combined"));
+    }
+
+    #[test]
     fn held_export_seals_only_its_selected_run_without_an_unrelated_touch() {
         let held = inputs(&ds_cli_report::project::export::COMMAND,
             &["--project", "p", "--lane", "canary", "--held-export", "/held.json", "--out-dir", "/held-out"]);
@@ -4222,22 +4241,3 @@ mod report_touch_tests {
         assert!(!report_held_read("report.outbox.inventory"));
     }
 }
-    #[test]
-    fn the_combined_report_seals_only_its_own_run_without_an_unrelated_touch() {
-        for args in [
-            &[
-                "--project",
-                "p",
-                "--lane",
-                "canary",
-                "--out-dir",
-                "/combined",
-            ][..],
-            &["--project", "p", "--out-dir", "/combined", "--dry-run"][..],
-        ] {
-            let combined = inputs(&ds_cli_report::project::combined_export::COMMAND, args);
-            assert!(!report_project_touch("report.project.combined", &combined));
-        }
-        assert!(!report_held_read("report.project.combined"));
-    }
-
