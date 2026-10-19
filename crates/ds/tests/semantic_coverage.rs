@@ -106,33 +106,33 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // A governed revision's package assets: download, verify, then list or
     // save one. Listing writes nothing but may rotate the native credential,
     // exactly as `dsgrid project versions` does.
-    ("server.engine", "read_only", "none"),
-    ("server.module-stage", "machine_write", "none"),
-    ("server.module-selection", "read_only", "none"),
-    ("server.update-inspect", "read_only", "none"),
-    ("server.modules", "discovery", "none"),
-    ("server.module-release", "read_only", "none"),
-    ("server.sync.status", "read_only", "headless_user"),
-    ("server.sync.retry", "global_write", "headless_user"),
-    ("server.sync.sanitize.preview", "read_only", "headless_user"),
+    ("core.engine", "read_only", "none"),
+    ("core.module-stage", "machine_write", "none"),
+    ("core.component.selection", "read_only", "none"),
+    ("core.update-inspect", "read_only", "none"),
+    ("core.modules", "discovery", "none"),
+    ("core.module-release", "read_only", "none"),
+    ("core.sync.status", "read_only", "headless_user"),
+    ("core.sync.retry", "global_write", "headless_user"),
+    ("core.sync.sanitize.preview", "read_only", "headless_user"),
     (
-        "server.sync.sanitize.apply",
+        "core.sync.sanitize.apply",
         "global_write",
         "headless_user",
     ),
     // The native server requires its owner's headless identity. The control
     // credential only connects to that host; it grants no Desktop authority.
-    ("server.serve", "local_file_write", "headless_user"),
-    ("server.submit", "local_file_write", "headless_user"),
-    ("server.solar.submit", "local_file_write", "headless_user"),
-    ("server.tile.submit", "local_file_write", "headless_user"),
-    ("server.status", "read_only", "headless_user"),
-    ("server.activity", "read_only", "headless_user"),
-    ("server.cancel", "local_file_write", "headless_user"),
-    ("server.result", "local_file_write", "headless_user"),
+    ("core.serve", "local_file_write", "headless_user"),
+    ("core.submit", "local_file_write", "headless_user"),
+    ("core.solar.submit", "local_file_write", "headless_user"),
+    ("core.tile.submit", "local_file_write", "headless_user"),
+    ("core.status", "read_only", "headless_user"),
+    ("core.activity", "read_only", "headless_user"),
+    ("core.cancel", "local_file_write", "headless_user"),
+    ("core.result", "local_file_write", "headless_user"),
     // Reading a job's own stored request bytes writes one local file, exactly
     // as `server.result` does, and needs the same headless identity.
-    ("server.input", "local_file_write", "headless_user"),
+    ("core.input", "local_file_write", "headless_user"),
     // `server.layers.list|show|hide|reorder` were retired on 2026-09-12. One
     // operation has one command id whichever host executes it, so the layer
     // drawer is `ds map layer list|show|hide|reorder` with an explicit
@@ -474,7 +474,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("design.version.summaries", "read_only", "headless_project"),
-    ("design.version.restore", "global_write", "headless_project"),
     ("design.project.status", "read_only", "none"),
     ("design.project.process", "local_file_write", "none"),
     ("design.project.cancel", "local_file_write", "none"),
@@ -1352,6 +1351,71 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("workstation.plan", "proposal", "none"),
     ("workstation.status", "discovery", "none"),
     ("workstation.verify", "read_only", "none"),
+    // Reviewed 2026-10-19 after the core rename: native runtime administration,
+    // version catalogue/revisions, notes, semantic documents, overlay registry,
+    // push installations, held report bytes and survey corrections.
+    ("assets.semantic.export", "local_file_write", "headless_project"),
+    ("assets.semantic.import", "global_write", "headless_project"),
+    ("assets.semantic.lookup", "read_only", "headless_project"),
+    ("assets.semantic.read", "local_file_write", "headless_project"),
+    ("core.auth.status", "read_only", "none"),
+    ("core.cache.retire", "machine_write", "headless_user"),
+    ("core.component.activate", "machine_write", "none"),
+    ("core.component.capture", "read_only", "none"),
+    ("core.component.member", "read_only", "none"),
+    ("core.component.remove", "machine_write", "none"),
+    ("core.component.rollback", "machine_write", "none"),
+    ("core.identity", "read_only", "none"),
+    ("core.profile-session", "local_file_write", "headless_project"),
+    ("core.survey.queue", "local_auth_state", "headless_user"),
+    ("core.sync.read", "local_file_write", "headless_user"),
+    ("data.reference.read", "local_file_write", "none"),
+    ("design.model.export", "local_file_write", "headless_project"),
+    ("design.model.list", "local_auth_state", "headless_project"),
+    ("design.model.publish", "global_write", "headless_project"),
+    ("design.version.catalog", "read_only", "headless_project"),
+    ("design.version.import", "global_write", "headless_project"),
+    ("design.version.import-prepare", "local_file_write", "none"),
+    ("design.version.renumber", "global_write", "headless_project"),
+    ("design.version.revision.bind", "global_write", "headless_project"),
+    ("design.version.revision.compare", "read_only", "none"),
+    ("design.version.revision.promote", "global_write", "headless_project"),
+    ("design.version.revision.publish", "global_write", "headless_project"),
+    ("design.version.revision.show", "read_only", "headless_project"),
+    ("desktop.dev.refresh", "local_ui", "desktop_pairing"),
+    ("desktop.dev.select", "local_ui", "desktop_pairing"),
+    ("desktop.dev.snapshot", "read_only", "desktop_pairing"),
+    ("map.layer.registry", "read_only", "none"),
+    ("map.layer.registry-edit", "local_file_write", "none"),
+    ("messaging.installation.revoke", "global_write", "headless_user"),
+    ("messaging.installations", "read_only", "headless_user"),
+    ("notes.backup", "global_write", "headless_user"),
+    ("notes.backup.read", "local_file_write", "headless_user"),
+    ("notes.backup.restore", "global_write", "headless_user"),
+    ("notes.create", "global_write", "headless_user"),
+    ("notes.list", "read_only", "headless_user"),
+    ("notes.read", "read_only", "headless_user"),
+    ("notes.restore", "global_write", "headless_user"),
+    ("notes.retire", "global_write", "headless_user"),
+    ("notes.update", "global_write", "headless_user"),
+    ("notes.version.read", "read_only", "headless_user"),
+    ("notes.version.restore", "global_write", "headless_user"),
+    ("notes.versions", "read_only", "headless_user"),
+    ("pm.note.backup", "global_write", "headless_project"),
+    ("pm.note.consolidate", "global_write", "headless_project"),
+    ("pm.note.context", "read_only", "headless_project"),
+    ("pm.note.query", "read_only", "headless_project"),
+    ("pm.note.read", "read_only", "headless_project"),
+    ("pm.note.restore", "global_write", "headless_project"),
+    ("pm.note.retire", "global_write", "headless_project"),
+    ("pm.note.update", "global_write", "headless_project"),
+    ("pm.note.versions", "read_only", "headless_project"),
+    ("report.inventory", "local_file_write", "headless_user"),
+    ("report.inventory.copy", "local_file_write", "headless_user"),
+    ("report.publication.download", "local_file_write", "headless_project"),
+    ("survey.entries.update", "global_write", "headless_project"),
+    ("survey.entries.update-plan", "read_only", "none"),
+    ("survey.form.validate", "read_only", "none"),
 ];
 
 /// The standing ruling, asserted on the live surface rather than trusted.
@@ -1366,12 +1430,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
 /// because the Server may choose one.
 #[test]
 fn one_operation_has_one_command_id_whichever_host_executes_it() {
-    let commands = json(&["capabilities", "server", "--output", "json"]);
+    let commands = json(&["capabilities", "core", "--output", "json"]);
     let mut checked = 0usize;
     for command in commands["data"]["commands"].as_array().expect("commands") {
         let id = command["id"].as_str().expect("command id");
         assert!(
-            !id.starts_with("server.layers."),
+            !id.starts_with("core.layers."),
             "`{id}` is a host twin of `ds map layer …`; retire it and pass --target instead"
         );
         let descriptor = json(&["capabilities", id, "--output", "json"]);
@@ -1390,13 +1454,21 @@ fn one_operation_has_one_command_id_whichever_host_executes_it() {
         }
         if matches!(
             id,
-            "server.engine"
-                | "server.serve"
-                | "server.module-stage"
-                | "server.module-selection"
-                | "server.update-inspect"
-                | "server.modules"
-                | "server.module-release"
+            "core.engine"
+                | "core.serve"
+                | "core.module-stage"
+                | "core.component.selection"
+                | "core.component.capture"
+                | "core.component.member"
+                | "core.component.activate"
+                | "core.component.rollback"
+                | "core.component.remove"
+                | "core.update-inspect"
+                | "core.modules"
+                | "core.module-release"
+                | "core.identity"
+                | "core.auth.status"
+                | "core.cache.retire"
         ) {
             assert!(
                 !inputs.contains(&"project"),
@@ -1412,7 +1484,9 @@ fn one_operation_has_one_command_id_whichever_host_executes_it() {
             .unwrap_or_else(|| {
                 panic!("`{id}` reads a job or a project and must declare --project")
             });
-        if id.starts_with("server.sync.") {
+        if id.starts_with("core.sync.") && id != "core.sync.read"
+            || matches!(id, "core.survey.queue" | "core.profile-session")
+        {
             assert_eq!(
                 project["required"], true,
                 "`{id}` captures its explicit project"
@@ -1431,12 +1505,12 @@ fn one_operation_has_one_command_id_whichever_host_executes_it() {
         "the server surface lost its project-bearing commands"
     );
     assert!(
-        json(&["capabilities", "server.serve", "--output", "json"])["data"]["command"]["inputs"]
+        json(&["capabilities", "core.serve", "--output", "json"])["data"]["command"]["inputs"]
             .as_array()
             .expect("inputs")
             .iter()
             .any(|input| input["name"] == "per-project"),
-        "`ds server serve` must bound one project's share of the host"
+        "`ds core serve` must bound one project's share of the host"
     );
 }
 
@@ -1564,15 +1638,15 @@ fn every_shipping_command_has_a_pinned_semantic_contract_and_safe_invocation() {
 fn solar_and_native_sync_semantics_cover_the_live_surface() {
     let expected: BTreeMap<_, _> = EXPECTED
         .iter()
-        .filter(|(id, _, _)| id.starts_with("solar.") || id.starts_with("server.sync."))
+        .filter(|(id, _, _)| id.starts_with("solar.") || id.starts_with("core.sync."))
         .map(|(id, effect, authority)| (*id, (*effect, *authority)))
         .collect();
     let mut actual = BTreeMap::new();
-    for domain in ["solar", "server"] {
+    for domain in ["solar", "core"] {
         let commands = json(&["capabilities", domain, "--output", "json"]);
         for command in commands["data"]["commands"].as_array().unwrap() {
             let id = command["id"].as_str().unwrap();
-            if id.starts_with("solar.") || id.starts_with("server.sync.") {
+            if id.starts_with("solar.") || id.starts_with("core.sync.") {
                 let descriptor = json(&["capabilities", id, "--output", "json"]);
                 actual.insert(id.to_owned(), descriptor["data"]["command"].clone());
             }
