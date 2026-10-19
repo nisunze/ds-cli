@@ -121,6 +121,11 @@ const REFUSALS: &[Refusal] = &[
         remedy: "resolve the reported bounded cause, then resume the exact source with unchanged document ids and idempotency keys",
     },
     Refusal {
+        code: "survey_create_firebase_session_required",
+        when: "only a DS trusted-device provider is available; it cannot authorize the direct Firestore create",
+        remedy: "sign in to the native app with the same Firebase account, then resume the exact import",
+    },
+    Refusal {
         code: "survey_entry_create_invalid",
         when: "the fixed service rejects a locally valid canonical row",
         remedy: "verify the form contract and canonical row before resuming",
@@ -132,8 +137,8 @@ const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "survey_entry_create_permission_denied",
-        when: "the verified user lacks entries.create authority for the form",
-        remedy: "request entries.create authority for the project and form",
+        when: "Firestore rules deny the fixed direct create",
+        remedy: "verify the Firebase account and the existing Firestore write rules, then resume the exact import",
     },
     Refusal {
         code: "survey_entry_create_scope_not_found",
@@ -264,7 +269,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Import bounded canonical Survey entry NDJSON headlessly.",
-    purpose: "Validates NDJSON before auth and sequential creates. Syncs redacted receipts before checkpoints; resume never auto-retries.",
+    purpose: "Validates NDJSON before auth and sequential direct Firestore creates through the shared Rust protocol and existing native Firebase session. Trusted-device-only sessions refuse. Syncs redacted commit receipts before checkpoints; existing-document conflict is retained, never assumed replay success; resume never auto-retries.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,

@@ -373,6 +373,24 @@ pub fn headless_principal_read_only(lane_value: &str) -> Result<HeadlessPrincipa
     })
 }
 
+/// Pure direct-create plan authority from the existing protected principal.
+/// The published same-owner Desktop Firebase session executes IO separately.
+pub fn survey_direct_authority_read_only(lane_value: &str) -> Result<ds_command_kernel::survey_entry_create::direct::Authority, Failure> {
+    let principal = headless_principal_read_only(lane_value)?;
+    let lane = Lane::parse(lane_value)?;
+    let profile = profile::load(lane)?;
+    let attribution = if let Some(firebase) = NativeRefreshStore::probe_read_only(&profile)? {
+        (firebase.uid().to_owned(),firebase.email().to_owned())
+    } else if let Some(device) = device::probe_context_read_only(lane)? {
+        (device.uid().to_owned(),device.email().to_owned())
+    } else { return Err(Failure::unavailable("headless_signed_out","The protected Survey principal is unavailable")); };
+    if attribution.0 != principal.account_uid() { return Err(Failure::conflict("auth_context_mismatch", "Survey create provider changed")); }
+    Ok(ds_command_kernel::survey_entry_create::direct::Authority {
+        firebase_project: profile.firebase_project_id().into(), uid: attribution.0,
+        email: attribution.1, lane: profile.lane().token().into(),
+    })
+}
+
 pub static DOMAIN: Domain = Domain {
     id: "auth",
     summary: "Sign in headlessly and select a visible project.",
@@ -4013,6 +4031,9 @@ fn principal_binding_sha256(uid: &str, email: &str) -> String {
 
 fn map_survey_entry_create_service_code(code: SurveyEntryCreateServiceCode) -> Failure {
     match code {
+        SurveyEntryCreateServiceCode::FirebaseSessionRequired => Failure::unavailable(
+            "survey_create_firebase_session_required", "Direct Survey creation requires an existing native Firebase user session")
+            .remedy("use the same-owner signed-in Desktop entry queue; standalone trusted-device creation is not admitted"),
         SurveyEntryCreateServiceCode::Invalid => Failure::invalid(
             "survey_entry_create_invalid",
             "the fixed service rejected the bounded Survey create request",
@@ -4025,9 +4046,9 @@ fn map_survey_entry_create_service_code(code: SurveyEntryCreateServiceCode) -> F
         .remedy("sign in again and verify the selected project"),
         SurveyEntryCreateServiceCode::PermissionDenied => Failure::unauthorized(
             "survey_entry_create_permission_denied",
-            "the verified user lacks entries.create authority for this Survey form",
+            "Firestore rules denied the fixed direct create",
         )
-        .remedy("request entries.create authority for the selected project and form"),
+        .remedy("verify the Firebase account and existing Firestore write rules"),
         SurveyEntryCreateServiceCode::ScopeNotFound => Failure::invalid(
             "survey_entry_create_scope_not_found",
             "the selected project, governed form, or context ancestor is unavailable",
@@ -4050,9 +4071,9 @@ fn map_survey_entry_create_service_code(code: SurveyEntryCreateServiceCode) -> F
         .remedy("use the original exact request for replay, or a fresh key for a distinct create"),
         SurveyEntryCreateServiceCode::AlreadyExists => Failure::conflict(
             "survey_entry_create_already_exists",
-            "the Survey document already exists and this request is not its exact replay",
+            "the create-only precondition found an existing document; successful replay is unproven",
         )
-        .remedy("choose a new document id, or replay the original exact request and key"),
+        .remedy("retain the original identity/key and resolve the existing document through its authorized owner"),
         SurveyEntryCreateServiceCode::Failed => Failure::unavailable(
             "survey_entry_create_failed",
             "the governed Survey create service failed temporarily",
@@ -8054,6 +8075,13 @@ mod tests {
 
         let cases = [
             (
+                ServiceCode::FirebaseSessionRequired,
+                "survey_create_firebase_session_required",
+                ExitClass::Unavailable,
+                "same-owner signed-in Desktop",
+                true,
+            ),
+            (
                 ServiceCode::Invalid,
                 "survey_entry_create_invalid",
                 ExitClass::InvalidInput,
@@ -8071,7 +8099,7 @@ mod tests {
                 ServiceCode::PermissionDenied,
                 "survey_entry_create_permission_denied",
                 ExitClass::Unauthorized,
-                "entries.create authority",
+                "Firestore write rules",
                 false,
             ),
             (
@@ -8106,7 +8134,7 @@ mod tests {
                 ServiceCode::AlreadyExists,
                 "survey_entry_create_already_exists",
                 ExitClass::Conflict,
-                "new document id",
+                "resolve the existing document",
                 true,
             ),
             (

@@ -42,9 +42,10 @@ use ds_client_core::{
     PROJECT_FORM_EDITOR_ACTION, PROJECT_FORMS_ACTION, PROJECT_REPORT_ACTIONS, ProfileError,
     SOLAR_SNAPSHOT_ACTION, SRE_EVENTS_ACTIONS, STYLES_ACTION, SURVEY_CONTROL_ROUTES,
     SURVEY_ENTRIES_CHANGES_METHOD, SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD,
-    SURVEY_ENTRIES_SELECT_PATH, SURVEY_ENTRY_CREATE_OPERATION, SURVEY_QUERY_METHOD,
-    SURVEY_QUERY_PATH, TILES_ACTIONS, TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS,
-    TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
+    SURVEY_ENTRIES_SELECT_PATH, SURVEY_ENTRY_CREATE_METHOD, SURVEY_ENTRY_CREATE_OPERATION,
+    SURVEY_ENTRY_CREATE_PATH, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_ACTIONS,
+    TRANSFORMER_CONTEXT_ACTION, TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD,
+    TRANSFORMER_CONTEXT_PATH,
 };
 
 /// Every registry operation `ds` can issue, and which of its typed calls does.
@@ -121,6 +122,11 @@ const CLI_ONLY: &[(&str, &str)] = &[
         "SURVEY_CONTROL_ROUTES",
         "Six form-factory / template routes pinned as one profile string.",
     ),
+    (
+        "POST /v1/projects/{firebase_project}/databases/(default)/documents:commit",
+        "Not a gateway route by design: Survey direct create commits to Firestore under the \
+         user's Firebase session.",
+    ),
 ];
 
 /// A profile input whose every registry-backed field comes from the registry.
@@ -148,8 +154,11 @@ fn profile_from_registry(lane: DeploymentLane, gateway_origin: &str) -> ClientPr
     let (tiles_method, tiles_path) = route("domains.tiles.action");
     let (layers_method, layers_path) = route("domains.layers.action");
     let (project_report_method, project_report_path) = route("domains.project_report.action");
-    let (survey_entry_create_method, survey_entry_create_path) =
-        route("domains.survey_entries.create");
+    // CLI-only: see CLI_ONLY. Direct create targets Firestore, not the gateway.
+    let (survey_entry_create_method, survey_entry_create_path) = (
+        SURVEY_ENTRY_CREATE_METHOD.to_owned(),
+        SURVEY_ENTRY_CREATE_PATH.to_owned(),
+    );
     let (design_selections_method, design_selections_path) =
         route("domains.design_collaboration.selections");
     let (data_distribution_method, data_distribution_path) =

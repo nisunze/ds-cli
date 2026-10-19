@@ -260,15 +260,28 @@ fn read(
     direct: Option<&ds_command_kernel::survey_entry_create::direct::Authority>,
 ) -> Result<Value, Failure> {
     match request {
-        Request::PrepareCreate { fence } => {
-            create::prepare_direct(store, scope, project, fence, direct.ok_or_else(|| failure(STORE, "Firebase create authority unavailable"))?).map_err(|e| failure(STORE, e))
-        }
+        Request::PrepareCreate { fence } => create::prepare_direct(
+            store,
+            scope,
+            project,
+            fence,
+            direct.ok_or_else(|| failure(STORE, "Firebase create authority unavailable"))?,
+        )
+        .map_err(|e| failure(STORE, e)),
         Request::VerifyCreateReceipt {
             expected,
             status,
             response,
-        } => create::verify_direct(store, scope, project, expected, direct.ok_or_else(|| failure(STORE, "Firebase create authority unavailable"))?, *status, response)
-            .map_err(|e| failure(STORE, e)),
+        } => create::verify_direct(
+            store,
+            scope,
+            project,
+            expected,
+            direct.ok_or_else(|| failure(STORE, "Firebase create authority unavailable"))?,
+            *status,
+            response,
+        )
+        .map_err(|e| failure(STORE, e)),
         Request::Headers {} => match store {
             Some(s) => s
                 .survey_entry_headers(scope, Some(project))
@@ -431,9 +444,14 @@ pub fn command(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let database = ds_compute_runtime::server_state_directory(lane, None)
         .map_err(|e| failure(INVALID, e))?
         .join("store.sqlite");
-    let direct = if matches!(&request, Request::PrepareCreate { .. } | Request::VerifyCreateReceipt { .. }) {
+    let direct = if matches!(
+        &request,
+        Request::PrepareCreate { .. } | Request::VerifyCreateReceipt { .. }
+    ) {
         Some(ds_cli_auth::survey_direct_authority_read_only(lane)?)
-    } else { None };
+    } else {
+        None
+    };
     capture(
         &database,
         lane,
@@ -489,7 +507,12 @@ mod tests {
         dir
     }
     fn direct_authority() -> ds_command_kernel::survey_entry_create::direct::Authority {
-        ds_command_kernel::survey_entry_create::direct::Authority { firebase_project:"test-project".into(), uid:"owner-a".into(), email:"test@example.invalid".into(), lane:"stable".into() }
+        ds_command_kernel::survey_entry_create::direct::Authority {
+            firebase_project: "test-project".into(),
+            uid: "owner-a".into(),
+            email: "test@example.invalid".into(),
+            lane: "stable".into(),
+        }
     }
     fn scope() -> SurveyEntryScope {
         SurveyEntryScope {
@@ -502,7 +525,15 @@ mod tests {
         json!({"kind":"survey","id":id,"owner_uid":"owner-a","generation":"11111111-2222-3333-4444-555555555555","project_id":project,"form_id":"form-a","doc_id":format!("doc-{id}"),"operation":"create","payload":{"answers":{"opaque":[1,2,3]},"expected_version":3},"overlay":{"type":"Feature","properties":{"label":"offline"}},"status":"pending","attempts":0,"created_at":17,"synced_at":null,"error":null,"idempotency_key":format!("key-{id}")})
     }
     fn run(db: &Path, out: &Path, project: &str, request: Request) -> Result<Value, Failure> {
-        capture(db, "stable", Some(&direct_authority()), project, request, out, || Ok(scope()))
+        capture(
+            db,
+            "stable",
+            Some(&direct_authority()),
+            project,
+            request,
+            out,
+            || Ok(scope()),
+        )
     }
     fn payload(path: &Path) -> Value {
         serde_json::from_slice(&fs::read(path).unwrap()).unwrap()

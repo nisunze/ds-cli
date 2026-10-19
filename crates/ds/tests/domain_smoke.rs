@@ -6125,7 +6125,7 @@ fn design_lv_project_export_refuses_an_existing_artifact_before_auth_or_desktop(
             },
             "survey_entry_create": {
                 "method": "POST",
-                "path": "/api/v1/entries/mutate",
+                "path": "/v1/projects/{firebase_project}/databases/(default)/documents:commit",
                 "operation": "create"
             },
             "printing":{"method":"POST","path":"/api/v1/printing","actions":["list","get","create","update","save","delete","copy"]},

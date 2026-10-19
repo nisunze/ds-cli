@@ -48,7 +48,11 @@ const LANE: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 
 pub(crate) const REFUSALS: &[Refusal] = &[
-    Refusal { code:"survey_create_firebase_session_required", when:"only a DS trusted-device provider is available", remedy:"sign in to the native app with the same Firebase account; preserve the retained row" },
+    Refusal {
+        code: "survey_create_firebase_session_required",
+        when: "only a DS trusted-device provider is available",
+        remedy: "sign in to the native app with the same Firebase account; preserve the retained row",
+    },
     Refusal {
         code: "survey_entry_create_invalid",
         when: "the form, document id, replay key, timestamp, context, or typed JSON values violate the closed create grammar",

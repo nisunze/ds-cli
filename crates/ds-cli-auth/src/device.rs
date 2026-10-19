@@ -578,6 +578,18 @@ pub fn probe_identity_without_selection(
 pub(crate) fn probe_identity_read_only(
     lane: Lane,
 ) -> Result<Option<crate::ProviderIdentity>, Failure> {
+    probe_context_read_only(lane)?
+        .map(|context| {
+            crate::ProviderIdentity::new(
+                context.lane(),
+                context.credential_audience_sha256(),
+                context.uid(),
+            )
+        })
+        .transpose()
+}
+/// Public principal attribution only, from the same protected decoder; never a token.
+pub(crate) fn probe_context_read_only(lane: Lane) -> Result<Option<DeviceAuthContext>, Failure> {
     let (profile, _, _) = profile::load_device(lane)?;
     let Some(bytes) = NativeDeviceStore::read_only(&state_key(&profile))? else {
         return Ok(None);
@@ -590,12 +602,7 @@ pub(crate) fn probe_identity_read_only(
         }
         Err(error) => return Err(device_failure(error)),
     };
-    crate::ProviderIdentity::new(
-        lane.token(),
-        profile.credential_audience_sha256(),
-        credential.uid(),
-    )
-    .map(Some)
+    Ok(Some(credential.auth_context()))
 }
 
 /// The device credential and the identity it names, with nothing about a
@@ -924,8 +931,12 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<ds_client_core::survey_photo::Receipt, ClientError> {
         fixed_device_call!(self, survey_photo, project, command)
     }
-    pub fn repair_transformer(&mut self,project:&str,input:&ds_client_core::TransformerRepairPublication)->Result<Value,ClientError>{
-        fixed_device_call!(self,repair_transformer,project,input)
+    pub fn repair_transformer(
+        &mut self,
+        project: &str,
+        input: &ds_client_core::TransformerRepairPublication,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, repair_transformer, project, input)
     }
     pub fn save_transformers(
         &mut self,
