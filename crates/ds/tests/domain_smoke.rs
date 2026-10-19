@@ -3266,8 +3266,8 @@ fn global_tile_list_is_a_domain_bounded_native_recovery_read() {
         "a valid recovery read stopped at `{code}`, not the native reference catalog"
     );
 
-    // A source that is not an exact catalog identity is refused here, before a
-    // publication job can be started with it.
+    // Publication is retired hosted compute with no edge owner yet: it refuses
+    // before any credential is restored or anything is sent.
     assert_eq!(
         native_refusal(&[
             "tile",
@@ -3287,7 +3287,7 @@ fn global_tile_list_is_a_domain_bounded_native_recovery_read() {
             "--output",
             "json",
         ]),
-        "global_tile_selection_invalid"
+        "native_compute_required"
     );
 }
 
