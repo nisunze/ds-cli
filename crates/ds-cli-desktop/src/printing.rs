@@ -250,7 +250,7 @@ pub static EXPORT_COMMAND: Command = Command {
     path: &["desktop", "printing", "export"],
     contract: 4,
     summary: "Export selected formats for one or more held transformers.",
-    purpose: "Run the desktop-native Network Reporter for one explicit project; repeat --transformer for a batch. Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON, ignoring saved output sets. --selection supplies a run matrix without saving settings. Main exports replace selected outputs and queue publication; unselected provenance is retained. --intent preview is local-only, without main output replacement, publication or settings writes; combined_transformer cannot be previewed. Acquire missing selected context online; use held data offline.",
+    purpose: "Run the desktop-native Network Reporter for one explicit project; repeat --transformer for a batch. Defaults: SHP/KMZ/XLSX; they never require voltage drop. --selection supplies a run matrix without saving settings. Main exports replace selected outputs and queue publication; unselected provenance is retained. --intent preview is local-only, without main output replacement, publication or settings writes; combined_transformer cannot be previewed. Acquire missing selected context online; use held data offline.",
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
     authority: Authority::DesktopUser,
@@ -421,22 +421,12 @@ fn export_arguments(inputs: &Inputs) -> Result<Value, Failure> {
     } else {
         arguments["transformers"] = json!(transformers);
     }
+    // Without --selection the Desktop resolves the run through the kernel:
+    // the ordinary held export runs its SHP/KMZ/XLSX defaults, which never
+    // require the saved voltage-drop analysis.
     if let Some(path) = inputs.value("selection") {
         arguments["selection"] =
             read_request(path, "provide a ds.design-output-selection/v1 JSON matrix")?;
-    } else if transformers != ["combined_transformer"] {
-        let defaults = ds_command_kernel::report_formats::DEFAULT_INDIVIDUAL
-            .iter()
-            .map(|s| (*s).to_owned())
-            .collect();
-        let selection = ds_command_kernel::report_formats::normalize_output_selection(
-            None,
-            Some(defaults),
-            None,
-        )
-        .map_err(invalid_read)?;
-        arguments["selection"] =
-            serde_json::to_value(selection).map_err(|e| invalid_read(e.to_string()))?;
     }
     Ok(arguments)
 }
@@ -921,18 +911,14 @@ mod tests {
     #[test]
     fn ordinary_export_omits_intent_and_preserves_the_default_request() {
         let inputs = export_inputs(&["--project", "huye", "--transformer", "agasharu"]).unwrap();
+        // No selection is invented here: the Desktop's kernel policy runs the
+        // held export's SHP/KMZ/XLSX defaults, never a voltage-drop demand.
         assert_eq!(
             export_arguments(&inputs).unwrap(),
             json!({
                 "project": "huye",
                 "transformer": "agasharu",
-                "force": false,
-                "selection": {
-                    "schema": "ds.design-output-selection/v1",
-                    "prints": [],
-                    "geospatial": ["shp", "kmz"],
-                    "tabular": ["xlsx", "voltage_drop"]
-                }
+                "force": false
             })
         );
     }

@@ -398,7 +398,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 2,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Defaults: SHP/KMZ/XLSX/saved voltage-drop JSON. Prints regenerate; data may reuse. Saved A4 preview reuses held files.",
+    purpose: "Defaults: SHP/KMZ/XLSX, plus saved voltage-drop JSON when the project's output selection exports it. Prints regenerate; data may reuse. Saved A4 preview reuses held files.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -421,7 +421,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "selection",
             "<json-file>",
-            "ds.design-output-selection/v1; omitted uses defaults, ignoring saved sets.",
+            "ds.design-output-selection/v1 run matrix; omitted uses the defaults.",
         ),
         Arg::repeated(
             "print-layout",
@@ -1007,14 +1007,38 @@ fn run_output_selection(inputs: &Inputs) -> Result<DesignOutputSelection, Failur
                 .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e.to_string()))
         })
         .transpose()?;
+    // Without an explicit matrix the run names no print, so nothing printable
+    // is acquired; `run_outputs` resolves its exact outputs from the project's
+    // sealed settings once they are read.
     let defaults = explicit.is_none().then(|| {
-        ds_command_kernel::report_formats::DEFAULT_INDIVIDUAL
+        ds_command_kernel::report_formats::INVOCATION_DATA_DEFAULTS
             .iter()
             .map(|s| (*s).to_owned())
             .collect()
     });
     ds_command_kernel::report_formats::normalize_output_selection(explicit, defaults, None)
         .map_err(|e| Failure::invalid(INPUTS_INVALID.code, e).remedy(INPUTS_INVALID.remedy))
+}
+
+/// The run's outputs: an explicit `--selection` exactly, otherwise the
+/// kernel's invocation defaults over the project's sealed settings — SHP, KMZ
+/// and XLSX, plus the saved voltage-drop JSON only when the project's output
+/// selection exports it.
+fn run_outputs(
+    inputs: &Inputs,
+    receipt: &InputReceipt,
+    requested: DesignOutputSelection,
+) -> Result<DesignOutputSelection, Failure> {
+    if inputs.value("selection").is_some() {
+        return Ok(requested);
+    }
+    let invalid =
+        |e: String| Failure::invalid(INPUTS_INVALID.code, e).remedy(INPUTS_INVALID.remedy);
+    ds_command_kernel::report_formats::invocation_selection(
+        &receipt.sheets().map_err(invalid)?,
+        None,
+    )
+    .map_err(invalid)
 }
 
 pub(super) fn require_same_context(
@@ -1605,6 +1629,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     })?;
     // Original server authority remains provenance even for an explicit local proof.
     let server_sheets_sha256 = receipt.sheets_sha256.clone();
+    requested_outputs = run_outputs(inputs, &receipt, requested_outputs)?;
     let receipt = if proof_paths.is_empty() {
         receipt
     } else {
@@ -2057,7 +2082,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         reuse::policy_outputs(&receipt, Some(&requested_outputs)).map_err(|error| {
             Failure::invalid(INPUTS_INVALID.code, error).remedy(INPUTS_INVALID.remedy)
         })?;
-    let voltage_drop_selected = preview_request.is_none() && voltage_drop_selected(&output_policy);
+    let voltage_drop_selected = preview_request.is_none()
+        && ds_command_kernel::report_formats::requires_voltage_drop_analysis(&output_policy);
     let held_scope = ds_command_kernel::report_export::held::Scope {
         project: project_id.clone(),
         lane: lane.to_owned(),
@@ -3213,12 +3239,6 @@ fn transformer_nature_unavailable(reason: &str) -> Failure {
     .remedy(TRANSFORMER_NATURE_UNAVAILABLE.remedy)
 }
 
-fn voltage_drop_selected(outputs: &[String]) -> bool {
-    outputs
-        .iter()
-        .any(|output| matches!(output.as_str(), "voltage_drop" | "voltage_drop_pdf"))
-}
-
 /// The inputs as the service answers them now, or `None` when it cannot be
 /// reached. Every read is taken under the identity the hold is kept for.
 fn read_inputs(
@@ -4204,9 +4224,7 @@ mod tests {
             ],
         )
         .unwrap();
-        let selection = super::run_output_selection(&inputs).unwrap();
-        let sheets = serde_json::json!({"project_settings":[{"parameter":"design_export_format","value":["pdf__absent_external_setup","gpkg"]}]});
-        let source = ds_command_kernel::report_export::InputReceipt {
+        let receipt = |sheets: serde_json::Value| ds_command_kernel::report_export::InputReceipt {
             local_print_recipe: None,
             schema: 1,
             country: "RW".into(),
@@ -4216,11 +4234,40 @@ mod tests {
             ),
             reference_semantic_sha256: "a".repeat(64),
         };
+        let run = |source: &ds_command_kernel::report_export::InputReceipt| {
+            let selection = super::run_output_selection(&inputs).unwrap();
+            let selection = super::run_outputs(&inputs, source, selection).unwrap();
+            super::reuse::policy_outputs(source, Some(&selection)).unwrap()
+        };
+        // The saved print is never implicit, and a project selection without
+        // the saved voltage-drop analysis does not export or require it.
+        let source = receipt(
+            serde_json::json!({"project_settings":[{"parameter":"design_export_format","value":["pdf__absent_external_setup","gpkg"]}]}),
+        );
+        assert_eq!(run(&source), ["shp", "kmz", "xlsx"]);
+        assert!(!ds_command_kernel::report_formats::requires_voltage_drop_analysis(&run(&source)));
+        assert!(super::reuse::policy_outputs(&source, None).is_err());
+        // A project whose own selection exports the analysis gets it.
+        let exported = receipt(
+            serde_json::json!({"project_settings":[{"parameter":"design_export_format","value":{"schema":"ds.design-output-selection/v1","geospatial":["kmz","shp"],"tabular":["xlsx","voltage_drop"]}}]}),
+        );
+        assert_eq!(run(&exported), ["shp", "kmz", "xlsx", "voltage_drop"]);
+        // A project that stores no selection keeps the documented defaults.
         assert_eq!(
-            super::reuse::policy_outputs(&source, Some(&selection)).unwrap(),
+            run(&receipt(serde_json::json!({}))),
             ["shp", "kmz", "xlsx", "voltage_drop"]
         );
-        assert!(super::reuse::policy_outputs(&source, None).is_err());
+        // An unreadable stored selection is refused by name, never guessed.
+        let unreadable = receipt(
+            serde_json::json!({"project_settings":[{"parameter":"design_export_format","value":{"schema":"ds.design-output-selection/v1","tabular":"xlsx"}}]}),
+        );
+        let selection = super::run_output_selection(&inputs).unwrap();
+        assert_eq!(
+            super::run_outputs(&inputs, &unreadable, selection)
+                .unwrap_err()
+                .code(),
+            INPUTS_INVALID.code
+        );
 
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("selection.json");
@@ -4247,7 +4294,7 @@ mod tests {
         assert_eq!(selected, ["xlsx"]);
         // This is the same demand gate used before acquiring saved analysis
         // and its transformer-nature projection for the batch.
-        assert!(!super::voltage_drop_selected(&selected));
+        assert!(!ds_command_kernel::report_formats::requires_voltage_drop_analysis(&selected));
         assert!(super::preflight(&inputs).is_ok());
         std::fs::write(&path, b"{\"output_root\":\"C:\\\\External\"}").unwrap();
         assert!(super::preflight(&inputs).is_err());
@@ -4420,17 +4467,10 @@ mod tests {
 
     #[test]
     fn transformer_nature_projection_is_required_only_for_voltage_drop_output() {
-        assert!(!super::voltage_drop_selected(&[
-            "shp".to_string(),
-            "xlsx".to_string()
-        ]));
-        assert!(super::voltage_drop_selected(&[
-            "xlsx".to_string(),
-            "voltage_drop".to_string()
-        ]));
-        assert!(super::voltage_drop_selected(&[
-            "voltage_drop_pdf".to_string()
-        ]));
+        use ds_command_kernel::report_formats::requires_voltage_drop_analysis as requires;
+        assert!(!requires(&["shp".to_string(), "xlsx".to_string()]));
+        assert!(requires(&["xlsx".to_string(), "voltage_drop".to_string()]));
+        assert!(requires(&["voltage_drop_pdf".to_string()]));
     }
 
     #[test]

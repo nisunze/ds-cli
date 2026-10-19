@@ -274,7 +274,7 @@ pub static REPORT: Command = {
     let mut report = command(
         "design.project.report",
         &["design", "project", "report"],
-        "Produce offline reports with the mandatory saved voltage-drop JSON.",
+        "Produce offline reports from one captured design run.",
         &[
             WORKSPACE,
             RUN_ID,
@@ -298,7 +298,7 @@ pub static REPORT: Command = {
             Arg::repeated(
                 "format",
                 "<name>",
-                "Explicit data or governed pdf__<layout-id> formats; saved voltage-drop JSON is always included.",
+                "Explicit data or governed pdf__<layout-id> formats; saved voltage-drop JSON only when selected (omitted: SHP/KMZ/XLSX/voltage_drop).",
             ),
             Arg::value("admin-bounds", "<file>", "Local admin-bounds asset."),
             Arg::value(

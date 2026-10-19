@@ -1000,13 +1000,21 @@ the verified path automatically. It is the door a local operator calls.
 Decisions and fingerprints come from
 `ds-command-kernel::report_export`; the shared native IO host is
 `ds-command-kernel/crates/ds-report-host`, and the engine is the installed `ds-report`.
-The command starts with SHP, KMZ, XLSX and saved voltage-drop JSON. A stored
-`design_export_format` row does not select this run, its printing inputs or
-neighboring-circuit acquisition. Supply `--selection <json-file>` for an
-explicit `ds.design-output-selection/v1` matrix. `--print-layout` names local
-PDF proofs; without `--selection`, those proof layouts are added to the
-command defaults. No project setting is changed. The local `report export
---task transformer` door uses the same defaults, including when a full
+Without `--selection` the command produces SHP, KMZ and XLSX, plus the saved
+voltage-drop JSON exactly when the project's output selection exports it (or
+the project stores no selection): exporting voltage drop is a project output
+setting like every other export (owner correction 2026-10-19), resolved by the
+kernel's `report_formats::invocation_selection`. Only `voltage_drop` and
+`voltage_drop_pdf` read the saved analysis; every other output completes
+whether that analysis is current, missing, stale or failed, and a selected
+analysis output that cannot be produced fails alone with its remedy. A stored
+`design_export_format` row never selects prints, printing inputs or
+neighboring-circuit acquisition for this run. Supply `--selection <json-file>`
+for an explicit `ds.design-output-selection/v1` matrix; it is the run's exact
+inventory. `--print-layout` names local PDF proofs; without `--selection`,
+those proof layouts are added to the command defaults. No project setting is
+changed. The local `report export --task transformer` door keeps its own
+defaults (SHP, KMZ, XLSX and saved voltage-drop JSON), including when a full
 `--request` omits `formats`; an explicit format array is preserved.
 Both local input encodings use that current run selection; a saved output set
 cannot veto it. `report export --task combined` always includes SHP, XLSX and

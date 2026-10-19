@@ -37,9 +37,12 @@ produces review artifacts from saved project layouts.
 
 An explicit export selection containing only named PDFs does not add saved
 voltage-drop JSON or check that unselected analysis. Such a member and batch
-complete when their selected PDFs complete. Default exports still include
-saved voltage-drop JSON; selecting it explicitly retains its missing-analysis
-refusal. The A4 voltage-drop report keeps its existing saved JSON companion.
+complete when their selected PDFs complete. Without `--selection` the ordinary
+export runs the kernel's held GIS defaults (SHP, KMZ and XLSX), which never
+require the saved analysis; exporting voltage drop follows the project's output
+selection through `report project export` (owner correction 2026-10-19).
+Selecting it explicitly retains its missing-analysis refusal for that output
+only. The A4 voltage-drop report keeps its existing saved JSON companion.
 
 `ds desktop printing view --project <exact-current-project> --output json`
 reads the open Printing templates view's actual location and held page count.
