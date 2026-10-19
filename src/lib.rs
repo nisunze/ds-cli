@@ -122,6 +122,7 @@ pub fn assets_preview_wasm(bytes: &[u8], request: &[u8]) -> Result<String, wasm_
 }
 pub mod compute_jobs;
 pub mod execution_context;
+pub mod native_state;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = executionContext)]
 pub fn execution_context_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {

@@ -104,10 +104,7 @@ pub fn server_state_directory(lane: &str, explicit: Option<&Path>) -> Result<Pat
         }
         return Ok(path.to_path_buf());
     }
-    let root = std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|path| PathBuf::from(path).join(".local/state")))
-        .or_else(windows_local_state)
+    let root = native_state_base()
         .ok_or_else(|| "provide an absolute server state directory".to_string())?;
     if !root.is_absolute() {
         return Err("server state directory must be absolute".into());
@@ -115,22 +112,15 @@ pub fn server_state_directory(lane: &str, explicit: Option<&Path>) -> Result<Pat
     Ok(root.join("ds/server").join(lane))
 }
 
-/// A Windows shell carries neither `XDG_STATE_HOME` nor `HOME`, so a headless
-/// export there had no default Server root and every publication refused
-/// `report_publish_root_invalid`. Per-user machine-local state on Windows is
-/// `%LOCALAPPDATA%`, the root the other native stores already use. It is the
-/// last resort, so a root that resolved before still resolves to the same place.
-fn windows_local_state() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        std::env::var_os("LOCALAPPDATA")
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from)
-    }
-    #[cfg(not(windows))]
-    {
-        None
-    }
+/// The per-user machine-local state base every DS Core consumer shares; the
+/// rule (and why Windows never uses `HOME`) is `ds_command_kernel::native_state`.
+pub fn native_state_base() -> Option<PathBuf> {
+    ds_command_kernel::native_state::state_base(
+        std::env::var_os("XDG_STATE_HOME"),
+        std::env::var_os("HOME"),
+        std::env::var_os("LOCALAPPDATA"),
+        cfg!(windows),
+    )
 }
 
 /// The connection an admission is made under: the store's durable owner
