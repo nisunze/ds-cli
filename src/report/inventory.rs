@@ -202,7 +202,10 @@ pub fn project(snapshot: &Snapshot) -> Result<View<'_>, String> {
             .transformer
             .bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-        || !crate::design::row_allows(&snapshot.transformer).reportable
+        // The Combined Report is not a row an individual export runs for, but
+        // its sealed `export-combined_transformer` sets are this projection's.
+        || !(crate::design::row_allows(&snapshot.transformer).reportable
+            || snapshot.transformer == crate::report_export::combined::IDENTITY)
         || snapshot
             .expected_input_base_fingerprint
             .as_deref()

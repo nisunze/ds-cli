@@ -294,3 +294,24 @@ fn normal_held_cloud_read_is_usable_without_fabricating_an_error_or_freshness() 
     input["snapshot"]["cloud_read"]["state"] = json!("unavailable");
     refused(input);
 }
+
+#[test]
+fn the_sealed_combined_report_is_an_inventory_identity_but_other_aggregates_are_not() {
+    let combined = |name: &str| {
+        let mut input = fixture();
+        let operation = format!("export-{name}");
+        input["snapshot"]["transformer"] = json!(name);
+        input["snapshot"]["local_sets"][0]["transformer"] = json!(name);
+        input["snapshot"]["local_sets"][0]["operation"] = json!(operation);
+        input["snapshot"]["sync_artifacts"][0]["operation"] = json!(operation);
+        input
+    };
+    let output = project(combined("combined_transformer"));
+    assert_eq!(output["transformer"], "combined_transformer");
+    assert_eq!(output["local_output_count"], 6);
+    assert_eq!(output["active_client_publish_id"], "publish-sep29");
+    assert_eq!(output["outputs"].as_array().unwrap().len(), 6);
+    for reserved in ["collisions", "all_transformers", "combined_transformers", "__all__"] {
+        refused(combined(reserved));
+    }
+}

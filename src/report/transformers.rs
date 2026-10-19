@@ -1,6 +1,5 @@
 //! Portable implementation of the native client's transformer reference set.
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 pub const MAX_TRANSFORMERS: usize = 500;
 pub const MAX_NAME_CHARS: usize = 200;
@@ -63,54 +62,6 @@ pub fn transformer_set(
     Ok(out)
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct Admitted {
-    pub transformer: String,
-    pub revision: u64,
-}
-
-/// Admitted rooms use the canonical order from `transformer_set`. Aliases with
-/// conflicting revisions cannot identify one exact room and are refused before staging.
-pub fn admitted(inputs: Vec<Admitted>) -> Result<Vec<Admitted>, String> {
-    if inputs.len() > MAX_TRANSFORMERS {
-        return Err("Combined report exceeds 500 admitted rooms".into());
-    }
-    let names = transformer_set(inputs.iter().map(|i| i.transformer.clone()))?;
-    let mut revisions = HashMap::new();
-    for input in inputs {
-        let name = canonical_transformer_reference(&input.transformer);
-        if crate::report::is_reserved_report_identity(&name) {
-            return Err(format!("Combined report transformer {name} is reserved."));
-        }
-        if input.revision > 9_007_199_254_740_991 {
-            return Err(format!(
-                "Combined report transformer {name} has no exact admitted revision."
-            ));
-        }
-        if revisions
-            .insert(name.clone(), input.revision)
-            .is_some_and(|prior| prior != input.revision)
-        {
-            return Err(format!(
-                "Combined report transformer {name} has conflicting admitted revisions."
-            ));
-        }
-    }
-    if names.len() < 2 {
-        return Err(
-            "A local combined report requires at least 2 admitted transformer rooms.".into(),
-        );
-    }
-    Ok(names
-        .into_iter()
-        .map(|transformer| Admitted {
-            revision: revisions[&transformer],
-            transformer,
-        })
-        .collect())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,26 +81,7 @@ mod tests {
         assert!(transformer_set(["".into()]).is_err());
     }
     #[test]
-    fn selection_permutations_admit_the_same_canonical_rooms_and_revisions() {
-        let room = |name: &str, revision| Admitted {
-            transformer: name.into(),
-            revision,
-        };
-        let expected = vec![room("tx_a", 7), room("tx_b", 9), room("tx_c", 3)];
-        assert_eq!(
-            admitted(vec![
-                room("TX B", 9),
-                room("tx_c", 3),
-                room("tx_a", 7),
-                room("tx_b", 9)
-            ])
-            .unwrap(),
-            expected
-        );
-        assert_eq!(
-            admitted(vec![room("tx_c", 3), room("tx_b", 9), room("TX A", 7)]).unwrap(),
-            expected
-        );
+    fn selection_permutations_fold_to_the_same_canonical_set() {
         assert_eq!(
             transformer_set([
                 "TX-1".into(),
@@ -160,20 +92,5 @@ mod tests {
             .unwrap(),
             ["_001_main", "combined_transformer", "tx_1"]
         );
-    }
-
-    #[test]
-    fn exact_revision_admission_refuses_conflicts_reserved_and_too_small_sets() {
-        let a = |name: &str, revision| Admitted {
-            transformer: name.into(),
-            revision,
-        };
-        assert_eq!(
-            admitted(vec![a("Z", 1), a("a-b", 2), a("A B", 2)]).unwrap(),
-            vec![a("a_b", 2), a("z", 1)]
-        );
-        assert!(admitted(vec![a("z", 1), a("Z", 2)]).is_err());
-        assert!(admitted(vec![a("combined_transformer", 1), a("z", 2)]).is_err());
-        assert!(admitted(vec![a("z", 1), a("Z", 1)]).is_err());
     }
 }

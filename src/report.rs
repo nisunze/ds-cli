@@ -155,9 +155,6 @@ enum Command {
     CanonicalTransformer {
         value: String,
     },
-    AdmittedTransformers {
-        transformers: Vec<transformers::Admitted>,
-    },
     Inventory {
         snapshot: inventory::Snapshot,
     },
@@ -523,10 +520,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         }
         Command::CanonicalTransformer { value } => {
             serde_json::json!(transformers::canonical_transformer_reference(&value))
-        }
-        Command::AdmittedTransformers { transformers } => {
-            serde_json::to_value(transformers::admitted(transformers)?)
-                .map_err(|e| e.to_string())?
         }
         Command::Inventory { snapshot } => serde_json::to_value(inventory::project(&snapshot)?)
             .map_err(|error| error.to_string())?,

@@ -40,6 +40,7 @@ pub use ds_command_kernel::report_export::{
 };
 
 pub mod asset_preview;
+pub mod combined;
 pub mod document_semantic;
 pub mod layout_preview;
 pub mod mv_artifact;
@@ -181,6 +182,32 @@ pub trait ReportEngine: Sync {
         Err(HostFailure::new(
             CODE_ENGINE_UNSUPPORTED,
             "this report engine does not render MV plan and profile sheets",
+        ))
+    }
+    /// `ds-report export-combined-transformer-report --request REQUEST --result RESULT`.
+    /// Staged saved rooms only; an engine without the task refuses it by name.
+    fn export_combined_transformer_report(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        let _ = (request, result);
+        Err(HostFailure::new(
+            CODE_ENGINE_UNSUPPORTED,
+            "this report engine does not export the combined transformer report",
+        ))
+    }
+    /// `ds-report discover-combined-media-references --request REQUEST --result RESULT`:
+    /// the read-only media scope of the rooms a combined export will read.
+    fn discover_combined_media_references(
+        &self,
+        request: &Path,
+        result: &Path,
+    ) -> Result<EngineExit, HostFailure> {
+        let _ = (request, result);
+        Err(HostFailure::new(
+            CODE_ENGINE_UNSUPPORTED,
+            "this report engine does not discover combined media references",
         ))
     }
     /// Start only the fixed native MV preview task over host-owned durable

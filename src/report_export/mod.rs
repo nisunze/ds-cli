@@ -16,6 +16,7 @@
 //! `input_base_fingerprint` and `room_content_sha256` the publication contract
 //! admits against.
 
+pub mod combined;
 pub mod engineering;
 pub mod held;
 pub mod held_export;
