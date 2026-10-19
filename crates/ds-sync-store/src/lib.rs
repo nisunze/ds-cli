@@ -29,8 +29,11 @@ mod publications;
 mod report_heads;
 pub use report_heads::ReportHeadObservation;
 pub use profile_sources::{
-    ProfileDraftHeader, ProfileRecovery, ProfileSourceHeader, ProfileSourceScope,
-    MAX_PROFILE_CHECKPOINT_BYTES, MAX_PROFILE_SOURCES, MAX_PROFILE_SOURCE_BYTES,
+    ProfileDraft, ProfileDraftHeader, ProfileJournalDraft, ProfileJournalDraftHeader,
+    ProfileJournalEntry, ProfileRecovery, ProfileSourceHeader, ProfileSourceScope,
+    MAX_PROFILE_CHECKPOINT_BYTES, MAX_PROFILE_JOURNAL_BYTES, MAX_PROFILE_JOURNAL_ENTRIES,
+    MAX_PROFILE_JOURNAL_ENTRY_BYTES, MAX_PROFILE_JOURNAL_METADATA_BYTES, MAX_PROFILE_SOURCES,
+    MAX_PROFILE_SOURCE_BYTES, PROFILE_JOURNAL_DRAFT_SCHEMA,
 };
 mod recovery;
 pub use publications::{PublicationBytes, PublicationPayload};

@@ -317,6 +317,136 @@ impl ProfileSession {
         }
         result
     }
+    fn require_authored_checkpoint_capability(&self) -> Result<(), NetworkFailure> {
+        if !self
+            .pin
+            .identity
+            .capabilities
+            .contains(&NetworkCapability::ProfileAuthoredCheckpointV1)
+        {
+            let message = "Update Network to retain authored Profile recovery.";
+            let mut failure = NetworkFailure::new("network_engine_incompatible", message);
+            failure.owner_detail = Some(Box::new(serde_json::json!({
+                "component": "network",
+                "required_capability": NetworkCapability::ProfileAuthoredCheckpointV1,
+            })));
+            failure.owner_remedy = Some(message.into());
+            return Err(failure);
+        }
+        Ok(())
+    }
+    /// Canonical authored recovery state after the host's durable prefix. The
+    /// reply never carries calculated results; Network returns only entries
+    /// after a matching `base`, otherwise the complete retained journal.
+    pub fn authored_checkpoint(
+        &mut self,
+        base: Option<NativeProfileAuthoredBaseV1>,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<(ProfileOutcome, NativeProfileAuthoredCheckpointV1), NetworkFailure> {
+        self.require_authored_checkpoint_capability()?;
+        let outcome = self.request(
+            NativeProfileOperationV1::AuthoredCheckpoint { base: base.clone() },
+            cancel,
+        )?;
+        let document: NativeProfileAuthoredCheckpointV1 =
+            serde_json::from_slice(&outcome.bytes).map_err(|e| invalid(e.to_string()))?;
+        if !document.admitted_shape()
+            || document.model_id != self.model_id
+            || document.history != self.history
+            || (document.base_entries != 0
+                && base.as_ref().is_none_or(|base| {
+                    base.entry_count != document.base_entries
+                        || (document.base_entries == document.entry_count
+                            && base.chain_sha256 != document.chain_sha256)
+                }))
+        {
+            return Err(invalid(
+                "Authored Profile checkpoint crossed its model, history or durable prefix",
+            ));
+        }
+        Ok((outcome, document))
+    }
+    /// Replay one complete authored checkpoint onto this freshly opened original.
+    /// The staged document is receipt-pinned and removed after the reply.
+    pub fn restore_authored(
+        &mut self,
+        document: &[u8],
+        timeout: Duration,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<(ProfileOutcome, NativeProfileAuthoredRestoreV1), NetworkFailure> {
+        if self.closed {
+            return Err(NetworkFailure::new(
+                "profile_session_closed",
+                "Profile session is closed",
+            ));
+        }
+        self.require_authored_checkpoint_capability()?;
+        let parsed: NativeProfileAuthoredCheckpointV1 = serde_json::from_slice(document)
+            .map_err(|e| NetworkFailure::new("profile_recovery_input_invalid", e.to_string()))?;
+        if document.is_empty()
+            || document.len() > MAX_PROFILE_AUTHORED_BYTES
+            || !parsed.admitted_shape()
+            || parsed.base_entries != 0
+            || parsed.model_id != self.model_id
+            || !valid_history(&parsed.history)
+        {
+            return Err(NetworkFailure::new(
+                "profile_recovery_input_invalid",
+                "authored recovery needs one complete bounded checkpoint for this model",
+            ));
+        }
+        if self.sequence >= MAX_PROFILE_REQUESTS {
+            return Err(NetworkFailure::new(
+                "profile_session_capacity",
+                "Profile request capacity reached",
+            ));
+        }
+        let file = format!("profile-input-{:010}.json", self.sequence + 1);
+        let path = self.run.path().join(&file);
+        if let Err(error) = write_request(&path, document) {
+            self.abort();
+            return Err(error);
+        }
+        let result = self.request_at(
+            NativeProfileOperationV1::RestoreAuthored {
+                input: ArtifactReceipt {
+                    file,
+                    byte_count: document.len(),
+                    sha256: digest_bytes(document),
+                    schema: PROFILE_AUTHORED_CHECKPOINT_SCHEMA.into(),
+                },
+            },
+            Some(self.history.clone()),
+            timeout,
+            cancel,
+        );
+        let retained = read_regular(&path, MAX_PROFILE_AUTHORED_BYTES, "network_request_changed");
+        let cleanup = fs::remove_file(&path);
+        if !matches!(retained, Ok(ref bytes) if bytes == document) || cleanup.is_err() {
+            self.abort();
+            return Err(NetworkFailure::new(
+                "network_request_changed",
+                "staged authored checkpoint changed during recovery",
+            ));
+        }
+        let outcome = result?;
+        let restored: NativeProfileAuthoredRestoreV1 =
+            serde_json::from_slice(&outcome.bytes).map_err(|e| invalid(e.to_string()))?;
+        if restored.schema != PROFILE_AUTHORED_RESTORE_SCHEMA
+            || restored.model_id != self.model_id
+            || restored.history != self.history
+            || self.history != parsed.history
+            || restored.entry_count != parsed.entry_count
+            || restored.chain_sha256 != parsed.chain_sha256
+            || restored.binding_state_sha256 != parsed.binding_state_sha256
+        {
+            self.abort();
+            return Err(invalid(
+                "Authored Profile recovery differs from its exact retained checkpoint",
+            ));
+        }
+        Ok((outcome, restored))
+    }
     /// Stage one complete view without expanding the retained control frame.
     /// Capability admission precedes serialization/staging; exact bytes are checked
     /// again after the process reply, including refusals.
@@ -570,6 +700,13 @@ impl ProfileSession {
                 "captured Network has no exact Profile authored-facts capability",
             ));
         }
+        if matches!(
+            operation,
+            NativeProfileOperationV1::AuthoredCheckpoint { .. }
+                | NativeProfileOperationV1::RestoreAuthored { .. }
+        ) {
+            self.require_authored_checkpoint_capability()?;
+        }
         if matches!(operation, NativeProfileOperationV1::PackageCheckpoint)
             && !self
                 .pin
@@ -674,6 +811,12 @@ impl ProfileSession {
                 MAX_PROFILE_VIEW_INPUT_BYTES,
                 "profile_view_input_invalid",
             )),
+            NativeProfileOperationV1::RestoreAuthored { input } => Some((
+                input,
+                PROFILE_AUTHORED_CHECKPOINT_SCHEMA,
+                MAX_PROFILE_AUTHORED_BYTES,
+                "profile_recovery_input_invalid",
+            )),
             _ => None,
         };
         // Reply validation still sees the original typed control. Only its wire
@@ -746,6 +889,7 @@ impl ProfileSession {
             NativeProfileOperationV1::Control { .. }
                 | NativeProfileOperationV1::ReconcileJournal { .. }
                 | NativeProfileOperationV1::Discard { .. }
+                | NativeProfileOperationV1::RestoreAuthored { .. }
         );
         let bytes = self
             .process

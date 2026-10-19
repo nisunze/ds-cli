@@ -4,7 +4,7 @@ const SOURCE_BYTES: &[u8] = b"exact synthetic source";
 // Opaque storage must not parse/normalize signed zero or large numeric tokens.
 const CHECKPOINT: &[u8] =
     br#"{ "value": -0.0, "integer": 9007199254740993, "opaque": "checkpoint" }"#;
-fn private_directory() -> tempfile::TempDir {
+pub(super) fn private_directory() -> tempfile::TempDir {
     let temp = tempfile::tempdir().unwrap();
     #[cfg(unix)]
     {
@@ -13,7 +13,7 @@ fn private_directory() -> tempfile::TempDir {
     }
     temp
 }
-fn source(n: u8) -> ProfileSourceHeader {
+pub(super) fn source(n: u8) -> ProfileSourceHeader {
     ProfileSourceHeader {
         scope: ProfileSourceScope {
             principal: "owner".into(),
@@ -45,12 +45,12 @@ fn draft(source: &ProfileSourceHeader, history: Value, bytes: &[u8]) -> ProfileD
         checkpoint_bytes: bytes.len() as u64,
     }
 }
-fn retain_source(store: &mut Store, source: &ProfileSourceHeader) {
+pub(super) fn retain_source(store: &mut Store, source: &ProfileSourceHeader) {
     store
         .retain_profile_source(&source.scope, source, SOURCE_BYTES, &[], 1)
         .unwrap();
 }
-fn retain_draft(store: &mut Store, source: &ProfileSourceHeader) -> ProfileDraftHeader {
+pub(super) fn retain_draft(store: &mut Store, source: &ProfileSourceHeader) -> ProfileDraftHeader {
     let header = draft(source, history(1), CHECKPOINT);
     store
         .retain_profile_draft(
@@ -63,6 +63,12 @@ fn retain_draft(store: &mut Store, source: &ProfileSourceHeader) -> ProfileDraft
         )
         .unwrap();
     header
+}
+fn opaque(draft: Option<ProfileDraft>) -> Option<(ProfileDraftHeader, Vec<u8>)> {
+    draft.map(|draft| match draft {
+        ProfileDraft::Checkpoint { header, bytes } => (header, bytes),
+        ProfileDraft::Journal(_) => panic!("expected an opaque v1 checkpoint"),
+    })
 }
 fn recovered(store: &Store, source: &ProfileSourceHeader) -> ProfileRecovery {
     store
@@ -150,13 +156,13 @@ fn exact_opaque_bytes_initial_checkpoint_replacement_and_reopen() {
     }
     let readonly = Store::open_read_only(&path).unwrap().unwrap();
     assert_eq!(
-        recovered(&readonly, &source).draft,
+        opaque(recovered(&readonly, &source).draft),
         Some((initial.clone(), CHECKPOINT.to_vec()))
     );
     drop(readonly);
     let mut store = Store::open(&path).unwrap();
     assert_eq!(
-        recovered(&store, &source).draft,
+        opaque(recovered(&store, &source).draft),
         Some((initial.clone(), CHECKPOINT.to_vec()))
     );
     assert!(store
@@ -184,7 +190,10 @@ fn exact_opaque_bytes_initial_checkpoint_replacement_and_reopen() {
     let result = recovered(&store, &source);
     assert_eq!(result.source, source);
     assert_eq!(result.source_bytes, SOURCE_BYTES);
-    assert_eq!(result.draft, Some((next.clone(), next_bytes.to_vec())));
+    assert_eq!(
+        opaque(result.draft),
+        Some((next.clone(), next_bytes.to_vec()))
+    );
     assert_eq!(row_count(&store, "profile_drafts"), 1);
     assert_eq!(crate::schema_version(&store.connection).unwrap(), Some(2));
     for table in ["artifacts", "heads", "receipts", "leases"] {
@@ -229,7 +238,7 @@ fn every_history_field_is_an_exact_cas_fence() {
                 .is_err(),
             "{key}"
         );
-        assert_eq!(recovered(&store, &source).draft.as_ref().unwrap().0, first);
+        assert_eq!(opaque(recovered(&store, &source).draft).unwrap().0, first);
     }
     store
         .retain_profile_draft(&source.scope, &source, &first.history, &next, CHECKPOINT, 3)
@@ -296,7 +305,7 @@ fn scopes_and_full_source_engine_model_pins_are_fenced() {
             .remove_profile_recovery(&wrong.scope, &wrong, &first.history)
             .is_err());
     }
-    assert_eq!(recovered(&store, &source).draft.unwrap().0, first);
+    assert_eq!(opaque(recovered(&store, &source).draft).unwrap().0, first);
 }
 
 #[test]
@@ -530,7 +539,7 @@ fn independent_connections_cannot_overwrite_or_remove_a_newer_history() {
     retain_source(&mut first, &source);
     let header = retain_draft(&mut first, &source);
     let mut second = Store::open(&path).unwrap();
-    let previous = recovered(&second, &source).draft.unwrap().0;
+    let previous = opaque(recovered(&second, &source).draft).unwrap().0;
     let next = draft(&source, history(2), b"next");
     first
         .retain_profile_draft(&source.scope, &source, &header.history, &next, b"next", 3)
@@ -549,7 +558,7 @@ fn independent_connections_cannot_overwrite_or_remove_a_newer_history() {
         .remove_profile_recovery(&source.scope, &source, &previous.history)
         .is_err());
     assert_eq!(
-        recovered(&second, &source).draft.unwrap(),
+        opaque(recovered(&second, &source).draft).unwrap(),
         (next, b"next".to_vec())
     );
 }
@@ -628,7 +637,7 @@ fn exact_maximum_checkpoint_is_admitted_but_larger_is_not() {
             2,
         )
         .unwrap();
-    assert_eq!(recovered(&store, &source).draft.unwrap().1, bytes);
+    assert_eq!(opaque(recovered(&store, &source).draft).unwrap().1, bytes);
     bytes.push(b'y');
     let oversized = draft(&source, history(2), &bytes);
     assert!(store
@@ -641,7 +650,7 @@ fn exact_maximum_checkpoint_is_admitted_but_larger_is_not() {
             3
         )
         .is_err());
-    assert_eq!(recovered(&store, &source).draft.unwrap().0, header);
+    assert_eq!(opaque(recovered(&store, &source).draft).unwrap().0, header);
 }
 
 #[test]
@@ -700,7 +709,7 @@ fn package_lookup_is_draft_only_unique_and_scoped_without_touching_rows() {
         .unwrap()
         .unwrap();
     assert_eq!(found.source, first);
-    assert_eq!(found.draft, Some((draft, CHECKPOINT.to_vec())));
+    assert_eq!(opaque(found.draft), Some((draft, CHECKPOINT.to_vec())));
     for field in 0..5 {
         let mut scope = first.scope.clone();
         match field {

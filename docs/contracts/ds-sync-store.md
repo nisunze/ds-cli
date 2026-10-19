@@ -339,13 +339,31 @@ model/source revision/declared CRS, full initial history and captured engine pin
 Original bytes are immutable and at most 32 MiB; each metadata record is at most
 64 KiB. SQL bounds raw reads before allocation.
 
-An authored `ds.core.profile-draft/v1` record repeats that exact source header and
-binds all five current history fields (`model_revision`, `initial_revision`,
-`undo_depth`, `redo_depth`, `history_pin`) to checkpoint SHA/size. Checkpoint bytes
-are opaque, nonempty and at most 64 MiB. SQLite preserves exact bytes, including
-numeric representations; the captured Network owner validates their semantics
-before retention and after recovery. No original metadata, engine or model pin
-is reconstructed from a checkpoint.
+An authored `ds.core.profile-draft/v2` record (owner, 2026-10-19) repeats that
+exact source header and binds all five current history fields (`model_revision`,
+`initial_revision`, `undo_depth`, `redo_depth`, `history_pin`) to opaque producer
+metadata (at most 1 MiB, SHA/size) and to ordered `profile_draft_entries` rows:
+one exact authored command per row, with contiguous ordinal, per-row SHA-256,
+count (equal to undo plus redo depth, at most 16,384), total size (at most
+128 MiB, 16 MiB per row) and an opaque producer chain digest. Calculated results
+never reach these tables, and the original package is not copied: recovery is
+the retained original plus these rows. An edit appends its new row(s); undo,
+redo, edit-mode entry and package emission rewrite only the header and metadata.
+The retention API binds the expected history and, for an existing journal, its
+chain; it keeps a stated number of leading rows untouched, replaces the rest and
+checks the final count and size inside the same immediate transaction. Recovery
+reads metadata and every row in one snapshot and refuses missing, reordered,
+changed or orphaned rows. The Kernel owns this schema and SQL for every edge;
+only the storage adapter differs.
+
+A `ds.core.profile-draft/v1` record, still written for a captured Network
+without `profile_authored_checkpoint_v1`, binds the same history to one opaque
+checkpoint of at most 64 MiB. A v1 draft may be replaced by v2 at its exact
+history and vice versa; no journal row survives a v1 draft. SQLite preserves
+exact bytes, including numeric representations; the captured Network owner
+validates their semantics before retention and after recovery. No original
+metadata, engine or model pin is reconstructed from a draft. Older Core readers
+refuse a v2 header rather than misreading it.
 
 Retention compares the exact source and expected history against the previous
 draft, or the original's initial history for the first checkpoint. One immediate
@@ -370,7 +388,7 @@ another record. Reads neither touch recency nor create tables.
 
 Rehydration retains the original scope and captured engine authority. No SQLite
 transaction spans a process launch. Explicit recovery removal checks the full
-source and expected history, then deletes original and checkpoint atomically.
+source and expected history, then deletes original, draft and rows atomically.
 Ordinary close preserves a noninitial authored draft. Runtime Save leases remain
 transient exclusion, separate from retained checkpoint durability. This recovery
 path does not establish project Save, export or publication durability.

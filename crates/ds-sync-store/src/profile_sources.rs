@@ -7,7 +7,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 mod drafts;
-pub use drafts::{ProfileDraftHeader, ProfileRecovery, MAX_PROFILE_CHECKPOINT_BYTES};
+pub use drafts::{
+    ProfileDraft, ProfileDraftHeader, ProfileJournalDraft, ProfileJournalDraftHeader,
+    ProfileJournalEntry, ProfileRecovery, MAX_PROFILE_CHECKPOINT_BYTES, MAX_PROFILE_JOURNAL_BYTES,
+    MAX_PROFILE_JOURNAL_ENTRIES, MAX_PROFILE_JOURNAL_ENTRY_BYTES,
+    MAX_PROFILE_JOURNAL_METADATA_BYTES, PROFILE_JOURNAL_DRAFT_SCHEMA,
+};
 
 pub const MAX_PROFILE_SOURCE_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_PROFILE_SOURCES: usize = 8;

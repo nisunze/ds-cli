@@ -40,7 +40,7 @@ fn isolated(engine: &std::path::Path, case: &str) {
 }
 #[test]
 #[ignore = "requires explicit built native Profile owner and emitted owning fixture"]
-fn acceptance_profile_real_owner_retains_history_exact_artifacts_and_cached_restart() {
+fn acceptance_profile_real_owner_retains_history_exact_artifacts_and_explicit_restart() {
     isolated(&required("DS_PROFILE_REAL_ENGINE"), "real");
 }
 #[test]
@@ -52,6 +52,19 @@ fn acceptance_profile_real_owner_reconciles_staged_journal_and_reads_exact_autho
 #[ignore = "requires explicit previous ProfileSession engine without authored-facts capability"]
 fn acceptance_profile_old_owner_refuses_authored_facts_before_staging() {
     isolated(&required("DS_PROFILE_OLD_ENGINE"), "old-authored");
+}
+#[test]
+#[ignore = "requires explicit built authored-recovery owner and emitted owning open fixture"]
+fn acceptance_profile_real_owner_retains_incremental_authored_rows_and_restores_exactly() {
+    isolated(&required("DS_PROFILE_REAL_ENGINE"), "authored-recovery");
+}
+#[test]
+#[ignore = "requires explicit previous engine without profile_authored_checkpoint_v1"]
+fn acceptance_profile_old_owner_refuses_authored_recovery_before_staging() {
+    isolated(
+        &required("DS_PROFILE_PRE_AUTHORED_RECOVERY_ENGINE"),
+        "old-authored-recovery",
+    );
 }
 #[test]
 #[ignore = "requires explicit adversarial retained native owner fixture"]
@@ -93,7 +106,10 @@ fn isolated_profile_case() {
     let case = env::var("DS_PROFILE_TEST_CASE").unwrap();
     let scratch = tempfile::tempdir().unwrap();
     let captured = CapturedNetworkClient::capture(1, &|| false).unwrap();
-    let input = if case == "real" || case == "authored" || case == "old-authored" {
+    let input = if matches!(
+        case.as_str(),
+        "real" | "authored" | "old-authored" | "authored-recovery" | "old-authored-recovery"
+    ) {
         fs::read(required("DS_PROFILE_OPEN_FIXTURE")).unwrap()
     } else {
         serde_json::to_vec(&NativeProfileOpenV1{schema:PROFILE_OPEN_SCHEMA.into(),package_lineage_json:None,seed_json:json!({"model_id":"fixture","history":{"initial_revision":format!("rev:{}", "1".repeat(64)),"model_revision":format!("rev:{}", "1".repeat(64)),"undo_depth":0,"redo_depth":0,"history_pin":"2".repeat(64)}}).to_string(),binding_history:None,calculated:None,analysis:None}).unwrap()
@@ -103,7 +119,14 @@ fn isolated_profile_case() {
         &input,
         scratch.path(),
         Duration::from_millis(
-            if case == "real" || case == "authored" || case == "old-authored" {
+            if matches!(
+                case.as_str(),
+                "real"
+                    | "authored"
+                    | "old-authored"
+                    | "authored-recovery"
+                    | "old-authored-recovery"
+            ) {
                 30000
             } else {
                 200
@@ -151,6 +174,117 @@ fn isolated_profile_case() {
     }
     let mut session = result.unwrap();
     let pid = session.process_id();
+    if case == "old-authored-recovery" {
+        let initial = session.history().clone();
+        let refused = session.authored_checkpoint(None, &|| false).unwrap_err();
+        assert_eq!(refused.code(), "network_engine_incompatible");
+        assert_eq!(
+            refused.owner_detail.as_deref().unwrap()["required_capability"],
+            "profile_authored_checkpoint_v1"
+        );
+        let refused = session
+            .restore_authored(b"{}", Duration::from_secs(5), &|| false)
+            .unwrap_err();
+        assert_eq!(refused.code(), "network_engine_incompatible");
+        let run = fs::read_dir(scratch.path())
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert_eq!(
+            fs::read_dir(&run).unwrap().count(),
+            2,
+            "no frame or staged recovery input reaches an older engine"
+        );
+        assert_eq!(session.history(), &initial);
+        session.close(&|| false).unwrap();
+        assert_dead(pid);
+        return;
+    }
+    if case == "authored-recovery" {
+        let initial = session.history().clone();
+        let (_, empty) = session.authored_checkpoint(None, &|| false).unwrap();
+        assert_eq!((empty.entry_count, empty.base_entries), (0, 0));
+        session
+            .request(
+                NativeProfileOperationV1::CalculateScene { options: json!({}) },
+                &|| false,
+            )
+            .unwrap();
+        for id in ["recover-one", "recover-two"] {
+            session.request(NativeProfileOperationV1::Control { operation: json!({"action":"apply", "envelope":{
+                "command_id": id, "command_schema_version":11,
+                "expected_revision": session.history()["model_revision"],
+                "command":{"command_kind":"describe_structure", "id":"str-2", "description":id}
+            }}) }, &|| false).unwrap();
+        }
+        let base = |document: &NativeProfileAuthoredCheckpointV1| NativeProfileAuthoredBaseV1 {
+            entry_count: document.entry_count,
+            chain_sha256: document.chain_sha256.clone(),
+        };
+        let (_, delta) = session
+            .authored_checkpoint(Some(base(&empty)), &|| false)
+            .unwrap();
+        assert_eq!(
+            (delta.entry_count, delta.base_entries, delta.entries.len()),
+            (2, 0, 2)
+        );
+        let (_, unchanged) = session
+            .authored_checkpoint(Some(base(&delta)), &|| false)
+            .unwrap();
+        assert_eq!((unchanged.base_entries, unchanged.entries.len()), (2, 0));
+        let (_, complete) = session.authored_checkpoint(None, &|| false).unwrap();
+        assert_eq!(complete.entries, delta.entries);
+        let head = session.history().clone();
+        let facts = session
+            .request(NativeProfileOperationV1::Snapshot, &|| false)
+            .unwrap()
+            .bytes;
+        session.close(&|| false).unwrap();
+        assert_dead(pid);
+        let mut restored = captured
+            .open_profile_session(&input, scratch.path(), &|| false)
+            .unwrap();
+        let mut forged = complete.clone();
+        forged.model_id = "another-model".into();
+        let refused = restored
+            .restore_authored(
+                &serde_json::to_vec(&forged).unwrap(),
+                Duration::from_secs(30),
+                &|| false,
+            )
+            .unwrap_err();
+        assert_eq!(refused.code(), "profile_recovery_input_invalid");
+        assert_eq!(restored.history(), &initial);
+        let (_, receipt) = restored
+            .restore_authored(
+                &serde_json::to_vec(&complete).unwrap(),
+                Duration::from_secs(30),
+                &|| false,
+            )
+            .unwrap();
+        assert_eq!(receipt.entry_count, 2);
+        assert_eq!(restored.history(), &head);
+        assert_eq!(
+            restored
+                .request(NativeProfileOperationV1::Snapshot, &|| false)
+                .unwrap()
+                .bytes,
+            facts,
+            "replay onto the original reproduces the exact authored facts"
+        );
+        assert_eq!(state(&mut restored)["calculation_requests"], 0);
+        restored.close(&|| false).unwrap();
+        drop(restored);
+        drop(session);
+        assert_eq!(
+            fs::read_dir(scratch.path()).unwrap().count(),
+            0,
+            "private input and result staging is cleaned"
+        );
+        return;
+    }
     if case == "old-authored" {
         let initial = session.history().clone();
         let snapshot = session
@@ -364,6 +498,9 @@ fn isolated_profile_case() {
         );
         let checkpoint = session.checkpoint(&|| false).unwrap().bytes;
         assert_eq!(session.last_checkpoint().unwrap().bytes, checkpoint);
+        // Results are disposable RAM state; the authored document omits them.
+        let open: NativeProfileOpenV1 = serde_json::from_slice(&checkpoint).unwrap();
+        assert!(open.calculated.is_none() && open.analysis.is_none());
         let pin = session.pin().clone();
         session.close(&|| false).unwrap();
         assert_dead(pid);
@@ -371,12 +508,33 @@ fn isolated_profile_case() {
         let mut session = resumed
             .open_profile_session(&checkpoint, scratch.path(), &|| false)
             .unwrap();
+        for (operation, code) in [
+            (
+                NativeProfileOperationV1::CachedScene,
+                "profile_case_base_unavailable",
+            ),
+            (
+                NativeProfileOperationV1::CachedAnalysis,
+                "profile_analysis_unavailable",
+            ),
+        ] {
+            let refused = session.request(operation, &|| false).unwrap_err();
+            assert_eq!(refused.owner_code(), Some(code));
+            assert!(!session.is_closed());
+        }
+        let resumed_state = state(&mut session);
+        assert_eq!(resumed_state["calculation_requests"], 0);
+        assert_eq!(resumed_state["analysis_requests"], 0);
         assert_eq!(
             session
-                .request(NativeProfileOperationV1::CachedScene, &|| false)
+                .request(
+                    NativeProfileOperationV1::CalculateScene { options: json!({}) },
+                    &|| false
+                )
                 .unwrap()
                 .bytes,
-            scene
+            scene,
+            "explicit calculation reproduces the discarded scene"
         );
         assert_eq!(
             session
@@ -388,12 +546,18 @@ fn isolated_profile_case() {
                 .bytes,
             case_bytes
         );
-        let resumed_state = state(&mut session);
-        assert_eq!(resumed_state["calculation_requests"], 0);
-        assert_eq!(resumed_state["analysis_requests"], 0);
         assert_eq!(
             session
-                .request(NativeProfileOperationV1::CachedAnalysis, &|| false)
+                .request(
+                    NativeProfileOperationV1::Analyze {
+                        request: json!({
+                            "expected_revision": initial_state["revision"]["revision_id"],
+                            "expected_engineering_input_root": initial_state["revision"]["roots"]["engineering_input_root"],
+                            "max_rows":2000
+                        })
+                    },
+                    &|| false
+                )
                 .unwrap()
                 .bytes,
             analysis
