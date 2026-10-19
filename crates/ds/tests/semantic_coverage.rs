@@ -562,6 +562,18 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // refresh restores the native session, which may rotate the credential.
     ("design.model.catalog", "local_auth_state", "headless_project"),
     ("design.collisions", "local_auth_state", "headless_project"),
+    // Collision detection runs on this machine and writes only its private
+    // result file; publishing that result is the governed project write.
+    (
+        "design.collisions.detect",
+        "local_file_write",
+        "headless_project",
+    ),
+    (
+        "design.collisions.publish",
+        "global_write",
+        "headless_project",
+    ),
     // ONE design-domain migration, `kind` transformer|dsgrid. The plan writes
     // nothing; the apply writes into the SELECTED project, so it is a project
     // authority and a global write.

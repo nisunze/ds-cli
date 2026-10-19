@@ -3974,11 +3974,8 @@ fn design_collisions_reads_the_project_document_and_starts_nothing() {
         .map(|input| input["name"].as_str().expect("input name"))
         .collect::<BTreeSet<_>>();
     // The lane and the project, named on every call: the saved selection is
-    // never read.
-    assert_eq!(
-        inputs,
-        BTreeSet::from(["lane", "project", "regions", "limit"])
-    );
+    // never read. Contract 3 retired --regions/--limit (vector_retirement).
+    assert_eq!(inputs, BTreeSet::from(["lane", "project"]));
 
     // A call that names no project is refused locally, never answered for a
     // selection.
@@ -7225,8 +7222,9 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
         // the governed tag project-list read, and LV analysis availability,
         // plus the two network document copy commands (2026-10-06).
         // Seven native repair controls, source resolution and verified backup/restore.
+        // Plus local collision detection and its publication (2026-10-19).
         // Plus the retained MV model catalogue (2026-10-19).
-        121,
+        123,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -7264,6 +7262,10 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.lv.project-run"
                     | "design.status"
                     | "design.collisions"
+                    // Local detection reads the same native spine and its
+                    // publication is a governed native write.
+                    | "design.collisions.detect"
+                    | "design.collisions.publish"
                     // Project-to-project migration is a bulk service call on
                     // the same native spine: honestly unavailable in a build
                     // with no digest-pinned release catalog.
@@ -7761,8 +7763,11 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
                 // The Dashboard is the same headless read folded once.
                 && *id != "design.dashboard"
                 // The collision read answers from the same headless status
-                // call; it is not a governed record operation.
+                // call; it is not a governed record operation. Local detection
+                // and its publication are an engine run plus one storage write,
+                // pinned by their own tests, never bridge collaboration.
                 && *id != "design.collisions"
+                && !id.starts_with("design.collisions.")
                 // Pinned context is READ-ONLY CONTEXT: it plans a fetch, folds
                 // rooms and projects their properties. It records nothing, so
                 // it is not a governed record operation either.
@@ -7893,6 +7898,7 @@ fn design_collaboration_is_a_complete_headless_project_surface() {
             || id == "design.status"
             || id == "design.dashboard"
             || id == "design.collisions"
+            || id.starts_with("design.collisions.")
             || id == "design.pinned.preview"
             || id == "design.process.settings"
             || id == "design.autoprocess.plan"

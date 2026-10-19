@@ -1122,8 +1122,35 @@ Contract 3 retains the collision count and state only. `--regions` and `--limit`
 are removed and refuse as unknown flags before any project read. Ranked region
 evidence is no longer part of this Core command.
 
-This command starts nothing and writes nothing. Detection itself is a separate
-governed action.
+This command starts nothing and writes nothing. Detection is the separate
+`detect` command below.
+
+### Detecting and publishing collisions on this machine
+
+```bash
+ds design collisions detect --project <id> --out /abs/private/collisions.json --output json
+ds design collisions publish --project <id> --result /abs/private/collisions.json --yes
+```
+
+Detection never runs in the cloud. `detect` reads the project's transformer
+heads, acquires each active transformer's saved room through the governed room
+hold — a held room whose saved version is current is reused, a moved or missing
+one is fetched — and runs the Reporter addon's fixed `detect-collisions` task
+over the room layers the engine's own request schema names. Core links no
+detection code. `--read held` makes no request at all: the rooms already on
+this machine are the input, which is also what happens when the status refresh
+cannot reach the service. A room that cannot be supplied is named in
+`input_errors`, never counted as collision-free; when no room at all can be
+supplied the command refuses (`collisions_inputs_unavailable`).
+
+The answer is bounded: `regions`, `underlying_pairs`, per-layer counts, the
+acquisition receipt and the engine identity. `--out` writes the full private
+result (`ds.design-collisions-result/v1`), including the room versions it was
+computed from. `publish` stores exactly that file through ds-brain, which only
+authorizes and stores: it refuses `collisions_basis_stale` when any transformer
+changed, appeared or left since the result was computed — detect again; held
+rooms make the rerun cheap — and otherwise replaces the stored collisions whole.
+An older Reporter without the task refuses `collisions_engine_incompatible`.
 
 Use `--match all` (the default) or `--match any`. One call accepts at most 20
 predicates and scans at most 2,000 current LV transformers. `--limit` is not a

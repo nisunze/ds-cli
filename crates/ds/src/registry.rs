@@ -2688,6 +2688,16 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::collisions::render,
     },
     Entry {
+        command: &ds_cli_design::collisions_detect::DETECT,
+        handler: ds_cli_design::collisions_detect::detect,
+        render: ds_cli_design::collisions_detect::render,
+    },
+    Entry {
+        command: &ds_cli_design::collisions_detect::PUBLISH,
+        handler: ds_cli_design::collisions_detect::publish,
+        render: ds_cli_design::collisions_detect::render,
+    },
+    Entry {
         command: &ds_cli_design::migrate::plan::COMMAND,
         handler: ds_cli_design::migrate::plan::run,
         render: ds_cli_design::migrate::plan::render,
