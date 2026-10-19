@@ -210,14 +210,13 @@ pub fn read(
     let (room, control) =
         asset_preview_source::captured_room(lane, project, &cancelled, &progress)?;
     control.check_current().map_err(failure)?;
-    if !refresh {
-        if let Some((receipt, artifact)) =
+    if !refresh
+        && let Some((receipt, artifact)) =
             host::read_retained(&room, &export.selection, retention).map_err(failure)?
-        {
-            let result = answer(&room, receipt, artifact, true, out)?;
-            control.check_current().map_err(failure)?;
-            return Ok(result);
-        }
+    {
+        let result = answer(&room, receipt, artifact, true, out)?;
+        control.check_current().map_err(failure)?;
+        return Ok(result);
     }
     if offline {
         return Err(Failure::unavailable(
@@ -232,10 +231,7 @@ pub fn read(
         &Assets::Semantic(Command::Read(export.selection.clone())),
         None,
     )
-    .map_err(|e| {
-        revoke_if_denied(&room, &export.selection, &e);
-        e
-    })?
+    .inspect_err(|e| revoke_if_denied(&room, &export.selection, e))?
     .into_result();
     control.check_current().map_err(failure)?;
     let bytes = result["markdown"]
@@ -296,10 +292,7 @@ pub fn import(
         &Assets::Semantic(Command::Prepare(prepare.clone())),
         Some(&mut reader),
     )
-    .map_err(|e| {
-        revoke_if_denied(&room, &prepare.selection, &e);
-        e
-    })?
+    .inspect_err(|e| revoke_if_denied(&room, &prepare.selection, e))?
     .into_result();
     control.check_current().map_err(failure)?;
     let artifact =

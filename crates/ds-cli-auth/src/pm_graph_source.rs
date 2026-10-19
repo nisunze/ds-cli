@@ -113,7 +113,7 @@ impl Source for Provider<'_> {
         if let Some(selection) = &self.note {
             selection
                 .verify_response(self.project, value)
-                .map_err(|why| local(why))
+                .map_err(local)
         } else {
             ds_client_core::project_management::verify_graph(self.project, value)
                 .map_err(map_client)
