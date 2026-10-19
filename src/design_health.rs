@@ -821,6 +821,57 @@ fn outcome_findings(phase: Phase, meta: Option<&Map<String, Value>>) -> Vec<Find
     out
 }
 
+/// A phase lists every coded warning of its run in `warnings`, while the
+/// top-level `warning` promotes only one of them. A listed code that was not
+/// promoted is still what the document says: one finding per code, its stated
+/// counts summed, its first message kept and its worst severity taken. Info
+/// notes are not findings.
+fn listed_warning_findings(phase: Phase, meta: Option<&Map<String, Value>>) -> Vec<Finding> {
+    let Some(entries) = meta
+        .and_then(|meta| meta.get("warnings"))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+    let mut out: Vec<Finding> = Vec::new();
+    let mut counts: Vec<Option<f64>> = Vec::new();
+    for entry in entries.iter().filter_map(Value::as_object) {
+        let code = string_value(entry.get("code"));
+        if code.is_empty() {
+            continue;
+        }
+        let severity = match string_value(entry.get("severity")).to_lowercase().as_str() {
+            "error" => FindingSeverity::Error,
+            "warning" => FindingSeverity::Warning,
+            _ => continue,
+        };
+        let count = finite_number(entry.get("count")).and_then(|count| count.as_f64());
+        if let Some(index) = out.iter().position(|finding| finding.code == code) {
+            out[index].severity = out[index].severity.max(severity);
+            if let Some(count) = count {
+                counts[index] = Some(counts[index].unwrap_or(0.0) + count);
+            }
+            continue;
+        }
+        let mut finding = coded_finding(
+            phase,
+            severity,
+            &code,
+            sanitize_message(&string_value(entry.get("message"))),
+            None,
+            Source::Document,
+        );
+        finding.layer = Some(string_value(entry.get("layer"))).filter(|layer| !layer.is_empty());
+        out.push(finding);
+        counts.push(count);
+    }
+    for (finding, count) in out.iter_mut().zip(counts) {
+        finding.count = count.and_then(js_number);
+        finding.affected = finding.count.clone();
+    }
+    out
+}
+
 fn first_nested_outcome_message(value: Option<&Value>) -> String {
     let Some(record) = value.and_then(object) else {
         return String::new();
@@ -963,6 +1014,13 @@ pub fn transformer_health_with_run(row: &Value, run: Option<&Value>) -> Transfor
             }
             seen_codes.insert(outcome.code.clone());
             findings.push(outcome);
+        }
+        for listed in listed_warning_findings(phase, meta) {
+            if seen_codes.contains(&listed.code) {
+                continue;
+            }
+            seen_codes.insert(listed.code.clone());
+            findings.push(listed);
         }
     }
 
@@ -1216,6 +1274,76 @@ mod tests {
         assert!(serde_json::to_string(finding)
             .unwrap()
             .contains("\"count\":3"));
+    }
+
+    #[test]
+    fn every_listed_warning_code_is_a_finding_not_only_the_promoted_one() {
+        let verdict = health(json!({"name": "upgrade_t", "process_metadata": {
+            "status": "warning",
+            "warning": {"code": "unconnected_customers", "count": 12, "severity": "warning",
+                "message": "12 customer(s) could not be connected"},
+            "warnings": [
+                {"code": "unconnected_customers", "count": 12, "severity": "warning",
+                    "message": "12 customer(s) could not be connected"},
+                {"code": "unconnected_lv_poles", "count": 2, "severity": "warning",
+                    "layer": "unconnected_lv_poles", "message": "2 pole(s) unconnected"},
+                {"code": "welded_lv_lines", "count": 32, "severity": "info",
+                    "message": "welded 32 taps"},
+                {"code": "struct_type_material_unresolved", "count": 1, "severity": "warning",
+                    "layer": "lv_poles", "message": "Pole material is missing for: C850."},
+                {"code": "lv_span_exceeds_max_length", "count": 1, "severity": "warning",
+                    "layer": "spans", "message": "LV span span_1 is 50.06 m"},
+                {"code": "lv_span_exceeds_max_length", "count": 1, "severity": "warning",
+                    "layer": "spans", "message": "LV span span_2 is 51.2 m"},
+                {"code": "", "count": 9, "severity": "warning", "message": "uncoded"}
+            ]
+        }}));
+
+        assert_eq!(verdict.severity, Severity::Warning);
+        assert_eq!(
+            codes(&verdict),
+            vec![
+                "unconnected_customers",
+                "unconnected_lv_poles",
+                "struct_type_material_unresolved",
+                "lv_span_exceeds_max_length"
+            ],
+            "the promoted warning is not repeated and an info note is not a finding"
+        );
+        assert_eq!(verdict.warning_count, 4);
+        let material = &verdict.findings[2];
+        assert_eq!(material.phase, Phase::Process);
+        assert_eq!(material.source, Source::Document);
+        assert_eq!(material.layer.as_deref(), Some("lv_poles"));
+        assert_eq!(material.message, "Pole material is missing for: C850.");
+        assert_eq!(material.count, Some(Number::from(1)));
+        let spans = &verdict.findings[3];
+        assert_eq!(
+            spans.count,
+            Some(Number::from(2)),
+            "one finding per code, counts summed"
+        );
+        assert_eq!(spans.affected, Some(Number::from(2)));
+        assert_eq!(spans.message, "LV span span_1 is 50.06 m");
+        // A listed diagnostic code also suppresses the same diagnostic-layer
+        // finding, so it is never counted twice.
+        let verdict = health(json!({"name": "t", "layers": {"unconnected_lv_poles": 2},
+            "process_metadata": {"status": "warning",
+                "warning": {"code": "service_cable_customer_unresolved", "count": 1},
+                "warnings": [
+                    {"code": "service_cable_customer_unresolved", "count": 1, "severity": "warning"},
+                    {"code": "unconnected_lv_poles", "count": 2, "severity": "warning"}]}}));
+        assert_eq!(
+            codes(&verdict),
+            vec!["service_cable_customer_unresolved", "unconnected_lv_poles"]
+        );
+        // A run that only left info notes says nothing.
+        let verdict = health(
+            json!({"name": "t", "process_metadata": {"status": "success",
+            "warnings": [{"code": "welded_lv_lines", "count": 3, "severity": "info"}]}}),
+        );
+        assert!(verdict.findings.is_empty());
+        assert_eq!(verdict.severity, Severity::Ok);
     }
 
     #[test]
