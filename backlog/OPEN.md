@@ -18,7 +18,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 17 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 7 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 10 |
-| [10. Voltage drop](#10-voltage-drop) | 0 |
+| [10. Voltage drop](#10-voltage-drop) | 3 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 9 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 9 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 4 |
@@ -213,6 +213,12 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - `14fd08e8` (major): Headless LV intake cannot upload to Northern Hub.
 
 ## 10. Voltage drop
+
+- **Desktop held export cannot export a project-selected saved analysis** (`9213a5f3`, `b807f411`, `bc873f78`): `report_export::held_export` admits only SHP/KMZ/XLSX, and an unselected held export now runs `held_export::default_selection` (GIS only). A project whose output selection exports `voltage_drop` gets that JSON only from `ds report project export`. Stage the exact saved analysis under the room's version/content pins as `report project export` does (`BatchAnalysis`), so the selected `voltage_drop` fails alone when missing or stale. Separately, the held export refuses an unsaved staged room (`report_held_export_source_unsaved`); `bc873f78` asks for a governed local export of a staged draft's actual layers.
+
+- **Engine-door defaults ignore the project's voltage-drop choice:** `ds report export --task transformer` (`ds-cli-report/src/export.rs` `transformer_request_defaults`, `build_request`) and the Reporter's `formats_for_request` still default to `DEFAULT_INDIVIDUAL`. Resolve an omitted format list through `report_formats::invocation_selection` over the request's network config.
+
+- **TypeScript decides an A4 preview's saved-analysis need:** `ds-web/src/lib/reports/transformer-export.ts` (`selection?.geospatial?.includes('voltage_drop_pdf')`) duplicates `report_formats::requires_voltage_drop_analysis`. Move the decision behind the native owner and delete the TypeScript check.
 
 ## 11. PLS-CADD exchange round trip
 
