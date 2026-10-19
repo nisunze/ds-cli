@@ -464,11 +464,22 @@ fn incomplete(
                 .collect::<Vec<_>>()
                 .join("; ");
             let more = gaps.transformers.len().saturating_sub(5);
+            let more = if more > 0 {
+                format!("; {more} more transformer(s)")
+            } else {
+                String::new()
+            };
+            let unitemized = if gaps.omitted_details > 0 {
+                format!(
+                    "; {} more fact(s) the Reporter counted without itemizing",
+                    gaps.omitted_details
+                )
+            } else {
+                String::new()
+            };
             format!(
-                "the workbook refused to publish quantities: {} missing or invalid engineering fact(s) in {} transformer(s): {named}{}",
+                "the workbook refused to publish quantities: {} missing or invalid engineering fact(s); itemized: {named}{more}{unitemized}",
                 gaps.blockers,
-                gaps.transformers.len(),
-                if more > 0 { format!("; and {more} more") } else { String::new() },
             )
         }
         None => blocker_summary(blockers),

@@ -540,11 +540,38 @@ const MAX_GAP_TRANSFORMERS: usize = 50;
 const MAX_GAP_FIELDS: usize = 16;
 
 /// Fold the result's engineering preflight, or `None` when it names no
-/// blocking fact or is not the closed preflight document.
+/// blocking fact or its counts disagree. A project-wide preflight carries far
+/// more source and lineage rows than one transformer's, so only the parts
+/// folded here are checked: the itemized findings, which the engine bounds,
+/// and counts that account for every blocking fact.
 pub fn engineering_gaps(result: &Value) -> Option<EngineeringGaps> {
     let preflight: super::engineering::EngineeringPreflight =
         serde_json::from_value(result.get("engineering_preflight")?.clone()).ok()?;
-    if !preflight.valid() || preflight.blockers == 0 {
+    let text = |value: &str| {
+        !value.is_empty() && value.len() <= 256 && !value.chars().any(char::is_control)
+    };
+    if preflight.schema != "ds.report.engineering-preflight/v1"
+        || preflight.blockers == 0
+        || preflight.findings.len() > 100
+        || preflight
+            .findings
+            .len()
+            .checked_add(preflight.omitted_details)
+            != Some(preflight.blockers)
+        || preflight
+            .finding_counts
+            .values()
+            .try_fold(0_usize, |sum, count| sum.checked_add(*count))
+            != Some(preflight.blockers)
+        || preflight.findings.iter().any(|finding| {
+            !text(&finding.layer)
+                || !text(&finding.field)
+                || finding
+                    .transformer
+                    .as_deref()
+                    .is_some_and(|name| !text(name))
+        })
+    {
         return None;
     }
     let mut grouped: BTreeMap<String, (usize, BTreeSet<String>)> = BTreeMap::new();
@@ -1350,8 +1377,13 @@ mod tests {
             .retain(|artifact| artifact["format"] != "xlsx");
         partial["blockers"] = json!([{"code": "report_engineering_facts_required", "message": "4 missing facts", "format": "xlsx"}]);
         let finding = |transformer: &str, layer: &str, field: &str| json!({"code": "engineering_attribute_missing", "layer": layer, "field": field, "transformer": transformer, "feature_id": "n1", "feature_index": 0, "recorded": null});
+        // A project-wide preflight holds more source rows than one
+        // transformer's bounds admit; it is still folded.
+        let source_layers: Vec<Value> = (0..40)
+            .map(|index| json!({"layer": format!("lv_poles_{index}"), "features": 1, "held_features_sha256": "a".repeat(64)}))
+            .collect();
         partial["engineering_preflight"] = json!({
-            "schema": "ds.report.engineering-preflight/v1", "source_layers": [], "field_lineage": [],
+            "schema": "ds.report.engineering-preflight/v1", "source_layers": source_layers, "field_lineage": [],
             "blockers": 4, "finding_counts": {"engineering_attribute_missing": 4}, "coverage_counts": {},
             "findings": [
                 finding("TX_B", "lv_poles", "struct_type"),
