@@ -76,9 +76,16 @@ Placement, and why it is not the other way round:
   `profile_sha256`. Putting the registry anywhere else would create a second
   source for those constants and guarantee drift. It already depends on
   `ds-command-kernel`; the edge stays one-way.
-- **The browser reaches the registry through the generated TS manifest**, from
-  the same descriptor bytes, checked by a parity test — not by linking
-  `ds-client-core` into WASM.
+- **The browser reaches the registry through Rust in WASM** (owner, 2026-10-19,
+  [development philosophy §6](../../../ds-architecture/architecture/development-philosophy.md#6-the-frontend-is-designed-as-if-it-were-rust)):
+  the generated Rust `gateway` table and the kernel's step programs construct the
+  request, decide retry and backoff, and interpret the response. One mechanical
+  TypeScript fetch port executes each step with the bearer and returns bytes;
+  it holds no routes, retry loop or payload normalization. The generated TS
+  route manifest is transitional: a domain's TS lookups, retry and normalization
+  are deleted when that domain moves to its Rust step program. `ds-client-core`
+  stays native; where both executors need the same registry or step logic, a
+  portable crate is split out rather than linking `ds-client-core` into WASM.
 - Hosts supply IO ports only. A host never re-decides protocol, retry,
   ordering, or acknowledgement meaning.
 
