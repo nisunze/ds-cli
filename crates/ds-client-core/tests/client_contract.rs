@@ -1951,10 +1951,11 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
         profile(DeploymentLane::Stable).profile_sha256()
     );
     // Stable vectors pin method + path + every closed action vocabulary into
-    // the full profile authority.
+    // the full profile authority. 2026-10-19: the Survey create route moved from
+    // the retired gateway create to the fixed Firestore documents:commit path.
     assert_eq!(
         stable.profile_sha256(),
-        "deba7531d30a2ea9c545c123cb98bd2adb2e4b656c874d411306a73e6b45b196"
+        "18d130fe8f4ba19238987d3ff3f909f548d72b075ff85a0735edb66627dfaee8"
     );
     // A profile is a digest over the closed vocabulary, so adding one route is
     // a new identity. Profile v27 added the reviewed closed design-attachment
@@ -6434,7 +6435,8 @@ fn device_authorization_executes_every_existing_fixed_domain_operation() {
     fixture.push_survey_query(200, &serde_json::to_vec(&survey_query_envelope()).unwrap());
     fixture.push_survey_entries_select(200, &survey_entries_select_envelope());
     fixture.push_survey_entries_changes(200, &survey_entries_changes_envelope(true));
-    fixture.push_survey_entry_create(201, &survey_entry_create_envelope());
+    // A DS trusted-device token is not a Firebase credential: direct create
+    // refuses before IO, so no create response is planned for this fixture.
     push_layers(&fixture, headless_style_fixture("project_a"));
     fixture.push_tiles(
         200,
@@ -6527,17 +6529,18 @@ fn device_authorization_executes_every_existing_fixed_domain_operation() {
             .project(),
         "project_a"
     );
+    let refused = authorization
+        .survey_entry_create(
+            &mut transport,
+            "project_a",
+            &survey_entry_create_request(),
+            NOW,
+        )
+        .unwrap_err();
+    assert_eq!(refused.kind(), ErrorKind::AuthenticationRejected);
     assert_eq!(
-        authorization
-            .survey_entry_create(
-                &mut transport,
-                "project_a",
-                &survey_entry_create_request(),
-                NOW,
-            )
-            .unwrap()
-            .doc_id(),
-        "entry_1"
+        refused.survey_entry_create_service_code(),
+        Some(SurveyEntryCreateServiceCode::FirebaseSessionRequired)
     );
     assert_eq!(
         authorization
@@ -6597,7 +6600,6 @@ fn device_authorization_executes_every_existing_fixed_domain_operation() {
             "query",
             "select",
             "changes",
-            "create",
             "layers",
             "tiles",
             "tiles",

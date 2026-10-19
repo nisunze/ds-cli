@@ -128,6 +128,11 @@ pub const PROFILE_CONSTANTS_WITHOUT_REGISTRY_ENTRY: &[(&str, &str)] = &[
         "Six form-factory / template routes pinned as one profile string. They need six reviewed \
          descriptor entries, not one.",
     ),
+    (
+        "POST /v1/projects/{firebase_project}/databases/(default)/documents:commit",
+        "Not a gateway route by design: Survey direct create commits to Firestore on \
+         firestore.googleapis.com under the user's Firebase session (survey-entry-create contract).",
+    ),
 ];
 
 #[cfg(test)]
@@ -386,11 +391,6 @@ mod tests {
                 crate::PRINTING_PATH,
             ),
             (
-                "domains.printing.render",
-                crate::PRINTING_METHOD,
-                crate::PRINTING_PATH,
-            ),
-            (
                 "domains.design_collaboration.selections",
                 DESIGN_SELECTIONS_METHOD,
                 DESIGN_SELECTIONS_PATH,
@@ -478,7 +478,7 @@ mod tests {
     /// The honest remainder. If this count moves, the report was wrong.
     #[test]
     fn the_unfinished_half_is_named_not_hidden() {
-        assert_eq!(PROFILE_CONSTANTS_WITHOUT_REGISTRY_ENTRY.len(), 4);
+        assert_eq!(PROFILE_CONSTANTS_WITHOUT_REGISTRY_ENTRY.len(), 5);
         for (route, reason) in PROFILE_CONSTANTS_WITHOUT_REGISTRY_ENTRY {
             assert!(!route.is_empty());
             assert!(
