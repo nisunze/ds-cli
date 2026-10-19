@@ -236,7 +236,8 @@ fn qualified_addons_capture_exact_lane_and_keep_old_program_without_task_or_netw
 }
 
 fn isolated_solar_host(override_path: Option<&Path>) {
-    let root = tempfile::tempdir().unwrap();
+    // Hard-links this test binary, so the root shares its (disk) filesystem.
+    let root = ds_cli_contract::testing::private_tempdir("solar-host-");
     let child = root.path().join("host-selection-test");
     fs::hard_link(std::env::current_exe().unwrap(), &child).unwrap();
     use std::os::unix::fs::PermissionsExt;

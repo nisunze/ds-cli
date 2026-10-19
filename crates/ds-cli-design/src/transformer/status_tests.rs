@@ -64,7 +64,7 @@ fn explicit_read_modes_are_additive_and_closed() {
 #[test]
 fn output_requires_a_private_parent_and_never_replaces_existing_files() {
     use std::os::unix::fs::{PermissionsExt, symlink};
-    let dir = tempfile::tempdir().unwrap();
+    let dir = ds_cli_contract::testing::private_tempdir("design-status-");
     let path = dir.path().join("status.json");
     validate_output(&path).unwrap();
     std::fs::write(&path, b"preserve").unwrap();

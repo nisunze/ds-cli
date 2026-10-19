@@ -39,6 +39,8 @@ tower = { version = "0.5", features = ["util"] }
 [dev-dependencies]
 zip.workspace = true
 tempfile = "3"
+# Disk-backed owner-only fixtures shared across ds-cli tests.
+ds-cli-contract = { workspace = true, features = ["testing"] }
 # Seeding a queue with thousands of durable rows — what a host left running
 # for months actually holds — is the only honest way to prove the Solar
 # projection is bounded rather than hard-failing. It needs the same SQLite the

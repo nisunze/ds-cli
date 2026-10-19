@@ -36,6 +36,8 @@ ds-command-kernel = { workspace = true }
 [dev-dependencies]
 ds-network = { workspace = true }
 lopdf = { version = "0.45", default-features = false }
+# Disk-backed owner-only fixtures shared across ds-cli tests.
+ds-cli-contract = { workspace = true, features = ["testing"] }
 
 # Native-only immutable GeoPackage source reading, no browser SQLite implementation.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

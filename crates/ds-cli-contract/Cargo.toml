@@ -11,3 +11,9 @@ publish.workspace = true
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+tempfile = { version = "3", optional = true }
+
+[features]
+# Shared test fixtures, enabled only from dev-dependencies; the shipped graph
+# never builds them.
+testing = ["dep:tempfile"]
