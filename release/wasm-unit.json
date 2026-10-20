@@ -1,0 +1,21 @@
+{
+  "schema": "ds.wasm-unit/v1",
+  "component": "interactions",
+  "package": "ds-interactions-wasm",
+  "crate": "crates/ds-interactions-wasm",
+  "stem": "ds_interactions_wasm",
+  "features": [],
+  "metadataArgs": [],
+  "identityExport": "uiEngineBuildIdentity",
+  "inputsSchema": "ds.ui-wasm-build-inputs/v1",
+  "stamps": {
+    "DS_INTERACTIONS_SOURCE_SHA": "owner",
+    "DS_UI_BUILD_CONFIG_SHA256": "manifest"
+  },
+  "capture": ["ds-command-kernel"],
+  "sourcePins": {
+    "file": "release/ui-wasm-source.json",
+    "schema": "ds.ui-wasm-source/v1",
+    "component": "interactions"
+  }
+}
