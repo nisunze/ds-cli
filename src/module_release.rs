@@ -16,59 +16,21 @@ pub mod ui;
 pub mod ui_build;
 
 pub const MODULE_RELEASE_SCHEMA: &str = "ds.module-release/v1";
-pub const MODULE_PROTOCOL: &str = "ds.module/v1";
-pub const NETWORK_PROTOCOL: &str = "ds.network-engine/v1";
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModuleComponent {
-    Solar,
-    Reporter,
-    Network,
-}
+// The component catalog and engine build admission are shared with release
+// packaging through `module_engine`; these paths remain the public names.
+pub use crate::module_engine::{ModuleComponent, MODULE_PROTOCOL, NETWORK_PROTOCOL};
 
 impl ModuleComponent {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Solar => "solar",
-            Self::Reporter => "reporter",
-            Self::Network => "network",
-        }
-    }
-
-    pub fn engine_owner(self) -> &'static str {
-        match self {
-            Self::Solar => "ds-solar",
-            Self::Reporter => "ds-network-reporter",
-            Self::Network => "ds-network",
-        }
-    }
-
-    pub fn protocol(self) -> &'static str {
-        match self {
-            Self::Solar | Self::Reporter => MODULE_PROTOCOL,
-            Self::Network => NETWORK_PROTOCOL,
-        }
-    }
-
-    pub fn executable(self) -> &'static str {
-        match self {
-            Self::Solar => "solar",
-            Self::Reporter => "reporter",
-            Self::Network => "ds-network",
-        }
-    }
-
     fn parse(component: &str) -> Result<Self, ModuleReleaseError> {
-        match component {
-            "solar" => Ok(Self::Solar),
-            "reporter" => Ok(Self::Reporter),
-            "network" => Ok(Self::Network),
-            _ => fail(
-                "module_release_component_invalid",
-                "Component must be solar, reporter or network",
-            ),
-        }
+        Self::from_name(component).map_or_else(
+            || {
+                fail(
+                    "module_release_component_invalid",
+                    "Component must be solar, reporter or network",
+                )
+            },
+            Ok,
+        )
     }
 }
 

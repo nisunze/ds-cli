@@ -130,6 +130,7 @@ pub fn execution_context_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVa
 }
 pub mod desktop_instance;
 pub mod desktop_update;
+pub mod module_engine;
 pub mod module_install;
 pub mod module_release;
 #[cfg(feature = "wasm")]

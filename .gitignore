@@ -18,6 +18,7 @@ crates/ds-layer-store/target/
 crates/ds-project-data/target/
 crates/ds-report-host/target/
 crates/ds-assets-pdf-host/target/
+crates/ds-module-admission/target/
 crates/ds-sync-runtime/target/
 
 # Local scratch, never committed

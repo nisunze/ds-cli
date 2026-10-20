@@ -37,6 +37,8 @@ manifests=(
 	"crates/ds-sync-runtime/Cargo.toml"
 	"crates/ds-tile-runtime/Cargo.toml"
 	"crates/ds-update-runtime/Cargo.toml"
+	# Release packaging compiles only this engine-build admission entrypoint.
+	"crates/ds-module-admission/Cargo.toml"
 )
 
 # Crates whose manifests reach ../ds-network; the others build without it.
