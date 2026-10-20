@@ -119,14 +119,25 @@ as the browser WASM adapter. Its input is one closed
 ```
 
 For a selected-feeders run, add `"differential":{"selected_feeders":["feeder-1"]}`
-to a job whose `lv_lines` contains that id. Omit it for full processing.
+to a job whose `lv_lines` contains that id. Omit it for full processing. The
+result returns the plan that job ran under as `jobs[].differential`.
 
-The schema has no project id, credential, mutable session, browser table
-address, or operation name. It cannot impersonate a project or dispatch a
-different engine action. A batch holds 1–32 uniquely named transformers, at
-most 64 layers and 64 config sheets per transformer, at most 100,000 input
-features in total, and at most 64 MiB of source bytes. Names are at most 120
-bytes. Unknown envelope/job fields and unknown process settings are refused.
+A job can borrow customer or pole rows exactly as the browser engine does.
+`customer_sources` (`{address, endpoint?, label?}`) and `pole_sources`
+(`{address, label?}`) name opaque table addresses. `include_design_customers`
+(default true) keeps the authored customers beside them, and `local_tables`
+carries each named table inline as a FeatureCollection. An address is only a
+key into the job's own tables, and a missing table fails that job.
+
+The schema has no project id, credential, mutable session, or operation name.
+It cannot impersonate a project or dispatch a different engine action. A
+batch holds 1–32 uniquely named transformers, at most 64 layers and 64 config
+sheets per transformer, at most 100,000 input features in total, and at most
+64 MiB of source bytes. A job names at most 64 customer and 64 pole sources. A
+request carries at most 64 local tables holding at most 1,000,000 rows in all.
+Names are at most 120 bytes; addresses and labels are at most 1,024
+control-free bytes. Unknown envelope/job fields and unknown process settings
+are refused.
 
 Historical `ds.fast-lv.request/v1` remains explicit read compatibility and
 produces `ds.fast-lv.result/v1`; it is not a distinct processing mode.
