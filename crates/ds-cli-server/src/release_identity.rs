@@ -69,14 +69,7 @@ pub static INSPECT: Command = Command {
     examples: &[],
     refusals: &[INVALID],
     reference: Some("docs/reference/core.md"),
-    search: &[
-        "version",
-        "build",
-        "release",
-        "date",
-        "installed",
-        "published",
-    ],
+    search: &["version", "build", "date"],
     requires: Requires::Server,
     availability: || Availability::Available,
 };
