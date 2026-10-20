@@ -150,8 +150,10 @@ pub enum Step {
         continuation: Continuation,
     },
     /// Send exactly `size_bytes` of the file to this resumable session. The
-    /// session is transport authority: spend it here, never keep it.
+    /// session is transport authority: spend it here, never keep it. The
+    /// reserved row's id names the upload for the host's queue.
     Upload {
+        attachment_id: String,
         session_uri: String,
         size_bytes: u64,
         continuation: Continuation,
@@ -259,6 +261,7 @@ pub fn resume(continuation: Continuation, observed: Observed) -> Step {
                 );
             };
             Step::Upload {
+                attachment_id: id.to_owned(),
                 session_uri: session_uri.to_owned(),
                 size_bytes: upload.size_bytes,
                 continuation: Continuation::Send {

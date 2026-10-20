@@ -50,6 +50,7 @@ pub(super) fn attach<T: AuthorizedTransport>(
                 session_uri,
                 size_bytes,
                 continuation,
+                ..
             } => {
                 let mut reader = std::io::Cursor::new(file.bytes.as_slice());
                 let observed = match transport.upload_bytes(crate::UploadBytesCall {

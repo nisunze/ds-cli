@@ -55,6 +55,7 @@ fn send(step: Step) -> (String, u64, Continuation) {
             session_uri,
             size_bytes,
             continuation,
+            ..
         } => (session_uri, size_bytes, continuation),
         other => panic!("expected an upload, got {other:?}"),
     }
