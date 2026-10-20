@@ -25,13 +25,13 @@ pub fn release_member(body: &Value) -> Option<Value> {
 pub const ANSWER_CAP: usize = 1024 * 1024;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{release_member, ANSWER_CAP};
     use crate::gateway_exchange::browser::typed;
     use futures_util::StreamExt;
     use wasm_bindgen::prelude::*;
 
-    async fn read(url: &str) -> Option<serde_json::Value> {
+    pub(crate) async fn read(url: &str) -> Option<serde_json::Value> {
         let parsed = url::Url::parse(url).ok()?;
         if !matches!(parsed.scheme(), "https" | "http") {
             return None;

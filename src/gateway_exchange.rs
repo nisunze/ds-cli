@@ -75,6 +75,8 @@ pub mod styles;
 #[cfg(feature = "durable-store")]
 pub mod retained;
 #[cfg(feature = "durable-store")]
+pub mod held_reads;
+#[cfg(feature = "durable-store")]
 pub mod style_catalog;
 #[cfg(feature = "durable-store")]
 pub mod survey_media;

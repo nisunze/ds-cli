@@ -138,6 +138,12 @@ kinds! {
     SurveyReport = "survey_report": Project, KeyGrammar::Single, 16 * MIB, 32;
     /// The account's report job receipts in the Notification Center.
     ReportJobReceipts = "report_job_receipts": Account, KeyGrammar::Single, MIB, 1;
+    /// One window of the platform's transformer delete ledger, keyed by its days.
+    BackupLedger = "backup_ledger": Account, KeyGrammar::Token(8), 48 * MIB, 3;
+    /// A lane's latest release at one release URL, keyed by the URL's digest.
+    AppRelease = "app_release": Account, KeyGrammar::Digest, MIB, 64;
+    /// A project's Assets catalogue: its folders and every row.
+    AssetsCatalogue = "assets_catalogue": Project, KeyGrammar::Single, 32 * MIB, 32;
 }
 
 /// The generation row one kind reads and advances.
