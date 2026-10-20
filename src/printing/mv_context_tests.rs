@@ -219,3 +219,35 @@ fn the_key_plan_capture_is_one_model_overview_pinned_to_its_sources() {
     changed.render["layers"][0]["geojson"]["features"] = json!([]);
     assert!(changed.validate("project").is_err());
 }
+
+#[test]
+fn the_key_plan_names_transformers_and_places_while_sheets_name_nothing_extra() {
+    let snapshot = styles(&["places", "tr", "roads"]);
+    let key_plan = assemble_key_plan(
+        "project",
+        vec![layer("tr", 2), layer("places", 1), layer("roads", 1)],
+        &snapshot,
+    )
+    .unwrap();
+    let overrides = &key_plan.render["layout"]["style_overrides"];
+    for id in ["tr", "places"] {
+        assert_eq!(overrides[id]["label"]["field"], "name");
+        assert_eq!(overrides[id]["label"]["visible"], true);
+        assert_eq!(overrides[id]["label"]["size_pt"], 7.0);
+    }
+    assert!(overrides.get("roads").is_none());
+    let sheet = assemble("project", "aln-1", vec![layer("tr", 1)], &snapshot).unwrap();
+    assert_eq!(sheet.render["layout"]["style_overrides"], json!({}));
+}
+
+#[test]
+fn a_key_plan_frames_its_routes_with_a_margin_and_never_less_than_two_kilometres() {
+    let framed = key_plan_extent([29.80, -2.64, 29.90, -2.60]);
+    let width = framed[2] - framed[0];
+    assert!((width - 0.1 * (1. + 2. * KEY_PLAN_MARGIN)).abs() < 1e-9);
+    assert!(((framed[0] + framed[2]) / 2. - 29.85).abs() < 1e-9);
+    // A six-metre substation link still shows its surroundings.
+    let short = key_plan_extent([29.80676, -2.62650, 29.80681, -2.62648]);
+    assert!(short[2] - short[0] >= KEY_PLAN_MIN_SPAN_DEG);
+    assert!(short[3] - short[1] >= KEY_PLAN_MIN_SPAN_DEG);
+}

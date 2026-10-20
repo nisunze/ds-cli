@@ -34,6 +34,28 @@ pub const KEY_PLAN_DESIGN: [&str; 1] = ["tr"];
 pub const SHEET_MARGIN_DEG: f64 = 0.002;
 /// The key plan frames its routes with this share of their extent around them.
 pub const KEY_PLAN_MARGIN: f64 = 0.12;
+/// A key plan shows at least this much ground (about 2.2 km), so even a short
+/// substation link sits among its roads and places.
+pub const KEY_PLAN_MIN_SPAN_DEG: f64 = 0.02;
+
+/// The WGS84 rectangle a key plan frames around the model's route bounds:
+/// the same area the host reads and the Reporter draws.
+pub fn key_plan_extent(routes: [f64; 4]) -> [f64; 4] {
+    let center = [(routes[0] + routes[2]) / 2., (routes[1] + routes[3]) / 2.];
+    let half = |span: f64| span.max(KEY_PLAN_MIN_SPAN_DEG) * (1. + 2. * KEY_PLAN_MARGIN) / 2.;
+    let (dx, dy) = (half(routes[2] - routes[0]), half(routes[3] - routes[1]));
+    [
+        center[0] - dx,
+        center[1] - dy,
+        center[0] + dx,
+        center[1] + dy,
+    ]
+}
+
+/// The key plan names transformers and places by these properties, at a size
+/// legible on A3; the map renderer places them clear of each other.
+const KEY_PLAN_LABELS: [(&str, &str); 2] = [("tr", "name"), ("places", "name")];
+const KEY_PLAN_LABEL_PT: f64 = 7.0;
 
 /// Back-to-front drawing order: terrain first, the new LV network on top.
 const ORDER: [&str; 12] = [
@@ -204,7 +226,7 @@ pub fn assemble(
     layers: Vec<VectorLayer>,
     styles: &Snapshot,
 ) -> Result<Capture, String> {
-    let render = render(layers, styles)?;
+    let render = render(layers, styles, &[])?;
     let capture = Capture {
         schema: SCHEMA.into(),
         project_id: project.into(),
@@ -222,7 +244,7 @@ pub fn assemble_key_plan(
     layers: Vec<VectorLayer>,
     styles: &Snapshot,
 ) -> Result<KeyPlan, String> {
-    let render = render(layers, styles)?;
+    let render = render(layers, styles, &KEY_PLAN_LABELS)?;
     let capture = KeyPlan {
         schema: KEY_PLAN_SCHEMA.into(),
         project_id: project.into(),
@@ -235,7 +257,11 @@ pub fn assemble_key_plan(
 
 /// One A3 map, its layers back to front, and for every layer the exact key
 /// and API reply the Reporter admits. Empty layers are not carried.
-fn render(mut layers: Vec<VectorLayer>, styles: &Snapshot) -> Result<Value, String> {
+fn render(
+    mut layers: Vec<VectorLayer>,
+    styles: &Snapshot,
+    labels: &[(&str, &str)],
+) -> Result<Value, String> {
     layers.retain(|layer| {
         layer.geojson["features"]
             .as_array()
@@ -266,6 +292,20 @@ fn render(mut layers: Vec<VectorLayer>, styles: &Snapshot) -> Result<Value, Stri
         let binding = crate::style_resolution::resolve(styles, &key).map_err(|e| e.to_string())?;
         layout.style_keys.insert(layer.id.clone(), key.clone());
         layout.layer_order.push(layer.id.clone());
+        if let Some((_, field)) = labels.iter().find(|(id, _)| *id == layer.id) {
+            layout.style_overrides.insert(
+                layer.id.clone(),
+                super::PrintStyleOverride {
+                    label: Some(super::PrintLabelOverride {
+                        field: Some((*field).into()),
+                        visible: Some(true),
+                        size_pt: Some(KEY_PLAN_LABEL_PT),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            );
+        }
         sources.insert(layer.id.clone(), key);
         resolutions.insert(layer.id.clone(), binding);
     }
