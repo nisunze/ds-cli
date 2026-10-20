@@ -1499,13 +1499,8 @@ pub mod gateway_exchange;
 #[cfg(feature = "client-state")]
 pub mod client_state;
 
-/// Durable lifecycle decisions for host-held survey-photo bytes.
+/// Durable lifecycle decisions for queued survey-photo uploads.
 pub mod survey_photo_outbox;
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoOutboxStep)]
-pub fn survey_photo_outbox_step_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    survey_photo_outbox::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
 
 /// Pixel processing for survey capture and import. The byte-oriented API is
 /// separate from the JSON state machines so photo payloads never become base64

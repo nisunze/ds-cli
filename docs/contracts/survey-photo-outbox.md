@@ -1,33 +1,35 @@
 # Survey photo outbox
 
-`survey_photo_outbox` owns the durable row lifecycle, exposed natively through
-`apply` and in WASM through `surveyPhotoOutboxStep`. Requests and replies carry
-`ds.survey-photo-outbox/v1`. Each bounded request contains one row, a host clock,
-and a closed event. Settled replies explicitly contain `row: null`.
+`survey_photo_outbox` owns the durable row lifecycle through `apply`: one row,
+a clock and a closed event (`admit`, `recover`, `drive`, `result`,
+`manual_retry`). The Kernel's `media_outbox` store applies it to the rows it
+holds (`docs/contracts/durable-store.md`); a reply without a row settles it.
+There is no WASM door: hosts queue through the store and upload through the
+`drainMediaOutbox` flow.
 
 The kernel decides admission, concurrency (two active uploads), retry deadlines
-and the ten-attempt budget, failed or blocked state, recovery, cancellation,
-manual retry and cleanup. It reuses `response_policy` and accepts typed
-`transfer::Cause` observations. Recovery does not replenish an exhausted budget.
-Scope, a stash generation and a dispatch lease fence late results. Older rows
-require explicit provenance binding; the current account alone is not evidence.
+and the ten-attempt budget, failed or blocked state, recovery, manual retry and
+cleanup. It reuses `response_policy` and accepts typed `transfer::Cause`
+observations. Recovery does not replenish an exhausted budget. Scope, a stash
+generation and a dispatch lease fence late results. A row without a scope stays
+blocked; the current account alone is not evidence.
 
-Hosts persist bytes and row changes atomically, enforce cross-tab execution
-ownership, report account/project identity, and execute timers and network IO.
-An outbox attempt uses the host's existing `transfer` machine for each ordered
-target. Its browser driver yields at the first retry decision so the durable
-outbox owns the retry budget; it does not run another retry loop inside each
-attempt. The gateway verifies the exact
-stored generation and SHA-256 before success is reported. The host removes the
-queue row and unpins bytes only when the kernel permits it. Cached bytes remain
-available; cancellation never deletes the image cache.
+The store persists bytes and row changes in one SQLite transaction. The drain
+(`gateway_exchange::survey_media`) claims due rows, sends each ordered target
+through `transfer::browser` and settles what it observed; the transfer yields at
+its first retry decision, so this outbox owns the retry budget. A page drains
+one account at a time under a Web Lock and wakes at the reply's `wake_at`. The
+gateway verifies the exact stored generation and SHA-256 before success is
+reported. A settled upload's bytes move into the byte cache; nothing here
+deletes cached bytes.
 
 When a capture/import produced a thumbnail, the optional `companion` is a
 canonical `{original stem}_thunder.jpeg` JPEG target. The kernel validates that
 relationship and emits one ordered upload plan: original first, then thumbnail.
-The host atomically pins both local blobs, verifies every target before it
-reports success, and unpins both only after the row is settled. A thumbnail is
-therefore never independently retried or allowed to survive a failed original.
+The store holds both blobs with the row, the drain verifies every target before
+it reports success, and both leave the queue only when the row settles. A
+thumbnail is therefore never independently retried or allowed to survive a
+failed original.
 
 `survey_photo_media` is the separate byte API for capture/import. It admits
 JPEG and PNG source bytes up to 50 MiB and 50 MP, applies available JPEG EXIF
@@ -46,15 +48,12 @@ precondition preserved with a queued replacement. Its authorization and storage
 comparison remain in ds-brain. Photo rotation uses the Rust byte API in a browser worker: encode the whole net turn once, then persist those
 exact bytes and the inspected generation. Retry resends the same encoded image.
 
-A gateway inspection advertising `revision_protocol: 1` enables an immutable
-local `revision` (equal to stash `generation`) and a bounded `supersedes` chain
-of at most 32 prior local revisions. `PrepareSupersede` checks scope, gateway
-support and state before hosts use a pending original. `Supersede` retains both
-remote baselines, emits an abort for the old lease, and coalesces the new pair
-for 500 ms. The browser atomically replaces both pinned blobs and the row,
-broadcasts cancellation to another tab, and never rereads mutable cache bytes
-mid-upload. If the old row settled while the next turn encoded, the same
-kernel transition can be admitted as a fresh row retaining its predecessor.
+A gateway inspection advertising `revision_protocol: 1` gives the queued row an
+immutable `revision` (its `generation`) and holds it 500 ms before the first
+attempt. A row may carry a bounded `supersedes` chain of at most 32 prior
+revisions (rows imported from the retired browser outbox do), which the gateway
+may rebase over. A photo still waiting to upload refuses another rotation at
+`media_outbox` admission until it settles.
 
 A cancelled transfer can already have committed. The gateway may rebase only
 over a named predecessor belonging to the same authenticated account, object,

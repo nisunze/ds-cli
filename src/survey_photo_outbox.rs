@@ -1,21 +1,20 @@
 //! Durable survey-photo outbox decisions.
 //!
-//! Photo bytes, IndexedDB, credentials, timers, and per-target upload IO belong
-//! to the host. This module owns the durable transition around one ordered,
-//! whole-plan attempt. The host's transfer driver yields its retryable outcome
-//! back here; this outbox alone owns the persisted ten-attempt budget.
+//! The Kernel's `media_outbox` store holds the rows and their bytes and applies
+//! these transitions; the `survey_media` drain carries the uploads. This module
+//! owns the durable transition around one ordered, whole-plan attempt. The
+//! transfer yields its retryable outcome back here; this outbox alone owns the
+//! persisted ten-attempt budget.
 
 use serde::{Deserialize, Serialize};
 
 use crate::response_policy::{self, Classify, Outcome, RESPONSE_POLICY_SCHEMA};
 use crate::transfer::{Cause, Phase};
 
-pub const SURVEY_PHOTO_OUTBOX_SCHEMA: &str = "ds.survey-photo-outbox/v1";
 pub const MAX_ATTEMPTS: u32 = 10;
 pub const MAX_CONCURRENT_UPLOADS: u32 = 2;
 pub const MAX_SUPERSEDED_REVISIONS: usize = 32;
 pub const REVISION_COALESCE_MS: u64 = 500;
-const MAX_INPUT_BYTES: usize = 64 * 1024;
 const MISSING_BYTES: &str = "Photo bytes are missing from local storage.";
 const SCOPE_MISMATCH: &str = "Photo upload is fenced to a different account or project.";
 const LEGACY_SCOPE: &str = "Photo upload needs its original account, project, and generation.";
@@ -73,8 +72,8 @@ pub struct Row {
     /// one atomic upload plan. It is never an independently retried row.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub companion: Option<Companion>,
-    /// Gateway-advertised revision protocol. Only these rows may supersede a
-    /// transfer whose storage commit could race cancellation.
+    /// Gateway-advertised revision protocol: the row's immutable revision,
+    /// which the gateway may rebase over the named `supersedes` predecessors.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -195,7 +194,7 @@ pub enum TransportOutcome {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Event {
-    /// A host has already persisted the pinned bytes and constructed this row.
+    /// The store has persisted the bytes and constructed this row.
     Admit {
         scope: Scope,
     },
@@ -216,30 +215,9 @@ pub enum Event {
         lease: u64,
         outcome: TransportOutcome,
     },
-    Cancel {
-        scope: Scope,
-    },
-    /// Replace the exact local byte revision, retaining its remote baseline.
-    /// The host atomically swaps both pinned blobs before executing Abort.
-    Supersede {
-        scope: Scope,
-        generation: String,
-        content_type: String,
-        size: u64,
-        companion: Companion,
-    },
-    PrepareSupersede {
-        scope: Scope,
-    },
     /// Retry after a surfaced failure without silently changing ownership.
     ManualRetry {
         scope: Scope,
-    },
-    /// Only a migration that derived the original scope from durable row
-    /// provenance may bind an older row.  Never infer it from the current user.
-    BindLegacyScope {
-        inferred_scope: Scope,
-        generation: String,
     },
 }
 
@@ -255,11 +233,6 @@ pub enum Action {
         lease: u64,
         targets: Vec<UploadTarget>,
     },
-    Abort {
-        path: String,
-        generation: String,
-        lease: u64,
-    },
     WakeAt {
         at: u64,
     },
@@ -272,21 +245,9 @@ pub enum Action {
     },
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Request {
-    pub schema: String,
-    pub now: u64,
-    #[serde(default)]
-    pub row: Option<Row>,
-    pub event: Event,
-}
-
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq)]
 pub struct Reply {
-    pub schema: &'static str,
-    /// Always present on the wire. `null` directs the host to remove the
-    /// durable row after it completes the ordered cleanup actions.
+    /// `None` settles the row: the store removes it.
     pub row: Option<Row>,
     pub actions: Vec<Action>,
 }
@@ -374,11 +335,7 @@ fn remove(row: Row) -> Reply {
     if let Some(path) = companion_path {
         actions.push(Action::UnpinBlob { path });
     }
-    Reply {
-        schema: SURVEY_PHOTO_OUTBOX_SCHEMA,
-        row: None,
-        actions,
-    }
+    Reply { row: None, actions }
 }
 
 fn response_facts_from_cause(
@@ -517,7 +474,6 @@ pub fn apply(now: u64, row: Option<Row>, event: Event) -> Result<Reply, String> 
                 || row.lease != lease
             {
                 return Ok(Reply {
-                    schema: SURVEY_PHOTO_OUTBOX_SCHEMA,
                     row: Some(row),
                     actions,
                 });
@@ -600,79 +556,6 @@ pub fn apply(now: u64, row: Option<Row>, event: Event) -> Result<Reply, String> 
                 }
             }
         }
-        Event::Cancel { scope } => {
-            if same_scope(&row, &scope) {
-                if row.status == Status::Uploading {
-                    actions.push(Action::Abort {
-                        path: row.path.clone(),
-                        generation: row.generation.clone(),
-                        lease: row.lease,
-                    });
-                }
-                let mut reply = remove(row);
-                reply.actions.splice(0..0, actions);
-                return Ok(reply);
-            }
-        }
-        Event::PrepareSupersede { scope } => {
-            validate_supersede(&row, &scope)?;
-        }
-        Event::Supersede {
-            scope,
-            generation,
-            content_type,
-            size,
-            mut companion,
-        } => {
-            validate_supersede(&row, &scope)?;
-            if !same_scope(&row, &scope) {
-                return Err(SCOPE_MISMATCH.into());
-            }
-            let revision = row.revision.clone().ok_or_else(|| {
-                "This pending photo needs the revision-aware gateway before another rotation."
-                    .to_string()
-            })?;
-            if !matches!(row.status, Status::Pending | Status::Uploading)
-                || !valid_revision(&generation)
-                || generation == row.generation
-                || row.supersedes.contains(&generation)
-                || row.supersedes.len() >= MAX_SUPERSEDED_REVISIONS
-                || !matches!(content_type.as_str(), "image/jpeg" | "image/png")
-                || size == 0
-                || row.companion.as_ref().map(|old| &old.path) != Some(&companion.path)
-            {
-                return Err("Photo changed or cannot accept another unpublished rotation.".into());
-            }
-            // A later rotation changes bytes, never the storage baseline it
-            // observed. Only the gateway may rebase over a proved predecessor.
-            companion.expected_generation = row
-                .companion
-                .as_ref()
-                .and_then(|old| old.expected_generation.clone());
-            if row.status == Status::Uploading {
-                actions.push(Action::Abort {
-                    path: row.path.clone(),
-                    generation: row.generation.clone(),
-                    lease: row.lease,
-                });
-            }
-            row.supersedes.push(revision);
-            row.generation = generation.clone();
-            row.revision = Some(generation);
-            row.content_type = content_type;
-            row.size = size;
-            row.companion = Some(companion);
-            row.status = Status::Pending;
-            row.attempts = 0;
-            row.lease = 0;
-            row.last_error = None;
-            row.updated_at = now;
-            row.next_attempt_at = now.saturating_add(REVISION_COALESCE_MS);
-            ensure_row(Some(row.clone()))?;
-            actions.push(Action::WakeAt {
-                at: row.next_attempt_at,
-            });
-        }
         Event::ManualRetry { scope } => {
             if same_scope(&row, &scope) && matches!(row.status, Status::Failed | Status::Blocked) {
                 row.status = Status::Pending;
@@ -682,649 +565,13 @@ pub fn apply(now: u64, row: Option<Row>, event: Event) -> Result<Reply, String> 
                 row.updated_at = now;
             }
         }
-        Event::BindLegacyScope {
-            inferred_scope,
-            generation,
-        } => {
-            if !valid_scope(&inferred_scope) {
-                return Err("Survey-photo scope is incomplete.".into());
-            }
-            if generation.trim().is_empty() {
-                return Err("Survey-photo generation is incomplete.".into());
-            }
-            if row.scope.is_none() || row.generation.trim().is_empty() {
-                row.scope = Some(inferred_scope);
-                row.generation = generation;
-                row.status = Status::Pending;
-                row.next_attempt_at = 0;
-                row.last_error = None;
-                row.updated_at = now;
-            }
-        }
     }
     Ok(Reply {
-        schema: SURVEY_PHOTO_OUTBOX_SCHEMA,
         row: Some(row),
         actions,
     })
 }
 
-fn validate_supersede(row: &Row, scope: &Scope) -> Result<(), String> {
-    if !same_scope(row, scope) {
-        return Err(SCOPE_MISMATCH.into());
-    }
-    if row.revision.is_none() {
-        return Err(
-            "This pending photo needs the revision-aware gateway before another rotation.".into(),
-        );
-    }
-    if !matches!(row.status, Status::Pending | Status::Uploading)
-        || row.companion.is_none()
-        || row.supersedes.len() >= MAX_SUPERSEDED_REVISIONS
-    {
-        return Err("Photo changed or cannot accept another unpublished rotation.".into());
-    }
-    Ok(())
-}
-
-pub fn evaluate(input: &[u8]) -> Result<String, String> {
-    if input.is_empty() || input.len() > MAX_INPUT_BYTES {
-        return Err("Survey-photo outbox command exceeds its byte bound.".into());
-    }
-    let request: Request = serde_json::from_slice(input)
-        .map_err(|error| format!("Invalid survey-photo outbox command: {error}"))?;
-    if request.schema != SURVEY_PHOTO_OUTBOX_SCHEMA {
-        return Err("Unsupported survey-photo outbox command schema.".into());
-    }
-    serde_json::to_string(&apply(request.now, request.row, request.event)?)
-        .map_err(|error| error.to_string())
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn scope() -> Scope {
-        Scope {
-            account_id: "account-a".into(),
-            project_id: "project-a".into(),
-        }
-    }
-    fn row() -> Row {
-        Row {
-            path: "survey/a.jpg".into(),
-            surface: "survey-media".into(),
-            owner_ref: "entry-a".into(),
-            content_type: "image/jpeg".into(),
-            size: 4,
-            status: Status::Pending,
-            attempts: 0,
-            next_attempt_at: 0,
-            last_error: None,
-            created_at: 1,
-            updated_at: 1,
-            scope: Some(scope()),
-            lease: 0,
-            generation: "stash-a".into(),
-            expected_generation: Some("123456".into()),
-            companion: None,
-            revision: None,
-            supersedes: Vec::new(),
-        }
-    }
-    #[test]
-    fn supersede_retains_remote_baseline_aborts_old_lease_and_fences_late_success() {
-        let mut previous = row();
-        previous.path = "project/forms/form/entry/photo.jpg".into();
-        previous.revision = Some(previous.generation.clone());
-        previous.companion = Some(Companion {
-            path: thumbnail_path_for(&previous.path).unwrap(),
-            content_type: "image/jpeg".into(),
-            size: 3,
-            expected_generation: Some("123457".into()),
-        });
-        let previous = drive(previous, 1000).row.unwrap();
-        let companion = previous.companion.clone().unwrap();
-        let changed = apply(
-            1001,
-            Some(previous.clone()),
-            Event::Supersede {
-                scope: scope(),
-                generation: "stash-b".into(),
-                content_type: "image/png".into(),
-                size: 5,
-                companion: Companion {
-                    expected_generation: Some("999".into()),
-                    ..companion
-                },
-            },
-        )
-        .unwrap();
-        assert!(changed.actions.iter().any(
-            |action| matches!(action, Action::Abort { generation, .. } if generation == "stash-a")
-        ));
-        let current = changed.row.unwrap();
-        assert_eq!(current.expected_generation, previous.expected_generation);
-        assert_eq!(
-            current
-                .companion
-                .as_ref()
-                .unwrap()
-                .expected_generation
-                .as_deref(),
-            Some("123457")
-        );
-        assert_eq!(current.supersedes, vec!["stash-a"]);
-        assert_eq!(current.next_attempt_at, 1501);
-        let late = apply(
-            1002,
-            Some(current.clone()),
-            Event::Result {
-                scope: scope(),
-                generation: previous.generation,
-                lease: previous.lease,
-                outcome: TransportOutcome::Success,
-            },
-        )
-        .unwrap();
-        assert_eq!(late.row, Some(current));
-        assert!(late.actions.is_empty());
-    }
-
-    #[test]
-    fn supersede_preparation_refuses_old_gateway_and_foreign_scope() {
-        assert!(apply(1, Some(row()), Event::PrepareSupersede { scope: scope() }).is_err());
-        let mut r = row();
-        r.revision = Some(r.generation.clone());
-        let mut other = scope();
-        other.account_id = "other-account".into();
-        assert!(apply(1, Some(r), Event::PrepareSupersede { scope: other })
-            .unwrap_err()
-            .contains("different account"));
-    }
-    fn drive(row: Row, now: u64) -> Reply {
-        apply(
-            now,
-            Some(row),
-            Event::Drive {
-                online: true,
-                active_uploads: 0,
-                bytes_present: true,
-                scope: scope(),
-            },
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn dispatch_is_bounded_and_leased() {
-        let reply = drive(row(), 10);
-        assert_eq!(reply.row.as_ref().unwrap().status, Status::Uploading);
-        assert_eq!(reply.row.as_ref().unwrap().attempts, 1);
-        assert_eq!(
-            reply.actions,
-            vec![Action::Dispatch {
-                path: "survey/a.jpg".into(),
-                content_type: "image/jpeg".into(),
-                generation: "stash-a".into(),
-                expected_generation: Some("123456".into()),
-                lease: 1,
-                targets: vec![UploadTarget {
-                    path: "survey/a.jpg".into(),
-                    content_type: "image/jpeg".into(),
-                    size: 4,
-                    expected_generation: Some("123456".into()),
-                    revision: None,
-                    supersedes: Vec::new(),
-                }],
-            }]
-        );
-        let capped = apply(
-            10,
-            Some(row()),
-            Event::Drive {
-                online: true,
-                active_uploads: MAX_CONCURRENT_UPLOADS,
-                bytes_present: true,
-                scope: scope(),
-            },
-        )
-        .unwrap();
-        assert!(capped.actions.is_empty());
-    }
-
-    #[test]
-    fn companion_has_one_canonical_ordered_plan_and_cleanup_unpins_both_bytes() {
-        let mut state = row();
-        state.companion = Some(Companion {
-            path: "survey/a_thunder.jpeg".into(),
-            content_type: "image/jpeg".into(),
-            size: 3,
-            expected_generation: None,
-        });
-        let started = drive(state, 10);
-        let Action::Dispatch { targets, .. } = &started.actions[0] else {
-            panic!("dispatch expected")
-        };
-        assert_eq!(
-            targets
-                .iter()
-                .map(|target| target.path.as_str())
-                .collect::<Vec<_>>(),
-            vec!["survey/a.jpg", "survey/a_thunder.jpeg"]
-        );
-        let removed = apply(
-            11,
-            started.row,
-            Event::Result {
-                scope: scope(),
-                generation: "stash-a".into(),
-                lease: 1,
-                outcome: TransportOutcome::Success,
-            },
-        )
-        .unwrap();
-        assert!(removed.row.is_none());
-        assert_eq!(
-            removed
-                .actions
-                .iter()
-                .filter(|action| matches!(action, Action::UnpinBlob { .. }))
-                .count(),
-            2
-        );
-    }
-
-    #[test]
-    fn invalid_companion_cannot_admit_or_create_an_upload_plan() {
-        let mut state = row();
-        state.companion = Some(Companion {
-            path: "survey/a-thumb.jpg".into(),
-            content_type: "image/png".into(),
-            size: 0,
-            expected_generation: None,
-        });
-        assert!(apply(1, Some(state.clone()), Event::Recover).is_err());
-        assert!(upload_plan(&state).is_err());
-        assert_eq!(
-            thumbnail_path_for("folder/field.capture.png").unwrap(),
-            "folder/field.capture_thunder.jpeg"
-        );
-        assert_eq!(
-            thumbnail_path_for("folder/field_thunder.JPEG").unwrap(),
-            "folder/field_thunder.JPEG"
-        );
-        let mut same_path = row();
-        same_path.companion = Some(Companion {
-            path: same_path.path.clone(),
-            content_type: "image/jpeg".into(),
-            size: 3,
-            expected_generation: None,
-        });
-        assert!(apply(1, Some(same_path), Event::Recover).is_err());
-    }
-
-    #[test]
-    fn restart_recovers_without_spending_an_attempt() {
-        let mut state = row();
-        state.status = Status::Uploading;
-        state.attempts = 3;
-        state.lease = 9;
-        let reply = apply(50, Some(state), Event::Recover).unwrap();
-        let recovered = reply.row.unwrap();
-        assert_eq!(recovered.status, Status::Pending);
-        assert_eq!(recovered.attempts, 3);
-    }
-
-    #[test]
-    fn recovered_tenth_attempt_never_dispatches_an_eleventh() {
-        let mut state = row();
-        state.status = Status::Uploading;
-        state.attempts = MAX_ATTEMPTS;
-        let recovered = apply(50, Some(state), Event::Recover).unwrap().row.unwrap();
-        let reply = drive(recovered, 51);
-        assert!(reply.actions.is_empty());
-        assert_eq!(reply.row.unwrap().status, Status::Pending);
-    }
-
-    #[test]
-    fn expected_generation_is_opaque_but_must_be_positive_decimal() {
-        let mut invalid = row();
-        invalid.expected_generation = Some("not-a-generation".into());
-        assert!(apply(1, Some(invalid), Event::Recover).is_err());
-        let mut zero = row();
-        zero.expected_generation = Some("0".into());
-        assert!(apply(1, Some(zero), Event::Recover).is_err());
-    }
-
-    #[test]
-    fn transient_failure_uses_response_policy_and_deadline() {
-        let started = drive(row(), 100).row.unwrap();
-        let reply = apply(
-            100,
-            Some(started),
-            Event::Result {
-                scope: scope(),
-                generation: "stash-a".into(),
-                lease: 1,
-                outcome: TransportOutcome::TransportFailure {
-                    cause: None,
-                    status: Some(503),
-                    error_code: None,
-                    timed_out: false,
-                    retry_after: None,
-                    has_session: true,
-                    offline_mode: false,
-                    message: Some("unavailable".into()),
-                },
-            },
-        )
-        .unwrap();
-        let state = reply.row.unwrap();
-        assert_eq!(state.status, Status::Pending);
-        assert_eq!(state.next_attempt_at, 1_900);
-        assert_eq!(reply.actions, vec![Action::WakeAt { at: 1_900 }]);
-    }
-
-    #[test]
-    fn tenth_failure_is_terminal_and_manual_retry_resets_budget() {
-        let mut state = row();
-        state.status = Status::Uploading;
-        state.attempts = 10;
-        state.lease = 4;
-        let failed = apply(
-            1,
-            Some(state),
-            Event::Result {
-                scope: scope(),
-                generation: "stash-a".into(),
-                lease: 4,
-                outcome: TransportOutcome::TransportFailure {
-                    cause: None,
-                    status: Some(503),
-                    error_code: None,
-                    timed_out: false,
-                    retry_after: None,
-                    has_session: true,
-                    offline_mode: false,
-                    message: None,
-                },
-            },
-        )
-        .unwrap()
-        .row
-        .unwrap();
-        assert_eq!(failed.status, Status::Failed);
-        let retried = apply(2, Some(failed), Event::ManualRetry { scope: scope() })
-            .unwrap()
-            .row
-            .unwrap();
-        assert_eq!((retried.status, retried.attempts), (Status::Pending, 0));
-    }
-
-    #[test]
-    fn superseding_storage_precondition_retries_but_corrupt_bytes_do_not() {
-        for (cause, expected) in [
-            (Cause::HttpStatus { status: 412 }, Status::Pending),
-            (Cause::DigestMismatch, Status::Failed),
-            (Cause::LengthMismatch, Status::Failed),
-            (Cause::HttpStatus { status: 409 }, Status::Failed),
-        ] {
-            let mut started = drive(row(), 0).row.unwrap();
-            started.revision = Some(started.generation.clone());
-            let result = apply(
-                0,
-                Some(started),
-                Event::Result {
-                    scope: scope(),
-                    generation: "stash-a".into(),
-                    lease: 1,
-                    outcome: TransportOutcome::TransportFailure {
-                        cause: Some(cause),
-                        status: None,
-                        error_code: None,
-                        timed_out: false,
-                        retry_after: None,
-                        has_session: true,
-                        offline_mode: false,
-                        message: None,
-                    },
-                },
-            )
-            .unwrap()
-            .row
-            .unwrap();
-            assert_eq!(result.status, expected);
-        }
-    }
-
-    #[test]
-    fn inconclusive_308_is_normalized_by_the_transport_and_412_is_terminal() {
-        let started = drive(row(), 0).row.unwrap();
-        let retry = apply(
-            0,
-            Some(started.clone()),
-            Event::Result {
-                scope: scope(),
-                generation: "stash-a".into(),
-                lease: 1,
-                // The governed transport reports an incomplete 308 as this
-                // no-status fact; response_policy then owns its retry timing.
-                outcome: TransportOutcome::TransportFailure {
-                    cause: None,
-                    status: None,
-                    error_code: Some("UPLOAD_INCONCLUSIVE".into()),
-                    timed_out: false,
-                    retry_after: None,
-                    has_session: true,
-                    offline_mode: false,
-                    message: None,
-                },
-            },
-        )
-        .unwrap()
-        .row
-        .unwrap();
-        assert_eq!(retry.status, Status::Pending);
-        let conflict = apply(
-            0,
-            Some(started),
-            Event::Result {
-                scope: scope(),
-                generation: "stash-a".into(),
-                lease: 1,
-                outcome: TransportOutcome::TransportFailure {
-                    cause: None,
-                    status: Some(412),
-                    error_code: None,
-                    timed_out: false,
-                    retry_after: None,
-                    has_session: true,
-                    offline_mode: false,
-                    message: None,
-                },
-            },
-        )
-        .unwrap()
-        .row
-        .unwrap();
-        assert_eq!(conflict.status, Status::Failed);
-    }
-
-    #[test]
-    fn typed_transfer_causes_share_response_policy_retry_and_terminal_rules() {
-        for cause in [
-            Cause::HttpStatus { status: 503 },
-            Cause::Timeout {
-                phase: Phase::Response,
-            },
-            Cause::SessionExpired,
-            Cause::BlockedByHostPolicy,
-        ] {
-            let started = drive(row(), 0).row.unwrap();
-            let reply = apply(
-                0,
-                Some(started),
-                Event::Result {
-                    scope: scope(),
-                    generation: "stash-a".into(),
-                    lease: 1,
-                    outcome: TransportOutcome::TransportFailure {
-                        cause: Some(cause),
-                        status: None,
-                        error_code: None,
-                        timed_out: false,
-                        retry_after: None,
-                        has_session: true,
-                        offline_mode: false,
-                        message: None,
-                    },
-                },
-            )
-            .unwrap();
-            assert_eq!(reply.row.unwrap().status, Status::Pending);
-        }
-        let started = drive(row(), 0).row.unwrap();
-        let reply = apply(
-            0,
-            Some(started),
-            Event::Result {
-                scope: scope(),
-                generation: "stash-a".into(),
-                lease: 1,
-                outcome: TransportOutcome::TransportFailure {
-                    cause: Some(Cause::DigestMismatch),
-                    status: None,
-                    error_code: None,
-                    timed_out: false,
-                    retry_after: None,
-                    has_session: true,
-                    offline_mode: false,
-                    message: None,
-                },
-            },
-        )
-        .unwrap();
-        assert_eq!(reply.row.unwrap().status, Status::Failed);
-    }
-
-    #[test]
-    fn missing_bytes_and_scope_change_never_dispatch() {
-        let missing = apply(
-            1,
-            Some(row()),
-            Event::Drive {
-                online: true,
-                active_uploads: 0,
-                bytes_present: false,
-                scope: scope(),
-            },
-        )
-        .unwrap()
-        .row
-        .unwrap();
-        assert_eq!(missing.status, Status::Failed);
-        let other = Scope {
-            account_id: "account-b".into(),
-            project_id: "project-a".into(),
-        };
-        let blocked = apply(
-            2,
-            Some(row()),
-            Event::Drive {
-                online: true,
-                active_uploads: 0,
-                bytes_present: true,
-                scope: other,
-            },
-        )
-        .unwrap()
-        .row
-        .unwrap();
-        assert_eq!(blocked.status, Status::Blocked);
-    }
-
-    #[test]
-    fn cancellation_and_success_remove_row_but_never_cached_bytes() {
-        let cancelled = apply(1, Some(row()), Event::Cancel { scope: scope() }).unwrap();
-        assert!(cancelled.row.is_none());
-        assert!(cancelled
-            .actions
-            .iter()
-            .any(|a| matches!(a, Action::UnpinBlob { .. })));
-        assert!(!serde_json::to_string(&cancelled)
-            .unwrap()
-            .contains("delete"));
-        let started = drive(row(), 1).row.unwrap();
-        let done = apply(
-            2,
-            Some(started),
-            Event::Result {
-                scope: scope(),
-                generation: "stash-a".into(),
-                lease: 1,
-                outcome: TransportOutcome::Success,
-            },
-        )
-        .unwrap();
-        assert!(done.row.is_none());
-    }
-
-    #[test]
-    fn settled_reply_carries_explicit_null_row_on_the_wire() {
-        let started = drive(row(), 1).row.unwrap();
-        let reply = apply(
-            2,
-            Some(started),
-            Event::Result {
-                scope: scope(),
-                generation: "stash-a".into(),
-                lease: 1,
-                outcome: TransportOutcome::Success,
-            },
-        )
-        .unwrap();
-        let wire = serde_json::to_value(reply).unwrap();
-        assert!(wire.get("row").unwrap().is_null());
-    }
-
-    #[test]
-    fn late_completion_cannot_settle_a_new_lease() {
-        let mut state = row();
-        state.status = Status::Uploading;
-        state.lease = 2;
-        let reply = apply(
-            1,
-            Some(state),
-            Event::Result {
-                scope: scope(),
-                generation: "stash-a".into(),
-                lease: 1,
-                outcome: TransportOutcome::Success,
-            },
-        )
-        .unwrap();
-        assert!(reply.row.is_some());
-        assert!(reply.actions.is_empty());
-    }
-
-    #[test]
-    fn unscoped_legacy_row_requires_explicit_provenance_binding() {
-        let mut state = row();
-        state.scope = None;
-        let blocked = drive(state, 1).row.unwrap();
-        assert_eq!(blocked.status, Status::Blocked);
-        let rebound = apply(
-            2,
-            Some(blocked),
-            Event::BindLegacyScope {
-                inferred_scope: scope(),
-                generation: "migrated-a".into(),
-            },
-        )
-        .unwrap()
-        .row
-        .unwrap();
-        assert_eq!(rebound.status, Status::Pending);
-    }
-}
+#[path = "survey_photo_outbox_tests.rs"]
+mod tests;
