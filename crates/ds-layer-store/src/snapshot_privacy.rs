@@ -214,7 +214,7 @@ mod native {
         format!("snapshot privacy: {}", io::Error::last_os_error())
     }
 
-    fn paths(path: &Path) -> Result<Vec<PathBuf>, String> {
+    pub(super) fn paths(path: &Path) -> Result<Vec<PathBuf>, String> {
         if !path.is_absolute() {
             return Err("snapshot privacy: absolute path required".into());
         }
@@ -319,52 +319,32 @@ mod native {
         Ok(unsafe { EqualSid(sid, storage.as_mut_ptr().cast()) } != 0)
     }
 
-    fn trusted_installer_owner(owner: PSID) -> Result<bool, String> {
-        // Resolve one fully qualified local service identity. Neither arbitrary
-        // service identities nor CREATOR OWNER trustees acquire this exception.
-        // A null system name starts resolution locally; verify the returned
-        // authority as well so domain fallback cannot substitute an account.
-        let account = "NT SERVICE\\TrustedInstaller\0"
-            .encode_utf16()
-            .collect::<Vec<_>>();
-        let mut storage = [0usize; 16];
-        let mut sid_length = std::mem::size_of_val(&storage) as u32;
-        let mut domain = [0u16; 256];
-        let mut domain_length = domain.len() as u32;
-        let mut kind = SidTypeUnknown;
-        if unsafe {
-            LookupAccountNameW(
-                std::ptr::null(),
-                account.as_ptr(),
-                storage.as_mut_ptr().cast(),
-                &mut sid_length,
-                domain.as_mut_ptr(),
-                &mut domain_length,
-                &mut kind,
-            )
-        } == 0
+    /// TrustedInstaller's service SID. A service SID is derived from the
+    /// service name (S-1-5-80 followed by the SHA-1 of "TRUSTEDINSTALLER"), so
+    /// this one SID is identical on every Windows installation. Comparing with
+    /// it avoids a locale-dependent account lookup whose reported sizes vary.
+    const TRUSTED_INSTALLER: [u32; 6] = [
+        80,
+        956_008_885,
+        3_418_522_649,
+        1_831_038_044,
+        1_853_292_631,
+        2_271_478_464,
+    ];
+
+    pub(super) fn trusted_installer_owner(owner: PSID) -> Result<bool, String> {
+        let authority = SID_IDENTIFIER_AUTHORITY {
+            Value: [0, 0, 0, 0, 0, 5],
+        };
+        let [a, b, c, d, e, f] = TRUSTED_INSTALLER;
+        let mut sid: PSID = null_mut();
+        if unsafe { AllocateAndInitializeSid(&authority, 6, a, b, c, d, e, f, 0, 0, &mut sid) } == 0
         {
             return Err(error());
         }
-        let sid: PSID = storage.as_mut_ptr().cast();
-        let domain_end = domain
-            .iter()
-            .position(|unit| *unit == 0)
-            .ok_or_else(|| "snapshot privacy: invalid service account domain".to_string())?;
-        if sid_length < 12
-            || sid_length as usize > std::mem::size_of_val(&storage)
-            || unsafe { IsValidSid(sid) } == 0
-            || unsafe { GetLengthSid(sid) } != sid_length
-            || !String::from_utf16(&domain[..domain_end])
-                .map_err(|_| "snapshot privacy: invalid service account domain")?
-                .eq_ignore_ascii_case("NT SERVICE")
-            || unsafe { (*GetSidIdentifierAuthority(sid)).Value } != [0, 0, 0, 0, 0, 5]
-            || unsafe { *GetSidSubAuthorityCount(sid) } == 0
-            || unsafe { *GetSidSubAuthority(sid, 0) } != 80
-        {
-            return Err("snapshot privacy: invalid TrustedInstaller service identity".into());
-        }
-        Ok(unsafe { EqualSid(owner, sid) } != 0)
+        let equal = unsafe { EqualSid(owner, sid) } != 0;
+        unsafe { FreeSid(sid) };
+        Ok(equal)
     }
 
     fn check_acl(file: &File, user: PSID, private: bool, protected: bool) -> Result<(), String> {
@@ -598,29 +578,11 @@ mod native {
     pub(super) fn file(path: &Path) -> Result<(), String> {
         walk(path, false)
     }
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn refuses_remote_device_alias_and_stream_paths() {
-            for value in [
-                r"relative\snapshot",
-                r"\\server\share\snapshot",
-                r"\\?\C:\snapshot",
-                r"C:\snapshot:stream",
-                r"C:\private\..\snapshot",
-                r"C:\private\.\snapshot",
-                r"C:\private\snapshot.",
-                r"C:\private\CON",
-                r"C:\private\COM1.txt",
-            ] {
-                assert!(paths(Path::new(value)).is_err(), "{value}");
-            }
-            assert!(paths(Path::new(r"C:\private\snapshot.json")).is_ok());
-        }
-    }
 }
+
+#[cfg(all(test, windows))]
+#[path = "snapshot_privacy_windows_tests.rs"]
+mod windows_tests;
 
 #[cfg(not(any(unix, windows)))]
 mod native {
