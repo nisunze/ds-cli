@@ -1474,13 +1474,6 @@ pub fn compute_artifact_inventory_wasm(input: &[u8]) -> Result<String, wasm_bind
 /// `docs/contracts/ds-transport-authority.md`.
 pub mod transfer;
 
-pub mod compute_artifact_cache;
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactCache)]
-pub fn compute_artifact_cache_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    compute_artifact_cache::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
-
 /// The one retry curve every caller waits by after a network blink: the
 /// resumable transfer, the gateway response policy and the native client.
 pub mod retry;
