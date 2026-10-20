@@ -2,7 +2,7 @@
 
 Status: contract, 2026-10-20. Owner direction: the Kernel owns every local
 store's schema, SQL and transitions; IndexedDB is removed from ds-web domain by
-domain, except two owner-approved platform exceptions (below). Architecture:
+domain, until DS keeps none of its own (below). Architecture:
 [development philosophy](https://github.com/nisunze/ds-architecture/blob/master/architecture/development-philosophy.md)
 sentences 2, 4 and 9; migration rules:
 [Rust, Svelte and SQLite contract](https://github.com/nisunze/ds-architecture/blob/master/architecture/rust-transport-sqlite-migration.md#storage-migration-and-indexeddb-retirement).
@@ -132,8 +132,7 @@ SHA-256 per part, so a read verifies only the parts it returns.
 | `ui_preferences` | `src/ui_preferences.rs`; the key table (name, home, bound, contract) in `src/ui_preferences/values/catalog.rs`, value contracts in `src/ui_preferences/values.rs` and its domain modules `values/{map,workbench,design}.rs` | account, or account + project per key | closed key list with per-key `max_bytes` (default 64 KiB) and canonicalising `admit`. Account: `active_project`, `layer_group_collapse`, `hillshade_exaggeration`, `map_defaults`, `tool_layout`, `tile_layers`, `application_settings`, `edit_projection_choice`, `edit_projection_custom`, `pinned_group_visible`, `profile_occupancy`, `create_transformer_map_sources`, `upload_dialog_layout`, `properties_dock_width`, `style_center_layout`, `messaging_notification_dismissals`, `local_class_styles`. Project: `layer_visibility`, `popup_layers_disabled`, `working_area`, `process_preset`, `process_setup`, `active_lv_transformer`, `status_warning_types`, `status_sort`, `map_viewport`, `pinned_transformers`, `fast_mode_customer_source`, `fast_mode_pole_source` |
 | `retained_reads` | `src/retained_reads.rs`; flow helpers and the `Edge` port in `src/gateway_exchange/retained.rs` | account, or account + project per kind | closed `Kind` list; per kind a fence, key grammar, value byte bound and per-owner row bound with least-recently-used eviction; read, list, write (optionally conditional on the kind's generation), replace_set, invalidate, forget; per-kind generations `retained_reads.<kind>`; JSON only |
 | `push_state` | `src/push_state.rs` | browser profile: the (lane, audience) digest and the Firebase app id; the session owner is the bound principal, so a sign-out reaches the record | one record per app id: generation, session, opt-in and registered owner, fid, installation hash, epoch. `effects_before` deletes the push projection before every write but activation; every write's after-effect re-states it from the committed record (written when active, deleted otherwise) |
-| `folder_connections` | `src/folder_connections.rs` | identity; the project per row, matched exactly | logical key, project, folder name, kind (`gis_folder`, `pls_folder`, `export_workspace`, `other`), a unique 128-bit token, times. `drop` names the tokens the web adapter deletes |
-| `local_layer_store` | `src/local_layer_store.rs`; decisions stay in `src/local_layers.rs` | identity | the held catalogue records verbatim (at most 2000, 16 MiB) and one payload per record id (one JSON array of features, at most 256 MiB, counted). The sweep prunes payloads no record names and drops only unreferenced `gisFolder:` connections. Generations `catalogue` and `payloads` |
+| `local_layer_store` | `src/local_layer_store.rs`; decisions stay in `src/local_layers.rs` | identity | the held catalogue records verbatim (at most 2000, 16 MiB) and one payload per record id (one JSON array of features, at most 256 MiB, counted). The sweep prunes payloads no record names. Generations `catalogue` and `payloads` |
 | `grid_model_store` | `src/grid_model_store.rs` | identity; a session per project or none | retained check results, temporary groups (id derived from the source digest) and remembered sessions; `remove_model` removes a model's groups, results and sessions in one transaction. Generations `results`, `groups`, `sessions`; the `.dsgrid` working copies join with the byte store |
 | `byte_cache` | `src/byte_cache.rs`; parts in `src/byte_parts.rs` | identity | content-addressed: content is unique per owner and SHA-256 and never shared across owners. Entries are `(kind, key)` of the closed kinds `photo`, `compute_artifact`, `report_preview`, `grid_remote_version`, each naming content with a media type and a small JSON `meta`. `has` compares stored lengths and reads no bytes; `get` verifies the part it answers, and a corrupt part drops its content with every entry naming it and answers a miss; `put` arrives part by part and a declared SHA-256 must match; `delete`. One retention rule: past its kind's byte budget, the owner's oldest entries of that kind leave first. A photo read serves a pending upload's bytes first and a photo put never replaces them. Generations `byte_cache.<kind>` |
 | `media_outbox` | `src/media_outbox.rs`; transitions in `src/survey_photo_outbox.rs` | identity; a signed-in account queues | one row per pending upload and its bytes (the original, then its thumbnail companion) in its own work tables, which no retention reaches: `admit`, `claim` (recover abandoned leases, drive, dispatch each target with its SHA-256), `read` (a target's bytes for its transfer), `settle` (a verified upload moves both into `byte_cache` as photos and removes the row), `retry_failed`, `counts`, `failed` |
@@ -190,7 +189,7 @@ reconstructible from its source; **exception** is an owner-approved platform con
 | 5 | `ds_web_store` / `photos` | survey and Solar media bytes | cache, except pinned bytes of pending uploads (work) | byte store |
 | 6 | `ds_web_store` / `blob_outbox` | pending media uploads (`api/blob-sync.ts`) | work | byte outbox |
 | 7 | `ds_web_store` / `upload_chunks` | upload workspace Arrow chunks | work (in progress) | byte store |
-| 8 | `ds_web_store` / `folder_connections` | GIS folder handles | exception | opaque `{token → FileSystemDirectoryHandle}` table in the web platform adapter; metadata and lifecycle in a Kernel store |
+| 8 | `ds_web_store` / `folder_connections` | GIS folder handles | retired | none: Web live folders are retired; folders are native Desktop/Core |
 | 9 | `ds_web_store` / `outbox` | survey, messaging and Project Work commands | work | Kernel outboxes (survey: `ds-sync-store` survey owner) |
 | 10 | `ds_web_store` / `messaging_conversations` | messaging read cache | cache | fetch flow |
 | 11 | `ds_web_store` / `messaging_timelines` | messaging read cache | cache | fetch flow |
@@ -208,21 +207,16 @@ reconstructible from its source; **exception** is an owner-approved platform con
 | 23 | `ds-messaging-push` / `state` | push registration | exception | Kernel record; after-effects keep the fail-closed OPFS projection `{owner, epoch, generation}` the service worker reads |
 | 24 | `ds-web` / `app` | sketches (local layers) | work | local layer store (`local_layers` decisions) |
 
-Firebase Messaging's own IndexedDB is third-party implementation detail and
-stays.
-
-The folder-handle table (row 8) is the single IndexedDB use DS keeps: a
-`FileSystemDirectoryHandle` persists only by structured clone into IndexedDB,
-a browser platform constraint. One standalone web platform adapter
-(`ds-web/src/lib/storage/folder-handle-tokens.ts`) opens its own database,
-`ds-folder-handles`, with one object store holding `{random 128-bit token →
-handle}` and nothing else; every fact and lifecycle decision is
-`folder_connections`'.
+DS keeps no IndexedDB of its own. Firebase Messaging's own IndexedDB is
+third-party implementation detail and stays; it is the only one left. The Web
+live folder connections and their `ds-folder-handles` table are retired (owner,
+2026-10-20): live folders are native Desktop/Core only, and ds-web deletes that
+database at startup (`src/lib/storage/retired-databases.ts`).
 
 ## Proof
 
 Kernel: `cargo test --lib --features durable-store -- durable_store
-ui_preferences push_state folder_connections local_layer_store
+ui_preferences push_state local_layer_store
 grid_model_store work_drafts`. Core: `ds-sync-store` and `core.store` tests. Browser: the
 real-Chromium OPFS acceptance of the storage worker (reopen, worker loss
 mid-transaction, two tabs).

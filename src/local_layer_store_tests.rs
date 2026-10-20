@@ -30,9 +30,6 @@ fn ok(connection: &Connection, identity: &Identity, value: Value) -> Value {
 fn layer(id: &str) -> Value {
     json!({"id": id, "name": id, "geometryType": "Point"})
 }
-fn gis_layer(id: &str, handle_key: &str) -> Value {
-    json!({"id": id, "name": id, "sourceMetadata": {"kind": "gis_folder", "handleKey": handle_key}})
-}
 fn features(n: usize) -> String {
     serde_json::to_string(&(0..n).map(|i| json!({"id": format!("f{i}"), "geometry": null, "properties": {}})).collect::<Vec<_>>()).unwrap()
 }
@@ -108,37 +105,18 @@ fn a_catalogue_is_bounded_like_a_reopen_and_takes_no_bytes() {
     assert!(bytes.unwrap_err().starts_with(INVALID));
 }
 
-const T1: &str = "11111111111111111111111111111111";
-const T2: &str = "22222222222222222222222222222222";
-const T3: &str = "33333333333333333333333333333333";
-const T9: &str = "99999999999999999999999999999999";
-
-fn connect(connection: &Connection, key: &str, token: &str) {
-    let identity = alice();
-    crate::folder_connections::execute(
-        connection,
-        Input { identity: &identity, bytes: None },
-        serde_json::from_value(json!({"action":"connect","project":"kigali","logical_key":key,"folder_name":"F","token":token,"now":1})).unwrap(),
-    )
-    .unwrap();
-}
-
 #[test]
-fn the_sweep_removes_orphan_payloads_and_unreferenced_gis_folders_only() {
+fn the_sweep_removes_only_orphan_payloads() {
     let connection = db();
-    ok(&connection, &alice(), json!({"action":"write_catalogue","records":[gis_layer("a","gisFolder:live"), {"id":"carried/id"}],"revision":1,"now":1}));
+    ok(&connection, &alice(), json!({"action":"write_catalogue","records":[layer("a"), {"id":"carried/id"}],"revision":1,"now":1}));
     for id in ["a", "carried/id", "gone"] {
         ok(&connection, &alice(), json!({"action":"put_features","layer_id":id,"features":"[]","now":1}));
     }
-    connect(&connection, "gisFolder:live", T1);
-    connect(&connection, "gisFolder:stale", T2);
-    connect(&connection, "plsFolder:kigali:model", T3);
-    let swept = ok(&connection, &alice(), json!({"action":"sweep","present_tokens":[T1, T2, T3, T9]}));
+    let swept = ok(&connection, &alice(), json!({"action":"sweep"}));
     assert_eq!(swept["orphan_payloads"], 1);
-    assert_eq!(swept["stale_connections"], 1);
-    assert_eq!(swept["drop"], json!([T2, T9]));
+    assert!(features_of(&connection, &alice(), "a").is_string());
     assert!(features_of(&connection, &alice(), "gone").is_null());
     assert_eq!(features_of(&connection, &alice(), "carried/id"), "[]");
     let clean = ok(&connection, &alice(), json!({"action":"sweep"}));
-    assert_eq!(clean, json!({"orphan_payloads": 0, "stale_connections": 0, "drop": []}));
+    assert_eq!(clean, json!({"orphan_payloads": 0}));
 }

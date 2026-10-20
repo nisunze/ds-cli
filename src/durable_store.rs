@@ -125,10 +125,6 @@ pub enum Request {
     PushState {
         operation: crate::push_state::Operation,
     },
-    /// Folder connections; their directory handles stay in the web adapter.
-    FolderConnections {
-        operation: crate::folder_connections::Operation,
-    },
     /// Prepared local layers: the catalogue and each layer's payload.
     LocalLayerStore {
         operation: crate::local_layer_store::Operation,
@@ -166,7 +162,6 @@ impl Request {
             Request::UiPreferences { .. } => "ui_preferences",
             Request::RetainedReads { .. } => crate::retained_reads::STORE,
             Request::PushState { .. } => crate::push_state::STORE,
-            Request::FolderConnections { .. } => crate::folder_connections::STORE,
             Request::LocalLayerStore { .. } => crate::local_layer_store::STORE,
             Request::GridModelStore { .. } => crate::grid_model_store::STORE,
             Request::DesignRooms { .. } => crate::design_rooms::STORE,
@@ -189,7 +184,6 @@ impl Request {
             Request::UiPreferences { .. }
             | Request::RetainedReads { .. }
             | Request::PushState { .. }
-            | Request::FolderConnections { .. }
             | Request::LocalLayerStore { .. }
             | Request::GridModelStore { .. } => Ok(()),
             Request::DesignRooms { .. } => Ok(()),
@@ -436,9 +430,6 @@ pub fn execute(
                 }
                 Request::PushState { operation } => {
                     crate::push_state::execute(&transaction, input, operation)?
-                }
-                Request::FolderConnections { operation } => {
-                    crate::folder_connections::execute(&transaction, input, operation)?
                 }
                 Request::LocalLayerStore { operation } => {
                     crate::local_layer_store::execute(&transaction, input, operation)?

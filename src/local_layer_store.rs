@@ -12,7 +12,6 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::de::{Deserializer, IgnoredAny, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::collections::BTreeSet;
 
 pub const STORE: &str = "local_layer_store";
 pub const INVALID: &str = "local_layer_store_invalid";
@@ -57,13 +56,8 @@ pub enum Operation {
     GetFeatures { layer_id: String },
     /// Delete exactly the payloads a `local_layers` receipt released.
     DeleteFeatures { layer_ids: Vec<String> },
-    /// Storage hygiene: payloads no catalogue record names, GIS folder
-    /// connections no record references, and the adapter tokens to drop
-    /// (including those of `present_tokens` no connection names).
-    Sweep {
-        #[serde(default)]
-        present_tokens: Vec<String>,
-    },
+    /// Storage hygiene: delete the payloads no catalogue record names.
+    Sweep,
 }
 
 fn invalid(message: &str) -> String {
@@ -179,18 +173,6 @@ fn record_id(record: &Value) -> Option<&str> {
     record.get("id").and_then(Value::as_str).filter(|id| !id.is_empty())
 }
 
-/// The GIS folder connections the held records reference.
-fn referenced_folders(records: &[Value]) -> BTreeSet<String> {
-    records
-        .iter()
-        .filter_map(|record| record.get("sourceMetadata"))
-        .filter(|metadata| metadata.get("kind").and_then(Value::as_str) == Some("gis_folder"))
-        .filter_map(|metadata| metadata.get("handleKey").and_then(Value::as_str))
-        .filter(|key| !key.is_empty())
-        .map(str::to_owned)
-        .collect()
-}
-
 /// Delete payloads no catalogue record names; answers how many.
 fn prune(connection: &Connection, owner: &str) -> Result<u64, String> {
     let records = read_catalogue(connection, owner)?.map(|(records, _)| records).unwrap_or_default();
@@ -203,18 +185,6 @@ fn prune(connection: &Connection, owner: &str) -> Result<u64, String> {
         )
         .map_err(sql)?;
     Ok(pruned as u64)
-}
-
-fn sweep(connection: &Connection, owner: &str, present: &[String]) -> Result<Value, String> {
-    let records = read_catalogue(connection, owner)?.map(|(records, _)| records).unwrap_or_default();
-    let orphans = prune(connection, owner)?;
-    let connections = crate::folder_connections::retain_referenced_gis(connection, owner, &referenced_folders(&records))?;
-    let stale = connections.len();
-    let mut drop = connections;
-    drop.extend(crate::folder_connections::unreferenced_tokens(connection, present)?);
-    drop.sort();
-    drop.dedup();
-    Ok(json!({"orphan_payloads": orphans, "stale_connections": stale, "drop": drop}))
 }
 
 pub fn execute(connection: &Connection, input: Input, operation: Operation) -> Result<Outcome, String> {
@@ -282,7 +252,7 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
             outcome.generation_key = Some(format!("{STORE}.payloads"));
             return Ok(outcome);
         }
-        Operation::Sweep { present_tokens } => Outcome::written(fields(sweep(connection, &owner, &present_tokens)?)),
+        Operation::Sweep => Outcome::written(fields(json!({"orphan_payloads": prune(connection, &owner)?}))),
     };
     Ok(Outcome {
         generation_key: Some(format!("{STORE}.catalogue")),
