@@ -18,7 +18,7 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod browser;
+pub(crate) mod browser;
 mod machine;
 #[cfg(test)]
 mod tests;

@@ -37,14 +37,17 @@ pub mod compute_artifacts;
 pub mod deadletter;
 pub mod design;
 pub mod feedback;
+pub mod geodata;
 pub mod governance;
 pub mod help;
 pub mod installations;
 pub mod layers;
 pub mod maps;
 pub mod pipeline;
+pub mod report_artifacts;
 pub mod solar_inputs;
 pub mod sre;
+pub mod uploads;
 pub mod storage;
 #[cfg(feature = "durable-store")]
 pub mod retained;

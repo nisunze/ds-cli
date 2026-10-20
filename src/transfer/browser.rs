@@ -331,8 +331,9 @@ pub(crate) async fn upload(
     }
 }
 
-/// The typed browser export Svelte calls for one resumable upload.
-mod exports {
+/// The typed browser export Svelte calls for one resumable upload, and the
+/// same upload for Kernel flows that send bytes between two exchanges.
+pub(crate) mod exports {
     use js_sys::{Function, Promise, Uint8Array};
     use serde::Serialize;
     use wasm_bindgen::prelude::*;
@@ -342,6 +343,7 @@ mod exports {
 
     use super::{upload, Link, PartSource, Upload, Uploaded};
     use crate::gateway_exchange::browser::{facts, typed, GatewayHost};
+    use crate::gateway_exchange::Refusal;
     use crate::transfer::Cause;
 
     #[wasm_bindgen(typescript_custom_section)]
@@ -359,11 +361,14 @@ export interface UploadSource {
         pub type UploadSource;
 
         #[wasm_bindgen(method, getter)]
-        fn size(this: &UploadSource) -> f64;
+        pub(crate) fn size(this: &UploadSource) -> f64;
 
         #[wasm_bindgen(method, catch)]
         fn slice(this: &UploadSource, start: f64, end: f64) -> Result<JsValue, JsValue>;
     }
+
+    /// The refusal of a flow whose upload did not finish.
+    pub const UPLOAD_FAILED: &str = "upload_failed";
 
     /// How one resumable upload ended, as the page reads it.
     #[derive(Serialize, tsify::Tsify)]
@@ -486,36 +491,51 @@ export interface UploadSource {
         }
     }
 
+    impl UploadOutcome {
+        /// A finished upload, or the refusal a flow that uploaded rejects with.
+        pub(crate) fn finished(self) -> Result<(), Refusal> {
+            let (cause, message, retryable) = match self {
+                UploadOutcome::Done { .. } => return Ok(()),
+                UploadOutcome::Reopen { cause, message } => (cause, message, true),
+                UploadOutcome::Failed {
+                    cause,
+                    message,
+                    retryable,
+                } => (cause, message, retryable),
+            };
+            let mut refusal = Refusal::new(UPLOAD_FAILED, message);
+            refusal.status = match cause {
+                Cause::HttpStatus { status } => Some(status),
+                _ => None,
+            };
+            refusal.retryable = retryable;
+            Err(refusal)
+        }
+    }
+
     /// PUT one byte source to a DS-minted resumable storage session, resuming
     /// after an interruption, until the session's final answer. `progress`
     /// is told each acknowledged commit; aborting `signal` stops the upload
     /// with the session left resumable.
-    #[wasm_bindgen(js_name = resumableUpload, unchecked_return_type = "UploadOutcome")]
     #[allow(clippy::too_many_arguments)]
-    pub async fn resumable_upload(
-        host: GatewayHost,
-        session_uri: String,
+    pub(crate) async fn send(
+        host: &GatewayHost,
+        session_uri: &str,
         source: UploadSource,
-        content_type: Option<String>,
-        chunk_bytes: Option<f64>,
+        content_type: Option<&str>,
+        chunk_bytes: Option<u64>,
         yield_on_retry: bool,
-        #[wasm_bindgen(
-            unchecked_param_type = "((progress: UploadProgress) => void) | null | undefined"
-        )]
         progress: Option<Function>,
         signal: Option<AbortSignal>,
-    ) -> Result<JsValue, JsValue> {
+    ) -> UploadOutcome {
         let total_bytes = source.size().max(0.0) as u64;
-        let page = Page {
-            host: &host,
-            progress,
-        };
+        let page = Page { host, progress };
         let parts = Parts(source);
         let request = Upload {
-            session_uri: &session_uri,
+            session_uri,
             total_bytes,
-            content_type: content_type.as_deref(),
-            chunk_bytes: chunk_bytes.map(|bytes| bytes.max(0.0) as u64),
+            content_type,
+            chunk_bytes,
             yield_on_retry,
         };
         let running = std::pin::pin!(upload(request, &parts, &page));
@@ -532,7 +552,7 @@ export interface UploadSource {
                 }
             }
         };
-        typed(&match outcome {
+        match outcome {
             Uploaded::Done {
                 committed,
                 status,
@@ -551,6 +571,38 @@ export interface UploadSource {
                 cause,
                 retryable,
             },
-        })
+        }
+    }
+
+    /// One resumable upload, as Svelte calls it.
+    #[wasm_bindgen(js_name = resumableUpload, unchecked_return_type = "UploadOutcome")]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn resumable_upload(
+        host: GatewayHost,
+        session_uri: String,
+        source: UploadSource,
+        content_type: Option<String>,
+        chunk_bytes: Option<f64>,
+        yield_on_retry: bool,
+        #[wasm_bindgen(
+            unchecked_param_type = "((progress: UploadProgress) => void) | null | undefined"
+        )]
+        progress: Option<Function>,
+        signal: Option<AbortSignal>,
+    ) -> Result<JsValue, JsValue> {
+        let chunk_bytes = chunk_bytes.map(|bytes| bytes.max(0.0) as u64);
+        typed(
+            &send(
+                &host,
+                &session_uri,
+                source,
+                content_type.as_deref(),
+                chunk_bytes,
+                yield_on_retry,
+                progress,
+                signal,
+            )
+            .await,
+        )
     }
 }
