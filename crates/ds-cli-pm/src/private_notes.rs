@@ -418,7 +418,7 @@ mod tests {
             "notes_request_invalid"
         );
         assert!(CREATE.purpose.contains("not idempotent"));
-        assert!(UPDATE.purpose.contains("Omitted authored fields clear"));
+        assert!(UPDATE.purpose.contains("omitted fields clear or take owner defaults"));
         assert!(CREATE.purpose.contains("shared pm note create"));
     }
     #[test]
