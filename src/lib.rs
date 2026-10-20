@@ -229,6 +229,8 @@ pub mod byte_cache;
 pub mod media_outbox;
 #[cfg(feature = "durable-store")]
 pub mod upload_chunks;
+#[cfg(feature = "durable-store")]
+pub mod work_drafts;
 
 pub mod sync_store;
 #[cfg(feature = "wasm")]

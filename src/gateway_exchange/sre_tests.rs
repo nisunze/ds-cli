@@ -266,3 +266,26 @@ fn a_client_event_without_a_source_or_target_is_never_sent() {
     };
     assert!(matches!(start(call), Step::Refused(refusal) if refusal.code == INPUT_INVALID));
 }
+
+#[cfg(feature = "durable-store")]
+mod held_activity {
+    use super::super::{activity, held_activity, Activity};
+    use crate::gateway_exchange::retained::testing::{block_on, Answer, TestEdge};
+    use serde_json::json;
+
+    #[test]
+    fn the_last_activity_window_is_held_for_the_account_that_read_it() {
+        let edge = TestEdge::new();
+        assert_eq!(block_on(held_activity(&edge)).unwrap(), None);
+        edge.answer(Answer::Ndjson(vec![
+            json!({"event_id": "e1", "trace_id": "t1", "service": "brain", "outcome": "success"}),
+            json!({"__type": "summary", "table": "sre_requests", "count": 1, "status": "ok"}),
+        ]));
+        let fresh = block_on(activity(&edge, Activity { days: 1, limit: 10 })).expect("a window");
+        assert_eq!(fresh.count, 1);
+        edge.online.set(false);
+        assert_eq!(block_on(held_activity(&edge)).unwrap(), Some(fresh));
+        edge.sign_in("someone-else");
+        assert_eq!(block_on(held_activity(&edge)).unwrap(), None);
+    }
+}

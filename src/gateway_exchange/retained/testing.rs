@@ -20,6 +20,8 @@ use crate::gateway_exchange::{
 pub(crate) enum Answer {
     /// A JSON body with this status.
     Json(u16, Value),
+    /// A newline-delimited JSON stream, one value per line.
+    Ndjson(Vec<Value>),
     /// No answer arrived.
     Failed(Failure),
 }
@@ -106,6 +108,14 @@ impl Edge for TestEdge {
                                 retry_after: None,
                             },
                             body.to_string().into_bytes(),
+                        ),
+                        Answer::Ndjson(lines) => (
+                            Observed::Response {
+                                status: 200,
+                                content_type: Some("application/x-ndjson".into()),
+                                retry_after: None,
+                            },
+                            lines.iter().map(|line| format!("{line}\n")).collect::<String>().into_bytes(),
                         ),
                         Answer::Failed(cause) => (
                             Observed::Failure {

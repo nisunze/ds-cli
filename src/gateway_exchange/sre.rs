@@ -9,6 +9,11 @@ use serde_json::{json, Map, Value};
 
 use super::{data, Admitted, Exchange, Method, Plan, Refusal, Request};
 use crate::server_status;
+#[cfg(feature = "durable-store")]
+use {
+    super::retained::{self, Edge},
+    crate::retained_reads::Kind,
+};
 
 const OVERVIEW_PATH: &str = "/api/v1/sre/overview";
 const EVENTS_PATH: &str = "/api/v1/sre/requests";
@@ -235,7 +240,7 @@ pub struct SreActivityEvent {
 }
 
 /// One activity window, and the count its summary line confirmed.
-#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
 pub struct SreActivity {
     pub rows: Vec<SreActivityEvent>,
@@ -537,11 +542,34 @@ impl Exchange for ClientEvent {
     }
 }
 
+/// The activity window this device last read, painted before any request;
+/// no transport.
+#[cfg(feature = "durable-store")]
+pub async fn held_activity(edge: &impl Edge) -> Result<Option<SreActivity>, Refusal> {
+    let observed = retained::read::<SreActivity>(edge, Kind::SreActivity, None, "").await?;
+    Ok(observed.held.map(|held| held.value))
+}
+
+/// A fresh activity window from Brain, held under the account its read
+/// observed so the next open (and an offline one) paints it at once.
+#[cfg(feature = "durable-store")]
+pub async fn activity(edge: &impl Edge, window: Activity) -> Result<SreActivity, Refusal> {
+    let observed = retained::read::<serde::de::IgnoredAny>(edge, Kind::SreActivity, None, "").await.ok();
+    let fresh = edge.fetch(window).await?;
+    if let Some(observed) = observed {
+        let owner = observed.owner.as_deref();
+        let _ = retained::write(edge, owner, Kind::SreActivity, None, "", &fresh, None).await;
+    }
+    Ok(fresh)
+}
+
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
     use super::{snapshot_read, Activity, ClientEvent, Overview, ServerSnapshot, SreClientEvent};
-    use crate::gateway_exchange::browser::{attempt, facts, run, typed, GatewayHost};
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::browser::{attempt, facts, rejection, run, typed, GatewayHost};
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
     use wasm_bindgen::prelude::*;
 
     /// The platform's reliability overview.
@@ -550,14 +578,30 @@ mod exports {
         typed(&run(&host, Overview).await?)
     }
 
-    /// One window of request activity: `days` back, at most `limit` rows.
+    /// One window of request activity: `days` back, at most `limit` rows,
+    /// held for the next open.
     #[wasm_bindgen(js_name = sreActivity, unchecked_return_type = "SreActivity")]
     pub async fn sre_activity(
         host: GatewayHost,
+        store: StoreHost,
         days: u32,
         limit: u32,
     ) -> Result<JsValue, JsValue> {
-        typed(&run(&host, Activity { days, limit }).await?)
+        let edge = BrowserEdge::new(host, store);
+        let fresh = super::activity(&edge, Activity { days, limit })
+            .await
+            .map_err(|refusal| rejection(&refusal))?;
+        typed(&fresh)
+    }
+
+    /// The activity window this device holds, or null; no transport.
+    #[wasm_bindgen(js_name = sreActivityHeld, unchecked_return_type = "SreActivity | null")]
+    pub async fn sre_activity_held(host: GatewayHost, store: StoreHost) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        let held = super::held_activity(&edge)
+            .await
+            .map_err(|refusal| rejection(&refusal))?;
+        typed(&held)
     }
 
     /// The box's status snapshot as the monitor reads it; never rejects for

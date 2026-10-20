@@ -159,6 +159,7 @@ SHA-256 per part, so a read verifies only the parts it returns.
 | `byte_cache` | `src/byte_cache.rs`; parts in `src/byte_parts.rs` | identity | content-addressed: content is unique per owner and SHA-256 and never shared across owners. Entries are `(kind, key)` of the closed kinds `photo`, `compute_artifact`, `report_preview`, `grid_remote_version`, each naming content with a media type and a small JSON `meta`. `has` compares stored lengths and reads no bytes; `get` verifies the part it answers, and a corrupt part drops its content with every entry naming it and answers a miss; `put` arrives part by part and a declared SHA-256 must match; `delete`. One retention rule: past its kind's byte budget, the owner's oldest entries of that kind leave first. A photo read serves a pending upload's bytes first and a photo put never replaces them. Generations `byte_cache.<kind>`; no importer |
 | `media_outbox` | `src/media_outbox.rs`; transitions in `src/survey_photo_outbox.rs` | identity; a signed-in account queues | one row per pending upload and its bytes (the original, then its thumbnail companion) in its own work tables, which no retention reaches: `admit`, `claim` (recover abandoned leases, drive, dispatch each target with its SHA-256), `read` (a target's bytes for its transfer), `settle` (a verified upload moves both into `byte_cache` as photos and removes the row), `retry_failed`, `counts`, `failed`. Batched legacy source `ds_web_store` `blob_outbox` with its pinned `photos` bytes: this account's rows only |
 | `upload_chunks` | `src/upload_chunks.rs` | identity, the signed-out one included | Arrow IPC chunks by (workspace, file, layer, chunk), the keys sketch layers keep: `put` (replaces), `get`, `list` (no bytes), `clear_layer`, `clear_workspace`; damaged bytes are reported, never dropped. Batched legacy source `ds_web_store` `upload_chunks` (inline bytes or OPFS spill files) |
+| `work_drafts` | `src/work_drafts.rs` | account, or account + project per kind; a signed-out identity holds none | a person's unsent drafts by closed `Kind` (`messaging_message`, `form_editor`, `design_comparison` per project): per kind a fence, key grammar, value byte bound and per-account row bound; a full kind refuses `work_drafts_full` and nothing is evicted. `read`, `list` (keys, small `meta` and times, never values), `put`, `delete`; JSON only; no importer |
 
 ### Plain caches reuse `retained_reads`
 
@@ -207,10 +208,10 @@ a receipt; **cache** is reconstructible from its source and needs no importer;
 
 | # | Database / object store | Domain (ds-web owners) | Class | Target |
 | --- | --- | --- | --- | --- |
-| 1 | `ds_web_store` / `tabular` | SRE activity (`routes/sre`) | cache | fetch flow |
+| 1 | `ds_web_store` / `tabular` | SRE activity (`routes/sre`) | cache | `retained_reads.sre_activity` |
 | 2 | `ds_web_store` / `active_project` | navigation (`stores/app.ts`) | cache | `ui_preferences.active_project` |
 | 3 | `ds_web_store` / `map_state` | map state (`layers/loader`, `survey/loader`, `api/pipeline`) | cache | fetch flow |
-| 4 | `ds_web_store` / `cache` | session cache and `persist:` keys: preferences, drafts, Solar workspace, PM retry, reconciliation, help, tutorials, maps3d | per key | preferences → `ui_preferences`; drafts and queues → work stores; response caches → fetch flows |
+| 4 | `ds_web_store` / `cache` | session cache and `persist:` keys: preferences, drafts, Solar workspace, PM retry, reconciliation, help, tutorials, maps3d | per key | preferences → `ui_preferences`; drafts → `work_drafts`; queues → work stores; response caches → fetch flows; session entries → page memory (`$lib/stores/cache`) |
 | 5 | `ds_web_store` / `photos` | survey and Solar media bytes | cache, except pinned bytes of pending uploads (work) | byte store |
 | 6 | `ds_web_store` / `blob_outbox` | pending media uploads (`api/blob-sync.ts`) | work | byte outbox |
 | 7 | `ds_web_store` / `upload_chunks` | upload workspace Arrow chunks | work (in progress) | byte store |
@@ -248,6 +249,6 @@ left and retires without an importer.
 
 Kernel: `cargo test --lib --features durable-store -- durable_store
 ui_preferences push_state folder_connections local_layer_store
-grid_model_store`. Core: `ds-sync-store` and `core.store` tests. Browser: the
+grid_model_store work_drafts`. Core: `ds-sync-store` and `core.store` tests. Browser: the
 real-Chromium OPFS acceptance of the storage worker (reopen, worker loss
 mid-transaction, two tabs).

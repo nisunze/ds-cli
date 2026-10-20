@@ -154,6 +154,10 @@ pub enum Request {
     UploadChunks {
         operation: crate::upload_chunks::Operation,
     },
+    /// A person's unsent drafts on this device.
+    WorkDrafts {
+        operation: crate::work_drafts::Operation,
+    },
 }
 impl Request {
     pub fn store(&self) -> &'static str {
@@ -170,6 +174,7 @@ impl Request {
             Request::ByteCache { .. } => crate::byte_cache::STORE,
             Request::MediaOutbox { .. } => crate::media_outbox::STORE,
             Request::UploadChunks { .. } => crate::upload_chunks::STORE,
+            Request::WorkDrafts { .. } => crate::work_drafts::STORE,
         }
     }
     /// Refuse a store whose native home is its own Core command, so one store
@@ -190,6 +195,7 @@ impl Request {
             | Request::GridModelStore { .. } => Ok(()),
             Request::DesignRooms { .. } => Ok(()),
             Request::ByteCache { .. } | Request::MediaOutbox { .. } | Request::UploadChunks { .. } => Ok(()),
+            Request::WorkDrafts { .. } => Ok(()),
         }
     }
 }
@@ -550,6 +556,9 @@ pub fn execute(
                 }
                 Request::UploadChunks { operation } => {
                     crate::upload_chunks::execute(&transaction, input, operation)?
+                }
+                Request::WorkDrafts { operation } => {
+                    crate::work_drafts::execute(&transaction, input, operation)?
                 }
                 Request::Status { .. } | Request::GridProjectCatalog { .. } => {
                     unreachable!("statement-protocol stores are answered above")
