@@ -118,3 +118,18 @@ fn preferences_carry_no_payload_bytes() {
     .unwrap_err();
     assert!(error.contains("no payload bytes"), "{error}");
 }
+
+#[test]
+fn properties_docking_is_a_local_account_boolean() {
+    let db = Connection::open_in_memory().unwrap();
+    let read = json!({"action":"get","keys":["properties_prefer_docked"]});
+    assert_eq!(run(&db, "a", read.clone()).unwrap()["values"]["properties_prefer_docked"], Value::Null);
+    run(&db, "a", json!({"action":"set","key":"properties_prefer_docked","value":true,"now":1})).unwrap();
+    assert_eq!(run(&db, "a", read.clone()).unwrap()["values"]["properties_prefer_docked"], true);
+    assert_eq!(run(&db, "b", read.clone()).unwrap()["values"]["properties_prefer_docked"], Value::Null);
+    for value in [json!("true"), json!(1), json!({"preferDocked":true})] {
+        assert!(run(&db, "a", json!({"action":"set","key":"properties_prefer_docked","value":value,"now":2})).unwrap_err().starts_with(INVALID));
+    }
+    assert!(run(&db, "a", json!({"action":"get","project":"project-a","keys":["properties_prefer_docked"]})).is_err());
+    assert_eq!(run(&db, "a", read).unwrap()["values"]["properties_prefer_docked"], true);
+}

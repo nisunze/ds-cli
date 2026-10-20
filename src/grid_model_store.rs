@@ -8,6 +8,8 @@
 //! the Profile. Removing a model removes everything here that belongs to it in
 //! one transaction. The `.dsgrid` working copies themselves join this store
 //! with the byte channel.
+pub mod models;
+use crate::byte_parts::Share;
 use crate::durable_store::{Input, Outcome};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -272,6 +274,14 @@ pub struct GroupModel {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
+    Checkpoint { model: models::Model, payload: Share },
+    ListModels,
+    GetModel { model_id: String, #[serde(default)] part: u64, #[serde(default)] expect_version: Option<String> },
+    RenameModel { model_id: String, name: String },
+    BindModel { model_id: String, binding: models::Binding, #[serde(default)] workspace_owner: Option<WorkspaceOwner> },
+    AssignMvWorkspace { model_id: String, project: String, project_model_id: String },
+    DetachModels { project: String, project_model_id: String },
+    ClearModels,
     /// Retain one check result (re-running a check mints a new id).
     PutResult { result: ResultRecord },
     /// One model's retained results, newest first.
@@ -399,6 +409,7 @@ fn remove_model(connection: &Connection, owner: &str, model: Option<String>, gro
     }
     let mut results = 0;
     if let Some(model) = &model {
+        models::remove(connection, owner, model)?;
         let backed: Vec<String> = {
             let mut statement = connection
                 .prepare("SELECT group_id FROM grid_model_groups WHERE owner=?1 AND session_model_id=?2")
@@ -469,14 +480,23 @@ fn kind(outcome: Outcome, kind: &str) -> Outcome {
 }
 
 pub fn execute(connection: &Connection, input: Input, operation: Operation) -> Result<Outcome, String> {
-    if input.bytes.is_some() {
-        return Err(invalid("results, groups and sessions carry no payload bytes"));
+    if input.bytes.is_some() && !matches!(operation, Operation::Checkpoint { .. }) {
+        return Err(invalid("only a checkpoint carries payload bytes"));
     }
     connection
         .execute_batch(&format!("{RESULTS};{RESULTS_BY_MODEL};{GROUPS};{SESSIONS}"))
         .map_err(sql)?;
+    models::schema(connection)?;
     let owner = input.identity.owner();
     Ok(match operation {
+        Operation::Checkpoint { model, payload } => models::checkpoint(connection, &owner, model, payload, input.bytes)?,
+        Operation::ListModels => kind(Outcome::read(fields(json!({"models": models::list(connection, &owner)?}))), "models"),
+        Operation::GetModel { model_id, part, expect_version } => models::get(connection, &owner, &model_id, part, expect_version.as_deref())?,
+        Operation::RenameModel { model_id, name } => models::rename(connection, &owner, &model_id, &name)?,
+        Operation::BindModel { model_id, binding, workspace_owner } => models::bind(connection, &owner, &model_id, binding, workspace_owner)?,
+        Operation::AssignMvWorkspace { model_id, project, project_model_id } => models::project_models(connection, &owner, &project, &project_model_id, Some(&model_id))?,
+        Operation::DetachModels { project, project_model_id } => models::project_models(connection, &owner, &project, &project_model_id, None)?,
+        Operation::ClearModels => models::clear(connection, &owner)?,
         Operation::PutResult { result } => {
             write_result(connection, &owner, &result)?;
             kind(Outcome::written(fields(json!({"result_id": result.result_id}))), "results")

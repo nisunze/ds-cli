@@ -23,6 +23,7 @@ pub(in crate::ui_preferences) fn name(key: Key) -> &'static str {
         Key::CreateTransformerMapSources => "create_transformer_map_sources",
         Key::UploadDialogLayout => "upload_dialog_layout",
         Key::PropertiesDockWidth => "properties_dock_width",
+        Key::PropertiesPreferDocked => "properties_prefer_docked",
         Key::StyleCenterLayout => "style_center_layout",
         Key::MessagingNotificationDismissals => "messaging_notification_dismissals",
         Key::LocalClassStyles => "local_class_styles",
@@ -70,6 +71,7 @@ pub(in crate::ui_preferences) fn project_scoped(key: Key) -> bool {
         | Key::CreateTransformerMapSources
         | Key::UploadDialogLayout
         | Key::PropertiesDockWidth
+        | Key::PropertiesPreferDocked
         | Key::StyleCenterLayout
         | Key::MessagingNotificationDismissals
         | Key::LocalClassStyles => false,
@@ -110,7 +112,7 @@ pub(in crate::ui_preferences) fn admit(key: Key, value: &Value) -> Option<Value>
         Key::WorkingArea => workbench::working_area(value),
         Key::ProfileOccupancy => workbench::profile_occupancy(value),
         Key::PinnedTransformers => design::pinned_transformers(value),
-        Key::PinnedGroupVisible => design::switch(value),
+        Key::PinnedGroupVisible | Key::PropertiesPreferDocked => design::switch(value),
         Key::ActiveLvTransformer => design::active_lv_transformer(value),
         Key::ProcessPreset => design::process_preset(value),
         Key::ProcessSetup => design::process_setup(value),
