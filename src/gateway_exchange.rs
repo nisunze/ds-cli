@@ -39,6 +39,7 @@ pub mod design;
 pub mod feedback;
 pub mod geodata;
 pub mod governance;
+pub mod grid_models;
 pub mod help;
 pub mod installations;
 pub mod layers;
