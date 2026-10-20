@@ -474,6 +474,23 @@ fn choose_many<const N: usize>(items: [Option<String>; N]) -> Result<String, Ref
         Err(Refusal::InvalidInput)
     }
 }
+/// The create-only Firestore commit of one queued create: its wire payload,
+/// the queue row's identity (`project_id`, `form_id`, `doc_id`,
+/// `idempotency_key`, `created_at`) and the signed-in authority.
+pub fn direct_plan_for(
+    payload: &Value,
+    row: &Value,
+    authority: &direct::Authority,
+) -> Result<direct::DirectPlan, Refusal> {
+    let wire: WireRequest =
+        serde_json::from_value(payload.clone()).map_err(|_| Refusal::InvalidInput)?;
+    if let Some(geometry) = &wire.geometry {
+        admitted(geometry).map_err(|_| Refusal::InvalidInput)?;
+    }
+    let row: WireRow = serde_json::from_value(row.clone()).map_err(|_| Refusal::InvalidInput)?;
+    let (request, project) = canonical_wire_request(wire, Some(row))?;
+    direct::plan(&request, &project, authority)
+}
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     if input.len() > MAX_INPUT_BYTES {
         return Err(Refusal::InvalidInput.message().into());

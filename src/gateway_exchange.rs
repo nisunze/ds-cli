@@ -68,6 +68,7 @@ pub mod report_receipts;
 pub mod solar_inputs;
 pub mod sre;
 pub mod survey;
+pub mod survey_create;
 pub mod survey_reports;
 pub mod uploads;
 pub mod storage;

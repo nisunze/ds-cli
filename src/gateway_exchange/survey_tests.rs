@@ -131,7 +131,7 @@ fn a_mutation_is_one_put_never_resent_and_read_as_the_outbox_does() {
         }
     );
     let invalid = Mutation {
-        payload: json!({"operation": "create"}).as_object().cloned().unwrap(),
+        payload: json!({"operation": "archive"}).as_object().cloned().unwrap(),
     };
     assert_eq!(
         mutation_outcome(invalid.plan().map(|_| Value::Null)),
@@ -164,4 +164,24 @@ fn a_discard_audit_names_its_project_and_bounded_entries() {
         .code,
         INPUT_INVALID
     );
+}
+
+#[test]
+fn a_restore_is_a_mutation_too() {
+    let payload = json!({"operation": "restore", "project_id": "it_rwanda", "form_id": "poles", "doc_id": "d1"});
+    let call = Mutation {
+        payload: payload.as_object().cloned().unwrap(),
+    };
+    assert_eq!(call.plan().unwrap().request.path, "/api/v1/entries/mutate");
+}
+
+#[test]
+fn a_native_create_waits_with_a_typed_refusal_until_brain_takes_creates() {
+    let call = Mutation {
+        payload: json!({"operation": "create", "project_id": "it_rwanda", "form_id": "poles", "doc_id": "d1"})
+            .as_object()
+            .cloned()
+            .unwrap(),
+    };
+    assert_eq!(call.plan().unwrap_err().code, crate::gateway_exchange::survey_create::ROUTE_PENDING);
 }

@@ -139,7 +139,7 @@ fn unreadable(error: impl std::fmt::Display) -> JsValue {
     .into()
 }
 
-async fn credentials(host: &GatewayHost) -> Result<GatewayCredentials, JsValue> {
+pub(crate) async fn credentials(host: &GatewayHost) -> Result<GatewayCredentials, JsValue> {
     let answer = JsFuture::from(Promise::resolve(&host.ask_credentials()?)).await?;
     tsify::serde_wasm_bindgen::from_value(answer).map_err(unreadable)
 }
@@ -324,6 +324,31 @@ fn builder(
         builder = builder.body(serde_json::to_vec(body).map_err(unreadable)?);
     }
     Ok(builder)
+}
+
+/// One POST outside the gateway, to an endpoint the Kernel names (a survey
+/// create's Firestore commit): the person's own bearer, JSON both ways, no
+/// cookies and no platform headers, within a deadline and a response bound.
+/// `None` when no complete answer arrived.
+pub(crate) async fn direct_post(
+    url: &str,
+    bearer: &str,
+    body: &serde_json::Value,
+    timeout_ms: u64,
+    cap: u64,
+) -> Option<(u16, Vec<u8>)> {
+    let body = serde_json::to_vec(body).ok()?;
+    let builder = reqwest::Client::new()
+        .post(url)
+        .header("Authorization", format!("Bearer {bearer}"))
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json")
+        .fetch_credentials_omit()
+        .body(body);
+    match within(exchange(builder, cap), timeout_ms).await? {
+        Read::Answer { status, bytes, .. } => Some((status, bytes)),
+        Read::Oversized | Read::Failed(_) => None,
+    }
 }
 
 /// Send one request and observe its answer, or why none arrived.

@@ -161,9 +161,17 @@ impl Exchange for Mutation {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let operation = self.payload.get("operation").and_then(Value::as_str);
-        if !matches!(operation, Some("update" | "delete")) {
+        if operation == Some("create") {
+            // Native survey creates go through the mutate API once Brain takes
+            // them; until then the create waits in its queue.
+            return Err(Refusal::new(
+                super::survey_create::ROUTE_PENDING,
+                "Brain's mutate API does not take survey creates yet; the create waits.",
+            ));
+        }
+        if !matches!(operation, Some("update" | "delete" | "restore")) {
             return Err(input_invalid(
-                "A survey mutation updates or deletes one entry.",
+                "A survey mutation updates, deletes or restores one entry.",
             ));
         }
         let request = Request {
