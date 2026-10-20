@@ -14,6 +14,7 @@ pub mod inventory;
 pub mod layout_admission;
 pub mod lifecycle;
 pub mod map;
+pub mod map_text;
 pub mod map_policy;
 pub mod mv;
 pub mod mv_booklet;
