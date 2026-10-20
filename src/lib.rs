@@ -219,6 +219,16 @@ pub mod durable_store;
 pub mod ui_preferences;
 #[cfg(feature = "durable-store")]
 pub mod retained_reads;
+#[cfg(feature = "durable-store")]
+pub mod push_state;
+#[cfg(feature = "durable-store")]
+pub mod folder_connections;
+#[cfg(feature = "durable-store")]
+pub mod local_layer_store;
+#[cfg(feature = "durable-store")]
+pub mod grid_model_store;
+#[cfg(feature = "durable-store")]
+pub mod import_batches;
 
 pub mod sync_store;
 #[cfg(feature = "wasm")]

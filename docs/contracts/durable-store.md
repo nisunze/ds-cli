@@ -112,6 +112,14 @@ CONFLICT DO NOTHING`, so a value written since the upgrade is never replaced.
 An entry no reader owns is skipped and counted. Importers run once per
 identity, the anonymous one included.
 
+A source too large for one call imports in batches (`src/import_batches.rs`):
+each batch writes its entries with `ON CONFLICT DO NOTHING` and adds them to
+the identity's running tally (counts and a SHA-256 chain over the batches as
+handed over); the finishing call records the one receipt through `import_once`
+and clears the tally, and a batch after the receipt refuses.
+`durable_store::held_receipt` answers whether an import still has to run, so a
+host reads a legacy source only when it does.
+
 ## Effects
 
 `Effect` is a closed vocabulary: `write_file {file, contents}` and
@@ -136,6 +144,10 @@ them as private files beside the request and answer.
 | --- | --- | --- | --- |
 | `ui_preferences` | `src/ui_preferences.rs`; value contracts in `src/ui_preferences/values.rs`, the `persistent_cache` legacy table and readers in `src/ui_preferences/legacy.rs` | account, or account + project per key | closed key list with per-key `max_bytes` (default 64 KiB) and canonicalising `admit`; `active_project` (account); legacy source `persistent_cache` |
 | `retained_reads` | `src/retained_reads.rs`; flow helpers and the `Edge` port in `src/gateway_exchange/retained.rs` | account, or account + project per kind | closed `Kind` list; per kind a fence, key grammar, value byte bound and per-owner row bound with least-recently-used eviction; read, list, write (optionally conditional on the kind's generation), replace_set, invalidate, forget; per-kind generations `retained_reads.<kind>`; JSON only |
+| `push_state` | `src/push_state.rs` | browser profile: the (lane, audience) digest and the Firebase app id; the session owner is the bound principal, so a sign-out reaches the record | one record per app id: generation, session, opt-in and registered owner, fid, installation hash, epoch. `effects_before` deletes the push projection before every write but activation; every write's after-effect re-states it from the committed record (written when active, deleted otherwise). Legacy source `ds-messaging-push/state`: the account's opt-in only; an opt-in or disable here supersedes it |
+| `folder_connections` | `src/folder_connections.rs` | identity; the project per row, matched exactly | logical key, project, folder name, kind (`gis_folder`, `pls_folder`, `export_workspace`, `other`), a unique 128-bit token, times. `drop` names the tokens the web adapter deletes. Legacy source `ds_web_store/folder_connections` |
+| `local_layer_store` | `src/local_layer_store.rs`; decisions stay in `src/local_layers.rs` | identity | the held catalogue records verbatim (at most 2000, 16 MiB) and one payload per record id (one JSON array of features, at most 256 MiB, counted). The sweep prunes payloads no record names and drops only unreferenced `gisFolder:` connections. Generations `catalogue` and `payloads`. Batched legacy source `ds-web/app` |
+| `grid_model_store` | `src/grid_model_store.rs` | identity; a session per project or none | retained check results, temporary groups (id derived from the source digest) and remembered sessions; `remove_model` removes a model's groups, results and sessions in one transaction. Generations `results`, `groups`, `sessions`. Batched legacy source `ds-grid-catalog` (`results`, `temp_groups`); the `.dsgrid` working copies join with the byte store |
 
 ### Plain caches reuse `retained_reads`
 
@@ -212,9 +224,19 @@ a receipt; **cache** is reconstructible from its source and needs no importer;
 Firebase Messaging's own IndexedDB is third-party implementation detail and
 stays.
 
+The folder-handle table (row 8) is the single IndexedDB use DS keeps: a
+`FileSystemDirectoryHandle` persists only by structured clone into IndexedDB,
+a browser platform constraint. One standalone web platform adapter
+(`ds-web/src/lib/storage/folder-handle-tokens.ts`) opens its own database,
+`ds-folder-handles`, with one object store holding `{random 128-bit token →
+handle}` and nothing else; every fact and lifecycle decision is
+`folder_connections`'. `ds-grid-catalog/model_links` had no reader or writer
+left and retires without an importer.
+
 ## Proof
 
 Kernel: `cargo test --lib --features durable-store -- durable_store
-ui_preferences`. Core: `ds-sync-store` and `core.store` tests. Browser: the
+ui_preferences push_state folder_connections local_layer_store
+grid_model_store`. Core: `ds-sync-store` and `core.store` tests. Browser: the
 real-Chromium OPFS acceptance of the storage worker (reopen, worker loss
 mid-transaction, two tabs).

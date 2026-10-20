@@ -122,6 +122,22 @@ pub enum Request {
     RetainedReads {
         operation: crate::retained_reads::Operation,
     },
+    /// Messaging push on one browser profile and its fail-closed projection.
+    PushState {
+        operation: crate::push_state::Operation,
+    },
+    /// Folder connections; their directory handles stay in the web adapter.
+    FolderConnections {
+        operation: crate::folder_connections::Operation,
+    },
+    /// Prepared local layers: the catalogue and each layer's payload.
+    LocalLayerStore {
+        operation: crate::local_layer_store::Operation,
+    },
+    /// The local DS Grid workspace: results, temporary groups, sessions.
+    GridModelStore {
+        operation: crate::grid_model_store::Operation,
+    },
 }
 impl Request {
     pub fn store(&self) -> &'static str {
@@ -130,6 +146,10 @@ impl Request {
             Request::GridProjectCatalog { .. } => "grid_project_catalog",
             Request::UiPreferences { .. } => "ui_preferences",
             Request::RetainedReads { .. } => crate::retained_reads::STORE,
+            Request::PushState { .. } => crate::push_state::STORE,
+            Request::FolderConnections { .. } => crate::folder_connections::STORE,
+            Request::LocalLayerStore { .. } => crate::local_layer_store::STORE,
+            Request::GridModelStore { .. } => crate::grid_model_store::STORE,
         }
     }
     /// Refuse a store whose native home is its own Core command, so one store
@@ -142,7 +162,12 @@ impl Request {
             Request::GridProjectCatalog { .. } => Err(format!(
                 "{NOT_CORE}: grid_project_catalog is served by design.model.catalog, not core.store"
             )),
-            Request::UiPreferences { .. } | Request::RetainedReads { .. } => Ok(()),
+            Request::UiPreferences { .. }
+            | Request::RetainedReads { .. }
+            | Request::PushState { .. }
+            | Request::FolderConnections { .. }
+            | Request::LocalLayerStore { .. }
+            | Request::GridModelStore { .. } => Ok(()),
         }
     }
 }
@@ -190,8 +215,11 @@ pub enum Effect {
 
 /// Effects the host must complete before the call's transaction, so a crash
 /// between them fails closed.
-pub fn effects_before(_call: &Call) -> Vec<Effect> {
-    Vec::new()
+pub fn effects_before(call: &Call) -> Vec<Effect> {
+    match &call.request {
+        Request::PushState { operation } => crate::push_state::effects_before(operation),
+        _ => Vec::new(),
+    }
 }
 
 /// What a store module receives besides its operation.
@@ -283,6 +311,34 @@ pub struct ImportReceipt {
     pub sha256: String,
     pub at_ms: u64,
 }
+/// The receipt this identity holds for one store and source, if its import
+/// ran: what a store answers as `import_needed` without reading the source.
+pub fn held_receipt(
+    connection: &Connection,
+    identity: &Identity,
+    store: &str,
+    source: &str,
+) -> Result<Option<ImportReceipt>, String> {
+    connection.execute_batch(IMPORTS).map_err(sql)?;
+    connection
+        .query_row(
+            "SELECT count,skipped,sha256,at_ms FROM durable_store_imports WHERE owner=?1 AND store=?2 AND source=?3",
+            params![identity.owner(), store, source],
+            |row| {
+                Ok(ImportReceipt {
+                    store: store.into(),
+                    source: source.into(),
+                    count: row.get::<_, i64>(0)? as u64,
+                    skipped: row.get::<_, i64>(1)? as u64,
+                    sha256: row.get(2)?,
+                    at_ms: row.get::<_, i64>(3)? as u64,
+                })
+            },
+        )
+        .optional()
+        .map_err(sql)
+}
+
 /// Run a legacy import at most once per owner, store and source. A held
 /// receipt answers without running `import`; otherwise `import` writes its
 /// rows (never replacing newer ones) and answers `(count, skipped)`, and the
@@ -448,6 +504,18 @@ pub fn execute(
                 }
                 Request::RetainedReads { operation } => {
                     crate::retained_reads::execute(&transaction, input, operation)?
+                }
+                Request::PushState { operation } => {
+                    crate::push_state::execute(&transaction, input, operation)?
+                }
+                Request::FolderConnections { operation } => {
+                    crate::folder_connections::execute(&transaction, input, operation)?
+                }
+                Request::LocalLayerStore { operation } => {
+                    crate::local_layer_store::execute(&transaction, input, operation)?
+                }
+                Request::GridModelStore { operation } => {
+                    crate::grid_model_store::execute(&transaction, input, operation)?
                 }
                 Request::Status { .. } | Request::GridProjectCatalog { .. } => {
                     unreachable!("statement-protocol stores are answered above")
