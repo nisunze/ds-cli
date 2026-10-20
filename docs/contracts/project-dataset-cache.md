@@ -212,3 +212,11 @@ there is none: `not_seeded`, `bundle_unpublished`, or `cloud_resident` for a
 dataset that is never held on any machine. `CatalogEntry` carries `residency`
 and `unpublished` for that. Contract: [foundation-datasets.md](foundation-datasets.md)
 R5–R6.
+
+## 2026-10-20 — the building decoder leaves
+
+Brain's `query_print_context` answers 501, so no page or host acquires
+building footprints through it any more, and `decode_buildings` with its
+per-footprint admission leaves. Footprints arrive through the publisher path
+`ds data project-cache seed` admits; the four named refusals above describe
+that retired decoder.
