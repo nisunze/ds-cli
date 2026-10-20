@@ -357,7 +357,7 @@ An unavailable inventory remains absent (never an invented empty list) and is
 recorded separately from a failed project-source read. Authentication, offline
 reads and genuine project-service failures retain their existing refusals.
 
-The shared `compute_artifact_inventory::evaluate_head` validator owns safe
+The shared `compute_artifact_inventory::decode_head` validator owns safe
 published-head decoding for native and WASM consumers. Solar operations are
 `calculate-<city>`, `report-<city>` and `portfolio-<portfolio>`; each governed
 identity has its own 128-byte bound. Portfolio identities are not city ids.

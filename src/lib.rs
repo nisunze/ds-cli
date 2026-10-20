@@ -44,16 +44,6 @@ pub fn build_solar_prompt_bundle_wasm(input: &[u8]) -> Result<Vec<u8>, wasm_bind
     solar_report_bundle::build_encoded(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
 
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = solarReportBundleMediaName)]
-pub fn solar_report_bundle_media_name_wasm(
-    reference: &str,
-    index: usize,
-) -> Result<String, wasm_bindgen::JsValue> {
-    solar_report_bundle::media_name(reference, index)
-        .map_err(|e| wasm_bindgen::JsValue::from_str(&e))
-}
-
 pub mod solar_portfolio_graphs;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = solarPortfolioGraphAddress)]
@@ -1458,12 +1448,6 @@ pub fn printing_command(input: &[u8]) -> Result<String, String> {
 }
 
 pub mod compute_artifact_inventory;
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactInventory)]
-pub fn compute_artifact_inventory_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    compute_artifact_inventory::evaluate(input)
-        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
 
 /// The resumable byte-transfer protocol, owned once for every host.
 ///
@@ -1666,10 +1650,3 @@ pub fn tiling_placement_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVal
 /// Which executor serves each Network capability in this build: the one route
 /// manifest, `routing/network-routes.json`, compiled in by build.rs.
 pub mod network_routes;
-
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactHead)]
-pub fn compute_artifact_head_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    compute_artifact_inventory::evaluate_head(input)
-        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}

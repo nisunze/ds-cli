@@ -376,18 +376,6 @@ impl SurveyPhotoBundleWasm {
 }
 
 #[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoMediaDetect)]
-pub fn survey_photo_media_detect_wasm(input: &[u8]) -> String {
-    match detect_media(input) {
-        MediaDetection::ProcessableJpeg => "jpeg",
-        MediaDetection::ProcessablePng => "png",
-        MediaDetection::UnsupportedImage => "unsupported_image",
-        MediaDetection::NotImage => "not_image",
-    }
-    .into()
-}
-
-#[cfg(feature = "wasm")]
 pub fn process_wasm(input: &[u8], rotation_degrees: u16) -> Result<SurveyPhotoBundleWasm, String> {
     Ok(SurveyPhotoBundleWasm {
         bundle: process(input, Rotation::try_from(rotation_degrees)?)?,

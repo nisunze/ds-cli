@@ -152,11 +152,6 @@ pub fn valid_operation(engine: &str, operation: &str) -> bool {
 /// Validate the safe discovery projection; unknown additive server metadata
 /// is allowed, but malformed identities, output declarations and output
 /// origins are refused.
-pub fn evaluate_head(input: &[u8]) -> Result<String, String> {
-    serde_json::to_string(&decode_head(input)?).map_err(|e| e.to_string())
-}
-
-/// The validated typed head `evaluate_head` projects.
 pub fn decode_head(input: &[u8]) -> Result<Head, String> {
     if input.is_empty() || input.len() > 512 * 1024 {
         return Err("Artifact head exceeds its byte bound.".into());
@@ -404,9 +399,9 @@ mod tests {
             "outputs":[{"output_id":"summary", "format":"json", "content_type":"application/json", "sha256":"b".repeat(64), "size_bytes":1}]});
         for family in ["calculate", "report", "portfolio"] {
             head["operation"] = json!(format!("{family}-c{}", "x".repeat(127)));
-            assert!(evaluate_head(&serde_json::to_vec(&head).unwrap()).is_ok());
+            assert!(decode_head(&serde_json::to_vec(&head).unwrap()).is_ok());
             head["operation"] = json!(format!("{family}-c{}", "x".repeat(128)));
-            assert!(evaluate_head(&serde_json::to_vec(&head).unwrap()).is_err());
+            assert!(decode_head(&serde_json::to_vec(&head).unwrap()).is_err());
         }
         head["operation"] = json!("portfolio-gisagara");
         for (field, invalid) in [
@@ -421,7 +416,7 @@ mod tests {
             let mut malformed = head.clone();
             malformed[field] = invalid;
             assert!(
-                evaluate_head(&serde_json::to_vec(&malformed).unwrap()).is_err(),
+                decode_head(&serde_json::to_vec(&malformed).unwrap()).is_err(),
                 "{field}"
             );
         }
@@ -429,7 +424,7 @@ mod tests {
         for half in ["engine_version", "engine_build_manifest_sha256"] {
             let mut malformed = head.clone();
             malformed.as_object_mut().unwrap().remove(half);
-            assert!(evaluate_head(&serde_json::to_vec(&malformed).unwrap()).is_err());
+            assert!(decode_head(&serde_json::to_vec(&malformed).unwrap()).is_err());
         }
     }
 
@@ -504,7 +499,7 @@ mod tests {
         assert_eq!(head.output_origin("gpkg").unwrap().work_id, "work_next");
         assert!(head.output_origin("pdf__huye").is_none());
         // The wire projection round-trips without losing an origin.
-        let projected = evaluate_head(&bytes).unwrap();
+        let projected = serde_json::to_string(&decode_head(&bytes).unwrap()).unwrap();
         assert_eq!(decode_head(projected.as_bytes()).unwrap(), head);
         // A run recorded before engine builds were admitted has no build to match.
         let mut prior = reporter_head();
@@ -529,7 +524,7 @@ mod tests {
         ] {
             object.remove(field);
         }
-        let projected = evaluate_head(&serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let projected = serde_json::to_string(&decode_head(&serde_json::to_vec(&legacy).unwrap()).unwrap()).unwrap();
         let wire: serde_json::Value = serde_json::from_str(&projected).unwrap();
         assert_eq!(wire, legacy, "an older head projects exactly as before");
         let head = decode_head(projected.as_bytes()).unwrap();
@@ -605,7 +600,7 @@ mod tests {
         let duplicated = wire.replacen("\"gpkg\":{", &format!("\"xlsx\":{gpkg},\"gpkg\":{{"), 1);
         assert_ne!(duplicated, wire);
         assert!(decode_head(duplicated.as_bytes()).is_err());
-        assert!(evaluate_head(duplicated.as_bytes()).is_err());
+        assert!(decode_head(duplicated.as_bytes()).is_err());
     }
     #[test]
     fn named_prints_keep_metadata_and_canonical_names() {
