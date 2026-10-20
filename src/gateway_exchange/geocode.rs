@@ -75,18 +75,21 @@ fn invalid() -> Refusal {
     Refusal::new(INVALID, "Place search answered an invalid result.")
 }
 
-/// The point with its longitude wrapped into [-180, 180), or a refusal when
-/// it is no point.
+/// The point, its longitude wrapped into [-180, 180) only when it lies outside
+/// [-180, 180] (a map copy past the antimeridian), or a refusal when it is no
+/// point.
 fn point(point: GeocodePoint) -> Result<GeocodePoint, Refusal> {
     if !point.lat.is_finite() || !point.lng.is_finite() || point.lat.abs() > 90.0 {
         return Err(input_invalid(
             "A point has a latitude and a longitude in degrees.",
         ));
     }
-    Ok(GeocodePoint {
-        lat: point.lat,
-        lng: (point.lng + 180.0).rem_euclid(360.0) - 180.0,
-    })
+    let lng = if (-180.0..=180.0).contains(&point.lng) {
+        point.lng
+    } else {
+        (point.lng + 180.0).rem_euclid(360.0) - 180.0
+    };
+    Ok(GeocodePoint { lat: point.lat, lng })
 }
 
 fn body(action: &str, language: Option<&str>) -> Result<Map<String, Value>, Refusal> {

@@ -73,6 +73,18 @@ fn a_search_sends_the_trimmed_query_its_language_and_a_wrapped_bias() {
     assert_eq!(body["language"], "fr");
     assert_eq!(body["bias_lat"], -1.95);
     assert!((body["bias_lng"].as_f64().unwrap() - 30.06).abs() < 1e-9);
+    let inside = Search {
+        bias: Some(GeocodePoint {
+            lat: -1.95,
+            lng: 30.06,
+        }),
+        ..search("Huye")
+    };
+    assert_eq!(
+        sent(inside).unwrap().body.unwrap()["bias_lng"],
+        30.06,
+        "a longitude in range is sent exactly"
+    );
 
     let plain = sent(Search {
         language: Some("  ".into()),

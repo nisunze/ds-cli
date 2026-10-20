@@ -123,3 +123,22 @@ fn the_nearest_preset_prefers_the_smaller_of_two_equally_near() {
     assert_eq!(nearest_preset(2.0), 1.5);
     assert_eq!(nearest_preset(9.0), 2.5);
 }
+
+#[test]
+fn a_colour_or_size_that_draws_nothing_takes_its_default() {
+    let admitted = MapDefaults::admit(&json!({
+        "hillshade": {"exaggeration": 0},
+        "measure": {"line_color": " ", "halo_color": "#ffffff", "line_width": 0, "label_text_size": -2},
+        "zoom_level": {"decimals": 2, "legacy": true}
+    }));
+    let defaults = MapDefaults::default();
+    assert_eq!(admitted.hillshade.exaggeration, defaults.hillshade.exaggeration);
+    assert_eq!(admitted.measure.line_color, defaults.measure.line_color);
+    assert_eq!(admitted.measure.halo_color, "#ffffff");
+    assert_eq!(admitted.measure.line_width, defaults.measure.line_width);
+    assert_eq!(admitted.measure.label_text_size, defaults.measure.label_text_size);
+    assert_eq!(
+        admitted.zoom_level.decimals, 2,
+        "an unknown field is dropped and the known one kept"
+    );
+}

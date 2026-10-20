@@ -7,7 +7,8 @@
 //!
 //! A document read from Brain or from this edge's store is admitted section
 //! by section: a missing field takes its default, a section that does not
-//! fit takes the default section, and relief never starts enabled.
+//! fit takes the default section, a colour or size that draws nothing takes
+//! its default, and relief never starts enabled.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -37,7 +38,6 @@ pub fn nearest_preset(value: f64) -> f64 {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
-#[serde(default)]
 pub struct HillshadeDefaults {
     /// Kept for the wire; relief always starts off.
     pub enabled: bool,
@@ -65,7 +65,6 @@ pub enum ScaleUnit {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
-#[serde(default)]
 pub struct ScaleBarDefaults {
     pub enabled: bool,
     /// Pixels.
@@ -85,7 +84,6 @@ impl Default for ScaleBarDefaults {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
-#[serde(default)]
 pub struct MeasureDefaults {
     pub line_color: String,
     pub point_color: String,
@@ -114,7 +112,6 @@ impl Default for MeasureDefaults {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
-#[serde(default)]
 pub struct GpsAccuracyDefaults {
     pub enabled: bool,
     pub survey_only: bool,
@@ -133,7 +130,6 @@ impl Default for GpsAccuracyDefaults {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
-#[serde(default)]
 pub struct ZoomLevelDefaults {
     pub enabled: bool,
     pub decimals: u8,
@@ -180,13 +176,39 @@ impl Default for MapDefaults {
     }
 }
 
-/// A section as written, each missing field at its default; the default
-/// section when it does not fit.
-fn section<T: for<'de> Deserialize<'de> + Default>(document: &Value, name: &str) -> T {
-    document
-        .get(name)
-        .and_then(|section| T::deserialize(section).ok())
-        .unwrap_or_default()
+/// A section as written over its defaults, field by field: a field it does
+/// not write keeps its default, a field this Kernel does not know is dropped,
+/// and a section that does not fit is the default section.
+fn section<T>(document: &Value, name: &str) -> T
+where
+    T: Serialize + for<'de> Deserialize<'de> + Default,
+{
+    let mut merged = serde_json::to_value(T::default()).unwrap_or(Value::Null);
+    if let (Some(fields), Some(written)) = (
+        merged.as_object_mut(),
+        document.get(name).and_then(Value::as_object),
+    ) {
+        for (key, value) in written {
+            if let Some(field) = fields.get_mut(key) {
+                *field = value.clone();
+            }
+        }
+    }
+    T::deserialize(&merged).unwrap_or_default()
+}
+
+/// A colour that names nothing takes its default.
+fn filled(color: &mut String, default: String) {
+    if color.trim().is_empty() {
+        *color = default;
+    }
+}
+
+/// A size that draws nothing takes its default.
+fn drawn(size: &mut f64, default: f64) {
+    if !(*size > 0.0) {
+        *size = default;
+    }
 }
 
 impl MapDefaults {
@@ -206,6 +228,18 @@ impl MapDefaults {
             camera,
         };
         defaults.hillshade.enabled = false;
+        drawn(
+            &mut defaults.hillshade.exaggeration,
+            HillshadeDefaults::default().exaggeration,
+        );
+        let fallback = MeasureDefaults::default();
+        let measure = &mut defaults.measure;
+        filled(&mut measure.line_color, fallback.line_color);
+        filled(&mut measure.point_color, fallback.point_color);
+        filled(&mut measure.label_color, fallback.label_color);
+        filled(&mut measure.halo_color, fallback.halo_color);
+        drawn(&mut measure.line_width, fallback.line_width);
+        drawn(&mut measure.label_text_size, fallback.label_text_size);
         defaults
     }
 }
