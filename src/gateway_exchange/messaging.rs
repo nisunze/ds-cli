@@ -125,11 +125,91 @@ impl Exchange for Messaging {
     }
 }
 
+/// The account's messaging read cache as the page last kept it: the
+/// conversation list and up to 24 timelines, keyed by conversation id.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+pub struct MessagingCache {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        tsify(optional, type = "unknown")
+    )]
+    pub conversations: Option<Value>,
+    #[serde(default)]
+    pub timelines: Vec<HeldTimeline>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+pub struct HeldTimeline {
+    pub conversation_id: String,
+    #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(type = "unknown"))]
+    pub timeline: Value,
+}
+
+/// The cache this device holds for the signed-in account, with no transport.
+#[cfg(feature = "durable-store")]
+pub async fn held_cache(edge: &impl super::retained::Edge) -> Result<MessagingCache, Refusal> {
+    use crate::retained_reads::Kind;
+    let conversations =
+        super::retained::read::<Value>(edge, Kind::MessagingConversations, None, "").await?;
+    let timelines = super::retained::list::<Value>(edge, Kind::MessagingTimeline, None).await?;
+    Ok(MessagingCache {
+        conversations: conversations.held.map(|held| held.value),
+        timelines: timelines
+            .rows
+            .into_iter()
+            .map(|(conversation_id, held)| HeldTimeline {
+                conversation_id,
+                timeline: held.value,
+            })
+            .collect(),
+    })
+}
+
+/// Keep the page's cache: the conversation list, and exactly these timelines.
+#[cfg(feature = "durable-store")]
+pub async fn keep_cache(
+    edge: &impl super::retained::Edge,
+    cache: &MessagingCache,
+) -> Result<(), Refusal> {
+    use crate::retained_reads::Kind;
+    let observed =
+        super::retained::read::<Value>(edge, Kind::MessagingConversations, None, "").await?;
+    let owner = observed.owner.as_deref();
+    if let Some(conversations) = &cache.conversations {
+        let kind = Kind::MessagingConversations;
+        super::retained::write(edge, owner, kind, None, "", conversations, None).await?;
+    }
+    let rows: Vec<(String, Value)> = cache
+        .timelines
+        .iter()
+        .map(|held| (held.conversation_id.clone(), held.timeline.clone()))
+        .collect();
+    super::retained::replace_set(edge, owner, Kind::MessagingTimeline, None, &rows).await
+}
+
+/// Forget the signed-in account's cache, on sign-out or an account switch.
+#[cfg(feature = "durable-store")]
+pub async fn forget_cache(edge: &impl super::retained::Edge) -> Result<(), Refusal> {
+    use crate::retained_reads::Kind;
+    let observed =
+        super::retained::read::<Value>(edge, Kind::MessagingConversations, None, "").await?;
+    let owner = observed.owner.as_deref();
+    super::retained::forget(edge, owner, Kind::MessagingConversations, None, None).await?;
+    super::retained::forget(edge, owner, Kind::MessagingTimeline, None, None).await
+}
+
 /// The typed browser export Svelte calls; it runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::{Messaging, MessagingEndpoint};
-    use crate::gateway_exchange::browser::{run, typed, GatewayHost};
+    use super::{
+        forget_cache, held_cache, keep_cache, Messaging, MessagingCache, MessagingEndpoint,
+    };
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
     use serde_json::{Map, Value};
     use wasm_bindgen::prelude::*;
 
@@ -155,6 +235,46 @@ mod exports {
             timeout_ms: timeout_ms.map(u64::from),
         };
         typed(&run(&host, call).await?)
+    }
+    /// The signed-in account's messaging cache, at once and offline.
+    #[wasm_bindgen(js_name = messagingCacheHeld, unchecked_return_type = "MessagingCache")]
+    pub async fn messaging_cache_held(
+        host: GatewayHost,
+        store: StoreHost,
+    ) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        typed(
+            &held_cache(&edge)
+                .await
+                .map_err(|refusal| rejection(&refusal))?,
+        )
+    }
+
+    /// Keep the page's messaging cache for the next offline open.
+    #[wasm_bindgen(js_name = messagingCacheKeep)]
+    pub async fn messaging_cache_keep(
+        host: GatewayHost,
+        store: StoreHost,
+        #[wasm_bindgen(unchecked_param_type = "MessagingCache")] cache: JsValue,
+    ) -> Result<(), JsValue> {
+        let cache: MessagingCache = tsify::serde_wasm_bindgen::from_value(cache)
+            .map_err(|error| js_sys::Error::new(&error.to_string()))?;
+        let edge = BrowserEdge::new(host, store);
+        keep_cache(&edge, &cache)
+            .await
+            .map_err(|refusal| rejection(&refusal))
+    }
+
+    /// Forget the signed-in account's messaging cache.
+    #[wasm_bindgen(js_name = messagingCacheForget)]
+    pub async fn messaging_cache_forget(
+        host: GatewayHost,
+        store: StoreHost,
+    ) -> Result<(), JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        forget_cache(&edge)
+            .await
+            .map_err(|refusal| rejection(&refusal))
     }
 }
 

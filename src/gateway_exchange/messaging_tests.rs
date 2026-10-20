@@ -83,3 +83,50 @@ fn the_envelope_is_answered_as_served() {
     };
     assert_eq!(answer, body);
 }
+
+#[cfg(feature = "durable-store")]
+mod held_cache {
+    use super::super::{forget_cache, held_cache, keep_cache, HeldTimeline, MessagingCache};
+    use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
+    use serde_json::json;
+
+    fn timeline(id: &str) -> HeldTimeline {
+        HeldTimeline {
+            conversation_id: id.into(),
+            timeline: json!({"messages": [{"id": format!("{id}-1")}]}),
+        }
+    }
+
+    #[test]
+    fn the_cache_keeps_exactly_the_pages_timelines_for_its_account() {
+        let edge = TestEdge::new();
+        assert_eq!(
+            block_on(held_cache(&edge)).unwrap(),
+            MessagingCache::default()
+        );
+        let first = MessagingCache {
+            conversations: Some(json!([{"id": "c1"}, {"id": "c2"}])),
+            timelines: vec![timeline("c1"), timeline("c2")],
+        };
+        block_on(keep_cache(&edge, &first)).unwrap();
+        let second = MessagingCache {
+            conversations: Some(json!([{"id": "c2"}])),
+            timelines: vec![timeline("c2")],
+        };
+        block_on(keep_cache(&edge, &second)).unwrap();
+        let held = block_on(held_cache(&edge)).unwrap();
+        assert_eq!(held.conversations, second.conversations);
+        assert_eq!(held.timelines, vec![timeline("c2")]);
+        edge.sign_in("someone-else");
+        assert_eq!(
+            block_on(held_cache(&edge)).unwrap(),
+            MessagingCache::default()
+        );
+        edge.sign_in("owner");
+        block_on(forget_cache(&edge)).unwrap();
+        assert_eq!(
+            block_on(held_cache(&edge)).unwrap(),
+            MessagingCache::default()
+        );
+    }
+}

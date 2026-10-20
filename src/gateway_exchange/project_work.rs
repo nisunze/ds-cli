@@ -237,11 +237,41 @@ impl Exchange for ProjectWork {
     }
 }
 
+/// The project's Project Work graph this device holds, as the page last kept
+/// it, with no transport. Another account's graph reads as absent.
+#[cfg(feature = "durable-store")]
+pub async fn held_graph(
+    edge: &impl super::retained::Edge,
+    project: &str,
+) -> Result<Option<Value>, Refusal> {
+    project_reference(project)?;
+    let kind = crate::retained_reads::Kind::ProjectWorkGraph;
+    let observed = super::retained::read::<Value>(edge, kind, Some(project), "").await?;
+    Ok(observed.held.map(|held| held.value))
+}
+
+/// Keep the graph the page holds for the next offline open, under the
+/// account the store observes now.
+#[cfg(feature = "durable-store")]
+pub async fn keep_graph(
+    edge: &impl super::retained::Edge,
+    project: &str,
+    graph: &Value,
+) -> Result<(), Refusal> {
+    project_reference(project)?;
+    let kind = crate::retained_reads::Kind::ProjectWorkGraph;
+    let observed = super::retained::read::<Value>(edge, kind, Some(project), "").await?;
+    let owner = observed.owner.as_deref();
+    super::retained::write(edge, owner, kind, Some(project), "", graph, None).await
+}
+
 /// The typed browser export Svelte calls; it runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::ProjectWork;
-    use crate::gateway_exchange::browser::{run, typed, GatewayHost};
+    use super::{held_graph, keep_graph, ProjectWork};
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
     use serde_json::{Map, Value};
     use wasm_bindgen::prelude::*;
 
@@ -254,6 +284,36 @@ mod exports {
         let request: Map<String, Value> = tsify::serde_wasm_bindgen::from_value(request)
             .map_err(|error| js_sys::Error::new(&error.to_string()))?;
         typed(&run(&host, ProjectWork { request }).await?)
+    }
+    /// The project's graph this device holds, at once and offline.
+    #[wasm_bindgen(js_name = projectWorkGraphHeld, unchecked_return_type = "unknown")]
+    pub async fn project_work_graph_held(
+        host: GatewayHost,
+        store: StoreHost,
+        project: String,
+    ) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        typed(
+            &held_graph(&edge, &project)
+                .await
+                .map_err(|refusal| rejection(&refusal))?,
+        )
+    }
+
+    /// Keep the graph the page holds for the next offline open.
+    #[wasm_bindgen(js_name = projectWorkGraphKeep)]
+    pub async fn project_work_graph_keep(
+        host: GatewayHost,
+        store: StoreHost,
+        project: String,
+        #[wasm_bindgen(unchecked_param_type = "unknown")] graph: JsValue,
+    ) -> Result<(), JsValue> {
+        let graph: Value = tsify::serde_wasm_bindgen::from_value(graph)
+            .map_err(|error| js_sys::Error::new(&error.to_string()))?;
+        let edge = BrowserEdge::new(host, store);
+        keep_graph(&edge, &project, &graph)
+            .await
+            .map_err(|refusal| rejection(&refusal))
     }
 }
 

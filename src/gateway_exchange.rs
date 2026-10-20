@@ -62,6 +62,7 @@ pub mod releases;
 pub mod report_artifacts;
 pub mod solar_inputs;
 pub mod sre;
+pub mod survey;
 pub mod survey_reports;
 pub mod uploads;
 pub mod storage;

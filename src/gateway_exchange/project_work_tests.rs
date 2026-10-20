@@ -90,3 +90,28 @@ fn an_answer_is_brains_data_unless_it_was_cancelled() {
     let cancelled = answered(read, json!({"data": {"cancelled": true}})).unwrap_err();
     assert_eq!(cancelled.code, INVALID);
 }
+
+#[cfg(feature = "durable-store")]
+mod held_graph {
+    use super::super::{held_graph, keep_graph};
+    use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
+    use serde_json::json;
+
+    #[test]
+    fn a_kept_graph_opens_offline_for_its_project_and_account_only() {
+        let edge = TestEdge::new();
+        assert_eq!(block_on(held_graph(&edge, "it_rwanda")).unwrap(), None);
+        let graph = json!({"projectId": "it_rwanda", "revision": 7, "tasks": []});
+        block_on(keep_graph(&edge, "it_rwanda", &graph)).unwrap();
+        edge.online.set(false);
+        assert_eq!(
+            block_on(held_graph(&edge, "it_rwanda")).unwrap(),
+            Some(graph)
+        );
+        assert_eq!(block_on(held_graph(&edge, "it_tchad")).unwrap(), None);
+        edge.sign_in("someone-else");
+        assert_eq!(block_on(held_graph(&edge, "it_rwanda")).unwrap(), None);
+        assert!(edge.requests().is_empty());
+        assert!(block_on(held_graph(&edge, "a b")).is_err());
+    }
+}
