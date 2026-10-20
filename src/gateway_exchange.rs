@@ -65,6 +65,7 @@ pub mod sre;
 pub mod survey_reports;
 pub mod uploads;
 pub mod storage;
+pub mod styles;
 #[cfg(feature = "durable-store")]
 pub mod retained;
 #[cfg(feature = "durable-store")]
