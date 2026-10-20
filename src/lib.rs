@@ -387,18 +387,6 @@ pub fn survey_working_area_forms_wasm(input: &[u8]) -> Result<String, wasm_bindg
 }
 
 #[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyEntryCreate)]
-pub fn survey_entry_create_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    survey_entry_create::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
-
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyEntryOutbox)]
-pub fn survey_entry_outbox_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    survey_entry_outbox::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
-
-#[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = resolveDesignSources)]
 pub fn resolve_design_sources_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     design::resolve_sources(input)

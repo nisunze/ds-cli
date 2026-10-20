@@ -32,8 +32,8 @@ this slice implements no authoritative replay lookup. The durable identity and
 key remain available for later resolution. Commit does not establish mirror
 convergence; that still requires the existing BigQuery-backed read.
 
-The `surveyEntryCreate` WASM JSON entry point retains schema
-`ds.survey-entry-create/v1`. `plan` and `normalize` admit opaque capture bytes;
+`survey_entry_create::evaluate` keeps schema
+`ds.survey-entry-create/v1` (the survey capture plan calls it; no WASM door). `plan` and `normalize` admit opaque capture bytes;
 `direct_plan` additionally requires `authority` and returns the fixed `direct`
 effect under `ds.survey-direct-create/v1`. `direct_receipt` consumes the same
 admitted request and authority plus status/response. Native APIs call the same

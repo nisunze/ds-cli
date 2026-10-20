@@ -4,10 +4,11 @@
 a clock and a closed event (`admit`, `recover`, `drive`, `result`,
 `manual_retry`). The Kernel's `media_outbox` store applies it to the rows it
 holds (`docs/contracts/durable-store.md`); a reply without a row settles it.
-There is no WASM door: hosts queue through the store and upload through the
-`drainMediaOutbox` flow.
+There is no WASM door: hosts queue bytes through the store; the survey queue
+(`gateway_exchange::survey_queue`) schedules each upload as a step of its
+entry, leases it on its size lane and carries it.
 
-The kernel decides admission, concurrency (two active uploads), retry deadlines
+The kernel decides admission, retry deadlines
 and the ten-attempt budget, failed or blocked state, recovery, manual retry and
 cleanup. It reuses `response_policy` and accepts typed `transfer::Cause`
 observations. Recovery does not replenish an exhausted budget. Scope, a stash

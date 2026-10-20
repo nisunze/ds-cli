@@ -1,13 +1,12 @@
-//! One queued survey create delivered on this build's route, and what its
-//! answer means to the survey queue's replay authority
-//! ([`crate::survey_entry_outbox`]). On the web the page writes the create
-//! straight to Firestore, create-only, under the signed-in person's own
-//! Firebase ID token (owner rule, October 2026), with the commit
+//! One queued survey create on this build's route, and what its answer
+//! means to the survey queue ([`super::survey_queue`]). On the web the page
+//! writes the create straight to Firestore, create-only, under the signed-in
+//! person's own Firebase ID token (owner rule, October 2026), with the commit
 //! [`crate::survey_entry_create::direct`] plans; it counts as delivered only
 //! when Firestore's answer proves this exact write with its server clock. A
 //! native edge sends creates through Brain's mutate API
 //! ([`super::survey::Mutation`]). Corrections, deletions and restores always
-//! go through that API; photos travel the media outbox.
+//! go through that API; files travel the media upload.
 
 use serde_json::{json, Value};
 
@@ -32,13 +31,6 @@ pub const ROUTE: Route = if cfg!(feature = "platform-web") {
 /// Brain's mutate API does not take creates yet, so a native create waits in
 /// the queue instead of being sent or failed.
 pub const ROUTE_PENDING: &str = "survey_create_route_pending";
-/// How long a waiting native create rests before the queue looks again.
-const PENDING_RETRY_MS: u64 = 60 * 60 * 1000;
-
-/// The machine's outcome for a create whose route cannot send yet: it waits.
-pub fn pending() -> Value {
-    json!({"kind": "transient", "retry_after_ms": PENDING_RETRY_MS})
-}
 
 /// Firestore answers a single-document commit well within this.
 pub const TIMEOUT_MS: u64 = 120_000;
@@ -82,11 +74,6 @@ pub struct Create {
     plan: direct::DirectPlan,
 }
 
-/// The machine's outcome for a create the Kernel will not send.
-pub fn invalid() -> Value {
-    json!({"kind": "invalid"})
-}
-
 impl Create {
     /// Plan the commit of a queued create from what the queue holds and its
     /// wire payload, written as `author`. `None` when the row or the author is
@@ -125,7 +112,7 @@ impl Create {
         &self.plan.body
     }
 
-    /// What the attempt means to the replay authority.
+    /// What the attempt means to the survey queue.
     pub fn outcome(&self, sent: Sent) -> Value {
         let Sent::Answer { status, body } = sent else {
             return json!({"kind": "response", "status": 0, "network": true});
@@ -138,92 +125,6 @@ impl Create {
             };
         }
         json!({"kind": "response", "status": status, "details": body.get("error_details").cloned().unwrap_or(Value::Null)})
-    }
-}
-
-/// The typed browser export the survey queue calls.
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
-    use serde_json::{Map, Value};
-    use wasm_bindgen::prelude::*;
-
-    use super::{
-        invalid, pending, Author, Create, Queued, Route, Sent, RESPONSE_CAP, ROUTE,
-        ROUTE_PENDING, TIMEOUT_MS,
-    };
-    use crate::gateway_exchange::browser::{
-        attempt, credentials, direct_post, facts, typed, GatewayHost,
-    };
-    use crate::gateway_exchange::survey::{mutation_outcome, Mutation};
-    use crate::gateway_target::{FIREBASE_PROJECT, LANE};
-    use crate::survey_entry_outbox::Header;
-
-    fn unreadable(error: impl std::fmt::Display) -> JsValue {
-        js_sys::Error::new(&error.to_string()).into()
-    }
-
-    /// Deliver one queued create on this build's route and answer its outcome
-    /// for the survey queue's replay authority: on the web a create-only write
-    /// straight to Firestore as the signed-in person; on a native edge Brain's
-    /// mutate API.
-    #[wasm_bindgen(js_name = surveyCreate, unchecked_return_type = "Record<string, unknown>")]
-    pub async fn survey_create(
-        host: GatewayHost,
-        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] header: JsValue,
-        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] payload: JsValue,
-    ) -> Result<JsValue, JsValue> {
-        let header: Header = tsify::serde_wasm_bindgen::from_value(header).map_err(unreadable)?;
-        let payload: Value = tsify::serde_wasm_bindgen::from_value(payload).map_err(unreadable)?;
-        if ROUTE == Route::Mutate {
-            let mut body: Map<String, Value> = payload.as_object().cloned().unwrap_or_default();
-            body.insert("operation".into(), "create".into());
-            return match attempt(&host, Mutation { payload: body }).await? {
-                Err(refusal) if refusal.code == ROUTE_PENDING => typed(&pending()),
-                outcome => typed(&mutation_outcome(outcome)),
-            };
-        }
-        // A build that names no Firebase project cannot write: refuse, so the
-        // queued create waits instead of failing as invalid.
-        let Some(firebase_project) = FIREBASE_PROJECT else {
-            return Err(unreadable(
-                "this build names no Firebase project for survey creates",
-            ));
-        };
-        let session = credentials(&host).await?;
-        let author = Author {
-            firebase_project: firebase_project.into(),
-            uid: facts(&host)?.principal,
-            email: session.email.trim().into(),
-            lane: LANE.unwrap_or_default().into(),
-        };
-        let queued = Queued {
-            project: &header.project_id,
-            form: &header.form_id,
-            doc: &header.doc_id,
-            idempotency_key: &header.idempotency_key,
-            created_at: header.created_at,
-            owner_uid: header.owner_uid.as_deref().unwrap_or_default(),
-        };
-        let Some(create) = Create::prepare(&queued, &payload, &author) else {
-            return typed(&invalid());
-        };
-        let Some(bearer) = session.token.filter(|token| !token.is_empty()) else {
-            // Signed out mid-drain: nothing was sent; the machine retries.
-            return typed(&create.outcome(Sent::Failed));
-        };
-        let sent = match direct_post(
-            &create.url(),
-            &bearer,
-            create.body(),
-            TIMEOUT_MS,
-            RESPONSE_CAP,
-        )
-        .await
-        {
-            Some((status, body)) => Sent::Answer { status, body },
-            None => Sent::Failed,
-        };
-        typed(&create.outcome(sent))
     }
 }
 

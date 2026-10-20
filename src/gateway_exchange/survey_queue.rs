@@ -381,7 +381,7 @@ impl<E: Edge, S: StorePort, T: Transfer, F: Firestore> Drain<'_, E, S, T, F> {
             return Ok(Verdict::sent());
         }
         let Some(upload) = answer.get("upload").filter(|upload| !upload.is_null()) else {
-            return Ok(self.held(&answer["status"], &answer["error"], &answer["wake_at"]));
+            return Ok(self.held(&answer["status"], &answer["error"], &answer["wake_at"], false));
         };
         let upload: Dispatch = serde_json::from_value(upload.clone()).map_err(|error| Refusal::new(INVALID, error.to_string()))?;
         let keep = Keep {
@@ -402,12 +402,14 @@ impl<E: Edge, S: StorePort, T: Transfer, F: Firestore> Drain<'_, E, S, T, F> {
             return Ok(Verdict::sent());
         }
         let held = &settled["row"];
-        Ok(self.held(&held["status"], &held["last_error"], &settled["wake_at"]))
+        Ok(self.held(&held["status"], &held["last_error"], &settled["wake_at"], true))
     }
 
     /// The step of a file the media outbox holds but did not deliver: its
-    /// own attempts and backoff decide when it goes again.
-    fn held(&self, status: &Value, error: &Value, wake_at: &Value) -> Verdict {
+    /// own attempts and backoff decide when it goes again. An attempt that
+    /// names no wait (a lost session) goes again at once; the media
+    /// outbox bounds its attempts.
+    fn held(&self, status: &Value, error: &Value, wake_at: &Value, attempted: bool) -> Verdict {
         let error = error.as_str().unwrap_or("media_waiting");
         match text(status) {
             "failed" => Verdict::failed(error, "retry"),
@@ -415,7 +417,8 @@ impl<E: Edge, S: StorePort, T: Transfer, F: Firestore> Drain<'_, E, S, T, F> {
             _ if !self.edge.online() => Verdict::stopped("offline"),
             _ => {
                 let now = self.edge.now_ms();
-                let at = wake_at.as_u64().filter(|at| *at > now).unwrap_or(now + BASE_BACKOFF_MS);
+                let again = if attempted { now } else { now + BASE_BACKOFF_MS };
+                let at = wake_at.as_u64().filter(|at| *at > now).unwrap_or(again);
                 Verdict::wait(error, at)
             }
         }

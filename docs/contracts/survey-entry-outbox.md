@@ -1,6 +1,8 @@
 # Survey entry outbox v1
 
-`surveyEntryOutbox` is a pure, bounded header-only replay authority. It admits
+`survey_entry_outbox` is a pure, bounded header-only replay authority, used by
+Core's survey queue (`ds-sync-store`); the browser queues on the Kernel
+survey queue instead. It admits
 account-owned Survey mutation headers and returns fenced persistence, dispatch,
 retry, recovery, and removal actions. Payloads remain opaque in durable storage;
 the sole payload patch is an explicit `expected_version` after one update-like

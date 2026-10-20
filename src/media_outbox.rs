@@ -11,6 +11,11 @@
 //! the photo they now are ([`crate::byte_cache`]), so they stay readable
 //! offline.
 //!
+//! The survey queue ([`crate::outbox`], queue `survey`) carries each upload as
+//! a step of its entry: `schedule` queues it there, and the queue's drain
+//! leases it and has `dispatch` drive it, so the queue's lanes decide what
+//! runs at once.
+//!
 //! The host binds the identity: a row's account is the bound account, never
 //! a caller's word, and a signed-out identity queues nothing.
 use crate::byte_parts::{Blob, Blobs, Received, Share, Stage, PART_BYTES};
@@ -33,8 +38,6 @@ const MIB: u64 = 1024 * 1024;
 pub const MAX_MEDIA_BYTES: u64 = 1024 * MIB;
 /// The largest thumbnail companion.
 pub const MAX_COMPANION_BYTES: u64 = 64 * MIB;
-/// The most live transfers a claim is told about.
-pub const MAX_IN_FLIGHT: usize = 64;
 const MAX_SAFE: u64 = 9_007_199_254_740_991;
 const MISSING_BYTES: &str = "Photo bytes are missing from local storage.";
 pub(crate) const BLOBS: Blobs = Blobs {
@@ -86,14 +89,6 @@ pub enum Operation {
         companion: Option<CompanionBytes>,
         generation: String,
         payload: Share,
-        now: u64,
-    },
-    /// Recover abandoned leases and claim the uploads that may start now.
-    /// `in_flight` names the paths whose transfers the caller is running.
-    Claim {
-        online: bool,
-        #[serde(default)]
-        in_flight: Vec<String>,
         now: u64,
     },
     /// Bytes of one claimed target, for its transfer.
@@ -525,10 +520,9 @@ struct Driven {
     wrote: bool,
 }
 
-/// Drive one held row of `uid`, with `active` transfers already running. An
-/// uploading row is an abandoned lease: its caller runs no transfer for it.
-#[allow(clippy::too_many_arguments)]
-fn drive(connection: &Connection, owner: &str, uid: &str, held: &Held, online: bool, active: u32, now: u64) -> Result<Driven, String> {
+/// Drive one held row of `uid`. An uploading row is an abandoned lease: its
+/// caller runs no transfer for it.
+fn drive(connection: &Connection, owner: &str, uid: &str, held: &Held, online: bool, now: u64) -> Result<Driven, String> {
     let mut driven = Driven::default();
     let mut row = held.row.clone();
     let Some(scope) = row.scope.clone().filter(|scope| scope.account_id == uid) else {
@@ -545,7 +539,7 @@ fn drive(connection: &Connection, owner: &str, uid: &str, held: &Held, online: b
     }
     let drive = Event::Drive {
         online,
-        active_uploads: active,
+        active_uploads: 0,
         bytes_present: present(connection, held)?,
         scope: scope.clone(),
     };
@@ -604,37 +598,6 @@ fn drive(connection: &Connection, owner: &str, uid: &str, held: &Held, online: b
     Ok(driven)
 }
 
-fn claim(connection: &Connection, identity: &Identity, owner: &str, online: bool, in_flight: Vec<String>, now: u64) -> Result<Outcome, String> {
-    if in_flight.len() > MAX_IN_FLIGHT {
-        return Err(invalid("a claim names at most 64 live transfers"));
-    }
-    let now = time(now)?;
-    let Some(uid) = account(identity) else {
-        return Ok(Outcome::read(fields(json!({"dispatch": [], "wake_at": null}))));
-    };
-    let mut active = in_flight.len() as u32;
-    let mut dispatch = Vec::new();
-    let mut earliest: Option<u64> = None;
-    let mut wrote = false;
-    for held in rows_of(connection, owner, "")? {
-        if in_flight.contains(&held.row.path) {
-            continue;
-        }
-        let driven = drive(connection, owner, uid, &held, online, active, now)?;
-        if let Some(at) = driven.wake_at {
-            earliest = Some(earliest.map_or(at, |held| held.min(at)));
-        }
-        active += driven.dispatch.len() as u32;
-        dispatch.extend(driven.dispatch);
-        wrote |= driven.wrote;
-    }
-    let value = fields(json!({"dispatch": dispatch, "wake_at": earliest}));
-    Ok(if wrote {
-        Outcome::written(value)
-    } else {
-        Outcome::read(value)
-    })
-}
 
 /// Dispatch the one upload the survey queue's drain leased: its queue row's
 /// lease is the only fence, so an uploading row here was abandoned. Answers
@@ -646,7 +609,7 @@ fn dispatch_one(connection: &Connection, identity: &Identity, owner: &str, path:
     let Some(held) = load(connection, owner, path)? else {
         return Ok(Outcome::read(fields(json!({"pending": false}))));
     };
-    let driven = drive(connection, owner, uid, &held, online, 0, now)?;
+    let driven = drive(connection, owner, uid, &held, online, now)?;
     let row = load(connection, owner, path)?.map(|held| held.row);
     let value = fields(json!({
         "pending": true,
@@ -874,7 +837,6 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
     let owner = identity.owner();
     match operation {
         operation @ Operation::Admit { .. } => admit(connection, identity, &owner, operation, input.bytes),
-        Operation::Claim { online, in_flight, now } => claim(connection, identity, &owner, online, in_flight, now),
         Operation::Read {
             path,
             generation,

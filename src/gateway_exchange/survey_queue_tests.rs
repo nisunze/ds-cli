@@ -34,6 +34,8 @@ impl StorePort for Port<'_> {
 struct Wire {
     held: Option<&'static str>,
     gate: Cell<u32>,
+    /// How many more transfers answer that their session is gone.
+    reopen: Cell<u32>,
     sent: RefCell<Vec<(String, usize)>>,
 }
 
@@ -43,6 +45,11 @@ impl Wire {
             held: Some(path),
             ..Self::default()
         }
+    }
+    fn reopening(times: u32) -> Self {
+        let wire = Self::default();
+        wire.reopen.set(times);
+        wire
     }
     async fn pass(&self, at: u32) {
         std::future::poll_fn(|_| if self.gate.get() >= at { Poll::Ready(()) } else { Poll::Pending }).await
@@ -61,6 +68,10 @@ impl Transfer for Wire {
         }
         let bytes = parts.read(0, size).await.expect("held bytes read back whole");
         self.sent.borrow_mut().push((path, bytes.len()));
+        if self.reopen.get() > 0 {
+            self.reopen.set(self.reopen.get() - 1);
+            return Sent::Reopen;
+        }
         if held {
             self.pass(2).await;
         }
@@ -348,4 +359,99 @@ fn discarding_a_parked_create_audits_and_drops_its_entrys_every_step() {
     assert_eq!(media(&edge, json!({"action": "counts"}), None)["pending"], 0, "the photo's bytes left with it");
     block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), Route::FirestoreDirect, None, "d")).unwrap();
     assert!(rows(&edge).is_empty(), "a dropped file is never scheduled again");
+}
+
+const PHOTO: &str = "kigali/forms/poles/e1/photo.jpg";
+const THUMB: &str = "kigali/forms/poles/e1/photo_thunder.jpeg";
+const ORIGINAL: &[u8] = b"original-jpeg";
+const COMPANION: &[u8] = b"thumb";
+
+/// A photo with its thumbnail companion, held for its upload.
+fn admit_photo(edge: &TestEdge) {
+    let bytes = [ORIGINAL, COMPANION].concat();
+    media(
+        edge,
+        json!({"action": "admit", "project": "kigali", "path": PHOTO, "surface": "survey-media", "owner_ref": "entry-1",
+            "content_type": "image/jpeg", "size": ORIGINAL.len(),
+            "companion": {"path": THUMB, "content_type": "image/jpeg", "size": COMPANION.len()},
+            "generation": "gen-00000001", "payload": {"byte_length": bytes.len()}, "now": 1}),
+        Some(bytes),
+    );
+}
+fn cached(edge: &TestEdge, path: &str) -> Reply {
+    let request = Store::ByteCache {
+        operation: serde_json::from_value(json!({"action": "get", "key": {"kind": "photo", "key": path}})).unwrap(),
+    };
+    block_on(Port(edge).call(request, None, None)).unwrap()
+}
+fn drain_once(edge: &TestEdge, wire: &Wire) -> Drained {
+    block_on(drain(edge, &Port(edge), wire, &Fire::default(), Route::Mutate, None, "d")).unwrap()
+}
+
+#[test]
+fn an_upload_carries_its_plan_in_order_and_settles_into_the_cache() {
+    let edge = TestEdge::new();
+    admit_photo(&edge);
+    started(&edge, PHOTO);
+    edge.json(answer(PHOTO, json!({"already_present": true, "generation": "11"})));
+    edge.json(answer(THUMB, json!({"already_present": true, "generation": "12"})));
+    let wire = Wire::default();
+    assert_eq!(drain_once(&edge, &wire).delivered, 1);
+    let requests = edge.requests();
+    let body = |at: usize| requests[at].body.clone().unwrap();
+    assert_eq!((body(0)["action"].clone(), body(0)["file_name"].clone()), (json!("survey_upload_start"), json!("photo.jpg")));
+    assert_eq!(body(0)["sha256"], crate::durable_store::sha256(ORIGINAL));
+    assert_eq!(body(1)["action"], "survey_upload_complete");
+    assert_eq!(body(2)["file_name"], "photo_thunder.jpeg");
+    assert_eq!(
+        (body(2)["source_file_name"].clone(), body(2)["source_generation"].clone()),
+        (json!("photo.jpg"), json!("11")),
+        "the thumbnail names its original's verified generation"
+    );
+    assert_eq!(*wire.sent.borrow(), vec![(PHOTO.to_string(), ORIGINAL.len())]);
+    let photo = cached(&edge, PHOTO);
+    assert_eq!((photo.answer["pending_upload"].clone(), photo.bytes), (json!(false), Some(ORIGINAL.to_vec())));
+    assert!(rows(&edge).is_empty());
+}
+
+#[test]
+fn a_refused_start_keeps_the_upload_for_its_retry() {
+    let edge = TestEdge::new();
+    admit_photo(&edge);
+    edge.answer(Answer::Json(503, json!({"error": "unavailable"})));
+    let waiting = drain_once(&edge, &Wire::default());
+    assert_eq!((waiting.delivered, waiting.failed), (0, 0));
+    let due = waiting.due_at.expect("a retry is due later");
+    assert!(due > edge.now.get());
+    assert_eq!(cached(&edge, PHOTO).answer["pending_upload"], true, "the bytes wait, readable");
+    let early = drain_once(&edge, &Wire::default());
+    assert_eq!((early.delivered, edge.requests().len()), (0, 1), "nothing leaves before the retry is due");
+    edge.now.set(due);
+    edge.json(answer(PHOTO, json!({"already_present": true, "generation": "11"})));
+    edge.json(answer(THUMB, json!({"already_present": true, "generation": "12"})));
+    assert_eq!(drain_once(&edge, &Wire::default()).delivered, 1);
+}
+
+#[test]
+fn a_lost_session_starts_again_within_the_drain() {
+    let edge = TestEdge::new();
+    admit_photo(&edge);
+    started(&edge, PHOTO);
+    started(&edge, PHOTO);
+    edge.json(answer(PHOTO, json!({"already_present": true, "generation": "11"})));
+    edge.json(answer(THUMB, json!({"already_present": true, "generation": "12"})));
+    let wire = Wire::reopening(1);
+    assert_eq!(drain_once(&edge, &wire).delivered, 1);
+    assert_eq!(wire.sent_of(PHOTO), 2);
+}
+
+#[test]
+fn offline_sends_no_file_and_strands_nothing() {
+    let edge = TestEdge::new();
+    admit_photo(&edge);
+    edge.online.set(false);
+    let drained = drain_once(&edge, &Wire::default());
+    assert!(drained.stopped);
+    assert!(edge.requests().is_empty());
+    assert_eq!(media(&edge, json!({"action": "counts"}), None)["pending"], 1);
 }

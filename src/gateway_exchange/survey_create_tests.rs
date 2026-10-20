@@ -94,11 +94,9 @@ fn another_accounts_row_or_a_malformed_payload_is_never_sent() {
 }
 
 #[test]
-fn a_native_build_routes_creates_through_brain_and_a_pending_create_waits() {
+fn a_native_build_routes_creates_through_brain() {
     #[cfg(not(feature = "platform-web"))]
     assert_eq!(ROUTE, Route::Mutate);
     #[cfg(feature = "platform-web")]
     assert_eq!(ROUTE, Route::FirestoreDirect);
-    assert_eq!(pending()["kind"], "transient");
-    assert!(pending()["retry_after_ms"].as_u64().unwrap() >= 60_000);
 }
