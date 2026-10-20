@@ -1,8 +1,5 @@
 //! Governed platform architecture: the revision the architecture page draws,
-//! and every planning command (read, list, history, preview, apply) as one
-//! JSON command. Brain holds the revisions, validates each command and
-//! fences it by the expected revision; a refused proposal carries Brain's
-//! violations and current snapshot in the refusal's details.
+//! in the page's spelling. Brain holds the revisions.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -11,112 +8,7 @@ use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
 const PATH: &str = "/api/v1/architecture/planning";
 const SNAPSHOT_CAP: u64 = 8 * 1024 * 1024;
-const HISTORY_MAX: u32 = 200;
 pub const INVALID: &str = "architecture_answer_invalid";
-pub const INPUT_INVALID: &str = "architecture_input_invalid";
-
-/// One planning command, exactly as Brain's planning endpoint reads it.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
-#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
-pub enum PlanningCommand {
-    /// The head revision, or one earlier revision.
-    Get {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
-        revision: Option<u64>,
-    },
-    /// The head's nodes and edges, filtered by chapter and delivery state.
-    List {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
-        chapter: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
-        state: Option<String>,
-        #[serde(default)]
-        include_archived: bool,
-    },
-    /// The revision history, newest first.
-    History {
-        limit: u32,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
-        cursor: Option<String>,
-    },
-    /// What a command would change, without changing it.
-    Preview {
-        expected_revision: u64,
-        idempotency_key: String,
-        #[cfg_attr(
-            all(feature = "wasm", target_arch = "wasm32"),
-            tsify(type = "Record<string, unknown>")
-        )]
-        command: Value,
-    },
-    /// Apply a command to the expected revision.
-    Apply {
-        expected_revision: u64,
-        idempotency_key: String,
-        #[cfg_attr(
-            all(feature = "wasm", target_arch = "wasm32"),
-            tsify(type = "Record<string, unknown>")
-        )]
-        command: Value,
-    },
-}
-
-impl PlanningCommand {
-    fn valid(&self) -> bool {
-        match self {
-            Self::History { limit, .. } => (1..=HISTORY_MAX).contains(limit),
-            Self::Preview {
-                idempotency_key,
-                command,
-                ..
-            }
-            | Self::Apply {
-                idempotency_key,
-                command,
-                ..
-            } => !idempotency_key.trim().is_empty() && command.is_object(),
-            _ => true,
-        }
-    }
-}
-
-/// One planning command and Brain's answer, as served.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Planning {
-    pub command: PlanningCommand,
-}
-
-impl Exchange for Planning {
-    type Output = Value;
-
-    fn plan(&self) -> Result<Plan, Refusal> {
-        if !self.command.valid() {
-            return Err(Refusal::new(
-                INPUT_INVALID,
-                "The planning command is outside its bounds.",
-            ));
-        }
-        let body = serde_json::to_value(&self.command)
-            .map_err(|_| Refusal::new(INPUT_INVALID, "The planning command is unreadable."))?;
-        Ok(Request::post(PATH, body).response_cap(SNAPSHOT_CAP).into())
-    }
-
-    fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
-        let answer = data(&body);
-        if !answer.is_object() {
-            return Err(Refusal::new(
-                INVALID,
-                "The architecture service answered an invalid result.",
-            ));
-        }
-        Ok(Admitted::Done(answer.clone()))
-    }
-}
 
 fn default_kind() -> String {
     "service".into()
@@ -301,7 +193,7 @@ impl Exchange for SnapshotRead {
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::{Planning, PlanningCommand, SnapshotRead};
+    use super::SnapshotRead;
     use crate::gateway_exchange::browser::{run, typed, GatewayHost};
     use wasm_bindgen::prelude::*;
 
@@ -315,17 +207,6 @@ mod exports {
             revision: revision.map(u64::from),
         };
         typed(&run(&host, call).await?)
-    }
-
-    /// One planning command; answers Brain's result as served.
-    #[wasm_bindgen(js_name = architecturePlanning, unchecked_return_type = "Record<string, unknown>")]
-    pub async fn architecture_planning(
-        host: GatewayHost,
-        #[wasm_bindgen(unchecked_param_type = "PlanningCommand")] command: JsValue,
-    ) -> Result<JsValue, JsValue> {
-        let command: PlanningCommand = tsify::serde_wasm_bindgen::from_value(command)
-            .map_err(|error| js_sys::Error::new(&error.to_string()))?;
-        typed(&run(&host, Planning { command }).await?)
     }
 }
 

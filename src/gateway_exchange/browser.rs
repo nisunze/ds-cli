@@ -265,7 +265,24 @@ fn builder(
     }
     let mut builder = client
         .request(http_method(request.method), url)
-        .header("Content-Type", "application/json")
+        .header("Content-Type", "application/json");
+    if request.minimal_headers {
+        if !credentials.api_key.is_empty() {
+            builder = builder.header("x-api-key", &credentials.api_key);
+        }
+        if let Some(token) = credentials
+            .token
+            .as_deref()
+            .filter(|token| !token.is_empty())
+        {
+            builder = builder.header("Authorization", format!("Bearer {token}"));
+        }
+        if let Some(body) = &request.body {
+            builder = builder.body(serde_json::to_vec(body).map_err(unreadable)?);
+        }
+        return Ok(builder);
+    }
+    builder = builder
         .header("X-App-Id", APP_ID)
         .header("X-Request-Id", request_id)
         .header("X-DS-Action-Id", request_id);

@@ -313,11 +313,53 @@ impl Exchange for Locate {
     }
 }
 
+/// The key a level's children are held under: `level:parent_code`.
+#[cfg(feature = "durable-store")]
+fn children_key(level: &str, parent_code: Option<&str>) -> String {
+    format!("{level}:{}", parent_code.unwrap_or_default())
+}
+
+/// The children of one unit this device holds, with no transport.
+#[cfg(feature = "durable-store")]
+pub async fn held_children(
+    edge: &impl super::retained::Edge,
+    level: &str,
+    parent_code: Option<&str>,
+) -> Result<Option<Vec<AdminChild>>, Refusal> {
+    let key = children_key(level, parent_code);
+    let kind = crate::retained_reads::Kind::AdminChildren;
+    let observed = super::retained::read(edge, kind, None, &key).await?;
+    Ok(observed.held.map(|held| held.value))
+}
+
+/// The children of one unit from Brain, held under the account its read
+/// observed so cascading choices open offline. Holding is a cache: a store
+/// that cannot keep them never hides them.
+#[cfg(feature = "durable-store")]
+pub async fn refresh_children(
+    edge: &impl super::retained::Edge,
+    call: Children,
+) -> Result<Vec<AdminChild>, Refusal> {
+    let key = children_key(&call.level, call.parent_code.as_deref());
+    let kind = crate::retained_reads::Kind::AdminChildren;
+    let observed = super::retained::read::<Vec<AdminChild>>(edge, kind, None, &key)
+        .await
+        .ok();
+    let rows = edge.fetch(call).await?;
+    if let Some(observed) = observed {
+        let owner = observed.owner.as_deref();
+        let _ = super::retained::write(edge, owner, kind, None, &key, &rows, None).await;
+    }
+    Ok(rows)
+}
+
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::{Boundary, Children, Descendants, Locate, Name};
-    use crate::gateway_exchange::browser::{run, typed, GatewayHost};
+    use super::{held_children, refresh_children, Boundary, Children, Descendants, Locate, Name};
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
     use wasm_bindgen::prelude::*;
 
     fn deadline(timeout_ms: Option<u32>) -> Option<u64> {
@@ -338,6 +380,41 @@ mod exports {
             timeout_ms: deadline(timeout_ms),
         };
         typed(&run(&host, call).await?)
+    }
+
+    /// The children of one unit this device holds, at once and offline.
+    #[wasm_bindgen(js_name = adminChildrenHeld, unchecked_return_type = "AdminChild[] | undefined")]
+    pub async fn admin_children_held(
+        host: GatewayHost,
+        store: StoreHost,
+        level: String,
+        parent_code: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        let held = held_children(&edge, &level, parent_code.as_deref()).await;
+        typed(&held.map_err(|refusal| rejection(&refusal))?)
+    }
+
+    /// The children of one unit from Brain, held for the next offline open.
+    #[wasm_bindgen(js_name = adminChildrenRefresh, unchecked_return_type = "AdminChild[]")]
+    pub async fn admin_children_refresh(
+        host: GatewayHost,
+        store: StoreHost,
+        level: String,
+        parent_code: Option<String>,
+        timeout_ms: Option<u32>,
+    ) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        let call = Children {
+            level,
+            parent_code,
+            timeout_ms: deadline(timeout_ms),
+        };
+        typed(
+            &refresh_children(&edge, call)
+                .await
+                .map_err(|refusal| rejection(&refusal))?,
+        )
     }
 
     /// One unit's boundary as GeoJSON.

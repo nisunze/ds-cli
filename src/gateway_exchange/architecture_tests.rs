@@ -56,26 +56,3 @@ fn a_snapshot_is_projected_into_the_pages_spelling() {
         INVALID
     );
 }
-
-#[test]
-fn planning_commands_are_sent_as_brain_reads_them() {
-    let command: PlanningCommand = serde_json::from_value(json!({"action": "preview", "expected_revision": 4,
-        "idempotency_key": "c-2", "command": {"id": "c-2", "kind": "archive_node", "target_id": "kernel"}})).unwrap();
-    let Step::Fetch { request, .. } = start(Planning { command }) else {
-        panic!()
-    };
-    assert_eq!(request.body.unwrap()["command"]["kind"], "archive_node");
-    let history: PlanningCommand =
-        serde_json::from_value(json!({"action": "history", "limit": 20})).unwrap();
-    assert!(answered(
-        Planning { command: history },
-        json!({"revisions": [], "next_cursor": ""})
-    )
-    .is_ok());
-    let unbounded: PlanningCommand =
-        serde_json::from_value(json!({"action": "history", "limit": 0})).unwrap();
-    assert!(
-        matches!(start(Planning { command: unbounded }), Step::Refused(r) if r.code == INPUT_INVALID)
-    );
-    assert!(serde_json::from_value::<PlanningCommand>(json!({"action": "drop"})).is_err());
-}

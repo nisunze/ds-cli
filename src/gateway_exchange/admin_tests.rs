@@ -224,3 +224,51 @@ fn a_name_and_a_location_are_read() {
     .unwrap();
     assert!(!outside.found && outside.name.is_none());
 }
+
+#[cfg(feature = "durable-store")]
+mod held_children {
+    use super::super::{held_children, refresh_children, AdminChild, Children};
+    use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
+    use serde_json::json;
+
+    fn districts() -> Children {
+        Children {
+            level: "district".into(),
+            parent_code: Some("1".into()),
+            timeout_ms: None,
+        }
+    }
+
+    #[test]
+    fn refreshed_children_open_offline_and_never_for_another_account() {
+        let edge = TestEdge::new();
+        assert_eq!(
+            block_on(held_children(&edge, "district", Some("1"))).unwrap(),
+            None
+        );
+        edge.json(json!({"children": [{"code": "11", "name": "Nyarugenge"}]}));
+        let fresh = block_on(refresh_children(&edge, districts())).unwrap();
+        assert_eq!(
+            fresh,
+            [AdminChild {
+                code: "11".into(),
+                name: "Nyarugenge".into()
+            }]
+        );
+        edge.online.set(false);
+        assert!(block_on(refresh_children(&edge, districts())).is_err());
+        assert_eq!(
+            block_on(held_children(&edge, "district", Some("1"))).unwrap(),
+            Some(fresh)
+        );
+        assert_eq!(
+            block_on(held_children(&edge, "district", Some("2"))).unwrap(),
+            None
+        );
+        edge.sign_in("someone-else");
+        assert_eq!(
+            block_on(held_children(&edge, "district", Some("1"))).unwrap(),
+            None
+        );
+    }
+}

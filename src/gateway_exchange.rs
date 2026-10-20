@@ -37,6 +37,7 @@ pub mod compute_artifacts;
 pub mod deadletter;
 pub mod design;
 pub mod feedback;
+pub mod forms;
 pub mod geodata;
 pub mod governance;
 pub mod grid_models;
@@ -44,8 +45,12 @@ pub mod help;
 pub mod installations;
 pub mod layers;
 pub mod maps;
+pub mod messaging;
 pub mod notes;
+pub mod notifications;
 pub mod pipeline;
+pub mod project_work;
+pub mod projects;
 pub mod report_artifacts;
 pub mod solar_inputs;
 pub mod sre;
@@ -125,6 +130,10 @@ pub struct Request {
     /// How a successful answer's body is encoded.
     #[serde(skip_serializing_if = "Encoding::is_json")]
     pub encoding: Encoding,
+    /// Send only `Content-Type`, `Authorization` and `x-api-key`: a route that
+    /// answers its own CORS preflight with that allow-list refuses any other.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub minimal_headers: bool,
 }
 
 /// How a successful answer's body is encoded. A refusal's body is read as
@@ -158,7 +167,14 @@ impl Request {
             response_cap_bytes: DEFAULT_RESPONSE_CAP,
             lane_header: false,
             encoding: Encoding::Json,
+            minimal_headers: false,
         }
+    }
+
+    /// Send only the headers a route's own CORS allow-list admits.
+    pub fn minimal_headers(mut self) -> Self {
+        self.minimal_headers = true;
+        self
     }
 
     pub fn timeout_ms(mut self, timeout_ms: u64) -> Self {

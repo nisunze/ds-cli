@@ -425,6 +425,7 @@ impl DesignCall {
                 response_cap_bytes: CONFIG_CAP,
                 lane_header: false,
                 encoding: Default::default(),
+                minimal_headers: false,
             }),
             Self::SaveConfigSheet {
                 sheet,
