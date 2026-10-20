@@ -12,7 +12,6 @@
 use serde_json::{json, Value};
 
 use crate::survey_entry_create::{direct, direct_plan_for};
-use crate::survey_entry_outbox::Header;
 
 /// Where a create goes. The web writes Firestore directly, create-only;
 /// native edges (Desktop, Android, Core) send every survey write through
@@ -65,6 +64,18 @@ pub struct Author {
     pub lane: String,
 }
 
+/// What the queue holds of one create besides its wire payload: the entry,
+/// the intent's key and time, and the account that captured it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Queued<'a> {
+    pub project: &'a str,
+    pub form: &'a str,
+    pub doc: &'a str,
+    pub idempotency_key: &'a str,
+    pub created_at: u64,
+    pub owner_uid: &'a str,
+}
+
 /// One queued create, ready to commit.
 #[derive(Clone)]
 pub struct Create {
@@ -77,16 +88,17 @@ pub fn invalid() -> Value {
 }
 
 impl Create {
-    /// Plan the commit of a queued create from its header and wire payload,
-    /// written as `author`. `None` when the row or the author is outside the
-    /// create grammar: the machine records that as invalid, never a retry.
-    pub fn prepare(header: &Header, payload: &Value, author: &Author) -> Option<Self> {
+    /// Plan the commit of a queued create from what the queue holds and its
+    /// wire payload, written as `author`. `None` when the row or the author is
+    /// outside the create grammar: the queue records that as invalid, never a
+    /// retry.
+    pub fn prepare(queued: &Queued, payload: &Value, author: &Author) -> Option<Self> {
         let row = json!({
-            "project_id": header.project_id,
-            "form_id": header.form_id,
-            "doc_id": header.doc_id,
-            "idempotency_key": header.idempotency_key,
-            "created_at": header.created_at,
+            "project_id": queued.project,
+            "form_id": queued.form,
+            "doc_id": queued.doc,
+            "idempotency_key": queued.idempotency_key,
+            "created_at": queued.created_at,
         });
         let authority = direct::Authority {
             firebase_project: author.firebase_project.clone(),
@@ -94,7 +106,7 @@ impl Create {
             email: author.email.clone(),
             lane: author.lane.clone(),
         };
-        if header.owner_uid.as_deref() != Some(author.uid.as_str()) {
+        if queued.owner_uid != author.uid {
             return None;
         }
         direct_plan_for(payload, &row, &authority)
@@ -136,8 +148,8 @@ mod exports {
     use wasm_bindgen::prelude::*;
 
     use super::{
-        invalid, pending, Author, Create, Route, Sent, RESPONSE_CAP, ROUTE, ROUTE_PENDING,
-        TIMEOUT_MS,
+        invalid, pending, Author, Create, Queued, Route, Sent, RESPONSE_CAP, ROUTE,
+        ROUTE_PENDING, TIMEOUT_MS,
     };
     use crate::gateway_exchange::browser::{
         attempt, credentials, direct_post, facts, typed, GatewayHost,
@@ -184,7 +196,15 @@ mod exports {
             email: session.email.trim().into(),
             lane: LANE.unwrap_or_default().into(),
         };
-        let Some(create) = Create::prepare(&header, &payload, &author) else {
+        let queued = Queued {
+            project: &header.project_id,
+            form: &header.form_id,
+            doc: &header.doc_id,
+            idempotency_key: &header.idempotency_key,
+            created_at: header.created_at,
+            owner_uid: header.owner_uid.as_deref().unwrap_or_default(),
+        };
+        let Some(create) = Create::prepare(&queued, &payload, &author) else {
             return typed(&invalid());
         };
         let Some(bearer) = session.token.filter(|token| !token.is_empty()) else {

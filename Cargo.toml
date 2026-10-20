@@ -52,7 +52,6 @@ wasm = [
     "dep:reqwest",
     "dep:wasm-bindgen-futures",
     "dep:js-sys",
-    "dep:futures-util",
     "dep:gloo-timers",
     "dep:tsify",
     "dep:uuid",
@@ -101,6 +100,8 @@ imagesize = "0.13"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 time = { version = "=0.3.47", features = ["formatting", "parsing"] }
 rusqlite = { version = "0.40.2", optional = true, features = ["bundled"] }
+# One drain runs its lanes at once (`future::join`).
+futures-util = { version = "0.3", default-features = false }
 
 # HTTP through reqwest (development philosophy §9): its WebAssembly client is
 # the page's own `fetch`. tsify generates the TypeScript types of the typed
@@ -109,7 +110,6 @@ rusqlite = { version = "0.40.2", optional = true, features = ["bundled"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["stream"], optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 js-sys = { version = "0.3", optional = true }
-futures-util = { version = "0.3", default-features = false, optional = true }
 gloo-timers = { version = "0.3", features = ["futures"], optional = true }
 tsify = { version = "0.5.8", default-features = false, features = ["js"], optional = true }
 uuid = { version = "1", features = ["v4", "js"], optional = true }

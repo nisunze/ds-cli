@@ -560,6 +560,24 @@ fn enqueue(
     Ok(count)
 }
 
+/// Queue one row in the caller's transaction unless the queue already holds
+/// its id: how another store schedules work whose bytes it keeps.
+pub(crate) fn enqueue_if_absent(connection: &Connection, owner: &str, queue: Queue, entry: Entry, now: u64) -> Result<bool, String> {
+    connection.execute_batch(TABLE).map_err(sql)?;
+    let held: bool = connection
+        .query_row(
+            "SELECT count(*) FROM outbox WHERE owner=?1 AND queue=?2 AND id=?3",
+            params![owner, queue.name(), entry.id],
+            |row| Ok(row.get::<_, i64>(0)? > 0),
+        )
+        .map_err(sql)?;
+    if held {
+        return Ok(false);
+    }
+    enqueue(connection, owner, queue, vec![entry], time(now)?)?;
+    Ok(true)
+}
+
 /// What a claim found: the row it leased, or why none (the lane at its
 /// bound, or the time the next head comes due).
 struct Claimed {

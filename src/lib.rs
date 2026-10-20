@@ -228,6 +228,8 @@ pub mod media_outbox;
 #[cfg(feature = "durable-store")]
 pub mod upload_chunks;
 #[cfg(feature = "durable-store")]
+pub mod survey_capture;
+#[cfg(feature = "durable-store")]
 pub mod work_drafts;
 #[cfg(feature = "durable-store")]
 pub mod outbox;

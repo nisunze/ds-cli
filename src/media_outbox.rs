@@ -116,6 +116,13 @@ pub enum Operation {
     RetryFailed { now: u64 },
     Counts,
     Failed,
+    /// Dispatch the one upload the survey queue's drain leased.
+    Dispatch { path: String, online: bool, now: u64 },
+    /// Schedule on the survey queue every held upload that is not yet.
+    Schedule { now: u64 },
+    /// Drop one held upload and its bytes: the person discarded it, or the
+    /// capture that admitted it did not queue its entry.
+    Remove { path: String },
 }
 
 fn invalid(message: impl std::fmt::Display) -> String {
@@ -509,6 +516,94 @@ fn plan(connection: &Connection, held: &Held, targets: &[outbox::UploadTarget]) 
     Ok(Some(planned))
 }
 
+/// What driving one held row decided: the uploads it dispatched, when it
+/// wakes next, and whether the row changed.
+#[derive(Default)]
+struct Driven {
+    dispatch: Vec<Value>,
+    wake_at: Option<u64>,
+    wrote: bool,
+}
+
+/// Drive one held row of `uid`, with `active` transfers already running. An
+/// uploading row is an abandoned lease: its caller runs no transfer for it.
+#[allow(clippy::too_many_arguments)]
+fn drive(connection: &Connection, owner: &str, uid: &str, held: &Held, online: bool, active: u32, now: u64) -> Result<Driven, String> {
+    let mut driven = Driven::default();
+    let mut row = held.row.clone();
+    let Some(scope) = row.scope.clone().filter(|scope| scope.account_id == uid) else {
+        return Ok(driven);
+    };
+    if row.generation.trim().is_empty() {
+        return Ok(driven);
+    }
+    if row.status == Status::Uploading {
+        let Some(next) = outbox::apply(now, Some(row.clone()), Event::Recover).ok().and_then(|reply| reply.row) else {
+            return Ok(driven);
+        };
+        row = next;
+    }
+    let drive = Event::Drive {
+        online,
+        active_uploads: active,
+        bytes_present: present(connection, held)?,
+        scope: scope.clone(),
+    };
+    let Ok(reply) = outbox::apply(now, Some(row.clone()), drive) else {
+        return Ok(driven);
+    };
+    let Some(mut next) = reply.row else {
+        return Ok(driven);
+    };
+    driven.wake_at = wake_at(&reply.actions);
+    for action in &reply.actions {
+        let Action::Dispatch {
+            path,
+            generation,
+            lease,
+            targets,
+            ..
+        } = action
+        else {
+            continue;
+        };
+        match plan(connection, held, targets)? {
+            Some(planned) => {
+                driven
+                    .dispatch
+                    .push(json!({"path": path, "generation": generation, "lease": lease, "targets": planned}));
+            }
+            // Bytes damaged since the presence check are never sent.
+            None => {
+                let damaged = Event::Result {
+                    scope: scope.clone(),
+                    generation: generation.clone(),
+                    lease: *lease,
+                    outcome: TransportOutcome::TransportFailure {
+                        cause: Some(Cause::DigestMismatch),
+                        status: None,
+                        error_code: None,
+                        timed_out: false,
+                        retry_after: None,
+                        has_session: true,
+                        offline_mode: false,
+                        message: Some(MISSING_BYTES.into()),
+                    },
+                };
+                next = outbox::apply(now, Some(next.clone()), damaged)
+                    .map_err(refused)?
+                    .row
+                    .unwrap_or(next);
+            }
+        }
+    }
+    if next != held.row {
+        update(connection, owner, &next)?;
+        driven.wrote = true;
+    }
+    Ok(driven)
+}
+
 fn claim(connection: &Connection, identity: &Identity, owner: &str, online: bool, in_flight: Vec<String>, now: u64) -> Result<Outcome, String> {
     if in_flight.len() > MAX_IN_FLIGHT {
         return Err(invalid("a claim names at most 64 live transfers"));
@@ -522,79 +617,16 @@ fn claim(connection: &Connection, identity: &Identity, owner: &str, online: bool
     let mut earliest: Option<u64> = None;
     let mut wrote = false;
     for held in rows_of(connection, owner, "")? {
-        let mut row = held.row.clone();
-        let Some(scope) = row.scope.clone().filter(|scope| scope.account_id == uid) else {
-            continue;
-        };
-        if row.generation.trim().is_empty() || in_flight.contains(&row.path) {
+        if in_flight.contains(&held.row.path) {
             continue;
         }
-        if row.status == Status::Uploading {
-            // Not among the caller's live transfers: an abandoned lease.
-            let Some(next) = outbox::apply(now, Some(row.clone()), Event::Recover).ok().and_then(|reply| reply.row) else {
-                continue;
-            };
-            row = next;
-        }
-        let drive = Event::Drive {
-            online,
-            active_uploads: active,
-            bytes_present: present(connection, &held)?,
-            scope: scope.clone(),
-        };
-        let Ok(reply) = outbox::apply(now, Some(row.clone()), drive) else {
-            continue;
-        };
-        let Some(mut next) = reply.row else {
-            continue;
-        };
-        if let Some(at) = wake_at(&reply.actions) {
+        let driven = drive(connection, owner, uid, &held, online, active, now)?;
+        if let Some(at) = driven.wake_at {
             earliest = Some(earliest.map_or(at, |held| held.min(at)));
         }
-        for action in &reply.actions {
-            let Action::Dispatch {
-                path,
-                generation,
-                lease,
-                targets,
-                ..
-            } = action
-            else {
-                continue;
-            };
-            match plan(connection, &held, targets)? {
-                Some(planned) => {
-                    active += 1;
-                    dispatch.push(json!({"path": path, "generation": generation, "lease": lease, "targets": planned}));
-                }
-                // Bytes damaged since the presence check are never sent.
-                None => {
-                    let damaged = Event::Result {
-                        scope: scope.clone(),
-                        generation: generation.clone(),
-                        lease: *lease,
-                        outcome: TransportOutcome::TransportFailure {
-                            cause: Some(Cause::DigestMismatch),
-                            status: None,
-                            error_code: None,
-                            timed_out: false,
-                            retry_after: None,
-                            has_session: true,
-                            offline_mode: false,
-                            message: Some(MISSING_BYTES.into()),
-                        },
-                    };
-                    next = outbox::apply(now, Some(next.clone()), damaged)
-                        .map_err(refused)?
-                        .row
-                        .unwrap_or(next);
-                }
-            }
-        }
-        if next != held.row {
-            update(connection, owner, &next)?;
-            wrote = true;
-        }
+        active += driven.dispatch.len() as u32;
+        dispatch.extend(driven.dispatch);
+        wrote |= driven.wrote;
     }
     let value = fields(json!({"dispatch": dispatch, "wake_at": earliest}));
     Ok(if wrote {
@@ -602,6 +634,85 @@ fn claim(connection: &Connection, identity: &Identity, owner: &str, online: bool
     } else {
         Outcome::read(value)
     })
+}
+
+/// Dispatch the one upload the survey queue's drain leased: its queue row's
+/// lease is the only fence, so an uploading row here was abandoned. Answers
+/// the upload, `pending: false` when no such upload is held any more, or the
+/// time it may start.
+fn dispatch_one(connection: &Connection, identity: &Identity, owner: &str, path: &str, online: bool, now: u64) -> Result<Outcome, String> {
+    let now = time(now)?;
+    let uid = account(identity).ok_or_else(|| refused("Sign in to upload queued media."))?;
+    let Some(held) = load(connection, owner, path)? else {
+        return Ok(Outcome::read(fields(json!({"pending": false}))));
+    };
+    let driven = drive(connection, owner, uid, &held, online, 0, now)?;
+    let row = load(connection, owner, path)?.map(|held| held.row);
+    let value = fields(json!({
+        "pending": true,
+        "upload": driven.dispatch.into_iter().next(),
+        "wake_at": driven.wake_at,
+        "status": row.as_ref().map(|row| status_name(&row.status)),
+        "error": row.and_then(|row| row.last_error),
+    }));
+    Ok(if driven.wrote {
+        Outcome::written(value)
+    } else {
+        Outcome::read(value)
+    })
+}
+
+/// The survey queue row that schedules one held upload: its entry is the
+/// record, so it leaves after the entry's create, and its bytes pick the lane.
+pub(crate) fn queue_row(row: &Row, original_size: u64, companion_size: u64) -> Option<crate::outbox::Entry> {
+    let address = survey_media_address::parse(&row.path).ok()?;
+    let id = format!("media-{}", &crate::durable_store::sha256(row.path.as_bytes())[..40]);
+    Some(crate::outbox::Entry {
+        project: Some(address.project),
+        id,
+        record: Some(crate::survey_capture::record(&address.form, &address.entry)),
+        size: Some(original_size + companion_size),
+        meta: Some(json!({"operation": "media", "form": address.form, "doc": address.entry})),
+        payload: json!({"operation": "media", "path": row.path}),
+    })
+}
+
+/// Schedule on the survey queue every held upload that is not yet: uploads
+/// queued before the queue carried them, and replacements queued on their
+/// own. A capture admits its uploads, queues the entry's create and then
+/// schedules them, so they leave after it.
+fn schedule(connection: &Connection, identity: &Identity, owner: &str, now: u64) -> Result<Outcome, String> {
+    let now = time(now)?;
+    let mut scheduled = 0u64;
+    if account(identity).is_some() {
+        for held in rows_of(connection, owner, "")? {
+            let Some(entry) = queue_row(&held.row, held.original_size, held.companion_size) else {
+                continue;
+            };
+            if crate::outbox::enqueue_if_absent(connection, owner, crate::outbox::Queue::Survey, entry, now)? {
+                scheduled += 1;
+            }
+        }
+    }
+    let value = fields(json!({"scheduled": scheduled}));
+    Ok(if scheduled > 0 {
+        Outcome::written(value)
+    } else {
+        Outcome::read(value)
+    })
+}
+
+fn remove(connection: &Connection, owner: &str, path: &str) -> Result<Outcome, String> {
+    let Some(held) = load(connection, owner, path)? else {
+        return Ok(Outcome::read(fields(json!({"removed": 0}))));
+    };
+    connection
+        .execute("DELETE FROM media_outbox WHERE owner=?1 AND path=?2", params![owner, path])
+        .map_err(sql)?;
+    if let Some(blob) = &held.blob {
+        BLOBS.delete(connection, blob.id)?;
+    }
+    Ok(Outcome::written(fields(json!({"removed": 1}))))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -780,6 +891,9 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
         } => settle(connection, identity, &owner, path, generation, lease, outcome, now),
         Operation::RetryFailed { now } => retry_failed(connection, identity, &owner, now),
         Operation::Counts => counts(connection, &owner),
+        Operation::Dispatch { path, online, now } => dispatch_one(connection, identity, &owner, &path, online, now),
+        Operation::Schedule { now } => schedule(connection, identity, &owner, now),
+        Operation::Remove { path } => remove(connection, &owner, &path),
         Operation::Failed => {
             let rows: Vec<Row> = rows_of(connection, &owner, "AND status IN ('failed','blocked')")?
                 .into_iter()

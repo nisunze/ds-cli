@@ -1,26 +1,13 @@
 use super::*;
-use crate::survey_entry_outbox::{Operation, Status};
 
-fn header(owner: &str) -> Header {
-    Header {
-        id: "row-1".into(),
-        project_id: "it_rwanda".into(),
-        form_id: "poles".into(),
-        doc_id: "e_0123456789abcdef".into(),
-        operation: Operation::Create,
-        idempotency_key: "survey_key_1".into(),
+fn header(owner: &str) -> Queued<'_> {
+    Queued {
+        project: "it_rwanda",
+        form: "poles",
+        doc: "e_0123456789abcdef",
+        idempotency_key: "survey_key_1",
         created_at: 1_760_000_000_000,
-        owner_uid: Some(owner.into()),
-        generation: Some("g1".into()),
-        lease: 1,
-        status: Status::Syncing,
-        attempts: 1,
-        next_attempt_at: 0,
-        conflict_rebased: false,
-        error: None,
-        failure_code: None,
-        subeffect_phase: None,
-        legacy_confirmed: false,
+        owner_uid: owner,
     }
 }
 fn payload() -> Value {

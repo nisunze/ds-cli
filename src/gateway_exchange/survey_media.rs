@@ -162,11 +162,25 @@ pub struct Drained {
 
 /// One upload the outbox dispatched, as `claim` answers it.
 #[derive(Debug, Deserialize)]
-struct Dispatch {
-    path: String,
-    generation: String,
-    lease: u64,
+pub(super) struct Dispatch {
+    pub path: String,
+    pub generation: String,
+    pub lease: u64,
     targets: Vec<Target>,
+}
+
+/// Before each part of a transfer: keep the delivery's lease, or answer
+/// false when it is lost and the transfer stops.
+#[allow(async_fn_in_trait)]
+pub(super) trait Renew {
+    async fn renew(&self) -> bool;
+}
+
+/// A drain whose leases are the media outbox's own.
+impl Renew for () {
+    async fn renew(&self) -> bool {
+        true
+    }
 }
 #[derive(Debug, Deserialize)]
 struct Target {
@@ -183,7 +197,7 @@ struct Target {
     sha256: String,
 }
 
-async fn call(store: &impl StorePort, owner: Option<&str>, operation: Operation) -> Result<Reply, Refusal> {
+pub(super) async fn call(store: &impl StorePort, owner: Option<&str>, operation: Operation) -> Result<Reply, Refusal> {
     let request = crate::durable_store::Request::MediaOutbox {
         operation: Box::new(operation),
     };
@@ -195,16 +209,20 @@ async fn call(store: &impl StorePort, owner: Option<&str>, operation: Operation)
 
 /// A dispatched target's bytes, read from the outbox under the upload's
 /// own generation: a replaced or removed upload reads as cancelled.
-struct Bytes<'a, S> {
+struct Bytes<'a, S, R> {
     store: &'a S,
+    renew: &'a R,
     owner: &'a str,
     path: &'a str,
     generation: &'a str,
     role: Role,
 }
 
-impl<S: StorePort> Parts for Bytes<'_, S> {
+impl<S: StorePort, R: Renew> Parts for Bytes<'_, S, R> {
     async fn read(&self, offset: u64, length: u64) -> Result<Vec<u8>, Cause> {
+        if !self.renew.renew().await {
+            return Err(Cause::Cancelled);
+        }
         let mut bytes = Vec::with_capacity(length as usize);
         while (bytes.len() as u64) < length {
             let take = (length - bytes.len() as u64).min(PART_BYTES);
@@ -256,7 +274,14 @@ fn failed(cause: Cause) -> TransportOutcome {
 
 /// Carry one dispatched upload through its ordered plan and answer what it
 /// observed, for the outbox to settle.
-async fn carry(edge: &impl Edge, store: &impl StorePort, transfer: &impl Transfer, owner: &str, upload: &Dispatch) -> TransportOutcome {
+pub(super) async fn carry(
+    edge: &impl Edge,
+    store: &impl StorePort,
+    transfer: &impl Transfer,
+    owner: &str,
+    upload: &Dispatch,
+    renew: &impl Renew,
+) -> TransportOutcome {
     let mut original: Option<(String, String)> = None;
     for target in &upload.targets {
         let call = Upload {
@@ -278,6 +303,7 @@ async fn carry(edge: &impl Edge, store: &impl StorePort, transfer: &impl Transfe
             Ok(Started::Session { uri }) => {
                 let bytes = Bytes {
                     store,
+                    renew,
                     owner,
                     path: &upload.path,
                     generation: &upload.generation,
@@ -326,7 +352,7 @@ pub async fn drain(edge: &impl Edge, store: &impl StorePort, transfer: &impl Tra
             break;
         }
         for upload in dispatch {
-            let outcome = carry(edge, store, transfer, owner, &upload).await;
+            let outcome = carry(edge, store, transfer, owner, &upload, &()).await;
             let settle = Operation::Settle {
                 path: upload.path,
                 generation: upload.generation,
@@ -346,7 +372,7 @@ pub async fn drain(edge: &impl Edge, store: &impl StorePort, transfer: &impl Tra
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod browser {
+pub(super) mod browser {
     use super::{drain, Parts, Sent, Transfer};
     use crate::durable_store::port::{PageStore, StoreHost};
     use crate::gateway_exchange::browser::{facts, rejection, typed, GatewayHost};
@@ -380,7 +406,8 @@ mod browser {
         }
     }
 
-    struct Storage(GatewayHost);
+    /// The resumable storage transfer on the page's own link.
+    pub(in crate::gateway_exchange) struct Storage(pub GatewayHost);
 
     impl Transfer for Storage {
         async fn send(&self, session_uri: &str, size: u64, content_type: &str, parts: &impl Parts) -> Sent {
