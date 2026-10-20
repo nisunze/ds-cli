@@ -143,6 +143,14 @@ Historical `ds.fast-lv.request/v1` remains explicit read compatibility and
 produces `ds.fast-lv.result/v1`; it is not a distinct processing mode.
 New exports use `ds.lv.process.request/v1`.
 
+With `--project <id>`, `--input` is the page's LV batch instead: the
+Network contract's `LvProcessBatchInput` (`jobs`, each naming `ds_project`,
+plus shared `local_tables`). Every job must belong to `--project`. Core turns
+the batch into the native request, runs it the same way, and writes the
+page's batch output (`jobs`, each with `ds_project`, `transformer_name`, `ok`
+and `output`) to `--out`. This is how the Desktop page processes LV through
+Core's generic door. No host converts either document.
+
 Independent transformer jobs use the executable's bounded native Rayon pool
 and results retain input order. The complete `ds.lv.process.result/v1` document is written to
 an absent `--out` path; it is never truncated or overwritten. Terminal output
