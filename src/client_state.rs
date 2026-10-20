@@ -17,10 +17,8 @@
 use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
-use std::sync::Mutex;
 
 use reactive_graph::computed::{ArcAsyncDerived, ArcMemo};
-use reactive_graph::effect::ImmediateEffect;
 use reactive_graph::signal::ArcRwSignal;
 use reactive_graph::traits::{Get, GetUntracked, Update, With};
 use serde::{Deserialize, Serialize};
@@ -163,23 +161,21 @@ impl<T> Read<T> {
     }
 }
 
-/// One answer, for the scope and attempt it was read for. No outcome:
-/// nothing was read for that scope.
+/// One answer, for the scope it was read for. No outcome: nothing was read
+/// for that scope.
 #[derive(Clone, Debug, PartialEq)]
 struct Answer<T> {
     scope: Scope,
-    attempt: u32,
     outcome: Option<Result<T, Refusal>>,
 }
 
 /// A read that follows the scope while it is wanted. It reads when the scope
-/// is complete, and again on [`ScopedRead::retry`]; the same scope and
-/// attempt are never read twice. A change while a read is in flight waits for
-/// it, then only the latest scope is read (reactive_graph's async derived),
-/// and an answer counts only for the scope and attempt it was read for.
+/// is complete and never reads the same scope twice. A change while a read
+/// is in flight waits for it, then only the latest scope is read
+/// (reactive_graph's async derived), and an answer counts only for the
+/// scope it was read for.
 pub struct ScopedRead<T: Send + Sync + 'static> {
     pub state: OnDemand<Read<T>>,
-    attempt: ArcRwSignal<u32>,
 }
 
 impl<T: Clone + PartialEq + Send + Sync + 'static> ScopedRead<T> {
@@ -188,19 +184,16 @@ impl<T: Clone + PartialEq + Send + Sync + 'static> ScopedRead<T> {
         F: Fn(Scope) -> Fut + 'static,
         Fut: Future<Output = Result<T, Refusal>> + 'static,
     {
-        let attempt = ArcRwSignal::new(0_u32);
         let demand = Demand::default();
         // The last answer read: kept while nothing wants a newer one, and
-        // reused when the same scope and attempt are wanted again.
+        // reused when the same scope is wanted again.
         let last = Rc::new(RefCell::new(None::<Answer<T>>));
         let answer = ArcAsyncDerived::new_unsync({
-            let (scope, attempt, demand) = (scope.clone(), attempt.clone(), demand.clone());
+            let (scope, demand) = (scope.clone(), demand.clone());
             move || {
-                let (scope, attempt, wanted) = (scope.get(), attempt.get(), demand.wanted());
+                let (scope, wanted) = (scope.get(), demand.wanted());
                 let kept = last.borrow().clone();
-                let answered = kept
-                    .as_ref()
-                    .is_some_and(|kept| kept.scope == scope && kept.attempt == attempt);
+                let answered = kept.as_ref().is_some_and(|kept| kept.scope == scope);
                 let pending =
                     (wanted && scope.is_complete() && !answered).then(|| read(scope.clone()));
                 let last = Rc::clone(&last);
@@ -209,20 +202,17 @@ impl<T: Clone + PartialEq + Send + Sync + 'static> ScopedRead<T> {
                         last.replace(None);
                         return Answer {
                             scope,
-                            attempt,
                             outcome: None,
                         };
                     }
                     let Some(pending) = pending else {
                         return kept.unwrap_or(Answer {
                             scope: Scope::default(),
-                            attempt,
                             outcome: None,
                         });
                     };
                     let answer = Answer {
                         scope,
-                        attempt,
                         outcome: Some(pending.await),
                     };
                     last.replace(Some(answer.clone()));
@@ -231,20 +221,17 @@ impl<T: Clone + PartialEq + Send + Sync + 'static> ScopedRead<T> {
             }
         });
         let value = ArcMemo::new({
-            let (scope, attempt) = (scope.clone(), attempt.clone());
+            let scope = scope.clone();
             move |_: Option<&Read<T>>| {
                 let scope = scope.get();
                 if !scope.is_complete() {
                     return Read::Idle;
                 }
-                let attempt = attempt.get();
                 answer.with(|answer: &Option<Answer<T>>| match answer {
-                    Some(answer) if answer.scope == scope && answer.attempt == attempt => {
-                        match &answer.outcome {
-                            Some(outcome) => Read::Done(outcome.clone()),
-                            None => Read::Pending { previous: None },
-                        }
-                    }
+                    Some(answer) if answer.scope == scope => match &answer.outcome {
+                        Some(outcome) => Read::Done(outcome.clone()),
+                        None => Read::Pending { previous: None },
+                    },
                     Some(answer) if answer.scope.principal == scope.principal => Read::Pending {
                         previous: answer.outcome.clone().and_then(Result::ok),
                     },
@@ -254,26 +241,6 @@ impl<T: Clone + PartialEq + Send + Sync + 'static> ScopedRead<T> {
         });
         Self {
             state: OnDemand { value, demand },
-            attempt,
-        }
-    }
-
-    /// Command: read the current scope again.
-    pub fn retry(&self) {
-        self.attempt.update(|attempt| *attempt = attempt.wrapping_add(1));
-    }
-
-    /// Resolves once this scope's read is no longer pending; the read is
-    /// wanted until then.
-    pub fn settled(&self) -> impl Future<Output = Read<T>> + 'static {
-        let want = self.state.demand.want();
-        let settled = until(&self.state.value, |read| {
-            !matches!(read, Read::Pending { .. })
-        });
-        async move {
-            let read = settled.await;
-            drop(want);
-            read
         }
     }
 
@@ -287,33 +254,6 @@ impl<T: Clone + PartialEq + Send + Sync + 'static> ScopedRead<T> {
             value: ArcMemo::new(move |_: Option<&U>| state.with(&derive)),
             demand: self.state.demand.clone(),
         }
-    }
-}
-
-/// Resolves with the memo's first value `ready` accepts: the current one, or
-/// a later one.
-pub fn until<T>(
-    memo: &ArcMemo<T>,
-    ready: impl Fn(&T) -> bool + Send + Sync + 'static,
-) -> impl Future<Output = T> + 'static
-where
-    T: Clone + PartialEq + Send + Sync + 'static,
-{
-    let (sender, receiver) = futures_channel::oneshot::channel();
-    let sender = Mutex::new(Some(sender));
-    let memo = memo.clone();
-    let watch = ImmediateEffect::new(move || {
-        let value = memo.get();
-        if ready(&value) {
-            if let Some(sender) = sender.lock().ok().and_then(|mut sender| sender.take()) {
-                let _ = sender.send(value);
-            }
-        }
-    });
-    async move {
-        let value = receiver.await;
-        drop(watch);
-        value.expect("the watch lives until it answers")
     }
 }
 

@@ -1,6 +1,5 @@
-//! Deterministic validation for commands which change the active map renderer.
-//! The kernel owns the accepted camera/provider vocabulary; hosts only apply
-//! the resulting plan to the renderer they already own.
+//! Deterministic validation of a camera command for the 2D map. The kernel
+//! owns the accepted camera vocabulary; hosts only apply the resulting plan.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -28,13 +27,6 @@ enum Request {
         zoom: f64,
         bearing: f64,
         pitch: f64,
-    },
-    #[serde(rename = "renderer.configure")]
-    RendererConfigure {
-        schema: String,
-        mode: String,
-        #[serde(default)]
-        provider: Option<String>,
     },
 }
 
@@ -89,88 +81,9 @@ pub fn evaluate(input: &[u8]) -> Result<Value, String> {
                 "camera": camera,
             }))
         }
-        Request::RendererConfigure {
-            schema,
-            mode,
-            provider,
-        } => {
-            if schema != REQUEST_SCHEMA {
-                return Err("active map request schema is unsupported".into());
-            }
-            let renderer = match (mode.as_str(), provider.as_deref()) {
-                ("2d", None) => json!({ "mode": "2d" }),
-                ("3d", Some("aws-terrain")) => {
-                    json!({ "mode": "3d", "provider": "aws-terrain" })
-                }
-                ("3d", Some("google")) => json!({ "mode": "3d", "provider": "google" }),
-                ("2d", Some(_)) => {
-                    return Err("2d renderer configuration does not accept a provider".into());
-                }
-                ("3d", None) => {
-                    return Err("3d renderer configuration requires aws-terrain or google".into());
-                }
-                _ => {
-                    return Err(
-                        "renderer must be 2d, or 3d with provider aws-terrain or google".into(),
-                    );
-                }
-            };
-            Ok(json!({
-                "schema": PLAN_SCHEMA,
-                "operation": "renderer.configure",
-                "renderer": renderer,
-            }))
-        }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn command(value: Value) -> Result<Value, String> {
-        evaluate(&serde_json::to_vec(&value).unwrap())
-    }
-
-    #[test]
-    fn accepts_camera_and_both_explicit_3d_providers() {
-        let camera = command(json!({
-            "schema": REQUEST_SCHEMA, "operation": "camera.set",
-            "center": [30.0619, -1.9441], "zoom": 18.5, "pitch": 68.0, "bearing": -32.0
-        }))
-        .unwrap();
-        assert_eq!(camera["camera"]["center"], json!([30.0619, -1.9441]));
-        for provider in ["aws-terrain", "google"] {
-            let plan = command(json!({
-                "schema": REQUEST_SCHEMA, "operation": "renderer.configure",
-                "mode": "3d", "provider": provider
-            }))
-            .unwrap();
-            assert_eq!(plan["renderer"]["provider"], provider);
-        }
-    }
-
-    #[test]
-    fn refuses_ambiguous_renderer_combinations_and_invalid_camera() {
-        for request in [
-            json!({"schema": REQUEST_SCHEMA, "operation": "renderer.configure", "mode": "3d"}),
-            json!({"schema": REQUEST_SCHEMA, "operation": "renderer.configure", "mode": "2d", "provider": "google"}),
-            json!({"schema": REQUEST_SCHEMA, "operation": "renderer.configure", "mode": "3d", "provider": "auto"}),
-            json!({"schema": REQUEST_SCHEMA, "operation": "camera.set", "center": [30.0, -91.0], "zoom": 10.0, "pitch": 40.0, "bearing": 0.0}),
-        ] {
-            assert!(command(request).is_err());
-        }
-    }
-
-    #[test]
-    fn rejects_unknown_fields_and_non_finite_values() {
-        assert!(command(json!({
-            "schema": REQUEST_SCHEMA, "operation": "camera.set",
-            "center": [30.0, -1.0], "zoom": 10.0, "pitch": 40.0, "bearing": 0.0,
-            "duration": 500
-        }))
-        .is_err());
-        let raw = br#"{"schema":"ds.map.active-view.request/v1","operation":"camera.set","center":[30,-1],"zoom":1e999,"pitch":40,"bearing":0}"#;
-        assert!(evaluate(raw).is_err());
-    }
-}
+#[path = "map_active_view_tests.rs"]
+mod tests;

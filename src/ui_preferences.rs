@@ -40,7 +40,7 @@ pub enum Key {
     // group's visibility, the Profile restart record, the map-data sources a
     // new transformer preselects, and panel and dialog geometry.
     LayerGroupCollapse,
-    MapMode,
+    HillshadeExaggeration,
     MapDefaults,
     ToolLayout,
     TileLayers,
@@ -74,7 +74,7 @@ impl Key {
     pub const ALL: &'static [Key] = &[
         Key::ActiveProject,
         Key::LayerGroupCollapse,
-        Key::MapMode,
+        Key::HillshadeExaggeration,
         Key::MapDefaults,
         Key::ToolLayout,
         Key::TileLayers,

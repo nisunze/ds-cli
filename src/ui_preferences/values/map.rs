@@ -1,4 +1,4 @@
-//! Map preferences: the camera mode and cartography defaults of the account,
+//! Map preferences: the relief intensity and cartography defaults of the account,
 //! and per project the camera, layer switches, disabled popups and Earth
 //! Engine imagery; the browser's raster overlay registry; the editing
 //! projection.
@@ -6,55 +6,16 @@ use super::shape::{entry, fields, finite_tuple, label, member, number, ranged, t
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 
-pub(in crate::ui_preferences) const MAP_MODES: [&str; 2] = ["2d", "3d"];
-pub(in crate::ui_preferences) const PROVIDERS_3D: [&str; 3] = ["auto", "aws-terrain", "google"];
 /// The relief intensities the hillshade control cycles through.
 pub(in crate::ui_preferences) const HILLSHADE_EXAGGERATIONS: [f64; 5] = [0.3, 0.6, 1.0, 1.5, 2.5];
-const MAP_MODE_FIELDS: [&str; 7] = [
-    "mode",
-    "rotationLocked",
-    "provider",
-    "google3dBuildings",
-    "layer3DShapes",
-    "hillshade",
-    "hillshadeExaggeration",
-];
 
-/// `map_mode`: the 2D/3D camera choices. Relief visibility lasts one session,
-/// so the stored record always says `hillshade: false`; an intensity is kept
-/// only when it is one of the cycle's presets, and an absent one leaves the
-/// cartography default in charge.
-pub(in crate::ui_preferences) fn map_mode(value: &Value) -> Option<Value> {
-    let map = fields(value, &MAP_MODE_FIELDS)?;
-    if map.get("hillshade").is_some_and(|flag| !flag.is_boolean()) {
-        return None;
-    }
-    let mut out = Map::new();
-    out.insert("mode".into(), member(map.get("mode")?, &MAP_MODES)?.into());
-    out.insert(
-        "rotationLocked".into(),
-        map.get("rotationLocked")?.as_bool()?.into(),
-    );
-    out.insert(
-        "provider".into(),
-        member(map.get("provider")?, &PROVIDERS_3D)?.into(),
-    );
-    out.insert(
-        "google3dBuildings".into(),
-        map.get("google3dBuildings")?.as_bool()?.into(),
-    );
-    out.insert(
-        "layer3DShapes".into(),
-        map.get("layer3DShapes")?.as_bool()?.into(),
-    );
-    out.insert("hillshade".into(), false.into());
-    if let Some(exaggeration) = map.get("hillshadeExaggeration") {
-        let preset = exaggeration
-            .as_f64()
-            .filter(|value| HILLSHADE_EXAGGERATIONS.contains(value))?;
-        out.insert("hillshadeExaggeration".into(), number(preset));
-    }
-    Some(Value::Object(out))
+/// `hillshade_exaggeration`: the relief intensity, one of the cycle's
+/// presets. Relief visibility itself lasts one session and is never stored.
+pub(in crate::ui_preferences) fn hillshade_exaggeration(value: &Value) -> Option<Value> {
+    value
+        .as_f64()
+        .filter(|value| HILLSHADE_EXAGGERATIONS.contains(value))
+        .map(number)
 }
 
 const MAP_DEFAULT_SECTIONS: [&str; 6] = [

@@ -91,28 +91,16 @@ fn pins_fan_out_to_one_row_per_project() {
 }
 
 #[test]
-fn the_camera_mode_restores_as_load_map_mode_state_did() {
+fn the_camera_mode_record_keeps_only_its_relief_intensity() {
     let (_, _, value) = adopted(
         "map_mode_state",
         json!({"mode": "3d", "rotationLocked": 1, "provider": "bing", "hillshade": true, "hillshadeExaggeration": 2.0}),
     );
-    assert_eq!(
-        value,
-        json!({
-            "mode": "3d", "rotationLocked": true, "provider": "auto", "google3dBuildings": true,
-            "layer3DShapes": true, "hillshade": false, "hillshadeExaggeration": 1.5,
-        })
-    );
-    let (_, _, no_intensity) = adopted(
-        "map_mode_state",
-        json!({"mode": "2d", "layer3DShapes": false}),
-    );
+    assert_eq!(value, json!(1.5), "snapped to the nearest preset");
     assert!(
-        no_intensity.get("hillshadeExaggeration").is_none(),
-        "the cartography default stays in charge"
+        read("map_mode_state", &json!({"mode": "2d", "layer3DShapes": false}), NOW).is_empty(),
+        "without an intensity the cartography default stays in charge"
     );
-    assert_eq!(no_intensity["layer3DShapes"], false);
-    assert!(read("map_mode_state", &json!({"mode": "globe"}), NOW).is_empty());
 }
 
 #[test]

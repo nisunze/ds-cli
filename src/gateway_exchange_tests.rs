@@ -1,4 +1,4 @@
-use super::maps::{Config3d, GoogleDarkSession, Maps3dConfig};
+use super::maps::GoogleDarkSession;
 use super::*;
 use serde_json::json;
 
@@ -64,13 +64,6 @@ fn session_body() -> Value {
         "expires_at": "1760003600"}})
 }
 
-fn config_json() -> Value {
-    json!({"default_provider": "auto",
-        "google": {"available": false, "root_url": "", "attribution": "Powered by Google"},
-        "aws_terrain": {"available": true, "tiles_url": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
-            "encoding": "terrarium", "max_zoom": 15, "default_exaggeration": 1.5, "attribution": "Terrain — AWS Open Data"}})
-}
-
 #[test]
 fn the_dark_session_names_its_request_and_bounds() {
     let (request, continuation) = fetched(start(dark("it_rwanda")));
@@ -127,25 +120,6 @@ fn a_malformed_dark_session_is_refused_not_rendered() {
 }
 
 #[test]
-fn the_3d_configuration_is_admitted_whole_or_refused() {
-    let (request, _) = fetched(start(Maps3dConfig));
-    assert_eq!(request.path, "/api/v1/maps3d");
-    assert_eq!(request.body, Some(json!({"action": "get_config"})));
-    let config: Config3d = done(answer(
-        Maps3dConfig,
-        200,
-        json!({"success": true, "data": config_json()}),
-    ));
-    assert_eq!(serde_json::to_value(&config).unwrap(), config_json());
-    let mut missing = config_json();
-    missing.as_object_mut().unwrap().remove("aws_terrain");
-    assert_eq!(
-        refusal(answer(Maps3dConfig, 200, json!({"data": missing}))).code,
-        maps::INVALID
-    );
-}
-
-#[test]
 fn a_backend_refusal_carries_its_code_words_details_and_report() {
     let refused = refusal(answer(
         dark("it_rwanda"),
@@ -168,7 +142,7 @@ fn a_backend_refusal_carries_its_code_words_details_and_report() {
 #[test]
 fn a_busy_service_is_transient_and_not_reported() {
     let refused = refusal(answer(
-        Maps3dConfig,
+        dark("p"),
         503,
         json!({"error": {"code": "SERVICE_UNAVAILABLE", "message": "Google Map Tiles API is not configured"}}),
     ));
@@ -179,7 +153,7 @@ fn a_busy_service_is_transient_and_not_reported() {
 
 #[test]
 fn an_unnamed_refusal_is_coded_by_its_status() {
-    let refused = refusal(answer(Maps3dConfig, 502, json!({})));
+    let refused = refusal(answer(dark("p"), 502, json!({})));
     assert_eq!(refused.code, "HTTP_502");
     assert_eq!(refused.message, "Request failed with status 502");
 }
@@ -187,7 +161,7 @@ fn an_unnamed_refusal_is_coded_by_its_status() {
 #[test]
 fn a_rewritten_message_keeps_the_backend_text_beside_it() {
     let refused = refusal(answer(
-        Maps3dConfig,
+        dark("p"),
         500,
         json!({"error": "rpc error: invalid_grant: reauth required"}),
     ));
@@ -202,7 +176,7 @@ fn a_rewritten_message_keeps_the_backend_text_beside_it() {
 
 #[test]
 fn a_refusal_after_the_session_ended_is_inert() {
-    let (_, continuation) = fetched(start(Maps3dConfig));
+    let (_, continuation) = fetched(start(dark("p")));
     let refused = refusal(resume(
         continuation,
         Observed::Response {
@@ -220,7 +194,7 @@ fn a_refusal_after_the_session_ended_is_inert() {
     assert!(refused.signed_out);
     assert!(refused.report.is_none() && refused.technical.is_none());
     let live = refusal(answer(
-        Maps3dConfig,
+        dark("p"),
         401,
         json!({"error": {"code": "INVALID_TOKEN", "message": "token expired"}}),
     ));
@@ -237,13 +211,13 @@ fn plan_with_retries<C: Exchange>(call: &C, retries: u32) -> Plan {
 
 #[test]
 fn a_resendable_status_waits_then_sends_again_within_the_budget() {
-    let plan = plan_with_retries(&Maps3dConfig, 2);
+    let plan = plan_with_retries(&dark("p"), 2);
     let body = json!({"error": "busy"});
     let Step::Wait {
         delay_ms,
         jitter_ms,
         continuation,
-    } = answered(Maps3dConfig, &plan, 0, 503, None, &body, &signed_in())
+    } = answered(dark("p"), &plan, 0, 503, None, &body, &signed_in())
     else {
         panic!("a 503 within the budget waits")
     };
@@ -253,25 +227,25 @@ fn a_resendable_status_waits_then_sends_again_within_the_budget() {
     assert_eq!(request, plan.request);
     assert_eq!(again.attempt, 1);
     assert!(matches!(
-        answered(Maps3dConfig, &plan, 2, 503, None, &body, &signed_in()),
+        answered(dark("p"), &plan, 2, 503, None, &body, &signed_in()),
         Step::Refused(_)
     ));
     // A 500 may have applied its effect: never sent again.
     assert!(matches!(
-        answered(Maps3dConfig, &plan, 0, 500, None, &body, &signed_in()),
+        answered(dark("p"), &plan, 0, 500, None, &body, &signed_in()),
         Step::Refused(_)
     ));
 }
 
 #[test]
 fn a_named_retry_after_is_waited_exactly() {
-    let plan = plan_with_retries(&Maps3dConfig, 1);
+    let plan = plan_with_retries(&dark("p"), 1);
     let Step::Wait {
         delay_ms,
         jitter_ms,
         ..
     } = answered(
-        Maps3dConfig,
+        dark("p"),
         &plan,
         0,
         429,
@@ -285,8 +259,8 @@ fn a_named_retry_after_is_waited_exactly() {
     assert_eq!((delay_ms, jitter_ms), (7_000, 0));
 }
 
-fn failure(cause: Failure, message: &str) -> Step<Maps3dConfig> {
-    let (_, continuation) = fetched(start(Maps3dConfig));
+fn failure(cause: Failure, message: &str) -> Step<GoogleDarkSession> {
+    let (_, continuation) = fetched(start(dark("p")));
     resume(
         continuation,
         Observed::Failure {
@@ -315,18 +289,18 @@ fn a_failed_link_is_unreachable_and_its_outcome_unknown() {
 
 #[test]
 fn a_failed_link_is_sent_again_within_the_budget() {
-    let plan = plan_with_retries(&Maps3dConfig, 1);
-    let step = failed(Maps3dConfig, &plan, 0, Failure::Network, None, &signed_in());
+    let plan = plan_with_retries(&dark("p"), 1);
+    let step = failed(dark("p"), &plan, 0, Failure::Network, None, &signed_in());
     assert!(matches!(step, Step::Wait { .. }));
-    let spent = failed(Maps3dConfig, &plan, 1, Failure::Network, None, &signed_in());
+    let spent = failed(dark("p"), &plan, 1, Failure::Network, None, &signed_in());
     assert_eq!(refusal(spent).code, NETWORK_ERROR);
 }
 
 #[test]
 fn a_timeout_is_surfaced_never_resent() {
-    let plan = plan_with_retries(&Maps3dConfig, 3);
+    let plan = plan_with_retries(&dark("p"), 3);
     let timed_out = refusal(failed(
-        Maps3dConfig,
+        dark("p"),
         &plan,
         0,
         Failure::Timeout,
@@ -340,7 +314,7 @@ fn a_timeout_is_surfaced_never_resent() {
 
 #[test]
 fn an_answer_past_its_bound_is_refused() {
-    let (request, continuation) = fetched(start(Maps3dConfig));
+    let (request, continuation) = fetched(start(dark("p")));
     let oversized = vec![b' '; request.response_cap_bytes as usize + 1];
     let refused = refusal(resume(
         continuation,
@@ -391,13 +365,13 @@ fn bodies_are_read_the_way_the_gateway_serves_them() {
 
 #[test]
 fn a_link_cut_by_offline_mode_is_the_offline_refusal_never_a_retry() {
-    let plan = plan_with_retries(&Maps3dConfig, 3);
+    let plan = plan_with_retries(&dark("p"), 3);
     let offline = Facts {
         offline_mode: true,
         ..signed_in()
     };
     let refused = refusal(failed(
-        Maps3dConfig,
+        dark("p"),
         &plan,
         0,
         Failure::Network,
@@ -486,7 +460,7 @@ fn an_ndjson_reads_refusal_is_still_its_json_envelope() {
 
 #[test]
 fn a_json_request_names_no_encoding() {
-    let (request, _) = fetched(start(Maps3dConfig));
+    let (request, _) = fetched(start(dark("p")));
     assert_eq!(request.encoding, Encoding::Json);
     assert!(serde_json::to_value(&request)
         .unwrap()
@@ -500,12 +474,12 @@ fn an_operator_never_reads_a_remote_address_or_control_characters() {
         "service refused at https://internal.example/{} then\u{0007}\u{0001}stopped",
         "x".repeat(700)
     );
-    let refused = refusal(answer(Maps3dConfig, 400, json!({ "error": raw })));
+    let refused = refusal(answer(dark("p"), 400, json!({ "error": raw })));
     assert_eq!(
         refused.message,
         "service refused at [remote service] then stopped"
     );
     assert_eq!(refused.technical.as_deref(), Some(raw.as_str()));
-    let long = refusal(answer(Maps3dConfig, 400, json!({"error": "y".repeat(800)})));
+    let long = refusal(answer(dark("p"), 400, json!({"error": "y".repeat(800)})));
     assert_eq!(long.message.chars().count(), 500);
 }

@@ -6,7 +6,7 @@ use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use js_sys::{Function, Promise};
+use js_sys::Function;
 use reactive_graph::effect::ImmediateEffect;
 use reactive_graph::traits::With;
 use send_wrapper::SendWrapper;
@@ -152,38 +152,5 @@ impl PageState {
     #[wasm_bindgen(js_name = darkBasemap, unchecked_return_type = "StateSignal<Basemap | null>")]
     pub fn dark_basemap(&self) -> StateSignal {
         StateSignal::of(&self.0.maps.dark_basemap)
-    }
-
-    /// The 3D provider configuration for the current scope.
-    #[wasm_bindgen(js_name = maps3dConfig, unchecked_return_type = "StateSignal<Config3d | null>")]
-    pub fn maps3d_config(&self) -> StateSignal {
-        StateSignal::of(&self.0.maps.config_3d)
-    }
-
-    #[wasm_bindgen(
-        js_name = maps3dLoadState,
-        unchecked_return_type = "StateSignal<Maps3dLoadState>"
-    )]
-    pub fn maps3d_load_state(&self) -> StateSignal {
-        StateSignal::of(&self.0.maps.load_3d)
-    }
-
-    /// Whether Google Photorealistic 3D can be offered.
-    #[wasm_bindgen(js_name = google3dAvailable, unchecked_return_type = "StateSignal<boolean>")]
-    pub fn google3d_available(&self) -> StateSignal {
-        StateSignal::of(&self.0.maps.google_3d)
-    }
-
-    /// Command: read the 3D provider configuration again.
-    #[wasm_bindgen(js_name = retryMaps3d)]
-    pub fn retry_maps3d(&self) {
-        self.0.maps.retry_3d();
-    }
-
-    /// The 3D load state once the current scope's read has answered.
-    #[wasm_bindgen(js_name = maps3dSettled, unchecked_return_type = "Promise<Maps3dLoadState>")]
-    pub fn maps3d_settled(&self) -> Promise {
-        let settled = self.0.maps.settled_3d();
-        wasm_bindgen_futures::future_to_promise(async move { Ok(plain(&settled.await)) })
     }
 }

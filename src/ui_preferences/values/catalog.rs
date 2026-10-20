@@ -11,7 +11,7 @@ pub(in crate::ui_preferences) fn name(key: Key) -> &'static str {
     match key {
         Key::ActiveProject => "active_project",
         Key::LayerGroupCollapse => "layer_group_collapse",
-        Key::MapMode => "map_mode",
+        Key::HillshadeExaggeration => "hillshade_exaggeration",
         Key::MapDefaults => "map_defaults",
         Key::ToolLayout => "tool_layout",
         Key::TileLayers => "tile_layers",
@@ -56,7 +56,7 @@ pub(in crate::ui_preferences) fn project_scoped(key: Key) -> bool {
         | Key::FastModePoleSource => true,
         Key::ActiveProject
         | Key::LayerGroupCollapse
-        | Key::MapMode
+        | Key::HillshadeExaggeration
         | Key::MapDefaults
         | Key::ToolLayout
         | Key::TileLayers
@@ -90,7 +90,7 @@ pub(in crate::ui_preferences) fn admit(key: Key, value: &Value) -> Option<Value>
     match key {
         Key::ActiveProject => super::active_project(value),
         Key::LayerGroupCollapse | Key::LayerVisibility => map::switches(value),
-        Key::MapMode => map::map_mode(value),
+        Key::HillshadeExaggeration => map::hillshade_exaggeration(value),
         Key::MapDefaults => map::map_defaults(value),
         Key::MapViewport => map::map_viewport(value),
         Key::TileLayers => map::tile_layers(value),

@@ -1,47 +1,12 @@
 use super::*;
 use serde_json::json;
 
-fn mode() -> Value {
-    json!({
-        "mode": "3d",
-        "rotationLocked": false,
-        "provider": "google",
-        "google3dBuildings": true,
-        "layer3DShapes": false,
-        "hillshade": true,
-        "hillshadeExaggeration": 1.5,
-    })
-}
-
 #[test]
-fn relief_never_persists_and_only_a_preset_intensity_is_kept() {
-    let admitted = map_mode(&mode()).unwrap();
-    assert_eq!(admitted["hillshade"], false, "relief lasts one session");
-    assert_eq!(admitted["hillshadeExaggeration"], 1.5);
-    assert_eq!(admitted["provider"], "google");
-    let mut without = mode();
-    without
-        .as_object_mut()
-        .unwrap()
-        .remove("hillshadeExaggeration");
-    assert!(map_mode(&without)
-        .unwrap()
-        .get("hillshadeExaggeration")
-        .is_none());
-    for (field, refused) in [
-        ("hillshadeExaggeration", json!(0.7)),
-        ("mode", json!("4d")),
-        ("provider", json!("bing")),
-        ("rotationLocked", json!("yes")),
-        ("hillshade", json!(1)),
-    ] {
-        let mut value = mode();
-        value[field] = refused.clone();
-        assert!(map_mode(&value).is_none(), "{field}: {refused}");
+fn only_a_preset_relief_intensity_is_kept() {
+    assert_eq!(hillshade_exaggeration(&json!(1.5)), Some(json!(1.5)));
+    for refused in [json!(0.7), json!("1.5"), json!({"hillshadeExaggeration": 1.5}), json!(null)] {
+        assert!(hillshade_exaggeration(&refused).is_none(), "{refused}");
     }
-    let mut extra = mode();
-    extra["pitch"] = json!(45);
-    assert!(map_mode(&extra).is_none(), "an unknown field is refused");
 }
 
 #[test]

@@ -9,10 +9,10 @@
 //! project key's legacy name is its prefix followed by the project id.
 use super::values::design::{lv_transformer, DESIGN_CUSTOMERS_ADDRESS};
 use super::values::map::{
-    earth_engine_layer, earth_engine_point, HILLSHADE_EXAGGERATIONS, MAP_MODES, MAX_SWITCHES,
+    earth_engine_layer, earth_engine_point, HILLSHADE_EXAGGERATIONS, MAX_SWITCHES,
 };
 use super::values::shape::{
-    entry, finite_tuple, iso_from_ms, js_number, member, millis, number, ranged, truthy, MAX_SAFE,
+    entry, finite_tuple, iso_from_ms, js_number, millis, number, ranged, truthy, MAX_SAFE,
 };
 use super::values::workbench::{admin_selection, boundary, date_bound, surveyor};
 use super::Key;
@@ -21,7 +21,7 @@ use serde_json::{json, Map, Value};
 /// The account keys, read by their exact legacy name.
 pub(super) const EXACT: [(&str, Key); 15] = [
     ("ui:layer_group_collapse:v1", Key::LayerGroupCollapse),
-    ("map_mode_state", Key::MapMode),
+    ("map_mode_state", Key::HillshadeExaggeration),
     ("map_defaults", Key::MapDefaults),
     ("tool-layout:map-editing:v3", Key::ToolLayout),
     ("temp_tile_layers_v1", Key::TileLayers),
@@ -105,7 +105,7 @@ pub(super) fn read(legacy_key: &str, value: &Value, now: u64) -> Vec<(Key, Optio
 fn candidate(key: Key, value: &Value, now: u64) -> Option<Value> {
     match key {
         Key::LayerGroupCollapse | Key::LayerVisibility => switches(value),
-        Key::MapMode => map_mode(value),
+        Key::HillshadeExaggeration => hillshade_exaggeration(value),
         Key::MapDefaults | Key::ToolLayout | Key::StyleCenterLayout => {
             value.is_object().then(|| value.clone())
         }
@@ -166,32 +166,11 @@ fn closest_exaggeration(value: f64) -> f64 {
     best
 }
 
-/// The camera mode as `loadMapModeState` restored it: an unknown provider is
-/// `auto`, a missing 3D layer switch is on, an off-preset intensity snaps to
-/// the nearest preset and relief itself never restores.
-fn map_mode(value: &Value) -> Option<Value> {
-    let saved = value.as_object()?;
-    let mode = member(saved.get("mode")?, &MAP_MODES)?;
-    let provider = match saved.get("provider").and_then(Value::as_str) {
-        Some(provider @ ("aws-terrain" | "google")) => provider,
-        _ => "auto",
-    };
-    let on_unless_off = |name: &str| match saved.get(name) {
-        None | Some(Value::Null) => true,
-        flag => truthy(flag),
-    };
-    let mut out = json!({
-        "mode": mode,
-        "rotationLocked": truthy(saved.get("rotationLocked")),
-        "provider": provider,
-        "google3dBuildings": on_unless_off("google3dBuildings"),
-        "layer3DShapes": on_unless_off("layer3DShapes"),
-        "hillshade": false,
-    });
-    if let Some(intensity) = saved.get("hillshadeExaggeration").and_then(Value::as_f64) {
-        out["hillshadeExaggeration"] = number(closest_exaggeration(intensity));
-    }
-    Some(out)
+/// The relief intensity of the retired camera-mode record, snapped to the
+/// nearest preset. Nothing else in that record survives the 3D map.
+fn hillshade_exaggeration(value: &Value) -> Option<Value> {
+    let intensity = value.as_object()?.get("hillshadeExaggeration")?.as_f64()?;
+    Some(number(closest_exaggeration(intensity)))
 }
 
 /// The settings record, unless it names no setting at all. The retired

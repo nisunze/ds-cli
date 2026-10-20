@@ -46,12 +46,10 @@ fn a_set_stores_and_answers_the_canonical_value() {
     let db = Connection::open_in_memory().unwrap();
     let written = run(
         &db,
-        json!({"action": "set", "key": "map_mode", "now": 1, "value": {
-            "mode": "2d", "rotationLocked": true, "provider": "auto",
-            "google3dBuildings": true, "layer3DShapes": true, "hillshade": true}}),
+        json!({"action": "set", "key": "hillshade_exaggeration", "now": 1, "value": 1.5}),
     )
     .unwrap();
-    assert_eq!(written["values"]["map_mode"]["hillshade"], false);
+    assert_eq!(written["values"]["hillshade_exaggeration"], 1.5);
     let layout = run(
         &db,
         json!({"action": "set", "key": "tool_layout", "now": 2, "value": {"groups": {"cad.modify": {"order": ["move", "settings"]}}}}),
@@ -63,10 +61,13 @@ fn a_set_stores_and_answers_the_canonical_value() {
     );
     let read = run(
         &db,
-        json!({"action": "get", "keys": ["map_mode", "tool_layout", "map_defaults"]}),
+        json!({"action": "get", "keys": ["hillshade_exaggeration", "tool_layout", "map_defaults"]}),
     )
     .unwrap();
-    assert_eq!(read["values"]["map_mode"], written["values"]["map_mode"]);
+    assert_eq!(
+        read["values"]["hillshade_exaggeration"],
+        written["values"]["hillshade_exaggeration"]
+    );
     assert_eq!(
         read["values"]["tool_layout"],
         layout["values"]["tool_layout"]
@@ -97,7 +98,7 @@ fn a_project_key_lives_inside_its_exact_project() {
     );
     let mixed = run(
         &db,
-        json!({"action": "get", "project": "gisagara", "keys": ["layer_visibility", "map_mode"]}),
+        json!({"action": "get", "project": "gisagara", "keys": ["layer_visibility", "hillshade_exaggeration"]}),
     )
     .unwrap_err();
     assert!(mixed.contains(INVALID), "{mixed}");

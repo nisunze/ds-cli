@@ -51,7 +51,7 @@ wasm = [
 # Client state as Rust signals (`client_state`): Leptos's reactive core,
 # never its UI. The WASM build runs it on wasm-bindgen-futures; a native host
 # initializes any_spawner with its own runtime.
-client-state = ["dep:reactive_graph", "dep:any_spawner", "dep:futures-channel"]
+client-state = ["dep:reactive_graph", "dep:any_spawner"]
 
 [dependencies]
 ds-profile-policy = { path = "crates/ds-profile-policy" }
@@ -61,7 +61,6 @@ schemars = "1.2.2"
 base64 = "0.22"
 reactive_graph = { version = "0.2.16", features = ["effects"], optional = true }
 any_spawner = { version = "0.3.0", optional = true }
-futures-channel = { version = "0.3", optional = true }
 ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "raw_value", "float_roundtrip"] }
@@ -107,6 +106,8 @@ sqlite-wasm-vfs = { version = "0.2", optional = true }
 [dev-dependencies]
 ds-template-test-support = { path = "crates/ds-template-test-support" }
 wasm-bindgen-test = "0.3"
+# Client-state scenarios hold scripted gateway answers on oneshot channels.
+futures-channel = "0.3"
 
 # Native tests drive the client state on futures' local pool.
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
