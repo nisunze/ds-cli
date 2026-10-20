@@ -38,8 +38,8 @@ Schemas: `ds.layer-state/v1`, `ds.layer-document/v1`. WASM exports
   through the same store) keep their own entry and read as visible when
   absent.
 - **Authored `visibility: none` is a hard hide**; a remembered `true` still
-  yields runtime `none`, with `authored_hidden` named. A `__d3` companion
-  renders only in the 3D renderer with shapes enabled (`needs_3d_shapes`).
+  yields runtime `none`, with `authored_hidden` named. The 3D map is gone:
+  a `d3` role or a `__d3` companion stays hidden with `3d_removed`.
 - **Zoom is reported, never applied.** MapLibre clips by min/max zoom;
   `in_zoom_range` is an answer for the drawer and for `ds --zoom`.
 - **A missing source is a fact**, `source_state: missing`: the layer is not
@@ -61,7 +61,7 @@ Schemas: `ds.layer-state/v1`, `ds.layer-document/v1`. WASM exports
 ## 3. Parity proof
 
 `tests/fixtures/layer-state-corpus.json` (byte-identical to ds-web's
-`src/tests/fixtures/layer-state/corpus.json`): 28 recorded cases over one
+`src/tests/fixtures/layer-state/corpus.json`): 27 recorded cases over one
 assembler-shaped document — what the ds-web TypeScript answered
 (`expected_ts`, recorded by a differential recorder over the real modules
 before their removal) and what the kernel answers (`expected`).
