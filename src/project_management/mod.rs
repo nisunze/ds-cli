@@ -32,7 +32,7 @@
 pub mod attachment_upload;
 pub mod authoring_model;
 mod browser;
-mod command_wire;
+pub(crate) mod command_wire;
 pub mod correspondence;
 mod hierarchy;
 pub mod model_links;

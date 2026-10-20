@@ -85,6 +85,8 @@ pub mod survey_media;
 #[cfg(feature = "durable-store")]
 pub mod messaging_outbox;
 #[cfg(feature = "durable-store")]
+pub mod project_work_outbox;
+#[cfg(feature = "durable-store")]
 pub mod survey_queue;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]

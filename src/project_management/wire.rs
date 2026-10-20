@@ -999,7 +999,7 @@ fn optional_finite(value: Option<&Value>) -> Option<f64> {
 /// INVENTED DEFAULT (wire.ts:111): a calendar that does not author exactly
 /// seven booleans gets Monday-to-Friday, Sunday first. Holidays may arrive as
 /// a list or as a map whose `true` entries are the dates (wire.ts:107-109).
-fn decode_project_calendar(value: Option<&Value>) -> ProjectCalendar {
+pub(crate) fn decode_project_calendar(value: Option<&Value>) -> ProjectCalendar {
     let raw = record(value);
     let authored = match raw.get("working_weekdays") {
         Some(Value::Array(items)) if items.len() == 7 => items
