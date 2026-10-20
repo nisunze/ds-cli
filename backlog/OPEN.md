@@ -11,7 +11,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 6 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 7 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 8 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
@@ -84,6 +84,8 @@ is ruled in the sync contract: simple local clean and recompute.
   proof requires the strict command to pass without lint suppression.
 
 ## 2. Green `run` and release gates
+
+- **Standalone columnar benchmark lock is stale.** `ds-network/benchmarks/columnar/Cargo.lock` still retains retired `ds-geo-ops` and omits the already-consolidated `ds-geo-lite`/`ds-cleaning`/`ds-kml` graph. Its isolated lock refresh needs unrelated package removals beyond the Calamine addition, so it was preserved rather than swept into application lock updates. Refresh and qualify that benchmark workspace separately before relying on its locked builds or measurements.
 
 - **Reporter strict production Clippy has 14 existing diagnostics.**
   `cargo clippy --locked --no-default-features --lib --no-deps -- -D warnings`
