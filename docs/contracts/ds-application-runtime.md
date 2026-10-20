@@ -82,7 +82,7 @@ withdrawn. The detailed requirements are maintained in
 
 | Piece | Today | Role under §1 |
 |---|---|---|
-| `ds-command-kernel` (pure, `cdylib`+`rlib`, severed from the engine 2026-09-11) | decisions: `sync::plan`, `sync_store`, `transfer`, `response_policy`, `reconciliation`, the design/printing/settings modules | **the application/kernel boundary**: every decision; no effects |
+| `ds-command-kernel` (pure, `cdylib`+`rlib`, severed from the engine 2026-09-11) | decisions: `sync::plan`, `sync_store`, `transfer`, `response_policy`, the design/printing/settings modules | **the application/kernel boundary**: every decision; no effects |
 | `ds-client-core` (`ds-web/crates/ds-client-core`) | gateway operation registry (route/method/action/authority), request construction, response decode, profile digest | **the Rust application client**: all backend route knowledge; the browser reaches it only through the generated manifest and the WASM |
 | native transport hosts: `src-tauri/src/gateway_transfer.rs`, `ds-cli-auth/src/upload.rs`; browser host `runtime/commands/gateway-transfer.ts` over fetch | drive `transfer` | **platform adapters** for bytes — execute, never decide |
 | `src-tauri/src/sync_loop.rs` (landed 2026-09-11) | run-on-trigger loop over `sync::plan` in the shell process | the **desktop UI-attached host**; the background host (§3 R2) shares its durable store and takes a lease |

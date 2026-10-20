@@ -323,12 +323,6 @@ pub fn map_active_view_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
 pub fn connectivity_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     connectivity::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
-pub mod reconciliation;
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = reconciliationCommand)]
-pub fn reconciliation_command_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    reconciliation::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
 pub mod city_vectors;
 /// MV line ends without a transformer and transformers without MV.
 pub mod mv_lv_orphans;

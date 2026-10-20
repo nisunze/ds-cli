@@ -598,10 +598,13 @@ mod exports {
     #[wasm_bindgen(js_name = sreActivityHeld, unchecked_return_type = "SreActivity | null")]
     pub async fn sre_activity_held(host: GatewayHost, store: StoreHost) -> Result<JsValue, JsValue> {
         let edge = BrowserEdge::new(host, store);
-        let held = super::held_activity(&edge)
+        match super::held_activity(&edge)
             .await
-            .map_err(|refusal| rejection(&refusal))?;
-        typed(&held)
+            .map_err(|refusal| rejection(&refusal))?
+        {
+            Some(held) => typed(&held),
+            None => Ok(JsValue::NULL),
+        }
     }
 
     /// The box's status snapshot as the monitor reads it; never rejects for
