@@ -48,6 +48,12 @@ pub(super) const PROJECT_REQUEST: ArtifactContract = ArtifactContract {
     write_remedy: "Choose a writable absent path and retry the unchanged transformer export.",
 };
 
+/// Where `project-export --project-config` keeps the sealed printing receipt
+/// of the request it writes, and where `--print-a4` finds it again.
+pub(super) fn printing_receipt_path(request: &Path) -> std::path::PathBuf {
+    request.with_extension("printing-receipt.json")
+}
+
 pub(super) fn ensure_absent(path: &Path, contract: &ArtifactContract) -> Result<(), Failure> {
     match std::fs::symlink_metadata(path) {
         Ok(_) => {

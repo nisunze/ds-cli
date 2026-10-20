@@ -1088,7 +1088,10 @@ analysis. It branches before project, tag, survey or map-context reads and
 never calculates, refreshes or publishes an analysis. Missing source refuses
 with `lv_analysis_missing`; revision, content, account, lane, audience or
 settings disagreement refuses with `lv_analysis_stale`. Acquire those inputs
-explicitly through their owning controls before previewing.
+explicitly through their owning controls before previewing. Without a saved
+analysis, `ds design lv voltage-drop --print-a4` prints the same governed A4
+read-only from an exported transformer (see the design reference);
+`ds design lv project-run --print-a4` saves one and prints it.
 
 The result's `results[].page` is the same `ds.print-preview-artifact/v1` PDF
 file manifest used by Desktop and SVG previews. Its scope includes project,

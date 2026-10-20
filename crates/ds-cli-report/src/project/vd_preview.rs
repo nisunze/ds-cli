@@ -13,7 +13,7 @@ use std::{io::Read, path::Path};
 pub(super) const MISSING: Refusal = Refusal {
     code: "lv_analysis_missing",
     when: "the held saved room has no exact saved voltage-drop source",
-    remedy: "explicitly acquire the saved analysis through its native owner; preview never calculates or downloads it",
+    remedy: "print read-only with design lv voltage-drop --print-a4, or save one with design lv project-run",
 };
 pub(super) const STALE: Refusal = Refusal {
     code: "lv_analysis_stale",

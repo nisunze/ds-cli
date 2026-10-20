@@ -82,12 +82,13 @@ const fn process_extra_count() -> usize {
     count
 }
 
+pub(super) const BROWSER_MISSING: Refusal = Refusal {
+    code: "reporter_browser_missing",
+    when: "no verified existing reporter browser is configured",
+    remedy: "run ds workstation configure --component chromium --target reporter --yes --output json once",
+};
 const PRINT_REFUSALS: &[Refusal] = &[
-    Refusal {
-        code: "reporter_browser_missing",
-        when: "no verified existing reporter browser is configured",
-        remedy: "run ds workstation configure --component chromium --target reporter --yes --output json once",
-    },
+    BROWSER_MISSING,
     Refusal {
         code: "reporter_pdf_unverified",
         when: "the PDF disagrees with its source, digest, bytes or page receipt",
@@ -312,7 +313,9 @@ fn require_owned_a4(config: &Value, project: &str) -> Result<(), Failure> {
     Ok(())
 }
 
-fn print_preflight(lane: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
+pub(super) fn print_preflight(
+    lane: &str,
+) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
     let engine = ds_cli_report::DS_REPORT
         .capture_for_lane_in(lane, &ds_cli_exec::addons::managed_module_base()?)?;
     ds_cli_report::export::voltage_drop_project_a4_preflight_captured(&engine)?;

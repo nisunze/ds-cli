@@ -372,6 +372,42 @@ Where the method took each value from is `report.parameters.sources`
 `vd_scenario_category_unknown` and lists the defined ones. No refusal writes
 anything.
 
+### Read-only A4 print
+
+`--print-a4 <pdf>` prints the governed A4 report of the one exported
+transformer from the result this run writes. Nothing is read from a server,
+saved or published, so it is the route for a project whose transformer has no
+saved analysis (`report project export --preview-voltage-drop` refuses those
+with `lv_analysis_missing`), and it never replaces `design lv project-run`.
+
+```bash
+ds design lv project-export --project <id> --transformer T-1042 \
+  --project-config --out ./T-1042.fast-lv.json --output json
+ds design lv voltage-drop --input ./T-1042.fast-lv.json --out ./T-1042.vd.json \
+  --print-a4 ./T-1042.vd.pdf --lane canary --output json
+```
+
+The export writes `T-1042.fast-lv.printing-receipt.json` beside the request:
+the server's sealed printing receipt. The Kernel
+(`report_export::voltage_drop_a4`) proves it was sealed with the request's
+process sheets, then takes the governed A4 document, the canonical project
+caption, the renderer policy and the brief/extended report format (default
+extended) from that one capture. Before anything is calculated the CLI
+refuses a scenario flag, more than one transformer, a missing or foreign
+receipt and an existing PDF with `vd_print_input_invalid` or
+`vd_print_output_exists`, then captures the `--lane` Reporter and checks its
+`render_voltage_drop_result` task and the configured browser
+(`reporter_engine_missing`, `unknown_task`, `reporter_browser_missing`).
+
+The result is written first. Reporter renders it through `report.export --task
+voltage-drop`; the PDF must match its receipt's source digest, caption, bytes
+and pages. The receipt then carries `print_a4` with the PDF path, SHA-256,
+bytes, pages, caption and format. A refused or unverified print returns
+`vd_print_failed` with the written result in `detail.result` and the
+Reporter's own code and remedy in `detail.print_error`. A4 prints calculated
+transformers only; `report voltage-drop-combined` shows refused, reserved and
+held ones on A3.
+
 ## Headless feature selection
 
 `ds design features select` is the first native, map-independent design read.

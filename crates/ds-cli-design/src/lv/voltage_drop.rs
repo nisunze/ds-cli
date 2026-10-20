@@ -57,19 +57,29 @@ const SCENARIO_REFUSALS: &[Refusal] = &[
         remedy: "use a clean_name the refusal lists",
     },
 ];
-const REFUSALS: [Refusal; SCENARIO_REFUSALS.len() + super::process::COMMAND.refusals.len()] = {
-    let mut result =
-        [SCENARIO_REFUSALS[0]; SCENARIO_REFUSALS.len() + super::process::COMMAND.refusals.len()];
+const REFUSAL_LISTS: [&[Refusal]; 3] = [
+    SCENARIO_REFUSALS,
+    super::print_a4::REFUSALS,
+    super::process::COMMAND.refusals,
+];
+const REFUSALS: [Refusal;
+    SCENARIO_REFUSALS.len()
+        + super::print_a4::REFUSALS.len()
+        + super::process::COMMAND.refusals.len()] = {
+    let mut result = [SCENARIO_REFUSALS[0];
+        SCENARIO_REFUSALS.len()
+            + super::print_a4::REFUSALS.len()
+            + super::process::COMMAND.refusals.len()];
     let mut index = 0;
-    while index < SCENARIO_REFUSALS.len() {
-        result[index] = SCENARIO_REFUSALS[index];
-        index += 1;
-    }
-    let mut process_index = 0;
-    while process_index < super::process::COMMAND.refusals.len() {
-        result[index] = super::process::COMMAND.refusals[process_index];
-        index += 1;
-        process_index += 1;
+    let mut list = 0;
+    while list < REFUSAL_LISTS.len() {
+        let mut item = 0;
+        while item < REFUSAL_LISTS[list].len() {
+            result[index] = REFUSAL_LISTS[list][item];
+            index += 1;
+            item += 1;
+        }
+        list += 1;
     }
     result
 };
@@ -79,7 +89,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "voltage-drop"],
     contract: 1,
     summary: "Check LV voltage drop by year and recommend compliant upgrades.",
-    purpose: "Check whether every customer of an LV transformer stays within the voltage limit of the project's rule set (IEC 60038 ±10 % when it has none) at the design year's load, and the first outlook year the drawn design fails (method ds-lv-vd/1). Input: the ds.fast-lv.request/v1 of design.lv.project-export --project-config. Every transformer is calculated, fill-ins and upgrades included. Stage 2 recommends the cheapest compliant upgrades for calculated transformers, each scheduled by the year it is first needed. --year, --outlook, --no-outlook, --load and --set change this run only, never the project; the result echoes them.",
+    purpose: "Check whether every customer of an LV transformer stays within the voltage limit of the project's rule set (IEC 60038 ±10 % when it has none) at the design year's load, and the first outlook year the drawn design fails (method ds-lv-vd/1). Input: the ds.fast-lv.request/v1 of design.lv.project-export --project-config. Every transformer is calculated, fill-ins and upgrades included. Stage 2 recommends the cheapest compliant upgrades for calculated transformers, each scheduled by the year it is first needed. --year, --outlook, --no-outlook, --load and --set change this run only, never the project; the result echoes them. --print-a4 prints its governed A4 from the export's sealed capture; nothing is saved or published.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -121,8 +131,17 @@ pub static COMMAND: Command = Command {
             "<vd_name>=<value>",
             "Another vd_* project setting, e.g. vd_limit_pct=8; up to 32. Default: the project's. Other names are refused.",
         ),
+        Arg::value(
+            "print-a4",
+            "<pdf>",
+            "Absent path for the one transformer's A4 PDF.",
+        ),
+        Arg {
+            summary: "Reporter lane for --print-a4; stable is the default.",
+            ..ds_cli_contract::spec::LANE
+        },
     ],
-    output: "`out`, digests, byte count, captured engine version/identity/executable digest and development-override status, method, counts, `scenario` (every override), and one row per job: calculated status, customers, failing customers, worst drop %, limit %, compliance, transformer loading %, stage-2 status, changes, transformer change, infeasible, added cost and basis, design year, first failing year and the engine's outlook schedule; a reservation from an older Network engine gives its status, nature and calculation reason instead. Layers and diagnostics go only to `out`.",
+    output: "`out`, digests, byte count, captured engine version/identity/executable digest and development-override status, method, counts, `scenario` (every override), and one row per job: calculated status, customers, failing customers, worst drop %, limit %, compliance, transformer loading %, stage-2 status, changes, transformer change, infeasible, added cost and basis, design year, first failing year and the engine's outlook schedule; a reservation from an older Network engine gives its status, nature and calculation reason instead. Layers and diagnostics go only to `out`. --print-a4 adds `print_a4`: PDF, digest, pages, caption, format.",
     examples: &[
         Example {
             command: "ds design lv voltage-drop --input ./T-1042.fast-lv.json --out ./T-1042.vd.json --output json",
@@ -133,6 +152,11 @@ pub static COMMAND: Command = Command {
             command: "ds design lv voltage-drop --input ./T-1042.fast-lv.json --out ./T-1042.res100.vd.json --load Residential=100:60 --outlook 0,5,10",
             note: "Residential at 100 W (60 W at commissioning), years 0, 5 and 10.",
             runnable: true,
+        },
+        Example {
+            command: "ds design lv voltage-drop --input ./T-1042.fast-lv.json --out ./T-1042.vd.json --print-a4 ./T-1042.vd.pdf --lane canary --output json",
+            note: "Also print the A4, read-only.",
+            runnable: false,
         },
     ],
     refusals: &REFUSALS,
@@ -170,6 +194,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let input_sha256 = sha256(&input);
     let mut request = decode_native_lv_request(&input).map_err(map_owner_error)?;
     drop(input);
+    // Every print admission and the Reporter preflight precede calculation.
+    let print = super::print_a4::admit(inputs, &input_path, &request.jobs)?;
     // The scenario changes this run's copy of the request only: the file and
     // the project keep their own settings and loads.
     let rewritten = scenario.apply(&mut request.jobs)?;
@@ -230,7 +256,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let result_sha256 = sha256(&output);
     write_new(&output_path, &output, &VOLTAGE_DROP_RESULT)?;
 
-    Ok(json!({
+    let mut receipt = json!({
         "out": output_path,
         "input_sha256": input_sha256,
         "result_sha256": result_sha256,
@@ -246,7 +272,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "failed": jobs - succeeded,
         "compliant": compliant,
         "results": rows,
-    }))
+    });
+    if let Some(print) = &print {
+        match super::print_a4::print(print, &output_path, &result_sha256) {
+            Ok(printed) => receipt["print_a4"] = printed,
+            Err(error) => return Err(super::print_a4::failed(error, receipt)),
+        }
+    }
+    Ok(receipt)
 }
 
 pub fn render(value: &Value) -> String {
@@ -299,6 +332,14 @@ pub fn render(value: &Value) -> String {
     ));
     if failed > 0 {
         text.push_str("\nInspect the result document for per-transformer diagnostics.");
+    }
+    let print = &value["print_a4"];
+    if let Some(pdf) = print["pdf"].as_str() {
+        text.push_str(&format!(
+            "\nA4 ({}, {} page(s), nothing published): {pdf}",
+            print["report_format"].as_str().unwrap_or(""),
+            print["pages"].as_u64().unwrap_or(0),
+        ));
     }
     text
 }

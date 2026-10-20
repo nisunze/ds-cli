@@ -25,7 +25,7 @@ const OWN: &[Refusal] = &[
     Refusal {
         code: "lv_analysis_missing",
         when: "the saved head has no analysis receipt",
-        remedy: "The model needs an authorized native analysis save; this read never computes or repairs it.",
+        remedy: "Save one with design lv project-run, or print read-only via design lv voltage-drop --print-a4.",
     },
     Refusal {
         code: "lv_analysis_stale",

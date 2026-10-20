@@ -300,7 +300,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             let context = receipt.printing_context_for_project(project).map_err(|e| Failure::internal("fast_lv_input_invalid", e))?;
             let bytes = serde_json::to_vec(&receipt).map_err(|e| Failure::internal("fast_lv_input_invalid",e.to_string()))?;
             if bytes.len() <= ds_network_contracts::lv_processing::MAX_NATIVE_LV_INPUT_BYTES {
-                let path = output_path.with_extension("printing-receipt.json");
+                let path = super::artifact::printing_receipt_path(&output_path);
                 write_new(&path,&bytes,&PROJECT_REQUEST)?;
                 printing_label = context["project"].as_str().map(str::to_owned);
                 printing_receipt = Some(json!({"path":path,"sha256":sha256(&bytes),"bytes":bytes.len(),"sheets_sha256":receipt.sheets_sha256}));
