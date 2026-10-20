@@ -51,6 +51,10 @@ pub struct GeodataDoc {
     pub tile_status: Option<String>,
     /// Layer name to its metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        tsify(type = "Record<string, unknown>")
+    )]
     pub layers: Option<Map<String, Value>>,
     #[serde(flatten)]
     #[cfg_attr(

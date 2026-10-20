@@ -43,6 +43,7 @@ pub mod help;
 pub mod installations;
 pub mod layers;
 pub mod maps;
+pub mod notes;
 pub mod pipeline;
 pub mod report_artifacts;
 pub mod solar_inputs;
