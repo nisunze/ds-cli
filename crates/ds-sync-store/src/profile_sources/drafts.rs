@@ -786,7 +786,11 @@ impl Store {
     }
 }
 
+mod upgrade;
+
 #[cfg(test)]
 mod journal_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod upgrade_tests;

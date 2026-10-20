@@ -365,6 +365,16 @@ validates their semantics before retention and after recovery. No original
 metadata, engine or model pin is reconstructed from a draft. Older Core readers
 refuse a v2 header rather than misreading it.
 
+An engine upgrade (owner, 2026-10-20) is the only change to a retained
+original's header: `upgrade_profile_recovery` replaces just its engine pin,
+fenced by the exact stored header and retained history. An original without a
+draft is re-pinned alone; an opaque v1 draft is replaced, in the same immediate
+transaction, by the complete v2 journal at that exact history whose header
+carries the new pin. A journal is never upgraded again, and any other header
+change, stale fence or row mismatch refuses with every record unchanged. The
+caller first proves with the new engine that it reproduces the exact original
+and the exact retained head.
+
 Retention compares the exact source and expected history against the previous
 draft, or the original's initial history for the first checkpoint. One immediate
 transaction invalidates original-only eligibility and replaces the checkpoint.

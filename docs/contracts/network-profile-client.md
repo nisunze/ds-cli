@@ -97,10 +97,16 @@ An older engine keeps the bounded 64 MiB opaque v1 checkpoint and its overflow
 names the Network update. Core commits a before-state before authored controls
 (unless the draft already holds that exact history) and the acknowledged
 successor before reporting success. Save exclusion is transient, and package
-emission is not a Save acknowledgment. Restart reopens only the stored immutable
+emission is not a Save acknowledgment. Restart reopens the stored immutable
 executable pin through `from_pin`; changing the current component selection
-cannot redirect a draft to a new engine. Missing or changed retained executable
-bytes refuse.
+does not redirect a draft, with one proven exception (owner, 2026-10-20). A
+pin without `profile_authored_checkpoint_v1` would rebuild the opaque checkpoint
+past 64 MiB on every reopen, so when the current same-lane Network declares it,
+Core lets that Network reopen the v1 draft without results, emit its complete
+authored journal and replay it onto the exact original to the exact retained
+head; only then the store re-pins the original and replaces the draft with the
+v2 rows. A refusal or another head changes nothing and names a discard of that
+draft. Missing or changed retained executable bytes otherwise refuse.
 Close releases the worker and retains dirty recovery; exact initial state may
 be removed. Explicit `open recover:true` resumes only a unique matching draft
 under the same complete owner scope and original package bytes.
