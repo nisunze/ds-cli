@@ -1408,6 +1408,19 @@ it from the verified bytes; pass it only as an extra fence. Reporter receives
 both pins and rechecks the source before its single captured Network
 projection/print workflow.
 
+Model mode carries the booklet's geographic context by default. Network projects
+the verified model's alignments to WGS84; for each alignment the CLI reads the
+families the Kernel's `printing::mv_context` names (roads, rivers, settlement
+sites, existing LV, terrain contours, building footprints) from the project's held
+dataset rooms with `Mode::Read`, and new LV and transformers from the project's
+held design rooms, then hands the layers to `mv_context::assemble`. The key plan
+reads roads, HV/MV lines, places and named transformers over the Kernel's
+`key_plan_extent`. Nothing is acquired: no catalogue, provider or service read
+is made, and an unheld family is named under `mv_context` in the receipt, with
+the `ds data project-cache seed` remedy. Explicit `--context-pages` replace the
+default. `mv_context_unavailable` refuses only when held data cannot be read or
+assembled.
+
 Model mode inherits the same governed MV setup, project CRS, report configuration,
 renderer defaults, styles, model-field allowances and held assets as projection
 mode. It accepts `--preview-only`, `--sample-pages` and ordinary artifact options.

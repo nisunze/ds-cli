@@ -317,7 +317,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let config = decode_config(&bytes)?;
     let base = config_path.parent().expect("absolute file has parent");
     let output_root = validate(&config, project, base, Path::new(inputs.require("out")?))?;
-    let (resolved, style_resolution, renderer_defaults, report_config, project_crs) =
+    let (resolved, style_resolution, renderer_defaults, report_config, project_crs, _styles) =
         crate::project::mv_setup::resolve_project_print(
             inputs.require("lane")?,
             project,

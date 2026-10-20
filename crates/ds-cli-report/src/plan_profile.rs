@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{DS_REPORT, EXPORT_TIMEOUT, capture_engine};
+mod context;
 mod model_mode;
 use model_mode::RenderTask;
 
@@ -137,7 +138,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "context-pages",
             "<json-file>",
-            "Alignment-keyed geographic context pinned to its source/recipe digest; legacy ordered model-pinned captures remain supported.",
+            "Explicit alignment-keyed context captures; omitted with --model, held project context is read by default.",
         ),
         Arg::value(
             "model-crs",
@@ -151,13 +152,13 @@ pub static COMMAND: Command = Command {
         ),
         Arg::value("result", "<path>", "Fresh reporter receipt path."),
     ],
-    output: "Model mode returns source model SHA-256/authored revision, Network projection identity/evidence and nested preview/print receipts. Projection mode returns exact revision, ordered file paths/digests and station windows. Samples return ds.mv-preview-artifacts/v1. --preview-all/--preview-job return ds.mv-preview-job/v1 progress and ordered ready pages; --preview-page includes its native SVG receipt. Publication includes its layout plan and optional PDF.",
+    output: "Model mode returns source model SHA-256/authored revision, Network projection identity/evidence, mv_context (held layers and omissions per alignment and key plan) and nested preview/print receipts. Projection mode returns exact revision, ordered file paths/digests and station windows. Samples return ds.mv-preview-artifacts/v1. --preview-all/--preview-job return ds.mv-preview-job/v1 progress and ordered ready pages; --preview-page includes its native SVG receipt. Publication includes its layout plan and optional PDF.",
     examples: &[Example {
         command: "ds report plan-profile --project gisagara --scene /project/profile.json --plan /project/plan.json --alignment al-main --out-dir /project/gisagara-sheets --output json",
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 29 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 30 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             Refusal {
@@ -180,6 +181,7 @@ pub static COMMAND: Command = Command {
             model_mode::SOURCE_CHANGED,
             crate::project::mv_context::NETWORK_ENGINE_MISSING,
             crate::project::mv_context::NETWORK_ENGINE_INCOMPATIBLE,
+            context::CONTEXT_UNAVAILABLE,
             PREVIEW_LAYOUT_REFUSAL,
             crate::project::export::INPUTS_INVALID,
             crate::project::export::STAGING_FAILED,
@@ -651,7 +653,7 @@ fn run_project(inputs: &Inputs, model: Option<model_mode::ModelSource>) -> Resul
         .map(|scene| stage_selected_scene(scene, inputs.repeated("alignment")))
         .transpose()?
         .flatten();
-    let (resolved, style_resolution, renderer_defaults, report_config, project_crs) =
+    let (resolved, style_resolution, renderer_defaults, report_config, project_crs, styles) =
         crate::project::mv_setup::resolve_project_print(inputs.require("lane")?, project, fields)?;
     let read_manifest = |name: &str, empty: Value| -> Result<Value, Failure> {
         let Some(path) = inputs.value(name) else {
@@ -671,7 +673,20 @@ fn run_project(inputs: &Inputs, model: Option<model_mode::ModelSource>) -> Resul
         serde_json::from_slice(&bytes)
             .map_err(|e| Failure::invalid("context_manifest_invalid", e.to_string()))
     };
-    let context_page_files = read_manifest("context-pages", json!([]))?;
+    let mut context_page_files = read_manifest("context-pages", json!([]))?;
+    // A pinned model carries the governed geographic context by default, read
+    // from what this machine holds. Explicit captures replace it.
+    let context = match (&model, inputs.value("context-pages")) {
+        (Some(model), None) => {
+            let lane = inputs.require("lane")?;
+            let identity = ds_cli_auth::headless_identity_for_named_project(lane)?;
+            let acquired =
+                context::acquire(lane, project, &identity, &model.projection()?, &styles)?;
+            context_page_files = json!(acquired.files);
+            Some(acquired)
+        }
+        _ => None,
+    };
     let publication_assets = read_manifest("publication-assets", json!({}))?;
     let sample_pages = inputs
         .value("sample-pages")
@@ -689,13 +704,22 @@ fn run_project(inputs: &Inputs, model: Option<model_mode::ModelSource>) -> Resul
         .as_ref()
         .map(|selection| selection.file.path())
         .or(scene.as_deref());
-    let request = json!({"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"style_resolution":style_resolution,"preview_only":inputs.switch("preview-only"),"project_id":project,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"structure_descriptions_path":inputs.value("structure-descriptions"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
+    let mut request = json!({"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"style_resolution":style_resolution,"preview_only":inputs.switch("preview-only"),"project_id":project,"side_profiles_path":inputs.value("side-profiles"),"notes_path":inputs.value("notes"),"structure_descriptions_path":inputs.value("structure-descriptions"),"out_dir":out_dir,"sample_pages":sample_pages,"context_page_files":context_page_files,"model_crs":inputs.value("model-crs"),"settings":resolved.settings,"mv_setup":resolved,"publication_assets":publication_assets});
+    if let Some(path) = context
+        .as_ref()
+        .and_then(|context| context.key_plan.as_ref())
+    {
+        request["key_plan_context_file"] = json!(path);
+    }
     let (task, request) =
         model_mode::bind_request(request, model.as_ref(), scene_path, plan.as_deref());
     let bytes = serde_json::to_vec(&request)
         .map_err(|e| Failure::internal("request_encode_failed", e.to_string()))?;
     let engine = capture_engine(inputs)?;
     let mut document = staged.render(&engine, bytes, task)?;
+    if let Some(context) = &context {
+        document["mv_context"] = context.receipt.clone();
+    }
     if let Some(selected) = &selected {
         document["alignment_selection"] = selected.receipt.clone();
         if staged.keep {
