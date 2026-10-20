@@ -285,6 +285,10 @@ fn extreme_admitted_coordinates_stay_exact_and_others_refuse() {
         refused.insert(m + 1, 0, 1),
         Err(ExactDelaunayError::CoordinateOutOfRange)
     );
+    assert_eq!(
+        refused.insert(i64::MIN, 0, 1),
+        Err(ExactDelaunayError::CoordinateOutOfRange)
+    );
     refused.insert(0, 0, 1).unwrap();
     assert!(matches!(
         refused.insert(0, 0, 2),

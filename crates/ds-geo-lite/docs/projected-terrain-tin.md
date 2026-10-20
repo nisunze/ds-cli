@@ -32,9 +32,11 @@ ignores a supplied breakline.
 
 ## Surface and queries
 
-The surface uses the shared dependency-free Delaunay core and Cartesian
+The surface uses the shared Spade-backed Delaunay adapter and Cartesian
 barycentric interpolation. Numerical translation into a local origin improves
 projected-coordinate predicates without geographic conversion or rescaling.
+Spade's public underflow mitigation rounds derived coordinates below its
+minimum supported magnitude (about 1.8e-43 m) to zero; source XYZ stays intact.
 This is the DS mathematical choice; it does not assert PLS-CADD's unpublished
 numerical implementation.
 
@@ -50,9 +52,10 @@ are retained rather than flattened by drawing-only smoothing.
 ## Resource admission
 
 One local build admits at most 6,000 observations and at most 1,000,000 m of
-extent per axis. The triangulator is quadratic; consumers divide larger
-surveys into supported local surfaces rather than building a whole project
-point cloud. Individual query batches admit at most 20,000 queries and at most
+extent per axis. These admission limits remain in place with the upstream
+triangulator; consumers divide larger surveys into supported local surfaces
+rather than building a whole project point cloud. Individual query batches
+admit at most 20,000 queries and at most
 10,000,000 candidate triangle checks. A spatial cell index limits queries to
 triangles whose bounds can cover that cell. A dense batch exceeding the work
 budget refuses before yielding any partial result; callers may split it into

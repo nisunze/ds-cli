@@ -19,9 +19,9 @@ without mathematical changes, including their operation and malformed-packet
 tests. `ds-geo-ops` becomes a compatibility re-export for remaining consumers.
 The former partial haversine snapshot is removed.
 
-The default feature set has no dependencies. `editing`, `sampling` and `tin`
-add portable operations without dependencies; `profile` adds the `index`
-feature (`rstar`). `geojson` adds serde/JSON and region/measurement/extent
+The default feature set has no dependencies. `editing` and `sampling`
+add portable operations without dependencies; `tin` adds pinned Spade 2.15.1
+through its public APIs, and `profile` adds the `index` feature (`rstar`). `geojson` adds serde/JSON and region/measurement/extent
 modules; `revision` adds the retained identity/comparison snapshots; `overlay` adds the one `geo` predicate/boolean engine. The application
 kernel explicitly requests `overlay` and `revision`. Consumers select capabilities instead
 of inheriting the polygon engine for scalar distance or LV line splitting.
@@ -141,17 +141,23 @@ Snapshot hashes are not a substitute for numerical or packet parity.
 
 `exact_delaunay::ExactDelaunay<K>` triangulates keyed integer plan points
 (terrain callers use millimetres from a local origin; magnitudes up to 2^29).
-Orientation and in-circle predicates are exact in `i128`; exactly cocircular
-sets are resolved by simulation of simplicity on the lifted coordinate in key
-order. The triangulation is therefore a pure function of the vertex set:
-insertion replaces only its conflict cavity, removal only the removed vertex's
-star (retriangulated from the Delaunay triangulation of its link), and any
-insert/remove order equals a fresh build of the final set. A symbolic infinite
-vertex closes the hull, so no artificial super-triangle alters hull triangles.
+Spade owns mesh construction, hulls, location and local insertion/removal;
+bounded integer coordinates convert exactly to its floating-point inputs and
+its robust predicates retain exact geometric signs. DS keeps `i128` predicates
+and the lifted key perturbation for exactly cocircular sets. Local tie
+normalization uses only public CDT APIs: temporarily constrain the preferred
+diagonal and immediately remove that constraint. The returned mesh is always
+unconstrained, without a fork or private DCEL access. The canonical topology
+remains a function of the vertex set: local insertion/removal equals a fresh
+build of the final set. Stable DS handles are independent of Spade's handles,
+which are re-located after removal rather than reused after invalidation.
 Collinear sets hold no triangle; duplicate positions and out-of-range
 coordinates refuse. The primitive decides no terrain footprint, density,
-source or gap admission; its callers own those rules. The historical
-float-predicate `terrain_delaunay`/`projected_tin` core is unchanged.
+source or gap admission; its callers own those rules. The geographic
+`terrain_delaunay` and `projected_tin` paths also use Spade behind their existing
+projection, duplicate admission and source-index mapping. Ordinary floating
+triangle ordering and degenerate diagonal choices may differ; coverage,
+interpolation and explicit gap/breakline refusals remain tested contracts.
 
 `tests/exact_delaunay_contract.rs` proves exact in-circle against an
 independent lifted determinant, the perturbed cocircular diagonal against an
@@ -159,9 +165,13 @@ explicitly perturbed determinant, order independence on a cocircular grid,
 2,000 random insert/remove steps equal to fresh builds with full invariant
 audits (`verify`: closed manifold, orientation, Euler count, perturbed empty
 circles), collinear and hull-edge splits, extreme coordinates and local cavity
-sizes. Ordinary release on ds-server, 2026-10-08: 20,000 scattered points build
-in 55 ms and a 44,100-point cocircular grid in 335 ms; one local insert or
-removal on either costs 0.01–0.07 ms.
+sizes. `ExactDelaunayWork` counts finite cavity changes plus DS tie flips;
+`walked_triangles` counts DS normalization inspections, not Spade's unexposed
+internal location work. Release on ds-server, 2026-10-20: 20,000 scattered points
+build in 74 ms and a 44,100-point cocircular grid in 919 ms; local insert/remove
+costs 0.02–0.06 ms. The previous implementation measured 55/335 ms respectively;
+the build-time increase trades for upstream ownership and unchanged keyed
+topology, with no whole-mesh rebuild on a local edit.
 
 ## 2. What is snapshotted
 
