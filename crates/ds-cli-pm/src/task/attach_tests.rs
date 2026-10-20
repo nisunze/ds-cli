@@ -28,8 +28,7 @@ fn a_missing_empty_or_mistyped_file_is_refused_before_any_network() {
         assert_eq!(error.code(), FILE_INVALID.code, "{file}");
     }
     let file = good.to_str().unwrap();
-    let attached =
-        attachment(&parse(&["--project", "p", "--task", "t", "--file", file])).unwrap();
+    let attached = attachment(&parse(&["--project", "p", "--task", "t", "--file", file])).unwrap();
     assert_eq!(attached.name(), "plan.pdf");
     assert_eq!(attached.content_type(), "application/pdf");
     assert_eq!(attached.len(), 8);
