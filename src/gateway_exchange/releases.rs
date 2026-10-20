@@ -26,10 +26,8 @@ pub const ANSWER_CAP: usize = 1024 * 1024;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub(crate) mod exports {
-    use super::{release_member, ANSWER_CAP};
-    use crate::gateway_exchange::browser::typed;
+    use super::ANSWER_CAP;
     use futures_util::StreamExt;
-    use wasm_bindgen::prelude::*;
 
     pub(crate) async fn read(url: &str) -> Option<serde_json::Value> {
         let parsed = url::Url::parse(url).ok()?;
@@ -55,16 +53,6 @@ pub(crate) mod exports {
             bytes.extend_from_slice(&chunk);
         }
         serde_json::from_slice(&bytes).ok()
-    }
-
-    /// The latest release a lane publishes at `url`, as `{ release }` (`release`
-    /// may be null), or `undefined` when there is none or the read failed.
-    #[wasm_bindgen(js_name = releaseRead, unchecked_return_type = "{ release: unknown } | undefined")]
-    pub async fn release_read(url: String) -> Result<JsValue, JsValue> {
-        match read(&url).await.as_ref().map(release_member) {
-            Some(Some(release)) => typed(&serde_json::json!({ "release": release })),
-            _ => Ok(JsValue::UNDEFINED),
-        }
     }
 }
 

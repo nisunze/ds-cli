@@ -68,23 +68,6 @@ impl Exchange for DeletedTransformers {
     }
 }
 
-#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
-    use super::DeletedTransformers;
-    use crate::gateway_exchange::browser::{run, typed, GatewayHost};
-    use wasm_bindgen::prelude::*;
-
-    /// The platform's transformer delete ledger, newest deletion first.
-    #[wasm_bindgen(js_name = deletedTransformers, unchecked_return_type = "{ rows: Record<string, unknown>[]; count: number }")]
-    pub async fn deleted_transformers(
-        host: GatewayHost,
-        days: Option<u32>,
-        limit: Option<u32>,
-    ) -> Result<JsValue, JsValue> {
-        typed(&run(&host, DeletedTransformers { days, limit }).await?)
-    }
-}
-
 #[cfg(test)]
 #[path = "archive_tests.rs"]
 mod tests;
