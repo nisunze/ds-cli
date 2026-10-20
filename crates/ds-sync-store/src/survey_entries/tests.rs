@@ -883,7 +883,12 @@ fn audited_discard_bounds_complete_row_bytes_without_partial_preparation_or_dele
 fn native_create_preparation_and_receipt_are_read_only_and_exactly_fenced() {
     let (_root, mut store) = store();
     let scope = scope();
-    let authority=ds_command_kernel::survey_entry_create::direct::Authority{firebase_project:"test-project".into(),uid:scope.account.clone(),email:"test@example.invalid".into(),lane:"canary".into()};
+    let authority = ds_command_kernel::survey_entry_create::direct::Authority {
+        firebase_project: "test-project".into(),
+        uid: scope.account.clone(),
+        email: "test@example.invalid".into(),
+        lane: "canary".into(),
+    };
     let mut row = sample("create-one", "project-a");
     row["form_id"] = json!("field_notes");
     row["created_at"] = json!(1792314166506u64);
@@ -896,43 +901,104 @@ fn native_create_preparation_and_receipt_are_read_only_and_exactly_fenced() {
         .unwrap();
     let fence = Fence::from(&first(&store, &scope));
     let before = store.survey_entry_row(&scope, &fence.id).unwrap();
-    let prepared = create::prepare_direct(Some(&store), &scope, "project-a", &fence, &authority).unwrap();
+    let prepared =
+        create::prepare_direct(Some(&store), &scope, "project-a", &fence, &authority).unwrap();
     assert_eq!(
         prepared["plan"]["payload"],
         before.as_ref().unwrap()["payload"]
     );
     let expected: create::Expected = serde_json::from_value(prepared["expected"].clone()).unwrap();
-    let response=json!({"commitTime":"2026-10-18T09:02:47Z","writeResults":[{"updateTime":"2026-10-18T09:02:47Z","transformResults":[{"timestampValue":"2026-10-18T09:02:47Z"}]}]});
-    let verified =
-        create::verify_direct(Some(&store), &scope, "project-a", &expected, &authority, 200, &response)
-            .unwrap();
+    let response = json!({"commitTime":"2026-10-18T09:02:47Z","writeResults":[{"updateTime":"2026-10-18T09:02:47Z","transformResults":[{"timestampValue":"2026-10-18T09:02:47Z"}]}]});
+    let verified = create::verify_direct(
+        Some(&store),
+        &scope,
+        "project-a",
+        &expected,
+        &authority,
+        200,
+        &response,
+    )
+    .unwrap();
     assert_eq!(verified["receipt"]["doc_id"], "doc-create-one");
     assert_eq!(store.survey_entry_row(&scope, &fence.id).unwrap(), before);
-    assert!(
-        create::verify_direct(Some(&store), &scope, "project-a", &expected, &authority, 409, &response)
-            .is_err()
-    );
+    assert!(create::verify_direct(
+        Some(&store),
+        &scope,
+        "project-a",
+        &expected,
+        &authority,
+        409,
+        &response
+    )
+    .is_err());
     let mut crossed = response.clone();
     crossed["writeResults"][0]["transformResults"] = json!([]);
-    assert!(
-        create::verify_direct(Some(&store), &scope, "project-a", &expected, &authority, 200, &crossed)
-            .is_err()
-    );
-    let mut crossed_authority=authority.clone();crossed_authority.firebase_project="other-project".into();
-    assert!(create::verify_direct(Some(&store),&scope,"project-a",&expected,&crossed_authority,200,&response).is_err());
-    let mut crossed_digest=expected.clone();crossed_digest.direct_sha256=Some("0".repeat(64));
-    assert!(create::verify_direct(Some(&store),&scope,"project-a",&crossed_digest,&authority,200,&response).is_err());
+    assert!(create::verify_direct(
+        Some(&store),
+        &scope,
+        "project-a",
+        &expected,
+        &authority,
+        200,
+        &crossed
+    )
+    .is_err());
+    let mut crossed_authority = authority.clone();
+    crossed_authority.firebase_project = "other-project".into();
+    assert!(create::verify_direct(
+        Some(&store),
+        &scope,
+        "project-a",
+        &expected,
+        &crossed_authority,
+        200,
+        &response
+    )
+    .is_err());
+    let mut crossed_digest = expected.clone();
+    crossed_digest.direct_sha256 = Some("0".repeat(64));
+    assert!(create::verify_direct(
+        Some(&store),
+        &scope,
+        "project-a",
+        &crossed_digest,
+        &authority,
+        200,
+        &response
+    )
+    .is_err());
     let mut stale = expected.clone();
     stale.row_sha256 = "0".repeat(64);
-    assert!(
-        create::verify_direct(Some(&store), &scope, "project-a", &stale, &authority, 200, &response).is_err()
-    );
+    assert!(create::verify_direct(
+        Some(&store),
+        &scope,
+        "project-a",
+        &stale,
+        &authority,
+        200,
+        &response
+    )
+    .is_err());
     let mut crossed_fence = fence.clone();
     crossed_fence.lease += 1;
-    assert!(create::prepare_direct(Some(&store), &scope, "project-a", &crossed_fence, &authority).is_err());
+    assert!(create::prepare_direct(
+        Some(&store),
+        &scope,
+        "project-a",
+        &crossed_fence,
+        &authority
+    )
+    .is_err());
     crossed_fence = fence.clone();
     crossed_fence.owner_uid = Some("other-owner".into());
-    assert!(create::prepare_direct(Some(&store), &scope, "project-a", &crossed_fence, &authority).is_err());
+    assert!(create::prepare_direct(
+        Some(&store),
+        &scope,
+        "project-a",
+        &crossed_fence,
+        &authority
+    )
+    .is_err());
     assert!(create::prepare_direct(Some(&store), &scope, "project-b", &fence, &authority).is_err());
     assert!(create::prepare_direct(None, &scope, "project-a", &fence, &authority).is_err());
     assert_eq!(store.survey_entry_row(&scope, &fence.id).unwrap(), before);

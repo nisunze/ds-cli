@@ -27,7 +27,6 @@ pub use solar_workspaces::{
 };
 mod publications;
 mod report_heads;
-pub use report_heads::ReportHeadObservation;
 pub use profile_sources::{
     ProfileDraft, ProfileDraftHeader, ProfileJournalDraft, ProfileJournalDraftHeader,
     ProfileJournalEntry, ProfileRecovery, ProfileSourceHeader, ProfileSourceScope,
@@ -35,6 +34,7 @@ pub use profile_sources::{
     MAX_PROFILE_JOURNAL_ENTRY_BYTES, MAX_PROFILE_JOURNAL_METADATA_BYTES, MAX_PROFILE_SOURCES,
     MAX_PROFILE_SOURCE_BYTES, PROFILE_JOURNAL_DRAFT_SCHEMA,
 };
+pub use report_heads::ReportHeadObservation;
 mod recovery;
 pub use publications::{PublicationBytes, PublicationPayload};
 

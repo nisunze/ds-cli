@@ -71,26 +71,48 @@ fn prepare(
 }
 
 /// Same retained-row fence, with a fixed direct plan bound to the native Firebase principal.
-pub fn prepare_direct(store: Option<&Store>, scope: &SurveyEntryScope, project: &str, fence: &Fence,
-    authority: &ds_command_kernel::survey_entry_create::direct::Authority) -> Result<Value> {
-    if authority.uid != scope.account { return Err(refused("direct create account differs from retained owner")); }
+pub fn prepare_direct(
+    store: Option<&Store>,
+    scope: &SurveyEntryScope,
+    project: &str,
+    fence: &Fence,
+    authority: &ds_command_kernel::survey_entry_create::direct::Authority,
+) -> Result<Value> {
+    if authority.uid != scope.account {
+        return Err(refused("direct create account differs from retained owner"));
+    }
     let mut prepared = prepare(store, scope, project, fence)?;
     let mut request = prepared["plan"]["payload"].clone();
     request["schema"] = json!(SURVEY_ENTRY_CREATE_SCHEMA);
     request["operation"] = json!("direct_plan");
     request["authority"] = serde_json::to_value(authority)?;
-    let direct:Value = serde_json::from_str(&evaluate(&serde_json::to_vec(&request)?).map_err(Error::Kernel)?)?;
-    prepared["expected"]["direct_sha256"] = json!(sha256_hex(&serde_json::to_vec(&direct["direct"])?));
+    let direct: Value =
+        serde_json::from_str(&evaluate(&serde_json::to_vec(&request)?).map_err(Error::Kernel)?)?;
+    prepared["expected"]["direct_sha256"] =
+        json!(sha256_hex(&serde_json::to_vec(&direct["direct"])?));
     prepared["plan"] = direct;
     Ok(prepared)
 }
-pub fn verify_direct(store: Option<&Store>, scope: &SurveyEntryScope, project: &str, expected: &Expected,
-    authority: &ds_command_kernel::survey_entry_create::direct::Authority, status:u16, response:&Value) -> Result<Value> {
+pub fn verify_direct(
+    store: Option<&Store>,
+    scope: &SurveyEntryScope,
+    project: &str,
+    expected: &Expected,
+    authority: &ds_command_kernel::survey_entry_create::direct::Authority,
+    status: u16,
+    response: &Value,
+) -> Result<Value> {
     let prepared = prepare_direct(store, scope, project, &expected.fence, authority)?;
-    if prepared["expected"] != serde_json::to_value(expected)? { return Err(refused("direct create retained row or authority changed")); }
-    let mut request=prepared["plan"]["payload"].clone();
-    request["schema"]=json!(SURVEY_ENTRY_CREATE_SCHEMA);request["operation"]=json!("direct_receipt");
-    request["authority"]=serde_json::to_value(authority)?;request["status"]=json!(status);request["response"]=response.clone();
-    let result:Value=serde_json::from_str(&evaluate(&serde_json::to_vec(&request)?).map_err(Error::Kernel)?)?;
+    if prepared["expected"] != serde_json::to_value(expected)? {
+        return Err(refused("direct create retained row or authority changed"));
+    }
+    let mut request = prepared["plan"]["payload"].clone();
+    request["schema"] = json!(SURVEY_ENTRY_CREATE_SCHEMA);
+    request["operation"] = json!("direct_receipt");
+    request["authority"] = serde_json::to_value(authority)?;
+    request["status"] = json!(status);
+    request["response"] = response.clone();
+    let result: Value =
+        serde_json::from_str(&evaluate(&serde_json::to_vec(&request)?).map_err(Error::Kernel)?)?;
     Ok(json!({"expected":expected,"receipt":result["receipt"]}))
 }

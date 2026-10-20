@@ -491,13 +491,23 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let plan = plan(&request, &project).map_err(|e| e.message().to_owned())?;
     let output = match wire.operation.as_str() {
         "direct_plan" | "direct_receipt" => {
-            let authority = wire.authority.ok_or_else(|| Refusal::InvalidInput.message().to_owned())?;
-            let direct = direct::plan(&request, &project, &authority).map_err(|e| e.message().to_owned())?;
+            let authority = wire
+                .authority
+                .ok_or_else(|| Refusal::InvalidInput.message().to_owned())?;
+            let direct =
+                direct::plan(&request, &project, &authority).map_err(|e| e.message().to_owned())?;
             if wire.operation == "direct_plan" {
                 json!({"schema":SURVEY_ENTRY_CREATE_SCHEMA,"operation":"plan","identity":plan.identity,"payload":plan.body,"direct":direct})
             } else {
-                let receipt = direct::receipt(&direct, wire.status.ok_or_else(|| Refusal::UnreadableResponse.message().to_owned())?,
-                    &wire.response.ok_or_else(|| Refusal::UnreadableResponse.message().to_owned())?).map_err(|e| e.message().to_owned())?;
+                let receipt = direct::receipt(
+                    &direct,
+                    wire.status
+                        .ok_or_else(|| Refusal::UnreadableResponse.message().to_owned())?,
+                    &wire
+                        .response
+                        .ok_or_else(|| Refusal::UnreadableResponse.message().to_owned())?,
+                )
+                .map_err(|e| e.message().to_owned())?;
                 json!({"schema":SURVEY_ENTRY_CREATE_SCHEMA,"operation":"receipt","receipt":receipt})
             }
         }
@@ -710,9 +720,11 @@ mod tests {
     }
     #[test]
     fn retired_gateway_receipt_operation_refuses() {
-        let mut input=plan(&request(),"project_a").unwrap().body().clone();
-        input["schema"]=json!(SURVEY_ENTRY_CREATE_SCHEMA);input["operation"]=json!("receipt");
-        input["status"]=json!(201);input["response"]=json!({"success":true});
+        let mut input = plan(&request(), "project_a").unwrap().body().clone();
+        input["schema"] = json!(SURVEY_ENTRY_CREATE_SCHEMA);
+        input["operation"] = json!("receipt");
+        input["status"] = json!(201);
+        input["response"] = json!({"success":true});
         assert!(evaluate(&serde_json::to_vec(&input).unwrap()).is_err());
     }
     #[test]
