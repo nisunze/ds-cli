@@ -8,10 +8,15 @@ use std::collections::BTreeMap;
 pub struct Node {
     pub name: String,
     pub id: Option<String>,
+    /// The unqualified `name` attribute before entity expansion.
+    pub name_attribute: Option<String>,
+    pub is_empty_element: bool,
     pub text: String,
     pub children: Vec<Node>,
     pub start: usize,
     pub end: usize,
+    pub content_start: usize,
+    pub content_end: usize,
 }
 impl Node {
     pub fn child(&self, name: &str) -> Option<&Node> {
@@ -44,8 +49,11 @@ pub fn parse(text: &str) -> Result<Node, String> {
                 let empty = text[start..reader.buffer_position() as usize].ends_with("/>");
                 let mut n = Node {
                     name: String::from_utf8_lossy(e.local_name().as_ref()).into_owned(),
+                    is_empty_element: empty,
                     start,
                     end: reader.buffer_position() as usize,
+                    content_start: reader.buffer_position() as usize,
+                    content_end: reader.buffer_position() as usize,
                     ..Node::default()
                 };
                 for a in e.attributes() {
@@ -53,6 +61,14 @@ pub fn parse(text: &str) -> Result<Node, String> {
                     if a.key.as_ref() == b"id" {
                         n.id = Some(
                             a.decoded_and_normalized_value(version, reader.decoder())
+                                .map_err(|e| e.to_string())?
+                                .into_owned(),
+                        );
+                    } else if a.key.as_ref().eq_ignore_ascii_case(b"name") {
+                        n.name_attribute = Some(
+                            reader
+                                .decoder()
+                                .decode(a.value.as_ref())
                                 .map_err(|e| e.to_string())?
                                 .into_owned(),
                         );
@@ -72,6 +88,7 @@ pub fn parse(text: &str) -> Result<Node, String> {
                     return Err("unbalanced KML XML".into());
                 }
                 let mut n = stack.pop().unwrap();
+                n.content_end = start;
                 n.end = reader.buffer_position() as usize;
                 stack.last_mut().unwrap().children.push(n);
             }
