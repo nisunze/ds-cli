@@ -74,7 +74,7 @@ pub static RELEASE: Command = Command {
         )
         .required(),
     ],
-    output: "For UI WASM, UiUnit with release, unit_sha256 and total_bytes; otherwise the Kernel-admitted module manifest, or null when no release was declared. Never a verified install receipt.",
+    output: "For UI WASM, UiUnit with release, unit_sha256, total_bytes and the release's displayIdentity; otherwise the Kernel-admitted module manifest, or null when no release was declared. Never a verified install receipt.",
     examples: &[],
     refusals: &[Refusal {
         code: "module_release_invalid",
@@ -225,7 +225,16 @@ pub fn release(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
             value,
         )
         .map_err(|e| invalid(e.to_string()))?;
-        return serde_json::to_value(unit).map_err(|e| invalid(e.to_string()));
+        let mut answer = serde_json::to_value(&unit).map_err(|e| invalid(e.to_string()))?;
+        // The release's version, build number and date as a person reads them.
+        answer["displayIdentity"] = serde_json::to_value(
+            ds_command_kernel::desktop_update::release_identity(
+                Some(&unit.release.version),
+                Some(&unit.release.released_at),
+            ),
+        )
+        .map_err(|e| invalid(e.to_string()))?;
+        return Ok(answer);
     }
     if runtime == "wasm" {
         let admitted =

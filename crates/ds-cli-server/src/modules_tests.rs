@@ -137,6 +137,7 @@ fn ui_inspection_returns_complete_digest_and_requires_explicit_wasm_before_file_
         assert_eq!(inspected["release"]["protocol"], "ds.ui-wasm/v1");
         assert_eq!(inspected["release"]["assets"].as_array().unwrap().len(), 4);
         assert_eq!(inspected["unit_sha256"].as_str().unwrap().len(), 64);
+        assert_eq!(inspected["displayIdentity"]["version"].as_str(), inspected["release"]["version"].as_str().map(|v| v.split("-r").next().unwrap()));
         let absent = file.path().with_extension("absent");
         assert!(inspect_file(&absent, component, None).unwrap_err().to_string().contains("module_release_component_invalid"));
         assert!(inspect_file(&absent, component, Some("native")).unwrap_err().to_string().contains("module_release_component_invalid"));
