@@ -1680,6 +1680,15 @@ pub fn tiling_placement_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVal
     tiling_placement::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
+/// Which executor serves each Network capability on each platform: the one
+/// route manifest, `routing/network-routes.json`. Hosts execute the answer.
+pub mod network_routes;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = networkRoute)]
+pub fn network_route_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
+    network_routes::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = computeArtifactHead)]
 pub fn compute_artifact_head_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {

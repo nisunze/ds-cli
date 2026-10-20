@@ -127,6 +127,44 @@ migration remain separately parked in the
 [owning hard-problem entry](../../backlog/hardproblems/OPEN.md#interactive-ds-grid-profiledesign-extraction).
 Mechanical extraction preserves current behavior and does not reopen that work.
 
+### Network routes (owner, 2026-10-20)
+
+The Kernel is the entry point for the Web and the CLI, so which executor serves
+a Network capability on each platform is Kernel configuration, never client
+code. [`routing/network-routes.json`](../../routing/network-routes.json) is the
+one route manifest. Each capability has a kind, `engineering_job` or `in_page`,
+and one route for each declared platform (`desktop`, `web`, `core`). A route
+names an executor and may bound `page_lanes`. The executors are:
+
+- `core`: installed DS Core with its Network addon. On the Desktop it is reached
+  through the shell's Network adapter.
+- `network_unit`: the governed Network WASM unit in the page.
+- `refuse`: a typed refusal with a code and message.
+
+The manifest's `executors` section says where each executor exists.
+
+`network_routes` decodes the manifest into typed Rust and gates it before any
+host reads a route:
+
+- every capability routes every declared platform, and only those;
+- every route names an executor that exists on its platform;
+- a refusal route carries a typed code and message;
+- `page_lanes` stays within 1 to 64;
+- an engineering job never routes to the Network unit where Core is installed,
+  so no Desktop engineering job reaches the browser engine.
+
+Hosts ask natively through `network_routes::route(capability, platform)`. The
+Desktop's Network adapter does this, and Core links the same function. The page
+asks through the `networkRoute` WASM export with
+`{schema: "ds.network-route/v1", capability, platform}`. Each host executes the
+answer. Its only input is its own platform identity; route data, host rules and
+bounds stay here.
+
+In-page Network operations enter through the Kernel and go to the governed
+Network unit on both hosts once the unit is admitted there. Until the Desktop
+admits it, the Desktop routes them to Core
+([DECOUPLING-008](../../../ds-architecture/backlog/DECOUPLING.md#decoupling-008--network-in-page-operations-on-the-desktop-and-hosted-web)).
+
 ### Named refusals
 
 Do not let convenience blur this. Specifically forbidden:

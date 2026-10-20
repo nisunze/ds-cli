@@ -1,0 +1,46 @@
+{
+  "schema": "ds.network-routes/v1",
+  "doc": [
+    "The one route manifest for Network capabilities (owner, 2026-10-20).",
+    "The Kernel is the entry point for every client, so this file, not a client",
+    "framework, names the executor that serves each capability on each platform:",
+    "  core          installed DS Core with its Network addon: Core itself, or",
+    "                the Desktop's Network adapter door into Core;",
+    "  network_unit  the governed Network WASM unit in the page;",
+    "  refuse        a typed refusal, with its code and message.",
+    "`executors` says where each executor exists. Engineering jobs go to Core",
+    "wherever Core is installed. In-page operations enter through the Kernel and",
+    "go to the Network unit on every host where that unit is admitted",
+    "(DECOUPLING-008); until it is admitted on the Desktop they stay on Core there.",
+    "`page_lanes` bounds how many jobs a page runs at once; absent, the page uses",
+    "its own worker width. Each platform's adapter executes the route it is given",
+    "and never chooses one. ds_command_kernel::network_routes decodes and gates",
+    "this file; hosts ask `route` natively or `networkRoute` in WASM."
+  ],
+  "platforms": ["desktop", "web", "core"],
+  "executors": {
+    "core": { "platforms": ["desktop", "core"] },
+    "network_unit": { "platforms": ["web"] },
+    "refuse": { "platforms": ["desktop", "web", "core"] }
+  },
+  "capabilities": {
+    "lv.process": {
+      "kind": "engineering_job",
+      "doc": "Process one LV transformer batch; a differential job returns the plan it ran under.",
+      "routes": {
+        "desktop": { "executor": "core", "page_lanes": 1 },
+        "web": { "executor": "network_unit" },
+        "core": { "executor": "core" }
+      }
+    },
+    "lv.plan": {
+      "kind": "in_page",
+      "doc": "The differential plan the Process dialog shows before submit.",
+      "routes": {
+        "desktop": { "executor": "core" },
+        "web": { "executor": "network_unit" },
+        "core": { "executor": "core" }
+      }
+    }
+  }
+}
