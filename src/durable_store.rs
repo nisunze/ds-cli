@@ -153,6 +153,10 @@ pub enum Request {
     WorkDrafts {
         operation: crate::work_drafts::Operation,
     },
+    /// Work a drain still has to deliver, by closed queue.
+    Outbox {
+        operation: crate::outbox::Operation,
+    },
 }
 impl Request {
     pub fn store(&self) -> &'static str {
@@ -169,6 +173,7 @@ impl Request {
             Request::MediaOutbox { .. } => crate::media_outbox::STORE,
             Request::UploadChunks { .. } => crate::upload_chunks::STORE,
             Request::WorkDrafts { .. } => crate::work_drafts::STORE,
+            Request::Outbox { .. } => crate::outbox::STORE,
         }
     }
     /// Refuse a store whose native home is its own Core command, so one store
@@ -188,7 +193,7 @@ impl Request {
             | Request::GridModelStore { .. } => Ok(()),
             Request::DesignRooms { .. } => Ok(()),
             Request::ByteCache { .. } | Request::MediaOutbox { .. } | Request::UploadChunks { .. } => Ok(()),
-            Request::WorkDrafts { .. } => Ok(()),
+            Request::WorkDrafts { .. } | Request::Outbox { .. } => Ok(()),
         }
     }
 }
@@ -451,6 +456,9 @@ pub fn execute(
                 }
                 Request::WorkDrafts { operation } => {
                     crate::work_drafts::execute(&transaction, input, operation)?
+                }
+                Request::Outbox { operation } => {
+                    crate::outbox::execute(&transaction, input, operation)?
                 }
                 Request::Status { .. } | Request::GridProjectCatalog { .. } => {
                     unreachable!("statement-protocol stores are answered above")
