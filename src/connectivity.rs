@@ -2,6 +2,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// What every refused request says while offline mode is on: the operator has
+/// the Settings switch, a headless caller has the command.
+pub const OFFLINE_MESSAGE: &str = "Offline mode is on. Turn it off in Settings, or run `ds desktop offline set --enabled false`, to reconnect.";
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SetOfflineMode {

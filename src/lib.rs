@@ -1512,6 +1512,11 @@ pub fn response_policy_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
     response_policy::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
+/// One gateway exchange for every host: Rust names each request, reads each
+/// answer and decides each retry. The browser runs it through each domain's
+/// typed WASM exports, which send with reqwest.
+pub mod gateway_exchange;
+
 /// Durable lifecycle decisions for host-held survey-photo bytes.
 pub mod survey_photo_outbox;
 #[cfg(feature = "wasm")]

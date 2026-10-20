@@ -65,11 +65,13 @@ ds-command-kernel    │              ds-client-core
 
 Placement, and why it is not the other way round:
 
-- **`ds-command-kernel` holds the protocol, never a client.** It has no HTTP
-  dependency and gains none — it compiles to `cdylib` for the browser WASM
-  package, so a native HTTP client there would poison that build. The transfer
-  state machine belongs here precisely *because* it is pure: identical bytes
-  run in the browser and in the shell.
+- **`ds-command-kernel` holds the protocol; its native build holds no
+  client.** Native builds have no HTTP dependency and gain none. The browser
+  WASM build alone carries one executor, `gateway_exchange::browser`:
+  reqwest's WebAssembly client, which is the page's own `fetch` (owner,
+  2026-10-20, [architecture sentence 4](../../../ds-architecture/architecture/development-philosophy.md#architecture-in-nine-sentences)).
+  The step machines it runs stay pure, so the same typed exchanges run
+  natively in Core: identical bytes in the browser, the shell and the CLI.
 - **`ds-client-core` holds the gateway operation registry**, not the kernel.
   The registry carries identity — and `ds-client-core::profile` already hashes
   every route, method and action constant, in a fixed order, into
@@ -78,14 +80,17 @@ Placement, and why it is not the other way round:
   `ds-command-kernel`; the edge stays one-way.
 - **The browser reaches the registry through Rust in WASM** (owner, 2026-10-19,
   [development philosophy §6](../../../ds-architecture/architecture/development-philosophy.md#6-the-frontend-is-designed-as-if-it-were-rust)):
-  the generated Rust `gateway` table and the kernel's step programs construct the
-  request, decide retry and backoff, and interpret the response. One mechanical
-  TypeScript fetch port executes each step with the bearer and returns bytes;
-  it holds no routes, retry loop or payload normalization. The generated TS
-  route manifest is transitional: a domain's TS lookups, retry and normalization
-  are deleted when that domain moves to its Rust step program. `ds-client-core`
-  stays native; where both executors need the same registry or step logic, a
-  portable crate is split out rather than linking `ds-client-core` into WASM.
+  `gateway_exchange` and each domain's typed exchanges construct the request,
+  decide retry and backoff, interpret the response and map refusals, and the
+  browser executor sends them. Svelte calls one typed async export per
+  operation, with TypeScript types generated from the Rust types, and passes
+  one `GatewayHost` that answers only what the page holds: the gateway origin,
+  the session's bearer and email, the platform key, its clock and its
+  session, offline and link state. TypeScript holds no fetch port, route,
+  retry or decoder for a migrated domain; the generated TS route manifest
+  serves only the domains not yet moved. `ds-client-core` stays native; where
+  both executors need the same registry or step logic, a portable crate is
+  split out rather than linking `ds-client-core` into WASM.
 - Hosts supply IO ports only. A host never re-decides protocol, retry,
   ordering, or acknowledgement meaning.
 
