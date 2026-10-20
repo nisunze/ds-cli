@@ -341,10 +341,15 @@ pub(crate) mod exports {
     use wasm_bindgen_futures::JsFuture;
     use web_sys::{AbortSignal, Blob};
 
-    use super::{upload, Link, PartSource, Upload, Uploaded};
+    use super::{upload, within, Link, PartSource, Upload, Uploaded};
     use crate::gateway_exchange::browser::{facts, typed, GatewayHost};
     use crate::gateway_exchange::Refusal;
-    use crate::transfer::Cause;
+    use crate::transfer::{validated_storage_session, Cause, Phase};
+
+    /// The most bytes one single-request upload carries.
+    const SINGLE_PUT_MAX_BYTES: u64 = 64 * 1024 * 1024;
+    const SINGLE_PUT_DEFAULT_TIMEOUT_MS: u64 = 120_000;
+    const SINGLE_PUT_MAX_TIMEOUT_MS: u64 = 600_000;
 
     #[wasm_bindgen(typescript_custom_section)]
     const UPLOAD_SOURCE: &'static str = r#"
@@ -604,5 +609,110 @@ export interface UploadSource {
             )
             .await,
         )
+    }
+
+    fn failed(cause: Cause, retryable: bool) -> UploadOutcome {
+        UploadOutcome::Failed {
+            message: cause.describe(),
+            cause,
+            retryable,
+        }
+    }
+
+    /// PUT one byte source to a DS-minted storage URL in a single bounded
+    /// request: the URL admitted by the shared session rule, only its
+    /// content type sent, and no credentials.
+    pub(crate) async fn single_put(
+        host: &GatewayHost,
+        url: &str,
+        source: UploadSource,
+        content_type: &str,
+        timeout_ms: u64,
+        signal: Option<AbortSignal>,
+    ) -> UploadOutcome {
+        let Ok(url) = validated_storage_session(url) else {
+            return failed(Cause::BlockedByHostPolicy, false);
+        };
+        let Ok(before) = facts(host) else {
+            return failed(Cause::Inconclusive, false);
+        };
+        if before.offline_mode {
+            return failed(Cause::Offline, true);
+        }
+        let size = source.size().max(0.0) as u64;
+        if size > SINGLE_PUT_MAX_BYTES {
+            return failed(Cause::LengthMismatch, false);
+        }
+        let bytes = match Parts(source).read(0, size).await {
+            Ok(bytes) if bytes.len() as u64 == size => bytes,
+            Ok(_) => return failed(Cause::LengthMismatch, false),
+            Err(cause) => return failed(cause, false),
+        };
+        let sent = async {
+            let response = reqwest::Client::new()
+                .put(&url)
+                .header("Content-Type", content_type)
+                .fetch_credentials_omit()
+                .fetch_cache_no_store()
+                .body(bytes)
+                .send()
+                .await
+                .map_err(|_| Cause::BlockedByHostPolicy)?;
+            if response.url().as_str() != url {
+                return Err(Cause::BlockedByHostPolicy);
+            }
+            Ok(response.status().as_u16())
+        };
+        let bounded = std::pin::pin!(within(sent, timeout_ms));
+        let answer = match signal {
+            None => bounded.await,
+            Some(signal) => {
+                let mut abort = Abort::new(signal);
+                match futures_util::future::select(bounded, &mut abort.fired).await {
+                    futures_util::future::Either::Left((answer, _)) => answer,
+                    futures_util::future::Either::Right(_) => {
+                        return failed(Cause::Cancelled, true)
+                    }
+                }
+            }
+        };
+        if facts(host).map_or(true, |after| after.principal != before.principal) {
+            return failed(Cause::Cancelled, false);
+        }
+        match answer {
+            None => failed(
+                Cause::Timeout {
+                    phase: Phase::Response,
+                },
+                true,
+            ),
+            Some(Err(cause)) => failed(cause, false),
+            Some(Ok(status @ (200 | 201))) => UploadOutcome::Done {
+                committed: size,
+                status,
+                answer: String::new(),
+            },
+            Some(Ok(status)) => failed(
+                Cause::HttpStatus { status },
+                status == 408 || status == 429 || status >= 500,
+            ),
+        }
+    }
+
+    /// One single-request upload to a storage URL, as Svelte calls it.
+    /// `timeout_ms` defaults to two minutes and is bounded to ten.
+    #[wasm_bindgen(js_name = singlePutUpload, unchecked_return_type = "UploadOutcome")]
+    pub async fn single_put_upload(
+        host: GatewayHost,
+        url: String,
+        source: UploadSource,
+        content_type: String,
+        timeout_ms: Option<f64>,
+        signal: Option<AbortSignal>,
+    ) -> Result<JsValue, JsValue> {
+        let timeout_ms = timeout_ms
+            .map(|ms| (ms.max(1.0) as u64).min(SINGLE_PUT_MAX_TIMEOUT_MS))
+            .unwrap_or(SINGLE_PUT_DEFAULT_TIMEOUT_MS);
+        typed(&single_put(&host, &url, source, &content_type, timeout_ms, signal).await)
     }
 }
