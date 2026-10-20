@@ -10,6 +10,8 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 
+// One session rule for every host: the Kernel's.
+pub use ds_command_kernel::transfer::{validated_storage_session, SessionRefusal};
 use ds_command_kernel::transfer::{
     self, Action, Cause, Event, Phase, RangeObservation, Stage, TransferPlan, TransferState,
 };
@@ -18,8 +20,6 @@ use sha2::{Digest, Sha256};
 
 use crate::rows::{now_ms, TransferReceipt};
 
-const ALLOWED_STORAGE_SESSION_HOSTS: &[&str] = &["storage.googleapis.com"];
-const MAX_SESSION_URI_BYTES: usize = 4096;
 const MAX_BODY_READ_BYTES: usize = 64 * 1024;
 const MAX_DISCARDED_RESPONSE_BYTES: u64 = 64 * 1024;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -29,16 +29,6 @@ const MIN_PROGRESS_BYTES_PER_SECOND: u64 = 4 * 1024;
 const PROGRESS_GRACE: Duration = Duration::from_secs(60);
 const CANCEL_POLL: Duration = Duration::from_millis(50);
 const MAX_STEPS: u32 = 200_000;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SessionRefusal {
-    Unparsable,
-    TooLong,
-    SchemeNotHttps,
-    CarriesUserinfo,
-    HostNotAllowed,
-    NonDefaultPort,
-}
 
 /// Terminal result of one resumable native transfer. The kernel owns the
 /// meaning of its state and cause; this host reports only observed facts.
@@ -67,31 +57,6 @@ pub struct NativeTransferProgress {
     pub committed_bytes: u64,
     pub sent_bytes: u64,
     pub total_bytes: u64,
-}
-
-/// Validate the DS-minted resumable-session credential before DNS or I/O.
-pub fn validated_storage_session(raw: &str) -> Result<String, SessionRefusal> {
-    if raw.len() > MAX_SESSION_URI_BYTES {
-        return Err(SessionRefusal::TooLong);
-    }
-    if raw.is_empty() || raw.bytes().any(|byte| byte.is_ascii_control()) {
-        return Err(SessionRefusal::Unparsable);
-    }
-    let url = url::Url::parse(raw).map_err(|_| SessionRefusal::Unparsable)?;
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err(SessionRefusal::CarriesUserinfo);
-    }
-    if url.scheme() != "https" {
-        return Err(SessionRefusal::SchemeNotHttps);
-    }
-    let host = url.host_str().ok_or(SessionRefusal::HostNotAllowed)?;
-    if !ALLOWED_STORAGE_SESSION_HOSTS.contains(&host) {
-        return Err(SessionRefusal::HostNotAllowed);
-    }
-    if url.port_or_known_default() != Some(443) {
-        return Err(SessionRefusal::NonDefaultPort);
-    }
-    Ok(url.to_string())
 }
 
 #[derive(Debug, Deserialize)]

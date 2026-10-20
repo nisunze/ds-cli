@@ -614,3 +614,39 @@ fn the_command_envelope_is_bounded_and_schema_fenced() {
 fn a_zero_byte_transfer_is_refused_rather_than_silently_succeeding() {
     assert!(machine::apply(None, Some(plan(0)), Event::Start, 0).is_err());
 }
+
+#[test]
+fn a_storage_session_is_validated_once_for_every_host() {
+    let session = "https://storage.googleapis.com/upload/storage/v1/b/bucket/o?uploadType=resumable&upload_id=abc";
+    assert_eq!(validated_storage_session(session).as_deref(), Ok(session));
+    for (raw, refusal) in [
+        ("", SessionRefusal::Unparsable),
+        (
+            "https://storage.googleapis.com/a\nb",
+            SessionRefusal::Unparsable,
+        ),
+        (
+            "http://storage.googleapis.com/upload/session",
+            SessionRefusal::SchemeNotHttps,
+        ),
+        (
+            "https://storage.googleapis.com.attacker.example/upload",
+            SessionRefusal::HostNotAllowed,
+        ),
+        (
+            "https://user:secret@storage.googleapis.com/upload",
+            SessionRefusal::CarriesUserinfo,
+        ),
+        (
+            "https://storage.googleapis.com:8443/upload",
+            SessionRefusal::NonDefaultPort,
+        ),
+    ] {
+        assert_eq!(validated_storage_session(raw), Err(refusal), "{raw:?}");
+    }
+    let long = format!("https://storage.googleapis.com/{}", "x".repeat(4096));
+    assert_eq!(
+        validated_storage_session(&long),
+        Err(SessionRefusal::TooLong)
+    );
+}

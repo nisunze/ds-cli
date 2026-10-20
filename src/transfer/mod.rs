@@ -17,6 +17,8 @@
 //!   report "no Range header", which is a different, stronger fact.
 use serde::{Deserialize, Serialize};
 
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+mod browser;
 mod machine;
 #[cfg(test)]
 mod tests;
@@ -37,9 +39,52 @@ pub const MAX_STALLED_ATTEMPTS: u32 = 6;
 /// session surfaces as a *reported* cause instead of an invisible retry loop.
 pub const MAX_INCONCLUSIVE_PROBES: u32 = 4;
 
+/// The only host a DS-minted resumable storage session may point at.
+pub const STORAGE_SESSION_HOSTS: &[&str] = &["storage.googleapis.com"];
+const MAX_SESSION_URI_BYTES: usize = 4096;
+
+/// Why a session URI is not a storage session this client may write to.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SessionRefusal {
+    Unparsable,
+    TooLong,
+    SchemeNotHttps,
+    CarriesUserinfo,
+    HostNotAllowed,
+    NonDefaultPort,
+}
+
+/// Validate the DS-minted resumable-session credential before DNS or any
+/// request: HTTPS on the default port, a storage host, no user info. Every
+/// host's executor asks this one rule.
+pub fn validated_storage_session(raw: &str) -> Result<String, SessionRefusal> {
+    if raw.len() > MAX_SESSION_URI_BYTES {
+        return Err(SessionRefusal::TooLong);
+    }
+    if raw.is_empty() || raw.bytes().any(|byte| byte.is_ascii_control()) {
+        return Err(SessionRefusal::Unparsable);
+    }
+    let url = url::Url::parse(raw).map_err(|_| SessionRefusal::Unparsable)?;
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(SessionRefusal::CarriesUserinfo);
+    }
+    if url.scheme() != "https" {
+        return Err(SessionRefusal::SchemeNotHttps);
+    }
+    let host = url.host_str().ok_or(SessionRefusal::HostNotAllowed)?;
+    if !STORAGE_SESSION_HOSTS.contains(&host) {
+        return Err(SessionRefusal::HostNotAllowed);
+    }
+    if url.port_or_known_default() != Some(443) {
+        return Err(SessionRefusal::NonDefaultPort);
+    }
+    Ok(url.to_string())
+}
+
 /// Where a host observed a transport failure. Kept coarse on purpose: it is a
 /// diagnostic, never an authorization or routing input.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
     /// Name resolution, connection, or TLS setup — before any byte was written.
@@ -58,6 +103,7 @@ pub enum Phase {
 /// them may carry a session URI, an `Authorization` value, a query string, or a
 /// response body: a cause is surfaced to operators and telemetry.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Cause {
     /// The server answered with this status. Safe: a status is not a secret.

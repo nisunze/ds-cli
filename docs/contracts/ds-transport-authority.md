@@ -152,6 +152,13 @@ start ─▶│  (empty body, bytes */total)   │──▶ Committed(n) ─▶ 
                                                    └─ Inconclusive ─▶ Retry probe
 ```
 
+Two hosts drive this machine, and both validate the session URI with the one
+rule `transfer::validated_storage_session` before any request. The browser
+and Desktop webview host is `transfer::browser`, behind the `resumableUpload`
+export: reqwest's WebAssembly client sends each part over the page's own
+`fetch`, and an answer from any other URL is refused. Core's native host is
+`ds-sync-runtime`'s `native_transfer`.
+
 ### 4.1 Events the host must be able to report truthfully
 
 The host reports **facts**, never conclusions:
@@ -376,7 +383,7 @@ and native transfer tests.
 |---|---|---|
 | S1 transfer protocol state machine + typed causes + tests | ds-command-kernel | see repo `docs/contracts/` and commit log |
 | S2 native transfer host (streaming, ureq, no redirects) | ds-web `src-tauri` | " |
-| S3 browser/WASM host adapter over the same protocol | ds-web `src/lib` | " |
+| S3 browser/WASM host adapter over the same protocol | ds-command-kernel `transfer::browser` (was ds-web `src/lib`) | " |
 | S4 operation registry + parity + static bypass gate | ds-web + ds-command-kernel | " |
 | S5 removal of the TS upload/retry engine and duplicate authority | ds-web | " |
 | S6 cold/warm, offline, interruption, cross-machine acceptance | all | " |

@@ -40,6 +40,7 @@ wasm = [
     "dep:gloo-timers",
     "dep:tsify",
     "dep:uuid",
+    "dep:web-sys",
     "client-state",
     "dep:send_wrapper",
     "any_spawner/wasm-bindgen",
@@ -93,6 +94,8 @@ futures-util = { version = "0.3", default-features = false, optional = true }
 gloo-timers = { version = "0.3", features = ["futures"], optional = true }
 tsify = { version = "0.5.8", default-features = false, features = ["js"], optional = true }
 uuid = { version = "1", features = ["v4", "js"], optional = true }
+# The page's own Blob and AbortSignal, for the resumable upload executor.
+web-sys = { version = "0.3", features = ["Blob", "AbortSignal", "EventTarget"], optional = true }
 send_wrapper = { version = "0.6", optional = true }
 
 [dev-dependencies]
