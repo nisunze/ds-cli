@@ -48,3 +48,15 @@ fn a_stale_report_is_regenerated_once_and_kept_when_that_fails() {
     let none = after_run(cached(true, true), Err(Refusal::new("HTTP_503", "busy")));
     assert_eq!((none.data, none.error.as_deref()), (None, Some("busy")));
 }
+
+#[test]
+fn a_report_is_held_per_project_without_its_sync_counts() {
+    use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
+    let edge = TestEdge::new();
+    assert_eq!(block_on(held_report(&edge, "p")).unwrap(), None);
+    let report = json!({"totals": {"poles": 3}, "sync_counts": {"forms": []}});
+    block_on(retain_report(&edge, "p", report)).unwrap();
+    assert_eq!(block_on(held_report(&edge, "p")).unwrap(), Some(json!({"totals": {"poles": 3}})));
+    assert_eq!(block_on(held_report(&edge, "q")).unwrap(), None);
+    assert!(block_on(retain_report(&edge, "p", json!([1]))).is_err());
+}

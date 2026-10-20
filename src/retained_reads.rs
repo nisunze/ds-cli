@@ -134,6 +134,10 @@ kinds! {
     /// The capabilities an account holds, for the platform (`platform`) or one
     /// project (`project:<id>`).
     AccountCapabilities = "account_capabilities": Account, KeyGrammar::Token(160), 2 * MIB, 64;
+    /// A project's survey dashboard report, without its sync counts.
+    SurveyReport = "survey_report": Project, KeyGrammar::Single, 16 * MIB, 32;
+    /// The account's report job receipts in the Notification Center.
+    ReportJobReceipts = "report_job_receipts": Account, KeyGrammar::Single, MIB, 1;
 }
 
 /// The generation row one kind reads and advances.

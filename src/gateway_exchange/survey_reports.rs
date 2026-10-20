@@ -129,11 +129,72 @@ pub fn after_run(cached: Cached, run: Result<Value, Refusal>) -> Shown {
     }
 }
 
+/// The report this device holds for one project, if any: the dashboard paints
+/// it at once, offline too. Held per account and project.
+#[cfg(feature = "durable-store")]
+pub async fn held_report(
+    edge: &impl super::retained::Edge,
+    project: &str,
+) -> Result<Option<Value>, Refusal> {
+    project_reference(project)?;
+    let kind = crate::retained_reads::Kind::SurveyReport;
+    let observed = super::retained::read::<Value>(edge, kind, Some(project), "").await?;
+    Ok(observed.held.map(|held| held.value))
+}
+
+/// Hold a report Brain answered for one project, without its sync counts
+/// (they are read on demand), for the next open. A store that cannot keep it
+/// never hides it.
+#[cfg(feature = "durable-store")]
+pub async fn retain_report(
+    edge: &impl super::retained::Edge,
+    project: &str,
+    report: Value,
+) -> Result<(), Refusal> {
+    project_reference(project)?;
+    let Value::Object(mut report) = report else {
+        return Err(Refusal::new(INVALID, "The survey report service answered an invalid report."));
+    };
+    report.remove("sync_counts");
+    let kind = crate::retained_reads::Kind::SurveyReport;
+    if let Ok(observed) = super::retained::read::<Value>(edge, kind, Some(project), "").await {
+        let owner = observed.owner.as_deref();
+        let _ = super::retained::write(edge, owner, kind, Some(project), "", &report, None).await;
+    }
+    Ok(())
+}
+
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
     use super::{after_read, after_run, ReadReports, RunReports, Shown};
     use crate::gateway_exchange::browser::{attempt, typed, GatewayHost};
     use wasm_bindgen::prelude::*;
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::browser::rejection;
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
+
+    /// The report this device holds for a project, or none.
+    #[wasm_bindgen(js_name = surveyReportHeld, unchecked_return_type = "Record<string, unknown> | null")]
+    pub async fn survey_report_held(host: GatewayHost, store: StoreHost, project: String) -> Result<JsValue, JsValue> {
+        let held = super::held_report(&BrowserEdge::new(host, store), &project).await;
+        typed(&held.map_err(|refusal| rejection(&refusal))?)
+    }
+
+    /// Hold a report Brain answered, without its sync counts, for the next open.
+    #[wasm_bindgen(js_name = surveyReportRetain)]
+    pub async fn survey_report_retain(
+        host: GatewayHost,
+        store: StoreHost,
+        project: String,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] report: JsValue,
+    ) -> Result<(), JsValue> {
+        let report = tsify::serde_wasm_bindgen::from_value(report)
+            .map_err(|error| js_sys::Error::new(&error.to_string()))?;
+        let edge = BrowserEdge::new(host, store);
+        super::retain_report(&edge, &project, report)
+            .await
+            .map_err(|refusal| rejection(&refusal))
+    }
 
     #[wasm_bindgen(typescript_custom_section)]
     const TYPES: &'static str = r#"
