@@ -1,8 +1,8 @@
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 
+mod build_capabilities;
 mod build_gateway;
-mod build_network_routes;
 mod build_ui;
 
 fn sources(dir: &Path, paths: &mut Vec<std::path::PathBuf>) {
@@ -32,8 +32,8 @@ fn main() {
         root.join("build.rs"),
         root.join("build_ui.rs"),
         root.join("build_gateway.rs"),
-        root.join("build_network_routes.rs"),
-        root.join("routing/network-routes.json"),
+        root.join("build_capabilities.rs"),
+        root.join("routing/capabilities.json"),
     ];
     for dir in ["src", "crates"] {
         println!("cargo:rerun-if-changed={dir}");
@@ -60,6 +60,6 @@ fn main() {
         hash.finalize()
     );
     build_ui::emit(&root);
-    build_network_routes::emit(&root);
+    build_capabilities::emit(&root);
     build_gateway::emit();
 }

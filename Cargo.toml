@@ -25,9 +25,9 @@ path = "src/bin/ds-print-layout-validate.rs"
 
 [features]
 default = []
-# The platform this Kernel build serves; at most one (none is platform-core,
-# the native default). Each decides, at compile time, the executor of every
-# routed Network capability (routing/network-routes.json).
+# The platform this Kernel build serves; at most one. routing/capabilities.json
+# declares the platforms, names each one's feature and the default (none
+# enabled), and decides, at compile time, how every capability runs there.
 platform-core = []
 platform-desktop = []
 platform-web = []

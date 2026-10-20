@@ -127,38 +127,48 @@ migration remain separately parked in the
 [owning hard-problem entry](../../backlog/hardproblems/OPEN.md#interactive-ds-grid-profiledesign-extraction).
 Mechanical extraction preserves current behavior and does not reopen that work.
 
-### Network routes (owner, 2026-10-20)
+### Capability routes (owner, 2026-10-20)
 
-The Kernel is the entry point for the Web and the CLI, so which executor serves
-a Network capability on each platform is Kernel configuration, never client
-code. [`routing/network-routes.json`](../../routing/network-routes.json) is the
-one route manifest. Each capability has a kind, `engineering_job` or `in_page`,
-and one route for each declared platform (`desktop`, `web`, `core`). A route
-names an executor and may bound `page_lanes`. The executors are:
+The Kernel is the entry point for every client, so how each platform serves a
+capability is Kernel configuration, never client code.
+[`routing/capabilities.json`](../../routing/capabilities.json) is the one
+capability manifest. It has one row per capability, keyed by the Core command id
+(`design.lv.process`). Its platforms are data: `cli`, `desktop`, `web`,
+`android`, `ios` and `macos`, each with the executors it has. A row gives every
+platform one value:
 
-- `core`: installed DS Core with its Network addon. On the Desktop it is reached
-  through the shell's Network adapter.
+- `core`: installed DS Core with its addons, through the host's Core door.
+- `kernel:<exchange>`: the in-page Kernel's typed gateway exchange.
 - `network_unit`: the governed Network WASM unit in the page.
-- `refuse`: a typed refusal with a code and message.
+- `pending:<reason>` or `discarded:<reason>`: a typed refusal
+  (`capability_pending`, `capability_discarded`) with the reason's message.
 
-The manifest's `executors` section says where each executor exists.
+A capability Core does not carry uses the same dotted form and is never
+supported on `cli`. An optional `run` declares how the page calls Core for it:
+one named host door, or the command with the caller's document as a declared
+input, fixed switches, the answer member it reads and `page_lanes`.
 
-`network_routes` decodes the manifest into typed Rust and gates it before any
-host reads a route:
+`build_capabilities.rs` gates the manifest before any host reads it:
 
-- every capability routes every declared platform, and only those;
-- every route names an executor that exists on its platform;
-- a refusal route carries a typed code and message;
+- every row names every declared platform;
+- every value names an executor that exists on its platform, a Kernel exchange
+  that `src/gateway_exchange` has, or a declared reason;
+- no reason is unused, and exactly one platform is the default build;
 - `page_lanes` stays within 1 to 64;
-- an engineering job never routes to the Network unit where Core is installed,
-  so no Desktop engineering job reaches the browser engine.
+- the file is its own canonical text.
 
-Hosts ask natively through `network_routes::route(capability, platform)`. The
-Desktop's Network adapter does this, and Core links the same function. The page
-asks through the `networkRoute` WASM export with
-`{schema: "ds.network-route/v1", capability, platform}`. Each host executes the
-answer. Its only input is its own platform identity; route data, host rules and
-bounds stay here.
+`DS_CAPABILITIES_REWRITE=1 cargo check` rewrites the file canonically. It also
+fills every row that lacks a newly declared platform with
+`pending:<platform>_not_yet_supported`. A Kernel build serves the one platform
+whose cargo feature it enables (`platform-core`, the default, `platform-desktop`
+or `platform-web`). ds-cli's `capability_manifest` test holds the rows supported
+on `cli` to Core's command registry, so a new Core command cannot ship without
+a decision for every platform.
+
+Hosts ask natively through `capabilities::route(id)`, and a Core door admits
+by `capabilities::on_core(id)`. The page asks through the `capabilityRoute`
+WASM export and runs through `capabilityRun`. Each host executes the answer.
+Route data, host rules and bounds stay here.
 
 In-page Network operations enter through the Kernel and go to the governed
 Network unit on both hosts once the unit is admitted there. Until the Desktop

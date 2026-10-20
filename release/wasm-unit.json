@@ -22,6 +22,10 @@
   },
   "targets": {
     "web-local": {
+      "features": ["wasm", "platform-web", "lane-canary", "topology-local"],
+      "env": []
+    },
+    "desktop-local": {
       "features": ["wasm", "platform-desktop", "lane-canary", "topology-local"],
       "env": []
     },

@@ -1653,6 +1653,6 @@ pub fn tiling_placement_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVal
     tiling_placement::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 
-/// Which executor serves each Network capability in this build: the one route
-/// manifest, `routing/network-routes.json`, compiled in by build.rs.
-pub mod network_routes;
+/// How every capability runs on every platform, and on this build's: the one
+/// capability manifest, `routing/capabilities.json`, compiled in by build.rs.
+pub mod capabilities;
