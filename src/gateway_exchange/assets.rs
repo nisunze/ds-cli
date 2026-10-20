@@ -383,7 +383,7 @@ mod exports {
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::assets_index::timeline::{self, acquire, begin, Begun, Rooms, TimelinePage};
     use crate::gateway_exchange::assets_index::{predates_index, IndexGet, IndexQuery, RowAnswer};
-    use crate::gateway_exchange::browser::{attempt, rejection, run, typed, GatewayHost};
+    use crate::gateway_exchange::browser::{attempt, rejection, typed, GatewayHost};
     use crate::gateway_exchange::retained::browser::BrowserEdge;
     use crate::gateway_exchange::retained::Edge;
     use crate::gateway_exchange::storage::fetch_verified;
@@ -404,6 +404,20 @@ export type AssetsIndexAnswer =
 export interface AssetsScope { uid: string; email: string; lane: string; audience: string; project: string }
 "#;
 
+    /// A refusal as the page's `Error`, marked `revoked` when the asset is gone
+    /// or this caller may no longer read it.
+    fn refused(refusal: &Refusal) -> JsValue {
+        let error = rejection(refusal);
+        if super::revoked(refusal) {
+            let _ = Reflect::set(&error, &JsValue::from_str("revoked"), &JsValue::TRUE);
+        }
+        error
+    }
+
+    async fn ask<C: crate::gateway_exchange::Exchange>(host: &GatewayHost, call: C) -> Result<C::Output, JsValue> {
+        attempt(host, call).await?.map_err(|refusal| refused(&refusal))
+    }
+
     fn input<T: serde::de::DeserializeOwned>(value: JsValue) -> Result<T, JsValue> {
         tsify::serde_wasm_bindgen::from_value(value)
             .map_err(|error| js_sys::Error::new(&error.to_string()).into())
@@ -417,19 +431,19 @@ export interface AssetsScope { uid: string; email: string; lane: string; audienc
         #[wasm_bindgen(unchecked_param_type = "ListQuery | undefined")] query: JsValue,
     ) -> Result<JsValue, JsValue> {
         let query: ListQuery = if query.is_undefined() || query.is_null() { ListQuery::default() } else { input(query)? };
-        typed(&run(&host, List { project, query }).await?)
+        typed(&ask(&host, List { project, query }).await?)
     }
 
     /// The project's declared folders (`AssetFolderRow`, as served).
     #[wasm_bindgen(js_name = assetsTree, unchecked_return_type = "Record<string, unknown>[]")]
     pub async fn assets_tree(host: GatewayHost, project: String) -> Result<JsValue, JsValue> {
-        typed(&run(&host, Tree { project }).await?)
+        typed(&ask(&host, Tree { project }).await?)
     }
 
     /// One catalogue row (`AssetRow`, as served).
     #[wasm_bindgen(js_name = assetsGet, unchecked_return_type = "Record<string, unknown>")]
     pub async fn assets_get(host: GatewayHost, project: String, asset_id: String) -> Result<JsValue, JsValue> {
-        typed(&run(&host, Get { project, asset_id }).await?)
+        typed(&ask(&host, Get { project, asset_id }).await?)
     }
 
     /// One signed read of one row.
@@ -440,7 +454,7 @@ export interface AssetsScope { uid: string; email: string; lane: string; audienc
         asset_id: String,
         surface: Option<String>,
     ) -> Result<JsValue, JsValue> {
-        typed(&run(&host, SignedRead { project, asset_id, surface }).await?)
+        typed(&ask(&host, SignedRead { project, asset_id, surface }).await?)
     }
 
     /// One row's bytes, read once through a fresh signed URL and checked
@@ -452,7 +466,7 @@ export interface AssetsScope { uid: string; email: string; lane: string; audienc
         asset_id: String,
         max_bytes: f64,
     ) -> Result<JsValue, JsValue> {
-        let download = run(&host, SignedRead { project, asset_id, surface: Some("ui".into()) }).await?;
+        let download = ask(&host, SignedRead { project, asset_id, surface: Some("ui".into()) }).await?;
         let size = download.asset.get("bytes").and_then(Value::as_u64).unwrap_or(0);
         if max_bytes.is_finite() && size as f64 > max_bytes {
             return Err(rejection(&crate::gateway_exchange::Refusal::new(
@@ -494,7 +508,7 @@ export interface AssetsScope { uid: string; email: string; lane: string; audienc
         let receipt = edge
             .fetch(Classify { project, asset_id: asset_id.clone(), classify })
             .await
-            .map_err(|refusal| rejection(&refusal))?;
+            .map_err(|refusal| refused(&refusal))?;
         let mutation = MutationReceipt {
             project_id: receipt.asset.get("project_id").and_then(Value::as_str).unwrap_or_default().into(),
             asset_id: receipt.asset.get("asset_id").and_then(Value::as_str).unwrap_or_default().into(),
@@ -517,7 +531,7 @@ export interface AssetsScope { uid: string; email: string; lane: string; audienc
         detach: bool,
     ) -> Result<JsValue, JsValue> {
         let link: Value = input(link)?;
-        typed(&run(&host, Relink { project, asset_id, link, detach }).await?)
+        typed(&ask(&host, Relink { project, asset_id, link, detach }).await?)
     }
 
     type Settled = Result<TimelinePage, Refusal>;

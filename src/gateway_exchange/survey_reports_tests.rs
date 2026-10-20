@@ -1,0 +1,50 @@
+use super::*;
+use crate::gateway_exchange::{resume, start, Facts, Observed, Step};
+use serde_json::json;
+
+fn answered<C: Exchange>(call: C, body: Value) -> Result<C::Output, Refusal> {
+    let Step::Fetch { continuation, .. } = start(call) else { panic!("expected a fetch") };
+    let observed = Observed::Response { status: 200, content_type: Some("application/json".into()), retry_after: None };
+    match resume(continuation, observed, body.to_string().as_bytes(), &Facts::default()) {
+        Step::Done(value) => Ok(value),
+        Step::Refused(refusal) => Err(refusal),
+        _ => panic!("expected an outcome"),
+    }
+}
+
+fn cached(stale: bool, missing: bool) -> Cached {
+    Cached { report: json!({"activeGrandTotal": 3}), stale, missing }
+}
+
+#[test]
+fn the_reads_name_their_project_and_long_deadline() {
+    let Step::Fetch { request, .. } = start(ReadReports { project: "it_rwanda".into(), include_sync_counts: true }) else { panic!() };
+    assert_eq!((request.path.as_str(), request.timeout_ms), ("/api/v1/pipeline", 300_000));
+    assert_eq!(request.body, Some(json!({"action": "get_reports", "eds_project_id": "it_rwanda", "include_sync_counts": true})));
+    let Step::Fetch { request, .. } = start(RunReports { project: "it_rwanda".into(), force: true, include_sync_counts: false }) else { panic!() };
+    assert_eq!(request.path, "/api/v1/data");
+    assert_eq!(request.body, Some(json!({"action": "reports", "eds_project_id": "it_rwanda", "force": true})));
+}
+
+#[test]
+fn a_cached_report_carries_its_stale_and_missing_marks() {
+    let read = |data: Value| answered(ReadReports { project: "it_rwanda".into(), include_sync_counts: false }, json!({"success": true, "data": data})).unwrap();
+    let report = read(json!({"activeGrandTotal": 3, "stale": true}));
+    assert!(report.stale && !report.missing);
+    let none = read(json!({"status": "no_reports", "stale": true}));
+    assert!(none.missing && none.stale);
+}
+
+#[test]
+fn a_stale_report_is_regenerated_once_and_kept_when_that_fails() {
+    assert_eq!(after_read(cached(false, false), true), Ok(Shown { data: Some(json!({"activeGrandTotal": 3})), ..Shown::default() }));
+    assert_eq!(after_read(cached(true, false), false).unwrap().data, Some(json!({"activeGrandTotal": 3})));
+    assert_eq!(after_read(cached(false, true), true), Ok(Shown::default()));
+    let stale = after_read(cached(true, false), true).unwrap_err();
+    let fresh = after_run(stale.clone(), Ok(json!({"activeGrandTotal": 4})));
+    assert_eq!((fresh.data, fresh.refreshed), (Some(json!({"activeGrandTotal": 4})), Some(true)));
+    let kept = after_run(stale, Err(Refusal::new("HTTP_503", "busy")));
+    assert_eq!((kept.data, kept.refreshed, kept.error.as_deref()), (Some(json!({"activeGrandTotal": 3})), Some(false), Some("busy")));
+    let none = after_run(cached(true, true), Err(Refusal::new("HTTP_503", "busy")));
+    assert_eq!((none.data, none.error.as_deref()), (None, Some("busy")));
+}

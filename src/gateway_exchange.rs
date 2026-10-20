@@ -31,6 +31,7 @@ use crate::response_policy::{self, Classify, Outcome, Telemetry, RESPONSE_POLICY
 pub mod account;
 pub mod admin;
 pub mod architecture;
+pub mod archive;
 pub mod assets;
 pub mod assets_index;
 pub mod compute_artifacts;
@@ -41,6 +42,8 @@ pub mod forms;
 pub mod geocode;
 pub mod geodata;
 pub mod governance;
+#[cfg(feature = "durable-store")]
+pub mod grid_catalog;
 pub mod grid_models;
 pub mod help;
 pub mod installations;
@@ -54,9 +57,12 @@ pub mod notifications;
 pub mod pipeline;
 pub mod project_work;
 pub mod projects;
+pub mod reference_data;
+pub mod releases;
 pub mod report_artifacts;
 pub mod solar_inputs;
 pub mod sre;
+pub mod survey_reports;
 pub mod uploads;
 pub mod storage;
 #[cfg(feature = "durable-store")]
