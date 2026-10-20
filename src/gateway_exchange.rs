@@ -33,11 +33,14 @@ pub mod admin;
 pub mod architecture;
 pub mod assets_index;
 pub mod deadletter;
+pub mod design;
 pub mod feedback;
 pub mod governance;
 pub mod help;
 pub mod installations;
+pub mod layers;
 pub mod maps;
+pub mod pipeline;
 pub mod sre;
 #[cfg(feature = "durable-store")]
 pub mod retained;
