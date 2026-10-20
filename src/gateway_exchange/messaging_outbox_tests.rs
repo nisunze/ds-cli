@@ -13,7 +13,7 @@ fn message(conversation: &str, client: &str, text: &str) -> Value {
 fn delivered_answer(client: &str, text: &str) -> Value {
     json!({"success": true, "data": {"created": true, "message": {
         "client_message_id": client, "text": text,
-        "attachments": [{"attachment_id": format!("up-{client}")}]
+        "attachments": [{"upload_id": format!("up-{client}")}]
     }}})
 }
 fn sent_bodies(edge: &TestEdge) -> Vec<Value> {
@@ -176,4 +176,17 @@ fn a_message_is_never_another_account_s() {
     let drained = block_on(drain(&edge, "tab")).unwrap();
     assert_eq!((drained.sent.len(), edge.requests().len()), (0, 0));
     assert!(block_on(enqueue(&edge, json!({"text": "no conversation"}))).is_err());
+}
+
+#[test]
+fn an_attachment_only_message_is_delivered_without_text() {
+    let edge = TestEdge::new();
+    block_on(enqueue(&edge, message("c1", "m1", ""))).unwrap();
+    edge.json(
+        json!({"success": true, "data": {"created": true, "message": {
+            "client_message_id": "m1", "attachments": [{"upload_id": "up-m1"}]
+        }}}),
+    );
+    let drained = block_on(drain(&edge, "tab")).unwrap();
+    assert_eq!((drained.sent.len(), drained.failed.len()), (1, 0));
 }

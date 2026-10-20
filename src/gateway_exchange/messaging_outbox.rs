@@ -43,7 +43,8 @@ fn row_id(client_message_id: &str) -> String {
     format!("{PREFIX}{client_message_id}")
 }
 
-/// The attachment ids a message carries, in order.
+/// The attachment ids a message carries, in order: `attachmentId` as the
+/// page queues it, `upload_id` as Brain answers it.
 fn upload_ids(attachments: &Value) -> Option<Vec<String>> {
     attachments
         .as_array()?
@@ -51,7 +52,7 @@ fn upload_ids(attachments: &Value) -> Option<Vec<String>> {
         .map(|attachment| {
             attachment
                 .get("attachmentId")
-                .or_else(|| attachment.get("attachment_id"))
+                .or_else(|| attachment.get("upload_id"))
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         })
@@ -71,12 +72,12 @@ fn send_body(payload: &Value) -> Option<Map<String, Value>> {
 }
 
 /// Whether Brain's answer is the message that was queued: the same client
-/// id, text and attachments.
+/// id, text (absent when only attachments were sent) and attachments.
 fn delivered(answer: &Value, body: &Map<String, Value>) -> bool {
     let message = &answer["data"]["message"];
     let ids = upload_ids(message.get("attachments").unwrap_or(&json!([])));
     message["client_message_id"] == body["client_message_id"]
-        && message["text"] == body["text"]
+        && message["text"].as_str().unwrap_or_default() == body["text"].as_str().unwrap_or_default()
         && ids.map(|ids| json!(ids)) == Some(body["upload_ids"].clone())
 }
 
