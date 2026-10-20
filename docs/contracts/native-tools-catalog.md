@@ -24,19 +24,8 @@ Provenance records the compiled source revision and dirty state. Its SHA-256
 fingerprint covers the complete exported command facts, including owner request
 schemas, so uncommitted declarations remain auditable.
 
-The generator and drift guard share the exact same projection:
-
-```sh
-cargo run -p ds --example export_native_catalog -- --out <fresh-artifact-path>
-cargo run -p ds --example export_native_catalog -- --check <committed-artifact-path>
-```
-
-The generator writes only the named fresh file and refuses collisions. The
-check compares schema, all command facts and their fingerprint; build revision
-and dirty-state differences alone do not count as declaration drift. It does
-not build or replace `target/debug/ds`. The product artifact is
-`ds-web/src/lib/tools/native-catalog.generated.json`; generation ownership
-remains here. Replace it only after comparing the generated fresh artifact.
+No product keeps a copy of this export: Desktop's Tools page reads installed
+Core's domains and descriptors through `ds capabilities` itself.
 
 General analysis runs through external executors and standard data files. The
 DS catalogue retains the named domain and data contracts; it declares no custom
