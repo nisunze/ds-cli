@@ -17,7 +17,7 @@ pub static INSPECT: Command = Command {
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
-        Arg::value("component", "<shell|solar|reporter|network>", "Exact existing update owner.").choices(&["shell", "solar", "reporter", "network"]).required(),
+        Arg::value("component", "<shell|core|solar|reporter|network>", "Exact existing update owner; core matches its source revision.").choices(&["shell", "core", "solar", "reporter", "network"]).required(),
         Arg::value("channel", "<stable|canary|local>", "Exact public release lane.").choices(&["stable", "canary", "local"]).required(),
         Arg::value("file", "<json-file>", "Held release, installed identity and platform JSON; bounded regular file at most 160 KiB.").required(),
     ],
