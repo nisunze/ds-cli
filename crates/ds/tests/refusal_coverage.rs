@@ -270,6 +270,12 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
          policy::INVALID), the one owner of that vocabulary",
     ),
     (
+        "ds-cli-report/src/plan_profile/model_mode.rs",
+        "a match on the Network owner code above the constructor picks one of \
+         mv_context's declared NETWORK_ENGINE_MISSING or \
+         NETWORK_ENGINE_INCOMPATIBLE refusals",
+    ),
+    (
         "ds-cli-server/src/durable_store.rs",
         "failure() takes one of this command's declared Refusal constants",
     ),
