@@ -1,5 +1,5 @@
 //! The page's client state: the one [`ClientState`] ds-web makes with its
-//! gateway host, the typed commands it calls, and each memo as a
+//! gateway and store hosts, the typed commands it calls, and each memo as a
 //! [`StateSignal`] its Svelte stores subscribe to.
 
 use std::future::Future;
@@ -11,10 +11,15 @@ use reactive_graph::effect::ImmediateEffect;
 use reactive_graph::traits::With;
 use send_wrapper::SendWrapper;
 use serde::Serialize;
+use serde_json::Value;
 use wasm_bindgen::prelude::*;
 
 use super::{Demand, Effects, OnDemand, Scope, Want};
-use crate::gateway_exchange::browser::{attempt, GatewayHost};
+use crate::durable_store::port::{PageStore, StoreHost, StorePort};
+use crate::durable_store::Request;
+use crate::gateway_exchange::browser::{attempt, rejection, typed, GatewayHost};
+use crate::gateway_exchange::map_defaults::MapDefaults;
+use crate::gateway_exchange::retained::store_refusal;
 use crate::gateway_exchange::{Exchange, Refusal};
 
 /// The page could not perform a request at all (its credentials or facts
@@ -36,20 +41,39 @@ export interface StateSubscription {
 }
 "#;
 
-/// The page's effects: each gateway exchange through its `fetch`.
-struct Page(Rc<GatewayHost>);
+/// The page's effects: each gateway exchange through its `fetch`, each
+/// store call through its StoreHost.
+struct Page {
+    gateway: Rc<GatewayHost>,
+    store: Rc<PageStore>,
+}
 
 impl Effects for Page {
     fn exchange<C: Exchange + 'static>(
         &self,
         call: C,
     ) -> impl Future<Output = Result<C::Output, Refusal>> + use<C> {
-        let host = Rc::clone(&self.0);
+        let host = Rc::clone(&self.gateway);
         async move {
             attempt(&host, call)
                 .await
                 .unwrap_or_else(|failure| Err(host_failure(&failure)))
         }
+    }
+
+    fn store(&self, request: Request) -> impl Future<Output = Result<Value, Refusal>> + use<> {
+        let store = Rc::clone(&self.store);
+        async move {
+            store
+                .call(request, None, None)
+                .await
+                .map(|reply| reply.answer)
+                .map_err(store_refusal)
+        }
+    }
+
+    fn now_ms(&self) -> u64 {
+        js_sys::Date::now().max(0.0) as u64
     }
 }
 
@@ -123,17 +147,21 @@ impl StateSubscription {
     pub fn dispose(self) {}
 }
 
-/// The page's client state. ds-web makes one, with its gateway host.
+/// The page's client state. ds-web makes one, with its gateway and store
+/// hosts.
 #[wasm_bindgen(js_name = ClientState)]
-pub struct PageState(super::ClientState);
+pub struct PageState(super::ClientState<Page>);
 
 #[wasm_bindgen(js_class = ClientState)]
 impl PageState {
     #[wasm_bindgen(constructor)]
-    pub fn new(gateway: GatewayHost) -> PageState {
+    pub fn new(gateway: GatewayHost, store: StoreHost) -> PageState {
         // A second state on the page keeps the executor the first started.
         let _ = any_spawner::Executor::init_wasm_bindgen();
-        PageState(super::ClientState::new(Page(Rc::new(gateway))))
+        PageState(super::ClientState::new(Page {
+            gateway: Rc::new(gateway),
+            store: Rc::new(PageStore::new(store)),
+        }))
     }
 
     /// Command: who is signed in and which project is active.
@@ -152,5 +180,45 @@ impl PageState {
     #[wasm_bindgen(js_name = darkBasemap, unchecked_return_type = "StateSignal<Basemap | null>")]
     pub fn dark_basemap(&self) -> StateSignal {
         StateSignal::of(&self.0.maps.dark_basemap)
+    }
+
+    /// The platform's map defaults.
+    #[wasm_bindgen(js_name = mapDefaults, unchecked_return_type = "StateSignal<MapDefaults>")]
+    pub fn map_defaults(&self) -> StateSignal {
+        StateSignal::of(&self.0.cartography.defaults)
+    }
+
+    /// Command: publish map defaults for every client; answers what Brain
+    /// kept, or rejects with the refusal.
+    #[wasm_bindgen(js_name = publishMapDefaults, unchecked_return_type = "Promise<MapDefaults>")]
+    pub fn publish_map_defaults(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "MapDefaults")] defaults: JsValue,
+    ) -> Result<js_sys::Promise, JsValue> {
+        let defaults: MapDefaults = tsify::serde_wasm_bindgen::from_value(defaults)
+            .map_err(|error| js_sys::Error::new(&error.to_string()))?;
+        let publishing = self.0.publish_map_defaults(defaults);
+        Ok(wasm_bindgen_futures::future_to_promise(async move {
+            let published = publishing.await.map_err(|refusal| rejection(&refusal))?;
+            typed(&published)
+        }))
+    }
+
+    /// The relief control.
+    #[wasm_bindgen(unchecked_return_type = "StateSignal<Relief>")]
+    pub fn relief(&self) -> StateSignal {
+        StateSignal::of(&self.0.cartography.relief)
+    }
+
+    /// Command: show or hide relief for this session.
+    #[wasm_bindgen(js_name = toggleRelief)]
+    pub fn toggle_relief(&self) {
+        self.0.toggle_relief();
+    }
+
+    /// Command: step relief to its next intensity and show it.
+    #[wasm_bindgen(js_name = cycleRelief)]
+    pub fn cycle_relief(&self) {
+        self.0.cycle_relief();
     }
 }

@@ -57,7 +57,7 @@ wasm = [
 # Client state as Rust signals (`client_state`): Leptos's reactive core,
 # never its UI. The WASM build runs it on wasm-bindgen-futures; a native host
 # initializes any_spawner with its own runtime.
-client-state = ["dep:reactive_graph", "dep:any_spawner"]
+client-state = ["durable-store", "dep:reactive_graph", "dep:any_spawner"]
 
 [dependencies]
 ds-profile-policy = { path = "crates/ds-profile-policy" }

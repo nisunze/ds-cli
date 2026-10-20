@@ -17,7 +17,7 @@ pub struct Maps {
 
 impl Maps {
     pub(super) fn new(scope: &ArcRwSignal<Scope>, effects: &Rc<impl Effects>) -> Self {
-        let dark_read = ScopedRead::new(scope, {
+        let dark_read = ScopedRead::project(scope, {
             let effects = Rc::clone(effects);
             move |scope: Scope| {
                 effects.exchange(GoogleDarkSession {

@@ -1,166 +1,21 @@
-//! The client state graph, natively and in the browser's WASM. Each
-//! scenario runs the real gateway step machine against a scripted gateway
-//! that holds every request until the scenario answers it: on futures'
-//! local pool natively, and on wasm-bindgen-futures in WASM.
-
-use std::cell::RefCell;
-use std::collections::VecDeque;
-use std::future::Future;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::task::{Context, Poll};
+//! The map provider state on the test host (`testing`): the active project's
+//! dark basemap, read on demand per scope.
 
 use reactive_graph::traits::GetUntracked;
 use serde_json::{json, Value};
 
-use super::{ClientState, Effects, Scope, Want};
-use crate::gateway_exchange::{resume, start, Exchange, Facts, Observed, Refusal, Request, Step};
+use super::testing::{scenario, settle, state, Host};
+use super::{ClientState, Scope, Want};
 
 const MAPS2D: &str = "/api/v1/maps2d";
 
-/// One request the scripted gateway holds until the scenario answers it.
-struct Held {
-    request: Request,
-    answer: futures_channel::oneshot::Sender<(u16, Value)>,
-}
-
-impl Held {
-    fn body(&self) -> Value {
-        self.request.body.clone().unwrap_or(Value::Null)
-    }
-
-    fn answer(self, status: u16, body: Value) {
-        self.answer.send((status, body)).expect("the read awaits its answer");
-    }
-}
-
-#[derive(Clone, Default)]
-struct Gateway(Rc<RefCell<VecDeque<Held>>>);
-
-impl Gateway {
-    /// The first held request to `path`.
-    fn take(&self, path: &str) -> Held {
-        let mut held = self.0.borrow_mut();
-        let index = held
-            .iter()
-            .position(|held| held.request.path == path)
-            .unwrap_or_else(|| panic!("a request to {path} is held"));
-        held.remove(index).expect("the position is held")
-    }
-
-    fn held(&self) -> usize {
-        self.0.borrow().len()
-    }
-}
-
-impl Effects for Gateway {
-    fn exchange<C: Exchange + 'static>(
-        &self,
-        call: C,
-    ) -> impl Future<Output = Result<C::Output, Refusal>> + use<C> {
-        let held = Rc::clone(&self.0);
-        async move {
-            let facts = Facts {
-                now_ms: 0,
-                has_session: true,
-                offline_mode: false,
-            };
-            let mut step = start(call);
-            loop {
-                step = match step {
-                    Step::Done(value) => return Ok(value),
-                    Step::Refused(refusal) => return Err(refusal),
-                    Step::Wait { continuation, .. } => {
-                        resume(continuation, Observed::Waited, &[], &facts)
-                    }
-                    Step::Fetch {
-                        request,
-                        continuation,
-                    } => {
-                        let (answer, answered) = futures_channel::oneshot::channel();
-                        held.borrow_mut().push_back(Held { request, answer });
-                        let (status, body) = answered.await.expect("the scenario answers");
-                        let observed = Observed::Response {
-                            status,
-                            content_type: Some("application/json".into()),
-                            retry_after: None,
-                        };
-                        resume(continuation, observed, body.to_string().as_bytes(), &facts)
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn state() -> (ClientState, Gateway) {
-    let gateway = Gateway::default();
-    (ClientState::new(gateway.clone()), gateway)
-}
-
 /// Wants the dark basemap read, as a page showing it does.
-fn watch(state: &ClientState) -> Want {
+fn watch(state: &ClientState<Host>) -> Want {
     state.maps.dark_basemap.demand.want()
 }
 
 fn scope(principal: &str, project: &str) -> Scope {
     Scope::new(Some(principal), Some(project))
-}
-
-/// Lets every task the last change woke run to its next pause.
-async fn settle() {
-    struct Yield(bool);
-    impl Future for Yield {
-        type Output = ();
-        fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<()> {
-            if self.0 {
-                return Poll::Ready(());
-            }
-            self.0 = true;
-            context.waker().wake_by_ref();
-            Poll::Pending
-        }
-    }
-    for _ in 0..16 {
-        Yield(false).await;
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn run(scenario: impl Future<Output = ()> + 'static) {
-    use any_spawner::Executor;
-    use std::cell::Cell;
-    let _ = Executor::init_futures_executor();
-    let done = Rc::new(Cell::new(false));
-    Executor::spawn_local({
-        let done = Rc::clone(&done);
-        async move {
-            scenario.await;
-            done.set(true);
-        }
-    });
-    Executor::poll_local();
-    assert!(done.get(), "the scenario stalled");
-}
-
-/// A test natively and under wasm-bindgen-test.
-macro_rules! scenario {
-    ($(#[$meta:meta])* async fn $name:ident() $body:block) => {
-        $(#[$meta])*
-        #[cfg(not(target_arch = "wasm32"))]
-        #[test]
-        fn $name() {
-            run(async $body);
-        }
-
-        $(#[$meta])*
-        #[cfg(target_arch = "wasm32")]
-        #[wasm_bindgen_test::wasm_bindgen_test]
-        async fn $name() {
-            let _ = any_spawner::Executor::init_wasm_bindgen();
-            async $body.await;
-        }
-    };
 }
 
 fn dark_session(tile: &str) -> Value {
@@ -179,7 +34,7 @@ fn refused() -> Value {
     json!({"success": false, "error_code": "MAPS_DENIED", "message": "Maps are not enabled for this project."})
 }
 
-fn dark_tile(state: &ClientState) -> Option<String> {
+fn dark_tile(state: &ClientState<Host>) -> Option<String> {
     state
         .maps
         .dark_basemap

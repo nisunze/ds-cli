@@ -8,14 +8,13 @@
 //! contract and bound, so what the contract refuses is skipped and counted. A
 //! project key's legacy name is its prefix followed by the project id.
 use super::values::design::{lv_transformer, DESIGN_CUSTOMERS_ADDRESS};
-use super::values::map::{
-    earth_engine_layer, earth_engine_point, HILLSHADE_EXAGGERATIONS, MAX_SWITCHES,
-};
+use super::values::map::MAX_SWITCHES;
 use super::values::shape::{
-    entry, finite_tuple, iso_from_ms, js_number, millis, number, ranged, truthy, MAX_SAFE,
+    entry, finite_tuple, js_number, millis, number, ranged, truthy, MAX_SAFE,
 };
 use super::values::workbench::{admin_selection, boundary, date_bound, surveyor};
 use super::Key;
+use crate::gateway_exchange::map_defaults::nearest_preset;
 use serde_json::{json, Map, Value};
 
 /// The account keys, read by their exact legacy name.
@@ -45,10 +44,9 @@ pub(super) const EXACT: [(&str, Key); 15] = [
 ];
 
 /// The project keys, read by prefix; the rest of the legacy name is the project.
-pub(super) const PREFIXES: [(&str, Key); 11] = [
+pub(super) const PREFIXES: [(&str, Key); 10] = [
     ("ui:layer_visibility:", Key::LayerVisibility),
     ("ui:popup_layers_disabled:", Key::PopupLayersDisabled),
-    ("earth_engine_explorer_state:v1:", Key::EarthEngineExplorer),
     ("working_area_query:v1:", Key::WorkingArea),
     ("ds_design_process_preset:", Key::ProcessPreset),
     ("design:active_lv_transformer:v1:", Key::ActiveLvTransformer),
@@ -121,7 +119,6 @@ fn candidate(key: Key, value: &Value, now: u64) -> Option<Value> {
         }
         Key::PropertiesDockWidth => value.is_number().then(|| value.clone()),
         Key::PopupLayersDisabled => popup_layers_disabled(value),
-        Key::EarthEngineExplorer => earth_engine_explorer(value, now),
         Key::WorkingArea => working_area(value, now),
         Key::ProcessPreset => value.get("preset").cloned(),
         Key::ActiveLvTransformer => active_lv_transformer(value),
@@ -155,22 +152,11 @@ fn switches(value: &Value) -> Option<Value> {
     (!kept.is_empty()).then_some(Value::Object(kept))
 }
 
-/// The nearest relief preset, the first of two equally near.
-fn closest_exaggeration(value: f64) -> f64 {
-    let mut best = HILLSHADE_EXAGGERATIONS[0];
-    for preset in HILLSHADE_EXAGGERATIONS {
-        if (value - preset).abs() < (value - best).abs() {
-            best = preset;
-        }
-    }
-    best
-}
-
 /// The relief intensity of the retired camera-mode record, snapped to the
 /// nearest preset. Nothing else in that record survives the 3D map.
 fn hillshade_exaggeration(value: &Value) -> Option<Value> {
     let intensity = value.as_object()?.get("hillshadeExaggeration")?.as_f64()?;
-    Some(number(closest_exaggeration(intensity)))
+    Some(number(nearest_preset(intensity)))
 }
 
 /// The settings record, unless it names no setting at all. The retired
@@ -236,138 +222,6 @@ fn popup_layers_disabled(value: &Value) -> Option<Value> {
     };
     let keys: Vec<String> = keys.into_iter().filter(|key| entry(key)).collect();
     (!keys.is_empty()).then(|| json!(keys))
-}
-
-fn clamp_opacity(value: Option<f64>) -> f64 {
-    value
-        .filter(|opacity| opacity.is_finite())
-        .unwrap_or(0.72)
-        .clamp(0.0, 1.0)
-}
-
-/// `validOverlay`: an id and a tile URL with something in them.
-fn usable_overlay(value: &Value) -> bool {
-    let filled = |name: &str| {
-        value
-            .get(name)
-            .and_then(Value::as_str)
-            .is_some_and(|text| !text.trim().is_empty())
-    };
-    filled("id") && filled("tileUrl")
-}
-
-/// `layerFromPersisted`, kept only when the layer contract admits it.
-fn earth_engine_layer_from(
-    value: &Value,
-    fallback_opacity: Option<&Value>,
-    fallback_visible: bool,
-    now_iso: &str,
-) -> Option<Value> {
-    let record = value.as_object()?;
-    let overlay = record
-        .get("overlay")
-        .filter(|overlay| usable_overlay(overlay))?;
-    let id = record
-        .get("id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|id| !id.is_empty())
-        .or_else(|| overlay.get("id").and_then(Value::as_str))?;
-    let visible = match record.get("visible") {
-        None => fallback_visible,
-        Some(flag) => *flag == Value::Bool(true),
-    };
-    let opacity = record
-        .get("opacity")
-        .filter(|opacity| !opacity.is_null())
-        .or(fallback_opacity)
-        .and_then(js_number);
-    let stamp = |name: &str| {
-        record
-            .get(name)
-            .and_then(Value::as_str)
-            .unwrap_or(now_iso)
-            .to_owned()
-    };
-    earth_engine_layer(&json!({
-        "id": id,
-        "overlay": overlay,
-        "visible": visible,
-        "opacity": number(clamp_opacity(opacity)),
-        "addedAt": stamp("addedAt"),
-        "updatedAt": stamp("updatedAt"),
-    }))
-}
-
-/// A version 1 or 2 explorer record as version 2: a version 1 single overlay
-/// becomes the one layer, and the active layer is the chosen visible one or
-/// else the last visible one (`withCompatibilityFields`).
-fn earth_engine_explorer(value: &Value, now: u64) -> Option<Value> {
-    let saved = value.as_object()?;
-    if !matches!(saved.get("version")?.as_u64()?, 1 | 2) {
-        return None;
-    }
-    let now_iso = iso_from_ms(now);
-    let saved_at = saved
-        .get("savedAt")
-        .and_then(Value::as_str)
-        .filter(|at| !at.is_empty())
-        .map_or_else(|| now_iso.clone(), str::to_owned);
-    let fallback_opacity = saved.get("opacity");
-    let fallback_visible = saved.get("visible") != Some(&Value::Bool(false));
-    let mut layers: Vec<Value> = saved
-        .get("overlays")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|layer| {
-            earth_engine_layer_from(layer, fallback_opacity, fallback_visible, &now_iso)
-        })
-        .collect();
-    let single = saved
-        .get("overlay")
-        .filter(|overlay| usable_overlay(overlay));
-    if layers.is_empty() {
-        if let Some(overlay) = single {
-            layers.extend(earth_engine_layer_from(
-                &json!({"overlay": overlay, "addedAt": saved_at, "updatedAt": saved_at}),
-                fallback_opacity,
-                fallback_visible,
-                &now_iso,
-            ));
-        }
-    }
-    let chosen = saved
-        .get("activeOverlayId")
-        .and_then(Value::as_str)
-        .or_else(|| {
-            single
-                .and_then(|overlay| overlay.get("id"))
-                .and_then(Value::as_str)
-        });
-    let visible = |layer: &&Value| layer["visible"] == true;
-    let active = chosen
-        .and_then(|id| {
-            layers
-                .iter()
-                .filter(visible)
-                .find(|layer| layer["id"] == id)
-        })
-        .or_else(|| layers.iter().rev().find(visible));
-    let point = saved
-        .get("point")
-        .and_then(earth_engine_point)
-        .unwrap_or(Value::Null);
-    Some(json!({
-        "version": 2,
-        "point": point,
-        "overlay": active.map_or(Value::Null, |layer| layer["overlay"].clone()),
-        "overlays": layers,
-        "activeOverlayId": active.map(|layer| layer["id"].clone()).or_else(|| chosen.map(Value::from)).unwrap_or(Value::Null),
-        "visible": active.is_some(),
-        "opacity": active.map_or_else(|| number(clamp_opacity(fallback_opacity.and_then(js_number))), |layer| layer["opacity"].clone()),
-        "savedAt": saved_at,
-    }))
 }
 
 /// `normalizePersistedWorkingArea`: an applied area keeps what its mode uses;

@@ -112,18 +112,3 @@ pub(in crate::ui_preferences) fn stored_len(value: &Value) -> usize {
     serde_json::to_string(value).map_or(usize::MAX, |text| text.len())
 }
 
-/// `new Date(ms).toISOString()`.
-pub(in crate::ui_preferences) fn iso_from_ms(ms: u64) -> String {
-    let at = time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(ms) * 1_000_000)
-        .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
-        at.year(),
-        u8::from(at.month()),
-        at.day(),
-        at.hour(),
-        at.minute(),
-        at.second(),
-        at.millisecond()
-    )
-}

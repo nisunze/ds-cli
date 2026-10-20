@@ -3,13 +3,13 @@
 //!
 //! The Kernel holds the application state a client shows as signals and
 //! memos, fed by its own decisions: gateway answers through
-//! [`crate::gateway_exchange`] and, as stores move here, durable reads. The
-//! graph has the same semantics in the browser's WASM and natively; only the
-//! [`Effects`] a host performs differ. Svelte subscribes to each memo through
-//! one thin binding (`ds-web/src/lib/runtime/rust-state.ts`), sends intents
-//! through typed commands and keeps only presentation state. A memo notifies
-//! only when its value changes. The README's "Client state on Rust signals"
-//! section is the pattern for moving a store here.
+//! [`crate::gateway_exchange`] and what this edge holds in the Kernel's
+//! durable store. The graph has the same semantics in the browser's WASM and
+//! natively; only the [`Effects`] a host performs differ. Svelte subscribes to
+//! each memo through one thin binding (`ds-web/src/lib/runtime/rust-state.ts`),
+//! sends intents through typed commands and keeps only presentation state. A
+//! memo notifies only when its value changes. The README's "Client state on
+//! Rust signals" section is the pattern for moving a store here.
 //!
 //! Async work runs on any_spawner's executor. The browser adapter starts
 //! wasm-bindgen-futures; a native host initializes its own runtime first.
@@ -22,9 +22,12 @@ use reactive_graph::computed::{ArcAsyncDerived, ArcMemo};
 use reactive_graph::signal::ArcRwSignal;
 use reactive_graph::traits::{Get, GetUntracked, Update, With};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
+use crate::durable_store::Request;
 use crate::gateway_exchange::{Exchange, Refusal};
 
+pub mod cartography;
 pub mod maps;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
@@ -59,6 +62,19 @@ impl Scope {
     pub fn is_complete(&self) -> bool {
         self.principal.is_some() && self.project.is_some()
     }
+
+    /// What a read of the signed-in account is for: the principal alone.
+    fn signed_in(&self) -> Option<Scope> {
+        self.principal.as_ref().map(|_| self.account())
+    }
+
+    /// What this edge holds for whoever is here, signed in or not.
+    fn account(&self) -> Scope {
+        Scope {
+            principal: self.principal.clone(),
+            project: None,
+        }
+    }
 }
 
 /// The effects a host performs for the client state.
@@ -68,20 +84,29 @@ pub trait Effects: 'static {
         &self,
         call: C,
     ) -> impl Future<Output = Result<C::Output, Refusal>> + use<Self, C>;
+    /// One call of the Kernel's durable store under the identity the host
+    /// binds: its answer, or the store's refusal.
+    fn store(&self, request: Request) -> impl Future<Output = Result<Value, Refusal>> + use<Self>;
+    /// The host's clock.
+    fn now_ms(&self) -> u64;
 }
 
 /// One client's state: its scope and each domain's signals.
-pub struct ClientState {
+pub struct ClientState<E: Effects> {
+    effects: Rc<E>,
     scope: ArcRwSignal<Scope>,
     pub maps: maps::Maps,
+    pub cartography: cartography::Cartography,
 }
 
-impl ClientState {
-    pub fn new(effects: impl Effects) -> Self {
+impl<E: Effects> ClientState<E> {
+    pub fn new(effects: E) -> Self {
         let effects = Rc::new(effects);
         let scope = ArcRwSignal::new(Scope::default());
         Self {
             maps: maps::Maps::new(&scope, &effects),
+            cartography: cartography::Cartography::new(&scope, &effects),
+            effects,
             scope,
         }
     }
@@ -101,6 +126,25 @@ impl ClientState {
 
     pub fn scope(&self) -> Scope {
         self.scope.get_untracked()
+    }
+
+    /// Command: publish map defaults for every client.
+    pub fn publish_map_defaults(
+        &self,
+        defaults: crate::gateway_exchange::map_defaults::MapDefaults,
+    ) -> impl Future<Output = Result<crate::gateway_exchange::map_defaults::MapDefaults, Refusal>> + use<E>
+    {
+        self.cartography.publish(&self.effects, defaults)
+    }
+
+    /// Command: show or hide relief for this session.
+    pub fn toggle_relief(&self) {
+        self.cartography.toggle_relief();
+    }
+
+    /// Command: step relief to its next intensity and show it.
+    pub fn cycle_relief(&self) {
+        self.cartography.cycle_relief(&self.effects);
     }
 }
 
@@ -140,7 +184,8 @@ pub struct OnDemand<T: Send + Sync + 'static> {
 /// Where one scoped read stands for the current scope.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Read<T> {
-    /// No signed-in principal or no active project: nothing is read.
+    /// Nothing to read for this scope, such as a project read without a
+    /// signed-in principal or an active project.
     Idle,
     /// This scope has no answer yet. `previous` is the same principal's last
     /// answer, kept so a project switch does not flicker; another
@@ -161,83 +206,111 @@ impl<T> Read<T> {
     }
 }
 
-/// One answer, for the scope it was read for. No outcome: nothing was read
-/// for that scope.
+/// One answer, for the key it was read for.
 #[derive(Clone, Debug, PartialEq)]
 struct Answer<T> {
-    scope: Scope,
-    outcome: Option<Result<T, Refusal>>,
+    key: Scope,
+    outcome: Result<T, Refusal>,
 }
 
-/// A read that follows the scope while it is wanted. It reads when the scope
-/// is complete and never reads the same scope twice. A change while a read
-/// is in flight waits for it, then only the latest scope is read
-/// (reactive_graph's async derived), and an answer counts only for the
-/// scope it was read for.
+/// A read that follows the scope while it is wanted. The scope decides its
+/// key: the whole scope for a project read, the principal alone for an
+/// account read, and none when there is nothing to read. It never reads the
+/// same key twice. A change while a read is in flight waits for it, then
+/// only the latest key is read (reactive_graph's async derived), and an
+/// answer counts only for the key it was read for.
 pub struct ScopedRead<T: Send + Sync + 'static> {
     pub state: OnDemand<Read<T>>,
 }
 
 impl<T: Clone + PartialEq + Send + Sync + 'static> ScopedRead<T> {
-    pub fn new<F, Fut>(scope: &ArcRwSignal<Scope>, read: F) -> Self
+    /// A read of the active project for the signed-in principal.
+    pub fn project<F, Fut>(scope: &ArcRwSignal<Scope>, read: F) -> Self
     where
         F: Fn(Scope) -> Fut + 'static,
         Fut: Future<Output = Result<T, Refusal>> + 'static,
     {
-        let demand = Demand::default();
+        let key = |scope: &Scope| scope.is_complete().then(|| scope.clone());
+        Self::keyed(scope, key, Demand::default(), read)
+    }
+
+    /// A read of the signed-in account, wanted with `demand`.
+    pub fn signed_in<F, Fut>(scope: &ArcRwSignal<Scope>, demand: &Demand, read: F) -> Self
+    where
+        F: Fn(Scope) -> Fut + 'static,
+        Fut: Future<Output = Result<T, Refusal>> + 'static,
+    {
+        Self::keyed(scope, Scope::signed_in, demand.clone(), read)
+    }
+
+    /// A read of what this edge holds for whoever is here, signed in or not,
+    /// wanted with `demand`.
+    pub fn held<F, Fut>(scope: &ArcRwSignal<Scope>, demand: &Demand, read: F) -> Self
+    where
+        F: Fn(Scope) -> Fut + 'static,
+        Fut: Future<Output = Result<T, Refusal>> + 'static,
+    {
+        Self::keyed(scope, |scope| Some(scope.account()), demand.clone(), read)
+    }
+
+    fn keyed<F, Fut>(
+        scope: &ArcRwSignal<Scope>,
+        key: fn(&Scope) -> Option<Scope>,
+        demand: Demand,
+        read: F,
+    ) -> Self
+    where
+        F: Fn(Scope) -> Fut + 'static,
+        Fut: Future<Output = Result<T, Refusal>> + 'static,
+    {
+        let key = ArcMemo::new({
+            let scope = scope.clone();
+            move |_: Option<&Option<Scope>>| scope.with(key)
+        });
         // The last answer read: kept while nothing wants a newer one, and
-        // reused when the same scope is wanted again.
+        // reused when the same key is wanted again.
         let last = Rc::new(RefCell::new(None::<Answer<T>>));
         let answer = ArcAsyncDerived::new_unsync({
-            let (scope, demand) = (scope.clone(), demand.clone());
+            let (key, demand) = (key.clone(), demand.clone());
             move || {
-                let (scope, wanted) = (scope.get(), demand.wanted());
+                let (key, wanted) = (key.get(), demand.wanted());
                 let kept = last.borrow().clone();
-                let answered = kept.as_ref().is_some_and(|kept| kept.scope == scope);
-                let pending =
-                    (wanted && scope.is_complete() && !answered).then(|| read(scope.clone()));
+                let answered = kept.as_ref().is_some_and(|kept| Some(&kept.key) == key.as_ref());
+                let pending = match &key {
+                    Some(key) if wanted && !answered => Some(read(key.clone())),
+                    _ => None,
+                };
                 let last = Rc::clone(&last);
                 async move {
-                    if !scope.is_complete() {
+                    let Some(key) = key else {
                         last.replace(None);
-                        return Answer {
-                            scope,
-                            outcome: None,
-                        };
-                    }
+                        return None;
+                    };
                     let Some(pending) = pending else {
-                        return kept.unwrap_or(Answer {
-                            scope: Scope::default(),
-                            outcome: None,
-                        });
+                        return kept;
                     };
                     let answer = Answer {
-                        scope,
-                        outcome: Some(pending.await),
+                        key,
+                        outcome: pending.await,
                     };
                     last.replace(Some(answer.clone()));
-                    answer
+                    Some(answer)
                 }
             }
         });
-        let value = ArcMemo::new({
-            let scope = scope.clone();
-            move |_: Option<&Read<T>>| {
-                let scope = scope.get();
-                if !scope.is_complete() {
-                    return Read::Idle;
-                }
-                answer.with(|answer: &Option<Answer<T>>| match answer {
-                    Some(answer) if answer.scope == scope => match &answer.outcome {
-                        Some(outcome) => Read::Done(outcome.clone()),
-                        None => Read::Pending { previous: None },
-                    },
-                    Some(answer) if answer.scope.principal == scope.principal => Read::Pending {
-                        previous: answer.outcome.clone().and_then(Result::ok),
+        let value = ArcMemo::new(move |_: Option<&Read<T>>| {
+            let Some(key) = key.get() else {
+                return Read::Idle;
+            };
+            answer.with(|answer: &Option<Option<Answer<T>>>| {
+                match answer.as_ref().and_then(Option::as_ref) {
+                    Some(answer) if answer.key == key => Read::Done(answer.outcome.clone()),
+                    Some(answer) if answer.key.principal == key.principal => Read::Pending {
+                        previous: answer.outcome.clone().ok(),
                     },
                     _ => Read::Pending { previous: None },
-                })
-            }
+                }
+            })
         });
         Self {
             state: OnDemand { value, demand },
@@ -256,6 +329,9 @@ impl<T: Clone + PartialEq + Send + Sync + 'static> ScopedRead<T> {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod testing;
 
 #[cfg(test)]
 #[path = "client_state_tests.rs"]

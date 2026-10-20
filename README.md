@@ -151,20 +151,24 @@ typed commands; it never sets a value. To move a store here:
 1. Put its state in a domain module under `src/client_state/`. Inputs are
    `ArcRwSignal`s that only typed commands change; everything shown is an
    `ArcMemo`, which notifies only on change. A value read for the current
-   scope is a `ScopedRead`: it reads only while wanted and when the scope is
-   complete, never reads the same scope twice, waits for a read in flight
-   and then reads only the latest scope, and counts an answer only for the
-   scope it was read for. Expose what it derives as `OnDemand`.
+   scope is a `ScopedRead`, keyed by the project (`project`), the signed-in
+   account (`signed_in`) or whoever is here (`held`, for what this edge
+   keeps): it reads only while wanted and when it has a key, never reads the
+   same key twice, waits for a read in flight and then reads only the latest
+   key, and counts an answer only for the key it was read for. Expose what it
+   derives as `OnDemand`; reads that show together share one `Demand`.
 2. Reach the host only through `Effects` (`client_state::browser` for the
    page): gateway calls are the domain's `gateway_exchange` operations, and
-   durable reads go through `durable_store`. No memo calls a host.
+   what the edge keeps is a `durable_store` call (`Effects::store`). No memo
+   calls a host.
 3. Export each value from `browser.rs` as a `StateSignal` with
    `unchecked_return_type = "StateSignal<T>"` and a tsify type, and each
    command as a method. A subscription wants its read until disposed.
 4. In ds-web, replace the store with `rustState` and its writers with the
    commands, and delete the TypeScript load, cache and in-flight logic in the
    same commit.
-5. Test the graph with `scenario!` in `client_state_tests.rs`. It runs on
+5. Test the graph with `scenario!` on the host in `client_state/testing.rs`
+   (a held-request gateway and an in-memory preference store). It runs on
    futures' local pool natively (`cargo test --features client-state
    client_state`) and on wasm-bindgen-futures under wasm-bindgen-test
    (`wasm-pack test --node --features wasm`). Test the store in Vitest

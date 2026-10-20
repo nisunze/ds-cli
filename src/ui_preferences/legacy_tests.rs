@@ -104,37 +104,6 @@ fn the_camera_mode_record_keeps_only_its_relief_intensity() {
 }
 
 #[test]
-fn a_version_one_imagery_record_becomes_version_two() {
-    let overlay = json!({"id": "ee-1", "name": "S2", "tileUrl": "/api/v1/earth-engine/tiles/ee-1/{z}/{x}/{y}"});
-    let (_, project, value) = adopted(
-        "earth_engine_explorer_state:v1:gisagara",
-        json!({"version": 1, "point": {"lng": 30, "lat": -2}, "overlay": overlay, "visible": true, "opacity": 0.5, "savedAt": "2026-09-01T00:00:00.000Z"}),
-    );
-    assert_eq!(project.as_deref(), Some("gisagara"));
-    assert_eq!(value["version"], 2);
-    assert_eq!(value["overlays"][0]["id"], "ee-1");
-    assert_eq!(value["overlays"][0]["addedAt"], "2026-09-01T00:00:00.000Z");
-    assert_eq!(value["overlays"][0]["opacity"], 0.5);
-    assert_eq!(value["activeOverlayId"], "ee-1");
-    assert_eq!(value["visible"], true);
-    let (_, _, stamped) = adopted(
-        "earth_engine_explorer_state:v1:gisagara",
-        json!({"version": 2, "point": "not a point", "overlays": [{"overlay": overlay, "visible": false}], "opacity": "x"}),
-    );
-    assert_eq!(stamped["point"], Value::Null);
-    assert_eq!(stamped["overlays"][0]["addedAt"], iso_from_ms(NOW));
-    assert_eq!(stamped["savedAt"], iso_from_ms(NOW));
-    assert_eq!(stamped["overlays"][0]["opacity"], 0.72);
-    assert_eq!(stamped["visible"], false, "no visible layer is active");
-    assert!(read(
-        "earth_engine_explorer_state:v1:gisagara",
-        &json!({"version": 3}),
-        NOW
-    )
-    .is_empty());
-}
-
-#[test]
 fn a_working_area_restores_as_normalize_persisted_working_area_did() {
     let (_, _, value) = adopted(
         "working_area_query:v1:gisagara",

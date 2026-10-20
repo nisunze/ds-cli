@@ -53,13 +53,12 @@ pub enum Key {
     UploadDialogLayout,
     PropertiesDockWidth,
     StyleCenterLayout,
-    // One project's choices: layer visibility, disabled popups, Earth Engine
-    // imagery, the survey working area, the process preset, the active LV
-    // transformer, the status register's warning filter and sort, the camera,
-    // the pinned transformers and the Fast-mode customer and pole sources.
+    // One project's choices: layer visibility, disabled popups, the survey
+    // working area, the process preset, the active LV transformer, the status
+    // register's warning filter and sort, the camera, the pinned transformers
+    // and the Fast-mode customer and pole sources.
     LayerVisibility,
     PopupLayersDisabled,
-    EarthEngineExplorer,
     WorkingArea,
     ProcessPreset,
     ActiveLvTransformer,
@@ -89,7 +88,6 @@ impl Key {
         Key::StyleCenterLayout,
         Key::LayerVisibility,
         Key::PopupLayersDisabled,
-        Key::EarthEngineExplorer,
         Key::WorkingArea,
         Key::ProcessPreset,
         Key::ActiveLvTransformer,

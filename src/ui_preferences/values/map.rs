@@ -1,20 +1,17 @@
 //! Map preferences: the relief intensity and cartography defaults of the account,
-//! and per project the camera, layer switches, disabled popups and Earth
-//! Engine imagery; the browser's raster overlay registry; the editing
-//! projection.
-use super::shape::{entry, fields, finite_tuple, label, member, number, ranged, text};
+//! and per project the camera, layer switches and disabled popups; the
+//! browser's raster overlay registry; the editing projection.
+use super::shape::{entry, fields, finite_tuple, member, number, ranged};
+use crate::gateway_exchange::map_defaults::RELIEF_PRESETS;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
-
-/// The relief intensities the hillshade control cycles through.
-pub(in crate::ui_preferences) const HILLSHADE_EXAGGERATIONS: [f64; 5] = [0.3, 0.6, 1.0, 1.5, 2.5];
 
 /// `hillshade_exaggeration`: the relief intensity, one of the cycle's
 /// presets. Relief visibility itself lasts one session and is never stored.
 pub(in crate::ui_preferences) fn hillshade_exaggeration(value: &Value) -> Option<Value> {
     value
         .as_f64()
-        .filter(|value| HILLSHADE_EXAGGERATIONS.contains(value))
+        .filter(|value| RELIEF_PRESETS.contains(value))
         .map(number)
 }
 
@@ -139,198 +136,6 @@ pub(in crate::ui_preferences) fn popup_layers_disabled(value: &Value) -> Option<
         keys.insert(key);
     }
     (keys.len() <= MAX_SWITCHES).then(|| json!(keys))
-}
-
-pub(in crate::ui_preferences) const MAX_EARTH_ENGINE_LAYERS: usize = 32;
-const MAX_OVERLAY_ID_BYTES: usize = 512;
-const MAX_OVERLAY_TEXT: usize = 1024;
-const MAX_TILE_URL_BYTES: usize = 4096;
-const MAX_TIMESTAMP_TEXT: usize = 64;
-const OVERLAY_TEXT_FIELDS: [&str; 7] = [
-    "name",
-    "dataset",
-    "acquiredAt",
-    "attribution",
-    "expiresAt",
-    "provider",
-    "license",
-];
-const OVERLAY_NUMBER_FIELDS: [&str; 3] = ["nativeGsdM", "minZoom", "maxZoom"];
-const CREDENTIAL_QUERY_KEYS: [&str; 8] = [
-    "access_token",
-    "authorization",
-    "code",
-    "id_token",
-    "mapid",
-    "oauth",
-    "refresh_token",
-    "token",
-];
-
-/// A tile template the imagery broker hands out: never a credential-bearing
-/// query, and a direct Earth Engine URL only as its public tiles path.
-pub(in crate::ui_preferences) fn safe_tile_template(raw: &str) -> bool {
-    let raw = raw.trim();
-    if raw.is_empty()
-        || !["{z}", "{x}", "{y}"]
-            .iter()
-            .all(|token| raw.contains(token))
-    {
-        return false;
-    }
-    if raw.to_lowercase().contains("googleapis.com/earthengine") {
-        return false;
-    }
-    let Ok(url) = url::Url::parse("https://ds-web.local").and_then(|base| base.join(raw)) else {
-        return false;
-    };
-    if url
-        .query_pairs()
-        .any(|(key, _)| CREDENTIAL_QUERY_KEYS.contains(&key.to_lowercase().as_str()))
-    {
-        return false;
-    }
-    let path = url.path().to_lowercase();
-    if url.host_str() == Some("earthengine.googleapis.com") {
-        return url.query().map_or(true, str::is_empty)
-            && url.scheme() == "https"
-            && path.starts_with("/v1/projects/")
-            && path.contains("/maps/")
-            && path.contains("/tiles/");
-    }
-    (path.contains("/api/v1/earth-engine/tiles/") || path.contains("/api/v1/imagery/tiles/"))
-        && matches!(url.scheme(), "https" | "http")
-}
-
-/// An id with something in it, kept exactly as written.
-fn named(value: &Value) -> Option<&str> {
-    text(value, MAX_OVERLAY_ID_BYTES).filter(|id| !id.trim().is_empty())
-}
-
-/// One Earth Engine overlay as the broker described it; absent optional facts
-/// stay absent.
-pub(in crate::ui_preferences) fn earth_engine_overlay(value: &Value) -> Option<Value> {
-    let map = value.as_object()?;
-    let mut out = Map::new();
-    out.insert("id".into(), named(map.get("id")?)?.into());
-    for (key, field) in map {
-        match key.as_str() {
-            "id" => {}
-            "tileUrl" => {
-                let url = text(field, MAX_TILE_URL_BYTES).filter(|url| safe_tile_template(url))?;
-                out.insert(key.clone(), url.into());
-            }
-            _ if field.is_null() => {}
-            name if OVERLAY_TEXT_FIELDS.contains(&name) => {
-                out.insert(key.clone(), label(field, MAX_OVERLAY_TEXT)?.into());
-            }
-            name if OVERLAY_NUMBER_FIELDS.contains(&name) => {
-                field.as_f64()?;
-                out.insert(key.clone(), field.clone());
-            }
-            "bounds" => {
-                finite_tuple::<4>(field)?;
-                out.insert(key.clone(), field.clone());
-            }
-            _ => return None,
-        }
-    }
-    out.contains_key("tileUrl").then_some(Value::Object(out))
-}
-
-/// The picked imagery point, or none.
-pub(in crate::ui_preferences) fn earth_engine_point(value: &Value) -> Option<Value> {
-    if value.is_null() {
-        return Some(Value::Null);
-    }
-    let map = fields(value, &["lng", "lat", "label"])?;
-    ranged(map.get("lng")?, -540.0, 540.0)?;
-    ranged(map.get("lat")?, -90.0, 90.0)?;
-    let mut out = json!({"lng": map["lng"], "lat": map["lat"]});
-    match map.get("label") {
-        None | Some(Value::Null) => {}
-        Some(name) => out["label"] = label(name, MAX_OVERLAY_TEXT)?.into(),
-    }
-    Some(out)
-}
-
-/// One imagery layer of the explorer.
-pub(in crate::ui_preferences) fn earth_engine_layer(value: &Value) -> Option<Value> {
-    let map = fields(
-        value,
-        &[
-            "id",
-            "overlay",
-            "visible",
-            "opacity",
-            "addedAt",
-            "updatedAt",
-        ],
-    )?;
-    let id = named(map.get("id")?)?;
-    let overlay = earth_engine_overlay(map.get("overlay")?)?;
-    let visible = map.get("visible")?.as_bool()?;
-    ranged(map.get("opacity")?, 0.0, 1.0)?;
-    let added = label(map.get("addedAt")?, MAX_TIMESTAMP_TEXT)?;
-    let updated = label(map.get("updatedAt")?, MAX_TIMESTAMP_TEXT)?;
-    Some(json!({
-        "id": id,
-        "overlay": overlay,
-        "visible": visible,
-        "opacity": map["opacity"],
-        "addedAt": added,
-        "updatedAt": updated,
-    }))
-}
-
-const EARTH_ENGINE_FIELDS: [&str; 8] = [
-    "version",
-    "point",
-    "overlay",
-    "overlays",
-    "activeOverlayId",
-    "visible",
-    "opacity",
-    "savedAt",
-];
-
-/// `earth_engine_explorer` (version 2): the project's picked point and
-/// imagery layers. `overlay`, `visible` and `opacity` describe the active
-/// layer; `opacity` is also the opacity the next layer opens with.
-pub(in crate::ui_preferences) fn earth_engine_explorer(value: &Value) -> Option<Value> {
-    let map = fields(value, &EARTH_ENGINE_FIELDS)?;
-    if map.get("version")?.as_u64()? != 2 {
-        return None;
-    }
-    let point = earth_engine_point(map.get("point").unwrap_or(&Value::Null))?;
-    let overlay = match map.get("overlay") {
-        None | Some(Value::Null) => Value::Null,
-        Some(overlay) => earth_engine_overlay(overlay)?,
-    };
-    let layers = map
-        .get("overlays")?
-        .as_array()
-        .filter(|layers| layers.len() <= MAX_EARTH_ENGINE_LAYERS)?
-        .iter()
-        .map(earth_engine_layer)
-        .collect::<Option<Vec<_>>>()?;
-    let active = match map.get("activeOverlayId") {
-        None | Some(Value::Null) => Value::Null,
-        Some(id) => named(id)?.into(),
-    };
-    let visible = map.get("visible")?.as_bool()?;
-    ranged(map.get("opacity")?, 0.0, 1.0)?;
-    let saved_at = label(map.get("savedAt")?, MAX_TIMESTAMP_TEXT)?;
-    Some(json!({
-        "version": 2,
-        "point": point,
-        "overlay": overlay,
-        "overlays": layers,
-        "activeOverlayId": active,
-        "visible": visible,
-        "opacity": map["opacity"],
-        "savedAt": saved_at,
-    }))
 }
 
 #[cfg(test)]

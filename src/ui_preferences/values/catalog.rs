@@ -26,7 +26,6 @@ pub(in crate::ui_preferences) fn name(key: Key) -> &'static str {
         Key::StyleCenterLayout => "style_center_layout",
         Key::LayerVisibility => "layer_visibility",
         Key::PopupLayersDisabled => "popup_layers_disabled",
-        Key::EarthEngineExplorer => "earth_engine_explorer",
         Key::WorkingArea => "working_area",
         Key::ProcessPreset => "process_preset",
         Key::ActiveLvTransformer => "active_lv_transformer",
@@ -44,7 +43,6 @@ pub(in crate::ui_preferences) fn project_scoped(key: Key) -> bool {
     match key {
         Key::LayerVisibility
         | Key::PopupLayersDisabled
-        | Key::EarthEngineExplorer
         | Key::WorkingArea
         | Key::ProcessPreset
         | Key::ActiveLvTransformer
@@ -76,7 +74,7 @@ pub(in crate::ui_preferences) fn project_scoped(key: Key) -> bool {
 pub(in crate::ui_preferences) fn max_bytes(key: Key) -> usize {
     match key {
         Key::LayerGroupCollapse | Key::LayerVisibility | Key::TileLayers => 512 * 1024,
-        Key::PopupLayersDisabled | Key::EarthEngineExplorer | Key::PinnedTransformers => 256 * 1024,
+        Key::PopupLayersDisabled | Key::PinnedTransformers => 256 * 1024,
         Key::ApplicationSettings => 128 * 1024,
         Key::WorkingArea => workbench::MAX_BOUNDARY_BYTES + 64 * 1024,
         Key::ProfileOccupancy => workbench::PROFILE_OCCUPANCY_MAX_BYTES,
@@ -97,7 +95,6 @@ pub(in crate::ui_preferences) fn admit(key: Key, value: &Value) -> Option<Value>
         Key::EditProjectionChoice => map::edit_projection_choice(value),
         Key::EditProjectionCustom => map::edit_projection_custom(value),
         Key::PopupLayersDisabled => map::popup_layers_disabled(value),
-        Key::EarthEngineExplorer => map::earth_engine_explorer(value),
         Key::ToolLayout => workbench::tool_layout(value),
         Key::PropertiesDockWidth => workbench::properties_dock_width(value),
         Key::UploadDialogLayout => workbench::upload_dialog_layout(value),
