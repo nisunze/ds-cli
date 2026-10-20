@@ -20,7 +20,9 @@
 //! session facts arrive with each observation, and jitter is its to add.
 
 use std::fmt::Debug;
+use std::sync::OnceLock;
 
+use regex::Regex;
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -28,6 +30,7 @@ use crate::response_policy::{self, Classify, Outcome, Telemetry, RESPONSE_POLICY
 
 pub mod assets_index;
 pub mod deadletter;
+pub mod feedback;
 pub mod help;
 pub mod maps;
 #[cfg(feature = "durable-store")]
@@ -42,6 +45,8 @@ pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 pub const DEFAULT_RESPONSE_CAP: u64 = 1024 * 1024;
 /// How much backend text a refusal or an SRE report carries.
 const MESSAGE_MAX_CHARS: usize = response_policy::MESSAGE_MAX_CHARS;
+/// How much backend text an operator is shown.
+const OPERATOR_MAX_CHARS: usize = 500;
 
 pub const SIGNED_OUT: &str = "SIGNED_OUT";
 pub const REQUEST_TIMEOUT: &str = "REQUEST_TIMEOUT";
@@ -50,6 +55,7 @@ pub const NETWORK_OFFLINE: &str = "NETWORK_OFFLINE";
 pub const RESPONSE_TOO_LARGE: &str = "RESPONSE_TOO_LARGE";
 pub const RESPONSE_MALFORMED: &str = "RESPONSE_MALFORMED";
 pub const PROJECT_INVALID: &str = "project_invalid";
+pub const SESSION_CHANGED: &str = "SESSION_CHANGED";
 
 const SIGNED_OUT_MESSAGE: &str = "Request ignored because the session has ended.";
 
@@ -282,6 +288,15 @@ pub fn offline_refusal() -> Refusal {
     Refusal::new(NETWORK_OFFLINE, crate::connectivity::OFFLINE_MESSAGE)
 }
 
+/// The signed-in account changed while a call was in flight. Its answer
+/// belongs to the account that asked, so it is never handed to another.
+pub fn session_changed_refusal() -> Refusal {
+    Refusal::new(
+        SESSION_CHANGED,
+        "The signed-in account changed while the request was in flight.",
+    )
+}
+
 /// Where an exchange stands; the executor hands it back unchanged.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Continuation<C> {
@@ -493,6 +508,23 @@ fn backend_message(status: u16, body: &Value) -> String {
         .unwrap_or_else(|| format!("Request failed with status {status}"))
 }
 
+/// The backend's words as an operator reads them: no remote address, no
+/// control characters, at most [`OPERATOR_MAX_CHARS`] characters. The raw
+/// text stays beside them as the refusal's `technical`.
+fn operator_words(message: &str) -> String {
+    static REMOTE: OnceLock<Regex> = OnceLock::new();
+    static CONTROL: OnceLock<Regex> = OnceLock::new();
+    let remote = REMOTE.get_or_init(|| Regex::new(r"(?i)https?://\S+").expect("a fixed pattern"));
+    let control = CONTROL.get_or_init(|| Regex::new(r"[\x00-\x1f\x7f]+").expect("a fixed pattern"));
+    let scrubbed = remote.replace_all(message, "[remote service]");
+    control
+        .replace_all(&scrubbed, " ")
+        .trim()
+        .chars()
+        .take(OPERATOR_MAX_CHARS)
+        .collect()
+}
+
 fn backend_code(body: &Value) -> Option<String> {
     nonempty(body.get("error").and_then(|error| error.get("code")))
         .or_else(|| nonempty(body.get("detail").and_then(|detail| detail.get("code"))))
@@ -628,7 +660,7 @@ fn answered<C: Exchange>(
             let public = decision
                 .public_message
                 .map(str::to_owned)
-                .unwrap_or_else(|| message.trim().to_owned());
+                .unwrap_or_else(|| operator_words(&message));
             let report = if decision.report_to_sre {
                 report(&exchange, &plan.request, status, &message)
             } else {

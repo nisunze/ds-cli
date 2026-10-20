@@ -26,8 +26,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
 use super::{
-    offline_refusal, resume, start, Exchange, Facts, Failure, Method, Observed, Refusal, Report,
-    Request, Step,
+    offline_refusal, resume, session_changed_refusal, start, Exchange, Facts, Failure, Method,
+    Observed, Refusal, Report, Request, Step,
 };
 
 /// The client this executor speaks for, on every request.
@@ -95,6 +95,10 @@ pub struct GatewayFacts {
     pub offline_mode: bool,
     /// Whether the platform reports any network link at all.
     pub link_up: bool,
+    /// The signed-in account's stable id, empty when signed out; an answer
+    /// that arrives for another account than the one that asked is refused.
+    #[serde(default)]
+    pub principal: String,
 }
 
 /// One refusal that followed a request, as the page's diagnostics read it.
@@ -383,6 +387,8 @@ pub(crate) async fn attempt<C: Exchange>(
     call: C,
 ) -> Result<Result<C::Output, Refusal>, JsValue> {
     let client = reqwest::Client::new();
+    // The account that asked; an answer is only ever handed back to it.
+    let principal = facts(host)?.principal;
     let mut sent = None;
     let mut step = start(call);
     loop {
@@ -405,8 +411,12 @@ pub(crate) async fn attempt<C: Exchange>(
                 request,
                 continuation,
             } => {
-                if facts(host)?.offline_mode {
+                let before = facts(host)?;
+                if before.offline_mode {
                     return Ok(Err(offline_refusal()));
+                }
+                if before.principal != principal {
+                    return Ok(Err(session_changed_refusal()));
                 }
                 let credentials = credentials(host).await?;
                 let request_id = uuid::Uuid::new_v4().to_string();
@@ -419,7 +429,11 @@ pub(crate) async fn attempt<C: Exchange>(
                     request_id,
                     latency_ms: (js_sys::Date::now() - started).max(0.0) as u64,
                 });
-                resume(continuation, observed, &bytes, &(&facts(host)?).into())
+                let after = facts(host)?;
+                if after.principal != principal {
+                    return Ok(Err(session_changed_refusal()));
+                }
+                resume(continuation, observed, &bytes, &(&after).into())
             }
         };
     }

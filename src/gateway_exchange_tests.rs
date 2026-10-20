@@ -493,3 +493,19 @@ fn a_json_request_names_no_encoding() {
         .get("encoding")
         .is_none());
 }
+
+#[test]
+fn an_operator_never_reads_a_remote_address_or_control_characters() {
+    let raw = format!(
+        "service refused at https://internal.example/{} then\u{0007}\u{0001}stopped",
+        "x".repeat(700)
+    );
+    let refused = refusal(answer(Maps3dConfig, 400, json!({ "error": raw })));
+    assert_eq!(
+        refused.message,
+        "service refused at [remote service] then stopped"
+    );
+    assert_eq!(refused.technical.as_deref(), Some(raw.as_str()));
+    let long = refusal(answer(Maps3dConfig, 400, json!({"error": "y".repeat(800)})));
+    assert_eq!(long.message.chars().count(), 500);
+}
