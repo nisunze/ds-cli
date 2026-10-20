@@ -135,6 +135,17 @@ them as private files beside the request and answer.
 | Store | Module | Scope | Keys or rows |
 | --- | --- | --- | --- |
 | `ui_preferences` | `src/ui_preferences.rs`; value contracts in `src/ui_preferences/values.rs`, the `persistent_cache` legacy table and readers in `src/ui_preferences/legacy.rs` | account, or account + project per key | closed key list with per-key `max_bytes` (default 64 KiB) and canonicalising `admit`; `active_project` (account); legacy source `persistent_cache` |
+| `retained_reads` | `src/retained_reads.rs`; flow helpers and the `Edge` port in `src/gateway_exchange/retained.rs` | account, or account + project per kind | closed `Kind` list; per kind a fence, key grammar, value byte bound and per-owner row bound with least-recently-used eviction; read, list, write (optionally conditional on the kind's generation), replace_set, invalidate, forget; per-kind generations `retained_reads.<kind>`; JSON only |
+
+### Plain caches reuse `retained_reads`
+
+Every reconstructible JSON cache of a Brain read is a `retained_reads` kind:
+add one line to the `kinds!` table in `src/retained_reads.rs` (its fence, key
+grammar, value bound and row bound) and read and write it from the domain's
+Kernel flow through `gateway_exchange::retained`. Do not add a store for a
+plain cache. A cache of bytes belongs to the content-addressed byte store; a
+person's work (drafts, queues, idempotency keys) belongs to a work store with
+an importer.
 
 ## Adding a store
 

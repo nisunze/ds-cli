@@ -118,6 +118,10 @@ pub enum Request {
     UiPreferences {
         operation: crate::ui_preferences::Operation,
     },
+    /// Every plain cache of a Brain read, by closed kind (`retained_reads`).
+    RetainedReads {
+        operation: crate::retained_reads::Operation,
+    },
 }
 impl Request {
     pub fn store(&self) -> &'static str {
@@ -125,6 +129,7 @@ impl Request {
             Request::Status { .. } => "status",
             Request::GridProjectCatalog { .. } => "grid_project_catalog",
             Request::UiPreferences { .. } => "ui_preferences",
+            Request::RetainedReads { .. } => crate::retained_reads::STORE,
         }
     }
     /// Refuse a store whose native home is its own Core command, so one store
@@ -137,7 +142,7 @@ impl Request {
             Request::GridProjectCatalog { .. } => Err(format!(
                 "{NOT_CORE}: grid_project_catalog is served by design.model.catalog, not core.store"
             )),
-            Request::UiPreferences { .. } => Ok(()),
+            Request::UiPreferences { .. } | Request::RetainedReads { .. } => Ok(()),
         }
     }
 }
@@ -440,6 +445,9 @@ pub fn execute(
             let outcome = match request {
                 Request::UiPreferences { operation } => {
                     crate::ui_preferences::execute(&transaction, input, operation)?
+                }
+                Request::RetainedReads { operation } => {
+                    crate::retained_reads::execute(&transaction, input, operation)?
                 }
                 Request::Status { .. } | Request::GridProjectCatalog { .. } => {
                     unreachable!("statement-protocol stores are answered above")

@@ -26,8 +26,11 @@ use serde_json::{json, Value};
 
 use crate::response_policy::{self, Classify, Outcome, Telemetry, RESPONSE_POLICY_SCHEMA};
 
+pub mod assets_index;
 pub mod help;
 pub mod maps;
+#[cfg(feature = "durable-store")]
+pub mod retained;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub(crate) mod browser;

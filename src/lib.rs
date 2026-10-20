@@ -217,6 +217,8 @@ pub fn transformer_status_store_wasm(input: &[u8]) -> Result<String, wasm_bindge
 pub mod durable_store;
 #[cfg(feature = "durable-store")]
 pub mod ui_preferences;
+#[cfg(feature = "durable-store")]
+pub mod retained_reads;
 
 pub mod sync_store;
 #[cfg(feature = "wasm")]
