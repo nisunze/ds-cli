@@ -14,7 +14,7 @@
     "DS_SOLAR_SOURCE_SHA": "revision:ds-solar",
     "DS_SOLAR_CARGO_LOCK_PATH": "lockfile"
   },
-  "capture": ["ds-solar", "ds-network-reporter"],
+  "capture": ["ds-solar", "ds-network-reporter", "ds-interactions"],
   "sourcePins": {
     "file": "release/ui-wasm-source.json",
     "schema": "ds.ui-wasm-source/v1",
