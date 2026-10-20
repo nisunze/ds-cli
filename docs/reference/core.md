@@ -540,3 +540,29 @@ deletion if any row changed or became ineligible. Both batches are bounded to
 500 unique IDs; empty arrays are allowed. Generic discard transitions refuse.
 See the [audited discard contract](../contracts/process-boundary-contract.md#survey-queue-audited-discard)
 for snapshot, digest and transaction rules.
+
+## Main application and Core release identity
+
+`core.release-identity` contract 1 answers the Modules rows for the main
+application (`--component shell`) and DS Core (`--component core`): installed
+and published version, build number and release date. Core reads the lane's
+catalog member once through the packaged release authority; `--offline` reads
+none. The Kernel admits the member and decides both rows.
+
+Both are built before publication assigns their release number, so the
+installed row is proven, never inferred: the member's platform asset must be
+exactly the installed build (main application: composite source SHA and build
+time; Core: producing revision and source closure from a clean release build).
+A carried platform asset keeps the release folder and date that first published
+its bytes. Each proof is retained as `ds.release-installation/v1` at
+`<module base>/installations/<lane>/<shell|core>.json`, Core's bound to its
+executable SHA-256, so the installed row survives later publications and
+offline reads. Foreign, corrupt or excessive records are ignored.
+
+Core names itself and reads only its own lane. The Desktop names the main
+application's embedded build with `--installed-version`, `--installed-build`
+and `--installed-built-at`; without them the last proven build stands in and
+`installation.source` says `recorded`. `catalog.state` is `read`,
+`unpublished`, `unavailable` (with its message), `offline` or `local`. A build
+never observed while it was the lane's member stays `unrecorded`: reading it
+right after installation proves it.
