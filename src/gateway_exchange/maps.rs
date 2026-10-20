@@ -137,25 +137,13 @@ impl Exchange for Maps3dConfig {
     }
 }
 
-/// The typed browser exports Svelte calls; each runs the shared executor.
+/// The typed browser exports Svelte calls; each runs the shared executor. The
+/// dark session is read by `client_state` and reaches Svelte as a signal.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::{GoogleDarkSession, Maps3dConfig};
+    use super::Maps3dConfig;
     use crate::gateway_exchange::browser::{run, typed, GatewayHost};
     use wasm_bindgen::prelude::*;
-
-    /// The project's Google dark roadmap tile session; `undefined` when the
-    /// project has no dark tiles to offer.
-    #[wasm_bindgen(
-        js_name = mapsGoogleDarkSession,
-        unchecked_return_type = "DarkSession | undefined"
-    )]
-    pub async fn google_dark_session(
-        host: GatewayHost,
-        project: String,
-    ) -> Result<JsValue, JsValue> {
-        typed(&run(&host, GoogleDarkSession { project }).await?)
-    }
 
     /// The global 3D provider configuration.
     #[wasm_bindgen(js_name = maps3dConfig, unchecked_return_type = "Config3d")]
