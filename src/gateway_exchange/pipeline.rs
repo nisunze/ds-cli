@@ -107,6 +107,12 @@ pub enum PipelineCall {
         #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
         scope: Option<String>,
     },
+    /// The global layers and who may use each, for their administrators.
+    GlobalTileList {
+        #[serde(default)]
+        #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
+        domain: Option<String>,
+    },
     /// Who may use one global layer.
     GlobalTileAccess {
         tile_id: String,
@@ -135,7 +141,9 @@ fn text<'a>(value: &'a str, what: &str) -> Result<&'a str, Refusal> {
         || trimmed.chars().count() > TEXT_MAX_CHARS
         || trimmed.chars().any(char::is_control)
     {
-        return Err(input_invalid(format!("The {what} is required and bounded.")));
+        return Err(input_invalid(format!(
+            "The {what} is required and bounded."
+        )));
     }
     Ok(trimmed)
 }
@@ -176,13 +184,17 @@ fn migration(body: &mut Value, filter: &MigrationFilter) -> Result<(), Refusal> 
                 .iter()
                 .any(|unit| unit.values().any(|value| !value.is_string()))
         {
-            return Err(input_invalid("Administrative units are named by text codes."));
+            return Err(input_invalid(
+                "Administrative units are named by text codes.",
+            ));
         }
         body["filter_admin_boundaries"] = json!(units);
     }
     if let Some(boundary) = &filter.boundary {
         if boundary.get("type").and_then(Value::as_str) != Some("Polygon") {
-            return Err(input_invalid("A migration boundary is one GeoJSON Polygon."));
+            return Err(input_invalid(
+                "A migration boundary is one GeoJSON Polygon.",
+            ));
         }
         body["filter_boundary"] = Value::Object(boundary.clone());
     }
@@ -198,7 +210,7 @@ impl PipelineCall {
             | Self::TileList { project, .. }
             | Self::TileAdd { project, .. }
             | Self::TileRemove { project, .. } => Some(project),
-            Self::GlobalTileAccess { .. } => None,
+            Self::GlobalTileList { .. } | Self::GlobalTileAccess { .. } => None,
         }
     }
 
@@ -267,7 +279,9 @@ impl PipelineCall {
                 }
                 write(PIPELINE_PATH, body("migrate", extra), MIGRATE_MS)
             }
-            Self::TileStatus { tile_type: kind, .. } => read(
+            Self::TileStatus {
+                tile_type: kind, ..
+            } => read(
                 TILES_PATH,
                 body("status", json!({"tile_type": tile_type(kind)?})),
             ),
@@ -277,6 +291,21 @@ impl PipelineCall {
                     extra["include_global"] = json!(true);
                 }
                 read(TILES_PATH, body("list", extra))
+            }
+            Self::GlobalTileList { domain } => {
+                let mut extra = json!({});
+                match domain.as_deref().map(str::trim) {
+                    None | Some("") => {}
+                    Some(domain @ ("network_template" | "solar_template")) => {
+                        extra["domain"] = json!(domain)
+                    }
+                    Some(_) => {
+                        return Err(input_invalid(
+                            "A global layer domain is network_template or solar_template.",
+                        ))
+                    }
+                }
+                read(TILES_PATH, body("global_list", extra))
             }
             Self::TileAdd {
                 tile_type: kind,
@@ -308,7 +337,9 @@ impl PipelineCall {
                     access_policy.get("mode").and_then(Value::as_str),
                     Some("all" | "restricted")
                 ) {
-                    return Err(input_invalid("An access policy's mode is all or restricted."));
+                    return Err(input_invalid(
+                        "An access policy's mode is all or restricted.",
+                    ));
                 }
                 write(
                     TILES_PATH,
@@ -336,7 +367,7 @@ impl PipelineCall {
             ));
         }
         match self {
-            Self::TileList { .. } => {
+            Self::TileList { .. } | Self::GlobalTileList { .. } => {
                 let tiles = data(&body)
                     .as_array()
                     .or_else(|| body.get("tiles").and_then(Value::as_array));
