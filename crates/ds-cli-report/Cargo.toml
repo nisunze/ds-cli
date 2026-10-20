@@ -16,6 +16,8 @@ ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
 # Select already-derived publication bands without linking Grid computation.
 ds-network-contracts = { workspace = true }
+# Network derives a pinned model's authored revision from its exact bytes.
+ds-network-client = { workspace = true }
 ds-cli-exec = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }

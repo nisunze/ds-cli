@@ -1259,6 +1259,7 @@ dependencies = [
  "ds-grid-engine",
  "ds-grid-exchange",
  "ds-layer-store",
+ "ds-network-client",
  "ds-network-contracts",
  "ds-project-data",
  "ds-report-artifacts",

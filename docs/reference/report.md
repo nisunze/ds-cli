@@ -1392,13 +1392,18 @@ remains a separate operation. The native room admits two active jobs, preserves
 exact hashes and original 24h/7d expiry, and safely prunes only admitted expired
 owned files while preserving active jobs and foreign bytes.
 
-`report plan-profile --model /project/model.dsgrid --expected-model-sha256 sha256:<64-lowercase-hex> --expected-authored-revision <exact-revision> --project <id> --out-dir /project/fresh-print`
-uses the existing Reporter-owned `render-grid-plan-profile-model` task. All three
-model arguments are required together and replace `--scene` plus `--plan`.
-The CLI verifies an ordinary, unlinked absolute `.dsgrid` source of at most
-512 MiB and its exact digest before authenticated setup reads or output staging.
-Reporter receives both pin strings unchanged and rechecks the source before its
-single captured Network projection/print workflow.
+`report plan-profile --model /project/model.dsgrid --expected-model-sha256 sha256:<64-lowercase-hex> --project <id> --out-dir /project/fresh-print`
+uses the existing Reporter-owned `render-grid-plan-profile-model` task. `--model`
+and its digest are required together and replace `--scene` plus `--plan`; the
+digest is the `head_model_digest` of `design model list` and the `sha256` of
+`design model export`. The CLI verifies an ordinary, unlinked absolute `.dsgrid`
+source of at most 512 MiB and its exact digest before authenticated setup reads
+or output staging. The authored revision is a fact of those bytes, not a second
+catalogue identity: a catalogue revision (`mig_…`, or a `rev-…` from an older
+save) need not equal it. Omit `--expected-authored-revision` and Network derives
+it from the verified bytes; pass it only as an extra fence. Reporter receives
+both pins and rechecks the source before its single captured Network
+projection/print workflow.
 
 Model mode inherits the same governed MV setup, project CRS, report configuration,
 renderer defaults, styles, model-field allowances and held assets as projection

@@ -7,12 +7,12 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-pub(super) const NETWORK_ENGINE_MISSING: Refusal = Refusal {
+pub(crate) const NETWORK_ENGINE_MISSING: Refusal = Refusal {
     code: "network_engine_missing",
     when: "MV context is requested but the Network executable is absent",
     remedy: "Install or activate a compatible Network engine for MV geographic projection",
 };
-pub(super) const NETWORK_ENGINE_INCOMPATIBLE: Refusal = Refusal {
+pub(crate) const NETWORK_ENGINE_INCOMPATIBLE: Refusal = Refusal {
     code: "network_engine_incompatible",
     when: "MV context's captured Network executable or encoding profile cannot be admitted",
     remedy: "Install or activate a compatible Network engine for MV geographic projection",
