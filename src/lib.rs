@@ -211,6 +211,12 @@ pub mod transformer_status_store;
 pub fn transformer_status_store_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     transformer_status_store::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
+/// The Kernel durable stores on SQLite: one call vocabulary and one
+/// transaction for Core and the browser storage worker.
+#[cfg(feature = "durable-store")]
+pub mod durable_store;
+#[cfg(feature = "durable-store")]
+pub mod ui_preferences;
 
 pub mod sync_store;
 #[cfg(feature = "wasm")]

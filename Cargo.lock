@@ -315,6 +315,7 @@ dependencies = [
  "reactive_graph",
  "regex",
  "reqwest",
+ "rusqlite",
  "ryu",
  "schemars",
  "send_wrapper",
