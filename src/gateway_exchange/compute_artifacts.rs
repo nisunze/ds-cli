@@ -469,7 +469,7 @@ export interface ComputeArtifactBytes { head: ComputeArtifactHead; output: Compu
     }
 
     /// One current head, or `undefined` when it was never published.
-    #[wasm_bindgen(js_name = computeArtifactHead, unchecked_return_type = "ComputeArtifactHead | undefined")]
+    #[wasm_bindgen(js_name = computeArtifactPublishedHead, unchecked_return_type = "ComputeArtifactHead | undefined")]
     pub async fn compute_artifact_head(
         host: GatewayHost,
         #[wasm_bindgen(unchecked_param_type = "HeadIdentity")] identity: JsValue,
