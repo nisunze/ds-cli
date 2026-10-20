@@ -20,7 +20,7 @@ ds-network-client = { path = "../ds-network-client" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "0.10"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "fallible_uint"] }
 rayon = "1"
 fs2 = "0.4"
 tempfile = "3"

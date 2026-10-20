@@ -13,7 +13,7 @@ ds-layer-store = { path = "../ds-layer-store" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "fallible_uint"] }
 flate2 = "1"
 csv = "1"
 tempfile = "3"

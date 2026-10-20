@@ -81,7 +81,7 @@ imagesize = "0.13"
 # Keeping defaults off keeps native and WASM builds free of the larger codec set.
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 time = { version = "=0.3.47", features = ["formatting", "parsing"] }
-rusqlite = { version = "0.32", optional = true, features = ["bundled"] }
+rusqlite = { version = "0.40.2", optional = true, features = ["bundled"] }
 
 # HTTP through reqwest (development philosophy §9): its WebAssembly client is
 # the page's own `fetch`. tsify generates the TypeScript types of the typed

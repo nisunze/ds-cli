@@ -136,7 +136,7 @@ impl Store {
             return Ok(None);
         };
         let mut blob = self.connection.blob_open(
-            rusqlite::DatabaseName::Main,
+            rusqlite::MAIN_DB,
             "publication_outputs",
             "bytes",
             rowid,

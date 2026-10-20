@@ -12,7 +12,7 @@ fs2 = "0.4"
 tempfile = "3"
 dirs = "6"
 uuid = { version = "1", features = ["v4"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "fallible_uint"] }
 sha2 = "0.10"
 ds-columnar = { path = "../../../ds-network/crates/ds-columnar" }
 
