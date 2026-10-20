@@ -67,42 +67,6 @@ mod exports {
     use crate::gateway_exchange::browser::{run, typed, GatewayHost};
     use wasm_bindgen::prelude::*;
 
-    async fn act(
-        host: GatewayHost,
-        action: Action,
-        project: String,
-        orders: Vec<Order>,
-    ) -> Result<JsValue, JsValue> {
-        let call = LayerAction {
-            action,
-            project,
-            orders,
-        };
-        typed(&run(&host, call).await?)
-    }
-
-    /// The project's assembled layer document; `refresh` asks the backend to
-    /// assemble it again.
-    #[wasm_bindgen(js_name = layersDocument, unchecked_return_type = "Record<string, unknown>")]
-    pub async fn layers_document(
-        host: GatewayHost,
-        project: String,
-        refresh: bool,
-    ) -> Result<JsValue, JsValue> {
-        let action = if refresh {
-            Action::Refresh
-        } else {
-            Action::GetConfig
-        };
-        act(host, action, project, Vec::new()).await
-    }
-
-    /// The Style Center's metadata-only catalogue.
-    #[wasm_bindgen(js_name = layersStyleCatalog, unchecked_return_type = "Record<string, unknown>")]
-    pub async fn layers_style_catalog(host: GatewayHost, project: String) -> Result<JsValue, JsValue> {
-        act(host, Action::GetStyleCatalog, project, Vec::new()).await
-    }
-
     /// Save canonical layer order overrides.
     #[wasm_bindgen(js_name = layersReorder, unchecked_return_type = "{ project_id: string; reordered: number }")]
     pub async fn layers_reorder(
@@ -112,7 +76,12 @@ mod exports {
     ) -> Result<JsValue, JsValue> {
         let orders: Vec<Order> = tsify::serde_wasm_bindgen::from_value(orders)
             .map_err(|error| js_sys::Error::new(&error.to_string()))?;
-        act(host, Action::Reorder, project, orders).await
+        let call = LayerAction {
+            action: Action::Reorder,
+            project,
+            orders,
+        };
+        typed(&run(&host, call).await?)
     }
 }
 

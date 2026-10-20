@@ -216,12 +216,10 @@ async fn retain_shown(edge: &impl super::retained::Edge, project: &str, shown: &
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::{after_read, after_run, ReadReports, RunReports, Shown};
-    use crate::gateway_exchange::browser::{attempt, typed, GatewayHost};
-    use wasm_bindgen::prelude::*;
     use crate::durable_store::port::StoreHost;
-    use crate::gateway_exchange::browser::rejection;
+    use crate::gateway_exchange::browser::{rejection, typed, GatewayHost};
     use crate::gateway_exchange::retained::browser::BrowserEdge;
+    use wasm_bindgen::prelude::*;
 
     /// The dashboard's report from Brain, held for the next open; regenerated
     /// once when stale and `refreshStale` allows it.
@@ -258,65 +256,11 @@ mod exports {
         typed(&held.map_err(|refusal| rejection(&refusal))?)
     }
 
-    /// Hold a report Brain answered, without its sync counts, for the next open.
-    #[wasm_bindgen(js_name = surveyReportRetain)]
-    pub async fn survey_report_retain(
-        host: GatewayHost,
-        store: StoreHost,
-        project: String,
-        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] report: JsValue,
-    ) -> Result<(), JsValue> {
-        let report = tsify::serde_wasm_bindgen::from_value(report)
-            .map_err(|error| js_sys::Error::new(&error.to_string()))?;
-        let edge = BrowserEdge::new(host, store);
-        super::retain_report(&edge, &project, report)
-            .await
-            .map_err(|refusal| rejection(&refusal))
-    }
-
     #[wasm_bindgen(typescript_custom_section)]
     const TYPES: &'static str = r#"
 /** The survey dashboard's report: `error` names a refusal; `refreshed` says a stale one was regenerated. */
 export interface SurveyReportsShown { data?: Record<string, unknown>; refreshed?: boolean; error?: string }
 "#;
-
-    /// The cached survey report, regenerated once when a later mutation made it stale.
-    #[wasm_bindgen(js_name = surveyReports, unchecked_return_type = "SurveyReportsShown")]
-    pub async fn survey_reports(
-        host: GatewayHost,
-        project: String,
-        include_sync_counts: bool,
-        refresh_stale: bool,
-    ) -> Result<JsValue, JsValue> {
-        let read = ReadReports { project: project.clone(), include_sync_counts };
-        let cached = match attempt(&host, read).await? {
-            Ok(cached) => cached,
-            Err(refusal) => return typed(&Shown { error: Some(refusal.message), ..Shown::default() }),
-        };
-        let shown = match after_read(cached, refresh_stale) {
-            Ok(shown) => shown,
-            Err(cached) => {
-                let run = attempt(&host, RunReports { project, force: false, include_sync_counts }).await?;
-                after_run(cached, run)
-            }
-        };
-        typed(&shown)
-    }
-
-    /// Regenerate the survey report; `force` rebuilds every form mirror first.
-    #[wasm_bindgen(js_name = surveyReportsRun, unchecked_return_type = "SurveyReportsShown")]
-    pub async fn survey_reports_run(
-        host: GatewayHost,
-        project: String,
-        force: bool,
-        include_sync_counts: bool,
-    ) -> Result<JsValue, JsValue> {
-        let shown = match attempt(&host, RunReports { project, force, include_sync_counts }).await? {
-            Ok(report) => Shown { data: Some(report), ..Shown::default() },
-            Err(refusal) => Shown { error: Some(refusal.message), ..Shown::default() },
-        };
-        typed(&shown)
-    }
 }
 
 #[cfg(test)]
