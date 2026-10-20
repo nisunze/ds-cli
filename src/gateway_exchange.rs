@@ -26,6 +26,7 @@ use serde_json::{json, Value};
 
 use crate::response_policy::{self, Classify, Outcome, Telemetry, RESPONSE_POLICY_SCHEMA};
 
+pub mod help;
 pub mod maps;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]

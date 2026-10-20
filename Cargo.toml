@@ -65,6 +65,8 @@ wasm-bindgen = { version = "0.2", optional = true }
 zeroize = "1"
 url = "2"
 regex = "1"
+# What JavaScript's encodeURIComponent does, for help asset data URIs.
+percent-encoding = "2"
 # Portable primitives are canonical in ds-geo-lite; Network delegates to it.
 # The remaining identity/comparison snapshots keep their existing drift fence.
 # Neither this kernel nor its portable crates depend on ds-network.

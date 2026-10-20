@@ -311,6 +311,7 @@ dependencies = [
  "image",
  "imagesize",
  "js-sys",
+ "percent-encoding",
  "quick-xml 0.41.0",
  "reactive_graph",
  "regex",
