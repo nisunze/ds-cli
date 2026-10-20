@@ -110,3 +110,39 @@ fn an_input_the_contract_refuses_is_never_sent() {
         assert_eq!(sent(call).unwrap_err().code, INPUT_INVALID);
     }
 }
+
+#[test]
+fn a_refusal_names_the_backend_issues_as_text() {
+    let call = StyleAction::Publish { payload: payload() };
+    let Step::Fetch { continuation, .. } = start(call) else {
+        panic!("expected a fetch")
+    };
+    let body = json!({"success": false, "error": {"code": "VALIDATION_FAILED",
+        "message": "Invalid style document",
+        "details": {"issues": [{"path": "paint.line-color", "message": "unknown expression operator"},
+                               {"message": "document has no type"}]}}});
+    let observed = Observed::Response {
+        status: 400,
+        content_type: Some("application/json".into()),
+        retry_after: None,
+    };
+    let Step::Refused(refusal) = resume(
+        continuation,
+        observed,
+        body.to_string().as_bytes(),
+        &Facts::default(),
+    ) else {
+        panic!("expected a refusal")
+    };
+    let named = with_issues(refusal);
+    assert_eq!(named.code, "VALIDATION_FAILED");
+    assert_eq!(
+        named.details,
+        Some(json!(["paint.line-color: unknown expression operator", "document has no type"]))
+    );
+    let bare = with_issues(Refusal {
+        details: Some(json!({"valid_actions": ["update_style"]})),
+        ..Refusal::new("x", "y")
+    });
+    assert_eq!(bare.details, None);
+}

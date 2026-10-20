@@ -268,7 +268,15 @@ fn request_answer(action: Action, body: Value) -> Value {
 fn issue_messages(response: &Value) -> Vec<String> {
     response
         .get("error_details")
-        .and_then(|details| details.get("issues"))
+        .map(backend_issues)
+        .unwrap_or_default()
+}
+
+/// The issues a backend refusal's details name, as `"<path>: <message>"`
+/// text, at most [`MAX_ISSUES`].
+pub fn backend_issues(details: &Value) -> Vec<String> {
+    details
+        .get("issues")
         .and_then(Value::as_array)
         .map(|issues| {
             issues

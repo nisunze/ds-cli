@@ -99,11 +99,28 @@ impl Exchange for StyleAction {
     }
 }
 
+/// A style refusal's details as the issues it names, in text: the backend's
+/// per-property complaints, or an admission's. Other details are dropped.
+pub fn with_issues(mut refusal: Refusal) -> Refusal {
+    if let Some(details) = refusal.details.take() {
+        let issues = if details.is_array() {
+            details
+        } else {
+            serde_json::json!(style_document::backend_issues(&details))
+        };
+        refusal.details = issues
+            .as_array()
+            .is_some_and(|issues| !issues.is_empty())
+            .then_some(issues);
+    }
+    refusal
+}
+
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::StyleAction;
-    use crate::gateway_exchange::browser::{run, typed, GatewayHost};
+    use super::{with_issues, StyleAction};
+    use crate::gateway_exchange::browser::{attempt, rejection, typed, GatewayHost};
     use serde_json::Value;
     use wasm_bindgen::prelude::*;
 
@@ -113,7 +130,10 @@ mod exports {
     }
 
     async fn act(host: GatewayHost, call: StyleAction) -> Result<JsValue, JsValue> {
-        typed(&run(&host, call).await?)
+        match attempt(&host, call).await? {
+            Ok(answer) => typed(&answer),
+            Err(refusal) => Err(rejection(&with_issues(refusal))),
+        }
     }
 
     /// Publish one authored style document; answers the receipt Brain kept.
