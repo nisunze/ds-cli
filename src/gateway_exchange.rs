@@ -43,6 +43,7 @@ pub const REQUEST_TIMEOUT: &str = "REQUEST_TIMEOUT";
 pub const NETWORK_ERROR: &str = "NETWORK_ERROR";
 pub const NETWORK_OFFLINE: &str = "NETWORK_OFFLINE";
 pub const RESPONSE_TOO_LARGE: &str = "RESPONSE_TOO_LARGE";
+pub const RESPONSE_MALFORMED: &str = "RESPONSE_MALFORMED";
 pub const PROJECT_INVALID: &str = "project_invalid";
 
 const SIGNED_OUT_MESSAGE: &str = "Request ignored because the session has ended.";
@@ -90,6 +91,28 @@ pub struct Request {
     /// Whether the request carries `X-DS-Processing-Lane`.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub lane_header: bool,
+    /// How a successful answer's body is encoded.
+    #[serde(skip_serializing_if = "Encoding::is_json")]
+    pub encoding: Encoding,
+}
+
+/// How a successful answer's body is encoded. A refusal's body is read as
+/// JSON whatever the request named.
+#[derive(Clone, Copy, Debug, Default, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Encoding {
+    #[default]
+    Json,
+    /// One JSON value per line, admitted as one array in line order. Blank
+    /// lines are skipped; a malformed line or more than `max_lines` values
+    /// refuses the answer.
+    Ndjson { max_lines: usize },
+}
+
+impl Encoding {
+    fn is_json(&self) -> bool {
+        *self == Self::Json
+    }
 }
 
 impl Request {
@@ -103,6 +126,7 @@ impl Request {
             timeout_ms: DEFAULT_TIMEOUT_MS,
             response_cap_bytes: DEFAULT_RESPONSE_CAP,
             lane_header: false,
+            encoding: Encoding::Json,
         }
     }
 
@@ -113,6 +137,12 @@ impl Request {
 
     pub fn response_cap(mut self, bytes: u64) -> Self {
         self.response_cap_bytes = bytes;
+        self
+    }
+
+    /// Read a successful answer as NDJSON of at most `max_lines` values.
+    pub fn ndjson(mut self, max_lines: usize) -> Self {
+        self.encoding = Encoding::Ndjson { max_lines };
         self
     }
 
@@ -348,15 +378,21 @@ pub fn resume<C: Exchange>(
             if body.len() as u64 > plan.request.response_cap_bytes {
                 return Step::Refused(oversized(&plan.request));
             }
-            let value = decode_body(status, content_type.as_deref(), body);
-            if (200..300).contains(&status) {
-                match exchange.admit(status, value) {
-                    Ok(Admitted::Done(value)) => Step::Done(value),
-                    Ok(Admitted::Next(next)) => start(next),
-                    Err(refusal) => Step::Refused(refusal),
-                }
-            } else {
-                answered(exchange, &plan, attempt, status, retry_after, &value, facts)
+            if !(200..300).contains(&status) {
+                let value = decode_body(status, content_type.as_deref(), body);
+                return answered(exchange, &plan, attempt, status, retry_after, &value, facts);
+            }
+            let value = match plan.request.encoding {
+                Encoding::Json => decode_body(status, content_type.as_deref(), body),
+                Encoding::Ndjson { max_lines } => match decode_ndjson(body, max_lines) {
+                    Ok(lines) => lines,
+                    Err(refusal) => return Step::Refused(refusal),
+                },
+            };
+            match exchange.admit(status, value) {
+                Ok(Admitted::Done(value)) => Step::Done(value),
+                Ok(Admitted::Next(next)) => start(next),
+                Err(refusal) => Step::Refused(refusal),
             }
         }
         Observed::Failure { cause, message } => {
@@ -406,6 +442,31 @@ fn decode_body(status: u16, content_type: Option<&str>, bytes: &[u8]) -> Value {
     } else {
         json!({ "message": text })
     }
+}
+
+/// An NDJSON answer as one array in line order. Blank lines are skipped; a
+/// line that is not JSON, or more than `max_lines` values, refuses it.
+fn decode_ndjson(bytes: &[u8], max_lines: usize) -> Result<Value, Refusal> {
+    let mut values = Vec::new();
+    for (index, line) in bytes.split(|byte| *byte == b'\n').enumerate() {
+        if line.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        if values.len() == max_lines {
+            return Err(Refusal::new(
+                RESPONSE_TOO_LARGE,
+                format!("The answer exceeded its {max_lines} line bound."),
+            ));
+        }
+        let value = serde_json::from_slice(line).map_err(|_| {
+            Refusal::new(
+                RESPONSE_MALFORMED,
+                format!("The answer's line {} is not JSON.", index + 1),
+            )
+        })?;
+        values.push(value);
+    }
+    Ok(Value::Array(values))
 }
 
 fn nonempty(value: Option<&Value>) -> Option<&str> {

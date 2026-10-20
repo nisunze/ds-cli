@@ -126,7 +126,7 @@ async fn credentials(host: &GatewayHost) -> Result<GatewayCredentials, JsValue> 
     tsify::serde_wasm_bindgen::from_value(answer).map_err(unreadable)
 }
 
-fn facts(host: &GatewayHost) -> Result<GatewayFacts, JsValue> {
+pub(crate) fn facts(host: &GatewayHost) -> Result<GatewayFacts, JsValue> {
     tsify::serde_wasm_bindgen::from_value(host.ask_facts()?).map_err(unreadable)
 }
 
@@ -151,7 +151,7 @@ pub(crate) fn typed<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
 }
 
 /// The refusal as the `Error` the page catches.
-fn rejection(refusal: &Refusal) -> JsValue {
+pub(crate) fn rejection(refusal: &Refusal) -> JsValue {
     let error = js_sys::Error::new(&refusal.message);
     error.set_name(if refusal.signed_out {
         "SignedOutRequestError"
@@ -353,35 +353,45 @@ struct Sent {
     latency_ms: u64,
 }
 
-fn refused(host: &GatewayHost, refusal: Refusal, sent: Option<Sent>) -> JsValue {
-    if let Some(sent) = sent.filter(|_| !refusal.signed_out) {
-        let told = GatewayRefused {
-            method: sent.method,
-            path: sent.path,
-            request_id: sent.request_id,
-            latency_ms: sent.latency_ms,
-            status: refusal.status,
-            code: refusal.code.clone(),
-            message: refusal.message.clone(),
-            technical: refusal.technical.clone(),
-            report: refusal.report.clone(),
-        };
-        if let Ok(told) = typed(&told) {
-            let _ = host.tell_refused(told);
-        }
+/// Tell the host about a refusal that followed a request.
+fn tell(host: &GatewayHost, refusal: &Refusal, sent: Option<Sent>) {
+    let Some(sent) = sent.filter(|_| !refusal.signed_out) else {
+        return;
+    };
+    let told = GatewayRefused {
+        method: sent.method,
+        path: sent.path,
+        request_id: sent.request_id,
+        latency_ms: sent.latency_ms,
+        status: refusal.status,
+        code: refusal.code.clone(),
+        message: refusal.message.clone(),
+        technical: refusal.technical.clone(),
+        report: refusal.report.clone(),
+    };
+    if let Ok(told) = typed(&told) {
+        let _ = host.tell_refused(told);
     }
-    rejection(&refusal)
 }
 
-/// Run one typed call to its end through the page's `fetch`.
-pub(crate) async fn run<C: Exchange>(host: &GatewayHost, call: C) -> Result<C::Output, JsValue> {
+/// Run one typed call to its end through the page's `fetch`, answering its
+/// typed outcome; a flow that branches on the refusal reads it here. The
+/// host is told of a refusal exactly as [`run`] tells it. Only a host or
+/// executor failure is the outer `Err`.
+pub(crate) async fn attempt<C: Exchange>(
+    host: &GatewayHost,
+    call: C,
+) -> Result<Result<C::Output, Refusal>, JsValue> {
     let client = reqwest::Client::new();
     let mut sent = None;
     let mut step = start(call);
     loop {
         step = match step {
-            Step::Done(value) => return Ok(value),
-            Step::Refused(refusal) => return Err(refused(host, refusal, sent)),
+            Step::Done(value) => return Ok(Ok(value)),
+            Step::Refused(refusal) => {
+                tell(host, &refusal, sent);
+                return Ok(Err(refusal));
+            }
             Step::Wait {
                 delay_ms,
                 jitter_ms,
@@ -396,7 +406,7 @@ pub(crate) async fn run<C: Exchange>(host: &GatewayHost, call: C) -> Result<C::O
                 continuation,
             } => {
                 if facts(host)?.offline_mode {
-                    return Err(refused(host, offline_refusal(), None));
+                    return Ok(Err(offline_refusal()));
                 }
                 let credentials = credentials(host).await?;
                 let request_id = uuid::Uuid::new_v4().to_string();
@@ -413,4 +423,11 @@ pub(crate) async fn run<C: Exchange>(host: &GatewayHost, call: C) -> Result<C::O
             }
         };
     }
+}
+
+/// Run one typed call to its end; a refusal rejects as the page's `Error`.
+pub(crate) async fn run<C: Exchange>(host: &GatewayHost, call: C) -> Result<C::Output, JsValue> {
+    attempt(host, call)
+        .await?
+        .map_err(|refusal| rejection(&refusal))
 }

@@ -406,3 +406,90 @@ fn a_link_cut_by_offline_mode_is_the_offline_refusal_never_a_retry() {
     ));
     assert_eq!(refused, offline_refusal());
 }
+
+/// A bounded NDJSON read, as a tabular stream declares it.
+struct Rows;
+
+impl Exchange for Rows {
+    type Output = Value;
+
+    fn plan(&self) -> Result<Plan, Refusal> {
+        Ok(
+            Request::post("/api/v1/data", json!({"action": "query_table"}))
+                .ndjson(3)
+                .into(),
+        )
+    }
+
+    fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
+        Ok(Admitted::Done(body))
+    }
+}
+
+fn streamed(status: u16, body: &[u8]) -> Step<Rows> {
+    streamed_as(status, "application/x-ndjson", body)
+}
+
+fn streamed_as(status: u16, content_type: &str, body: &[u8]) -> Step<Rows> {
+    let (_, continuation) = fetched(start(Rows));
+    resume(
+        continuation,
+        Observed::Response {
+            status,
+            content_type: Some(content_type.into()),
+            retry_after: None,
+        },
+        body,
+        &signed_in(),
+    )
+}
+
+#[test]
+fn an_ndjson_answer_is_admitted_as_its_lines_in_order() {
+    let (request, _) = fetched(start(Rows));
+    assert_eq!(request.encoding, Encoding::Ndjson { max_lines: 3 });
+    assert_eq!(
+        serde_json::to_value(&request).unwrap()["encoding"],
+        json!({"kind": "ndjson", "max_lines": 3})
+    );
+    let lines = done(streamed(
+        200,
+        b"{\"id\":1}\r\n\n  \n{\"id\":2}\n{\"__type\":\"summary\",\"count\":2}",
+    ));
+    assert_eq!(
+        lines,
+        json!([{"id": 1}, {"id": 2}, {"__type": "summary", "count": 2}])
+    );
+    assert_eq!(done(streamed(200, b"")), json!([]));
+}
+
+#[test]
+fn a_malformed_or_overlong_ndjson_answer_is_refused() {
+    let malformed = refusal(streamed(200, b"{\"id\":1}\n{\"id\":\n"));
+    assert_eq!(malformed.code, RESPONSE_MALFORMED);
+    assert_eq!(malformed.message, "The answer's line 2 is not JSON.");
+    let overlong = refusal(streamed(200, b"1\n2\n3\n4\n"));
+    assert_eq!(overlong.code, RESPONSE_TOO_LARGE);
+    assert_eq!(overlong.message, "The answer exceeded its 3 line bound.");
+}
+
+#[test]
+fn an_ndjson_reads_refusal_is_still_its_json_envelope() {
+    let refused = refusal(streamed_as(
+        403,
+        "application/json",
+        br#"{"error":{"code":"FORBIDDEN","message":"platform.admin required"}}"#,
+    ));
+    assert_eq!(refused.code, "FORBIDDEN");
+    assert_eq!(refused.message, "platform.admin required");
+}
+
+#[test]
+fn a_json_request_names_no_encoding() {
+    let (request, _) = fetched(start(Maps3dConfig));
+    assert_eq!(request.encoding, Encoding::Json);
+    assert!(serde_json::to_value(&request)
+        .unwrap()
+        .get("encoding")
+        .is_none());
+}
