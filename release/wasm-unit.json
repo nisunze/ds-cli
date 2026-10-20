@@ -1,0 +1,23 @@
+{
+  "schema": "ds.wasm-unit/v1",
+  "component": "command-kernel",
+  "package": "ds-command-kernel",
+  "crate": ".",
+  "stem": "ds_command_kernel",
+  "features": ["wasm"],
+  "metadataArgs": ["--features", "ds-command-kernel/wasm"],
+  "identityExport": "uiEngineBuildIdentity",
+  "inputsSchema": "ds.ui-wasm-build-inputs/v1",
+  "stamps": {
+    "DS_COMMAND_KERNEL_SOURCE_SHA": "owner",
+    "DS_UI_BUILD_CONFIG_SHA256": "manifest",
+    "DS_SOLAR_SOURCE_SHA": "revision:ds-solar",
+    "DS_SOLAR_CARGO_LOCK_PATH": "lockfile"
+  },
+  "capture": ["ds-solar", "ds-network-reporter"],
+  "sourcePins": {
+    "file": "release/ui-wasm-source.json",
+    "schema": "ds.ui-wasm-source/v1",
+    "component": "command-kernel"
+  }
+}
