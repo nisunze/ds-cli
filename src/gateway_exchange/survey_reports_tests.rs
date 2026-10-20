@@ -60,3 +60,30 @@ fn a_report_is_held_per_project_without_its_sync_counts() {
     assert_eq!(block_on(held_report(&edge, "q")).unwrap(), None);
     assert!(block_on(retain_report(&edge, "p", json!([1]))).is_err());
 }
+
+#[test]
+fn a_read_or_a_regeneration_holds_the_report_it_shows() {
+    use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
+    let edge = TestEdge::new();
+    edge.json(json!({"success": true, "data": {"totals": {"poles": 3}, "stale": false}}));
+    let shown = block_on(read_retained(&edge, "p", false, true));
+    assert_eq!(shown.data.as_ref().unwrap()["totals"]["poles"], 3);
+    assert_eq!(block_on(held_report(&edge, "p")).unwrap().unwrap()["totals"]["poles"], 3);
+
+    edge.json(json!({"success": true, "data": {"totals": {"poles": 5}, "sync_counts": {"forms": []}}}));
+    let regenerated = block_on(run_retained(&edge, "p", false, true));
+    assert!(regenerated.data.as_ref().unwrap().get("sync_counts").is_some(), "shown with its counts");
+    assert_eq!(
+        block_on(held_report(&edge, "p")).unwrap(),
+        Some(json!({"totals": {"poles": 5}})),
+        "held without them"
+    );
+
+    edge.answer(crate::gateway_exchange::retained::testing::Answer::Json(
+        500,
+        json!({"success": false, "error": {"code": "INTERNAL", "message": "down"}}),
+    ));
+    let failed = block_on(run_retained(&edge, "p", false, false));
+    assert!(failed.error.is_some());
+    assert_eq!(block_on(held_report(&edge, "p")).unwrap().unwrap()["totals"]["poles"], 5, "a refusal holds nothing");
+}

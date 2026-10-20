@@ -164,6 +164,56 @@ pub async fn retain_report(
     Ok(())
 }
 
+/// The dashboard's report from Brain, regenerated once when stale and
+/// `refresh_stale` allows it, and held for the next open.
+#[cfg(feature = "durable-store")]
+pub async fn read_retained(
+    edge: &impl super::retained::Edge,
+    project: &str,
+    include_sync_counts: bool,
+    refresh_stale: bool,
+) -> Shown {
+    let read = ReadReports { project: project.to_owned(), include_sync_counts };
+    let cached = match edge.fetch(read).await {
+        Ok(cached) => cached,
+        Err(refusal) => return Shown { error: Some(refusal.message), ..Shown::default() },
+    };
+    let shown = match after_read(cached, refresh_stale) {
+        Ok(shown) => shown,
+        Err(cached) => {
+            let run = RunReports { project: project.to_owned(), force: false, include_sync_counts };
+            after_run(cached, edge.fetch(run).await)
+        }
+    };
+    retain_shown(edge, project, &shown).await;
+    shown
+}
+
+/// Regenerate the dashboard's report (`force` rebuilds every form mirror
+/// first) and hold it for the next open.
+#[cfg(feature = "durable-store")]
+pub async fn run_retained(
+    edge: &impl super::retained::Edge,
+    project: &str,
+    force: bool,
+    include_sync_counts: bool,
+) -> Shown {
+    let run = RunReports { project: project.to_owned(), force, include_sync_counts };
+    let shown = match edge.fetch(run).await {
+        Ok(report) => Shown { data: Some(report), ..Shown::default() },
+        Err(refusal) => Shown { error: Some(refusal.message), ..Shown::default() },
+    };
+    retain_shown(edge, project, &shown).await;
+    shown
+}
+
+#[cfg(feature = "durable-store")]
+async fn retain_shown(edge: &impl super::retained::Edge, project: &str, shown: &Shown) {
+    if let (Some(report), None) = (&shown.data, &shown.error) {
+        let _ = retain_report(edge, project, report.clone()).await;
+    }
+}
+
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
     use super::{after_read, after_run, ReadReports, RunReports, Shown};
@@ -172,6 +222,34 @@ mod exports {
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::rejection;
     use crate::gateway_exchange::retained::browser::BrowserEdge;
+
+    /// The dashboard's report from Brain, held for the next open; regenerated
+    /// once when stale and `refreshStale` allows it.
+    #[wasm_bindgen(js_name = surveyReportsRead, unchecked_return_type = "SurveyReportsShown")]
+    pub async fn survey_reports_read(
+        host: GatewayHost,
+        store: StoreHost,
+        project: String,
+        include_sync_counts: bool,
+        refresh_stale: bool,
+    ) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        typed(&super::read_retained(&edge, &project, include_sync_counts, refresh_stale).await)
+    }
+
+    /// Regenerate the dashboard's report and hold it; `force` rebuilds every
+    /// form mirror first.
+    #[wasm_bindgen(js_name = surveyReportsRegenerate, unchecked_return_type = "SurveyReportsShown")]
+    pub async fn survey_reports_regenerate(
+        host: GatewayHost,
+        store: StoreHost,
+        project: String,
+        force: bool,
+        include_sync_counts: bool,
+    ) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        typed(&super::run_retained(&edge, &project, force, include_sync_counts).await)
+    }
 
     /// The report this device holds for a project, or none.
     #[wasm_bindgen(js_name = surveyReportHeld, unchecked_return_type = "Record<string, unknown> | null")]
