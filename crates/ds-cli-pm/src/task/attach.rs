@@ -47,12 +47,11 @@ pub static COMMAND: Command = Command {
     summary: "Attach one local file to a task (needs --yes).",
     purpose: "\
 Puts a document, photo or drawing on an existing Project Work task in one \
-command. The server reserves an attachment row on the task, the bytes go \
-straight to storage, and the server checks the stored object's size and type \
-before the row becomes ready; only a ready row on the named task is reported \
-as attached. Headless on the named project; no window, no Assets ingest and \
-no separate link step. An interrupted upload leaves the reserved row \
-`uploading`; it is reclaimed on your next attachment.",
+command. The server reserves a row, the bytes go straight to storage, and the \
+server checks the stored object's size and type before the row becomes \
+ready; only a ready row on the named task counts. Headless on the named \
+project. Attaching the same file again after an interruption completes your \
+unfinished row instead of adding one.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -65,9 +64,10 @@ no separate link step. An interrupted upload leaves the reserved row \
         crate::LANE_ARG,
     ],
     output: "\
-project and task, the ready `attachment` row (id, version, original_name, \
-content_type, size_bytes, state) as the server verified it, and the local \
-file's `bytes` and `sha256`. The upload session never appears.",
+project, task, the server-verified ready `attachment` row (id, version, \
+original_name, content_type, size_bytes, state), the local `bytes` and \
+`sha256`, `restarted`, and the duplicate rows `reclaimed` or `unreclaimed`. \
+The upload session never appears.",
     examples: &[Example {
         command: "ds pm task attach --project <exact-id> --task <task-id> --file ./crossing-survey.pdf --yes --output json",
         note: "`attachment.state` is `ready` only after the server verified the stored bytes.",
@@ -147,6 +147,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "attachment": item,
         "bytes": file.len(),
         "sha256": file.sha256(),
+        "restarted": result["restarted"] == true,
+        "reclaimed": result["reclaimed"],
+        "unreclaimed": result["unreclaimed"],
     }))
 }
 
@@ -164,42 +167,5 @@ pub fn render(data: &Value) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn parse(tokens: &[&str]) -> Inputs {
-        let tokens: Vec<String> = tokens.iter().map(|token| (*token).to_string()).collect();
-        ds_cli_contract::parse(&COMMAND, &tokens).expect("declared inputs")
-    }
-
-    #[test]
-    fn a_missing_empty_or_mistyped_file_is_refused_before_any_network() {
-        let root = std::env::temp_dir().join(format!("pm-attach-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
-        let empty = root.join("empty.pdf");
-        std::fs::write(&empty, b"").unwrap();
-        let good = root.join("plan.pdf");
-        std::fs::write(&good, b"%PDF-1.7").unwrap();
-        for (file, content_type) in [
-            (root.join("absent.pdf"), None),
-            (empty.clone(), None),
-            (root.clone(), None),
-            (good.clone(), Some("pdf")),
-        ] {
-            let file = file.to_str().unwrap().to_owned();
-            let mut tokens = vec!["--project", "p", "--task", "t", "--file", file.as_str()];
-            if let Some(content_type) = content_type {
-                tokens.extend(["--content-type", content_type]);
-            }
-            let error = attachment(&parse(&tokens)).unwrap_err();
-            assert_eq!(error.code(), FILE_INVALID.code, "{file}");
-        }
-        let file = good.to_str().unwrap();
-        let attached =
-            attachment(&parse(&["--project", "p", "--task", "t", "--file", file])).unwrap();
-        assert_eq!(attached.name(), "plan.pdf");
-        assert_eq!(attached.content_type(), "application/pdf");
-        assert_eq!(attached.len(), 8);
-        let _ = std::fs::remove_dir_all(&root);
-    }
-}
+#[path = "attach_tests.rs"]
+mod tests;

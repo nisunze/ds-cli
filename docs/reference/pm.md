@@ -161,9 +161,21 @@ One command puts one local file (1 byte to 100 MiB) on an existing task: the
 server reserves an attachment row, the bytes go straight to storage, and the
 server checks the stored size and type before the row turns `ready`. Only a
 ready row on the named task is reported, with the local `sha256`. The media
-type is named from the file extension unless `--content-type` gives one. An
-interrupted upload leaves the row `uploading`; your next attachment in the
-project reclaims it. There is no Assets ingest or separate link step.
+type is named from the file extension unless `--content-type` gives one.
+There is no Assets ingest or separate link step.
+
+An interrupted upload leaves its row `uploading`. Attaching the same file
+(same name and size) to the same task again restarts that row's upload and
+completes it, so a retry never adds a second row; the receipt says
+`restarted: true`. Your other unfinished rows of that file (`uploading` or
+`failed`) are then detached from the task and listed under `reclaimed`; any
+that refuse are listed under `unreclaimed`. Only your own rows are touched.
+To remove one unfinished row explicitly, read its id and version with
+`ds pm task read --timeline` and run `ds pm task detach`.
+
+`ds pm task create --attach` uses the same upload for each file. If one
+fails, the task stays created and the refusal lists the ready receipts;
+attach the remaining files with `ds pm task attach`, not a second create.
 
 ## Assignment is a request, not a decree
 
