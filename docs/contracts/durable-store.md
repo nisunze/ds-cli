@@ -25,6 +25,7 @@ own module (`src/<store>.rs`) and runs its SQL directly on the transaction.
 | --- | --- | --- |
 | Desktop and headless | installed Core, `core.store` (contract 1), reached from the Desktop through its local Core door | Core's protected Store (`store.sqlite`, `ds-sync-store`) |
 | Hosted Web | the storage worker calls the Kernel WASM export that runs `durable_store::execute` | rusqlite over sqlite-wasm-rs on OPFS: sahpool VFS `ds-kernel-store-v1`, directory `.ds-kernel-store-v1`, database `/kernel.sqlite`, Web Lock `ds-kernel-store-v1` |
+| ds-web unit tests (Node) | `durableStoreMemoryTransaction`, the same `execute` and answer in the same WASM | one process-local in-memory database (sqlite-wasm-rs's default VFS); nothing survives the process, no effect file is written; `durableStoreMemoryReset` forgets it |
 
 One Kernel WASM binary serves the page and the storage worker. Which edge
 executes a call is the platform adapter's choice; there is one implementation.

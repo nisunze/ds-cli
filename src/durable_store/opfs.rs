@@ -164,6 +164,12 @@ pub struct DurableStoreReply {
     answer: String,
     bytes: Option<Vec<u8>>,
 }
+impl DurableStoreReply {
+    /// The answer JSON and its payload bytes, as every host answers them.
+    pub(super) fn new(answer: String, bytes: Option<Vec<u8>>) -> Self {
+        Self { answer, bytes }
+    }
+}
 #[wasm_bindgen]
 impl DurableStoreReply {
     #[wasm_bindgen(getter)]

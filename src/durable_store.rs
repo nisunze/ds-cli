@@ -585,6 +585,9 @@ pub mod port;
 /// The hosted Web's storage worker host (rusqlite over sqlite-wasm-rs on OPFS).
 #[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 pub mod opfs;
+/// A process-local in-memory host with the same answers (the Node test host).
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+pub mod memory;
 
 #[cfg(test)]
 #[path = "durable_store_tests.rs"]
