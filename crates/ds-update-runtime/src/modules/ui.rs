@@ -85,43 +85,56 @@ pub struct TrustedUiGrant {
     authority: UiAuthority,
 }
 impl CapturedReleaseAuthority {
+    /// A person's confirmed unit: refuses when the channel moved since it was read.
     pub fn acquire_ui(
         &self,
         component: UiComponent,
         expected_sha256: &str,
         cancelled: &dyn Fn() -> bool,
     ) -> Result<TrustedUiGrant, String> {
-        self.acquire_ui_with(component, expected_sha256, cancelled, |url| {
-            let mut response = ureq::get(url)
-                .header("Accept", "application/json")
-                .header("x-api-key", &self.gateway_key)
-                .config()
-                .max_redirects(0)
-                .timeout_connect(Some(Duration::from_secs(10)))
-                .timeout_global(Some(Duration::from_secs(30)))
-                .build()
-                .call()
-                .map_err(|e| format!("module_release_unavailable: {e}"))?;
-            let mut bytes = Vec::new();
-            response
-                .body_mut()
-                .as_reader()
-                .take(MAX_RELEASE_BYTES + 1)
-                .read_to_end(&mut bytes)
-                .map_err(|e| format!("module_release_unavailable: {e}"))?;
-            Ok(bytes)
+        self.acquire_ui_with(component, Some(expected_sha256), cancelled, |url| {
+            self.read_release(url)
         })
+    }
+    /// The channel's active release is the target; no person chooses a version.
+    /// An earlier unit published as the active release is acquired the same way.
+    pub fn acquire_active_ui(
+        &self,
+        component: UiComponent,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<TrustedUiGrant, String> {
+        self.acquire_ui_with(component, None, cancelled, |url| self.read_release(url))
+    }
+    fn read_release(&self, url: &str) -> Result<Vec<u8>, String> {
+        let mut response = ureq::get(url)
+            .header("Accept", "application/json")
+            .header("x-api-key", &self.gateway_key)
+            .config()
+            .max_redirects(0)
+            .timeout_connect(Some(Duration::from_secs(10)))
+            .timeout_global(Some(Duration::from_secs(30)))
+            .build()
+            .call()
+            .map_err(|e| format!("module_release_unavailable: {e}"))?;
+        let mut bytes = Vec::new();
+        response
+            .body_mut()
+            .as_reader()
+            .take(MAX_RELEASE_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| format!("module_release_unavailable: {e}"))?;
+        Ok(bytes)
     }
     fn acquire_ui_with(
         &self,
         component: UiComponent,
-        expected_sha256: &str,
+        expected_sha256: Option<&str>,
         cancelled: &dyn Fn() -> bool,
         read: impl FnOnce(&str) -> Result<Vec<u8>, String>,
     ) -> Result<TrustedUiGrant, String> {
         ui_platform()?;
         check_cancel(cancelled)?;
-        if !transfer::exact_sha256(expected_sha256) {
+        if expected_sha256.is_some_and(|digest| !transfer::exact_sha256(digest)) {
             return Err("module_release_invalid: name the exact selected UI unit digest".into());
         }
         let operation = ds_client_core::gateway_operation("domains.releases.desktop_manifest")
@@ -162,12 +175,12 @@ impl CapturedReleaseAuthority {
         if unit.release.status != "active" {
             return Err("module_release_inactive: retain the installed UI unit".into());
         }
-        if unit.unit_sha256 != expected_sha256 {
+        if expected_sha256.is_some_and(|digest| unit.unit_sha256 != digest) {
             return Err(
                 "module_release_changed: refresh explicitly before confirming the UI unit".into(),
             );
         }
-        policy::acquisition_plan(&unit, self.channel, expected_sha256, true)
+        policy::acquisition_plan(&unit, self.channel, &unit.unit_sha256, true)
             .map_err(|e| e.to_string())?;
         Ok(TrustedUiGrant {
             unit,
@@ -190,6 +203,71 @@ pub struct StagedUiModule {
     pub version: String,
     pub sha256: String,
     pub expected_generation: u64,
+}
+const CONVERGENCE_SCHEMA: &str = "ds.ui-module-convergence/v1";
+/// What one automatic pass did for one UI component (philosophy §8).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UiConvergenceOutcome {
+    /// Never installed here: a machine without the Desktop needs no UI unit.
+    Absent,
+    /// Explicitly removed: retained until the unit is installed again.
+    Removed,
+    /// The active unit already is the channel's active release.
+    Current,
+    /// The channel's active release was verified and activated.
+    Updated,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiConvergence {
+    pub schema: &'static str,
+    pub component: UiComponent,
+    pub channel: String,
+    pub outcome: UiConvergenceOutcome,
+    pub generation: u64,
+    /// The channel's active release; absent when no catalog read was needed.
+    pub release_version: Option<String>,
+    pub unit_sha256: Option<String>,
+}
+/// Only an installed unit follows its channel. The active release decides the
+/// target, including an earlier unit published again; no person picks one.
+pub fn convergence_plan(
+    selection: Option<&UiSelection>,
+    active_release_sha256: &str,
+) -> UiConvergenceOutcome {
+    match selection.map(|selected| &selected.selection) {
+        None => UiConvergenceOutcome::Absent,
+        Some(UiSelectionState::Removed { .. }) => UiConvergenceOutcome::Removed,
+        Some(UiSelectionState::Installed { active, .. })
+            if active.unit.unit_sha256 == active_release_sha256 =>
+        {
+            UiConvergenceOutcome::Current
+        }
+        Some(UiSelectionState::Installed { .. }) => UiConvergenceOutcome::Updated,
+    }
+}
+/// Offline answer for a unit that does not follow its channel, so the caller
+/// reads no catalog for it; `None` means the installed unit follows its channel.
+pub fn retained_convergence(
+    component: UiComponent,
+    channel: &str,
+    selection: Option<&UiSelection>,
+) -> Option<UiConvergence> {
+    let outcome = match selection.map(|selected| &selected.selection) {
+        None => UiConvergenceOutcome::Absent,
+        Some(UiSelectionState::Removed { .. }) => UiConvergenceOutcome::Removed,
+        Some(UiSelectionState::Installed { .. }) => return None,
+    };
+    Some(UiConvergence {
+        schema: CONVERGENCE_SCHEMA,
+        component,
+        channel: channel.into(),
+        outcome,
+        generation: selection.map_or(0, |selected| selected.generation),
+        release_version: None,
+        unit_sha256: None,
+    })
 }
 // Stored receipt is intentionally distinct from its public ready projection.
 #[derive(Serialize, Deserialize)]
@@ -563,6 +641,57 @@ impl UiModuleStore {
         )?;
         Ok(staged(stored))
     }
+    /// Keep an installed unit on the channel's active release; absence and
+    /// removal are retained. Activation changes later captures only, so a
+    /// loaded Desktop keeps its unit until it loads again.
+    pub fn converge<F: FnMut(TransferProgress)>(
+        &self,
+        grant: TrustedUiGrant,
+        guard: ActivationGuard,
+        report: F,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<UiConvergence, String> {
+        self.converge_with(grant, guard, cancelled, |grant| {
+            self.stage(grant, report, cancelled)
+        })
+    }
+    fn converge_with(
+        &self,
+        grant: TrustedUiGrant,
+        guard: ActivationGuard,
+        cancelled: &dyn Fn() -> bool,
+        stage: impl FnOnce(TrustedUiGrant) -> Result<StagedUiModule, String>,
+    ) -> Result<UiConvergence, String> {
+        check_cancel(cancelled)?;
+        if grant.unit.release.component != self.component
+            || grant.unit.release.channel != self.channel
+        {
+            return Err("module_receipt_invalid: crossed UI grant".into());
+        }
+        let current = self.selection()?;
+        let planned = current.as_ref().map_or(0, |selected| selected.generation);
+        let version = grant.unit.release.version.clone();
+        let digest = grant.unit.unit_sha256.clone();
+        let outcome = convergence_plan(current.as_ref(), &digest);
+        let generation = if outcome == UiConvergenceOutcome::Updated {
+            let staged = stage(grant)?;
+            // The planned generation fences a removal or person's change made
+            // after this plan: the update then refuses instead of reinstalling.
+            self.activate(&staged.receipt_id, planned, guard, cancelled)?
+                .generation
+        } else {
+            planned
+        };
+        Ok(UiConvergence {
+            schema: CONVERGENCE_SCHEMA,
+            component: self.component,
+            channel: self.channel.clone(),
+            outcome,
+            generation,
+            release_version: Some(version),
+            unit_sha256: Some(digest),
+        })
+    }
     fn receipt_path(&self, id: &str) -> Result<PathBuf, String> {
         if id.len() != 32
             || !id
@@ -762,384 +891,5 @@ fn staged(stored: StoredUiStage) -> StagedUiModule {
 }
 
 #[cfg(all(test, target_os = "linux", target_arch = "x86_64"))]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    use std::cell::Cell;
-
-    fn private_base() -> tempfile::TempDir {
-        let directory = tempfile::tempdir().unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).unwrap();
-        }
-        directory
-    }
-    fn authority() -> CapturedReleaseAuthority {
-        CapturedReleaseAuthority {
-            gateway_origin: "https://gateway.example".into(),
-            channel: "canary",
-            catalog_sha256: "e".repeat(64),
-            gateway_key: "public-fixture-key".into(),
-        }
-    }
-    fn fixture(component: UiComponent, revision: usize) -> (Value, Vec<(&'static str, Vec<u8>)>) {
-        let mut release: Value = serde_json::from_str(match component {
-            UiComponent::Interactions => include_str!(
-                "../../../../src/module_release/fixtures/interactions-ui-wasm-canary.json"
-            ),
-            UiComponent::CommandKernel => include_str!(
-                "../../../../src/module_release/fixtures/command-kernel-ui-wasm-canary.json"
-            ),
-        })
-        .unwrap();
-        let version = format!("0.1.0-r{revision}");
-        release["version"] = json!(version);
-        let files = component
-            .files()
-            .into_iter()
-            .map(|(name, _)| (name, format!("fixture:{name}:{revision}\n").into_bytes()))
-            .collect::<Vec<_>>();
-        for asset in release["assets"].as_array_mut().unwrap() {
-            let (name, bytes) = files
-                .iter()
-                .find(|(name, _)| asset["url"].as_str().unwrap().ends_with(name))
-                .unwrap();
-            asset["url"] = json!(format!("https://storage.googleapis.com/dedicated-public-releases/modules/{}/canary/wasm/{version}/{name}", component.as_str()));
-            asset["size_bytes"] = json!(bytes.len());
-            asset["sha256"] = json!(format!("{:x}", Sha256::digest(bytes)));
-        }
-        (release, files)
-    }
-    fn grant(
-        component: UiComponent,
-        release: Value,
-        calls: &Cell<usize>,
-    ) -> Result<TrustedUiGrant, String> {
-        let unit = policy::inspect(component.as_str(), "canary", &release).unwrap();
-        authority().acquire_ui_with(component, &unit.unit_sha256, &|| false, |url| {
-            calls.set(calls.get() + 1);
-            assert!(url.ends_with(&format!(
-                "?component={}&channel=canary&runtime=wasm",
-                component.as_str()
-            )));
-            Ok(serde_json::to_vec(&json!({"success":true,"release":release})).unwrap())
-        })
-    }
-    fn stage(
-        store: &UiModuleStore,
-        revision: usize,
-        reads: &Cell<usize>,
-        downloads: &Cell<usize>,
-    ) -> StagedUiModule {
-        let (release, files) = fixture(store.component, revision);
-        let grant = grant(store.component, release, reads).unwrap();
-        store
-            .stage_with(grant, &|| false, |asset, path| {
-                downloads.set(downloads.get() + 1);
-                let bytes = &files
-                    .iter()
-                    .find(|(name, _)| asset.url.ends_with(name))
-                    .unwrap()
-                    .1;
-                fs::write(path, bytes).map_err(|e| e.to_string())
-            })
-            .unwrap()
-    }
-    #[test]
-    fn both_ui_units_stage_four_opaque_members_and_capture_survives_update_removal_rollback() {
-        for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
-            let base = private_base();
-            let store = UiModuleStore::new(base.path(), component, "canary").unwrap();
-            let reads = Cell::new(0);
-            let downloads = Cell::new(0);
-            let first = stage(&store, 1, &reads, &downloads);
-            assert!(store.selection().unwrap().is_none());
-            let selected = store
-                .activate(&first.receipt_id, 0, ActivationGuard::default(), &|| false)
-                .unwrap();
-            assert_eq!(selected.generation, 1);
-            let captured = store.capture(&|| false).unwrap();
-            let name = component.files()[0].0;
-            let digest = captured.receipt.unit.unit_sha256.clone();
-            let expected = fixture(component, 1).1[0].1.clone();
-            let mut body = store.member(&digest, name, 0, 4, &|| false).unwrap().0;
-            body.extend(
-                store
-                    .member(&digest, name, 4, MAX_MEMBER_CHUNK, &|| false)
-                    .unwrap()
-                    .0,
-            );
-            assert_eq!(body, expected);
-            let second = stage(&store, 2, &reads, &downloads);
-            let next = store
-                .activate(&second.receipt_id, 1, ActivationGuard::default(), &|| false)
-                .unwrap();
-            assert_eq!(next.generation, 2);
-            assert_eq!(
-                store
-                    .member(&digest, name, 0, MAX_MEMBER_CHUNK, &|| false)
-                    .unwrap()
-                    .0,
-                expected
-            );
-            let restarted = UiModuleStore::new(base.path(), component, "canary").unwrap();
-            assert_eq!(restarted.selection().unwrap().unwrap(), next);
-            let restored = restarted
-                .rollback(2, ActivationGuard::default(), &|| false)
-                .unwrap();
-            assert_eq!(restored.generation, 3);
-            assert_eq!(
-                restarted.capture(&|| false).unwrap().receipt,
-                captured.receipt
-            );
-            restarted
-                .remove(3, ActivationGuard::default(), &|| false)
-                .unwrap();
-            assert!(restarted
-                .capture(&|| false)
-                .unwrap_err()
-                .contains("module_removed"));
-            assert_eq!(
-                restarted
-                    .member(&digest, name, 0, MAX_MEMBER_CHUNK, &|| false)
-                    .unwrap()
-                    .0,
-                expected
-            );
-            let restored = restarted
-                .rollback(4, ActivationGuard::default(), &|| false)
-                .unwrap();
-            assert_eq!(restored.generation, 5);
-            assert_eq!(reads.get(), 2);
-            assert_eq!(downloads.get(), 8);
-            assert_eq!(
-                fs::read_dir(store.root.join("versions")).unwrap().count(),
-                2
-            );
-            assert!(store
-                .member(&digest, "../selection.json", 0, 10, &|| false)
-                .unwrap_err()
-                .contains("module_artifact_invalid"));
-            assert!(store
-                .member(&digest, name, 0, MAX_MEMBER_CHUNK + 1, &|| false)
-                .is_err());
-            assert!(store
-                .member(&digest, name, u64::MAX, 10, &|| false)
-                .is_err());
-        }
-    }
-    #[test]
-    fn authority_admits_complete_source_compiler_config_and_members_before_any_transfer() {
-        let (release, _) = fixture(UiComponent::Interactions, 1);
-        let unit = policy::inspect("interactions", "canary", &release).unwrap();
-        let reads = Cell::new(0);
-        for field in [
-            "source_sha",
-            "cargo_lock_sha256",
-            "rustc",
-            "target",
-            "profile",
-            "config_sha256",
-        ] {
-            let mut bad = release.clone();
-            bad["build_manifest"][field] = json!("tampered");
-            assert!(authority()
-                .acquire_ui_with(
-                    UiComponent::Interactions,
-                    &unit.unit_sha256,
-                    &|| false,
-                    |_| {
-                        reads.set(reads.get() + 1);
-                        Ok(serde_json::to_vec(&json!({"success":true,"release":bad})).unwrap())
-                    }
-                )
-                .is_err());
-        }
-        let mut incomplete = release.clone();
-        incomplete["assets"].as_array_mut().unwrap().pop();
-        assert!(authority()
-            .acquire_ui_with(
-                UiComponent::Interactions,
-                &unit.unit_sha256,
-                &|| false,
-                |_| Ok(serde_json::to_vec(&json!({"success":true,"release":incomplete})).unwrap())
-            )
-            .is_err());
-        assert!(authority()
-            .acquire_ui_with(
-                UiComponent::Interactions,
-                &unit.unit_sha256,
-                &|| true,
-                |_| panic!("cancelled acquisition must not read")
-            )
-            .is_err());
-        let mut withdrawn = release;
-        withdrawn["status"] = json!("blocked");
-        assert!(authority()
-            .acquire_ui_with(
-                UiComponent::Interactions,
-                &unit.unit_sha256,
-                &|| false,
-                |_| Ok(serde_json::to_vec(&json!({"success":true,"release":withdrawn})).unwrap())
-            )
-            .unwrap_err()
-            .contains("module_release_inactive"));
-        assert_eq!(reads.get(), 6);
-    }
-    #[test]
-    fn a_new_core_profile_reuses_verified_unit_bytes_and_keeps_each_acquisition_authority() {
-        let base = private_base();
-        let store = UiModuleStore::new(base.path(), UiComponent::Interactions, "canary").unwrap();
-        let first = stage(&store, 1, &Cell::new(0), &Cell::new(0));
-        store
-            .activate(&first.receipt_id, 0, ActivationGuard::default(), &|| false)
-            .unwrap();
-        store
-            .remove(1, ActivationGuard::default(), &|| false)
-            .unwrap();
-        let (release, _) = fixture(UiComponent::Interactions, 1);
-        let unit = policy::inspect("interactions", "canary", &release).unwrap();
-        let mut next_authority = authority();
-        next_authority.catalog_sha256 = "f".repeat(64);
-        let grant = next_authority
-            .acquire_ui_with(
-                UiComponent::Interactions,
-                &unit.unit_sha256,
-                &|| false,
-                |_| Ok(serde_json::to_vec(&json!({"success":true,"release":release})).unwrap()),
-            )
-            .unwrap();
-        let ready = store
-            .stage_with(grant, &|| false, |_, _| {
-                panic!("unchanged verified bytes need no transfer")
-            })
-            .unwrap();
-        let historical: InstalledUiModule = serde_json::from_slice(
-            &fs::read(
-                store
-                    .unit_directory(&unit.unit_sha256)
-                    .unwrap()
-                    .join("installation.json"),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(historical.authority.route_manifest_sha256, "e".repeat(64));
-        let selected = store
-            .activate(&ready.receipt_id, 2, ActivationGuard::default(), &|| false)
-            .unwrap();
-        assert_eq!(selected.generation, 3);
-        assert_eq!(
-            store
-                .capture(&|| false)
-                .unwrap()
-                .receipt
-                .authority
-                .route_manifest_sha256,
-            "f".repeat(64)
-        );
-        assert!(store
-            .member(
-                &unit.unit_sha256,
-                "ds_interactions_wasm.js",
-                0,
-                100,
-                &|| false
-            )
-            .is_ok());
-    }
-    #[test]
-    fn cancellation_corruption_stale_generation_and_lifecycle_guard_preserve_selection() {
-        let base = private_base();
-        let store = UiModuleStore::new(base.path(), UiComponent::Interactions, "canary").unwrap();
-        let reads = Cell::new(0);
-        let downloads = Cell::new(0);
-        let first = stage(&store, 1, &reads, &downloads);
-        store
-            .activate(&first.receipt_id, 0, ActivationGuard::default(), &|| false)
-            .unwrap();
-        let original = fs::read(store.root.join("selection.json")).unwrap();
-        let second = stage(&store, 2, &reads, &downloads);
-        let third = stage(&store, 3, &reads, &downloads);
-        let dirty = ActivationGuard {
-            unsaved_edits: true,
-            ..ActivationGuard::default()
-        };
-        assert!(store
-            .activate(&second.receipt_id, 1, dirty, &|| false)
-            .unwrap_err()
-            .contains("module_activation_deferred"));
-        assert!(store
-            .activate(&second.receipt_id, 1, ActivationGuard::default(), &|| true)
-            .unwrap_err()
-            .contains("module_update_cancelled"));
-        assert_eq!(
-            fs::read(store.root.join("selection.json")).unwrap(),
-            original
-        );
-        store
-            .activate(&second.receipt_id, 1, ActivationGuard::default(), &|| false)
-            .unwrap();
-        assert!(store
-            .activate(&third.receipt_id, 1, ActivationGuard::default(), &|| false)
-            .unwrap_err()
-            .contains("module_selection_changed"));
-        let held = store.capture(&|| false).unwrap();
-        fs::write(
-            store
-                .unit_directory(&held.receipt.unit.unit_sha256)
-                .unwrap()
-                .join("ds_interactions_wasm_bg.wasm"),
-            b"damaged",
-        )
-        .unwrap();
-        assert!(store
-            .capture(&|| false)
-            .unwrap_err()
-            .contains("module_artifact_invalid"));
-        let repaired = store
-            .rollback(2, ActivationGuard::default(), &|| false)
-            .unwrap();
-        assert!(matches!(
-            repaired.selection,
-            UiSelectionState::Installed { previous: None, .. }
-        ));
-        assert!(store.capture(&|| false).is_ok());
-        let (release, _) = fixture(UiComponent::Interactions, 4);
-        let candidate = grant(UiComponent::Interactions, release, &reads).unwrap();
-        assert!(store
-            .stage_with(candidate, &|| false, |_, path| {
-                fs::write(path, b"partial").unwrap();
-                Err("module_stage_failed: interrupted".into())
-            })
-            .is_err());
-        assert_eq!(store.selection().unwrap().unwrap(), repaired);
-        assert_eq!(
-            fs::read_dir(store.root.join("versions")).unwrap().count(),
-            3
-        );
-    }
-    #[cfg(unix)]
-    #[test]
-    fn linked_or_nonprivate_store_and_receipts_refuse() {
-        use std::os::unix::fs::{symlink, PermissionsExt};
-        let base = private_base();
-        let store = UiModuleStore::new(base.path(), UiComponent::Interactions, "canary").unwrap();
-        let ready = stage(&store, 1, &Cell::new(0), &Cell::new(0));
-        let path = store.receipt_path(&ready.receipt_id).unwrap();
-        let real = path.with_extension("original");
-        fs::rename(&path, &real).unwrap();
-        symlink(&real, &path).unwrap();
-        assert!(store
-            .activate(&ready.receipt_id, 0, ActivationGuard::default(), &|| false)
-            .is_err());
-        assert!(store.selection().unwrap().is_none());
-        fs::set_permissions(&store.root, fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(store
-            .selection()
-            .unwrap_err()
-            .contains("module_store_invalid"));
-    }
-}
+#[path = "ui_tests.rs"]
+mod tests;
