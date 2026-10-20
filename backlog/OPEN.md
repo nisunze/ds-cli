@@ -14,11 +14,11 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [2. Green `run` and release gates](#2-green-run-and-release-gates) | 7 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
-| [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 2 |
-| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 18 |
+| [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
+| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 19 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 7 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 10 |
-| [10. Voltage drop](#10-voltage-drop) | 3 |
+| [10. Voltage drop](#10-voltage-drop) | 5 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 10 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 9 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 4 |
@@ -138,9 +138,17 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - **Long diagonal leaders on vertical structure labels** (cosmetic): on supports whose top sits near the profile envelope top, vertical labels get leaders up to 27 mm long (real Nyamagabe scene), running from the support top down to the label base. They cross no furniture. Shorten them without moving labels into furniture.
 
+- **LV A0/A3 transformer sheets: furniture overlaps the frame** (canary proof 2026-10-20, `report project export --dry-run`, template and Gisagara agahehe): on `transformer-focus-a0` and `a0-landscape-gisagara-cjic` the house connection schedule's last footnote line ("Category: 1 Residential") crosses the bottom map-frame border; on both A0 and A3 the legend title is drawn at the legend frame's left edge (ds-network-reporter `src/print_layout.rs` legend arm: `text(content_left, y + step, …)` without the 1.5 mm inset its group headings use), and the network information table's right edge runs under the frame's right border. Inset the title, fit the schedule with its footnotes, keep the table inside the frame, and review the LV standard raster anchors.
+
+- **LV sheet categories disagree with its quantity table** (same proof): the map pens and legend follow saved `lv_lines.cable_size` (agahehe: 3×35 and 3×50 only), the "LV NETWORK INFORMATION" table follows `computed_properties.cable_size` (3×70 2 340 m), and pole categories follow `spans.cable_size` (3×70 1 384 m). One sheet must state one size per line; decide the saved-versus-computed source in the Network owner and print it everywhere.
+
+- **Voltage-drop prints depend on platform fonts**: the combined A3 template (`assets/voltage_drop_combined/vd-combined.html`) names installed fonts, so Windows prints Liberation Sans and Consolas where Linux prints Ubuntu Sans and DejaVu Sans Mono (2026-10-20 page-by-page comparison); the A4 bundles Ubuntu Sans but its `<code>` spans use the platform monospace, so A4 pages 1 and 8 wrap differently. Bundle the A4's fonts (and one monospace) into both renders, then refresh the raster anchors.
+
 ## 7. Report compute, export and combined output
 
 - **Quantity-only XLSX acquisition** (`0b875c6c`): native transformer quantity export refuses on unrelated survey video outside granted scopes. Preserve media authority, omit inaccessible unrelated media with a bounded diagnostic, and still produce the quantity workbook from unchanged source digests. The offline path also lacks complete groups/sheets/models capture; expose a declared complete-config or quantity-only capture without widening media grants.
+
+- **Headless map prints: no sheet text, district/sector/atlas Desktop-only** (canary 2026-10-20): `report project map-inputs --area-bounds … --layout <project-overview-a3>` captures the area, but `ds-cli-report/src/project/map_inputs.rs` binds only `{project: <id>, transformer: <layout name>}`; overview layouts print `{title}`, `{drawing}`, `{date}` and `{source}`, so `report layout render` refuses `printing_invalid: missing print text binding: title` (the layout `title_block` is not consulted), and `{project}` would print the id instead of the sealed caption. District and sector pages by administrative code and the combined project overview exist only as `desktop.printing.map.export` (a paired window; Desktop door in §23). Decide the sheet text in the Kernel and render those pages through Core.
 
 - **Reporter catalogue aliases and existence precedence** (`c8663eca`): processing accepts declared structure aliases that reporting marks dirty and excludes from recognized quantities; cable-label spacing aliases can exclude length, and legacy provenance text can override canonical existence fields. Resolve the same admitted physical/cable aliases and respect canonical existence fields in reporting. Prove counts and Dirty Categories while retaining blank/unknown status and unchanged physical definitions.
 
@@ -226,6 +234,10 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - **Engine-door defaults ignore the project's voltage-drop choice:** `ds report export --task transformer` (`ds-cli-report/src/export.rs` `transformer_request_defaults`, `build_request`) and the Reporter's `formats_for_request` still default to `DEFAULT_INDIVIDUAL`. Resolve an omitted format list through `report_formats::invocation_selection` over the request's network config.
 
 - **TypeScript decides an A4 preview's saved-analysis need:** `ds-web/src/lib/reports/transformer-export.ts` (`selection?.geospatial?.includes('voltage_drop_pdf')`) duplicates `report_formats::requires_voltage_drop_analysis`. Move the decision behind the native owner and delete the TypeScript check.
+
+- **A4 of a refused analysis names the wrong state:** `design lv voltage-drop --print-a4` for a transformer whose analysis is refused (template `fill_in_akabuga`, ambiguous coordinate) reaches the Reporter's `validate_document` (`src/exports/voltage_drop.rs`), which treats `summary.status: not_calculated` as `voltage_drop_result_stale` ("obtain the current complete result") instead of `voltage_drop_pdf_not_calculated`. The CLI wraps it in `vd_print_failed`; the inner Reporter code should state that only calculated transformers print.
+
+- **Reporter tests red at 96282d0 on this host (Chrome 154):** `annah_row_requires_the_design_year_circuit_without_claiming_as_drawn_compliance` (pdftotext `-layout` splits the note between columns, so the sentence assertion fails) and the `a4-extended` raster anchor (pages 2, 5 and 7 drift). Neither involves the combined template.
 
 ## 11. PLS-CADD exchange round trip
 
