@@ -49,7 +49,7 @@ pub static COMMAND: Command = Command {
     path: &["core", "store"],
     contract: 1,
     summary: "Run one Kernel durable-store call in Core's protected Store.",
-    purpose: "Execute exactly one Kernel durable-store call ({request: {store, operation}, expect_owner?}) in the lane's protected SQLite Store, in one transaction, under the protected account. The Kernel owns the stores, schema, SQL and refusals; the identity is bound here and never read from the request. Stores with their own command (design.status, design.model.catalog) are refused by name. Payload bytes are read from --bytes and answer bytes written to --bytes-out. No transport, daemon, credential refresh or project selection. The answer is written to a new private file, bounded to 64 MiB, after a protected identity recheck.",
+    purpose: "Run one Kernel durable-store call ({request: {store, operation}, expect_owner?}) in one transaction of the lane's protected Store under the protected account, bound here and never read from the request. The Kernel owns stores, schema, SQL and refusals; a store with its own command is refused by name. --bytes and --bytes-out carry payload bytes. The answer goes to a new private file (at most 64 MiB) after an identity recheck.",
     chapter: Chapter::Workstation,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessUser,
