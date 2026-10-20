@@ -104,7 +104,8 @@ fn a_stored_value_that_no_longer_admits_reads_as_absent_and_stays_in_place() {
 fn an_import_runs_once_per_identity_and_answers_its_held_receipt() {
     let db = Connection::open_in_memory().unwrap();
     let legacy = run(&db, "a", json!({"action":"legacy","source":"persistent_cache"})).unwrap();
-    assert_eq!(legacy, json!({"legacy":{"keys":[],"prefixes":[]}}));
+    let (keys, prefixes) = legacy::keys();
+    assert_eq!(legacy, json!({"legacy":{"keys":keys,"prefixes":prefixes}}));
     let entries = json!([{"legacy_key":"not_owned_by_any_key","value":1}]);
     let first = run(
         &db,

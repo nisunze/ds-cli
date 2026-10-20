@@ -27,41 +27,97 @@ pub const MAX_IMPORT_ENTRIES: usize = 4096;
 pub const INVALID: &str = "ui_preference_invalid";
 const MAX_SAFE: u64 = 9_007_199_254_740_991;
 
-/// The closed preference vocabulary.
+/// The closed preference vocabulary. Each key's name, home, bound and value
+/// contract are one row of `values/catalog.rs`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Key {
     /// The project the window last worked in, restored at the next start.
     ActiveProject,
+    // The account's window: layer-group folding, the camera mode, the
+    // cartography defaults, the editing toolbar, the browser's raster
+    // overlays, the application settings, the editing projection, the pinned
+    // group's visibility, the Profile restart record, the map-data sources a
+    // new transformer preselects, and panel and dialog geometry.
+    LayerGroupCollapse,
+    MapMode,
+    MapDefaults,
+    ToolLayout,
+    TileLayers,
+    ApplicationSettings,
+    EditProjectionChoice,
+    EditProjectionCustom,
+    PinnedGroupVisible,
+    ProfileOccupancy,
+    CreateTransformerMapSources,
+    UploadDialogLayout,
+    PropertiesDockWidth,
+    StyleCenterLayout,
+    // One project's choices: layer visibility, disabled popups, Earth Engine
+    // imagery, the survey working area, the process preset, the active LV
+    // transformer, the status register's warning filter and sort, the camera,
+    // the pinned transformers and the Fast-mode customer and pole sources.
+    LayerVisibility,
+    PopupLayersDisabled,
+    EarthEngineExplorer,
+    WorkingArea,
+    ProcessPreset,
+    ActiveLvTransformer,
+    StatusWarningTypes,
+    StatusSort,
+    MapViewport,
+    PinnedTransformers,
+    FastModeCustomerSource,
+    FastModePoleSource,
 }
 impl Key {
-    pub const ALL: &'static [Key] = &[Key::ActiveProject];
+    pub const ALL: &'static [Key] = &[
+        Key::ActiveProject,
+        Key::LayerGroupCollapse,
+        Key::MapMode,
+        Key::MapDefaults,
+        Key::ToolLayout,
+        Key::TileLayers,
+        Key::ApplicationSettings,
+        Key::EditProjectionChoice,
+        Key::EditProjectionCustom,
+        Key::PinnedGroupVisible,
+        Key::ProfileOccupancy,
+        Key::CreateTransformerMapSources,
+        Key::UploadDialogLayout,
+        Key::PropertiesDockWidth,
+        Key::StyleCenterLayout,
+        Key::LayerVisibility,
+        Key::PopupLayersDisabled,
+        Key::EarthEngineExplorer,
+        Key::WorkingArea,
+        Key::ProcessPreset,
+        Key::ActiveLvTransformer,
+        Key::StatusWarningTypes,
+        Key::StatusSort,
+        Key::MapViewport,
+        Key::PinnedTransformers,
+        Key::FastModeCustomerSource,
+        Key::FastModePoleSource,
+    ];
     pub fn name(self) -> &'static str {
-        match self {
-            Key::ActiveProject => "active_project",
-        }
+        values::name(self)
     }
     fn parse(name: &str) -> Option<Key> {
         Self::ALL.iter().copied().find(|key| key.name() == name)
     }
     /// Whether the key belongs to one project rather than to the account.
     pub fn project_scoped(self) -> bool {
-        match self {
-            Key::ActiveProject => false,
-        }
+        values::project_scoped(self)
     }
     /// The largest stored value, in bytes of its JSON text.
     pub fn max_bytes(self) -> usize {
-        match self {
-            Key::ActiveProject => DEFAULT_MAX_BYTES,
-        }
+        values::max_bytes(self)
     }
     /// The canonical form of an offered or stored value, or `None` when the
     /// key's contract refuses it.
     pub fn admit(self, value: &Value) -> Option<Value> {
-        match self {
-            Key::ActiveProject => values::active_project(value),
-        }
+        values::admit(self, value)
     }
 }
 

@@ -30,7 +30,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 7 |
 | [22. Operations product code](#22-operations-product-code) | 5 |
-| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 5 |
+| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 6 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 6 |
 | [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 5 |
 <!-- /toc -->
@@ -541,6 +541,8 @@ Rules: [PRINCIPLES.md ยง5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) โ
 - **DS Grid project model bytes and the remaining TypeScript listing callers** (2026-10-19): the retained project catalogue is Kernel SQLite on every edge ([grid-project-catalog.md](../docs/contracts/grid-project-catalog.md)), but verified MV package bytes and their exact-version cache are still TypeScript and IndexedDB (`ds-web/src/lib/grid/version-cache.ts`, `ds-grid-catalog` `remote_versions`; `getGridModelVersion` and the signed-URL download in `models-api.ts`). Move acquisition and the byte store to the Rust owner (Core on Desktop, OPFS in the browser) and delete those modules. `listGridModelsForProject` still serves publication (`cli-dsgrid.ts`, `GridCreateVersionDialog.svelte`, include-deleted), `GridCombineDialog.svelte`, the assets index and the `grid-catalog` route: move each to the Kernel catalogue or a Core read and delete the TypeScript walk. Printing's MV picker still asks the closed shell door `dsgrid.project.list --mv-picker`; read it through Core once that command returns.
 
 - **Project and instance isolation** (`docs/prompts/claude-project-instance-isolation.md`; contract `project-and-instance-isolation-contract.md`): after the Server execution context: live Desktop instance discovery and CLI/MCP routing that refuses stale or ambiguous targets; generation-fenced UI session state; multi-principal authority and fair capacity across Solar, printing and a third operation on one Server.
+
+- **Retire the UI preference importer after its recovery window** (2026-10-20): the `persistent_cache` legacy source of `ui_preferences` exists only to adopt the retired `ds_web_store` `cache` `persist:` preference rows once per identity ([durable-store.md](../docs/contracts/durable-store.md#imports)). When the window closes, delete it whole and before the final `ds_web_store` cleanup: Kernel `src/ui_preferences/legacy.rs` with `legacy_tests.rs`, `Source::PersistentCache` (and `Operation::Legacy`/`Import` if no other source remains), and ds-web's read-only reader of those rows.
 
 ## 24. Owner feature requests (CLI-first, after stabilization)
 

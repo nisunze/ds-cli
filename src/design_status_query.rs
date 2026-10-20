@@ -27,7 +27,7 @@ const MAX_INPUT_BYTES: usize = crate::design::MAX_STATUS_REGISTER_BYTES;
 pub const ADMIN_NONE_VALUE: &str = "__admin_bounds_none__";
 
 const ADMIN_LEVELS: [&str; 4] = ["district", "sector", "cell", "village"];
-const SORT_KEYS: [&str; 10] = [
+pub(crate) const SORT_KEYS: [&str; 10] = [
     "name",
     "district",
     "tags",
