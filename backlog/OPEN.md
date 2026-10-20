@@ -24,7 +24,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 4 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 2 |
 | [15. Project delivery code](#15-project-delivery-code) | 3 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 13 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 14 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 8 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 4 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
@@ -310,6 +310,8 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 - **Clearance report case identity**: the Gisagara M3 report prints `vertical at — (null °C)` although its vertical case is 75 °C. Fix the producer/report projection from the exact selected case; never patch the label to a per-model constant.
 
 ## 16. Map data, datasets and screen styling
+
+- **Empty XLSX intake panics during cleaning.** `ds-network/crates/ds-io/src/clean.rs::flatten_header` indexes `grid[0]` when `source_inspect` receives a valid workbook with an empty worksheet. Both the existing parser and the Calamine trial produce the same empty raw `Grid`; the failure predates the replacement. Return the declared empty/refusal outcome without panicking, and prove empty-sheet, one-cell and header-only intake natively and in executed WASM. Leave the current concurrent implementation work untouched.
 
 - **One Datasets workspace and atomic coverage updates** (owner, 2026-10-12): finish the native CLI/MCP controls consumed by the installed Datasets workspace's National data, Project data and Cached vector tiles tabs. Mount/read only the selected category; prove request counts and zero unused-category reads. Reconcile the held pre-retirement Rwanda catalogue through the existing `village_boundaries` authority and `rwanda_villages` alias contract rather than offering retired Foundation rows as unpublished downloads. Use an admitted canonical local village holding where available; do not disguise missing publication as readiness. Produce a digest-pinned comparison artifact of current merged, meaningfully buffered transformer/MV extents against each source room's completed coverage, including changed extents and missing patches. One governed Seed/Update operation should reuse a verified shared project asset when available, otherwise acquire only missing or explicitly changed areas locally. Stage, validate, deduplicate and spatially index immutable new rows before atomically publishing their manifest/generation; old complete readers remain usable on cancellation or failure. Coalesce concurrent updates under exact project/principal/source/version/coverage fences and retain source provenance and transformer readiness. Bind the same native operation to the thin UI; no per-print fetch, blanket refetch, unchecked shared download or polling. Offline PMTiles controls remain in the bounded package item below; GeoJSON printing remains current and vector-tile print fidelity is a later experiment.
 
