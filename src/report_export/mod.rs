@@ -24,6 +24,7 @@ pub mod jcs;
 pub mod preview;
 pub mod proof;
 pub mod survey;
+pub mod voltage_drop_a4;
 
 pub use survey::{
     survey_append, survey_forms, survey_layer_name, HeldSurveyForm, SurveyAppend,
