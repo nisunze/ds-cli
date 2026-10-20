@@ -36,6 +36,8 @@ pub static COMMAND: Command = Command {
         Refusal {code:"core_profile_styles_unavailable",when:"a null View style demand cannot admit the same native UID/lane/audience/project authored ds_grid/profile document within 64 KiB, or its owner changes before adoption",remedy:"restore the intended project style through Style Center and retry intentionally; no default pens or alternate account are substituted"},
         Refusal {code:"core_profile_source_changed",when:"rehydration does not reproduce the exact original model/history/CRS/managed engine",remedy:"retain the original and explicitly resolve the changed source or component; no candidate worker is adopted"},
         Refusal {code:"core_profile_history_conflict",when:"the captured authored history differs from the retained head",remedy:"read the retained head before submitting the intended operation again"},
+        Refusal {code:"core_profile_draft_stale",when:"a draft kept by a Network without authored recovery cannot be reproduced exactly by the current Network",remedy:"send detail.discard (action discard_recovery; its unsaved edits are lost), then reopen the package"},
+        Refusal {code:"core_profile_session_active",when:"discard_recovery names a live session",remedy:"use the live session's discard and close actions"},
         Refusal {code:"core_profile_capacity",when:"Core already retains eight active Profile processes",remedy:"close an existing Profile session before opening another"},
         Refusal {code:"server_owner_changed",when:"the protected Core credential changed or no longer authorizes the owner",remedy:"sign in under the intended account and explicitly restart Core"},
         Refusal {code:"server_refused",when:"the same-lane protected Core cannot be reached or the native Network owner refuses",remedy:"start the same installed Core and read the native refusal; do not switch identity or weaken package fences"},
@@ -84,6 +86,7 @@ pub fn command(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         Operation::State { .. } => "state",
         Operation::Checkpoint { .. } => "checkpoint",
         Operation::Close { .. } => "close",
+        Operation::DiscardRecovery { .. } => "discard_recovery",
         Operation::View { .. } => "view",
         Operation::Scene { .. } => "scene",
         Operation::GisProjection { .. } => "gis_projection",
@@ -387,7 +390,7 @@ pub(crate) async fn invoke(
         crate::host::prepare_directory(&scratch).map_err(crate::failure)?;
         let style_demand = matches!(&request.operation, Operation::View { style_document, .. } if style_document.is_null());
         let editing = matches!(&request.operation, Operation::PackageCheckpoint { .. } | Operation::EditMode { .. } | Operation::Control { .. }
-            | Operation::SaveControl { .. } | Operation::Discard { .. });
+            | Operation::SaveControl { .. } | Operation::Discard { .. } | Operation::DiscardRecovery { .. });
         let authorized = || {
             app.auth.authorize(&app.connection.owner)
                 .map_err(|e| Failure::unauthorized("server_owner_changed", e))?;

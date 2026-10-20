@@ -712,6 +712,12 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         Some("core_profile_session_unavailable") => Failure::new(class, "core_profile_session_unavailable", message),
         Some("core_profile_history_conflict") => Failure::new(class, "core_profile_history_conflict", message),
         Some("core_profile_capacity") => Failure::new(class, "core_profile_capacity", message),
+        Some("core_profile_draft_stale") => {
+            Failure::new(class, "core_profile_draft_stale", message)
+        }
+        Some("core_profile_session_active") => {
+            Failure::new(class, "core_profile_session_active", message)
+        }
         Some("core_profile_native_refused") => Failure::new(class, "core_profile_native_refused", message),
         // The Server connection's own fence.
         Some("server_owner_changed") => Failure::new(class, "server_owner_changed", message),
@@ -764,6 +770,11 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         (Some("capacity_exhausted"), Some(retry)) => refusal.detail(json!({
             "retry_after_ms": retry.clone(),
             "scope": value.get("scope").cloned().unwrap_or(Value::Null),
+        })),
+        // The stale draft's exact discard request is what its caller sends.
+        (Some("core_profile_draft_stale"), _) => refusal.detail(json!({
+            "session_id": value["session_id"], "model_id": value["model_id"],
+            "expected_history": value["expected_history"], "discard": value["discard"],
         })),
         _ => refusal,
     }

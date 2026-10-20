@@ -10,6 +10,7 @@ use ds_sync_store::{
     MAX_PROFILE_CHECKPOINT_BYTES, PROFILE_JOURNAL_DRAFT_SCHEMA, ProfileDraft, ProfileDraftHeader,
     ProfileJournalDraftHeader,
 };
+pub(super) mod upgrade;
 
 /// Durable authored rows of the current journal draft, as Core retained them.
 #[derive(Clone, Debug, Default)]
@@ -95,20 +96,7 @@ fn retain_journal(
         .iter()
         .map(|entry| entry.as_bytes())
         .collect();
-    let mut metadata = document.clone();
-    metadata.entries.clear();
-    metadata.base_entries = 0;
-    let metadata = serde_json::to_vec(&metadata).map_err(invalid)?;
-    let header = ProfileJournalDraftHeader {
-        schema: PROFILE_JOURNAL_DRAFT_SCHEMA.into(),
-        source: value.source.clone(),
-        history: document.history.clone(),
-        entry_count: document.entry_count,
-        entry_bytes: sizes.iter().sum(),
-        chain_sha256: document.chain_sha256.clone(),
-        metadata_sha256: sha(&metadata),
-        metadata_bytes: metadata.len() as u64,
-    };
+    let (header, metadata) = journal_header(&document, &value.source, &sizes)?;
     authorized()?;
     Store::open(database)
         .map_err(source_error)?
@@ -135,6 +123,32 @@ fn retain_journal(
     });
     value.has_draft = true;
     authorized()
+}
+
+/// The durable journal header over all rows and its opaque metadata: the
+/// authored document without rows, so it stays small whatever the edit count.
+fn journal_header(
+    document: &NativeProfileAuthoredCheckpointV1,
+    source: &ProfileSourceHeader,
+    sizes: &[u64],
+) -> Result<(ProfileJournalDraftHeader, Vec<u8>), Failure> {
+    let metadata = NativeProfileAuthoredCheckpointV1 {
+        entries: Vec::new(),
+        base_entries: 0,
+        ..document.clone()
+    };
+    let metadata = serde_json::to_vec(&metadata).map_err(invalid)?;
+    let header = ProfileJournalDraftHeader {
+        schema: PROFILE_JOURNAL_DRAFT_SCHEMA.into(),
+        source: source.clone(),
+        history: document.history.clone(),
+        entry_count: document.entry_count,
+        entry_bytes: sizes.iter().sum(),
+        chain_sha256: document.chain_sha256.clone(),
+        metadata_sha256: sha(&metadata),
+        metadata_bytes: metadata.len() as u64,
+    };
+    Ok((header, metadata))
 }
 
 /// An older captured Network without authored recovery keeps its opaque bounded
@@ -305,11 +319,14 @@ pub(super) fn execute(
     result
 }
 
-/// Restore only exact owner-validated checkpoint bytes. Engine selection must
-/// still match the original capture; the current module selection is irrelevant.
+/// Restore only exact owner-validated recovery through the original capture.
+/// The single exception is an opaque draft kept by a Network without authored
+/// recovery: when the current same-lane Network keeps authored recovery, it
+/// must reproduce that exact head and replaces the draft with its journal.
 pub(super) fn restore(
     scope: Scope,
     scratch: &Path,
+    database: &Path,
     recovery: &ds_sync_store::ProfileRecovery,
     authorized: &dyn Fn() -> Result<(), Failure>,
     required: Option<NetworkCapability>,
@@ -322,6 +339,13 @@ pub(super) fn restore(
         return Err(invalid(
             "Profile recovery belongs to another captured owner",
         ));
+    }
+    if matches!(draft, ProfileDraft::Checkpoint { .. })
+        && !upgrade::pinned_authored(&recovery.source)?
+        && let Some(client) = upgrade::current_authored_engine(&scope, required.as_ref())
+    {
+        authorized()?;
+        return upgrade::checkpoint(scope, scratch, database, recovery, &client, authorized);
     }
     let pin: ds_network_client::NetworkEnginePin =
         serde_json::from_value(recovery.source.engine.clone()).map_err(invalid)?;
@@ -347,12 +371,30 @@ pub(super) fn restore(
             (session, Some(retained))
         }
     };
-    if session.model_id() != recovery.source.model_id || session.history() != draft.history() {
+    held_from(
+        scope,
+        session,
+        recovery.source.clone(),
+        draft.history().clone(),
+        retained_journal,
+        authorized,
+    )
+}
+
+/// Adopt a restored worker only at its exact retained model/history.
+fn held_from(
+    scope: Scope,
+    mut session: ProfileSession,
+    source: ProfileSourceHeader,
+    history: Value,
+    retained_journal: Option<RetainedJournal>,
+    authorized: &dyn Fn() -> Result<(), Failure>,
+) -> Result<(Held, Vec<u8>), Failure> {
+    if session.model_id() != source.model_id || session.history() != &history {
         return Err(invalid(
             "Recovered checkpoint differs from its exact model/history",
         ));
     }
-    let mut session = session;
     let snapshot = session
         .request(NativeProfileOperationV1::Snapshot, &|| false)
         .map_err(native)?;
@@ -364,15 +406,15 @@ pub(super) fn restore(
     Ok((
         Held {
             scope,
-            package_sha256: recovery.source.package_sha256.clone(),
-            source_revision: recovery.source.source_revision,
-            coordinate_system: recovery.source.coordinate_system.clone(),
+            package_sha256: source.package_sha256.clone(),
+            source_revision: source.source_revision,
+            coordinate_system: source.coordinate_system.clone(),
             retained_asset_count: asset_count,
             display_state: Default::default(),
             style: None,
             touched: Instant::now(),
-            source: recovery.source.clone(),
-            retained_history: draft.history().clone(),
+            source,
+            retained_history: history,
             retained_journal,
             has_draft: true,
             saving: false,
@@ -478,6 +520,7 @@ pub(super) fn resume(
     held: &mut BTreeMap<String, Held>,
     scope: Scope,
     scratch: &Path,
+    database: &Path,
     recovery: &ds_sync_store::ProfileRecovery,
     authorized: &dyn Fn() -> Result<(), Failure>,
 ) -> Result<Value, Failure> {
@@ -514,7 +557,7 @@ pub(super) fn resume(
                 "Core already retains eight Profile sessions",
             ));
         }
-        let (value, snapshot) = restore(scope, scratch, recovery, authorized, None)?;
+        let (value, snapshot) = restore(scope, scratch, database, recovery, authorized, None)?;
         authorized()?;
         held.insert(id.clone(), value);
         snapshot

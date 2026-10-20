@@ -415,6 +415,42 @@ without the capability keeps the v1 opaque checkpoint and its 64 MiB bound,
 whose refusal now names the required Network update. Older Core refuses a v2
 draft instead of reopening the original.
 
+### Retained drafts move to the current Network
+
+Owner report, 2026-10-20: Local Dev still refused the 64 MiB bound with the
+authored-recovery Core. Desktop always opens with `recover:true`, which found
+Model 1's retained v1 draft pinned to Network 0b5317ff, an engine without
+`profile_authored_checkpoint_v1`. Every reopen restored that engine, so the
+first edit after a view rebuilt the opaque checkpoint past 64 MiB again.
+
+A v1 draft keeps its pin only while the current same-lane Network also lacks
+`profile_authored_checkpoint_v1`. When the current Network declares it (with
+`profile_session_v1`, `profile_package_open_v1`, `profile_edit_controls_v1` and
+any capability the request needs), restart, rehydration or `open recover:true`
+first proves the move. That Network reopens the draft without its calculated
+results and emits its complete authored journal, then prepares the exact
+original (revision, CRS, model and initial history) and replays the journal to
+the exact retained history. Only then one SQLite transaction re-pins the
+original and replaces the v1 checkpoint with `ds.core.profile-draft/v2` rows;
+the receipt is the ordinary recovered head with the new `engine`. The older
+engine is not needed. An original without a draft is re-pinned the same way
+when the current Network reproduces it exactly, and otherwise keeps its pin.
+A copy of the owner's store moved all four of its drafts (9, 0, 0 and 0
+commands) to Network r11.
+
+If the current Network refuses the draft or reaches another head, the request
+refuses with `core_profile_draft_stale` and changes nothing.
+Its `detail.discard` is the exact closed operation
+`{"action":"discard_recovery","session_id":…,"model_id":…,"expected_history":…}`.
+That action removes the session's retained original and draft without starting a
+Network, only while the session is not live (`core_profile_session_active`) and
+only at the exact model and retained head (`core_profile_history_conflict`).
+Its receipt carries `closed: true`, `discarded: true` and the discarded
+`history`; the unsaved edits are lost, and the next open starts from the package.
+Older Core refuses `discard_recovery` as an unknown action. Desktop asks the
+person first and only then sends exactly `detail.discard` through this command
+before reopening; it never builds or chooses a discard itself.
+
 ### Intentional Profile style demand
 
 The existing contract-1 View `style_document` now uses JSON `null` to demand the
