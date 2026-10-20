@@ -124,6 +124,31 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
         "an internal failure to serialise an already typed development request, \
          reported as a defect (class internal), never a refusal",
     ),
+    (
+        "release_identity_clock",
+        "formatting the current UTC time as RFC 3339 fails only outside years \
+         0-9999; an internal defect (class internal), never a refusal",
+    ),
+    (
+        "catalog_not_found",
+        "the global catalog helpers in ds-cli-auth serve only ds-cli-library, \
+         which ds does not link until the library domain returns (DECOUPLING-003)",
+    ),
+    (
+        "catalog_artifact_unverified",
+        "constructed only for ds-cli-library global download, which ds does \
+         not link until the library domain returns (DECOUPLING-003)",
+    ),
+    (
+        "catalog_member_pin_invalid",
+        "constructed only for ds-cli-library resolve-member, which ds does not \
+         link until the library domain returns (DECOUPLING-003)",
+    ),
+    (
+        "catalog_member_not_found",
+        "constructed only for ds-cli-library resolve-member, which ds does not \
+         link until the library domain returns (DECOUPLING-003)",
+    ),
 ];
 
 /// Call sites whose code argument this scan cannot read, and why.

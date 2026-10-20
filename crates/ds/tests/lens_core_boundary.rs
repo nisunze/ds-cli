@@ -104,6 +104,9 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     ("ds-cli-dsgrid", Layer::CorePending, 2),
     // Solar runs read the workspace the application holds open.
     ("ds-cli-solar", Layer::CorePending, 1),
+    // Paired print preview routing (1cd5b34f); revisit after Codex's PDF/print
+    // rework. It declares no window command of its own.
+    ("ds-cli-report", Layer::CorePending, 2),
     // `ds-cli-pm` left on 2026-09-20: every Project Management command is a
     // governed action on `POST /api/v1/pm` under the native credential, and
     // the kernel decides what the graph means and which command a flag
@@ -283,7 +286,9 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // owns headless preview computation. It cannot save or publish a layout.
     // 26 → 27 declarations: printing.view consumes the window's held catalogue and page
     // camera; pure headless view_plan remains report.layout.edit.
-    ("ds-cli-desktop", 27),
+    // 27 → 28 on 2026-10-20: the shared constructor of the three local-dev
+    // Transformer page controls (57da7815); see WINDOW_BACKLOG.
+    ("ds-cli-desktop", 28),
     // The lens crate. Window commands are its purpose; its server commands
     // (the machine-local layer catalogue) are not counted here.
     // Profile view/set/select are display and transient selection controls in
@@ -304,7 +309,8 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // history exclusion and packing remain headless engine/worker authority.
     // 48 → 49: a43c9c95 exposes read-only picking in this window's mounted
     // Profile scene; its native hit ordering does not gain a window dependency.
-    ("ds-cli-map", 49),
+    // 49 → 48 on 2026-10-20: the 3D map and `map.renderer.configure` removed.
+    ("ds-cli-map", 48),
     // ── core, pending a headless form ───────────────────────────────────────
     // `ds-cli-assets` left this ledger on 2026-09-20: 9 → 0, every catalogue
     // command headless (contract 01 of the dsgrid-authority program).
@@ -323,6 +329,8 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // the one declared window command admitted on 2026-09-22.
     ("ds-cli-dsgrid", 1),
     ("ds-cli-solar", 16),
+    // Paired print preview routing (1cd5b34f); no window command of its own.
+    ("ds-cli-report", 0),
     // `ds-cli-pm` left this ledger on 2026-09-20: 9 → 8 on 2026-09-19 when
     // `pm plan` took the native headless route, 8 → 0 when the other eight
     // followed it (contract 01 of the dsgrid-authority program) and the
@@ -548,7 +556,10 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // contributes the existing shared-constructor declaration difference.
     // Installed baseline is 27 registered commands (a shared constructor has
     // one fewer literal declaration). printing.view adds one admitted lens.
-    ("desktop", 28),
+    // 28 → 31 on 2026-10-20: desktop.dev.snapshot/select/refresh (57da7815),
+    // the local-dev drivers agents use to observe and test the Linux dev
+    // desktop from the CLI, since that display cannot be clicked from a shell.
+    ("desktop", 31),
     // `dsgrid.model.prepare-project` is headless; `dsgrid.profile.open` is
     // the one window command admitted on 2026-09-22.
     ("dsgrid", 1),
@@ -589,7 +600,8 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 // The same three admitted Profile lens intents counted in `map` above.
 // The admitted mounted Profile pick and printing view add one each.
 // 98 → 97 on 2026-10-20: the 3D map and `map.renderer.configure` removed.
-const WINDOW_BACKLOG_TOTAL: u64 = 97;
+// 97 → 100 on 2026-10-20: the three local-dev desktop.dev.* drivers.
+const WINDOW_BACKLOG_TOTAL: u64 = 100;
 
 #[test]
 fn paired_draft_preview_keeps_a_headless_computation_owner() {

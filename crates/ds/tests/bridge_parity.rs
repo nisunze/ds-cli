@@ -99,7 +99,6 @@ struct App {
     style_kernel: Source,
     style_renderer: Source,
     sync_center: Source,
-    feedback_submit: Source,
     solar_portfolio_run: Source,
     solar_batch_adapter: Source,
     solar_portfolio_receipt: Source,
@@ -138,7 +137,6 @@ fn app() -> App {
         style_kernel: read("src/lib/styles/kernel.ts"),
         style_renderer: read("src/lib/api/styles.ts"),
         sync_center: read("src/lib/desktop/cli-sync-center.ts"),
-        feedback_submit: read("src/lib/feedback/submit.ts"),
         solar_batch_adapter: read("src/lib/desktop/cli-solar-portfolio-batch.ts"),
         solar_portfolio_run: read("src/lib/solar/native-batch.ts"),
         reliability_page: read("src/routes/sre/+page.svelte"),
@@ -1354,9 +1352,9 @@ fn platform_reliability_no_longer_travels_through_the_window() {
         !ds_web().join("src/lib/desktop/cli-sre.ts").exists(),
         "the paired SRE adapter outlived its last caller"
     );
-    // The Reliability page itself is untouched: a person at a window still
-    // reads the same two owner answers on /sre.
-    assert!(app.reliability_page.contains("fetchSreOverview"));
+    // A person at a window still reads the same owner answer on /sre, now
+    // through the Kernel.
+    assert!(app.reliability_page.contains("kernel.sreOverview("));
 }
 
 #[test]
@@ -1548,7 +1546,8 @@ fn the_shared_backlog_no_longer_travels_through_the_window() {
     //
     // Since 2026-09-18 there is one route. The crate does not depend on
     // `ds-cli-desktop` (`lens_core_boundary.rs` holds that), the desktop's
-    // three operations are retired, and the adapter is deleted.
+    // three operations are retired, and the adapter is deleted. Human feedback
+    // from the window reaches the Kernel's typed feedback exchange.
     let app = app();
     let allowlist = between(
         &app.transport,
@@ -1563,15 +1562,6 @@ fn the_shared_backlog_no_longer_travels_through_the_window() {
              no longer sends it"
         );
     }
-    // The window retains human feedback; agent submissions belong to the
-    // native client and must not be restored as a window-owned path.
-    assert!(
-        app.feedback_submit.contains("reporter_kind: 'human'")
-            && app
-                .feedback_submit
-                .contains("export async function submitHumanFeedback("),
-        "the application's human feedback submission lost its typed reporter kind or executor"
-    );
 }
 
 #[test]

@@ -3574,13 +3574,17 @@ fn profile_pick_cli_chapter_and_typed_profile_share_one_read_only_descriptor() {
 
 #[test]
 fn profile_calculation_tickets_are_a_typed_cli_projection_with_closed_mcp_arguments() {
+    // A missing descriptor keeps the fence deterministic on a machine that
+    // also runs paired desktops.
+    let temp = TestDir::new("calculation");
+    let missing = temp.0.join("no-desktop.json").to_string_lossy().into_owned();
     let (messages, _) = mcp(
         &["--exposure", "commands", "--profile", "grid-profile"],
         &[
             json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
             json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"map_profile_calculation","arguments":{"model":"model-a","request":"{\"action\":\"start\",\"job_id\":\"a\"}","publication_id":"forged"}}}),
-            json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"map_profile_calculation","arguments":{"model":"model-a","request":"{\"action\":\"start\",\"job_id\":\"a\",\"scene_transfer\":{\"mode\":\"exact_json\",\"fallback\":true}}"}}}),
-            json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"map_profile_calculation","arguments":{"model":"model-a","request":"{\"action\":\"start\",\"job_id\":\"a\",\"scene_transfer\":{\"mode\":\"delta\",\"base_signature\":\"sha256:bad\"}}"}}}),
+            json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"map_profile_calculation","arguments":{"model":"model-a","desktop-descriptor":missing,"request":"{\"action\":\"start\",\"job_id\":\"a\",\"scene_transfer\":{\"mode\":\"exact_json\",\"fallback\":true}}"}}}),
+            json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"map_profile_calculation","arguments":{"model":"model-a","desktop-descriptor":missing,"request":"{\"action\":\"start\",\"job_id\":\"a\",\"scene_transfer\":{\"mode\":\"delta\",\"base_signature\":\"sha256:bad\"}}"}}}),
         ],
     );
     let tools = response(&messages, 1)["result"]["tools"]

@@ -29,7 +29,7 @@ pub fn scratch() -> Result<tempfile::TempDir, Failure> {
             path.is_absolute() && !path.starts_with("/tmp") && !path.starts_with("/dev/shm")
         })
         .or_else(|| {
-            ds_cli_desktop::discover::app_data_dir("com.dsplatform.griddesign")
+            ds_cli_contract::util::app_data_dir("com.dsplatform.griddesign")
                 .map(|path| path.join("network-scratch"))
         })
         .ok_or_else(|| {

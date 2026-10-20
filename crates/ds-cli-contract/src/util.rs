@@ -1,5 +1,6 @@
 //! Domain-free formatting and validation shared by CLI hosts.
 
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Shorten by Unicode scalar values, reserving the last position for an ellipsis.
@@ -115,5 +116,32 @@ mod tests {
         for path in ["", "/member", "a\\b", "a//b", "a/./b", "a/../b", "a/"] {
             assert!(!safe_relative(path));
         }
+    }
+}
+
+/// Where a Tauri app with `identifier` keeps its app data, matching
+/// `AppHandle::path().app_data_dir()` on each platform.
+pub fn app_data_dir(identifier: &str) -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("APPDATA").map(|base| PathBuf::from(base).join(identifier))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::env::var_os("HOME").map(|home| {
+            PathBuf::from(home)
+                .join("Library/Application Support")
+                .join(identifier)
+        })
+    }
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .or_else(|| {
+                std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
+            })
+            .map(|base| base.join(identifier))
     }
 }
