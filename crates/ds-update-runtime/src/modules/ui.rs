@@ -105,7 +105,7 @@ impl CapturedReleaseAuthority {
     ) -> Result<TrustedUiGrant, String> {
         self.acquire_ui_with(component, None, cancelled, |url| self.read_release(url))
     }
-    fn read_release(&self, url: &str) -> Result<Vec<u8>, String> {
+    pub(super) fn read_release(&self, url: &str) -> Result<Vec<u8>, String> {
         let mut response = ureq::get(url)
             .header("Accept", "application/json")
             .header("x-api-key", &self.gateway_key)
