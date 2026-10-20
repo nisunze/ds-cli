@@ -31,7 +31,9 @@ pub use gateway::{
 };
 mod layers;
 pub mod member_form_grants;
+mod compiled_profile;
 mod profile;
+pub use compiled_profile::{compiled_catalog_sha256, compiled_profile, CompiledProfileError};
 mod project_data;
 mod project_form_editor;
 mod project_forms;
@@ -102,7 +104,8 @@ pub use layers::{
     STYLE_CATALOG_RESPONSE_LIMIT,
 };
 pub use profile::{
-    ClientProfile, ClientProfileInput, DeploymentLane, ProfileError, CLIENT_PROFILE_SCHEMA,
+    ClientProfile, ClientProfileInput, DeploymentLane, ProfileError, ProfileParts,
+    CLIENT_PROFILE_SCHEMA,
     DEVICE_CREDENTIAL_AUDIENCE_SCHEMA, NATIVE_CLIENT_ID, PROJECT_FORMS_ACTION,
     PROJECT_FORMS_METHOD, PROJECT_FORMS_PATH, PROJECT_FORM_EDITOR_ACTION, PROJECT_REPORT_ACTIONS,
     PROJECT_REPORT_METHOD, PROJECT_REPORT_PATH, SOLAR_SNAPSHOT_ACTION, SOLAR_SNAPSHOT_METHOD,

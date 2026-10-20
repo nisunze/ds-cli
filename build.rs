@@ -61,5 +61,5 @@ fn main() {
     );
     build_ui::emit(&root);
     build_capabilities::emit(&root);
-    build_gateway::emit();
+    build_gateway::emit(&root);
 }

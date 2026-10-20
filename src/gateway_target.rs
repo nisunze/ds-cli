@@ -73,6 +73,36 @@ pub fn identity() -> &'static str {
     IDENTITY
 }
 
+/// One release channel's deployed gateway, as this build was compiled: what
+/// a native client (Core) needs to speak to it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReleaseGateway {
+    pub origin: &'static str,
+    pub api_key: &'static str,
+    pub firebase_project: &'static str,
+    pub firebase_api_key: &'static str,
+}
+
+/// The gateway of release `channel` (a `releaseTargets` key: `stable`,
+/// `canary`), or the build variable this build was compiled without.
+pub fn release_gateway(channel: &str) -> Result<ReleaseGateway, &'static str> {
+    let (_, lane) = RELEASE_CHANNELS
+        .iter()
+        .find(|(name, _)| *name == channel)
+        .ok_or("releaseTargets")?;
+    let origin = if *lane == "canary" {
+        RELEASE_ORIGIN_CANARY.ok_or("DS_GATEWAY_URL_CANARY")?
+    } else {
+        RELEASE_ORIGIN_PRODUCTION.ok_or("DS_GATEWAY_URL_PRODUCTION")?
+    };
+    Ok(ReleaseGateway {
+        origin,
+        api_key: PLATFORM_API_KEY.ok_or("DS_PLATFORM_API_KEY")?,
+        firebase_project: FIREBASE_PROJECT.ok_or("DS_FIREBASE_PROJECT_ID")?,
+        firebase_api_key: FIREBASE_API_KEY.ok_or("DS_FIREBASE_API_KEY")?,
+    })
+}
+
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
     use wasm_bindgen::prelude::*;

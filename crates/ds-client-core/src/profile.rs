@@ -292,37 +292,22 @@ pub struct ClientProfile {
     credential_audience_sha256: String,
 }
 
+/// What a profile carries beyond the compiled routes: its lane's gateway,
+/// keys, Firebase audience and provenance.
+pub struct ProfileParts<'a> {
+    pub lane: DeploymentLane,
+    pub source_revision: &'a str,
+    pub descriptor_sha256: &'a str,
+    pub firebase_project_id: &'a str,
+    pub firebase_api_key: &'a str,
+    pub gateway_api_key: &'a str,
+    pub gateway_origin: &'a str,
+}
+
 impl ClientProfile {
     pub fn validate(input: ClientProfileInput) -> Result<Self, ProfileError> {
         if input.schema_version != CLIENT_PROFILE_SCHEMA {
             return Err(ProfileError::Schema);
-        }
-        if input.source_revision.is_empty()
-            || input.source_revision.trim() != input.source_revision
-            || input.source_revision.len() > 128
-            || input
-                .source_revision
-                .bytes()
-                .any(|byte| byte.is_ascii_control())
-        {
-            return Err(ProfileError::SourceRevision);
-        }
-        if input.descriptor_sha256.len() != 64
-            || !input
-                .descriptor_sha256
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        {
-            return Err(ProfileError::DescriptorDigest);
-        }
-        if !valid_project_id(&input.firebase_project_id) {
-            return Err(ProfileError::FirebaseProject);
-        }
-        if !valid_public_key(&input.firebase_api_key) {
-            return Err(ProfileError::FirebaseKey);
-        }
-        if !valid_public_key(&input.gateway_api_key) {
-            return Err(ProfileError::GatewayKey);
         }
         if input.auth_link_begin_method != AUTH_LINK_BEGIN_METHOD
             || input.auth_link_begin_path != AUTH_LINK_BEGIN_PATH
@@ -467,7 +452,47 @@ impl ClientProfile {
         {
             return Err(ProfileError::DataDistributionRoute);
         }
-        let origin = Url::parse(&input.gateway_origin).map_err(|_| ProfileError::GatewayOrigin)?;
+        Self::from_parts(ProfileParts {
+            lane: input.lane,
+            source_revision: &input.source_revision,
+            descriptor_sha256: &input.descriptor_sha256,
+            firebase_project_id: &input.firebase_project_id,
+            firebase_api_key: &input.firebase_api_key,
+            gateway_api_key: &input.gateway_api_key,
+            gateway_origin: &input.gateway_origin,
+        })
+    }
+
+    /// One profile over this build's compiled routes.
+    pub fn from_parts(input: ProfileParts<'_>) -> Result<Self, ProfileError> {
+        if input.source_revision.is_empty()
+            || input.source_revision.trim() != input.source_revision
+            || input.source_revision.len() > 128
+            || input
+                .source_revision
+                .bytes()
+                .any(|byte| byte.is_ascii_control())
+        {
+            return Err(ProfileError::SourceRevision);
+        }
+        if input.descriptor_sha256.len() != 64
+            || !input
+                .descriptor_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(ProfileError::DescriptorDigest);
+        }
+        if !valid_project_id(input.firebase_project_id) {
+            return Err(ProfileError::FirebaseProject);
+        }
+        if !valid_public_key(input.firebase_api_key) {
+            return Err(ProfileError::FirebaseKey);
+        }
+        if !valid_public_key(input.gateway_api_key) {
+            return Err(ProfileError::GatewayKey);
+        }
+        let origin = Url::parse(input.gateway_origin).map_err(|_| ProfileError::GatewayOrigin)?;
         if origin.scheme() != "https"
             || !origin.username().is_empty()
             || origin.password().is_some()
@@ -494,11 +519,11 @@ impl ClientProfile {
             CLIENT_PROFILE_SCHEMA,
             input.lane.token(),
             NATIVE_CLIENT_ID,
-            &input.source_revision,
-            &input.descriptor_sha256,
-            &input.firebase_project_id,
-            &input.firebase_api_key,
-            &input.gateway_api_key,
+            input.source_revision,
+            input.descriptor_sha256,
+            input.firebase_project_id,
+            input.firebase_api_key,
+            input.gateway_api_key,
             &gateway_origin,
             AUTH_LINK_BEGIN_METHOD,
             AUTH_LINK_BEGIN_PATH,
@@ -622,7 +647,7 @@ impl ClientProfile {
             DEVICE_CREDENTIAL_AUDIENCE_SCHEMA,
             input.lane.token(),
             NATIVE_CLIENT_ID,
-            &input.firebase_project_id,
+            input.firebase_project_id,
         ] {
             audience_hasher.update((value.len() as u64).to_be_bytes());
             audience_hasher.update(value.as_bytes());
@@ -630,11 +655,11 @@ impl ClientProfile {
         let credential_audience_sha256 = format!("{:x}", audience_hasher.finalize());
         Ok(Self {
             lane: input.lane,
-            source_revision: input.source_revision,
-            descriptor_sha256: input.descriptor_sha256,
-            firebase_project_id: input.firebase_project_id,
-            firebase_api_key: input.firebase_api_key,
-            gateway_api_key: input.gateway_api_key,
+            source_revision: input.source_revision.to_owned(),
+            descriptor_sha256: input.descriptor_sha256.to_owned(),
+            firebase_project_id: input.firebase_project_id.to_owned(),
+            firebase_api_key: input.firebase_api_key.to_owned(),
+            gateway_api_key: input.gateway_api_key.to_owned(),
             gateway_origin,
             profile_sha256,
             credential_audience_sha256,
