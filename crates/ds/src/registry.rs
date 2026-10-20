@@ -905,11 +905,6 @@ static SOLAR_ENTRIES: &[Entry] = &[
 
 static MAP_ENTRIES: &[Entry] = &[
     Entry {
-        command: &ds_cli_map::scene::COMMAND,
-        handler: ds_cli_map::scene::run,
-        render: ds_cli_map::scene::render,
-    },
-    Entry {
         command: &ds_cli_map::print_schema::COMMAND,
         handler: ds_cli_map::print_schema::run,
         render: ds_cli_map::print_schema::render,
@@ -988,11 +983,6 @@ static MAP_ENTRIES: &[Entry] = &[
         command: &ds_cli_map::grid_lasso::COMMAND,
         handler: ds_cli_map::grid_lasso::run,
         render: ds_cli_map::grid_lasso::render,
-    },
-    Entry {
-        command: &ds_cli_map::renderer_configure::COMMAND,
-        handler: ds_cli_map::renderer_configure::run,
-        render: ds_cli_map::renderer_configure::render,
     },
     Entry {
         command: &ds_cli_map::draw::COMMAND,

@@ -562,7 +562,8 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // engineering authority stays native and headless (see crate ceiling).
     // Deliberate local Save targets the held RAM session, never project data.
     // a43c9c95 adds the mounted read-only Profile pick lens.
-    ("map", 49),
+    // 49 → 48 on 2026-10-20: the 3D map and `map.renderer.configure` removed.
+    ("map", 48),
     ("solar", 16),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
     // 8 → 0 on 2026-09-20: task list/read/create/update/assign/respond and
@@ -587,7 +588,8 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 // Computation remains the existing headless Rust usage/REG owner.
 // The same three admitted Profile lens intents counted in `map` above.
 // The admitted mounted Profile pick and printing view add one each.
-const WINDOW_BACKLOG_TOTAL: u64 = 98;
+// 98 → 97 on 2026-10-20: the 3D map and `map.renderer.configure` removed.
+const WINDOW_BACKLOG_TOTAL: u64 = 97;
 
 #[test]
 fn paired_draft_preview_keeps_a_headless_computation_owner() {

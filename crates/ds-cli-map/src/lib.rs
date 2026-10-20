@@ -25,8 +25,6 @@ pub mod profile_results;
 pub mod profile_save;
 pub mod random_points;
 pub mod remove;
-pub mod renderer_configure;
-pub mod scene;
 pub mod survey;
 pub mod ui;
 pub mod view;
@@ -62,10 +60,8 @@ pub static DOMAIN: Domain = Domain {
     summary: "Local data, layer ordering, remote overlays, and design edits.",
     commands: &[
         &print_schema::COMMAND,
-        &scene::COMMAND,
         &view::COMMAND,
         &camera_set::COMMAND,
-        &renderer_configure::COMMAND,
         &profile::VIEW,
         &profile::SET,
         &profile::SELECT,
@@ -259,10 +255,6 @@ pub const GRID_LASSO: BridgeOp = BridgeOp {
 pub const CAMERA_SET: BridgeOp = BridgeOp {
     operation: "map.camera.set",
     arguments: &["center", "zoom", "pitch", "bearing"],
-};
-pub const RENDERER_CONFIGURE: BridgeOp = BridgeOp {
-    operation: "map.renderer.configure",
-    arguments: &["mode", "provider"],
 };
 pub const UI_OPEN: BridgeOp = BridgeOp {
     operation: "map.ui.open",
@@ -470,7 +462,6 @@ pub const BRIDGE_OPS: &[&BridgeOp] = &[
     &PROFILE_FILTER,
     &PROFILE_RETYPE,
     &GRID_LASSO,
-    &RENDERER_CONFIGURE,
     &UI_OPEN,
     &EVIDENCE_CAPTURE,
     &POINTS_ALONG,

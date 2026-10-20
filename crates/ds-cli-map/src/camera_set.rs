@@ -1,4 +1,4 @@
-//! `ds map camera set` — apply an exact camera to the active renderer.
+//! `ds map camera set` — move the paired map to an exact camera.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
@@ -14,8 +14,8 @@ pub static COMMAND: Command = Command {
     id: "map.camera.set",
     path: &["map", "camera", "set"],
     contract: 1,
-    summary: "Set the paired map's active 2D or 3D camera.",
-    purpose: "Moves the renderer already selected in the paired application to an exact WGS84 center, zoom, pitch and bearing. The shared command kernel validates the same camera contract for native and browser callers.",
+    summary: "Set the paired map's camera.",
+    purpose: "Moves the paired application's map to an exact WGS84 center, zoom, pitch and bearing. The shared command kernel validates the same camera contract for native and browser callers.",
     chapter: Chapter::MapPresentation,
     effect: Effect::LocalUi,
     authority: Authority::DesktopPairing,
@@ -28,10 +28,10 @@ pub static COMMAND: Command = Command {
         TARGET_ARG,
         DESCRIPTOR_ARG,
     ],
-    output: "The exact camera applied and the active renderer mode/provider that received it.",
+    output: "The exact camera the paired map moved to: WGS84 center, zoom, pitch and bearing, as the shared command kernel validated them.",
     examples: &[Example {
         command: "ds map camera set --center 30.0619,-1.9441 --zoom 18.5 --pitch 68 --bearing -32",
-        note: "Frame a close 3D view after selecting a renderer.",
+        note: "Frame a close, tilted view of one site.",
         runnable: false,
     }],
     refusals: &[
@@ -41,7 +41,7 @@ pub static COMMAND: Command = Command {
         crate::PAIRING_REJECTED,
         Refusal {
             code: "desktop_refused",
-            when: "the application has no active map renderer",
+            when: "the application has no open map",
             remedy: "open a project map in DS GridDesign, then retry",
         },
         crate::UNSUPPORTED,
@@ -97,29 +97,15 @@ fn center(raw: &str) -> Result<[f64; 2], Failure> {
 pub fn render(data: &Value) -> String {
     let camera = &data["camera"];
     format!(
-        "camera set  {}, {}  zoom {}  pitch {}  bearing {}  renderer {}{}\n",
+        "camera set  {}, {}  zoom {}  pitch {}  bearing {}\n",
         camera["center"][0],
         camera["center"][1],
         camera["zoom"],
         camera["pitch"],
         camera["bearing"],
-        data["mode"].as_str().unwrap_or("unknown"),
-        data["provider"]
-            .as_str()
-            .map(|provider| format!("/{provider}"))
-            .unwrap_or_default(),
     )
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn center_is_exactly_one_bounded_lon_lat_pair() {
-        assert_eq!(center("30.0619,-1.9441").unwrap(), [30.0619, -1.9441]);
-        for raw in ["30", "30,-1,8", "181,-1", "30,-86", "a,-1"] {
-            assert!(center(raw).is_err(), "{raw}");
-        }
-    }
-}
+#[path = "camera_set_tests.rs"]
+mod tests;

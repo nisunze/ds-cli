@@ -1169,7 +1169,8 @@ fn capabilities_requires_separates_the_window_from_the_server() {
     // Owner-requested live RAM controls are a window intent. Engineering and
     // full-history admission remain the headless native engine's authority.
     // 49 since `map.profile.pick` (a43c9c95) reads the mounted Profile pick.
-    assert_eq!(window["matched"], 49, "map's window commands");
+    // 48 since the 3D map and `map.renderer.configure` were removed.
+    assert_eq!(window["matched"], 48, "map's window commands");
     let ids: Vec<&str> = window["results"]
         .as_array()
         .expect("results")
@@ -1182,7 +1183,7 @@ fn capabilities_requires_separates_the_window_from_the_server() {
         "moving the camera is the window's own work: {ids:?}"
     );
     assert_eq!(window["more"]["shown"], 5);
-    assert_eq!(window["more"]["matched"], 49);
+    assert_eq!(window["more"]["matched"], 48);
 
     // Survey moved to the server. If a survey command ever needs the window
     // again, this is where it is noticed.
@@ -4989,7 +4990,6 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         .collect();
     let expected: BTreeSet<&str> = [
         "map.print.schema",
-        "map.scene.build",
         "map.data.inspect",
         "map.data.list",
         "map.data.upload",
@@ -5009,7 +5009,6 @@ fn every_map_command_is_reachable_without_the_desktop_installed() {
         "map.profile.issues",
         "map.profile.filter",
         "map.grid.lasso",
-        "map.renderer.configure",
         "map.draw",
         "map.remove",
         "map.zoom",
