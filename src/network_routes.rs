@@ -35,16 +35,6 @@ pub enum Executor {
 
 const EXECUTORS: [Executor; 3] = [Executor::Core, Executor::NetworkUnit, Executor::Refuse];
 
-impl Executor {
-    fn name(self) -> &'static str {
-        match self {
-            Executor::Core => "core",
-            Executor::NetworkUnit => "network_unit",
-            Executor::Refuse => "refuse",
-        }
-    }
-}
-
 /// An engineering job runs on Core wherever Core is installed; an in-page
 /// operation belongs to the page's Network unit where that unit is admitted.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -179,25 +169,23 @@ fn validate(manifest: &Manifest) -> Result<(), String> {
         return Err(format!("expected schema {MANIFEST_SCHEMA}"));
     }
     let platforms: BTreeSet<&str> = manifest.platforms.iter().map(String::as_str).collect();
-    if platforms.is_empty()
-        || platforms.len() != manifest.platforms.len()
-        || !platforms.iter().all(|platform| is_name(platform))
-    {
-        return Err("platforms must be distinct lowercase names".into());
+    if platforms.is_empty() || platforms.len() != manifest.platforms.len() {
+        return Err("platforms must each be declared once".into());
     }
     for executor in EXECUTORS {
+        // serde's own name for the variant, as the manifest spells it.
+        let named = serde_json::json!(executor);
         let spec = manifest
             .executors
             .get(&executor)
-            .ok_or_else(|| format!("executor `{}` is not declared", executor.name()))?;
+            .ok_or_else(|| format!("executor {named} is not declared"))?;
         if let Some(unknown) = spec
             .platforms
             .iter()
             .find(|platform| !platforms.contains(platform.as_str()))
         {
             return Err(format!(
-                "executor `{}` names the undeclared platform `{unknown}`",
-                executor.name()
+                "executor {named} names the undeclared platform `{unknown}`"
             ));
         }
     }
@@ -211,11 +199,6 @@ fn validate(manifest: &Manifest) -> Result<(), String> {
         return Err("no capability is routed".into());
     }
     for (name, capability) in &manifest.capabilities {
-        if !name.split('.').all(is_name) || !name.contains('.') {
-            return Err(format!(
-                "capability `{name}` is not a dotted lowercase name"
-            ));
-        }
         let routed: BTreeSet<&str> = capability.routes.keys().map(String::as_str).collect();
         if routed != platforms {
             return Err(format!(
@@ -226,13 +209,13 @@ fn validate(manifest: &Manifest) -> Result<(), String> {
             let executor = route.executor;
             if !exists(executor, platform) {
                 return Err(format!(
-                    "`{name}` on {platform} names `{}`, which does not exist there",
-                    executor.name()
+                    "`{name}` on {platform} names {}, which does not exist there",
+                    serde_json::json!(executor)
                 ));
             }
             match (executor, &route.refusal) {
                 (Executor::Refuse, Some(refusal))
-                    if is_name(&refusal.code) && !refusal.message.trim().is_empty() => {}
+                    if !refusal.code.trim().is_empty() && !refusal.message.trim().is_empty() => {}
                 (Executor::Refuse, _) => {
                     return Err(format!(
                         "`{name}` on {platform} refuses without a typed code and message"
@@ -264,12 +247,6 @@ fn validate(manifest: &Manifest) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-fn is_name(value: &str) -> bool {
-    let mut chars = value.chars();
-    chars.next().is_some_and(|first| first.is_ascii_lowercase())
-        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
 #[cfg(test)]

@@ -87,7 +87,7 @@ fn each_gate_refuses_a_manifest_that_breaks_it() {
         .as_object_mut()
         .unwrap()
         .remove("refuse");
-    assert!(refused(undeclared).contains("executor `refuse` is not declared"));
+    assert!(refused(undeclared).contains("executor \"refuse\" is not declared"));
 
     let mut stray_platform = committed();
     stray_platform["executors"]["core"]["platforms"] = json!(["desktop", "core", "android"]);
