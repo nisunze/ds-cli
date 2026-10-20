@@ -119,3 +119,26 @@ fn fast_mode_sources_are_admitted_by_the_design_source_resolver() {
         "no borrowed pole table is a choice"
     );
 }
+
+#[test]
+fn a_process_setup_keeps_its_bounded_fields() {
+    let setup = json!({
+        "enabled": true, "sourceAddress": "survey/customers", "sourceLabel": "Customers",
+        "processPreset": "drafting", "processPresetExplicit": true,
+        "processSettings": {"span": 40, "drop": false},
+        "autoProcessCadence": {"minPendingEdits": 3, "maxPendingSeconds": 60},
+        "differentialAutoProcess": true, "updatedAt": 1_760_000_000_000_u64
+    });
+    assert_eq!(process_setup(&setup), Some(setup.clone()));
+    for (field, wrong) in [
+        ("processPreset", json!("sideways")),
+        ("enabled", json!("yes")),
+        ("processSettings", json!({"span": "40"})),
+        ("autoProcessCadence", json!({"minPendingEdits": 0})),
+        ("extra", json!(1)),
+    ] {
+        let mut broken = setup.clone();
+        broken[field] = wrong;
+        assert!(process_setup(&broken).is_none(), "{field}");
+    }
+}

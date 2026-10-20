@@ -55,3 +55,18 @@ fn a_page_answers_exactly_what_was_asked() {
     tampered["data"]["sha256"] = json!("0".repeat(64));
     assert!(answered(query(0, Some(area)), tampered).is_err(), "a digest mismatch");
 }
+
+#[test]
+fn a_catalogue_is_held_per_project_and_admitted_again() {
+    use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
+    let edge = TestEdge::new();
+    assert_eq!(block_on(held_catalogue(&edge, "p")).unwrap(), None);
+    let retained = block_on(retain_catalogue(&edge, "p", vec![row()])).unwrap();
+    assert_eq!(retained.resources, vec![row()]);
+    let held = block_on(held_catalogue(&edge, "p")).unwrap().unwrap();
+    assert_eq!(held.resources, vec![row()]);
+    assert_eq!(block_on(held_catalogue(&edge, "q")).unwrap(), None);
+    assert!(block_on(retain_catalogue(&edge, "p", vec![json!({"id": "x"})])).is_err());
+    edge.sign_in("someone_else");
+    assert_eq!(block_on(held_catalogue(&edge, "p")).unwrap(), None);
+}

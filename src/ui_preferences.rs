@@ -38,7 +38,9 @@ pub enum Key {
     // cartography defaults, the editing toolbar, the browser's raster
     // overlays, the application settings, the editing projection, the pinned
     // group's visibility, the Profile restart record, the map-data sources a
-    // new transformer preselects, and panel and dialog geometry.
+    // new transformer preselects, panel and dialog geometry, the messages
+    // dismissed from the foreground notifications, and the class styles kept
+    // on this device for temporary layers.
     LayerGroupCollapse,
     HillshadeExaggeration,
     MapDefaults,
@@ -53,14 +55,17 @@ pub enum Key {
     UploadDialogLayout,
     PropertiesDockWidth,
     StyleCenterLayout,
+    MessagingNotificationDismissals,
+    LocalClassStyles,
     // One project's choices: layer visibility, disabled popups, the survey
-    // working area, the process preset, the active LV transformer, the status
-    // register's warning filter and sort, the camera, the pinned transformers
-    // and the Fast-mode customer and pole sources.
+    // working area, the process preset and process setup, the active LV
+    // transformer, the status register's warning filter and sort, the camera,
+    // the pinned transformers and the Fast-mode customer and pole sources.
     LayerVisibility,
     PopupLayersDisabled,
     WorkingArea,
     ProcessPreset,
+    ProcessSetup,
     ActiveLvTransformer,
     StatusWarningTypes,
     StatusSort,
@@ -86,10 +91,13 @@ impl Key {
         Key::UploadDialogLayout,
         Key::PropertiesDockWidth,
         Key::StyleCenterLayout,
+        Key::MessagingNotificationDismissals,
+        Key::LocalClassStyles,
         Key::LayerVisibility,
         Key::PopupLayersDisabled,
         Key::WorkingArea,
         Key::ProcessPreset,
+        Key::ProcessSetup,
         Key::ActiveLvTransformer,
         Key::StatusWarningTypes,
         Key::StatusSort,

@@ -100,3 +100,12 @@ fn disabled_popups_are_one_sorted_set() {
     assert!(popup_layers_disabled(&json!(["poles", 3])).is_none());
     assert!(popup_layers_disabled(&json!({"poles": true})).is_none());
 }
+
+#[test]
+fn local_class_styles_keep_typed_documents_by_trimmed_ref() {
+    let kept = local_class_styles(&json!({" ud/lv_lines ": {"type": "line", "paint": {}}}));
+    assert_eq!(kept, Some(json!({"ud/lv_lines": {"type": "line", "paint": {}}})));
+    assert!(local_class_styles(&json!({"ud/x": {"paint": {}}})).is_none());
+    assert!(local_class_styles(&json!({"": {"type": "line"}})).is_none());
+    assert!(local_class_styles(&json!([{"type": "line"}])).is_none());
+}

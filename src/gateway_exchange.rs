@@ -29,6 +29,8 @@ use serde_json::{json, Value};
 use crate::response_policy::{self, Classify, Outcome, Telemetry, RESPONSE_POLICY_SCHEMA};
 
 pub mod account;
+#[cfg(feature = "durable-store")]
+pub mod account_capabilities;
 pub mod admin;
 pub mod architecture;
 pub mod archive;

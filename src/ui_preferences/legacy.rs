@@ -136,7 +136,11 @@ fn candidate(key: Key, value: &Value, now: u64) -> Option<Value> {
         }
         Key::FastModeCustomerSource => fast_mode_customers(value),
         Key::FastModePoleSource => fast_mode_poles(value),
-        Key::PinnedTransformers | Key::ActiveProject => None,
+        Key::PinnedTransformers
+        | Key::ActiveProject
+        | Key::ProcessSetup
+        | Key::MessagingNotificationDismissals
+        | Key::LocalClassStyles => None,
     }
 }
 

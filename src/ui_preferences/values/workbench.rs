@@ -382,6 +382,26 @@ pub(in crate::ui_preferences) fn profile_occupancy(value: &Value) -> Option<Valu
     Some(Value::Object(out))
 }
 
+/// The foreground message notifications one account dismissed, at most this
+/// many, the latest kept.
+const MAX_NOTIFICATION_DISMISSALS: usize = 256;
+const MAX_MESSAGE_ID_BYTES: usize = 256;
+
+/// `messaging_notification_dismissals`: the message ids dismissed from the
+/// foreground notifications, each once, oldest first.
+pub(in crate::ui_preferences) fn notification_dismissals(value: &Value) -> Option<Value> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut kept = Vec::new();
+    for id in value.as_array()? {
+        let id = text(id, MAX_MESSAGE_ID_BYTES).filter(|id| id.trim() == *id)?;
+        if seen.insert(id) {
+            kept.push(id);
+        }
+    }
+    let skip = kept.len().saturating_sub(MAX_NOTIFICATION_DISMISSALS);
+    Some(json!(kept[skip..]))
+}
+
 #[cfg(test)]
 #[path = "workbench_tests.rs"]
 mod tests;

@@ -259,3 +259,18 @@ fn the_profile_restart_record_names_one_owner_and_retains_a_generic_scene_within
         assert!(profile_occupancy(&refused).is_none(), "{refused}");
     }
 }
+
+#[test]
+fn dismissals_keep_each_id_once_and_the_latest_256() {
+    assert_eq!(
+        notification_dismissals(&json!(["m1", "m2", "m1"])),
+        Some(json!(["m1", "m2"]))
+    );
+    let many: Vec<String> = (0..300).map(|n| format!("m{n}")).collect();
+    let kept = notification_dismissals(&json!(many)).unwrap();
+    assert_eq!(kept.as_array().unwrap().len(), 256);
+    assert_eq!(kept[0], "m44");
+    assert!(notification_dismissals(&json!([" m1"])).is_none());
+    assert!(notification_dismissals(&json!([""])).is_none());
+    assert!(notification_dismissals(&json!({"m1": true})).is_none());
+}

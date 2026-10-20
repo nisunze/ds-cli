@@ -241,6 +241,51 @@ impl Exchange for QueryPage {
     }
 }
 
+/// The catalogue this device holds for a project, as it was admitted.
+#[cfg(feature = "durable-store")]
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct HeldCatalogue {
+    pub resources: Vec<Value>,
+    pub saved_at_ms: u64,
+}
+
+/// The catalogue this device holds for one project, if any. Held per account
+/// and project; another account's never reads.
+#[cfg(feature = "durable-store")]
+pub async fn held_catalogue(
+    edge: &impl super::retained::Edge,
+    project: &str,
+) -> Result<Option<HeldCatalogue>, Refusal> {
+    project_reference(project)?;
+    let kind = crate::retained_reads::Kind::ReferenceCatalogue;
+    let observed = super::retained::read::<Vec<Value>>(edge, kind, Some(project), "").await?;
+    Ok(observed.held.map(|held| HeldCatalogue {
+        resources: held.value,
+        saved_at_ms: held.saved_at_ms,
+    }))
+}
+
+/// Hold a catalogue Brain answered for one project, admitted again here, for
+/// the next offline read. A store that cannot keep it never hides it.
+#[cfg(feature = "durable-store")]
+pub async fn retain_catalogue(
+    edge: &impl super::retained::Edge,
+    project: &str,
+    rows: Vec<Value>,
+) -> Result<HeldCatalogue, Refusal> {
+    project_reference(project)?;
+    let rows = catalogue(&json!({"success": true, "data": rows}))?;
+    let kind = crate::retained_reads::Kind::ReferenceCatalogue;
+    if let Ok(observed) = super::retained::read::<Vec<Value>>(edge, kind, Some(project), "").await {
+        let owner = observed.owner.as_deref();
+        let _ = super::retained::write(edge, owner, kind, Some(project), "", &rows, None).await;
+    }
+    Ok(HeldCatalogue {
+        resources: rows,
+        saved_at_ms: edge.now_ms(),
+    })
+}
+
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
     use super::{Catalogue, Publication, QueryPage, Reconcile, QUERY_BYTES, QUERY_ROWS};
@@ -249,6 +294,35 @@ mod exports {
     use gloo_timers::future::TimeoutFuture;
     use serde_json::{json, Value};
     use wasm_bindgen::prelude::*;
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
+
+    /// The catalogue this device holds for a project, or none.
+    #[wasm_bindgen(js_name = referenceCatalogueHeld, unchecked_return_type = "{ resources: Record<string, unknown>[]; saved_at_ms: number } | null")]
+    pub async fn reference_catalogue_held(
+        host: GatewayHost,
+        store: StoreHost,
+        project: String,
+    ) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        let held = super::held_catalogue(&edge, &project).await;
+        typed(&held.map_err(|refusal| rejection(&refusal))?)
+    }
+
+    /// Hold a catalogue Brain answered, admitted again, for offline reads.
+    #[wasm_bindgen(js_name = referenceCatalogueRetain, unchecked_return_type = "{ resources: Record<string, unknown>[]; saved_at_ms: number }")]
+    pub async fn reference_catalogue_retain(
+        host: GatewayHost,
+        store: StoreHost,
+        project: String,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>[]")] rows: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let rows: Vec<Value> = tsify::serde_wasm_bindgen::from_value(rows)
+            .map_err(|error| js_sys::Error::new(&error.to_string()))?;
+        let edge = BrowserEdge::new(host, store);
+        let held = super::retain_catalogue(&edge, &project, rows).await;
+        typed(&held.map_err(|refusal| rejection(&refusal))?)
+    }
 
     /// How long a bundle publication may run before the page stops waiting.
     const PUBLISH_WAIT_MS: f64 = 30.0 * 60_000.0;

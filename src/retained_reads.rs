@@ -129,6 +129,11 @@ kinds! {
     MediaGrant = "media_grant": Account, KeyGrammar::Token(128), 16 * KIB, 64;
     /// A project's style catalogue: the Style Center's metadata.
     StyleCatalog = "style_catalog": Project, KeyGrammar::Single, 16 * MIB, 32;
+    /// A project's geographic dataset catalogue.
+    ReferenceCatalogue = "reference_catalogue": Project, KeyGrammar::Single, 8 * MIB, 32;
+    /// The capabilities an account holds, for the platform (`platform`) or one
+    /// project (`project:<id>`).
+    AccountCapabilities = "account_capabilities": Account, KeyGrammar::Token(160), 2 * MIB, 64;
 }
 
 /// The generation row one kind reads and advances.

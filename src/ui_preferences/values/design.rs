@@ -154,6 +154,63 @@ pub(in crate::ui_preferences) fn fast_mode_sources(
     Some(json!({"addresses": addresses, "labels": labels, "updated_at": updated}))
 }
 
+const PROCESS_SETUP_FIELDS: [&str; 9] = [
+    "enabled",
+    "sourceAddress",
+    "sourceLabel",
+    "processPreset",
+    "processPresetExplicit",
+    "processSettings",
+    "autoProcessCadence",
+    "differentialAutoProcess",
+    "updatedAt",
+];
+const MAX_PROCESS_SETTINGS: usize = 64;
+const MAX_SOURCE_TEXT: usize = 1024;
+
+/// `process_setup`: the project's processing setup — its customer source,
+/// preset, settings and AutoProcess cadence. Booleans, bounded text, a preset
+/// of `sketch` or `drafting`, settings that are booleans or finite numbers, a
+/// cadence of 1–25 pending edits and 5–600 seconds.
+pub(in crate::ui_preferences) fn process_setup(value: &Value) -> Option<Value> {
+    let map = fields(value, &PROCESS_SETUP_FIELDS)?;
+    for flag in ["enabled", "processPresetExplicit", "differentialAutoProcess"] {
+        if map.get(flag).is_some_and(|flag| !flag.is_boolean()) {
+            return None;
+        }
+    }
+    for name in ["sourceAddress", "sourceLabel"] {
+        if let Some(text) = map.get(name) {
+            text.as_str().filter(|text| text.len() <= MAX_SOURCE_TEXT)?;
+        }
+    }
+    if let Some(preset) = map.get("processPreset") {
+        matches!(preset.as_str(), Some("sketch" | "drafting")).then_some(())?;
+    }
+    if let Some(settings) = map.get("processSettings") {
+        let settings = settings
+            .as_object()
+            .filter(|settings| settings.len() <= MAX_PROCESS_SETTINGS)?;
+        let valid = settings.iter().all(|(key, value)| {
+            entry(key) && (value.is_boolean() || value.as_f64().is_some_and(f64::is_finite))
+        });
+        valid.then_some(())?;
+    }
+    if let Some(cadence) = map.get("autoProcessCadence") {
+        let cadence = fields(cadence, &["minPendingEdits", "maxPendingSeconds"])?;
+        let within = |key: &str, min: u64, max: u64| {
+            cadence
+                .get(key)
+                .map_or(true, |count| count.as_u64().is_some_and(|count| (min..=max).contains(&count)))
+        };
+        (within("minPendingEdits", 1, 25) && within("maxPendingSeconds", 5, 600)).then_some(())?;
+    }
+    if let Some(at) = map.get("updatedAt") {
+        millis(at)?;
+    }
+    Some(value.clone())
+}
+
 #[cfg(test)]
 #[path = "design_tests.rs"]
 mod tests;

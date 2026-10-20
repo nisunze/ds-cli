@@ -24,6 +24,9 @@ pub(in crate::ui_preferences) fn name(key: Key) -> &'static str {
         Key::UploadDialogLayout => "upload_dialog_layout",
         Key::PropertiesDockWidth => "properties_dock_width",
         Key::StyleCenterLayout => "style_center_layout",
+        Key::MessagingNotificationDismissals => "messaging_notification_dismissals",
+        Key::LocalClassStyles => "local_class_styles",
+        Key::ProcessSetup => "process_setup",
         Key::LayerVisibility => "layer_visibility",
         Key::PopupLayersDisabled => "popup_layers_disabled",
         Key::WorkingArea => "working_area",
@@ -45,6 +48,7 @@ pub(in crate::ui_preferences) fn project_scoped(key: Key) -> bool {
         | Key::PopupLayersDisabled
         | Key::WorkingArea
         | Key::ProcessPreset
+        | Key::ProcessSetup
         | Key::ActiveLvTransformer
         | Key::StatusWarningTypes
         | Key::StatusSort
@@ -66,7 +70,9 @@ pub(in crate::ui_preferences) fn project_scoped(key: Key) -> bool {
         | Key::CreateTransformerMapSources
         | Key::UploadDialogLayout
         | Key::PropertiesDockWidth
-        | Key::StyleCenterLayout => false,
+        | Key::StyleCenterLayout
+        | Key::MessagingNotificationDismissals
+        | Key::LocalClassStyles => false,
     }
 }
 
@@ -76,6 +82,7 @@ pub(in crate::ui_preferences) fn max_bytes(key: Key) -> usize {
         Key::LayerGroupCollapse | Key::LayerVisibility | Key::TileLayers => 512 * 1024,
         Key::PopupLayersDisabled | Key::PinnedTransformers => 256 * 1024,
         Key::ApplicationSettings => 128 * 1024,
+        Key::LocalClassStyles => map::MAX_LOCAL_CLASS_STYLES_BYTES,
         Key::WorkingArea => workbench::MAX_BOUNDARY_BYTES + 64 * 1024,
         Key::ProfileOccupancy => workbench::PROFILE_OCCUPANCY_MAX_BYTES,
         _ => DEFAULT_MAX_BYTES,
@@ -106,6 +113,9 @@ pub(in crate::ui_preferences) fn admit(key: Key, value: &Value) -> Option<Value>
         Key::PinnedGroupVisible => design::switch(value),
         Key::ActiveLvTransformer => design::active_lv_transformer(value),
         Key::ProcessPreset => design::process_preset(value),
+        Key::ProcessSetup => design::process_setup(value),
+        Key::MessagingNotificationDismissals => workbench::notification_dismissals(value),
+        Key::LocalClassStyles => map::local_class_styles(value),
         Key::StatusSort => design::status_sort(value),
         Key::StatusWarningTypes => design::status_warning_types(value),
         Key::CreateTransformerMapSources => design::create_transformer_map_sources(value),

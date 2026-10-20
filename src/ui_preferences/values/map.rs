@@ -138,6 +138,30 @@ pub(in crate::ui_preferences) fn popup_layers_disabled(value: &Value) -> Option<
     (keys.len() <= MAX_SWITCHES).then(|| json!(keys))
 }
 
+/// The class styles one device keeps, at most this many.
+const MAX_LOCAL_CLASS_STYLES: usize = 512;
+pub(in crate::ui_preferences) const MAX_LOCAL_CLASS_STYLES_BYTES: usize = 2 * 1024 * 1024;
+
+/// `local_class_styles`: the style document this device keeps for a shared
+/// class ref of temporary layers (`ud/lv_lines`), by trimmed ref. A document
+/// is an object naming its layer `type`.
+pub(in crate::ui_preferences) fn local_class_styles(value: &Value) -> Option<Value> {
+    let styles = value.as_object()?;
+    if styles.len() > MAX_LOCAL_CLASS_STYLES {
+        return None;
+    }
+    let mut out = Map::new();
+    for (reference, style) in styles {
+        let reference = reference.trim();
+        let typed = style.get("type").is_some_and(Value::is_string);
+        if !entry(reference) || !style.is_object() || !typed {
+            return None;
+        }
+        out.insert(reference.to_owned(), style.clone());
+    }
+    Some(Value::Object(out))
+}
+
 #[cfg(test)]
 #[path = "map_tests.rs"]
 mod tests;
