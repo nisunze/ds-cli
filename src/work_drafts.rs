@@ -77,6 +77,9 @@ kinds! {
     /// A computed transformer version comparison, keyed by its artifact id;
     /// `meta` names its transformer and label.
     DesignComparison = "design_comparison": Project, 256, 32 * MIB, 1024;
+    /// A survey entry being filled, keyed by form slug: its values without
+    /// picked files, its location and connectivity, and the form revision.
+    SurveyEntry = "survey_entry": Project, 256, MIB, 512;
 }
 
 /// One transaction's work; the host binds the identity.

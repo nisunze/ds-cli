@@ -27,6 +27,7 @@ use serde_json::Value;
 use crate::durable_store::Request;
 use crate::gateway_exchange::{Exchange, Refusal};
 
+pub mod capture;
 pub mod cartography;
 pub mod maps;
 
@@ -89,6 +90,8 @@ pub trait Effects: 'static {
     fn store(&self, request: Request) -> impl Future<Output = Result<Value, Refusal>> + use<Self>;
     /// The host's clock.
     fn now_ms(&self) -> u64;
+    /// A fresh random token: 32 lowercase hex digits.
+    fn nonce(&self) -> String;
 }
 
 /// One client's state: its scope and each domain's signals.
@@ -97,6 +100,7 @@ pub struct ClientState<E: Effects> {
     scope: ArcRwSignal<Scope>,
     pub maps: maps::Maps,
     pub cartography: cartography::Cartography,
+    pub capture: capture::Capture,
 }
 
 impl<E: Effects> ClientState<E> {
@@ -106,6 +110,7 @@ impl<E: Effects> ClientState<E> {
         Self {
             maps: maps::Maps::new(&scope, &effects),
             cartography: cartography::Cartography::new(&scope, &effects),
+            capture: capture::Capture::new(&scope),
             effects,
             scope,
         }
@@ -145,6 +150,65 @@ impl<E: Effects> ClientState<E> {
     /// Command: step relief to its next intensity and show it.
     pub fn cycle_relief(&self) {
         self.cartography.cycle_relief(&self.effects);
+    }
+
+    /// Command: open a survey form for the signed-in account.
+    pub fn capture_open(
+        &self,
+        context: crate::survey_capture::Context,
+    ) -> impl Future<Output = Result<(), Refusal>> + use<E> {
+        self.capture.open(&self.effects, context)
+    }
+
+    /// Command: one field's value in the form being filled.
+    pub fn capture_set(&self, key: &str, value: Value) {
+        self.capture.set_value(&self.effects, key, value);
+    }
+
+    /// Command: the device's location (`gps`) or a point picked on the map.
+    pub fn capture_locate(&self, location: Value, source: &str) {
+        self.capture.locate(&self.effects, location, source);
+    }
+
+    /// Command: the geometry a drawing or an edge chain gives the entry.
+    pub fn capture_geometry(&self, geometry: Value) {
+        self.capture.set_geometry(&self.effects, geometry);
+    }
+
+    /// Command: the entry's connectivity and its picked precedent.
+    pub fn capture_connect(&self, connectivity: Value, precedent: Value) {
+        self.capture.connect(&self.effects, connectivity, precedent);
+    }
+
+    /// Command: drop the held draft and start from the form's defaults.
+    pub fn capture_discard_draft(&self) {
+        self.capture.discard_draft(&self.effects);
+    }
+
+    /// Command: close the form; its draft stays.
+    pub fn capture_close(&self) {
+        self.capture.close();
+    }
+
+    /// Command: submit the form; `keep` turns each planned upload's picked
+    /// file into held bytes.
+    pub fn capture_submit<K, Fut>(&self, keep: K) -> impl Future<Output = Result<Value, Refusal>> + use<E, K, Fut>
+    where
+        K: Fn(crate::survey_capture::Upload) -> Fut + 'static,
+        Fut: Future<Output = Result<(), Refusal>>,
+    {
+        self.capture.submit(&self.effects, keep)
+    }
+
+    /// Command: queue one correction, deletion or restore of an entry,
+    /// planned against the row this device shows of it.
+    pub fn survey_mutate(&self, payload: Value, prior: Value) -> impl Future<Output = Result<Value, Refusal>> + use<E> {
+        self.capture.mutate(&self.effects, payload, prior)
+    }
+
+    /// Command: delete a node and the edges it cascades to.
+    pub fn survey_delete_cascade(&self, request: Value) -> impl Future<Output = Result<Value, Refusal>> + use<E> {
+        self.capture.delete_cascade(&self.effects, request)
     }
 }
 

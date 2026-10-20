@@ -42,6 +42,48 @@ pub(crate) struct Host {
     /// The identity the store binds, as a host binds the signed-in account.
     pub identity: Rc<RefCell<Option<String>>>,
     store_calls: Rc<RefCell<usize>>,
+    /// Every other store: the real durable store on an in-memory SQLite.
+    db: Rc<RefCell<Option<rusqlite::Connection>>>,
+    nonces: Rc<RefCell<u64>>,
+}
+
+impl Host {
+    /// One call of the real durable store under the bound identity.
+    pub fn call(&self, request: StoreRequest) -> Value {
+        self.durable(request, None).expect("the store answers")
+    }
+
+    /// Hold a picked file's bytes for its upload, as the page does.
+    pub fn admit(&self, path: &str) -> Result<(), Refusal> {
+        let project = path.split('/').next().unwrap_or_default();
+        let admit = json!({"store": "media_outbox", "operation": {"action": "admit", "project": project, "path": path,
+            "surface": "survey-media", "owner_ref": "entry", "content_type": "image/jpeg", "size": 4,
+            "generation": "gen-00000001", "payload": {"byte_length": 4}, "now": 1}});
+        let request = serde_json::from_value(admit).expect("an admission");
+        self.durable(request, Some(vec![1, 2, 3, 4])).map(|_| ())
+    }
+
+    fn durable(&self, request: StoreRequest, bytes: Option<Vec<u8>>) -> Result<Value, Refusal> {
+        use crate::durable_store::{execute, Call, Identity, Principal};
+        let identity = Identity {
+            principal: self
+                .identity
+                .borrow()
+                .clone()
+                .map_or(Principal::Anonymous, Principal::Account),
+            lane: "canary".into(),
+            audience: "firebase:ds-test;gateway:https://gateway.example.test".into(),
+        };
+        let mut db = self.db.borrow_mut();
+        let connection = db.get_or_insert_with(|| rusqlite::Connection::open_in_memory().expect("in-memory SQLite"));
+        let call = Call {
+            request,
+            expect_owner: None,
+        };
+        let answer = execute(connection, Some(&identity), call, bytes)
+            .map_err(crate::gateway_exchange::retained::store_refusal)?;
+        Ok(serde_json::to_value(&answer).expect("a store answer serializes"))
+    }
 }
 
 impl Host {
@@ -92,7 +134,7 @@ impl Host {
         *self.store_calls.borrow_mut() += 1;
         let identity = self.identity.borrow().clone();
         let StoreRequest::UiPreferences { operation } = request else {
-            return Err(Refusal::new("unscripted_store", "only preferences are scripted"));
+            return self.durable(request, None);
         };
         let mut preferences = self.preferences.borrow_mut();
         match operation {
@@ -166,6 +208,12 @@ impl Effects for Host {
 
     fn now_ms(&self) -> u64 {
         1_760_000_000_000
+    }
+
+    fn nonce(&self) -> String {
+        let mut nonces = self.nonces.borrow_mut();
+        *nonces += 1;
+        format!("{:032x}", *nonces)
     }
 }
 

@@ -20,6 +20,7 @@ use crate::durable_store::Request;
 use crate::gateway_exchange::browser::{attempt, rejection, typed, GatewayHost};
 use crate::gateway_exchange::map_defaults::MapDefaults;
 use crate::gateway_exchange::retained::store_refusal;
+use crate::survey_capture::Context;
 use crate::gateway_exchange::{Exchange, Refusal};
 
 /// The page could not perform a request at all (its credentials or facts
@@ -74,6 +75,10 @@ impl Effects for Page {
 
     fn now_ms(&self) -> u64 {
         js_sys::Date::now().max(0.0) as u64
+    }
+
+    fn nonce(&self) -> String {
+        uuid::Uuid::new_v4().simple().to_string()
     }
 }
 
@@ -150,7 +155,13 @@ impl StateSubscription {
 /// The page's client state. ds-web makes one, with its gateway and store
 /// hosts.
 #[wasm_bindgen(js_name = ClientState)]
-pub struct PageState(super::ClientState<Page>);
+pub struct PageState(super::ClientState<Page>, Hosts);
+
+/// The page's hosts, for the flows a command starts after it answers.
+struct Hosts {
+    gateway: JsValue,
+    store: JsValue,
+}
 
 #[wasm_bindgen(js_class = ClientState)]
 impl PageState {
@@ -158,10 +169,15 @@ impl PageState {
     pub fn new(gateway: GatewayHost, store: StoreHost) -> PageState {
         // A second state on the page keeps the executor the first started.
         let _ = any_spawner::Executor::init_wasm_bindgen();
-        PageState(super::ClientState::new(Page {
+        let hosts = Hosts {
+            gateway: JsValue::clone(&gateway),
+            store: JsValue::clone(&store),
+        };
+        let state = super::ClientState::new(Page {
             gateway: Rc::new(gateway),
             store: Rc::new(PageStore::new(store)),
-        }))
+        });
+        PageState(state, hosts)
     }
 
     /// Command: who is signed in and which project is active.
@@ -221,4 +237,131 @@ impl PageState {
     pub fn cycle_relief(&self) {
         self.0.cycle_relief();
     }
+
+    /// The survey form being filled: `{open: false}`, or its visible fields,
+    /// values, errors, location, connectivity, rules and `can_submit`.
+    #[wasm_bindgen(js_name = captureView, unchecked_return_type = "StateSignal<Record<string, unknown>>")]
+    pub fn capture_view(&self) -> StateSignal {
+        StateSignal::of(&self.0.capture.view)
+    }
+
+    /// Command: open a survey form `{project, form, geometry?, location?,
+    /// location_source?, connectivity?}` and restore its held draft.
+    #[wasm_bindgen(js_name = captureOpen, unchecked_return_type = "Promise<void>")]
+    pub fn capture_open(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] context: JsValue,
+    ) -> Result<js_sys::Promise, JsValue> {
+        let context: Context = tsify::serde_wasm_bindgen::from_value(context)
+            .map_err(|error| js_sys::Error::new(&error.to_string()))?;
+        let opening = self.0.capture_open(context);
+        Ok(wasm_bindgen_futures::future_to_promise(async move {
+            opening.await.map_err(|refusal| rejection(&refusal))?;
+            Ok(JsValue::UNDEFINED)
+        }))
+    }
+
+    /// Command: one field's value; a picked file is `{__ds_file: token, name}`.
+    #[wasm_bindgen(js_name = captureSet)]
+    pub fn capture_set(&self, key: String, value: JsValue) -> Result<(), JsValue> {
+        self.0.capture_set(&key, json(value)?);
+        Ok(())
+    }
+
+    /// Command: the device's location (`gps`) or a point picked on the map
+    /// (`picked`).
+    #[wasm_bindgen(js_name = captureLocate)]
+    pub fn capture_locate(&self, location: JsValue, source: String) -> Result<(), JsValue> {
+        self.0.capture_locate(json(location)?, &source);
+        Ok(())
+    }
+
+    /// Command: the geometry a drawing or an edge chain gives the entry.
+    #[wasm_bindgen(js_name = captureGeometry)]
+    pub fn capture_geometry(&self, geometry: JsValue) -> Result<(), JsValue> {
+        self.0.capture_geometry(json(geometry)?);
+        Ok(())
+    }
+
+    /// Command: the entry's connectivity and its picked precedent
+    /// (`{docId, formSlug, coordinates}` or null).
+    #[wasm_bindgen(js_name = captureConnect)]
+    pub fn capture_connect(&self, connectivity: JsValue, precedent: JsValue) -> Result<(), JsValue> {
+        self.0.capture_connect(json(connectivity)?, json(precedent)?);
+        Ok(())
+    }
+
+    /// Command: drop the held draft and start from the form's defaults.
+    #[wasm_bindgen(js_name = captureDiscardDraft)]
+    pub fn capture_discard_draft(&self) {
+        self.0.capture_discard_draft();
+    }
+
+    /// Command: close the form; its draft stays.
+    #[wasm_bindgen(js_name = captureClose)]
+    pub fn capture_close(&self) {
+        self.0.capture_close();
+    }
+
+    /// Command: submit the form. `keep` holds one planned upload's picked
+    /// file as bytes (`{token, path, photo}`; a photo is processed first) and
+    /// rejects when it cannot. Answers `{project, form, doc_id, feature}`,
+    /// then delivers the survey queue.
+    #[wasm_bindgen(js_name = captureSubmit, unchecked_return_type = "Promise<Record<string, unknown>>")]
+    pub fn capture_submit(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "(upload: {token: string; path: string; photo: boolean}) => Promise<void>")]
+        keep: Function,
+    ) -> js_sys::Promise {
+        let submitting = self.0.capture_submit(move |upload| {
+            let called = keep.call1(&JsValue::UNDEFINED, &plain(&upload));
+            async move {
+                let pending = called.map_err(|failure| host_failure(&failure))?;
+                wasm_bindgen_futures::JsFuture::from(js_sys::Promise::resolve(&pending))
+                    .await
+                    .map(|_| ())
+                    .map_err(|failure| host_failure(&failure))
+            }
+        });
+        self.delivered(submitting)
+    }
+
+    /// Command: queue one correction, deletion or restore of an entry,
+    /// planned against the row the window shows (`prior`), then deliver the
+    /// survey queue. Answers the feature to show until it is delivered.
+    #[wasm_bindgen(js_name = surveyMutate, unchecked_return_type = "Promise<Record<string, unknown> | null>")]
+    pub fn survey_mutate(&self, payload: JsValue, prior: JsValue) -> Result<js_sys::Promise, JsValue> {
+        Ok(self.delivered(self.0.survey_mutate(json(payload)?, json(prior)?)))
+    }
+
+    /// Command: delete a node and the edges it cascades to (`{project, form,
+    /// doc, prior, candidates, priors, edges_only?, match?}`), then deliver
+    /// the survey queue. Answers `{deleted, cascaded_edges, edges, tombstones}`.
+    #[wasm_bindgen(js_name = surveyDeleteCascade, unchecked_return_type = "Promise<Record<string, unknown>>")]
+    pub fn survey_delete_cascade(&self, request: JsValue) -> Result<js_sys::Promise, JsValue> {
+        Ok(self.delivered(self.0.survey_delete_cascade(json(request)?)))
+    }
+}
+
+impl PageState {
+    /// A queued edit's answer; the edit is a touch, so the survey queue is
+    /// delivered after it.
+    fn delivered(&self, queued: impl std::future::Future<Output = Result<Value, Refusal>> + 'static) -> js_sys::Promise {
+        let (gateway, store) = (self.1.gateway.clone(), self.1.store.clone());
+        wasm_bindgen_futures::future_to_promise(async move {
+            let answer = queued.await.map_err(|refusal| rejection(&refusal))?;
+            wasm_bindgen_futures::spawn_local(async move {
+                let _ = crate::gateway_exchange::survey_queue::drain_page(gateway, store, None).await;
+            });
+            typed(&answer)
+        })
+    }
+}
+
+/// A JavaScript value as JSON; `undefined` is null.
+fn json(value: JsValue) -> Result<Value, JsValue> {
+    if value.is_undefined() {
+        return Ok(Value::Null);
+    }
+    tsify::serde_wasm_bindgen::from_value(value).map_err(|error| js_sys::Error::new(&error.to_string()).into())
 }

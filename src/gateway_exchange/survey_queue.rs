@@ -581,7 +581,7 @@ pub async fn discard(edge: &impl Edge, store: &impl StorePort, project: &str, id
 /// The typed browser exports: the page's gateway, store and storage link.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod browser {
-    use super::{discard, drain, enqueue, retry, steps, Author, Firestore, Posted};
+    use super::{discard, drain, enqueue, retry, steps, Author, Drained, Firestore, Posted, Refusal};
     use crate::durable_store::port::{PageStore, StoreHost};
     use crate::gateway_exchange::browser::{credentials, direct_post, facts, rejection, typed, GatewayHost};
     use crate::gateway_exchange::retained::browser::BrowserEdge;
@@ -634,13 +634,20 @@ mod browser {
     /// is safe and delivers only what the first has not leased.
     #[wasm_bindgen(js_name = surveyQueueDrain, unchecked_return_type = "Drained")]
     pub async fn survey_queue_drain(host: GatewayHost, store: StoreHost, project: Option<String>) -> Result<JsValue, JsValue> {
-        let page = edge(&host, &store);
-        let port = PageStore::new(store);
-        let lease = format!("survey-{}", uuid::Uuid::new_v4());
-        let drained = drain(&page, &port, &Storage(JsValue::clone(&host).unchecked_into()), &Page(host), ROUTE, project.as_deref(), &lease)
+        let drained = drain_page(host.into(), store.into(), project)
             .await
             .map_err(|refusal| rejection(&refusal))?;
         typed(&drained)
+    }
+
+    /// One drain on the page's hosts, under a lease of its own.
+    pub(crate) async fn drain_page(host: JsValue, store: JsValue, project: Option<String>) -> Result<Drained, Refusal> {
+        let (host, store): (GatewayHost, StoreHost) = (host.unchecked_into(), store.unchecked_into());
+        let page = edge(&host, &store);
+        let port = PageStore::new(store);
+        let lease = format!("survey-{}", uuid::Uuid::new_v4());
+        let transfer = Storage(JsValue::clone(&host).unchecked_into());
+        drain(&page, &port, &transfer, &Page(host), ROUTE, project.as_deref(), &lease).await
     }
 
     /// Every queued step (of one project when named), oldest first: what it
@@ -684,6 +691,9 @@ mod browser {
         Ok(dropped as f64)
     }
 }
+
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+pub(crate) use browser::drain_page;
 
 #[cfg(test)]
 #[path = "survey_queue_tests.rs"]

@@ -487,21 +487,14 @@ pub fn plan_mutation(payload: &Value, prior: &Value, submit: &Submit) -> Result<
 }
 
 /// A node deletion and the edges it cascades to, planned against the held
-/// rows that may reference it: one queued deletion per entry, each showing
-/// its tombstone until delivered.
-pub fn plan_cascade(
-    project: &str,
-    form: &str,
-    doc: &str,
-    prior: &Value,
-    candidates: &Value,
-    options: &Value,
-    priors: impl Fn(&str, &str) -> Value,
-    submit: &Submit,
-) -> Result<Value, String> {
-    let plan = evaluate(json!({"operation": "mutation", "mode": "delete_cascade", "project_id": project, "form_id": form,
-        "doc_id": doc, "prior": prior, "rows": candidates, "mutation_id": submit.mutation_id, "now": iso(submit.now_ms)?,
-        "grants": submit.grants, "edges_only": options["edges_only"] == true, "match": options["match"]}))?;
+/// rows that may reference it (`{project, form, doc, prior, candidates,
+/// edges_only?, match?}`; `priors` answers the row held of an entry): one
+/// queued deletion per entry, each showing its tombstone until delivered.
+pub fn plan_cascade(request: &Value, priors: impl Fn(&str, &str) -> Value, submit: &Submit) -> Result<Value, String> {
+    let plan = evaluate(json!({"operation": "mutation", "mode": "delete_cascade", "project_id": request["project"],
+        "form_id": request["form"], "doc_id": request["doc"], "prior": request["prior"], "rows": request["candidates"],
+        "mutation_id": submit.mutation_id, "now": iso(submit.now_ms)?, "grants": submit.grants,
+        "edges_only": request["edges_only"] == true, "match": request["match"]}))?;
     let mut rows = Vec::new();
     let mut edges = Vec::new();
     for (index, intent) in plan["intents"].as_array().into_iter().flatten().enumerate() {
@@ -511,7 +504,7 @@ pub fn plan_cascade(
             "doc_id": doc_id, "deleted": true}))?;
         let key = text(&intent["payload"]["idempotency_key"]);
         rows.push(queue_row(&text(&identity["project_id"]), &form_id, &doc_id, "delete", &key, &intent["payload"], &overlay, submit));
-        if index > 0 || options["edges_only"] == true {
+        if index > 0 || request["edges_only"] == true {
             edges.push(json!({"formSlug": form_id, "docId": doc_id}));
         }
     }
