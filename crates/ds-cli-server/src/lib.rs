@@ -11,6 +11,7 @@ pub mod profile_session;
 #[doc(hidden)]
 pub mod profile_sessions;
 pub mod ui_components;
+mod ui_updates;
 // The HTTP host and the layer binding are reachable from an integration test
 // so the isolation proof can stand up a real owner-only socket over a fixture
 // identity and a fixture document source. Nothing here is a supported API:
@@ -1242,7 +1243,10 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     // never waits for it; a refresh that fails is logged and changes no
     // answer this host gives.
     let refresh = auth::CredentialRefresh::start(credential, auth::REFRESH_INTERVAL);
+    // Installed UI units follow their channel's active release beside the host.
+    let ui_updates = ui_updates::UiUpdates::start(lane.clone());
     let hosted = runtime.block_on(host::serve(app, workers, listening));
+    drop(ui_updates);
     drop(refresh);
     hosted.map_err(failure)?;
     Ok(json!({"stopped":true,"workers":workers,"per_project":per_project}))
