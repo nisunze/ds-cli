@@ -3,8 +3,6 @@
 //! `application schema` derives closed requests from the Rust Solar owner;
 //! `application` invokes them with captured native account/project authority.
 //! Preparation, calculation, artifact selection and delivery need no Desktop.
-//!
-//! Paired Desktop commands retain their declared compatibility contracts.
 //! `run --prepared ... --out ...` invokes the separate offline city-artifact
 //! process contract for already prepared inputs. All routes call Rust owners.
 
@@ -16,19 +14,14 @@ pub mod cities;
 pub mod compare;
 pub mod dashboard;
 pub mod engine;
-pub mod exports;
 pub mod input_capture;
 pub mod input_prepare;
 pub mod migrate;
 pub mod network_form;
 pub mod network_map;
 pub mod network_seed;
-pub mod paired;
-pub mod paired_run;
-pub mod portfolio_batch;
 pub mod portfolio_headless;
 pub mod portfolio_management;
-pub mod prepare;
 pub mod project;
 pub mod project_sync;
 pub mod reference;
@@ -65,9 +58,6 @@ mod engine_selection_tests;
 
 pub const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Paired preparation may capture or refresh city input for many cities.
-pub const PREPARE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
-
 /// A batch run is pure compute over prepared inputs and can legitimately take
 /// a long time on a large city set.
 pub const RUN_TIMEOUT: Duration = Duration::from_secs(4 * 60 * 60);
@@ -101,31 +91,15 @@ pub static DOMAIN: Domain = Domain {
         &compare::COMMAND,
         &input_capture::COMMAND,
         &input_prepare::COMMAND,
-        &prepare::COMMAND,
         &run::COMMAND,
-        &paired_run::START_COMMAND,
-        &paired_run::PROGRESS_COMMAND,
-        &paired_run::RESULT_COMMAND,
-        &paired_run::CANCEL_COMMAND,
-        &paired_run::READ_COMMAND,
         &workflow::RESULTS_READ_COMMAND,
-        &workflow::SYNC_STATUS_COMMAND,
         &workflow::PORTFOLIO_LIST_COMMAND,
         &portfolio_headless::CALCULATE,
         &portfolio_headless::PUBLISHED_READ,
-        &portfolio_batch::START_COMMAND,
-        &portfolio_batch::STATUS_COMMAND,
-        &portfolio_batch::CANCEL_COMMAND,
         &portfolio_management::CREATE_COMMAND,
         &portfolio_management::UPDATE_COMMAND,
         &portfolio_management::DELETE_COMMAND,
-        &workflow::PORTFOLIO_READ_COMMAND,
         &workflow::PORTFOLIO_ANALYSIS_COMMAND,
-        &workflow::FINAL_IMPORT_COMMAND,
-        &workflow::FINAL_SUBMIT_COMMAND,
-        &exports::REPORT_EXPORT_COMMAND,
-        &exports::REPORT_BUNDLE_COMMAND,
-        &exports::PORTFOLIO_EXPORT_COMMAND,
         &migrate::PLAN_COMMAND,
         &migrate::APPLY_COMMAND,
         &network_seed::COMMAND,

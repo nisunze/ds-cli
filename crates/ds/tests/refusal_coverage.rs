@@ -252,16 +252,6 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
         "`require_file` takes the code from the caller that names the flag",
     ),
     (
-        "ds-cli-solar/src/exports.rs",
-        "the code is chosen from the io error kind above the constructor; both \
-         values are declared in `EXPORT_REFUSALS`",
-    ),
-    (
-        "ds-cli-solar/src/paired_run.rs",
-        "`require_exact_value` takes the code from the caller that names the \
-         input",
-    ),
-    (
         "ds-cli-solar/src/migrate.rs",
         "the fallback arm re-emits the ds-side code `SERVER_CODES` maps the \
          server's own name onto, and every one of those is a literal in \

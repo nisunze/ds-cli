@@ -8,7 +8,7 @@ metadata:
 # Run the native Solar city lifecycle
 
 Use `ds` for installation and live contracts, and `ds-project-context` if the
-project is unknown. Native or explicitly paired projects own city authority.
+project is unknown. Native projects own city authority.
 Use headless seed, capture, preparation and project operations on Server.
 Never reconstruct inputs from browser storage, caches, APIs or fixtures.
 
@@ -52,7 +52,7 @@ the operator's order. Refuse duplicate, missing, or substituted cities. Read
 current readiness rather than assuming a previous run left usable inputs.
 
 Prepare only the requested contexts. Preparation may refresh authenticated
-weather or reference data inside the paired application; the skill never
+weather or reference data inside DS Core; the skill never
 handles provider credentials, cache paths, or raw cache records. Require a
 successful prepared receipt for every requested city before launching compute.
 If any city is not ready, report its exact refusal; never run the successful
@@ -93,8 +93,7 @@ closed receipt to a new destination. Do not rebuild Markdown, charts, DOCX, or
 JSON in the skill. For an existing Server run, discover application operations
 `documents`, `batch_artifact_read`, and `report_bundle`: inventory, verified
 reads, and portable prompting packages. Discover the workspace and retain
-returned batch pins. Read each schema before execution. Paired exports are
-not Server delivery; their Desktop refusal does not prove headless absence.
+returned batch pins. Read each schema before execution.
 
 An operator-interpreted final report is a separate explicit
 import: use only the exact file the user selected, with the live command's
@@ -122,8 +121,8 @@ For shared runtime work, discover `server.solar.submit` and use that envelope
 unchanged, not the prepared input or publication claim.
 
 Keep intake private; pass prepared directories unchanged to the artifact
-runner. Verify engine identity and closures. Never mix paired receipts or
-claim cache-hit preparation proves a fresh server.
+runner. Verify engine identity and closures. Never claim cache-hit
+preparation proves a fresh server.
 
 Report proven absent operations through the `ds` skill's feedback procedure;
 never bypass them with bridge calls or skill-local programs.

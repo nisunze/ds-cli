@@ -474,7 +474,7 @@ fn validate_batch_receipt(batch: &Value, expected_run_id: Option<&str>) -> Resul
     }
     let batch_digest = batch["batch_digest"]
         .as_str()
-        .filter(|digest| crate::exports::valid_sha256_digest(digest))
+        .filter(|digest| ds_cli_contract::util::is_sha256_digest(digest, ds_cli_contract::util::HexCase::Lower))
         .ok_or_else(|| invalid_batch_receipt("batch_digest is not a lowercase SHA-256 digest"))?;
     let batch_id = batch["batch_id"]
         .as_str()
@@ -528,7 +528,7 @@ fn validate_batch_receipt(batch: &Value, expected_run_id: Option<&str>) -> Resul
         for field in ["input_digest", "result_digest"] {
             city.get(field)
                 .and_then(Value::as_str)
-                .filter(|digest| crate::exports::valid_sha256_digest(digest))
+                .filter(|digest| ds_cli_contract::util::is_sha256_digest(digest, ds_cli_contract::util::HexCase::Lower))
                 .ok_or_else(|| invalid_batch_receipt(format!("run.cities.{field} is invalid")))?;
         }
     }
@@ -587,7 +587,7 @@ fn validate_batch_receipt(batch: &Value, expected_run_id: Option<&str>) -> Resul
         artifact
             .get("content_digest")
             .and_then(Value::as_str)
-            .filter(|digest| crate::exports::valid_sha256_digest(digest))
+            .filter(|digest| ds_cli_contract::util::is_sha256_digest(digest, ds_cli_contract::util::HexCase::Lower))
             .ok_or_else(|| invalid_batch_receipt("an artifact content_digest is invalid"))?;
         let city_id = match artifact.get("city_id") {
             None | Some(Value::Null) => None,

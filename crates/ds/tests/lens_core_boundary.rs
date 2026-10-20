@@ -102,8 +102,9 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     // handoff for a local model. Count it explicitly until that handoff has
     // a headless owner; do not hide its bridge site behind the old ceiling.
     ("ds-cli-dsgrid", Layer::CorePending, 2),
-    // Solar runs read the workspace the application holds open.
-    ("ds-cli-solar", Layer::CorePending, 1),
+    // `ds-cli-solar` left on 2026-10-20: the Desktop Solar page became a JSON
+    // window over the headless `solar.application`, and the sixteen paired
+    // Solar commands were retired with the window executor.
     // Paired print preview routing (1cd5b34f); revisit after Codex's PDF/print
     // rework. It declares no window command of its own.
     ("ds-cli-report", Layer::CorePending, 2),
@@ -328,7 +329,6 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // not a window command (see its descriptor comment). `dsgrid.profile.open` is
     // the one declared window command admitted on 2026-09-22.
     ("ds-cli-dsgrid", 1),
-    ("ds-cli-solar", 16),
     // Paired print preview routing (1cd5b34f); no window command of its own.
     ("ds-cli-report", 0),
     // `ds-cli-pm` left this ledger on 2026-09-20: 9 → 8 on 2026-09-19 when
@@ -575,7 +575,9 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // a43c9c95 adds the mounted read-only Profile pick lens.
     // 49 → 48 on 2026-10-20: the 3D map and `map.renderer.configure` removed.
     ("map", 48),
-    ("solar", 16),
+    // 16 → 0 on 2026-10-20: the paired Solar commands were retired; Solar runs
+    // headless through `solar.application`.
+    ("solar", 0),
     // 9 → 8: `pm.plan` is a headless project read now, not a window command.
     // 8 → 0 on 2026-09-20: task list/read/create/update/assign/respond and
     // record list/read run headless through `POST /api/v1/pm`.
@@ -601,7 +603,8 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 // The admitted mounted Profile pick and printing view add one each.
 // 98 → 97 on 2026-10-20: the 3D map and `map.renderer.configure` removed.
 // 97 → 100 on 2026-10-20: the three local-dev desktop.dev.* drivers.
-const WINDOW_BACKLOG_TOTAL: u64 = 100;
+// 100 → 84 the same day: the sixteen paired Solar commands retired.
+const WINDOW_BACKLOG_TOTAL: u64 = 84;
 
 #[test]
 fn paired_draft_preview_keeps_a_headless_computation_owner() {

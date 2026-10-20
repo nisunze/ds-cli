@@ -1236,21 +1236,11 @@ const SOLAR_APPLICATION_COMMANDS: &[&str] = &["solar.application", "solar.applic
 const SOLAR_RUN_COMMANDS: &[&str] = &[
     "solar.engine",
     "solar.project.clean",
-    // Preserve the established end-to-end run profile. Native governed input
-    // handoffs get their own narrow profile because adding them here would
-    // exceed the bounded leaf-tool surface and silently change existing hosts.
-    "solar.prepare",
     "solar.run",
     // Offline calculation of one prepared city: the same run, one file task.
     "solar.calculate-prepared",
-    "solar.run.start",
-    "solar.run.progress",
-    "solar.run.result",
-    "solar.run.cancel",
     "solar.result.compare",
-    "solar.result.read",
     "solar.results.read",
-    "solar.sync.status",
     "solar.verify-weather",
 ];
 
@@ -1298,9 +1288,6 @@ const DESIGN_MIGRATION_COMMANDS: &[&str] = &["design.migrate.plan", "design.migr
 const SOLAR_PORTFOLIO_BATCH_COMMANDS: &[&str] = &[
     "solar.portfolio.calculate",
     "solar.portfolio.published.read",
-    "solar.portfolio.batch.start",
-    "solar.portfolio.batch.status",
-    "solar.portfolio.batch.cancel",
 ];
 
 const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
@@ -1311,13 +1298,7 @@ const SOLAR_DELIVERY_COMMANDS: &[&str] = &[
     "solar.portfolio.create",
     "solar.portfolio.update",
     "solar.portfolio.delete",
-    "solar.portfolio.read",
     "solar.portfolio.analysis",
-    "solar.final.import",
-    "solar.final.submit",
-    "solar.report.export",
-    "solar.report.bundle",
-    "solar.portfolio.export",
 ];
 
 /// Every chapter except `Catalog`, which is the index rather than a routed

@@ -19,8 +19,7 @@ On Server, discover `solar.application` and the native application schema's
 pin its exact calculation batch identity, and provide a new private ZIP destination.
 For a portfolio, discover `portfolio_report_bundle` and pin both its aggregate
 batch and exact city-source batch. Do not substitute a current or same-name run.
-On a paired Desktop the live `solar.report.bundle` compatibility contract also
-exports one run, city and intent. The ZIP contains:
+The ZIP contains:
 
 - the exact canonical `*-draft-<language>.md` source;
 - a preview copy whose image links point into `media/`;
@@ -48,14 +47,7 @@ outside the named `LLM_EDIT_START/END` regions.
 Import applies the native `ds_solar_report::lint_final` contract and refuses
 changed immutable bytes, unfilled blocks, unsupported numbers, dangling
 cross-references, empty headings, or invalid units. Fix the narration, not the
-tables or comments. Then import and submit through the live contracts:
-
-```text
-ds solar final import --run-id <run> --city <context> --file <final.md> --yes
-ds solar final submit --run-id <run> --city <context> --yes
-```
-
-Those commands are paired compatibility routes. For a Server portfolio,
+tables or comments. For a Server portfolio,
 discover `portfolio_final_import` and `portfolio_final_inspect`, pin the source
 portfolio batch and choose its declared source draft. Each reviewed final keeps
 an independent immutable closure. On Server discover the native
@@ -65,8 +57,8 @@ explicit source path, and inspect the immutable final receipt. A native
 with the actual reviewed narration. Do not count local import or export as online
 publication; discover a supported publication contract before claiming delivery.
 
-Import is local review state; submit is the separate publication action. The
-exact reviewed Markdown remains the report authority.
+Import is local review state; publication is a separate action. The exact
+reviewed Markdown remains the report authority.
 
 ## Optional document finishing
 

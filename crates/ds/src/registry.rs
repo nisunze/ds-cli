@@ -752,39 +752,9 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::input_prepare::render,
     },
     Entry {
-        command: &ds_cli_solar::prepare::COMMAND,
-        handler: ds_cli_solar::prepare::run,
-        render: ds_cli_solar::prepare::render,
-    },
-    Entry {
         command: &ds_cli_solar::run::COMMAND,
         handler: ds_cli_solar::run::run,
         render: ds_cli_solar::run::render,
-    },
-    Entry {
-        command: &ds_cli_solar::paired_run::START_COMMAND,
-        handler: ds_cli_solar::paired_run::start,
-        render: ds_cli_solar::paired_run::render_start,
-    },
-    Entry {
-        command: &ds_cli_solar::paired_run::PROGRESS_COMMAND,
-        handler: ds_cli_solar::paired_run::progress,
-        render: ds_cli_solar::paired_run::render_receipt,
-    },
-    Entry {
-        command: &ds_cli_solar::paired_run::RESULT_COMMAND,
-        handler: ds_cli_solar::paired_run::result,
-        render: ds_cli_solar::paired_run::render_receipt,
-    },
-    Entry {
-        command: &ds_cli_solar::paired_run::CANCEL_COMMAND,
-        handler: ds_cli_solar::paired_run::cancel,
-        render: ds_cli_solar::paired_run::render_receipt,
-    },
-    Entry {
-        command: &ds_cli_solar::paired_run::READ_COMMAND,
-        handler: ds_cli_solar::paired_run::read,
-        render: ds_cli_solar::paired_run::render_receipt,
     },
     Entry {
         command: &ds_cli_solar::workflow::RESULTS_READ_COMMAND,
@@ -797,28 +767,8 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::workflow::render,
     },
     Entry {
-        command: &ds_cli_solar::workflow::SYNC_STATUS_COMMAND,
-        handler: ds_cli_solar::workflow::sync_status,
-        render: ds_cli_solar::workflow::render,
-    },
-    Entry {
         command: &ds_cli_solar::workflow::PORTFOLIO_LIST_COMMAND,
         handler: ds_cli_solar::workflow::portfolio_list,
-        render: ds_cli_solar::workflow::render,
-    },
-    Entry {
-        command: &ds_cli_solar::portfolio_batch::START_COMMAND,
-        handler: ds_cli_solar::portfolio_batch::start,
-        render: ds_cli_solar::workflow::render,
-    },
-    Entry {
-        command: &ds_cli_solar::portfolio_batch::STATUS_COMMAND,
-        handler: ds_cli_solar::portfolio_batch::status,
-        render: ds_cli_solar::workflow::render,
-    },
-    Entry {
-        command: &ds_cli_solar::portfolio_batch::CANCEL_COMMAND,
-        handler: ds_cli_solar::portfolio_batch::cancel,
         render: ds_cli_solar::workflow::render,
     },
     Entry {
@@ -847,39 +797,9 @@ static SOLAR_ENTRIES: &[Entry] = &[
         render: ds_cli_solar::workflow::render,
     },
     Entry {
-        command: &ds_cli_solar::workflow::PORTFOLIO_READ_COMMAND,
-        handler: ds_cli_solar::workflow::portfolio_read,
-        render: ds_cli_solar::workflow::render,
-    },
-    Entry {
         command: &ds_cli_solar::workflow::PORTFOLIO_ANALYSIS_COMMAND,
         handler: ds_cli_solar::workflow::portfolio_analysis,
         render: ds_cli_solar::workflow::render,
-    },
-    Entry {
-        command: &ds_cli_solar::workflow::FINAL_IMPORT_COMMAND,
-        handler: ds_cli_solar::workflow::final_import,
-        render: ds_cli_solar::workflow::render,
-    },
-    Entry {
-        command: &ds_cli_solar::workflow::FINAL_SUBMIT_COMMAND,
-        handler: ds_cli_solar::workflow::final_submit,
-        render: ds_cli_solar::workflow::render,
-    },
-    Entry {
-        command: &ds_cli_solar::exports::REPORT_EXPORT_COMMAND,
-        handler: ds_cli_solar::exports::export_report,
-        render: ds_cli_solar::exports::render,
-    },
-    Entry {
-        command: &ds_cli_solar::exports::REPORT_BUNDLE_COMMAND,
-        handler: ds_cli_solar::exports::export_report_bundle,
-        render: ds_cli_solar::exports::render,
-    },
-    Entry {
-        command: &ds_cli_solar::exports::PORTFOLIO_EXPORT_COMMAND,
-        handler: ds_cli_solar::exports::export_portfolio,
-        render: ds_cli_solar::exports::render,
     },
     Entry {
         command: &ds_cli_solar::migrate::PLAN_COMMAND,

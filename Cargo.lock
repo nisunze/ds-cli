@@ -1382,7 +1382,6 @@ dependencies = [
  "chrono",
  "ds-cli-auth",
  "ds-cli-contract",
- "ds-cli-desktop",
  "ds-cli-exec",
  "ds-cli-report",
  "ds-cli-server",

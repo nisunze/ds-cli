@@ -13,10 +13,6 @@ base64 = { workspace = true }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 ds-cli-auth = { workspace = true }
 ds-cli-contract = { workspace = true }
-# The paired desktop owns selected-project state, cache-first city capture and
-# any authenticated refresh. The CLI invokes only fixed semantic operations;
-# a JWT never crosses back.
-ds-cli-desktop = { workspace = true }
 ds-cli-exec = { workspace = true }
 ds-cli-report = { workspace = true }
 ds-cli-server = { workspace = true }

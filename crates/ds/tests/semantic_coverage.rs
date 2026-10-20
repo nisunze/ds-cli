@@ -1010,8 +1010,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("solar.application", "artifact_write", "headless_project"),
     ("solar.application.schema", "discovery", "none"),
     ("solar.dashboard.compose", "local_file_write", "none"),
-    ("solar.final.import", "artifact_write", "desktop_user"),
-    ("solar.final.submit", "artifact_write", "desktop_user"),
     (
         "solar.input.capture",
         "local_file_write",
@@ -1029,52 +1027,19 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "read_only",
         "headless_project",
     ),
-    (
-        "solar.portfolio.batch.start",
-        "local_file_write",
-        "desktop_user",
-    ),
-    (
-        "solar.portfolio.batch.status",
-        "local_file_write",
-        "desktop_user",
-    ),
-    (
-        "solar.portfolio.batch.cancel",
-        "local_file_write",
-        "desktop_user",
-    ),
     ("solar.portfolio.create", "global_write", "headless_project"),
     ("solar.portfolio.delete", "global_write", "headless_project"),
-    ("solar.portfolio.export", "local_file_write", "desktop_user"),
     ("solar.portfolio.list", "read_only", "headless_project"),
-    ("solar.portfolio.read", "read_only", "desktop_user"),
     ("solar.portfolio.update", "global_write", "headless_project"),
-    ("solar.prepare", "local_file_write", "desktop_user"),
-    ("solar.report.export", "local_file_write", "desktop_user"),
-    ("solar.report.bundle", "local_file_write", "desktop_user"),
     ("solar.result.compare", "read_only", "none"),
-    ("solar.result.read", "read_only", "desktop_user"),
     ("solar.results.read", "read_only", "none"),
     ("solar.run", "local_file_write", "none"),
-    ("solar.run.cancel", "local_ui", "desktop_user"),
-    ("solar.run.progress", "read_only", "desktop_user"),
-    ("solar.run.result", "read_only", "desktop_user"),
-    ("solar.run.start", "local_file_write", "desktop_user"),
-    // Seeding is a governed ds-brain copy into a project's Solar root, so
-    // `apply` is `global_write` and not `artifact_write`: what changes is
-    // shared project state, not a durable file. Both carry `project`
-    // authority because the destination IS the paired session's selected
-    // project — the CLI never names one — and preview keeps `read_only`
-    // exactly as ds-brain classifies `seed_preview`, so it stays usable on a
-    // read-only project.
-    // Project-to-project migration classifies exactly as seeding does and for
-    // the same reason: what an apply changes is shared project state, not a
-    // durable file, and a plan must stay usable on a read-only destination.
+    // Project-to-project migration is a governed ds-brain copy: an apply
+    // changes shared project state, not a durable file, and a plan must stay
+    // usable on a read-only destination.
     ("solar.migrate.apply", "global_write", "headless_project"),
     ("solar.migrate.plan", "read_only", "headless_project"),
     ("solar.seed.network-plan", "local_file_write", "none"),
-    ("solar.sync.status", "read_only", "desktop_user"),
     ("solar.verify-weather", "read_only", "none"),
     ("sre.events", "read_only", "headless_user"),
     ("sre.overview", "read_only", "headless_user"),

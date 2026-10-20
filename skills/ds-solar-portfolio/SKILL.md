@@ -55,8 +55,7 @@ Require a verified online publication receipt before claiming synchronization:
 a successful local calculation is separate from publication and is reported
 separately.
 
-Older surfaces may be paired-only. Report absent headless commands; never
-change authority to force success on a server.
+Report absent headless operations; never change authority to force success.
 
 ## Freeze the portfolio identity
 
@@ -71,34 +70,21 @@ If the portfolio or a declared city is unavailable, stop with the returned
 refusal. Do not silently shorten the membership. An ordinary repeated-city run
 is not a portfolio run; never present it as one.
 
-## Prepare every frozen member
-
-Discover the Solar prepare command and invoke it for every ordered city id in
-the frozen portfolio membership, including members that look already
-prepared. The paired application owns freshness and may reuse valid
-prepared input; the skill must not infer readiness from an earlier receipt,
-local cache or remembered run.
-
-Require the prepare receipt to declare every frozen member ready before
-starting the portfolio run. A missing, stale, partial, failed, or extra member
-is a refusal: report it and do not calculate a shortened membership. Keep the
-same frozen membership revision throughout preparation. Do not obtain source
-data directly, inspect a cache, or add authentication options the live prepare
-descriptor does not declare.
-
 ## Run and observe
 
-Discover the portfolio-capable Solar run command and invoke it with the frozen
-portfolio id and exact membership revision returned by the selected list row.
-If the desktop reports a changed revision, list again and have the user
-confirm the new ordered membership; never retry with it silently. Choose exactly one graph strategy declared by the live contract:
-first member, round-robin, or one exact member of the frozen portfolio.
+Run the native `prepare` operation through `solar.application` for every
+ordered member first; DS Core owns freshness, and a member that is not ready is
+a refusal. Then start the portfolio with `portfolio_start`, using the frozen
+portfolio id and exact membership revision, and one graph strategy the live
+schema declares. If Core reports a changed revision, list again and have the
+user confirm the new ordered membership; never retry with it silently.
+
 Currency, horizon and discount rate are governed prepared-input facts, not
 launch flags. Language and report intent belong to a later report operation;
 do not invent or pass them to portfolio calculation.
 
-Treat the launch response as a job receipt, not a result. Use the discovered
-lifecycle commands to observe that exact run id. A portfolio is
+Treat the launch response as a job receipt, not a result. Observe that exact
+run id with `portfolio_progress`. A portfolio is
 ready only when the run receipt reports a committed aggregate for every
 declared member. Any missing, failed, stale, digest-mismatched, or extra city
 means there is no valid portfolio artifact; report the complete refusal rather
@@ -126,13 +112,9 @@ attribute every graph to one member.
 For Server files, discover application operations `portfolio_batch_artifacts`,
 `export_portfolio_batch_artifact`, and `portfolio_report_bundle`: inventory,
 single-artifact export, and portable prompting packages. Discover the workspace;
-retain batch pins and source city batch identity. Read each schema. Paired
-export is not Server delivery; its Desktop refusal does not prove headless
-absence. Export declared artifacts to a new destination, never reconstruct them.
+retain batch pins and source city batch identity. Read each schema. Export declared artifacts to a new destination, never reconstruct them.
 
-The paired lifecycle publishes the governed aggregate itself, from the run
-that sealed it; the headless lifecycle uses the publication command above.
-Read the publication state on the run's own result receipt: a successful
+Publication uses `portfolio_publish` above. Read the publication state on the run's own result receipt: a successful
 calculation whose publication did not queue stays successful and says so
 explicitly. Report that state with the result and follow its remedy; never
 present it as a failed calculation, and never treat a sealed local result or a

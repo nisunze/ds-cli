@@ -1,22 +1,12 @@
-//! Closed read/import/status operations over the paired desktop Solar workflow.
-
-use std::path::PathBuf;
-use std::time::Duration;
+//! Headless Solar result-section, portfolio list and analysis reads.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
-use crate::paired;
-
-const READ_TIMEOUT: Duration = Duration::from_secs(30);
-const IMPORT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-const SYNC_STATUS_OPERATION: &str = "solar.sync.status";
-const FINAL_IMPORT_OPERATION: &str = "solar.final.import";
-const FINAL_SUBMIT_OPERATION: &str = "solar.final.submit";
 const MAX_PORTFOLIO_PATH_DEPTH: usize = 8;
 const MAX_PORTFOLIO_PATH_KEY_CHARS: usize = 120;
 const PORTFOLIO_PROJECTION_BYTES: usize = 15_000;
@@ -32,59 +22,6 @@ const RESULT_SECTIONS: &[&str] = &[
     "site",
     "summary",
     "templates",
-];
-
-static PORTFOLIO_READ_REFUSALS: &[Refusal] = &[
-    Refusal {
-        code: "invalid_portfolio_path",
-        when: "--path is empty, too deep, or contains an overlong semantic key",
-        remedy: "pass at most eight non-empty semantic object keys, each no longer than 120 characters",
-    },
-    Refusal {
-        code: "portfolio_path_not_found",
-        when: "the sealed aggregate result has no value at the requested semantic path",
-        remedy: "omit --path to inspect the bounded root outline, then request keys that result declares",
-    },
-    Refusal {
-        code: "desktop_not_paired",
-        when: "no DS GridDesign session is running on this machine",
-        remedy: "start DS GridDesign, sign in, and retry",
-    },
-    Refusal {
-        code: "desktop_ambiguous",
-        when: "more than one DS GridDesign session is running",
-        remedy: "name one with --target desktop:<instance_id>",
-    },
-    Refusal {
-        code: "desktop_unreachable",
-        when: "the bridge descriptor names a session that does not answer",
-        remedy: "restart DS GridDesign and retry",
-    },
-    Refusal {
-        code: "desktop_unreadable",
-        when: "the paired session's reply could not be read",
-        remedy: "restart DS GridDesign and retry",
-    },
-    Refusal {
-        code: "desktop_operation_unsupported",
-        when: "this DS GridDesign build does not offer the named Solar operation",
-        remedy: "update DS GridDesign and ds to matching releases",
-    },
-    Refusal {
-        code: "desktop_refused",
-        when: "the paired application declined the requested Solar operation",
-        remedy: "read the refusal detail, correct the application state, and retry",
-    },
-    Refusal {
-        code: "desktop_contract_mismatch",
-        when: "the paired session returned an invalid artifact slice or aggregate result JSON",
-        remedy: "update DS GridDesign and ds to matching releases",
-    },
-    Refusal {
-        code: "pairing_rejected",
-        when: "the descriptor's pairing secret is stale",
-        remedy: "restart DS GridDesign to publish a fresh descriptor",
-    },
 ];
 
 pub static RESULTS_READ_COMMAND: Command = Command {
@@ -156,34 +93,6 @@ pub static RESULTS_READ_COMMAND: Command = Command {
     availability: crate::project::availability,
 };
 
-pub static SYNC_STATUS_COMMAND: Command = Command {
-    id: "solar.sync.status",
-    path: &["solar", "sync", "status"],
-    contract: 1,
-    summary: "Read Solar publication state from the desktop Sync Center.",
-    purpose: "Projects the active project's durable Solar outbox rows and their pending, syncing, conflict, failed, or synced states. An optional batch run id narrows the view without starting or retrying publication.",
-    chapter: Chapter::Solar,
-    effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
-    execution: Execution::Sync,
-    args: &[
-        Arg::value("run-id", "<id>", "Optional native batch id to filter."),
-        crate::paired::TARGET_ARG,
-        crate::paired::DESCRIPTOR_ARG,
-    ],
-    output: "Matching calculation/report publication rows and counts by state.",
-    examples: &[Example {
-        command: "ds solar sync status --run-id run-123 --output json",
-        note: "Answers whether every city result and report has converged.",
-        runnable: false,
-    }],
-    refusals: paired::REFUSALS,
-    reference: Some("docs/reference/solar.md"),
-    search: &[],
-    requires: Requires::Window,
-    availability: paired::available,
-};
-
 pub static PORTFOLIO_LIST_COMMAND: Command = Command {
     id: "solar.portfolio.list",
     path: &["solar", "portfolio", "list"],
@@ -246,110 +155,6 @@ pub static PORTFOLIO_ANALYSIS_COMMAND: Command = Command {
     availability: ds_cli_auth::native_availability,
 };
 
-pub static PORTFOLIO_READ_COMMAND: Command = Command {
-    id: "solar.portfolio.read",
-    path: &["solar", "portfolio", "read"],
-    contract: 3,
-    summary: "Read a bounded projection of one sealed portfolio result.",
-    purpose: "Pages one completed paired Solar portfolio result, verifies its native name, content digest and batch identity, then validates the v2/v3 trace before returning one bounded semantic projection. V3 round-robin results carry no false single representative: the receipt instead names each graph's source member. Repeated --path values descend through object keys, never filesystem paths. The CLI performs no calculation and never reconstructs a portfolio from city rows.",
-    chapter: Chapter::Solar,
-    effect: Effect::ReadOnly,
-    authority: Authority::DesktopUser,
-    execution: Execution::Sync,
-    args: &[
-        Arg::value("run-id", "<id>", "Completed native Solar run id.").required(),
-        Arg::repeated(
-            "path",
-            "<field>",
-            "Semantic aggregate-result object key. Repeat to descend, up to eight keys.",
-        ),
-        crate::paired::TARGET_ARG,
-        crate::paired::DESCRIPTOR_ARG,
-    ],
-    output: "The v2/v3 schema, bounded engine identity, portfolio name/id/revision, run identity, ordered members, input/result/content/batch digests, assumptions, representative city or null round-robin marker, bounded v3 graph-member evidence, selected path/value, completeness and sealed byte count. Large arrays and strings are edge-sampled; complete=false identifies elision.",
-    examples: &[
-        Example {
-            command: "ds solar portfolio read --run-id run-123 --output json",
-            note: "Reads a bounded root projection of the sealed aggregate result.",
-            runnable: false,
-        },
-        Example {
-            command: "ds solar portfolio read --run-id run-123 --path sections --path investment --output json",
-            note: "Reads one narrow semantic value without exporting the full result file.",
-            runnable: false,
-        },
-    ],
-    refusals: PORTFOLIO_READ_REFUSALS,
-    reference: Some("docs/reference/solar.md"),
-    search: &[],
-    requires: Requires::Window,
-    availability: paired::available,
-};
-
-pub static FINAL_IMPORT_COMMAND: Command = Command {
-    id: "solar.final.import",
-    path: &["solar", "final", "import"],
-    contract: 2,
-    summary: "Import an externally interpreted Markdown final.",
-    purpose: "Hands one explicit externally interpreted Markdown source path to the paired native shell, which lints it against the run's authoring draft and stores the exact bytes in the selected run/city final slot. Import is local review state only; `solar final submit` is the separate publication authority. DS calls no model and performs no PDF/DOCX conversion.",
-    chapter: Chapter::Solar,
-    effect: Effect::ArtifactWrite,
-    authority: Authority::DesktopUser,
-    execution: Execution::Sync,
-    args: &[
-        Arg::value("run-id", "<id>", "Completed native Solar batch id.").required(),
-        Arg::value("city", "<id>", "Canonical city context in that batch.").required(),
-        Arg::value(
-            "file",
-            "<markdown>",
-            "UTF-8 Markdown final to import (maximum 2 MiB).",
-        )
-        .required(),
-        crate::paired::TARGET_ARG,
-        crate::paired::DESCRIPTOR_ARG,
-    ],
-    output: "An imported or cancelled receipt naming the run and city. Import does not queue publication.",
-    examples: &[Example {
-        command: "ds solar final import --run-id run-123 --city kigali --file ./kigali-final.md --yes --output json",
-        note: "The source is interpreted externally; DS GridDesign validates and stores its exact Markdown bytes for local review.",
-        runnable: false,
-    }],
-    refusals: paired::REFUSALS,
-    reference: Some("docs/reference/solar.md"),
-    search: &[],
-    requires: Requires::Window,
-    availability: paired::available,
-};
-
-pub static FINAL_SUBMIT_COMMAND: Command = Command {
-    id: "solar.final.submit",
-    path: &["solar", "final", "submit"],
-    contract: 1,
-    summary: "Submit one imported interpreted final for publication.",
-    purpose: "Explicitly queues the already-imported final for one completed native run and city. It never imports a file, chooses another run, or treats a calculation draft as final; use `solar final import` first and inspect Sync Center separately.",
-    chapter: Chapter::Solar,
-    effect: Effect::ArtifactWrite,
-    authority: Authority::DesktopUser,
-    execution: Execution::Sync,
-    args: &[
-        Arg::value("run-id", "<id>", "Completed native Solar batch id.").required(),
-        Arg::value("city", "<id>", "Canonical city context in that batch.").required(),
-        crate::paired::TARGET_ARG,
-        crate::paired::DESCRIPTOR_ARG,
-    ],
-    output: "A submitted or unchanged receipt naming the exact run and city.",
-    examples: &[Example {
-        command: "ds solar final submit --run-id run-123 --city kigali --yes --output json",
-        note: "Queues only the imported final bound to this exact native run and city.",
-        runnable: false,
-    }],
-    refusals: paired::REFUSALS,
-    reference: Some("docs/reference/solar.md"),
-    search: &[],
-    requires: Requires::Window,
-    availability: paired::available,
-};
-
 pub fn results_read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let mut source = crate::dashboard::source(inputs)?;
     let projection = ds_command_kernel::solar_dashboard::read_section(
@@ -369,16 +174,6 @@ pub fn results_read(inputs: &Inputs, _context: &Context) -> Result<Value, Failur
     Ok(json!({"source":source,"projection":projection}))
 }
 
-pub fn sync_status(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let run_id = inputs.value("run-id");
-    let arguments = run_id.map_or_else(|| json!({}), |run_id| json!({ "run_id": run_id }));
-    let result = paired::invoke(inputs, SYNC_STATUS_OPERATION, arguments, READ_TIMEOUT)?;
-    match run_id {
-        Some(run_id) => paired::require_exact_identity(result, SYNC_STATUS_OPERATION, run_id, None),
-        None => Ok(result),
-    }
-}
-
 pub fn portfolio_list(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     crate::portfolio_headless::execute(inputs, ds_cli_auth::SolarPortfolioCommand::List)
 }
@@ -396,98 +191,6 @@ pub fn portfolio_analysis(inputs: &Inputs, _context: &Context) -> Result<Value, 
             portfolio: inputs.require("portfolio")?.into(),
         },
     )
-}
-
-pub fn portfolio_read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let path = portfolio_path(inputs)?;
-    let sealed = crate::exports::read_portfolio_result(inputs)?;
-    let result_bytes = sealed.bytes.len();
-    let document: Value = serde_json::from_slice(&sealed.bytes).map_err(|_| {
-        Failure::unavailable(
-            "desktop_contract_mismatch",
-            "the paired session returned a sealed portfolio result that is not valid JSON",
-        )
-        .remedy("update DS GridDesign and ds to matching releases")
-    })?;
-    let trace = portfolio_trace(&document, inputs.require("run-id")?)?;
-    let selected = select_portfolio_path(&document, &path)?;
-    let (value, complete) = bounded_portfolio_projection(selected);
-    let mut result = json!({
-        "status": "ok",
-        "run_id": inputs.require("run-id")?,
-        "artifact": "result",
-        "name": sealed.name,
-        "content_digest": sealed.content_digest,
-        "batch_id": sealed.batch_id,
-        "batch_digest": sealed.batch_digest,
-        "path": path,
-        "value": value,
-        "complete": complete,
-        "result_bytes": result_bytes,
-    });
-    if !complete {
-        result["more"] = json!({
-            "reason": "projection_elided",
-            "next": "repeat with a narrower --path",
-        });
-    }
-    result
-        .as_object_mut()
-        .expect("portfolio read result is an object")
-        .extend(trace);
-    Ok(result)
-}
-
-pub fn final_import(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let run_id = inputs.require("run-id")?;
-    let city = inputs.require("city")?;
-    let mut arguments = run_city(inputs)?;
-    let source = absolute_path(inputs.require("file")?);
-    arguments.insert("source_path".into(), json!(source));
-    paired::require_exact_identity(
-        paired::invoke(
-            inputs,
-            FINAL_IMPORT_OPERATION,
-            Value::Object(arguments),
-            IMPORT_TIMEOUT,
-        )?,
-        FINAL_IMPORT_OPERATION,
-        run_id,
-        Some(city),
-    )
-}
-
-pub fn final_submit(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let run_id = inputs.require("run-id")?;
-    let city = inputs.require("city")?;
-    paired::require_exact_identity(
-        paired::invoke(
-            inputs,
-            FINAL_SUBMIT_OPERATION,
-            Value::Object(run_city(inputs)?),
-            READ_TIMEOUT,
-        )?,
-        FINAL_SUBMIT_OPERATION,
-        run_id,
-        Some(city),
-    )
-}
-
-fn run_city(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
-    let mut arguments = Map::new();
-    arguments.insert("run_id".into(), json!(inputs.require("run-id")?));
-    arguments.insert("context".into(), json!(inputs.require("city")?));
-    Ok(arguments)
-}
-
-fn absolute_path(raw: &str) -> String {
-    let path = PathBuf::from(raw);
-    let resolved = if path.is_absolute() {
-        path
-    } else {
-        std::env::current_dir().unwrap_or_default().join(path)
-    };
-    resolved.to_string_lossy().into_owned()
 }
 
 pub(crate) fn portfolio_path(inputs: &Inputs) -> Result<Vec<&str>, Failure> {
@@ -528,41 +231,6 @@ pub(crate) fn select_portfolio_path<'a>(
     Ok(selected)
 }
 
-fn portfolio_trace(document: &Value, expected_run_id: &str) -> Result<Map<String, Value>, Failure> {
-    let encoded = serde_json::to_vec(document).map_err(|_| {
-        Failure::unavailable(
-            "desktop_contract_mismatch",
-            "the paired session returned a Solar portfolio result that cannot be encoded",
-        )
-        .remedy("update DS GridDesign and ds to matching releases")
-    })?;
-    let validated = ds_command_kernel::validate_solar_portfolio_result(&encoded, expected_run_id)
-        .map_err(|error| {
-        Failure::unavailable(
-            "desktop_contract_mismatch",
-            format!("the paired session returned an invalid sealed portfolio identity: {error}"),
-        )
-        .remedy("update DS GridDesign and ds to matching releases")
-    })?;
-    let validated: Value = serde_json::from_str(&validated).map_err(|_| {
-        Failure::unavailable(
-            "desktop_contract_mismatch",
-            "the shared Solar portfolio projection could not be decoded",
-        )
-        .remedy("update DS GridDesign and ds to matching releases")
-    })?;
-    validated
-        .get("trace")
-        .and_then(Value::as_object)
-        .cloned()
-        .ok_or_else(|| {
-            Failure::unavailable(
-                "desktop_contract_mismatch",
-                "the shared Solar portfolio projection omitted its trace",
-            )
-            .remedy("update DS GridDesign and ds to matching releases")
-        })
-}
 pub(crate) fn bounded_portfolio_projection(value: &Value) -> (Value, bool) {
     let (projected, mut complete) = elide_portfolio_value(value);
     if serde_json::to_vec(&projected).is_ok_and(|bytes| bytes.len() <= PORTFOLIO_PROJECTION_BYTES) {

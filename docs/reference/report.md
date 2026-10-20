@@ -563,8 +563,8 @@ the operator named on the command line, and publishes nothing of record.
 
 The test is where the bytes land and who else can see them, not how much work
 produced them. A command earns `artifact_write` when what it leaves behind is a
-durable record someone else will read as authoritative — `map design save`,
-`library seed`, `solar final submit`. A `machine_write` command reaches further
+durable record someone else will read as authoritative — `map design save`
+or `library seed`. A `machine_write` command reaches further
 still, changing this machine outside any workspace. Both are confirmation-gated
 and `report export` is not, because undoing `report export` is deleting one
 file at a path the caller chose. See

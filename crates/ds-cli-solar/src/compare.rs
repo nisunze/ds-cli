@@ -164,7 +164,7 @@ fn validate_side(side: &Value, label: &str) -> Result<(), Failure> {
     }
     for field in ["result_digest", "input_digest", "weather_digest"] {
         let value = side.get(field).and_then(Value::as_str);
-        if value.is_none_or(|value| !crate::exports::valid_sha256_digest(value)) {
+        if value.is_none_or(|value| !ds_cli_contract::util::is_sha256_digest(value, ds_cli_contract::util::HexCase::Lower)) {
             return Err(mismatch(format!(
                 "{label}.{field} is not a canonical SHA-256 digest"
             )));

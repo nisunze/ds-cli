@@ -99,9 +99,6 @@ struct App {
     style_kernel: Source,
     style_renderer: Source,
     sync_center: Source,
-    solar_portfolio_run: Source,
-    solar_batch_adapter: Source,
-    solar_portfolio_receipt: Source,
     reliability_page: Source,
 }
 
@@ -137,10 +134,7 @@ fn app() -> App {
         style_kernel: read("src/lib/styles/kernel.ts"),
         style_renderer: read("src/lib/api/styles.ts"),
         sync_center: read("src/lib/desktop/cli-sync-center.ts"),
-        solar_batch_adapter: read("src/lib/desktop/cli-solar-portfolio-batch.ts"),
-        solar_portfolio_run: read("src/lib/solar/native-batch.ts"),
         reliability_page: read("src/routes/sre/+page.svelte"),
-        solar_portfolio_receipt: read("src/lib/solar/native-portfolio-batches.ts"),
     }
 }
 
@@ -744,175 +738,6 @@ fn every_survey_control_plane_command_has_one_api_only_owner_and_exact_arguments
             "the desktop allowlist admits `{retired}`, but no ds command declares it"
         );
     }
-}
-
-#[test]
-fn every_solar_command_has_one_closed_operation_owner_and_exact_arguments() {
-    let app = app();
-    let allowlist = between(
-        &app.transport,
-        "pub const CLI_OPERATIONS: &[&str] = &[",
-        "];",
-    );
-    assert!(
-        !ds_cli_solar::paired::BRIDGE_OPS.is_empty(),
-        "ds_cli_solar::paired::BRIDGE_OPS must declare operations for this parity check"
-    );
-    for operation in ds_cli_solar::paired::BRIDGE_OPS {
-        assert_eq!(
-            count(allowlist, &format!("\"{}\"", operation.operation)),
-            1,
-            "{} must appear exactly once in the native allowlist",
-            operation.operation,
-        );
-        assert_eq!(
-            switch_case_count(&app.frontend, operation.operation),
-            1,
-            "{} must have exactly one frontend executor",
-            operation.operation,
-        );
-        {
-            let adapter = if operation.operation.starts_with("solar.portfolio.batch.") {
-                &app.solar_batch_adapter
-            } else {
-                &app.frontend
-            };
-            for argument in operation.arguments {
-                assert!(
-                    adapter.contains(&format!("args.{argument}")),
-                    "ds solar sends `{argument}` to `{}`, but the paired adapter does not read that exact key",
-                    operation.operation,
-                );
-            }
-        }
-        if operation.operation == "solar.run.start" {
-            let start = between(
-                &app.frontend,
-                "async function start(",
-                "\nasync function portfoliosForProject",
-            );
-            assert!(!start.is_empty(), "the Solar start adapter is absent");
-            let consumed = dotted_arguments(start);
-            let declared = operation.arguments.iter().copied().collect::<BTreeSet<_>>();
-            assert!(
-                declared.is_subset(&consumed),
-                "solar.run.start must consume every key declared by ds: missing {:?}",
-                declared.difference(&consumed).collect::<Vec<_>>(),
-            );
-            let legacy = BTreeSet::from([
-                "currency",
-                "project_years",
-                "discount_rate",
-                "representative_city",
-                "language",
-                "report_intents",
-            ]);
-            assert_eq!(
-                consumed
-                    .difference(&declared)
-                    .copied()
-                    .collect::<BTreeSet<_>>(),
-                legacy,
-                "solar.run.start may name only the retired assertion keys for an explicit refusal beyond the v4 CLI contract",
-            );
-        }
-    }
-}
-
-/// A governed portfolio publication that never queued is a fact the
-/// application owns, and `ds solar run result` reports the same one.
-///
-/// The native completion retains the aggregate in the shell's one sync store,
-/// and the run records its verdict after the local commit: the receipt is
-/// written first, and a retention failure is recorded on that already-succeeded
-/// receipt instead of undoing it. A retention that never happened has no Sync
-/// Center row, so the result receipt is the only place either surface can
-/// learn it — which is why `ds` reads it there rather than deriving a
-/// publication state of its own.
-///
-/// What has to agree is therefore the receipt field `ds` hand-copies, the bound
-/// the application puts on it, the order that keeps the run successful, and the
-/// "never queued" word both surfaces print. The application's own CLI
-/// projection forwards the field; the guard below pins the spelling `ds`
-/// reads and requires the projection to retain it.
-#[test]
-fn a_failed_portfolio_publication_stays_a_sync_lane_fact_on_a_succeeded_receipt() {
-    let app = app();
-
-    assert!(
-        app.solar_portfolio_receipt
-            .contains("publicationError?: string;"),
-        "the portfolio receipt must still own an optional publication failure; \
-         `ds solar run result` reports that field and nothing it derives itself"
-    );
-    assert!(
-        app.solar_portfolio_receipt
-            .contains(r#"if (receipt.status === "succeeded") return receipt.error === undefined;"#),
-        "a succeeded portfolio receipt must stay valid while carrying a publication \
-         failure; if the application starts rejecting one, `ds` must stop reporting \
-         a success alongside it"
-    );
-
-    // From the local commit to the value returned: everything the run does
-    // about publication happens here, after success is durable.
-    let handoff = between(
-        &app.solar_portfolio_run,
-        "await putNativePortfolioBatchReceipt(receipt);",
-        "return receipt;",
-    );
-    assert!(
-        handoff.contains("report.publication_error"),
-        "the native completion's retention verdict must be read after the local commit, \
-         not before it"
-    );
-    assert!(
-        handoff.contains("receipt.publicationError ="),
-        "a publication that could not be queued must be recorded on the committed receipt"
-    );
-    assert!(
-        !handoff.contains("receipt.status ="),
-        "a failed publication must never relabel the calculation; `ds` reports the \
-         same receipt as succeeded"
-    );
-    assert!(
-        handoff.contains(&format!(
-            ".slice(0, {})",
-            ds_cli_solar::paired_run::PUBLICATION_ERROR_CHARS
-        )),
-        "ds bounds the reported reason at {} characters because the application does; \
-         a moved bound makes ds refuse a reply the application considers valid",
-        ds_cli_solar::paired_run::PUBLICATION_ERROR_CHARS
-    );
-
-    assert!(
-        app.frontend.contains(&format!(
-            "\"{}\"",
-            ds_cli_solar::paired_run::PUBLICATION_NOT_QUEUED
-        )),
-        "`{}` is the application's own word for an intent that never queued; ds prints \
-         the same one rather than inventing a second vocabulary",
-        ds_cli_solar::paired_run::PUBLICATION_NOT_QUEUED
-    );
-
-    // The projection renames receipt fields to snake_case, including the
-    // publication failure. Every field the client reads must stay present.
-    let projection = between(&app.frontend, "portfolio: {", "};");
-    for (owner, wire) in [
-        ("portfolio.sourceRunId", "source_run_id"),
-        ("portfolio.inputDigest", "input_digest"),
-    ] {
-        assert!(
-            projects_field(projection, wire) && projection.contains(owner),
-            "the portfolio projection no longer renames `{owner}` to `{wire}`; the key \
-             ds reads is derived from that convention"
-        );
-    }
-    assert!(
-        projects_field(projection, ds_cli_solar::paired_run::PUBLICATION_ERROR_KEY)
-            && projection.contains("portfolio.publicationError"),
-        "the portfolio projection must forward the receipt's publication failure as `{}`",
-        ds_cli_solar::paired_run::PUBLICATION_ERROR_KEY
-    );
 }
 
 // ---------------------------------------------------------------------------

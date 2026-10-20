@@ -2873,15 +2873,12 @@ fn typed_schemas_are_generated_from_the_live_descriptors() {
             .unwrap()
             .contains("Required unless `dry-run` is true")
     );
-    for job in ["solar.run.start", "core.submit"] {
-        assert!(
-            leaf(&tools, job)["description"]
-                .as_str()
-                .unwrap()
-                .contains("Runs as a job"),
-            "{job}"
-        );
-    }
+    assert!(
+        leaf(&tools, "core.submit")["description"]
+            .as_str()
+            .unwrap()
+            .contains("Runs as a job")
+    );
 }
 
 #[test]
