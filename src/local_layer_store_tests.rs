@@ -1,5 +1,5 @@
 use super::*;
-use crate::durable_store::Principal;
+use crate::durable_store::{Identity, Principal};
 
 fn who(principal: Principal) -> Identity {
     Identity {
@@ -141,83 +141,4 @@ fn the_sweep_removes_orphan_payloads_and_unreferenced_gis_folders_only() {
     assert_eq!(features_of(&connection, &alice(), "carried/id"), "[]");
     let clean = ok(&connection, &alice(), json!({"action":"sweep"}));
     assert_eq!(clean, json!({"orphan_payloads": 0, "stale_connections": 0, "drop": []}));
-}
-
-fn entry(key: &str, value: Value) -> Value {
-    json!({"key": key, "value": value})
-}
-
-#[test]
-fn the_import_merges_the_retired_catalogue_and_its_payloads_once_with_a_receipt() {
-    let connection = db();
-    let legacy = ok(&connection, &alice(), json!({"action":"legacy"}));
-    assert_eq!(legacy["import_needed"], true);
-    assert_eq!(
-        legacy["legacy"],
-        json!({"database":"ds-web","stores":[{"store":"app","keys":["sketchLayersMeta","sketchLayers"],"prefixes":["sketchLayerFeatures:"]}]})
-    );
-    // Work made before the import finished stays first and is never replaced.
-    ok(&connection, &alice(), json!({"action":"write_catalogue","records":[layer("new")],"revision":4,"now":1}));
-    ok(&connection, &alice(), json!({"action":"put_features","layer_id":"new","features":features(1),"now":1}));
-    let catalogue = json!([layer("old"), layer("new"), {"name":"no id"}]).to_string();
-    let first = ok(&connection, &alice(), json!({"action":"import_entries","now":5,"entries":[entry("sketchLayersMeta", json!(catalogue))]}));
-    assert_eq!(first, json!({"written": 1, "skipped": 0}));
-    let second = ok(&connection, &alice(), json!({"action":"import_entries","now":5,"entries":[
-        entry("sketchLayerFeatures:old", json!(features(2))),
-        entry("sketchLayerFeatures:new", json!("[]")),
-        entry("sketchLayerFeatures:orphan", json!("[]")),
-        entry("sketchLayerFeatures:bad", json!({"not": "text"})),
-        entry("unrelated", json!("x")),
-    ]}));
-    assert_eq!(second, json!({"written": 2, "skipped": 3}));
-    assert_eq!(
-        ok(&connection, &alice(), json!({"action":"read"}))["records"],
-        json!([layer("new"), layer("old"), {"name":"no id"}])
-    );
-    let finished = ok(&connection, &alice(), json!({"action":"import_finish","now":6}));
-    assert_eq!(finished["imported"], true);
-    let receipt = &finished["receipt"];
-    assert_eq!(receipt["store"], STORE);
-    assert_eq!(receipt["source"], LEGACY_SOURCE);
-    // The orphan payload was written, then pruned: it counts as skipped.
-    assert_eq!(receipt["count"], 2);
-    assert_eq!(receipt["skipped"], 4);
-    assert_eq!(receipt["sha256"].as_str().unwrap().len(), 64);
-    assert_eq!(features_of(&connection, &alice(), "new"), features(1));
-    assert_eq!(features_of(&connection, &alice(), "old"), features(2));
-    assert!(features_of(&connection, &alice(), "orphan").is_null());
-    assert_eq!(ok(&connection, &alice(), json!({"action":"legacy"}))["import_needed"], false);
-    // It never runs again, and each identity imports on its own.
-    let late = run(&connection, &alice(), json!({"action":"import_entries","now":7,"entries":[entry("sketchLayersMeta", json!("[]"))]}));
-    assert!(late.unwrap_err().starts_with(crate::import_batches::INVALID));
-    let again = ok(&connection, &alice(), json!({"action":"import_finish","now":8}));
-    assert_eq!(again["imported"], false);
-    assert_eq!(again["receipt"], *receipt);
-    assert_eq!(ok(&connection, &bob(), json!({"action":"legacy"}))["import_needed"], true);
-    let empty = ok(&connection, &bob(), json!({"action":"import_finish","now":9}));
-    assert_eq!(empty["receipt"]["count"], 0);
-}
-
-#[test]
-fn the_oldest_inline_shape_parks_each_layers_features_under_its_reopened_id() {
-    let connection = db();
-    let legacy = json!([
-        {"id": "named", "name": "Named", "geometryType": "Point", "features": [{"id":"x"}]},
-        {"name": "Anonymous", "geometryType": "Point", "features": [{"id":"y"},{"id":"z"}]},
-    ])
-    .to_string();
-    ok(&connection, &alice(), json!({"action":"import_entries","now":1700000000000u64,"entries":[entry("sketchLayers", json!(legacy))]}));
-    let records = ok(&connection, &alice(), json!({"action":"read"}))["records"].clone();
-    let ids: Vec<&str> = records.as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap()).collect();
-    assert_eq!(ids, vec!["named", "sketch-1700000000000-1"]);
-    assert!(records.as_array().unwrap().iter().all(|record| record.get("features").is_none()));
-    assert_eq!(features_of(&connection, &alice(), "named"), r#"[{"id":"x"}]"#);
-    assert_eq!(features_of(&connection, &alice(), "sketch-1700000000000-1"), r#"[{"id":"y"},{"id":"z"}]"#);
-    // The browser read the oldest key only when no catalogue key existed.
-    let both = db();
-    ok(&both, &alice(), json!({"action":"import_entries","now":1,"entries":[
-        entry("sketchLayersMeta", json!(json!([layer("meta")]).to_string())),
-        entry("sketchLayers", json!(legacy)),
-    ]}));
-    assert_eq!(ok(&both, &alice(), json!({"action":"read"}))["records"], json!([layer("meta")]));
 }

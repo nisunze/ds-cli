@@ -19,18 +19,14 @@
 //! references. PLS workspace links (`plsFolder:`) and the remembered export
 //! workspace (`grid-export:`) are never swept: no local layer references them,
 //! and the retired browser sweep deleted them with the person's links.
-use crate::durable_store::{held_receipt, import_once, sha256, Identity, Input, Outcome, Principal};
+use crate::durable_store::{Input, Outcome};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 pub const STORE: &str = "folder_connections";
 pub const INVALID: &str = "folder_connection_invalid";
-/// The retired browser store every import receipt names.
-pub const LEGACY_SOURCE: &str = "ds_web_store/folder_connections";
-const LEGACY_DATABASE: &str = "ds_web_store";
-const LEGACY_STORE: &str = "folder_connections";
 pub const GIS_FOLDER_PREFIX: &str = "gisFolder:";
 pub const PLS_FOLDER_PREFIX: &str = "plsFolder:";
 pub const EXPORT_WORKSPACE_PREFIX: &str = "grid-export:";
@@ -82,30 +78,6 @@ pub struct Row {
     pub updated_at_ms: u64,
 }
 
-/// One row of the retired store, as the importer read it. The handle itself
-/// stays in the adapter: the importer already put it under `token`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LegacyRow {
-    /// The retired physical key (`handle_key`).
-    pub key: String,
-    #[serde(default)]
-    pub owner_uid: Option<String>,
-    #[serde(default)]
-    pub logical_handle_key: Option<String>,
-    #[serde(default)]
-    pub ds_project: Option<String>,
-    #[serde(default)]
-    pub folder_name: Option<String>,
-    #[serde(default)]
-    pub created_at: Option<f64>,
-    #[serde(default)]
-    pub updated_at: Option<f64>,
-    /// The stored value was a directory handle.
-    pub directory: bool,
-    pub token: String,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Target {
@@ -128,12 +100,6 @@ pub enum Operation {
     /// The connections these targets name, in order; a row in another project
     /// is not this target's.
     Lookup { targets: Vec<Target> },
-    /// Whether this identity's one-time import still has to run, and where the
-    /// retired store lives for the host's read-only importer.
-    Legacy,
-    /// The one-time import of the retired store for this identity. Every
-    /// token the import does not admit is answered in `drop`.
-    Import { rows: Vec<LegacyRow>, now: u64 },
 }
 
 fn invalid(message: &str) -> String {
@@ -287,64 +253,12 @@ pub fn unreferenced_tokens(connection: &Connection, present: &[String]) -> Resul
     Ok(unreferenced)
 }
 
-/// Admit the retired rows exactly as the retired reader did: this account's
-/// own rows, then rows that predate account scoping (claimable by an account,
-/// by exact key). Answers the admitted connections by logical key.
-fn admit_legacy(account: Option<&str>, rows: &[LegacyRow], now: u64) -> BTreeMap<String, Row> {
-    let stamp = |value: Option<f64>| match value {
-        Some(value) if value.is_finite() && value > 0.0 && value <= MAX_SAFE as f64 => value.trunc() as u64,
-        _ => now,
-    };
-    let mut admitted: BTreeMap<String, Row> = BTreeMap::new();
-    // This account's scoped rows first: they win over a pre-scoping row.
-    for scoped in [true, false] {
-        for row in rows {
-            let key = match (scoped, account, &row.owner_uid, &row.logical_handle_key) {
-                (true, Some(account), Some(owner), Some(logical)) if owner == account => {
-                    let logical = logical.trim();
-                    if serde_json::to_string(&(owner, logical)).ok().as_deref() != Some(row.key.as_str()) {
-                        continue;
-                    }
-                    logical.to_owned()
-                }
-                (false, Some(_), None, None) => row.key.trim().to_owned(),
-                _ => continue,
-            };
-            let project = row.ds_project.as_deref().unwrap_or_default().trim();
-            let folder = row.folder_name.as_deref().unwrap_or_default().trim();
-            if !row.directory
-                || !bounded(&key, MAX_KEY)
-                || admitted.contains_key(&key)
-                || !crate::execution_context::valid_project(project)
-                || !bounded(folder, MAX_FOLDER)
-                || !token(&row.token)
-            {
-                continue;
-            }
-            admitted.insert(
-                key.clone(),
-                Row {
-                    kind: Kind::of(&key),
-                    logical_key: key,
-                    project: project.into(),
-                    folder_name: folder.into(),
-                    token: row.token.clone(),
-                    created_at_ms: stamp(row.created_at),
-                    updated_at_ms: stamp(row.updated_at),
-                },
-            );
-        }
-    }
-    admitted
-}
-
 pub fn execute(connection: &Connection, input: Input, operation: Operation) -> Result<Outcome, String> {
     if input.bytes.is_some() {
         return Err(invalid("folder connections carry no payload bytes"));
     }
     connection.execute_batch(TABLE).map_err(sql)?;
-    let identity: &Identity = input.identity;
-    let owner = identity.owner();
+    let owner = input.identity.owner();
     match operation {
         Operation::Connect {
             project: p,
@@ -386,35 +300,6 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
                 found.push(row.filter(|row| row.project == target.project));
             }
             Ok(Outcome::read(fields(json!({"connections": found}))))
-        }
-        Operation::Legacy => Ok(Outcome::read(fields(json!({
-            "import_needed": held_receipt(connection, identity, STORE, LEGACY_SOURCE)?.is_none(),
-            "legacy": {"database": LEGACY_DATABASE, "store": LEGACY_STORE},
-        })))),
-        Operation::Import { rows, now } => {
-            if rows.len() > MAX_ROWS {
-                return Err(invalid("an import names at most 4096 rows"));
-            }
-            let entries = serde_json::to_string(&rows).map_err(|e| e.to_string())?;
-            let mut kept = BTreeSet::new();
-            let (receipt, ran) = import_once(connection, identity, STORE, LEGACY_SOURCE, &sha256(entries.as_bytes()), time(now)?, || {
-                let account = match &identity.principal {
-                    Principal::Account(uid) => Some(uid.as_str()),
-                    Principal::Anonymous => None,
-                };
-                let admitted = admit_legacy(account, &rows, now);
-                for (key, row) in &admitted {
-                    // A connection made here since the upgrade is newer and stays.
-                    if read(connection, &owner, key)?.is_none() {
-                        put(connection, &owner, row)?;
-                        kept.insert(row.token.clone());
-                    }
-                }
-                Ok((kept.len() as u64, (rows.len() - kept.len()) as u64))
-            })?;
-            let drop: Vec<&String> = rows.iter().map(|row| &row.token).filter(|token| !kept.contains(*token)).collect();
-            let answer = fields(json!({"imported": ran, "receipt": receipt, "drop": drop}));
-            Ok(if ran { Outcome::written(answer) } else { Outcome::read(answer) })
         }
     }
 }

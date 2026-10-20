@@ -57,26 +57,6 @@ pub(in crate::ui_preferences) fn number(value: f64) -> Value {
     }
 }
 
-/// JavaScript truthiness of one stored field.
-pub(in crate::ui_preferences) fn truthy(value: Option<&Value>) -> bool {
-    match value {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(flag)) => *flag,
-        Some(Value::Number(number)) => number.as_f64().is_some_and(|n| n != 0.0),
-        Some(Value::String(text)) => !text.is_empty(),
-        Some(Value::Array(_) | Value::Object(_)) => true,
-    }
-}
-
-/// `Number(value)` for the stored shapes the old readers accepted.
-pub(in crate::ui_preferences) fn js_number(value: &Value) -> Option<f64> {
-    match value {
-        Value::Number(number) => number.as_f64(),
-        Value::String(text) => text.trim().parse::<f64>().ok().filter(|n| n.is_finite()),
-        _ => None,
-    }
-}
-
 /// The one member of a closed vocabulary this value names.
 pub(in crate::ui_preferences) fn member(
     value: &Value,

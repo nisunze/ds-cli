@@ -7,15 +7,12 @@
 //! its canonical form. A preference is never authority: a stored value that
 //! no longer admits reads as absent and stays in place until the next write
 //! replaces it. The host binds the identity; a caller names keys, values and,
-//! for a project key, the project. Legacy browser values arrive once per
-//! identity and source through [`crate::durable_store::import_once`] and never
-//! replace a newer value.
-use crate::durable_store::{import_once, sha256, Input, Outcome};
+//! for a project key, the project.
+use crate::durable_store::{Input, Outcome};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-mod legacy;
 mod values;
 
 pub const STORE: &str = "ui_preferences";
@@ -23,7 +20,6 @@ pub const TABLE: &str = "CREATE TABLE IF NOT EXISTS ui_preferences (scope TEXT N
 /// The bound of a key that declares none.
 pub const DEFAULT_MAX_BYTES: usize = 64 * 1024;
 pub const MAX_KEYS: usize = 32;
-pub const MAX_IMPORT_ENTRIES: usize = 4096;
 pub const INVALID: &str = "ui_preference_invalid";
 const MAX_SAFE: u64 = 9_007_199_254_740_991;
 
@@ -127,43 +123,6 @@ impl Key {
     }
 }
 
-/// A legacy browser source of preference values, read once per identity.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Source {
-    /// The `persist:` namespace of the `ds_web_store` `cache` object store.
-    /// Each key that moves here declares its legacy key or prefix below.
-    PersistentCache,
-}
-impl Source {
-    pub fn name(self) -> &'static str {
-        match self {
-            Source::PersistentCache => "persistent_cache",
-        }
-    }
-    /// The exact legacy keys and key prefixes the host reads, read-only.
-    fn legacy(self) -> (Vec<&'static str>, Vec<&'static str>) {
-        match self {
-            Source::PersistentCache => legacy::keys(),
-        }
-    }
-    /// The rows (key, project, raw value) one legacy entry yields; none for an
-    /// entry this source does not own.
-    fn read(self, legacy_key: &str, value: &Value, now: u64) -> Vec<(Key, Option<String>, Value)> {
-        match self {
-            Source::PersistentCache => legacy::read(legacy_key, value, now),
-        }
-    }
-}
-
-/// One legacy entry as the host read it.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LegacyEntry {
-    pub legacy_key: String,
-    pub value: Value,
-}
-
 /// One transaction's work; the host binds the identity.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
@@ -184,15 +143,6 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         project: Option<String>,
         key: Key,
-    },
-    /// The legacy keys and prefixes the host reads for one source.
-    Legacy { source: Source },
-    /// Adopt one source's legacy entries once; a second import answers the
-    /// held receipt.
-    Import {
-        source: Source,
-        entries: Vec<LegacyEntry>,
-        now: u64,
     },
 }
 
@@ -285,8 +235,7 @@ fn get(
 }
 
 /// Run one operation inside the caller's transaction. Reads and writes answer
-/// `{"values": {key: value|null}}`; `legacy` answers the keys to read;
-/// `import` answers its receipt.
+/// `{"values": {key: value|null}}`.
 pub fn execute(connection: &Connection, input: Input, operation: Operation) -> Result<Outcome, String> {
     if input.bytes.is_some() {
         return Err(invalid("preferences carry no payload bytes"));
@@ -329,73 +278,6 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
                 .map_err(sql)?;
             answer.insert("values".into(), json!({ key.name(): Value::Null }));
             Outcome::written(answer)
-        }
-        Operation::Legacy { source } => {
-            let (keys, prefixes) = source.legacy();
-            answer.insert("legacy".into(), json!({"keys": keys, "prefixes": prefixes}));
-            Outcome::read(answer)
-        }
-        Operation::Import {
-            source,
-            entries,
-            now,
-        } => {
-            if entries.len() > MAX_IMPORT_ENTRIES || now > MAX_SAFE {
-                return Err(invalid("an import carries at most 4096 entries and a bounded time"));
-            }
-            let digest = sha256(
-                serde_json::to_string(&entries)
-                    .map_err(|e| e.to_string())?
-                    .as_bytes(),
-            );
-            let (receipt, ran) = import_once(
-                connection,
-                input.identity,
-                STORE,
-                source.name(),
-                &digest,
-                now,
-                || {
-                    let (mut count, mut skipped) = (0u64, 0u64);
-                    for entry in &entries {
-                        let rows = source.read(&entry.legacy_key, &entry.value, now);
-                        if rows.is_empty() {
-                            skipped += 1;
-                            continue;
-                        }
-                        for (key, project, value) in rows {
-                            let adopted = scope(&owner, project.as_deref(), &[key])
-                                .and_then(|fence| Ok((fence, canonical(key, &value)?.1)));
-                            let Ok((fence, text)) = adopted else {
-                                skipped += 1;
-                                continue;
-                            };
-                            // A value written since the upgrade is never replaced.
-                            let inserted = connection
-                                .execute(
-                                    "INSERT INTO ui_preferences(scope,key,value,updated_at_ms) VALUES(?1,?2,?3,?4) ON CONFLICT(scope,key) DO NOTHING",
-                                    params![fence, key.name(), text, now as i64],
-                                )
-                                .map_err(sql)?;
-                            if inserted == 1 {
-                                count += 1;
-                            } else {
-                                skipped += 1;
-                            }
-                        }
-                    }
-                    Ok((count, skipped))
-                },
-            )?;
-            answer.insert(
-                "receipt".into(),
-                serde_json::to_value(&receipt).map_err(|e| e.to_string())?,
-            );
-            if ran {
-                Outcome::written(answer)
-            } else {
-                Outcome::read(answer)
-            }
         }
     })
 }

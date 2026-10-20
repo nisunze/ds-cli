@@ -35,7 +35,6 @@ pub const MAX_STEPS: usize = 16;
 /// The largest byte payload one call carries in either direction.
 pub const MAX_BYTES: usize = 64 * 1024 * 1024;
 const GENERATIONS: &str = "CREATE TABLE IF NOT EXISTS durable_store_generations (store TEXT PRIMARY KEY NOT NULL, generation INTEGER NOT NULL CHECK(generation>0 AND generation<=9007199254740991))";
-const IMPORTS: &str = "CREATE TABLE IF NOT EXISTS durable_store_imports (owner TEXT NOT NULL, store TEXT NOT NULL, source TEXT NOT NULL, count INTEGER NOT NULL CHECK(count>=0), skipped INTEGER NOT NULL CHECK(skipped>=0), sha256 TEXT NOT NULL, at_ms INTEGER NOT NULL CHECK(at_ms>=0 AND at_ms<=9007199254740991), PRIMARY KEY(owner,store,source))";
 
 fn invalid(message: impl std::fmt::Display) -> String {
     format!("{INVALID}: {message}")
@@ -326,104 +325,6 @@ pub(crate) fn advance(connection: &Connection, store: &str) -> Result<u64, Strin
         )
         .map_err(sql)?;
     generation(connection, store)
-}
-
-/// The receipt of one completed legacy import, one per owner, store and source.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct ImportReceipt {
-    pub store: String,
-    pub source: String,
-    pub count: u64,
-    pub skipped: u64,
-    pub sha256: String,
-    pub at_ms: u64,
-}
-/// The receipt this identity holds for one store and source, if its import
-/// ran: what a store answers as `import_needed` without reading the source.
-pub fn held_receipt(
-    connection: &Connection,
-    identity: &Identity,
-    store: &str,
-    source: &str,
-) -> Result<Option<ImportReceipt>, String> {
-    connection.execute_batch(IMPORTS).map_err(sql)?;
-    connection
-        .query_row(
-            "SELECT count,skipped,sha256,at_ms FROM durable_store_imports WHERE owner=?1 AND store=?2 AND source=?3",
-            params![identity.owner(), store, source],
-            |row| {
-                Ok(ImportReceipt {
-                    store: store.into(),
-                    source: source.into(),
-                    count: row.get::<_, i64>(0)? as u64,
-                    skipped: row.get::<_, i64>(1)? as u64,
-                    sha256: row.get(2)?,
-                    at_ms: row.get::<_, i64>(3)? as u64,
-                })
-            },
-        )
-        .optional()
-        .map_err(sql)
-}
-
-/// Run a legacy import at most once per owner, store and source. A held
-/// receipt answers without running `import`; otherwise `import` writes its
-/// rows (never replacing newer ones) and answers `(count, skipped)`, and the
-/// receipt is recorded in the same transaction. `sha256` is the digest of the
-/// entries as the source handed them over.
-pub fn import_once(
-    connection: &Connection,
-    identity: &Identity,
-    store: &str,
-    source: &str,
-    sha256: &str,
-    now: u64,
-    import: impl FnOnce() -> Result<(u64, u64), String>,
-) -> Result<(ImportReceipt, bool), String> {
-    connection.execute_batch(IMPORTS).map_err(sql)?;
-    let owner = identity.owner();
-    let held = connection
-        .query_row(
-            "SELECT count,skipped,sha256,at_ms FROM durable_store_imports WHERE owner=?1 AND store=?2 AND source=?3",
-            params![owner, store, source],
-            |row| {
-                Ok(ImportReceipt {
-                    store: store.into(),
-                    source: source.into(),
-                    count: row.get::<_, i64>(0)? as u64,
-                    skipped: row.get::<_, i64>(1)? as u64,
-                    sha256: row.get(2)?,
-                    at_ms: row.get::<_, i64>(3)? as u64,
-                })
-            },
-        )
-        .optional()
-        .map_err(sql)?;
-    if let Some(receipt) = held {
-        return Ok((receipt, false));
-    }
-    if now > 9_007_199_254_740_991 || sha256.len() != 64 {
-        return Err(invalid("an import names its time and the SHA-256 of its entries"));
-    }
-    let (count, skipped) = import()?;
-    connection
-        .execute(
-            "INSERT INTO durable_store_imports(owner,store,source,count,skipped,sha256,at_ms) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-            params![owner, store, source, count as i64, skipped as i64, sha256, now as i64],
-        )
-        .map_err(sql)?;
-    Ok((
-        ImportReceipt {
-            store: store.into(),
-            source: source.into(),
-            count,
-            skipped,
-            sha256: sha256.into(),
-            at_ms: now,
-        },
-        true,
-    ))
 }
 
 /// Drive one statement-protocol call to `done` through the shared executor

@@ -16,13 +16,8 @@
 //! * only an explicit delete (Discard) removes a room.
 //!
 //! Rows are fenced by the bound identity's owner and the project; a caller
-//! names the project and transformers, never an owner. The browser's
-//! IndexedDB rooms move once per identity, in batches, and never replace a
-//! held dirty room.
-use crate::durable_store::{
-    held_receipt, import_once, sha256, Identity, ImportReceipt, Input, Outcome, Principal,
-};
-use crate::import_batches::{self, Batch};
+//! names the project and transformers, never an owner.
+use crate::durable_store::{sha256, Input, Outcome};
 use crate::report_export::jcs;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -40,13 +35,6 @@ pub const MAX_ROOMS: usize = 64;
 pub const MAX_NAMES: usize = 500;
 pub const MAX_LIST: usize = 16;
 pub const MAX_LAYER_FEATURES: usize = 50_000;
-pub const MAX_IMPORT_ENTRIES: usize = 4096;
-/// The legacy IndexedDB sources, read once per identity.
-pub const ROOMS_SOURCE: &str = "design_transformers";
-pub const INVALIDATIONS_SOURCE: &str = "transformer_latest_invalidation";
-const INVALIDATION_PREFIX: &str = "transformer-latest-invalidation:";
-/// The only legacy room layout IndexedDB still served.
-const LEGACY_CACHE_VERSION: u64 = 3;
 const MAX_TEXT: usize = 512;
 const MAX_SAFE: u64 = 9_007_199_254_740_991;
 
@@ -151,23 +139,6 @@ pub struct Invalidation {
     pub change_id: String,
 }
 
-/// One legacy IndexedDB room with its header, exactly as the browser held them.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LegacyRoom {
-    pub room: Value,
-    #[serde(default)]
-    pub header: Option<Value>,
-}
-
-/// One legacy `persist:` entry, exactly as the browser held it.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LegacyEntry {
-    pub legacy_key: String,
-    pub value: Value,
-}
-
 /// One transaction's work; the host binds the identity.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
@@ -242,19 +213,6 @@ pub enum Operation {
     },
     /// How many rooms the project holds on this device.
     Count { project: String },
-    /// Whether this identity's one-time import still has to run, and the
-    /// retired rows the host reads, read-only.
-    Legacy,
-    /// One batch of retired rooms with their headers.
-    ImportRooms {
-        account_email: String,
-        rooms: Vec<LegacyRoom>,
-        now: u64,
-    },
-    /// Record the room import's receipt once every batch has arrived.
-    ImportFinish { now: u64 },
-    /// The retired Latest invalidations, in one call.
-    ImportInvalidations { entries: Vec<LegacyEntry>, now: u64 },
 }
 
 /// What a header records about one room: everything but its geometry and
@@ -323,9 +281,6 @@ fn bounded(value: u64, what: &str) -> Result<u64, String> {
 }
 fn answer(key: &str, value: Value) -> Map<String, Value> {
     Map::from_iter([(key.to_string(), value)])
-}
-fn receipt_value(receipt: Option<ImportReceipt>) -> Result<Value, String> {
-    serde_json::to_value(receipt).map_err(|e| e.to_string())
 }
 
 /// The row fence: the bound identity's owner and the exact project.
@@ -810,139 +765,6 @@ fn invalidations(
     rows.map(|text| from_text(&text.map_err(sql)?)).collect()
 }
 
-/// A legacy field, read leniently: the browser kept whatever it wrote.
-fn legacy_flag(value: &Value, key: &str) -> Option<bool> {
-    value.get(key).and_then(Value::as_bool)
-}
-fn legacy_count(value: &Value, key: &str) -> Option<u64> {
-    value
-        .get(key)
-        .and_then(Value::as_f64)
-        .filter(|n| n.is_finite() && *n >= 0.0 && n.fract() == 0.0 && *n <= MAX_SAFE as f64)
-        .map(|n| n as u64)
-}
-fn legacy_object(value: &Value, key: &str) -> Option<Map<String, Value>> {
-    value
-        .get(key)
-        .and_then(Value::as_object)
-        .filter(|fields| !fields.is_empty())
-        .cloned()
-}
-fn legacy_digest(value: &Value, key: &str) -> Option<String> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .filter(|digest| sha256_hex(digest))
-        .map(str::to_string)
-}
-
-/// Move one legacy room for this account: `true` when it now holds the room.
-/// A held dirty room is the newer work and stays (so a batch repeated after
-/// an interruption writes nothing new); unsaved legacy work replaces a clean
-/// held copy, which the server can always serve again.
-fn import_room(
-    connection: &Connection,
-    owner: &str,
-    account: &str,
-    legacy: &LegacyRoom,
-) -> Result<bool, String> {
-    let room = &legacy.room;
-    let header = legacy.header.clone().unwrap_or(Value::Null);
-    let (Some(project), Some(raw_name), Some(layers)) = (
-        room["ds_project"].as_str(),
-        room["transformer_name"].as_str(),
-        room["layers"].as_object(),
-    ) else {
-        return Ok(false);
-    };
-    let owner_email = room["owner_email"]
-        .as_str()
-        .map(|email| email.trim().to_lowercase());
-    if legacy_count(room, "cache_version") != Some(LEGACY_CACHE_VERSION)
-        || owner_email.is_some_and(|email| !email.is_empty() && email != account)
-    {
-        return Ok(false);
-    }
-    let (Ok(scope), Ok(name)) = (fence(owner, project), room_name(raw_name)) else {
-        return Ok(false);
-    };
-    if room["source"].as_str() != Some(Source::of(&name).name()) {
-        return Ok(false);
-    }
-    let server_known = legacy_flag(room, "server_known").unwrap_or(false);
-    // ds-web read an unset flag as "dirty unless the server knows it"; a
-    // header that says dirty keeps the room dirty.
-    let local_dirty = legacy_flag(room, "local_dirty").unwrap_or(!server_known)
-        || legacy_flag(&header, "local_dirty") == Some(true);
-    let existing = held(connection, &scope, &name)?;
-    if existing
-        .as_ref()
-        .is_some_and(|held| held.local_dirty || !local_dirty)
-    {
-        return Ok(false);
-    }
-    let analysis = legacy_object(room, "voltage_drop");
-    let mut moved = summarize(&name, layers, analysis.as_ref());
-    moved.revision = existing.as_ref().map_or(1, |held| held.revision + 1);
-    moved.local_dirty = local_dirty;
-    moved.server_known = server_known;
-    moved.server_version =
-        legacy_count(room, "server_version").or(legacy_count(&header, "base_server_version"));
-    // The digest the server may already hold for an interrupted save.
-    moved.local_content_digest =
-        legacy_digest(&header, "local_content_digest").or(moved.local_content_digest);
-    moved.server_content_digest = legacy_digest(&header, "server_content_digest");
-    moved.process_metadata = legacy_object(room, "local_process_metadata");
-    moved.voltage_drop_metadata = legacy_object(room, "voltage_drop_metadata")
-        .or(legacy_object(&header, "voltage_drop_metadata"));
-    moved.locally_computed = analysis.is_some()
-        || legacy_flag(room, "locally_computed").unwrap_or(moved.process_metadata.is_some());
-    moved.pending_operation_id = header["pending_operation_id"]
-        .as_str()
-        .filter(|id| exact(id))
-        .map(str::to_string);
-    moved.room_updated_at = legacy_count(room, "updated_at").unwrap_or(0);
-    moved.updated_at = legacy_count(&header, "updated_at").unwrap_or(moved.room_updated_at);
-    let raw = analysis.as_ref().and(room["voltage_drop_json"].as_str());
-    Ok(store(connection, &scope, &moved, layers, (analysis.as_ref(), raw)).is_ok())
-}
-
-/// The invalidations one `transformer-latest-invalidation:` entry yields for
-/// this account.
-fn import_invalidation(
-    connection: &Connection,
-    identity: &Identity,
-    owner: &str,
-    entry: &LegacyEntry,
-) -> u64 {
-    let Some(scope) = entry
-        .legacy_key
-        .strip_prefix(INVALIDATION_PREFIX)
-        .and_then(|scope| serde_json::from_str::<Value>(scope).ok())
-    else {
-        return 0;
-    };
-    let Principal::Account(uid) = &identity.principal else {
-        return 0;
-    };
-    let (Some(project), Some(raw_name)) =
-        (scope["project"].as_str(), scope["transformer"].as_str())
-    else {
-        return 0;
-    };
-    let (Ok(fenced), Ok(name)) = (fence(owner, project), room_name(raw_name)) else {
-        return 0;
-    };
-    if scope["owner"].as_str() != Some(uid.as_str()) {
-        return 0;
-    }
-    let receipts = entry.value.as_array().into_iter().flatten();
-    receipts
-        .filter_map(|receipt| serde_json::from_value::<Invalidation>(receipt.clone()).ok())
-        .filter(|receipt| invalidate(connection, &fenced, &name, receipt).unwrap_or(false))
-        .count() as u64
-}
-
 /// Run one operation inside the caller's transaction.
 pub fn execute(
     connection: &Connection,
@@ -954,7 +776,6 @@ pub fn execute(
     }
     connection.execute_batch(SCHEMA).map_err(sql)?;
     let owner = input.identity.owner();
-    let identity = input.identity;
     Ok(match operation {
         Operation::Write {
             project,
@@ -1179,99 +1000,6 @@ pub fn execute(
                 )
                 .map_err(sql)?;
             Outcome::read(answer("rooms", json!(count)))
-        }
-        Operation::Legacy => {
-            let pending = |source| {
-                Ok::<_, String>(held_receipt(connection, identity, STORE, source)?.is_none())
-            };
-            Outcome::read(Map::from_iter([
-                (
-                    "import_needed".into(),
-                    json!(pending(ROOMS_SOURCE)? || pending(INVALIDATIONS_SOURCE)?),
-                ),
-                (
-                    "legacy".into(),
-                    json!({
-                        "database": "ds_web_store",
-                        "rooms": {"stores": ["design_transformers", "design_transformer_headers"]},
-                        "persistent_prefixes": [INVALIDATION_PREFIX],
-                    }),
-                ),
-            ]))
-        }
-        Operation::ImportRooms {
-            account_email,
-            rooms,
-            now,
-        } => {
-            let account = account_email.trim().to_lowercase();
-            if !exact(&account) || !account.contains('@') || rooms.len() > MAX_ROOMS {
-                return Err(invalid(
-                    "an import names the signed-in account email and at most 64 rooms",
-                ));
-            }
-            bounded(now, "the time")?;
-            import_batches::open(connection, identity, STORE, ROOMS_SOURCE)?;
-            let mut moved = Vec::new();
-            for legacy in &rooms {
-                moved.push(import_room(connection, &owner, &account, legacy)?);
-            }
-            let count = moved.iter().filter(|moved| **moved).count() as u64;
-            let batch = Batch {
-                entries: &to_text(&rooms)?,
-                count,
-                skipped: rooms.len() as u64 - count,
-            };
-            import_batches::tally(connection, identity, STORE, ROOMS_SOURCE, batch)?;
-            Outcome::written(answer("moved", json!(moved)))
-        }
-        Operation::ImportFinish { now } => {
-            let (receipt, ran) = import_batches::finish(
-                connection,
-                identity,
-                STORE,
-                ROOMS_SOURCE,
-                bounded(now, "the time")?,
-                0,
-            )?;
-            let value = answer("receipt", receipt_value(Some(receipt))?);
-            if ran {
-                Outcome::written(value)
-            } else {
-                Outcome::read(value)
-            }
-        }
-        Operation::ImportInvalidations { entries, now } => {
-            if entries.len() > MAX_IMPORT_ENTRIES || now > MAX_SAFE {
-                return Err(invalid(
-                    "an import carries at most 4096 entries and its time",
-                ));
-            }
-            let digest = sha256(to_text(&entries)?.as_bytes());
-            let (receipt, ran) = import_once(
-                connection,
-                identity,
-                STORE,
-                INVALIDATIONS_SOURCE,
-                &digest,
-                now,
-                || {
-                    let (mut count, mut skipped) = (0, 0);
-                    for entry in &entries {
-                        match import_invalidation(connection, identity, &owner, entry) {
-                            0 => skipped += 1,
-                            moved => count += moved,
-                        }
-                    }
-                    Ok((count, skipped))
-                },
-            )?;
-            let value = answer("receipt", receipt_value(Some(receipt))?);
-            if ran {
-                Outcome::written(value)
-            } else {
-                Outcome::read(value)
-            }
         }
     })
 }

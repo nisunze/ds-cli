@@ -12,12 +12,10 @@
 //! offline.
 //!
 //! The host binds the identity: a row's account is the bound account, never
-//! a caller's word, and a signed-out identity queues nothing. The retired
-//! browser outbox imports once per account, that account's rows only.
+//! a caller's word, and a signed-out identity queues nothing.
 use crate::byte_parts::{Blob, Blobs, Received, Share, Stage, PART_BYTES};
-use crate::durable_store::{held_receipt, Identity, Input, Outcome, Principal};
+use crate::durable_store::{Identity, Input, Outcome, Principal};
 use crate::execution_context::valid_project;
-use crate::import_batches::{self, Batch};
 use crate::survey_media_address;
 use crate::survey_photo_outbox::{self as outbox, Action, Companion, Event, Row, Scope, Status, TransportOutcome};
 use crate::transfer::Cause;
@@ -30,8 +28,6 @@ pub const STORE: &str = "media_outbox";
 pub const INVALID: &str = "media_outbox_invalid";
 /// A well-formed call the outbox declines, in the words a person is shown.
 pub const REFUSED: &str = "media_outbox_refused";
-/// The retired browser outbox, imported once per account.
-pub const LEGACY_SOURCE: &str = "blob_outbox";
 const MIB: u64 = 1024 * 1024;
 /// The largest original one row queues.
 pub const MAX_MEDIA_BYTES: u64 = 1024 * MIB;
@@ -47,7 +43,7 @@ pub(crate) const BLOBS: Blobs = Blobs {
     code: INVALID,
     content_addressed: false,
 };
-const TABLES: &str = "CREATE TABLE IF NOT EXISTS media_outbox (owner TEXT NOT NULL, path TEXT NOT NULL, companion_path TEXT, status TEXT NOT NULL, row TEXT NOT NULL, blob INTEGER, original_size INTEGER NOT NULL CHECK(original_size>=0), companion_size INTEGER NOT NULL CHECK(companion_size>=0), bytes_at_ms INTEGER NOT NULL CHECK(bytes_at_ms>=0 AND bytes_at_ms<=9007199254740991), PRIMARY KEY(owner,path)); CREATE INDEX IF NOT EXISTS media_outbox_by_companion ON media_outbox(owner,companion_path); CREATE TABLE IF NOT EXISTS media_outbox_import_log (owner TEXT NOT NULL, path TEXT NOT NULL, PRIMARY KEY(owner,path))";
+const TABLES: &str = "CREATE TABLE IF NOT EXISTS media_outbox (owner TEXT NOT NULL, path TEXT NOT NULL, companion_path TEXT, status TEXT NOT NULL, row TEXT NOT NULL, blob INTEGER, original_size INTEGER NOT NULL CHECK(original_size>=0), companion_size INTEGER NOT NULL CHECK(companion_size>=0), bytes_at_ms INTEGER NOT NULL CHECK(bytes_at_ms>=0 AND bytes_at_ms<=9007199254740991), PRIMARY KEY(owner,path)); CREATE INDEX IF NOT EXISTS media_outbox_by_companion ON media_outbox(owner,companion_path)";
 
 /// The thumbnail companion an admission queues with its original.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -120,21 +116,6 @@ pub enum Operation {
     RetryFailed { now: u64 },
     Counts,
     Failed,
-    /// What the host reads, read-only, to import the retired browser outbox.
-    Legacy,
-    /// One retired row as the host read it, and the bytes it pinned: the
-    /// original followed by its companion, absent when the host held none.
-    ImportEntry {
-        row: Value,
-        #[serde(default)]
-        original_size: u64,
-        #[serde(default)]
-        companion_size: u64,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        payload: Option<Share>,
-        now: u64,
-    },
-    ImportFinish { now: u64 },
 }
 
 fn invalid(message: impl std::fmt::Display) -> String {
@@ -772,113 +753,9 @@ fn counts(connection: &Connection, owner: &str) -> Result<Outcome, String> {
     }))))
 }
 
-#[allow(clippy::too_many_arguments)]
-fn import_entry(
-    connection: &Connection,
-    identity: &Identity,
-    owner: &str,
-    row: Value,
-    original_size: u64,
-    companion_size: u64,
-    share: Option<Share>,
-    now: u64,
-    bytes: Option<Vec<u8>>,
-) -> Result<Outcome, String> {
-    import_batches::open(connection, identity, STORE, LEGACY_SOURCE)?;
-    let now = time(now)?;
-    if original_size > MAX_MEDIA_BYTES || companion_size > MAX_COMPANION_BYTES {
-        return Err(invalid("an imported row's bytes exceed their bounds"));
-    }
-    let payload = match share {
-        Some(share) => {
-            if share.byte_length != original_size + companion_size {
-                return Err(invalid("the payload is the original followed by its companion"));
-            }
-            let staging_text = serde_json::to_string(&(&row, original_size, companion_size)).map_err(|e| e.to_string())?;
-            let stage = Stage {
-                code: INVALID,
-                owner,
-                store: STORE,
-            };
-            match stage.receive(connection, &staging_text, share, bytes, MAX_MEDIA_BYTES + MAX_COMPANION_BYTES, now)? {
-                Received::Staged {
-                    staging,
-                    received,
-                    parts,
-                } => return Ok(staged(staging, received, parts)),
-                Received::Complete(payload) => Some(payload),
-            }
-        }
-        None if bytes.is_some() => return Err(invalid("bytes travel with their payload share")),
-        None => None,
-    };
-    let digest = match &payload {
-        Some(payload) => Some(payload.sha256(connection, INVALID)?),
-        None => None,
-    };
-    // Only this account's rows import; a row that was uploading when the
-    // browser closed resumes as pending.
-    let mine = serde_json::from_value::<Row>(row.clone())
-        .ok()
-        .filter(|row| row.scope.as_ref().map(|scope| scope.account_id.as_str()) == account(identity) && !row.generation.trim().is_empty())
-        .and_then(|row| outbox::apply(now, Some(row), Event::Recover).ok())
-        .and_then(|reply| reply.row);
-    let mut written = false;
-    if let Some(row) = &mine {
-        let logged: bool = connection
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM media_outbox_import_log WHERE owner=?1 AND path=?2)",
-                params![owner, row.path],
-                |stored| stored.get(0),
-            )
-            .map_err(sql)?;
-        let companion = row.companion.as_ref().map(|companion| companion.path.as_str());
-        if !logged && !collides(connection, owner, &row.path, companion)? {
-            let blob = match (&payload, &digest) {
-                (Some(payload), Some(digest)) => Some(BLOBS.write(connection, owner, payload, digest)?),
-                _ => None,
-            };
-            let sizes = if blob.is_some() { (original_size, companion_size) } else { (0, 0) };
-            written = insert(connection, owner, row, blob.as_ref(), sizes, now)?;
-        }
-        connection
-            .execute(
-                "INSERT INTO media_outbox_import_log(owner,path) VALUES(?1,?2) ON CONFLICT DO NOTHING",
-                params![owner, row.path],
-            )
-            .map_err(sql)?;
-    }
-    if let Some(payload) = payload {
-        payload.release(connection, INVALID)?;
-    }
-    let entry = serde_json::to_string(&json!({
-        "row": row,
-        "original_size": original_size,
-        "companion_size": companion_size,
-        "sha256": digest,
-    }))
-    .map_err(|e| e.to_string())?;
-    let (count, skipped) = if written { (1, 0) } else { (0, 1) };
-    import_batches::tally(
-        connection,
-        identity,
-        STORE,
-        LEGACY_SOURCE,
-        Batch {
-            entries: &entry,
-            count,
-            skipped,
-        },
-    )?;
-    if written {
-        photo_changed(connection)?;
-    }
-    Ok(Outcome::written(fields(json!({"written": count, "skipped": skipped}))))
-}
-
 /// Run one operation inside the caller's transaction.
 pub fn execute(connection: &Connection, input: Input, operation: Operation) -> Result<Outcome, String> {
-    if input.bytes.is_some() && !matches!(operation, Operation::Admit { .. } | Operation::ImportEntry { .. }) {
+    if input.bytes.is_some() && !matches!(operation, Operation::Admit { .. }) {
         return Err(invalid("this operation carries no payload bytes"));
     }
     schema(connection)?;
@@ -909,34 +786,6 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
                 .map(|held| held.row)
                 .collect();
             Ok(Outcome::read(fields(json!({"rows": rows}))))
-        }
-        Operation::Legacy => Ok(Outcome::read(fields(json!({
-            "import_needed": held_receipt(connection, identity, STORE, LEGACY_SOURCE)?.is_none(),
-            "legacy": {
-                "database": "ds_web_store",
-                "store": "blob_outbox",
-                "bytes_store": "photos",
-                "bytes_field": "blob",
-            },
-        })))),
-        Operation::ImportEntry {
-            row,
-            original_size,
-            companion_size,
-            payload,
-            now,
-        } => import_entry(connection, identity, &owner, row, original_size, companion_size, payload, now, input.bytes),
-        Operation::ImportFinish { now } => {
-            let (receipt, ran) = import_batches::finish(connection, identity, STORE, LEGACY_SOURCE, time(now)?, 0)?;
-            connection
-                .execute("DELETE FROM media_outbox_import_log WHERE owner=?1", params![owner])
-                .map_err(sql)?;
-            let value = fields(json!({"imported": ran, "receipt": receipt}));
-            Ok(if ran {
-                Outcome::written(value)
-            } else {
-                Outcome::read(value)
-            })
         }
     }
 }

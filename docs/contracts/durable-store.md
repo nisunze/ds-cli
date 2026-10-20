@@ -17,8 +17,8 @@ StoreHost. Until a store's slice lands, its IndexedDB code stays in service.
 ## Owner and edges
 
 `src/durable_store.rs` owns the call vocabulary, the one transaction, the
-identity binding, the owner fence, store generations, shared import receipts,
-the effect vocabulary and the byte channel. Each store owns its tables in its
+identity binding, the owner fence, store generations, the effect vocabulary
+and the byte channel. Each store owns its tables in its
 own module (`src/<store>.rs`) and runs its SQL directly on the transaction.
 
 | Edge | Executor | Storage |
@@ -69,8 +69,8 @@ most the project; a call that states an identity is refused.
 | Browser worker, signed out | `"anonymous"` (`Principal::Anonymous`, never a uid) | the deployment lane | the observed authority identity |
 
 `Identity::owner()` is the SHA-256 of the canonical (principal, lane,
-audience); every Core-homed answer carries it as `owner`, rows and import
-receipts are fenced by it, and `expect_owner` refuses
+audience); every Core-homed answer carries it as `owner`, rows are fenced by
+it, and `expect_owner` refuses
 `durable_store_owner_changed` before anything runs when the bound identity
 differs. Core requires a signed-in principal; the anonymous principal exists
 for the signed-out browser profile (map, sketches, local models, push
@@ -99,27 +99,6 @@ carries the current `generation`. A store with independent kinds sets
 moves another kind's generation and the answer carries the kind's own. A reactive layer observes change through the
 generation without reading rows it does not need; the store never depends on
 that layer.
-
-## Imports
-
-One table serves every store: `durable_store_imports(owner, store, source,
-count, skipped, sha256, at_ms)`. `durable_store::import_once(connection,
-identity, store, source, sha256, now, import)` answers the held receipt when
-one exists; otherwise it runs `import` and records the receipt in the same
-transaction. The Kernel declares each source's legacy keys and prefixes
-(TypeScript holds none); the host reads them read-only and sends the entries;
-the store maps each entry through that source's reader and inserts with `ON
-CONFLICT DO NOTHING`, so a value written since the upgrade is never replaced.
-An entry no reader owns is skipped and counted. Importers run once per
-identity, the anonymous one included.
-
-A source too large for one call imports in batches (`src/import_batches.rs`):
-each batch writes its entries with `ON CONFLICT DO NOTHING` and adds them to
-the identity's running tally (counts and a SHA-256 chain over the batches as
-handed over); the finishing call records the one receipt through `import_once`
-and clears the tally, and a batch after the receipt refuses.
-`durable_store::held_receipt` answers whether an import still has to run, so a
-host reads a legacy source only when it does.
 
 ## Effects
 
@@ -150,16 +129,16 @@ SHA-256 per part, so a read verifies only the parts it returns.
 
 | Store | Module | Scope | Keys or rows |
 | --- | --- | --- | --- |
-| `ui_preferences` | `src/ui_preferences.rs`; the key table (name, home, bound, contract) in `src/ui_preferences/values/catalog.rs`, value contracts in `src/ui_preferences/values.rs` and its domain modules `values/{map,workbench,design}.rs`, the `persistent_cache` legacy table and readers in `src/ui_preferences/legacy.rs` | account, or account + project per key | closed key list with per-key `max_bytes` (default 64 KiB) and canonicalising `admit`. Account: `active_project`, `layer_group_collapse`, `hillshade_exaggeration`, `map_defaults`, `tool_layout`, `tile_layers`, `application_settings`, `edit_projection_choice`, `edit_projection_custom`, `pinned_group_visible`, `profile_occupancy`, `create_transformer_map_sources`, `upload_dialog_layout`, `properties_dock_width`, `style_center_layout`, `messaging_notification_dismissals`, `local_class_styles`. Project: `layer_visibility`, `popup_layers_disabled`, `working_area`, `process_preset`, `process_setup`, `active_lv_transformer`, `status_warning_types`, `status_sort`, `map_viewport`, `pinned_transformers`, `fast_mode_customer_source`, `fast_mode_pole_source`. Legacy source `persistent_cache`: 15 exact `persist:` names and 10 project prefixes; `design:pinned_transformers:v1` fans out to one row per project |
+| `ui_preferences` | `src/ui_preferences.rs`; the key table (name, home, bound, contract) in `src/ui_preferences/values/catalog.rs`, value contracts in `src/ui_preferences/values.rs` and its domain modules `values/{map,workbench,design}.rs` | account, or account + project per key | closed key list with per-key `max_bytes` (default 64 KiB) and canonicalising `admit`. Account: `active_project`, `layer_group_collapse`, `hillshade_exaggeration`, `map_defaults`, `tool_layout`, `tile_layers`, `application_settings`, `edit_projection_choice`, `edit_projection_custom`, `pinned_group_visible`, `profile_occupancy`, `create_transformer_map_sources`, `upload_dialog_layout`, `properties_dock_width`, `style_center_layout`, `messaging_notification_dismissals`, `local_class_styles`. Project: `layer_visibility`, `popup_layers_disabled`, `working_area`, `process_preset`, `process_setup`, `active_lv_transformer`, `status_warning_types`, `status_sort`, `map_viewport`, `pinned_transformers`, `fast_mode_customer_source`, `fast_mode_pole_source` |
 | `retained_reads` | `src/retained_reads.rs`; flow helpers and the `Edge` port in `src/gateway_exchange/retained.rs` | account, or account + project per kind | closed `Kind` list; per kind a fence, key grammar, value byte bound and per-owner row bound with least-recently-used eviction; read, list, write (optionally conditional on the kind's generation), replace_set, invalidate, forget; per-kind generations `retained_reads.<kind>`; JSON only |
-| `push_state` | `src/push_state.rs` | browser profile: the (lane, audience) digest and the Firebase app id; the session owner is the bound principal, so a sign-out reaches the record | one record per app id: generation, session, opt-in and registered owner, fid, installation hash, epoch. `effects_before` deletes the push projection before every write but activation; every write's after-effect re-states it from the committed record (written when active, deleted otherwise). Legacy source `ds-messaging-push/state`: the account's opt-in only; an opt-in or disable here supersedes it |
-| `folder_connections` | `src/folder_connections.rs` | identity; the project per row, matched exactly | logical key, project, folder name, kind (`gis_folder`, `pls_folder`, `export_workspace`, `other`), a unique 128-bit token, times. `drop` names the tokens the web adapter deletes. Legacy source `ds_web_store/folder_connections` |
-| `local_layer_store` | `src/local_layer_store.rs`; decisions stay in `src/local_layers.rs` | identity | the held catalogue records verbatim (at most 2000, 16 MiB) and one payload per record id (one JSON array of features, at most 256 MiB, counted). The sweep prunes payloads no record names and drops only unreferenced `gisFolder:` connections. Generations `catalogue` and `payloads`. Batched legacy source `ds-web/app` |
-| `grid_model_store` | `src/grid_model_store.rs` | identity; a session per project or none | retained check results, temporary groups (id derived from the source digest) and remembered sessions; `remove_model` removes a model's groups, results and sessions in one transaction. Generations `results`, `groups`, `sessions`. Batched legacy source `ds-grid-catalog` (`results`, `temp_groups`); the `.dsgrid` working copies join with the byte store |
-| `byte_cache` | `src/byte_cache.rs`; parts in `src/byte_parts.rs` | identity | content-addressed: content is unique per owner and SHA-256 and never shared across owners. Entries are `(kind, key)` of the closed kinds `photo`, `compute_artifact`, `report_preview`, `grid_remote_version`, each naming content with a media type and a small JSON `meta`. `has` compares stored lengths and reads no bytes; `get` verifies the part it answers, and a corrupt part drops its content with every entry naming it and answers a miss; `put` arrives part by part and a declared SHA-256 must match; `delete`. One retention rule: past its kind's byte budget, the owner's oldest entries of that kind leave first. A photo read serves a pending upload's bytes first and a photo put never replaces them. Generations `byte_cache.<kind>`; no importer |
-| `media_outbox` | `src/media_outbox.rs`; transitions in `src/survey_photo_outbox.rs` | identity; a signed-in account queues | one row per pending upload and its bytes (the original, then its thumbnail companion) in its own work tables, which no retention reaches: `admit`, `claim` (recover abandoned leases, drive, dispatch each target with its SHA-256), `read` (a target's bytes for its transfer), `settle` (a verified upload moves both into `byte_cache` as photos and removes the row), `retry_failed`, `counts`, `failed`. Batched legacy source `ds_web_store` `blob_outbox` with its pinned `photos` bytes: this account's rows only |
-| `upload_chunks` | `src/upload_chunks.rs` | identity, the signed-out one included | Arrow IPC chunks by (workspace, file, layer, chunk), the keys sketch layers keep: `put` (replaces), `get`, `list` (no bytes), `clear_layer`, `clear_workspace`; damaged bytes are reported, never dropped. Batched legacy source `ds_web_store` `upload_chunks` (inline bytes or OPFS spill files) |
-| `work_drafts` | `src/work_drafts.rs` | account, or account + project per kind; a signed-out identity holds none | a person's unsent drafts by closed `Kind` (`messaging_message`, `form_editor`, `design_comparison` per project): per kind a fence, key grammar, value byte bound and per-account row bound; a full kind refuses `work_drafts_full` and nothing is evicted. `read`, `list` (keys, small `meta` and times, never values), `put`, `delete`; JSON only; no importer |
+| `push_state` | `src/push_state.rs` | browser profile: the (lane, audience) digest and the Firebase app id; the session owner is the bound principal, so a sign-out reaches the record | one record per app id: generation, session, opt-in and registered owner, fid, installation hash, epoch. `effects_before` deletes the push projection before every write but activation; every write's after-effect re-states it from the committed record (written when active, deleted otherwise) |
+| `folder_connections` | `src/folder_connections.rs` | identity; the project per row, matched exactly | logical key, project, folder name, kind (`gis_folder`, `pls_folder`, `export_workspace`, `other`), a unique 128-bit token, times. `drop` names the tokens the web adapter deletes |
+| `local_layer_store` | `src/local_layer_store.rs`; decisions stay in `src/local_layers.rs` | identity | the held catalogue records verbatim (at most 2000, 16 MiB) and one payload per record id (one JSON array of features, at most 256 MiB, counted). The sweep prunes payloads no record names and drops only unreferenced `gisFolder:` connections. Generations `catalogue` and `payloads` |
+| `grid_model_store` | `src/grid_model_store.rs` | identity; a session per project or none | retained check results, temporary groups (id derived from the source digest) and remembered sessions; `remove_model` removes a model's groups, results and sessions in one transaction. Generations `results`, `groups`, `sessions`; the `.dsgrid` working copies join with the byte store |
+| `byte_cache` | `src/byte_cache.rs`; parts in `src/byte_parts.rs` | identity | content-addressed: content is unique per owner and SHA-256 and never shared across owners. Entries are `(kind, key)` of the closed kinds `photo`, `compute_artifact`, `report_preview`, `grid_remote_version`, each naming content with a media type and a small JSON `meta`. `has` compares stored lengths and reads no bytes; `get` verifies the part it answers, and a corrupt part drops its content with every entry naming it and answers a miss; `put` arrives part by part and a declared SHA-256 must match; `delete`. One retention rule: past its kind's byte budget, the owner's oldest entries of that kind leave first. A photo read serves a pending upload's bytes first and a photo put never replaces them. Generations `byte_cache.<kind>` |
+| `media_outbox` | `src/media_outbox.rs`; transitions in `src/survey_photo_outbox.rs` | identity; a signed-in account queues | one row per pending upload and its bytes (the original, then its thumbnail companion) in its own work tables, which no retention reaches: `admit`, `claim` (recover abandoned leases, drive, dispatch each target with its SHA-256), `read` (a target's bytes for its transfer), `settle` (a verified upload moves both into `byte_cache` as photos and removes the row), `retry_failed`, `counts`, `failed` |
+| `upload_chunks` | `src/upload_chunks.rs` | identity, the signed-out one included | Arrow IPC chunks by (workspace, file, layer, chunk), the keys sketch layers keep: `put` (replaces), `get`, `list` (no bytes), `clear_layer`, `clear_workspace`; damaged bytes are reported, never dropped |
+| `work_drafts` | `src/work_drafts.rs` | account, or account + project per kind; a signed-out identity holds none | a person's unsent drafts by closed `Kind` (`messaging_message`, `form_editor`, `design_comparison` per project): per kind a fence, key grammar, value byte bound and per-account row bound; a full kind refuses `work_drafts_full` and nothing is evicted. `read`, `list` (keys, small `meta` and times, never values), `put`, `delete`; JSON only |
 
 ### Plain caches reuse `retained_reads`
 
@@ -168,8 +147,7 @@ add one line to the `kinds!` table in `src/retained_reads.rs` (its fence, key
 grammar, value bound and row bound) and read and write it from the domain's
 Kernel flow through `gateway_exchange::retained`. Do not add a store for a
 plain cache. A cache of bytes belongs to the content-addressed byte store; a
-person's work (drafts, queues, idempotency keys) belongs to a work store with
-an importer.
+person's work (drafts, queues, idempotency keys) belongs to a work store.
 
 ## Adding a store
 
@@ -191,20 +169,17 @@ an importer.
    the IndexedDB code, its TypeScript reader/writer and its drain loop in the
    same commit. Never bump the IndexedDB version or delete an object store: a
    retired domain stops reading and writing, and one final cleanup deletes
-   `ds_web_store` after the last domain's recovery window.
-5. Migration: a reconstructible cache has no importer and its old rows stay
-   untouched. A store holding a person's work declares a legacy source and
-   imports once per identity through `import_once`; the source stays for the
-   recovery window, and the importer's deletion is recorded in
-   `backlog/OPEN.md`.
+   the retired databases.
+5. No store imports: the owner retired every IndexedDB importer
+   (2026-10-20), so a store starts empty and unsynced IndexedDB work is not
+   carried over.
 6. Refresh the vendored Kernel WASM after Kernel changes, and commit per domain
    and per repository, Kernel first.
 
 ## IndexedDB inventory and durable-data model
 
-Classes: **work** holds a person's unsynced or authored data and migrates with
-a receipt; **cache** is reconstructible from its source and needs no importer;
-**exception** is an owner-approved platform constraint.
+Classes: **work** holds a person's unsynced or authored data; **cache** is
+reconstructible from its source; **exception** is an owner-approved platform constraint.
 
 | # | Database / object store | Domain (ds-web owners) | Class | Target |
 | --- | --- | --- | --- | --- |
@@ -242,8 +217,7 @@ a browser platform constraint. One standalone web platform adapter
 (`ds-web/src/lib/storage/folder-handle-tokens.ts`) opens its own database,
 `ds-folder-handles`, with one object store holding `{random 128-bit token →
 handle}` and nothing else; every fact and lifecycle decision is
-`folder_connections`'. `ds-grid-catalog/model_links` had no reader or writer
-left and retires without an importer.
+`folder_connections`'.
 
 ## Proof
 

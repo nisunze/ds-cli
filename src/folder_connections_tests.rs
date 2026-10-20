@@ -1,4 +1,5 @@
 use super::*;
+use crate::durable_store::{Identity, Principal};
 
 const T1: &str = "11111111111111111111111111111111";
 const T2: &str = "22222222222222222222222222222222";
@@ -118,63 +119,6 @@ fn only_tokens_no_identity_names_are_unreferenced() {
     assert!(unreferenced_tokens(&connection, &["nothex".to_owned()]).is_err());
 }
 
-fn legacy_rows() -> Value {
-    json!([
-        // alice's own scoped row.
-        {"key": "[\"alice\",\"gisFolder:a\"]", "owner_uid": "alice", "logical_handle_key": "gisFolder:a",
-         "ds_project": "kigali", "folder_name": "A", "created_at": 5.0, "updated_at": 6.0, "directory": true, "token": T1},
-        // bob's row: never alice's.
-        {"key": "[\"bob\",\"gisFolder:b\"]", "owner_uid": "bob", "logical_handle_key": "gisFolder:b",
-         "ds_project": "kigali", "folder_name": "B", "directory": true, "token": T2},
-        // A row from before account scoping: claimable by an account.
-        {"key": "plsFolder:kigali:m", "ds_project": "kigali", "folder_name": "P", "directory": true, "token": T3},
-        // A scoped row whose physical key does not match its fields.
-        {"key": "forged", "owner_uid": "alice", "logical_handle_key": "gisFolder:c",
-         "ds_project": "kigali", "folder_name": "C", "directory": true, "token": T4},
-    ])
-}
-
-#[test]
-fn the_import_admits_this_accounts_rows_and_unscoped_rows_once_with_a_receipt() {
-    let connection = db();
-    let legacy = run(&connection, &alice(), json!({"action":"legacy"})).unwrap();
-    assert_eq!(legacy["import_needed"], true);
-    assert_eq!(legacy["legacy"], json!({"database":"ds_web_store","store":"folder_connections"}));
-    let imported = run(&connection, &alice(), json!({"action":"import","rows":legacy_rows(),"now":100})).unwrap();
-    assert_eq!(imported["imported"], true);
-    assert_eq!(imported["receipt"]["source"], LEGACY_SOURCE);
-    assert_eq!(imported["receipt"]["count"], 2);
-    assert_eq!(imported["receipt"]["skipped"], 2);
-    assert_eq!(imported["drop"], json!([T2, T4]));
-    let own = lookup(&connection, &alice(), "kigali", "gisFolder:a");
-    assert_eq!(own["token"], T1);
-    assert_eq!(own["created_at_ms"], 5);
-    assert_eq!(lookup(&connection, &alice(), "kigali", "plsFolder:kigali:m")["kind"], "pls_folder");
-    assert_eq!(run(&connection, &alice(), json!({"action":"legacy"})).unwrap()["import_needed"], false);
-
-    let again = run(&connection, &alice(), json!({"action":"import","rows":legacy_rows(),"now":200})).unwrap();
-    assert_eq!(again["imported"], false);
-    assert_eq!(again["receipt"], imported["receipt"]);
-    assert_eq!(again["drop"], json!([T1, T2, T3, T4]));
-}
-
-#[test]
-fn an_import_keeps_newer_connections_and_an_anonymous_session_claims_nothing() {
-    let connection = db();
-    let newer = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    connect(&connection, &alice(), "kigali", "gisFolder:a", newer, 50);
-    let imported = run(&connection, &alice(), json!({"action":"import","rows":legacy_rows(),"now":100})).unwrap();
-    assert_eq!(imported["receipt"]["count"], 1);
-    assert_eq!(lookup(&connection, &alice(), "kigali", "gisFolder:a")["token"], newer);
-    assert_eq!(imported["drop"], json!([T1, T2, T4]));
-
-    let fresh = db();
-    let anonymous = who(Principal::Anonymous);
-    let none = run(&fresh, &anonymous, json!({"action":"import","rows":legacy_rows(),"now":1})).unwrap();
-    assert_eq!(none["receipt"]["count"], 0);
-    assert_eq!(none["drop"], json!([T1, T2, T3, T4]));
-}
-
 #[test]
 fn malformed_connections_refuse_and_carry_no_bytes() {
     let connection = db();
@@ -192,7 +136,7 @@ fn malformed_connections_refuse_and_carry_no_bytes() {
     let refused = execute(
         &connection,
         Input { identity: &identity, bytes: Some(vec![0]) },
-        serde_json::from_value(json!({"action":"legacy"})).unwrap(),
+        serde_json::from_value(json!({"action":"lookup","targets":[]})).unwrap(),
     )
     .unwrap_err();
     assert!(refused.starts_with(INVALID), "{refused}");

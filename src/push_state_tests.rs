@@ -51,7 +51,7 @@ fn after(answer: &Value) -> Vec<Effect> {
     serde_json::from_value(answer["effects"].clone()).unwrap()
 }
 fn opt_in(connection: &Connection, identity: &Identity, nonce: &str) -> Value {
-    run(connection, identity, json!({"action":"opt_in","app_id":APP,"nonce":nonce,"now":10}))
+    run(connection, identity, json!({"action":"opt_in","app_id":APP,"nonce":nonce}))
 }
 fn commit(connection: &Connection, identity: &Identity, generation: &str, fid: &str) -> Value {
     run(
@@ -77,15 +77,14 @@ fn the_session_owner_is_the_bound_principal_and_anonymous_owns_nothing() {
     assert_eq!(seen["wrote"], true);
     let read = run(&connection, &alice(), json!({"action":"read","app_id":APP}));
     assert_eq!(read["record"]["generation"], seen["record"]["generation"]);
-    assert_eq!(read["import_needed"], true);
     assert_eq!(read["wrote"], false);
     assert_eq!(after(&read), vec![]);
     // A caller cannot state an owner: no operation has an owner field.
     assert!(serde_json::from_value::<Operation>(
-        json!({"action":"opt_in","app_id":APP,"nonce":N1,"now":1,"owner":"mallory"})
+        json!({"action":"opt_in","app_id":APP,"nonce":N1,"owner":"mallory"})
     )
     .is_err());
-    let refused = attempt(&connection, &anonymous(), json!({"action":"opt_in","app_id":APP,"nonce":N2,"now":1}))
+    let refused = attempt(&connection, &anonymous(), json!({"action":"opt_in","app_id":APP,"nonce":N2}))
         .unwrap_err();
     assert!(refused.starts_with(INVALID), "{refused}");
 }
@@ -161,7 +160,7 @@ fn signing_out_ends_the_registration_without_an_account() {
 fn disabling_answers_the_registration_to_revoke_and_a_late_disable_is_stale() {
     let connection = db();
     activate(&connection);
-    let disabled = run(&connection, &alice(), json!({"action":"disable","app_id":APP,"nonce":N3,"now":20}));
+    let disabled = run(&connection, &alice(), json!({"action":"disable","app_id":APP,"nonce":N3}));
     assert_eq!(disabled["stale"], false);
     assert_eq!(disabled["previous"]["fid"], "fid-1");
     assert_eq!(disabled["previous"]["installation_hash"], HASH);
@@ -172,7 +171,7 @@ fn disabling_answers_the_registration_to_revoke_and_a_late_disable_is_stale() {
 
     run(&connection, &bob(), json!({"action":"observe_session","app_id":APP,"nonce":N1}));
     assert_eq!(run(&connection, &alice(), tombstone)["current"], false);
-    let late = run(&connection, &alice(), json!({"action":"disable","app_id":APP,"nonce":N2,"now":30}));
+    let late = run(&connection, &alice(), json!({"action":"disable","app_id":APP,"nonce":N2}));
     assert_eq!(late["stale"], true);
     assert!(late["previous"].is_null());
 }
@@ -196,17 +195,15 @@ fn every_write_but_activation_deletes_the_projection_before_its_transaction() {
     for (value, expected) in [
         (json!({"action":"read","app_id":APP}), vec![]),
         (json!({"action":"check","app_id":APP,"generation":N1,"expect":"registering"}), vec![]),
-        (json!({"action":"legacy","app_id":APP}), vec![]),
         (
             json!({"action":"commit_registration","app_id":APP,"generation":N1,"fid":"f","installation_hash":HASH,"epoch":EPOCH}),
             vec![],
         ),
         (json!({"action":"observe_session","app_id":APP,"nonce":N1}), vec![DELETE]),
-        (json!({"action":"opt_in","app_id":APP,"nonce":N1,"now":1}), vec![DELETE]),
-        (json!({"action":"disable","app_id":APP,"nonce":N1,"now":1}), vec![DELETE]),
+        (json!({"action":"opt_in","app_id":APP,"nonce":N1}), vec![DELETE]),
+        (json!({"action":"disable","app_id":APP,"nonce":N1}), vec![DELETE]),
         (json!({"action":"clear_fid","app_id":APP,"fid":"f","nonce":N1}), vec![DELETE]),
         (json!({"action":"clear_all"}), vec![DELETE]),
-        (json!({"action":"import","app_id":APP,"legacy":null,"nonce":N1,"now":1}), vec![DELETE]),
     ] {
         assert_eq!(effects_before(&op(value.clone())), expected, "{value}");
     }
@@ -263,7 +260,7 @@ impl Host {
     }
     fn activate(&mut self, nonce: &str, fid: &str) {
         let opted = self
-            .run(&alice(), json!({"action":"opt_in","app_id":APP,"nonce":nonce,"now":1}), false)
+            .run(&alice(), json!({"action":"opt_in","app_id":APP,"nonce":nonce}), false)
             .unwrap();
         self.run(
             &alice(),
@@ -285,7 +282,7 @@ fn disable_and_clear_remove_the_projection_before_commit_and_activation_writes_a
     assert_eq!(host.projection().unwrap()["epoch"], EPOCH);
 
     // Disable: the projection is gone before the transaction opens.
-    host.run(&alice(), json!({"action":"disable","app_id":APP,"nonce":N3,"now":2}), false).unwrap();
+    host.run(&alice(), json!({"action":"disable","app_id":APP,"nonce":N3}), false).unwrap();
     assert_eq!(host.during.last().unwrap(), &None);
     assert_eq!(host.projection(), None);
 
@@ -318,7 +315,7 @@ fn an_activation_that_crashes_before_commit_projects_nothing() {
     let mut host = Host::new();
     host.run(&alice(), json!({"action":"observe_session","app_id":APP,"nonce":N1}), false).unwrap();
     let opted = host
-        .run(&alice(), json!({"action":"opt_in","app_id":APP,"nonce":N2,"now":1}), false)
+        .run(&alice(), json!({"action":"opt_in","app_id":APP,"nonce":N2}), false)
         .unwrap();
     host.run(
         &alice(),
@@ -331,90 +328,6 @@ fn an_activation_that_crashes_before_commit_projects_nothing() {
     assert!(run(&host.connection, &alice(), json!({"action":"read","app_id":APP}))["record"]["active"].is_null());
 }
 
-fn legacy(opt_in: Option<&str>) -> Value {
-    json!({
-        "key": format!("app:{APP}"), "schema": 1, "generation": N1,
-        "sessionOwnerUid": "alice", "optInOwnerUid": opt_in, "activeOwnerUid": "alice",
-        "fid": "fid-old", "installationHash": HASH, "epoch": EPOCH,
-    })
-}
-fn import(connection: &Connection, identity: &Identity, legacy: Value, now: u64) -> Value {
-    run(
-        connection,
-        identity,
-        json!({"action":"import","app_id":APP,"legacy":legacy,"nonce":N2,"now":now}),
-    )
-}
-
-#[test]
-fn the_retired_record_is_named_by_the_kernel() {
-    let named = run(&db(), &alice(), json!({"action":"legacy","app_id":APP}));
-    assert_eq!(
-        named["legacy"],
-        json!({"database":"ds-messaging-push","store":"state","keys":[format!("app:{APP}")]})
-    );
-}
-
-#[test]
-fn the_import_moves_only_this_accounts_opt_in_once_with_a_receipt() {
-    let connection = db();
-    let imported = import(&connection, &alice(), legacy(Some("alice")), 1000);
-    assert_eq!(imported["imported"], true);
-    let receipt = &imported["receipt"];
-    assert_eq!(receipt["store"], STORE);
-    assert_eq!(receipt["source"], LEGACY_SOURCE);
-    assert_eq!(receipt["count"], 1);
-    assert_eq!(receipt["skipped"], 0);
-    assert_eq!(receipt["sha256"], sha256(legacy(Some("alice")).to_string().as_bytes()));
-    // The opt-in moved; the old registration did not.
-    assert_eq!(imported["record"]["enabled"], true);
-    assert_eq!(imported["record"]["registrable"], true);
-    assert!(imported["record"]["active"].is_null());
-    assert_eq!(after(&imported), vec![DELETE]);
-    assert_eq!(run(&connection, &alice(), json!({"action":"read","app_id":APP}))["import_needed"], false);
-
-    let again = import(&connection, &alice(), legacy(Some("alice")), 2000);
-    assert_eq!(again["imported"], false);
-    assert_eq!(again["receipt"], *receipt);
-    assert_eq!(generation(&again), generation(&imported));
-
-    // Bob's own import of a record alice opted into moves nothing.
-    let bobs = import(&connection, &bob(), legacy(Some("alice")), 3000);
-    assert_eq!(bobs["receipt"]["count"], 0);
-    assert_eq!(bobs["receipt"]["skipped"], 1);
-    // The anonymous principal imports once too, and adopts nothing.
-    let anonymous_import = import(&db(), &anonymous(), legacy(Some("alice")), 1);
-    assert_eq!(anonymous_import["receipt"]["count"], 0);
-}
-
-#[test]
-fn an_import_never_overrides_a_decision_made_here_and_admits_only_a_well_formed_record() {
-    let connection = db();
-    opt_in(&connection, &alice(), N2);
-    run(&connection, &alice(), json!({"action":"disable","app_id":APP,"nonce":N3,"now":11}));
-    // alice disabled push here: the retired opt-in never returns.
-    assert_eq!(run(&connection, &alice(), json!({"action":"read","app_id":APP}))["import_needed"], false);
-    let held = import(&connection, &alice(), legacy(Some("alice")), 12);
-    assert_eq!(held["imported"], false);
-    assert_eq!(held["receipt"]["count"], 0);
-    assert_eq!(held["receipt"]["sha256"], sha256(b"[]"));
-    assert_eq!(held["record"]["enabled"], false);
-
-    // Another account's held opt-in is never replaced by an import.
-    let shared = db();
-    opt_in(&shared, &bob(), N1);
-    let alices = import(&shared, &alice(), legacy(Some("alice")), 1);
-    assert_eq!(alices["receipt"]["count"], 0);
-
-    let fresh = db();
-    let mut broken = legacy(Some("alice"));
-    broken["epoch"] = json!("not-hex");
-    assert_eq!(import(&fresh, &alice(), broken, 1)["receipt"]["skipped"], 1);
-    let none = import(&db(), &alice(), Value::Null, 1);
-    assert_eq!(none["receipt"]["count"], 0);
-    assert_eq!(none["receipt"]["skipped"], 0);
-}
-
 #[test]
 fn malformed_inputs_refuse_and_carry_no_bytes() {
     let connection = db();
@@ -424,7 +337,6 @@ fn malformed_inputs_refuse_and_carry_no_bytes() {
         json!({"action":"read","app_id":APP,"epoch":"E0000000000000000000000000000001"}),
         json!({"action":"commit_registration","app_id":APP,"generation":N1,"fid":"has space","installation_hash":HASH,"epoch":EPOCH}),
         json!({"action":"commit_registration","app_id":APP,"generation":N1,"fid":"f","installation_hash":"aa","epoch":EPOCH}),
-        json!({"action":"opt_in","app_id":APP,"nonce":N1,"now":9007199254740992u64}),
     ] {
         let error = attempt(&connection, &alice(), value.clone()).unwrap_err();
         assert!(error.starts_with(INVALID), "{value}: {error}");

@@ -6,14 +6,10 @@
 //! A chunk is work: a person's imported features, read back for previews,
 //! cleaning, merges and chunk-backed sketch layers, and removed only by its
 //! workspace's own clear. Keys are the caller's (workspace, file, layer,
-//! chunk index), unchanged from the retired IndexedDB store, so a sketch
-//! layer's stored reference keeps naming its chunks; a chunk written again
-//! under its key replaces it. Legacy chunks arrive once per identity through
-//! [`crate::import_batches`], the signed-out identity included, since
-//! sketches work signed out, and never replace a chunk written since.
+//! chunk index), so a sketch layer's stored reference keeps naming its
+//! chunks; a chunk written again under its key replaces it.
 use crate::byte_parts::{Blob, Blobs, Received, Share, Stage};
-use crate::durable_store::{held_receipt, Identity, Input, Outcome};
-use crate::import_batches::{self, Batch};
+use crate::durable_store::{Input, Outcome};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -22,8 +18,6 @@ pub const STORE: &str = "upload_chunks";
 pub const INVALID: &str = "upload_chunks_invalid";
 /// The one chunk payload format: an Arrow IPC batch of features.
 pub const FORMAT: &str = "arrow-ipc-v1";
-/// The retired `ds_web_store` `upload_chunks` object store.
-pub const LEGACY_SOURCE: &str = "upload_chunks";
 const MIB: u64 = 1024 * 1024;
 pub const MAX_CHUNK_BYTES: u64 = 512 * MIB;
 pub const MAX_NAME_BYTES: usize = 1024;
@@ -83,18 +77,6 @@ pub enum Operation {
         layer: String,
     },
     ClearWorkspace { workspace: String },
-    /// What the host reads, read-only, to import the retired store.
-    Legacy,
-    /// One retired chunk record as the host read it (its byte fields left
-    /// out), and its payload: the record's `payloadBytes`, or the OPFS file
-    /// its `opfsPath` names.
-    ImportEntry {
-        record: Value,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        payload: Option<Share>,
-        now: u64,
-    },
-    ImportFinish { now: u64 },
 }
 
 fn invalid(message: impl std::fmt::Display) -> String {
@@ -155,12 +137,8 @@ fn load(connection: &Connection, owner: &str, key: &ChunkKey) -> Result<Option<H
 /// Write a chunk's row over a newly kept payload; answers whether it was
 /// written (`replace` false keeps a held chunk and drops the new payload).
 #[allow(clippy::too_many_arguments)]
-fn store(connection: &Connection, owner: &str, key: &ChunkKey, format: &str, feature_count: u64, blob: &Blob, now: u64, replace: bool) -> Result<bool, String> {
+fn store(connection: &Connection, owner: &str, key: &ChunkKey, format: &str, feature_count: u64, blob: &Blob, now: u64) -> Result<(), String> {
     let previous = load(connection, owner, key)?;
-    if previous.is_some() && !replace {
-        BLOBS.delete(connection, blob.id)?;
-        return Ok(false);
-    }
     connection
         .execute(
             "INSERT INTO upload_chunks(owner,workspace,file,layer,chunk,format,feature_count,blob,stored_at_ms) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(owner,workspace,file,layer,chunk) DO UPDATE SET format=excluded.format,feature_count=excluded.feature_count,blob=excluded.blob,stored_at_ms=excluded.stored_at_ms",
@@ -170,7 +148,7 @@ fn store(connection: &Connection, owner: &str, key: &ChunkKey, format: &str, fea
     if let Some(previous) = previous.filter(|previous| previous.blob_id != blob.id) {
         BLOBS.delete(connection, previous.blob_id)?;
     }
-    Ok(true)
+    Ok(())
 }
 
 fn described(key: &ChunkKey, format: &str, feature_count: u64, byte_size: u64) -> Value {
@@ -207,7 +185,7 @@ fn put(connection: &Connection, owner: &str, key: ChunkKey, format: String, feat
     let digest = payload.sha256(connection, INVALID)?;
     let blob = BLOBS.write(connection, owner, &payload, &digest)?;
     payload.release(connection, INVALID)?;
-    store(connection, owner, &key, &format, feature_count, &blob, now, true)?;
+    store(connection, owner, &key, &format, feature_count, &blob, now)?;
     Ok(Outcome::written(fields(json!({
         "chunk": described(&key, &format, feature_count, blob.byte_length),
     }))))
@@ -305,85 +283,13 @@ fn clear(connection: &Connection, owner: &str, workspace: &str, file_layer: Opti
     })
 }
 
-/// A retired record's key and counts, read by its own field names.
-fn legacy_chunk(record: &Value) -> Option<(ChunkKey, Option<String>, u64)> {
-    let text = |field: &str| record.get(field).and_then(Value::as_str).map(str::to_owned);
-    let number = |field: &str| record.get(field).and_then(Value::as_u64);
-    let key = ChunkKey {
-        workspace: text("workspaceKey")?,
-        file: text("fileName")?,
-        layer: text("parsedLayer")?,
-        chunk: number("chunkIndex")?,
-    };
-    admit(&key).ok()?;
-    Some((key, text("format"), number("featureCount")?))
-}
-
-fn import_entry(connection: &Connection, identity: &Identity, owner: &str, record: Value, share: Option<Share>, now: u64, bytes: Option<Vec<u8>>) -> Result<Outcome, String> {
-    import_batches::open(connection, identity, STORE, LEGACY_SOURCE)?;
-    if now > MAX_SAFE {
-        return Err(invalid("the time exceeds its bound"));
-    }
-    let payload = match share {
-        Some(share) => {
-            let operation = serde_json::to_string(&record).map_err(|e| e.to_string())?;
-            let stage = Stage {
-                code: INVALID,
-                owner,
-                store: STORE,
-            };
-            match stage.receive(connection, &operation, share, bytes, MAX_CHUNK_BYTES, now)? {
-                Received::Staged {
-                    staging,
-                    received,
-                    parts,
-                } => return Ok(Outcome::read(fields(Received::staged_answer(staging, received, parts)))),
-                Received::Complete(payload) => Some(payload),
-            }
-        }
-        None if bytes.is_some() => return Err(invalid("bytes travel with their payload share")),
-        None => None,
-    };
-    let digest = match &payload {
-        Some(payload) => Some(payload.sha256(connection, INVALID)?),
-        None => None,
-    };
-    let entry = serde_json::to_string(&json!({"record": record, "sha256": digest})).map_err(|e| e.to_string())?;
-    // Only an arrow-ipc-v1 record with its bytes is a chunk; the inline
-    // feature arrays of the store's first months carry none.
-    let mut written = false;
-    if let (Some((key, Some(format), feature_count)), Some(payload), Some(digest)) = (legacy_chunk(&record), &payload, &digest) {
-        if format == FORMAT && feature_count <= MAX_SAFE {
-            let blob = BLOBS.write(connection, owner, payload, digest)?;
-            written = store(connection, owner, &key, &format, feature_count, &blob, now, false)?;
-        }
-    }
-    if let Some(payload) = payload {
-        payload.release(connection, INVALID)?;
-    }
-    let (count, skipped) = if written { (1, 0) } else { (0, 1) };
-    import_batches::tally(
-        connection,
-        identity,
-        STORE,
-        LEGACY_SOURCE,
-        Batch {
-            entries: &entry,
-            count,
-            skipped,
-        },
-    )?;
-    Ok(Outcome::written(fields(json!({"written": count, "skipped": skipped}))))
-}
-
 /// Run one operation inside the caller's transaction.
 pub fn execute(connection: &Connection, input: Input, operation: Operation) -> Result<Outcome, String> {
-    if input.bytes.is_some() && !matches!(operation, Operation::Put { .. } | Operation::ImportEntry { .. }) {
+    if input.bytes.is_some() && !matches!(operation, Operation::Put { .. }) {
         return Err(invalid("this operation carries no payload bytes"));
     }
     schema(connection)?;
-    let identity = input.identity;
-    let owner = identity.owner();
+    let owner = input.identity.owner();
     match operation {
         Operation::Put {
             key,
@@ -405,28 +311,6 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
                 return Err(invalid("a clear names its workspace"));
             }
             clear(connection, &owner, &workspace, None)
-        }
-        Operation::Legacy => Ok(Outcome::read(fields(json!({
-            "import_needed": held_receipt(connection, identity, STORE, LEGACY_SOURCE)?.is_none(),
-            "legacy": {
-                "database": "ds_web_store",
-                "store": "upload_chunks",
-                "bytes_field": "payloadBytes",
-                "spill_field": "opfsPath",
-            },
-        })))),
-        Operation::ImportEntry { record, payload, now } => import_entry(connection, identity, &owner, record, payload, now, input.bytes),
-        Operation::ImportFinish { now } => {
-            if now > MAX_SAFE {
-                return Err(invalid("the time exceeds its bound"));
-            }
-            let (receipt, ran) = import_batches::finish(connection, identity, STORE, LEGACY_SOURCE, now, 0)?;
-            let value = fields(json!({"imported": ran, "receipt": receipt}));
-            Ok(if ran {
-                Outcome::written(value)
-            } else {
-                Outcome::read(value)
-            })
         }
     }
 }

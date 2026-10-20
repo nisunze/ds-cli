@@ -1,5 +1,5 @@
 use super::*;
-use crate::durable_store::Principal;
+use crate::durable_store::{Identity, Principal};
 
 const SHA: &str = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const GROUP: &str = "tmg-0123456789abcdef01234567";
@@ -161,55 +161,6 @@ fn removing_a_model_removes_its_groups_results_and_sessions_in_one_transaction()
     assert_eq!(ok(&connection, &alice(), json!({"action":"get_session"}))["session"], session(Some("m-2"), &["m-2"]));
     assert_eq!(ok(&connection, &alice(), json!({"action":"list_results","model_id":"m-2"}))["results"].as_array().unwrap().len(), 1);
     assert!(run(&connection, &alice(), json!({"action":"remove_model"})).is_err());
-}
-
-fn entry(store: &str, key: &str, value: Value) -> Value {
-    json!({"store": store, "key": key, "value": value})
-}
-
-#[test]
-fn the_import_admits_retired_results_and_groups_once_and_never_replaces_held_rows() {
-    let connection = db();
-    let legacy = ok(&connection, &alice(), json!({"action":"legacy"}));
-    assert_eq!(legacy["import_needed"], true);
-    assert_eq!(
-        legacy["legacy"],
-        json!({"database":"ds-grid-catalog","stores":[{"store":"results"},{"store":"temp_groups"}]})
-    );
-    ok(&connection, &alice(), json!({"action":"put_result","result":result("r-held","m-1",50)}));
-    let legacy_group = json!({"group_id":GROUP,"name":"Old","source":{"filename":"old.bak","sha256":SHA,"byte_size":7},
-        "session_model_id":"m-1","active_revision":"rev:1","import_summary":{"structures":12},"coordinate_system":"EPSG:32735",
-        "status":{"kind":"blocked","code":"ambiguous","message":"pick one","candidates":[{"candidate_id":"c1"}]},
-        "created_from":"drop","created":3});
-    let mut changed = result("r-held", "m-1", 50);
-    changed["check_type"] = json!("other");
-    let batch = ok(&connection, &alice(), json!({"action":"import_entries","entries":[
-        entry("temp_groups", GROUP, legacy_group),
-        entry("results", "r-old", result("r-old","m-1",1)),
-        entry("results", "r-held", changed),
-        entry("results", "r-x", json!({"not":"a result"})),
-        entry("results", "mismatched-key", result("r-y","m-1",1)),
-        entry("model_links", "lnk-1", json!({})),
-    ]}));
-    assert_eq!(batch, json!({"written": 2, "skipped": 4}));
-    let finished = ok(&connection, &alice(), json!({"action":"import_finish","now":9}));
-    let receipt = &finished["receipt"];
-    assert_eq!(receipt["store"], STORE);
-    assert_eq!(receipt["source"], LEGACY_SOURCE);
-    assert_eq!(receipt["count"], 2);
-    assert_eq!(receipt["skipped"], 4);
-    let results = ok(&connection, &alice(), json!({"action":"list_results","model_id":"m-1"}))["results"].clone();
-    assert_eq!(results[0]["check_type"], "span_limit");
-    assert_eq!(
-        ok(&connection, &alice(), json!({"action":"get_group","group_id":GROUP}))["group"]["status"]["candidates"],
-        json!([{"candidate_id":"c1"}])
-    );
-    assert_eq!(ok(&connection, &alice(), json!({"action":"legacy"}))["import_needed"], false);
-    let again = ok(&connection, &alice(), json!({"action":"import_finish","now":10}));
-    assert_eq!(again["imported"], false);
-    assert_eq!(again["receipt"], *receipt);
-    assert!(run(&connection, &alice(), json!({"action":"import_entries","entries":[]})).is_err());
-    assert_eq!(ok(&connection, &bob(), json!({"action":"legacy"}))["import_needed"], true);
 }
 
 #[test]

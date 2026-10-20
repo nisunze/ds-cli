@@ -7,31 +7,15 @@
 //! reopen carried verbatim) and the payload each layer parks under its id.
 //! A payload is opaque GeoJSON feature text: the store admits that it is one
 //! bounded JSON array and counts its features, and never reads a geometry.
-//!
-//! The browser kept all of this in IndexedDB (`ds-web` / `app`). Each identity
-//! imports that store once, in batches ([`crate::import_batches`]): the
-//! retired catalogue merges behind any newer one, payloads never replace a
-//! held payload, and the finishing call prunes payloads no record names
-//! before it records the receipt. The source stays untouched.
-use crate::durable_store::{held_receipt, Identity, Input, Outcome};
-use crate::import_batches::{self, Batch};
+use crate::durable_store::{Input, Outcome};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::de::{Deserializer, IgnoredAny, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 
 pub const STORE: &str = "local_layer_store";
 pub const INVALID: &str = "local_layer_store_invalid";
-/// The retired browser store every import receipt names.
-pub const LEGACY_SOURCE: &str = "ds-web/app";
-const LEGACY_DATABASE: &str = "ds-web";
-const LEGACY_STORE: &str = "app";
-/// The retired keys, in the order the host sends them: the catalogue before
-/// the payloads it names.
-pub const LEGACY_META_KEY: &str = "sketchLayersMeta";
-pub const LEGACY_INLINE_KEY: &str = "sketchLayers";
-pub const LEGACY_PAYLOAD_PREFIX: &str = "sketchLayerFeatures:";
 /// A catalogue holds what one reopen may read.
 pub const MAX_RECORDS: usize = crate::local_layers::MAX_LAYERS;
 pub const MAX_CATALOGUE_BYTES: usize = crate::local_layers::MAX_INPUT_BYTES;
@@ -44,14 +28,6 @@ const MAX_SAFE: u64 = 9_007_199_254_740_991;
 
 pub const CATALOGUE: &str = "CREATE TABLE IF NOT EXISTS local_layer_catalogue (owner TEXT PRIMARY KEY NOT NULL, records TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision>=0 AND revision<=9007199254740991), updated_at_ms INTEGER NOT NULL CHECK(updated_at_ms>=0 AND updated_at_ms<=9007199254740991))";
 pub const PAYLOADS: &str = "CREATE TABLE IF NOT EXISTS local_layer_payloads (owner TEXT NOT NULL, layer_id TEXT NOT NULL, features TEXT NOT NULL, feature_count INTEGER NOT NULL CHECK(feature_count>=0), updated_at_ms INTEGER NOT NULL CHECK(updated_at_ms>=0 AND updated_at_ms<=9007199254740991), PRIMARY KEY(owner, layer_id))";
-
-/// One retired entry as the host read it: the key and the stored text.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LegacyEntry {
-    pub key: String,
-    pub value: Value,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
@@ -88,13 +64,6 @@ pub enum Operation {
         #[serde(default)]
         present_tokens: Vec<String>,
     },
-    /// Whether this identity's one-time import still has to run, and the
-    /// retired keys the host reads, read-only.
-    Legacy,
-    /// One batch of retired entries, catalogue keys first.
-    ImportEntries { entries: Vec<LegacyEntry>, now: u64 },
-    /// Prune payloads no record names and record the receipt.
-    ImportFinish { now: u64 },
 }
 
 fn invalid(message: &str) -> String {
@@ -192,20 +161,17 @@ fn write_catalogue(connection: &Connection, owner: &str, records: &[Value], revi
     Ok(())
 }
 
-/// Park a payload; `replace` false never touches a held one. Answers whether
-/// a row was written.
-fn put_features(connection: &Connection, owner: &str, id: &str, features: &str, now: u64, replace: bool) -> Result<bool, String> {
+/// Park a payload, replacing a held one.
+fn put_features(connection: &Connection, owner: &str, id: &str, features: &str, now: u64) -> Result<(), String> {
     let id = payload_id(id)?;
     let count = feature_count(features)?;
-    let statement = if replace {
-        "INSERT INTO local_layer_payloads(owner,layer_id,features,feature_count,updated_at_ms) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(owner,layer_id) DO UPDATE SET features=excluded.features,feature_count=excluded.feature_count,updated_at_ms=excluded.updated_at_ms"
-    } else {
-        "INSERT INTO local_layer_payloads(owner,layer_id,features,feature_count,updated_at_ms) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(owner,layer_id) DO NOTHING"
-    };
-    let changed = connection
-        .execute(statement, params![owner, id, features, count as i64, time(now)?])
+    connection
+        .execute(
+            "INSERT INTO local_layer_payloads(owner,layer_id,features,feature_count,updated_at_ms) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(owner,layer_id) DO UPDATE SET features=excluded.features,feature_count=excluded.feature_count,updated_at_ms=excluded.updated_at_ms",
+            params![owner, id, features, count as i64, time(now)?],
+        )
         .map_err(sql)?;
-    Ok(changed > 0)
+    Ok(())
 }
 
 /// The id a record carries, verbatim, when it carries one.
@@ -239,115 +205,6 @@ fn prune(connection: &Connection, owner: &str) -> Result<u64, String> {
     Ok(pruned as u64)
 }
 
-/// A reopened catalogue and the payloads it parks, by layer id.
-type Split = (Vec<Value>, Vec<(String, String)>);
-
-/// The oldest shape carried each row's features inline. Reopen it through
-/// `local_layers` exactly as the browser did, and park each admitted layer's
-/// features under the id the reopen gave it: a row's own id names its
-/// features, rows without one take the unnamed payloads in order. A refused
-/// reopen keeps the rows exactly as they were.
-fn split_inline(records: &[Value], now: u64) -> Result<Option<Split>, String> {
-    let request = json!({
-        "schema": crate::local_layers::SCHEMA,
-        "op": {"kind": "restore", "scope": {"host": "browser"}, "records": records, "now_ms": now},
-    });
-    let Ok(answer) = crate::local_layers::evaluate(request.to_string().as_bytes()) else {
-        return Ok(None);
-    };
-    let answer: Value = serde_json::from_str(&answer).map_err(|e| e.to_string())?;
-    let Some(layers) = answer["registry"]["layers"].as_array() else {
-        return Ok(None);
-    };
-    let mut named: HashMap<&str, &Value> = HashMap::new();
-    let mut unnamed: Vec<&Value> = vec![];
-    for record in records {
-        let features = record.get("features").unwrap_or(&Value::Null);
-        match record_id(record) {
-            Some(id) => {
-                named.insert(id, features);
-            }
-            None => unnamed.push(features),
-        }
-    }
-    let mut unnamed = unnamed.into_iter();
-    let mut payloads = vec![];
-    for layer in layers {
-        let id = layer["id"].as_str().ok_or_else(|| invalid("a reopened layer has no id"))?;
-        let features = named
-            .get(id)
-            .copied()
-            .or_else(|| unnamed.next())
-            .filter(|features| features.is_array())
-            .cloned()
-            .unwrap_or_else(|| json!([]));
-        payloads.push((id.to_owned(), features.to_string()));
-    }
-    let mut catalogue = layers.clone();
-    if let Some(carried) = answer["receipt"]["carried"].as_array() {
-        catalogue.extend(carried.iter().map(|row| row["raw"].clone()));
-    }
-    Ok(Some((catalogue, payloads)))
-}
-
-/// Merge retired records behind the held catalogue: a held id stays.
-fn merge(connection: &Connection, owner: &str, legacy: Vec<Value>, now: u64) -> Result<(), String> {
-    let (mut merged, revision) = read_catalogue(connection, owner)?.unwrap_or((vec![], 0));
-    let held: BTreeSet<String> = merged.iter().filter_map(record_id).map(str::to_owned).collect();
-    merged.extend(legacy.into_iter().filter(|record| record_id(record).is_none_or(|id| !held.contains(id))));
-    write_catalogue(connection, owner, &merged, revision, now)
-}
-
-/// The retired catalogue text, read as the browser read it.
-fn legacy_records(value: &Value) -> Option<Vec<Value>> {
-    serde_json::from_str::<Vec<Value>>(value.as_str()?).ok()
-}
-
-fn import_entries(connection: &Connection, identity: &Identity, owner: &str, entries: Vec<LegacyEntry>, now: u64) -> Result<Value, String> {
-    import_batches::open(connection, identity, STORE, LEGACY_SOURCE)?;
-    if entries.len() > import_batches::MAX_ENTRIES {
-        return Err(invalid("a batch carries at most 4096 entries"));
-    }
-    let meta = entries.iter().any(|entry| entry.key == LEGACY_META_KEY);
-    let (mut count, mut skipped) = (0u64, 0u64);
-    for entry in &entries {
-        let written = match entry.key.as_str() {
-            LEGACY_META_KEY => match legacy_records(&entry.value) {
-                Some(records) => merge(connection, owner, records, now).map(|()| true)?,
-                None => false,
-            },
-            // The browser read the oldest key only when no catalogue key existed.
-            LEGACY_INLINE_KEY if !meta => match legacy_records(&entry.value) {
-                Some(records) => match split_inline(&records, now)? {
-                    Some((catalogue, payloads)) => {
-                        merge(connection, owner, catalogue, now)?;
-                        for (id, features) in payloads {
-                            put_features(connection, owner, &id, &features, now, false)?;
-                        }
-                        true
-                    }
-                    None => merge(connection, owner, records, now).map(|()| true)?,
-                },
-                None => false,
-            },
-            key => match (key.strip_prefix(LEGACY_PAYLOAD_PREFIX), entry.value.as_str()) {
-                (Some(id), Some(features)) if payload_id(id).is_ok() && feature_count(features).is_ok() => {
-                    put_features(connection, owner, id, features, now, false)?
-                }
-                _ => false,
-            },
-        };
-        if written {
-            count += 1;
-        } else {
-            skipped += 1;
-        }
-    }
-    let canonical = serde_json::to_string(&entries).map_err(|e| e.to_string())?;
-    import_batches::tally(connection, identity, STORE, LEGACY_SOURCE, Batch { entries: &canonical, count, skipped })?;
-    Ok(json!({"written": count, "skipped": skipped}))
-}
-
 fn sweep(connection: &Connection, owner: &str, present: &[String]) -> Result<Value, String> {
     let records = read_catalogue(connection, owner)?.map(|(records, _)| records).unwrap_or_default();
     let orphans = prune(connection, owner)?;
@@ -365,8 +222,7 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
         return Err(invalid("local layers carry their payloads as text, never as bytes"));
     }
     connection.execute_batch(&format!("{CATALOGUE};{PAYLOADS}")).map_err(sql)?;
-    let identity = input.identity;
-    let owner = identity.owner();
+    let owner = input.identity.owner();
     let outcome = match operation {
         Operation::Read => {
             let held = read_catalogue(connection, &owner)?;
@@ -380,7 +236,7 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
             Outcome::written(Map::new())
         }
         Operation::PutFeatures { layer_id, features, now } => {
-            put_features(connection, &owner, &layer_id, &features, now, true)?;
+            put_features(connection, &owner, &layer_id, &features, now)?;
             let mut outcome = Outcome::written(Map::new());
             outcome.generation_key = Some(format!("{STORE}.payloads"));
             return Ok(outcome);
@@ -393,7 +249,7 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
             now,
         } => {
             write_catalogue(connection, &owner, &records, revision, now)?;
-            put_features(connection, &owner, &layer_id, &features, now, true)?;
+            put_features(connection, &owner, &layer_id, &features, now)?;
             Outcome::written(Map::new())
         }
         Operation::GetFeatures { layer_id } => {
@@ -427,29 +283,6 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
             return Ok(outcome);
         }
         Operation::Sweep { present_tokens } => Outcome::written(fields(sweep(connection, &owner, &present_tokens)?)),
-        Operation::Legacy => Outcome::read(fields(json!({
-            "import_needed": held_receipt(connection, identity, STORE, LEGACY_SOURCE)?.is_none(),
-            "legacy": {"database": LEGACY_DATABASE, "stores": [{"store": LEGACY_STORE,
-                "keys": [LEGACY_META_KEY, LEGACY_INLINE_KEY], "prefixes": [LEGACY_PAYLOAD_PREFIX]}]},
-        }))),
-        Operation::ImportEntries { entries, now } => {
-            time(now)?;
-            Outcome::written(fields(import_entries(connection, identity, &owner, entries, now)?))
-        }
-        Operation::ImportFinish { now } => {
-            time(now)?;
-            let pruned = match held_receipt(connection, identity, STORE, LEGACY_SOURCE)? {
-                Some(_) => 0,
-                None => prune(connection, &owner)?,
-            };
-            let (receipt, ran) = import_batches::finish(connection, identity, STORE, LEGACY_SOURCE, now, pruned)?;
-            let answer = fields(json!({"imported": ran, "receipt": receipt}));
-            if ran {
-                Outcome::written(answer)
-            } else {
-                Outcome::read(answer)
-            }
-        }
     };
     Ok(Outcome {
         generation_key: Some(format!("{STORE}.catalogue")),

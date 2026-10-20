@@ -6,14 +6,9 @@
 //! temporary group is the import provenance and status of one materialized
 //! `.dsgrid`; a session remembers which models were open and which one held
 //! the Profile. Removing a model removes everything here that belongs to it in
-//! one transaction. The browser kept all of this in IndexedDB
-//! (`ds-grid-catalog`): results and groups are a person's work and import once
-//! per identity, in batches ([`crate::import_batches`]), never replacing a row
-//! written since; the remembered session is reconstructible and starts empty.
-//! The `.dsgrid` working copies themselves join this store with the byte
-//! channel.
-use crate::durable_store::{held_receipt, Identity, Input, Outcome};
-use crate::import_batches::{self, Batch};
+//! one transaction. The `.dsgrid` working copies themselves join this store
+//! with the byte channel.
+use crate::durable_store::{Input, Outcome};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -22,10 +17,6 @@ use std::collections::BTreeSet;
 pub const STORE: &str = "grid_model_store";
 pub const INVALID: &str = "grid_model_store_invalid";
 pub const UNKNOWN_GROUP: &str = "grid_model_group_unknown";
-/// The retired browser database every import receipt names.
-pub const LEGACY_SOURCE: &str = "ds-grid-catalog";
-const LEGACY_RESULTS: &str = "results";
-const LEGACY_GROUPS: &str = "temp_groups";
 const MAX_ID: usize = 256;
 const MAX_TEXT: usize = 4096;
 pub const MAX_ARTIFACT_BYTES: usize = 64 * 1024 * 1024;
@@ -278,15 +269,6 @@ pub struct GroupModel {
     pub active_revision: Option<String>,
 }
 
-/// One retired record as the host read it: its object store, key and value.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct LegacyEntry {
-    pub store: String,
-    pub key: String,
-    pub value: Value,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
@@ -333,12 +315,6 @@ pub enum Operation {
         #[serde(default)]
         group_id: Option<String>,
     },
-    /// Whether this identity's one-time import still has to run, and the
-    /// retired object stores the host reads, read-only.
-    Legacy,
-    /// One batch of retired records; a record already held is never replaced.
-    ImportEntries { entries: Vec<LegacyEntry> },
-    ImportFinish { now: u64 },
 }
 
 fn read_group(connection: &Connection, owner: &str, group: &str) -> Result<Option<Group>, String> {
@@ -353,37 +329,25 @@ fn read_group(connection: &Connection, owner: &str, group: &str) -> Result<Optio
         .map(|text| serde_json::from_str(&text).map_err(|_| invalid("a stored group is corrupt")))
         .transpose()
 }
-/// Write a group; `replace` false never touches a held one.
-fn write_group(connection: &Connection, owner: &str, group: &Group, replace: bool) -> Result<bool, String> {
+fn write_group(connection: &Connection, owner: &str, group: &Group) -> Result<(), String> {
     group.admit()?;
-    let conflict = if replace {
-        "DO UPDATE SET session_model_id=excluded.session_model_id,created_ms=excluded.created_ms,record=excluded.record"
-    } else {
-        "DO NOTHING"
-    };
-    let changed = connection
+    connection
         .execute(
-            &format!("INSERT INTO grid_model_groups(owner,group_id,session_model_id,created_ms,record) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(owner,group_id) {conflict}"),
+            "INSERT INTO grid_model_groups(owner,group_id,session_model_id,created_ms,record) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(owner,group_id) DO UPDATE SET session_model_id=excluded.session_model_id,created_ms=excluded.created_ms,record=excluded.record",
             params![owner, group.group_id, group.session_model_id, time(group.created)?, text(group, MAX_GROUP_BYTES, "a group")?],
         )
         .map_err(sql)?;
-    Ok(changed > 0)
+    Ok(())
 }
-/// Write a result; `replace` false never touches a held one.
-fn write_result(connection: &Connection, owner: &str, result: &ResultRecord, replace: bool) -> Result<bool, String> {
+fn write_result(connection: &Connection, owner: &str, result: &ResultRecord) -> Result<(), String> {
     result.admit()?;
-    let conflict = if replace {
-        "DO UPDATE SET model_id=excluded.model_id,created_ms=excluded.created_ms,record=excluded.record"
-    } else {
-        "DO NOTHING"
-    };
-    let changed = connection
+    connection
         .execute(
-            &format!("INSERT INTO grid_model_results(owner,result_id,model_id,created_ms,record) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(owner,result_id) {conflict}"),
+            "INSERT INTO grid_model_results(owner,result_id,model_id,created_ms,record) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(owner,result_id) DO UPDATE SET model_id=excluded.model_id,created_ms=excluded.created_ms,record=excluded.record",
             params![owner, result.result_id, result.model_id, time(result.created)?, text(result, MAX_ARTIFACT_BYTES, "a result")?],
         )
         .map_err(sql)?;
-    Ok(changed > 0)
+    Ok(())
 }
 fn rows<T: for<'a> Deserialize<'a>>(connection: &Connection, query: &str, bind: &[&dyn rusqlite::ToSql]) -> Result<Vec<T>, String> {
     let mut statement = connection.prepare(query).map_err(sql)?;
@@ -489,39 +453,6 @@ fn remove_model(connection: &Connection, owner: &str, model: Option<String>, gro
     }))
 }
 
-/// One batch of retired results and groups: each admitted record is written
-/// unless a row under its id is already held.
-fn import_entries(connection: &Connection, identity: &Identity, owner: &str, entries: Vec<LegacyEntry>) -> Result<Value, String> {
-    import_batches::open(connection, identity, STORE, LEGACY_SOURCE)?;
-    if entries.len() > import_batches::MAX_ENTRIES {
-        return Err(invalid("a batch carries at most 4096 entries"));
-    }
-    let (mut count, mut skipped) = (0u64, 0u64);
-    for entry in &entries {
-        let written = match entry.store.as_str() {
-            LEGACY_RESULTS => match serde_json::from_value::<ResultRecord>(entry.value.clone()) {
-                Ok(result) if result.admit().is_ok() && result.result_id == entry.key => {
-                    write_result(connection, owner, &result, false)?
-                }
-                _ => false,
-            },
-            LEGACY_GROUPS => match serde_json::from_value::<Group>(entry.value.clone()) {
-                Ok(group) if group.admit().is_ok() && group.group_id == entry.key => write_group(connection, owner, &group, false)?,
-                _ => false,
-            },
-            _ => false,
-        };
-        if written {
-            count += 1;
-        } else {
-            skipped += 1;
-        }
-    }
-    let canonical = serde_json::to_string(&entries).map_err(|e| e.to_string())?;
-    import_batches::tally(connection, identity, STORE, LEGACY_SOURCE, Batch { entries: &canonical, count, skipped })?;
-    Ok(json!({"written": count, "skipped": skipped}))
-}
-
 fn fields(value: Value) -> Map<String, Value> {
     match value {
         Value::Object(fields) => fields,
@@ -544,11 +475,10 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
     connection
         .execute_batch(&format!("{RESULTS};{RESULTS_BY_MODEL};{GROUPS};{SESSIONS}"))
         .map_err(sql)?;
-    let identity = input.identity;
-    let owner = identity.owner();
+    let owner = input.identity.owner();
     Ok(match operation {
         Operation::PutResult { result } => {
-            write_result(connection, &owner, &result, true)?;
+            write_result(connection, &owner, &result)?;
             kind(Outcome::written(fields(json!({"result_id": result.result_id}))), "results")
         }
         Operation::ListResults { model_id } => {
@@ -573,7 +503,7 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
                 created_from,
                 created: now,
             };
-            write_group(connection, &owner, &group, true)?;
+            write_group(connection, &owner, &group)?;
             kind(Outcome::written(fields(json!({"group": group}))), "groups")
         }
         Operation::SettleGroup { group_id, status, model } => {
@@ -584,7 +514,7 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
                 group.session_model_id = Some(model.session_model_id);
                 group.active_revision = model.active_revision;
             }
-            write_group(connection, &owner, &group, true)?;
+            write_group(connection, &owner, &group)?;
             kind(Outcome::written(fields(json!({"group": group}))), "groups")
         }
         Operation::GetGroup { group_id } => {
@@ -616,20 +546,6 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
             kind(Outcome::written(fields(json!({"session": null}))), "sessions")
         }
         Operation::RemoveModel { model_id, group_id } => Outcome::written(fields(remove_model(connection, &owner, model_id, group_id)?)),
-        Operation::Legacy => Outcome::read(fields(json!({
-            "import_needed": held_receipt(connection, identity, STORE, LEGACY_SOURCE)?.is_none(),
-            "legacy": {"database": LEGACY_SOURCE, "stores": [{"store": LEGACY_RESULTS}, {"store": LEGACY_GROUPS}]},
-        }))),
-        Operation::ImportEntries { entries } => Outcome::written(fields(import_entries(connection, identity, &owner, entries)?)),
-        Operation::ImportFinish { now } => {
-            let (receipt, ran) = import_batches::finish(connection, identity, STORE, LEGACY_SOURCE, time(now)? as u64, 0)?;
-            let answer = fields(json!({"imported": ran, "receipt": receipt}));
-            if ran {
-                Outcome::written(answer)
-            } else {
-                Outcome::read(answer)
-            }
-        }
     })
 }
 

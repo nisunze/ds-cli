@@ -101,37 +101,6 @@ fn a_stored_value_that_no_longer_admits_reads_as_absent_and_stays_in_place() {
 }
 
 #[test]
-fn an_import_runs_once_per_identity_and_answers_its_held_receipt() {
-    let db = Connection::open_in_memory().unwrap();
-    let legacy = run(&db, "a", json!({"action":"legacy","source":"persistent_cache"})).unwrap();
-    let (keys, prefixes) = legacy::keys();
-    assert_eq!(legacy, json!({"legacy":{"keys":keys,"prefixes":prefixes}}));
-    let entries = json!([{"legacy_key":"not_owned_by_any_key","value":1}]);
-    let first = run(
-        &db,
-        "a",
-        json!({"action":"import","source":"persistent_cache","entries":entries,"now":5}),
-    )
-    .unwrap();
-    assert_eq!(first["receipt"]["count"], 0);
-    assert_eq!(first["receipt"]["skipped"], 1, "an entry no key owns is skipped, never stored");
-    let again = run(
-        &db,
-        "a",
-        json!({"action":"import","source":"persistent_cache","entries":[],"now":9}),
-    )
-    .unwrap();
-    assert_eq!(again["receipt"], first["receipt"], "a second import answers the held receipt");
-    let other = run(
-        &db,
-        "b",
-        json!({"action":"import","source":"persistent_cache","entries":[],"now":9}),
-    )
-    .unwrap();
-    assert_eq!(other["receipt"]["at_ms"], 9, "each identity imports once on its own");
-}
-
-#[test]
 fn preferences_carry_no_payload_bytes() {
     let db = Connection::open_in_memory().unwrap();
     let identity = identity("a");

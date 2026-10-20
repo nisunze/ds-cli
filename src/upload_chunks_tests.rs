@@ -67,21 +67,3 @@ fn damaged_chunk_bytes_are_reported_never_dropped() {
     assert!(run(&mut db, None, wrong, Some(vec![1])).unwrap_err().starts_with(INVALID));
     assert!(put(&mut db, None, json!({"workspace": "", "file": "a", "layer": "", "chunk": 0}), b"x").is_err());
 }
-
-#[test]
-fn a_sketch_layers_chunk_keys_survive_the_import_once() {
-    let mut db = Connection::open_in_memory().unwrap();
-    assert_eq!(run(&mut db, None, json!({"action": "legacy"}), None).unwrap().0["import_needed"], true);
-    let record = json!({"workspaceKey": "temporary-upload:7", "fileName": "trace.kml", "parsedLayer": "Lines", "chunkIndex": 2,
-        "format": "arrow-ipc-v1", "featureCount": 40, "byteSize": 6});
-    let entry = json!({"action": "import_entry", "record": record, "payload": {"byte_length": 6}, "now": 3});
-    assert_eq!(run(&mut db, None, entry.clone(), Some(b"arrow!".to_vec())).unwrap().0["written"], 1);
-    let inline = json!({"action": "import_entry", "record": {"workspaceKey": "w", "fileName": "f", "parsedLayer": "", "chunkIndex": 0, "featureCount": 1, "features": []}, "now": 3});
-    assert_eq!(run(&mut db, None, inline, None).unwrap().0["skipped"], 1, "inline feature arrays carry no chunk bytes");
-    let finished = run(&mut db, None, json!({"action": "import_finish", "now": 4}), None).unwrap().0;
-    assert_eq!(finished["receipt"]["count"], 1);
-    assert!(run(&mut db, None, entry, Some(b"arrow!".to_vec())).is_err(), "once per identity");
-    let stored = json!({"workspace": "temporary-upload:7", "file": "trace.kml", "layer": "Lines", "chunk": 2});
-    let (held, bytes) = get(&mut db, None, stored);
-    assert_eq!((held["feature_count"].clone(), bytes.unwrap()), (json!(40), b"arrow!".to_vec()));
-}

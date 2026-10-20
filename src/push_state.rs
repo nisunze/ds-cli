@@ -22,14 +22,7 @@
 //! write (active) or delete (inactive) after its commit. A crash between the
 //! two leaves the file absent, never stale. Activation alone deletes nothing
 //! first and writes after its commit.
-//!
-//! The retired browser record (`ds-messaging-push` / `state`) imports once per
-//! identity: only this account's opt-in moves; its registration re-registers
-//! through the ordinary path. An explicit opt-in or disable here supersedes the
-//! import, so a retired opt-in never undoes a newer decision.
-use crate::durable_store::{
-    held_receipt, import_once, sha256, Effect, EffectFile, Identity, Input, Outcome, Principal,
-};
+use crate::durable_store::{sha256, Effect, EffectFile, Identity, Input, Outcome, Principal};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -37,16 +30,10 @@ use serde_json::{json, Map, Value};
 pub const STORE: &str = "push_state";
 pub const INVALID: &str = "push_state_invalid";
 pub const PROJECTION_SCHEMA: &str = "ds.push-projection/v1";
-/// The retired browser record every import receipt names.
-pub const LEGACY_SOURCE: &str = "ds-messaging-push/state";
-const LEGACY_DATABASE: &str = "ds-messaging-push";
-const LEGACY_STORE: &str = "state";
 
 const MAX_APP_ID: usize = 256;
 const MAX_UID: usize = 128;
 const MAX_FID: usize = 512;
-const MAX_LEGACY_BYTES: usize = 64 * 1024;
-const MAX_SAFE: u64 = 9_007_199_254_740_991;
 
 pub const TABLE: &str = "CREATE TABLE IF NOT EXISTS push_state (profile TEXT NOT NULL, app_id TEXT NOT NULL, generation TEXT NOT NULL CHECK(length(generation)=32), session_owner TEXT, opt_in_owner TEXT, active_owner TEXT, fid TEXT, installation_hash TEXT, epoch TEXT, PRIMARY KEY(profile, app_id), CHECK((active_owner IS NULL)=(fid IS NULL) AND (fid IS NULL)=(installation_hash IS NULL) AND (installation_hash IS NULL)=(epoch IS NULL)))";
 const ROW: &str = "SELECT generation,session_owner,opt_in_owner,active_owner,fid,installation_hash,epoch FROM push_state WHERE profile=?1 AND app_id=?2";
@@ -69,8 +56,7 @@ pub enum Expect {
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Operation {
     /// The record as the bound session sees it (the active registration only
-    /// when `epoch`, if named, matches exactly) and whether this identity's
-    /// one-time import still has to run.
+    /// when `epoch`, if named, matches exactly).
     Read {
         app_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -86,19 +72,11 @@ pub enum Operation {
     /// previous owner's registration.
     ObserveSession { app_id: String, nonce: String },
     /// The bound account opts this profile into push.
-    OptIn {
-        app_id: String,
-        nonce: String,
-        now: u64,
-    },
+    OptIn { app_id: String, nonce: String },
     /// The bound account disables push on this profile; answers the
     /// registration it held so the host can revoke it. A disable by an
     /// account that no longer owns the session is stale and changes nothing.
-    Disable {
-        app_id: String,
-        nonce: String,
-        now: u64,
-    },
+    Disable { app_id: String, nonce: String },
     /// Activate the registration an attempt obtained, fenced by the
     /// generation it started under.
     CommitRegistration {
@@ -116,15 +94,6 @@ pub enum Operation {
     },
     /// Fail closed: forget every record of this profile, all app ids.
     ClearAll,
-    /// Where the retired record lives, for the host's read-only importer.
-    Legacy { app_id: String },
-    /// The one-time import of the retired record (`null` when absent).
-    Import {
-        app_id: String,
-        legacy: Value,
-        nonce: String,
-        now: u64,
-    },
 }
 
 /// The effects a host completes before it opens the transaction of
@@ -134,7 +103,6 @@ pub fn effects_before(operation: &Operation) -> Vec<Effect> {
     match operation {
         Operation::Read { .. }
         | Operation::Check { .. }
-        | Operation::Legacy { .. }
         | Operation::CommitRegistration { .. } => vec![],
         _ => vec![Effect::DeleteFile {
             file: EffectFile::PushProjection,
@@ -261,13 +229,6 @@ fn nonce(nonce: &str) -> Result<&str, String> {
         Err(invalid("a nonce is 32 lowercase hex characters of fresh randomness"))
     }
 }
-fn time(now: u64) -> Result<u64, String> {
-    if now <= MAX_SAFE {
-        Ok(now)
-    } else {
-        Err(invalid("a time exceeds its bound"))
-    }
-}
 fn next_generation(previous: Option<&str>, nonce: &str) -> String {
     sha256(format!("ds.push-state.generation/v1\0{}\0{nonce}", previous.unwrap_or("")).as_bytes())
         [..32]
@@ -358,46 +319,6 @@ fn write(connection: &Connection, profile: &str, app_id: &str, record: &Record) 
     Ok(())
 }
 
-/// An explicit decision of the account here: a later import of the retired
-/// record must not undo it, so it records the import as done with nothing.
-fn supersede(connection: &Connection, identity: &Identity, now: u64) -> Result<(), String> {
-    import_once(connection, identity, STORE, LEGACY_SOURCE, &sha256(b"[]"), time(now)?, || {
-        Ok((0, 0))
-    })?;
-    Ok(())
-}
-
-/// Admit the retired record (schema 1) exactly as its reader did, and answer
-/// its opt-in owner.
-fn legacy_opt_in(app_id: &str, legacy: &Value) -> Option<String> {
-    let record = legacy.as_object()?;
-    let text = |key: &str, max: usize| -> Option<Option<String>> {
-        match record.get(key)? {
-            Value::Null => Some(None),
-            Value::String(value) if exact(value, max) => Some(Some(value.clone())),
-            _ => None,
-        }
-    };
-    if record.len() != 9
-        || record.get("key")?.as_str()? != format!("app:{app_id}")
-        || record.get("schema")?.as_u64()? != 1
-        || !hex(record.get("generation")?.as_str()?, 32)
-    {
-        return None;
-    }
-    text("sessionOwnerUid", MAX_UID)?;
-    text("activeOwnerUid", MAX_UID)?;
-    text("fid", MAX_FID)?;
-    for (key, length) in [("installationHash", 64), ("epoch", 32)] {
-        match record.get(key)? {
-            Value::Null => {}
-            Value::String(value) if hex(value, length) => {}
-            _ => return None,
-        }
-    }
-    text("optInOwnerUid", MAX_UID)?
-}
-
 /// The answer of a write: its fields, the committed record as the session
 /// sees it, and the projection that record states.
 fn written(mut value: Map<String, Value>, record: Option<&Record>, identity: &Identity, app_id: &str) -> Result<Outcome, String> {
@@ -437,10 +358,8 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
                 return Err(invalid("an epoch is 32 lowercase hex characters"));
             }
             let record = read(connection, &profile, app_id)?;
-            let import_needed = held_receipt(connection, identity, STORE, LEGACY_SOURCE)?.is_none();
             Ok(Outcome::read(fields(json!({
                 "record": record.map(|record| record.view(session, epoch.as_deref())),
-                "import_needed": import_needed,
             }))))
         }
         Operation::Check {
@@ -478,11 +397,10 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
             write(connection, &profile, app_id, &next)?;
             written(Map::new(), Some(&next), identity, app_id)
         }
-        Operation::OptIn { app_id, nonce: n, now } => {
+        Operation::OptIn { app_id, nonce: n } => {
             let app_id = app(&app_id)?;
             let n = nonce(&n)?;
             let account = account(identity, "an opt-in")?;
-            supersede(connection, identity, now)?;
             let base = read(connection, &profile, app_id)?.unwrap_or_else(|| Record::fresh(n));
             let next = Record {
                 session_owner: Some(account.into()),
@@ -492,11 +410,10 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
             write(connection, &profile, app_id, &next)?;
             written(Map::new(), Some(&next), identity, app_id)
         }
-        Operation::Disable { app_id, nonce: n, now } => {
+        Operation::Disable { app_id, nonce: n } => {
             let app_id = app(&app_id)?;
             let n = nonce(&n)?;
             let account = account(identity, "disabling push")?;
-            supersede(connection, identity, now)?;
             match read(connection, &profile, app_id)? {
                 Some(current) if current.session_owner.as_deref() == Some(account) => {
                     let previous = current.active.clone().filter(|active| active.owner == account);
@@ -567,62 +484,6 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
                 .execute("DELETE FROM push_state WHERE profile=?1", params![profile])
                 .map_err(sql)?;
             written(Map::new(), None, identity, "")
-        }
-        Operation::Legacy { app_id } => Ok(Outcome::read(fields(json!({
-            "legacy": {"database": LEGACY_DATABASE, "store": LEGACY_STORE, "keys": [format!("app:{}", app(&app_id)?)]},
-        })))),
-        Operation::Import {
-            app_id,
-            legacy,
-            nonce: n,
-            now,
-        } => {
-            let app_id = app(&app_id)?;
-            let n = nonce(&n)?;
-            let canonical = serde_json::to_string(&legacy).map_err(|e| e.to_string())?;
-            if canonical.len() > MAX_LEGACY_BYTES {
-                return Err(invalid("the retired record exceeds its bound"));
-            }
-            let mut record = read(connection, &profile, app_id)?;
-            let (receipt, ran) = import_once(
-                connection,
-                identity,
-                STORE,
-                LEGACY_SOURCE,
-                &sha256(canonical.as_bytes()),
-                time(now)?,
-                || {
-                    let Some(account) = bound(identity) else {
-                        return Ok((0, u64::from(!legacy.is_null())));
-                    };
-                    // Only this account's own opt-in moves, and never over an
-                    // opt-in this store already holds.
-                    let adopt = legacy_opt_in(app_id, &legacy).as_deref() == Some(account)
-                        && record.as_ref().is_none_or(|held| held.opt_in_owner.is_none());
-                    if !adopt {
-                        return Ok((0, u64::from(!legacy.is_null())));
-                    }
-                    let base = record.take().unwrap_or_else(|| Record::fresh(n));
-                    let next = Record {
-                        session_owner: Some(account.into()),
-                        opt_in_owner: Some(account.into()),
-                        ..base.without_active(n)
-                    };
-                    write(connection, &profile, app_id, &next)?;
-                    record = Some(next);
-                    Ok((1, 0))
-                },
-            )?;
-            let record = match record {
-                Some(record) => Some(record),
-                None => read(connection, &profile, app_id)?,
-            };
-            written(
-                fields(json!({"imported": ran, "receipt": receipt})),
-                record.as_ref(),
-                identity,
-                app_id,
-            )
         }
     }
 }

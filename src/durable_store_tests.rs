@@ -135,21 +135,6 @@ fn core_serves_only_stores_homed_in_its_protected_store() {
 }
 
 #[test]
-fn imports_run_once_per_owner_store_and_source() {
-    let db = Connection::open_in_memory().unwrap();
-    let digest = "0".repeat(64);
-    let (first, ran) = import_once(&db, &owner(), "s", "legacy", &digest, 3, || Ok((2, 1))).unwrap();
-    assert!(ran);
-    assert_eq!((first.count, first.skipped, first.at_ms), (2, 1, 3));
-    let (held, ran) = import_once(&db, &owner(), "s", "legacy", &digest, 9, || panic!("never runs twice")).unwrap();
-    assert!(!ran);
-    assert_eq!(held, first);
-    let (other, ran) = import_once(&db, &identity(Principal::Anonymous), "s", "legacy", &digest, 9, || Ok((0, 0))).unwrap();
-    assert!(ran && other.at_ms == 9);
-    assert!(import_once(&db, &owner(), "s", "other", "short", 1, || Ok((0, 0))).is_err());
-}
-
-#[test]
 fn effects_are_a_closed_vocabulary_with_kernel_named_files() {
     let effect = Effect::WriteFile {
         file: EffectFile::PushProjection,
