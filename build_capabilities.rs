@@ -20,7 +20,14 @@ const MANIFEST: &str = "routing/capabilities.json";
 const REWRITE: &str = "DS_CAPABILITIES_REWRITE";
 /// The executors the Kernel has code for; a platform names the ones it has.
 const EXECUTORS: [&str; 3] = ["core", "kernel", "network_unit"];
-const RUN_MEMBERS: [&str; 6] = ["door", "input", "wrap", "answer", "switches", "page_lanes"];
+const RUN_MEMBERS: [&str; 6] = [
+    "input",
+    "wrap",
+    "answer",
+    "output",
+    "switches",
+    "page_lanes",
+];
 const MAX_PAGE_LANES: u64 = 64;
 
 fn fail(message: impl std::fmt::Display) -> ! {
@@ -78,7 +85,7 @@ fn text(value: Option<&Value>, what: &str) -> String {
         .to_owned()
 }
 
-/// A platform, reason, exchange, door or input name: lowercase words joined
+/// A platform, reason, exchange or input name: lowercase words joined
 /// by `_`, `-` or (for `dotted`) `.`.
 fn name(text: &str, what: &str, dotted: bool) -> String {
     let valid = !text.is_empty()
@@ -443,17 +450,19 @@ fn run_spec(id: &str, run: &Map<String, Value>, on_core: bool) -> String {
             )
         })
     };
-    let (door, input, wrap, answer) = (
-        field("door"),
+    let (input, wrap, answer, output) = (
         field("input"),
         field("wrap"),
         field("answer"),
+        field("output"),
     );
     if wrap.is_some() && input.is_none() {
         fail(format!("{what} wraps an input it does not name"));
     }
-    if door.is_some() && (input.is_some() || answer.is_some() || run.contains_key("switches")) {
-        fail(format!("{what} passes its input whole to a door"));
+    if output.is_some() && answer.is_some() {
+        fail(format!(
+            "{what} answers the file Core writes or a data member, not both"
+        ));
     }
     let switches = match run.get("switches") {
         None => Vec::new(),
@@ -469,11 +478,11 @@ fn run_spec(id: &str, run: &Map<String, Value>, on_core: bool) -> String {
         },
     };
     format!(
-        "Some(Run {{ door: {}, input: {}, wrap: {}, answer: {}, switches: &[{}], page_lanes: {page_lanes} }})",
-        optional(door),
+        "Some(Run {{ input: {}, wrap: {}, answer: {}, output: {}, switches: &[{}], page_lanes: {page_lanes} }})",
         optional(input),
         optional(wrap),
         optional(answer),
+        optional(output),
         switches.iter().map(|s| literal(s)).collect::<Vec<_>>().join(", ")
     )
 }

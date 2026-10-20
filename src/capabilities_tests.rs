@@ -129,8 +129,8 @@ fn this_build_answers_its_own_platform_without_being_told() {
 fn the_process_path_calls_core_the_way_the_page_did() {
     let process = capability("design.lv.process").unwrap().run.unwrap();
     assert_eq!(
-        (process.door, process.page_lanes),
-        (Some("network_lv_process"), Some(1))
+        (process.input, process.output, process.page_lanes),
+        (Some("input"), Some("out"), Some(1))
     );
     let plan = capability("design.autoprocess.plan").unwrap().run.unwrap();
     assert_eq!(
@@ -344,9 +344,9 @@ fn each_gate_refuses_a_manifest_that_breaks_it() {
     row(&mut run_off_core, "survey.photo.capture")["run"] = json!({"answer": "x"});
     assert!(refused(run_off_core).contains("no platform runs it on core"));
 
-    let mut door_and_input = committed();
-    row(&mut door_and_input, "design.lv.process")["run"]["input"] = json!("changes");
-    assert!(refused(door_and_input).contains("passes its input whole to a door"));
+    let mut file_and_member = committed();
+    row(&mut file_and_member, "design.lv.process")["run"]["answer"] = json!("jobs");
+    assert!(refused(file_and_member).contains("answers the file Core writes or a data member"));
 
     let mut loose_wrap = committed();
     row(&mut loose_wrap, "design.process.settings")["run"]["wrap"] = json!("scope");

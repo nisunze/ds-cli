@@ -106,9 +106,6 @@ impl Refusal {
 /// command with the caller's document as its arguments.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 pub struct Run {
-    /// One named host door, until the generic Core door carries it.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub door: Option<&'static str>,
     /// The command input the caller's document is passed as.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input: Option<&'static str>,
@@ -118,6 +115,10 @@ pub struct Run {
     /// The member of Core's answer the caller receives.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub answer: Option<&'static str>,
+    /// The file Core writes that the caller receives, from the envelope's
+    /// `files`; the command is asked to write it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<&'static str>,
     /// Switches the command always runs with.
     #[serde(skip_serializing_if = "<[_]>::is_empty")]
     pub switches: &'static [&'static str],
@@ -230,8 +231,6 @@ mod exports {
 export interface CapabilityHost {
     /** One Core command through the host's generic Core door, answered by Core's own envelope. */
     core?(command: string, project: string, args: Record<string, unknown>): Promise<unknown>;
-    /** One named host door, for a capability the generic Core door does not yet carry. */
-    door?(door: string, project: string, input: unknown): Promise<unknown>;
     /** The page's Network WASM unit. */
     unit?(capability: string, input: unknown): Promise<unknown>;
 }
@@ -288,7 +287,7 @@ export interface CapabilityRefusal extends Error {
 
     /// Core's envelope: its data (or the declared member of it), or its own
     /// typed refusal.
-    fn admit(envelope: &JsValue, answer: Option<&str>) -> Result<JsValue, JsValue> {
+    fn admit(envelope: &JsValue, run: Option<Run>) -> Result<JsValue, JsValue> {
         if member(envelope, "status").as_string().as_deref() != Some("ok") {
             let error = member(envelope, "error");
             let code = member(&error, "code")
@@ -299,8 +298,18 @@ export interface CapabilityRefusal extends Error {
                 .unwrap_or_else(|| "DS Core refused the command.".into());
             return Err(refusal(&code, &message));
         }
+        if let Some(output) = run.and_then(|run| run.output) {
+            let file = member(&member(envelope, "files"), output);
+            if file.is_undefined() || file.is_null() {
+                return Err(refusal(
+                    "core_incompatible",
+                    "DS Core answered without the file this capability reads.",
+                ));
+            }
+            return Ok(file);
+        }
         let data = member(envelope, "data");
-        let Some(key) = answer else {
+        let Some(key) = run.and_then(|run| run.answer) else {
             return Ok(data);
         };
         let answer = member(&data, key);
@@ -344,6 +353,9 @@ export interface CapabilityRefusal extends Error {
         for switch in run.map_or(&[][..], |run| run.switches) {
             Reflect::set(&args, &(*switch).into(), &JsValue::TRUE)?;
         }
+        if let Some(output) = run.and_then(|run| run.output) {
+            Reflect::set(&args, &output.into(), &JsValue::TRUE)?;
+        }
         Ok(args.into())
     }
 
@@ -355,7 +367,7 @@ export interface CapabilityRefusal extends Error {
     }
 
     /// Run `capability` with the caller's document on the executor this build
-    /// names: Core through the host's Core door (or the named door), the
+    /// names: Core through the host's Core door, the
     /// page's Network unit, or the typed refusal. A refusal rejects as a
     /// `CapabilityRefusal`; a Kernel exchange is run through its typed export.
     #[wasm_bindgen(js_name = capabilityRun, unchecked_return_type = "any")]
@@ -371,13 +383,10 @@ export interface CapabilityRefusal extends Error {
                 executor: Executor::Core,
                 ..
             } => {
-                if let Some(door) = capability.run.and_then(|run| run.door) {
-                    return open(&host, "door", [door.into(), project.into(), input]).await;
-                }
                 let args = arguments(capability.run, input)?;
                 let envelope =
                     open(&host, "core", [capability.id.into(), project.into(), args]).await?;
-                admit(&envelope, capability.run.and_then(|run| run.answer))
+                admit(&envelope, capability.run)
             }
             Route::Supported {
                 executor: Executor::NetworkUnit,
