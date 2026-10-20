@@ -343,8 +343,8 @@ preparation/publication belong to ds-brain. It contains no compute-artifact
 publisher. Hosted web Solar remains closed by the routing descriptor. Future
 hosted publication must use the same service admission, without a new door.
 
-`transfer-host.ts` also serves `api/uploadQueue.ts` (assets) and
-`api/survey-media-upload.ts`; these consumers stay. The publication-only
+Every browser upload, survey media included, runs on the Kernel executor
+(`transfer::browser`, `resumableUpload`); `transfer-host.ts` and `api/uploadQueue.ts` are gone. The publication-only
 `artifact-transfer.ts`, `desktop/gateway-transfer.ts` and the open/finalize client
 were deleted with the queue (ds-web `00a23211d`). `api/computeArtifacts.ts` keeps
 the engine types and error class; read/list/download stay in

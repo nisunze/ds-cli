@@ -650,3 +650,27 @@ fn a_storage_session_is_validated_once_for_every_host() {
         Err(SessionRefusal::TooLong)
     );
 }
+
+#[test]
+fn an_operator_reads_a_cause_without_any_address() {
+    assert_eq!(
+        Cause::HttpStatus { status: 503 }.describe(),
+        "storage answered HTTP 503"
+    );
+    assert_eq!(
+        Cause::Timeout { phase: Phase::Idle }.describe(),
+        "the transfer stopped making progress"
+    );
+    assert_eq!(
+        Cause::Timeout {
+            phase: Phase::Request
+        }
+        .describe(),
+        "the transfer timed out while sending"
+    );
+    assert_eq!(
+        Cause::Offline.describe(),
+        crate::connectivity::OFFLINE_MESSAGE
+    );
+    assert_eq!(Cause::Cancelled.describe(), "the transfer was cancelled");
+}

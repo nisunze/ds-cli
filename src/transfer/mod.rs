@@ -137,6 +137,40 @@ pub enum Cause {
 }
 
 impl Cause {
+    /// What an operator is told. Never a URL, a host, a header value or a
+    /// body; a status code is not a secret and is the most useful fact.
+    pub fn describe(&self) -> String {
+        match self {
+            Cause::HttpStatus { status } => format!("storage answered HTTP {status}"),
+            Cause::Dns => "the storage host could not be resolved".into(),
+            Cause::Connect => "the connection to storage could not be opened".into(),
+            Cause::Tls => "the secure connection to storage failed".into(),
+            Cause::Timeout { phase: Phase::Idle } => "the transfer stopped making progress".into(),
+            Cause::Timeout { phase } => format!(
+                "the transfer timed out while {}",
+                match phase {
+                    Phase::Connect => "connecting",
+                    Phase::Request => "sending",
+                    _ => "waiting for the acknowledgement",
+                }
+            ),
+            Cause::ConnectionClosed => "the connection closed before storage acknowledged".into(),
+            Cause::Offline => crate::connectivity::OFFLINE_MESSAGE.into(),
+            Cause::Cancelled => "the transfer was cancelled".into(),
+            Cause::Truncated => "storage committed fewer bytes than were sent".into(),
+            Cause::DigestMismatch => "the transferred bytes do not match the sealed digest".into(),
+            Cause::LengthMismatch => "the transferred length does not match the declaration".into(),
+            Cause::RangeMalformed => {
+                "storage returned a resume range this client cannot parse".into()
+            }
+            Cause::SessionExpired => "the resumable session is gone".into(),
+            Cause::BlockedByHostPolicy => {
+                "this browser refused the request without a status".into()
+            }
+            Cause::Inconclusive => "the resumable session could not be observed".into(),
+        }
+    }
+
     /// Whether a *later* attempt could plausibly succeed. This is about the
     /// cause alone; the machine additionally bounds how often it acts on it.
     pub fn retryable(&self) -> bool {

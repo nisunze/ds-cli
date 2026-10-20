@@ -336,12 +336,34 @@ mod exports {
     use js_sys::{Function, Promise, Uint8Array};
     use serde::Serialize;
     use wasm_bindgen::prelude::*;
+    use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
     use web_sys::{AbortSignal, Blob};
 
     use super::{upload, Link, PartSource, Upload, Uploaded};
     use crate::gateway_exchange::browser::{facts, typed, GatewayHost};
     use crate::transfer::Cause;
+
+    #[wasm_bindgen(typescript_custom_section)]
+    const UPLOAD_SOURCE: &'static str = r#"
+/** A bounded byte source: a Blob or File, or any object answering the same slice contract. */
+export interface UploadSource {
+    readonly size: number;
+    slice(start: number, end: number): Blob | Promise<Blob>;
+}
+"#;
+
+    #[wasm_bindgen]
+    extern "C" {
+        #[wasm_bindgen(typescript_type = "UploadSource")]
+        pub type UploadSource;
+
+        #[wasm_bindgen(method, getter)]
+        fn size(this: &UploadSource) -> f64;
+
+        #[wasm_bindgen(method, catch)]
+        fn slice(this: &UploadSource, start: f64, end: f64) -> Result<JsValue, JsValue>;
+    }
 
     /// How one resumable upload ended, as the page reads it.
     #[derive(Serialize, tsify::Tsify)]
@@ -354,24 +376,37 @@ mod exports {
             answer: String,
         },
         /// The session is proven gone; mint a new one to try again.
-        Reopen {
-            cause: Cause,
-        },
+        Reopen { cause: Cause, message: String },
         Failed {
             cause: Cause,
             retryable: bool,
+            message: String,
         },
     }
 
-    struct BlobParts(Blob);
+    /// What storage has acknowledged: `pct` reaches 100 only on the final
+    /// commit, so bytes handed to a socket never read as progress.
+    #[derive(Serialize, tsify::Tsify)]
+    pub struct UploadProgress {
+        pub committed: u64,
+        pub total: u64,
+        pub pct: u8,
+    }
 
-    impl PartSource for BlobParts {
+    struct Parts(UploadSource);
+
+    impl PartSource for Parts {
         async fn read(&self, offset: u64, length: u64) -> Result<Vec<u8>, Cause> {
             let part = self
                 .0
-                .slice_with_f64_and_f64(offset as f64, (offset + length) as f64)
+                .slice(offset as f64, (offset + length) as f64)
                 .map_err(|_| Cause::Inconclusive)?;
-            let bytes = JsFuture::from(part.array_buffer())
+            let blob: Blob = JsFuture::from(Promise::resolve(&part))
+                .await
+                .ok()
+                .and_then(|part| part.dyn_into().ok())
+                .ok_or(Cause::Inconclusive)?;
+            let bytes = JsFuture::from(blob.array_buffer())
                 .await
                 .map_err(|_| Cause::Inconclusive)?;
             Ok(Uint8Array::new(&bytes).to_vec())
@@ -399,12 +434,20 @@ mod exports {
         }
 
         fn progress(&self, committed: u64, total: u64) {
-            if let Some(progress) = &self.progress {
-                let _ = progress.call2(
-                    &JsValue::NULL,
-                    &JsValue::from_f64(committed as f64),
-                    &JsValue::from_f64(total as f64),
-                );
+            let Some(progress) = &self.progress else {
+                return;
+            };
+            let pct = if committed >= total {
+                100
+            } else {
+                (committed.saturating_mul(100) / total.max(1)).min(99) as u8
+            };
+            if let Ok(report) = typed(&UploadProgress {
+                committed,
+                total,
+                pct,
+            }) {
+                let _ = progress.call1(&JsValue::NULL, &report);
             }
         }
     }
@@ -443,28 +486,31 @@ mod exports {
         }
     }
 
-    /// PUT one file to a DS-minted resumable storage session, resuming after
-    /// an interruption, until the session's final answer. `progress` is told
-    /// committed bytes after each proven commit; aborting `signal` stops the
-    /// upload with the session left resumable.
+    /// PUT one byte source to a DS-minted resumable storage session, resuming
+    /// after an interruption, until the session's final answer. `progress`
+    /// is told each acknowledged commit; aborting `signal` stops the upload
+    /// with the session left resumable.
     #[wasm_bindgen(js_name = resumableUpload, unchecked_return_type = "UploadOutcome")]
     #[allow(clippy::too_many_arguments)]
     pub async fn resumable_upload(
         host: GatewayHost,
         session_uri: String,
-        file: Blob,
+        source: UploadSource,
         content_type: Option<String>,
         chunk_bytes: Option<f64>,
         yield_on_retry: bool,
+        #[wasm_bindgen(
+            unchecked_param_type = "((progress: UploadProgress) => void) | null | undefined"
+        )]
         progress: Option<Function>,
         signal: Option<AbortSignal>,
     ) -> Result<JsValue, JsValue> {
-        let total_bytes = file.size().max(0.0) as u64;
+        let total_bytes = source.size().max(0.0) as u64;
         let page = Page {
             host: &host,
             progress,
         };
-        let source = BlobParts(file);
+        let parts = Parts(source);
         let request = Upload {
             session_uri: &session_uri,
             total_bytes,
@@ -472,13 +518,12 @@ mod exports {
             chunk_bytes: chunk_bytes.map(|bytes| bytes.max(0.0) as u64),
             yield_on_retry,
         };
-        let running = std::pin::pin!(upload(request, &source, &page));
-        let outcome = match &signal {
+        let running = std::pin::pin!(upload(request, &parts, &page));
+        let outcome = match signal {
             None => running.await,
             Some(signal) => {
-                match futures_util::future::select(running, &mut Abort::new(signal.clone()).fired)
-                    .await
-                {
+                let mut abort = Abort::new(signal);
+                match futures_util::future::select(running, &mut abort.fired).await {
                     futures_util::future::Either::Left((uploaded, _)) => uploaded,
                     futures_util::future::Either::Right(_) => Uploaded::Failed {
                         cause: Cause::Cancelled,
@@ -497,8 +542,15 @@ mod exports {
                 status,
                 answer: String::from_utf8_lossy(&answer).into_owned(),
             },
-            Uploaded::Reopen { cause } => UploadOutcome::Reopen { cause },
-            Uploaded::Failed { cause, retryable } => UploadOutcome::Failed { cause, retryable },
+            Uploaded::Reopen { cause } => UploadOutcome::Reopen {
+                message: cause.describe(),
+                cause,
+            },
+            Uploaded::Failed { cause, retryable } => UploadOutcome::Failed {
+                message: cause.describe(),
+                cause,
+                retryable,
+            },
         })
     }
 }

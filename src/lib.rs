@@ -1490,25 +1490,6 @@ pub fn compute_artifact_inventory_wasm(input: &[u8]) -> Result<String, wasm_bind
 /// what an acknowledgement meant. See
 /// `docs/contracts/ds-transport-authority.md`.
 pub mod transfer;
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = transferStep)]
-pub fn transfer_step_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    transfer::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
-
-/// Upload admission: identity, order, the concurrency bound, and what a
-/// cancellation settles.
-///
-/// `transfer` owns what happens inside one transfer; this owns what happens
-/// between them. A host contributes dispatch and rendering only, so a browser
-/// tab, an installed shell and a headless run admit and order uploads the same
-/// way. See `docs/contracts/ds-transport-authority.md`.
-pub mod upload_queue;
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = uploadQueueStep)]
-pub fn upload_queue_step_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    upload_queue::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
-}
 
 pub mod compute_artifact_cache;
 #[cfg(feature = "wasm")]
