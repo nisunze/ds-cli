@@ -1,0 +1,1300 @@
+[
+  {
+    "name": "metric NaN",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180
+    },
+    "metric": {
+      "$number": "NaN"
+    },
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": {
+            "$number": "NaN"
+          },
+          "top": {
+            "$number": "NaN"
+          },
+          "right": {
+            "$number": "NaN"
+          },
+          "bottom": {
+            "$number": "NaN"
+          }
+        }
+      }
+    ],
+    "measurements": [
+      "text"
+    ]
+  },
+  {
+    "name": "metric Infinity",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180
+    },
+    "metric": {
+      "$number": "Infinity"
+    },
+    "expected": [],
+    "measurements": [
+      "text"
+    ]
+  },
+  {
+    "name": "metric -Infinity",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180
+    },
+    "metric": {
+      "$number": "-Infinity"
+    },
+    "expected": [],
+    "measurements": [
+      "text"
+    ]
+  },
+  {
+    "name": "metric 0 signed",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180
+    },
+    "metric": {
+      "$number": "-0"
+    },
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": 63,
+          "right": 109,
+          "bottom": 80
+        }
+      }
+    ],
+    "measurements": [
+      "text"
+    ]
+  },
+  {
+    "name": "metric 0",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180
+    },
+    "metric": 0,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": 63,
+          "right": 109,
+          "bottom": 80
+        }
+      }
+    ],
+    "measurements": [
+      "text"
+    ]
+  },
+  {
+    "name": "metric -10",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180
+    },
+    "metric": -10,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 93,
+          "top": 63,
+          "right": 109,
+          "bottom": 80
+        }
+      }
+    ],
+    "measurements": [
+      "text"
+    ]
+  },
+  {
+    "name": "metric 24",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": 63,
+          "right": 133,
+          "bottom": 80
+        }
+      }
+    ],
+    "measurements": [
+      "text"
+    ]
+  },
+  {
+    "name": "lineHeightPx NaN",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180,
+      "lineHeightPx": {
+        "$number": "NaN"
+      }
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": {
+            "$number": "NaN"
+          },
+          "top": {
+            "$number": "NaN"
+          },
+          "right": {
+            "$number": "NaN"
+          },
+          "bottom": {
+            "$number": "NaN"
+          }
+        }
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": {
+            "$number": "NaN"
+          },
+          "top": {
+            "$number": "NaN"
+          },
+          "right": {
+            "$number": "NaN"
+          },
+          "bottom": {
+            "$number": "NaN"
+          }
+        }
+      }
+    ],
+    "measurements": [
+      "text",
+      "text"
+    ]
+  },
+  {
+    "name": "fontHeightPx Infinity",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180,
+      "fontHeightPx": {
+        "$number": "Infinity"
+      }
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": {
+            "$number": "NaN"
+          },
+          "top": {
+            "$number": "NaN"
+          },
+          "right": {
+            "$number": "NaN"
+          },
+          "bottom": {
+            "$number": "NaN"
+          }
+        }
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": {
+            "$number": "NaN"
+          },
+          "top": {
+            "$number": "NaN"
+          },
+          "right": {
+            "$number": "NaN"
+          },
+          "bottom": {
+            "$number": "NaN"
+          }
+        }
+      }
+    ],
+    "measurements": [
+      "text",
+      "text"
+    ]
+  },
+  {
+    "name": "paddingPx NaN",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180,
+      "paddingPx": {
+        "$number": "NaN"
+      }
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": {
+            "$number": "NaN"
+          },
+          "top": {
+            "$number": "NaN"
+          },
+          "right": {
+            "$number": "NaN"
+          },
+          "bottom": {
+            "$number": "NaN"
+          }
+        }
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": {
+            "$number": "NaN"
+          },
+          "top": {
+            "$number": "NaN"
+          },
+          "right": {
+            "$number": "NaN"
+          },
+          "bottom": {
+            "$number": "NaN"
+          }
+        }
+      }
+    ],
+    "measurements": [
+      "text",
+      "text"
+    ]
+  },
+  {
+    "name": "viewportMarginPx NaN",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180,
+      "viewportMarginPx": {
+        "$number": "NaN"
+      }
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": 63,
+          "right": 133,
+          "bottom": 80
+        }
+      }
+    ],
+    "measurements": [
+      "text",
+      "text"
+    ]
+  },
+  {
+    "name": "cellSizePx NaN",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180,
+      "cellSizePx": {
+        "$number": "NaN"
+      }
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": 63,
+          "right": 133,
+          "bottom": 80
+        }
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": 63,
+          "right": 133,
+          "bottom": 80
+        }
+      }
+    ],
+    "measurements": [
+      "text",
+      "text"
+    ]
+  },
+  {
+    "name": "cellSizePx Infinity",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180,
+      "cellSizePx": {
+        "$number": "Infinity"
+      }
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": 63,
+          "right": 133,
+          "bottom": 80
+        }
+      }
+    ],
+    "measurements": [
+      "text",
+      "text"
+    ]
+  },
+  {
+    "name": "cellSizePx -64",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180,
+      "cellSizePx": -64
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": 63,
+          "right": 133,
+          "bottom": 80
+        }
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": 63,
+          "right": 133,
+          "bottom": 80
+        }
+      }
+    ],
+    "measurements": [
+      "text",
+      "text"
+    ]
+  },
+  {
+    "name": "width NaN",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": {
+        "$number": "NaN"
+      },
+      "height": 180
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": 63,
+          "right": 133,
+          "bottom": 80
+        }
+      }
+    ],
+    "measurements": [
+      "text",
+      "text"
+    ]
+  },
+  {
+    "name": "height NaN",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      },
+      {
+        "id": "second",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": {
+        "$number": "NaN"
+      }
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": 63,
+          "right": 133,
+          "bottom": 80
+        }
+      }
+    ],
+    "measurements": [
+      "text",
+      "text"
+    ]
+  },
+  {
+    "name": "anchor x NaN",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": {
+            "$number": "NaN"
+          },
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": {
+            "$number": "NaN"
+          },
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": {
+            "$number": "NaN"
+          },
+          "y": 77,
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": {
+            "$number": "NaN"
+          },
+          "top": 63,
+          "right": {
+            "$number": "NaN"
+          },
+          "bottom": 80
+        }
+      }
+    ],
+    "measurements": [
+      "text"
+    ]
+  },
+  {
+    "name": "anchor x Infinity",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": {
+            "$number": "Infinity"
+          },
+          "y": 80
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180
+    },
+    "metric": 24,
+    "expected": [],
+    "measurements": []
+  },
+  {
+    "name": "anchor y NaN",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": {
+            "$number": "NaN"
+          }
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180
+    },
+    "metric": 24,
+    "expected": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": {
+            "$number": "NaN"
+          }
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0,
+        "lines": [
+          "text"
+        ],
+        "placement": {
+          "x": 106,
+          "y": {
+            "$number": "NaN"
+          },
+          "align": "left",
+          "baseline": "bottom",
+          "rotationRad": 0
+        },
+        "bounds": {
+          "left": 103,
+          "top": {
+            "$number": "NaN"
+          },
+          "right": 133,
+          "bottom": {
+            "$number": "NaN"
+          }
+        }
+      }
+    ],
+    "measurements": [
+      "text"
+    ]
+  },
+  {
+    "name": "anchor y -Infinity",
+    "requests": [
+      {
+        "id": "label",
+        "label": "text",
+        "anchor": {
+          "x": 100,
+          "y": {
+            "$number": "-Infinity"
+          }
+        },
+        "orientation": "right",
+        "fillStyle": "#fff",
+        "priority": 0
+      }
+    ],
+    "options": {
+      "width": 300,
+      "height": 180
+    },
+    "metric": 24,
+    "expected": [],
+    "measurements": []
+  }
+]

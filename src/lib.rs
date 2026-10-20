@@ -23,6 +23,8 @@ pub mod profile_display;
 pub mod profile_encoding;
 pub mod profile_inputs;
 pub mod profile_layout;
+#[cfg(all(feature = "profile-view", target_arch = "wasm32"))]
+mod profile_view;
 pub mod profile_style;
 pub mod project_snapshot;
 pub use ds_kml as kml;

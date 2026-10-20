@@ -1,0 +1,18 @@
+[package]
+name = "ds-profile-view"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ds-canvas = { path = "../../../ds-interactions/crates/ds-canvas" }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+leptos = { version = "=0.8.22", default-features = false, features = ["csr"] }
+reactive_graph = { version = "=0.2.16", features = ["effects"] }
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+send_wrapper = "0.6"
+web-sys = { version = "0.3", features = ["Window", "Crypto", "NodeList", "Node", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "CanvasRenderingContext2d", "TextMetrics", "CssStyleDeclaration", "DomRect", "PointerEvent", "WheelEvent", "MouseEvent", "KeyboardEvent", "KeyboardEventInit", "EventTarget", "ResizeObserver", "ResizeObserverEntry", "Performance"] }

@@ -13,7 +13,7 @@ publish = false
 # dependencies said. It carries its own [workspace] table at an unchanged path.
 # See docs/contracts/ds-portable-geometry.md §4.
 [workspace]
-members = ["crates/ds-template-test-support", "crates/ds-kml", "crates/ds-geo-lite", "crates/ds-profile-grid", "crates/ds-profile-policy", "crates/ds-sync-store"]
+members = ["crates/ds-template-test-support", "crates/ds-kml", "crates/ds-geo-lite", "crates/ds-profile-grid", "crates/ds-profile-policy", "crates/ds-sync-store", "crates/ds-profile-view"]
 resolver = "2"
 
 [lib]
@@ -44,6 +44,7 @@ durable-store = ["dep:rusqlite"]
 # its typed exports ride the WASM build only; native builds carry no HTTP
 # client and reach the gateway through Core.
 wasm = [
+    "profile-view",
     "dep:wasm-bindgen",
     "durable-store",
     "dep:sqlite-wasm-rs",
@@ -61,12 +62,14 @@ wasm = [
     "dep:console_error_panic_hook",
     "any_spawner/wasm-bindgen",
 ]
+profile-view = ["dep:ds-profile-view", "dep:wasm-bindgen", "dep:web-sys", "dep:js-sys"]
 # Client state as Rust signals (`client_state`): Leptos's reactive core,
 # never its UI. The WASM build runs it on wasm-bindgen-futures; a native host
 # initializes any_spawner with its own runtime.
 client-state = ["durable-store", "dep:reactive_graph", "dep:any_spawner"]
 
 [dependencies]
+ds-profile-view = { path = "crates/ds-profile-view", optional = true }
 ds-profile-policy = { path = "crates/ds-profile-policy" }
 ds-kml = { path = "crates/ds-kml" }
 ryu = "1"
@@ -103,7 +106,7 @@ rusqlite = { version = "0.40.2", optional = true, features = ["bundled"] }
 # the page's own `fetch`. tsify generates the TypeScript types of the typed
 # exports from the Rust types they return.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-reqwest = { version = "0.12.28", default-features = false, features = ["stream"], optional = true }
+reqwest = { version = "0.13.5", default-features = false, features = ["stream"], optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 js-sys = { version = "0.3", optional = true }
 futures-util = { version = "0.3", default-features = false, optional = true }
