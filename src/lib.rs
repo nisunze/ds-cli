@@ -1525,6 +1525,11 @@ pub fn response_policy_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
 /// typed WASM exports, which send with reqwest.
 pub mod gateway_exchange;
 
+/// Client state as Rust signals (Leptos's reactive core) fed by the Kernel;
+/// Svelte subscribes to them through `ds-web`'s `rust-state.ts`.
+#[cfg(feature = "client-state")]
+pub mod client_state;
+
 /// Durable lifecycle decisions for host-held survey-photo bytes.
 pub mod survey_photo_outbox;
 #[cfg(feature = "wasm")]

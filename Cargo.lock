@@ -312,6 +312,7 @@ dependencies = [
  "ds-profile-policy",
  "ds-solar-contracts",
  "ds-template-test-support",
+ "futures-channel",
  "futures-util",
  "gloo-timers",
  "image",

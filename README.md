@@ -137,3 +137,35 @@ JSON camera intent. The CLI registers this as `map.canvas.camera`, including
 MCP discovery. Spatial algorithms, numeric buffers and live pointer sessions
 remain in ds-network, exported through ds-network-wasm; the command kernel
 does not own interactive hit testing or snapping.
+
+## Client state on Rust signals
+
+`client_state` (feature `client-state`, on in the WASM build) holds client
+application state as signals and memos of Leptos's reactive core
+(`reactive_graph`), with the same semantics in the browser's WASM and
+natively. Svelte keeps only presentation state (focus, layout, animation).
+ds-web reads each memo as a store through `src/lib/runtime/rust-state.ts`
+(`rustState(initial, (state) => state.signal())`) and sends intents through
+typed commands; it never sets a value. To move a store here:
+
+1. Put its state in a domain module under `src/client_state/`. Inputs are
+   `ArcRwSignal`s that only typed commands change; everything shown is an
+   `ArcMemo`, which notifies only on change. A value read for the current
+   scope is a `ScopedRead`: it reads only while wanted and when the scope is
+   complete, never reads the same scope and attempt twice, waits for a read
+   in flight and then reads only the latest scope, and counts an answer only
+   for the scope it was read for. Expose what it derives as `OnDemand`.
+2. Reach the host only through `Effects` (`client_state::browser` for the
+   page): gateway calls are the domain's `gateway_exchange` operations, and
+   durable reads go through `durable_store`. No memo calls a host.
+3. Export each value from `browser.rs` as a `StateSignal` with
+   `unchecked_return_type = "StateSignal<T>"` and a tsify type, and each
+   command as a method. A subscription wants its read until disposed.
+4. In ds-web, replace the store with `rustState` and its writers with the
+   commands, and delete the TypeScript load, cache and in-flight logic in the
+   same commit.
+5. Test the graph with `scenario!` in `client_state_tests.rs`. It runs on
+   futures' local pool natively (`cargo test --features client-state
+   client_state`) and on wasm-bindgen-futures under wasm-bindgen-test
+   (`wasm-pack test --node --features wasm`). Test the store in Vitest
+   through the real vendored WASM.
