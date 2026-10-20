@@ -1465,6 +1465,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("core.component.rollback", "machine_write", "none"),
     ("core.identity", "read_only", "none"),
     ("core.profile-session", "local_file_write", "headless_project"),
+    ("core.store", "local_auth_state", "headless_user"),
     ("core.survey.queue", "local_auth_state", "headless_user"),
     ("core.sync.read", "local_file_write", "headless_user"),
     ("data.reference.read", "local_file_write", "none"),
@@ -1567,6 +1568,7 @@ fn one_operation_has_one_command_id_whichever_host_executes_it() {
                 | "core.module-release"
                 | "core.identity"
                 | "core.auth.status"
+                | "core.store"
                 | "core.cache.retire"
         ) {
             assert!(

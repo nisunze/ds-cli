@@ -179,6 +179,8 @@ fn records_only(command: &Command) -> bool {
         // Protected identity is local; it does not authorize telemetry network
         // delivery during a retained Sync Center read.
         || command.id == "core.sync.read"
+        // A local durable-store call is UI state, never a reason for delivery.
+        || command.id == "core.store"
         || (matches!(command.authority, Authority::None) && !ADAPTER_COMMANDS.contains(&command.id))
 }
 
@@ -398,6 +400,7 @@ mod tests {
             ("feedback.draft", true),
             ("feedback.submit", false),
             ("core.sync.read", true),
+            ("core.store", true),
             ("core.sync.retry", false),
             ("mcp.serve", false),
         ] {

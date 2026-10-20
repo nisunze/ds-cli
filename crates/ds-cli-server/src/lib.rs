@@ -36,6 +36,7 @@ pub mod solar_application;
 mod solar_documents;
 #[doc(hidden)]
 pub mod solar_sync;
+pub mod durable_store;
 pub mod survey_queue;
 pub mod sync_recovery;
 pub mod sync_read;
@@ -995,6 +996,7 @@ pub static DOMAIN: Domain = Domain {
         &ACTIVITY,
         &sync_read::READ,
         &survey_queue::COMMAND,
+        &durable_store::COMMAND,
         &sync_recovery::STATUS,
         &sync_recovery::RETRY,
         &sync_recovery::PREVIEW,

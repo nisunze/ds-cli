@@ -527,6 +527,17 @@ A Core without it refuses `core_incompatible` before inventory or engine probes;
 update Core independently. There is no default-path compatibility branch, engine
 PATH override, installation-wide pin, credential or data migration.
 
+`core.store` runs one Kernel durable-store call in the lane's protected SQLite
+Store, offline, under the protected account. The request file holds the
+Kernel's Call JSON (`{"request": {"store", "operation"}, "expect_owner"?}`);
+the Kernel owns the stores, schema, SQL, transaction and refusals
+(ds-command-kernel `docs/contracts/durable-store.md`). Core binds the identity
+itself and never reads one from the request; stores with their own command
+(`design.status`, `design.model.catalog`) refuse `core_store_not_served`.
+Payload bytes come from `--bytes` and answer bytes go to `--bytes-out`. The
+Desktop reaches it through its Core door for the published window identity;
+telemetry for it is recorded locally and never delivered on its own.
+
 `core.survey.queue` exposes the retained native Survey queue offline through a
 closed private request file and a new private result file. Discover its command
 contract for actions, identity fences, bounds and mutation completion receipts.

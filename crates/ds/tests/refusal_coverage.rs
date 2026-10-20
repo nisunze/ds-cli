@@ -270,6 +270,10 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
          policy::INVALID), the one owner of that vocabulary",
     ),
     (
+        "ds-cli-server/src/durable_store.rs",
+        "failure() takes one of this command's declared Refusal constants",
+    ),
+    (
         "ds-cli-server/src/survey_queue.rs",
         "failure() takes one of this command's declared Refusal constants",
     ),
