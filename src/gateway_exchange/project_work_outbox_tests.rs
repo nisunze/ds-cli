@@ -172,3 +172,104 @@ fn another_account_never_replays_a_queued_create() {
     assert_eq!((drained.drained, edge.requests().len()), (0, 0));
     assert!(block_on(enqueue(&edge, P, "", task("a"), None)).is_err());
 }
+
+fn command_attempt(command_id: &str, base: i64) -> Value {
+    json!({"kind": "command", "ownerUid": "owner", "projectId": P, "envelope": {
+        "commandId": command_id, "projectId": P, "baseRevision": base,
+        "command": {"kind": "delete_task", "taskId": "x"}
+    }})
+}
+
+#[test]
+fn one_submitted_write_is_held_per_project_until_its_answer_is_known() {
+    let edge = TestEdge::new();
+    let first = command_attempt("cmd-1", 5);
+    block_on(admit_submitted(&edge, P, first.clone())).unwrap();
+    block_on(admit_submitted(&edge, P, first.clone())).unwrap();
+    let other = block_on(admit_submitted(&edge, P, command_attempt("cmd-2", 5))).unwrap_err();
+    assert_eq!(
+        (other.code.as_str(), other.outcome_unknown),
+        (RETRY_REQUIRED, true)
+    );
+    assert_eq!(block_on(submitted(&edge, P)).unwrap(), Some(first.clone()));
+    assert!(
+        block_on(overlay(&edge, P, &graph(5, &["x"]))).unwrap()["tasks"]
+            .as_array()
+            .unwrap()
+            .len()
+            == 1,
+        "a held write overlays no task"
+    );
+
+    assert!(!block_on(clear_submitted(&edge, P, &command_attempt("cmd-2", 5))).unwrap());
+    assert!(block_on(clear_submitted(&edge, P, &first)).unwrap());
+    assert_eq!(block_on(submitted(&edge, P)).unwrap(), None);
+    edge.sign_in("someone_else");
+    block_on(admit_submitted(&edge, P, command_attempt("cmd-3", 5))).unwrap();
+}
+
+#[test]
+fn a_write_whose_answer_was_lost_is_sent_again_as_it_was_before_later_creates() {
+    let edge = TestEdge::new();
+    block_on(admit_submitted(&edge, P, command_attempt("cmd-1", 5))).unwrap();
+    queue(&edge, &["a"]);
+    edge.json(json!({"success": true, "data": {"result": {
+        "applied": true, "command_id": "cmd-1", "committed_revision": 6, "schedule_revision": 1,
+        "deleted_task_ids": ["x"], "violations": []
+    }}}));
+    edge.json(receipt("cmd-a", 7, "a"));
+    let drained = block_on(drain(&edge, P, graph(6, &["x"]), "tab")).unwrap();
+    let sent = bodies(&edge);
+    assert_eq!(
+        (
+            sent[0]["command_id"].as_str(),
+            sent[0]["base_revision"].as_i64()
+        ),
+        (Some("cmd-1"), Some(5))
+    );
+    assert_eq!(sent[0]["command"]["kind"], "delete_task");
+    assert_eq!(
+        (
+            sent[1]["command_id"].as_str(),
+            sent[1]["base_revision"].as_i64()
+        ),
+        (Some("cmd-a"), Some(6))
+    );
+    assert_eq!(drained.drained, 2);
+    assert_eq!(
+        task_ids(&drained.graph),
+        ["a"],
+        "the receipt's deletion and the create both apply"
+    );
+    assert_eq!(block_on(submitted(&edge, P)).unwrap(), None);
+}
+
+#[test]
+fn a_saved_batch_is_sent_again_whole() {
+    let edge = TestEdge::new();
+    let batch = json!({"kind": "batch", "ownerUid": "owner", "projectId": P, "commandId": "save-1", "baseRevision": 5,
+        "commands": [{"kind": "delete_task", "taskId": "x"}, {"kind": "delete_task", "taskId": "y"}]});
+    block_on(admit_submitted(&edge, P, batch)).unwrap();
+    edge.answer(Answer::Json(
+        400,
+        json!({"success": false, "error": {"code": "PM_TASK_LOCKED", "message": "Locked."}}),
+    ));
+    let drained = block_on(drain(&edge, P, graph(5, &["x", "y"]), "tab")).unwrap();
+    let sent = &bodies(&edge)[0];
+    assert_eq!(
+        (
+            sent["action"].as_str(),
+            sent["commands"].as_array().map(Vec::len)
+        ),
+        (Some("commit_batch"), Some(2))
+    );
+    assert_eq!(
+        drained.failed,
+        [json!({"id": format!("project-work-submitted:{P}"), "title": "", "message": "Locked."})]
+    );
+    assert_eq!(
+        block_on(submitted(&edge, P)).unwrap(),
+        None,
+        "a decided write leaves"
+    );
+}

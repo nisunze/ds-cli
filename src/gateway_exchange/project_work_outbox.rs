@@ -7,6 +7,12 @@
 //! command; a definitive revision refusal proves it did not commit and
 //! rebuilds it once on a fresh graph. Brain stays the only write authority:
 //! the page's graph is a projection its answers overwrite.
+//!
+//! A write the page submitted online is held on the same line, exactly as
+//! sent, until its answer is known: one per project, so a second write waits
+//! for the person to retry the first (`PM_RETRY_REQUIRED`). The page clears
+//! it on a definitive answer; one whose answer was lost is sent again as it
+//! was by the next drain.
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -20,7 +26,11 @@ use crate::project_management::{command_wire, wire};
 
 const QUEUE: Queue = Queue::ProjectWork;
 const PREFIX: &str = "project-work:";
+/// The row id of a project's submitted write.
+const SUBMITTED: &str = "project-work-submitted:";
 pub const INVALID: &str = "project_work_outbox_invalid";
+/// A different write is held for the project, its answer unknown.
+pub const RETRY_REQUIRED: &str = "PM_RETRY_REQUIRED";
 /// Creates one drain sends at most.
 const MAX_SENDS: usize = 200;
 const LEASE_MS: u64 = 120_000;
@@ -105,6 +115,76 @@ pub async fn held(edge: &impl Edge, project: &str) -> Result<Vec<Value>, Refusal
         .as_array()
         .cloned()
         .unwrap_or_default())
+}
+
+/// The write the page submitted for `project` whose answer is not known yet.
+pub async fn submitted(edge: &impl Edge, project: &str) -> Result<Option<Value>, Refusal> {
+    let id = format!("{SUBMITTED}{project}");
+    Ok(held(edge, project)
+        .await?
+        .into_iter()
+        .find(|row| row["id"] == id.as_str())
+        .map(|row| row["payload"]["submitted"].clone()))
+}
+
+/// Hold `attempt` (the page's submitted write, as it sends it) before it is
+/// sent. The same attempt held already is admitted again; a different one
+/// refuses until the person retries the held one.
+pub async fn admit_submitted(
+    edge: &impl Edge,
+    project: &str,
+    attempt: Value,
+) -> Result<(), Refusal> {
+    if !attempt.is_object() {
+        return Err(invalid("A submitted Project Work write is an object."));
+    }
+    let entry = Entry {
+        project: Some(project.to_owned()),
+        id: format!("{SUBMITTED}{project}"),
+        record: Some(project.to_owned()),
+        size: None,
+        meta: None,
+        payload: json!({"submitted": attempt}),
+    };
+    let operation = Operation::Enqueue {
+        queue: QUEUE,
+        rows: vec![entry],
+        now: edge.now_ms(),
+    };
+    match call(edge, None, operation).await {
+        Err(refusal) if refusal.code == EXISTS => match submitted(edge, project).await? {
+            Some(held) if held == attempt => Ok(()),
+            _ => Err(Refusal {
+                outcome_unknown: true,
+                ..Refusal::new(
+                    RETRY_REQUIRED,
+                    "Retry the earlier request before submitting another change.",
+                )
+            }),
+        },
+        other => other.map(drop),
+    }
+}
+
+/// Forget `attempt` once its answer is known. Another attempt, or one a
+/// drain is sending now, stays.
+pub async fn clear_submitted(
+    edge: &impl Edge,
+    project: &str,
+    attempt: &Value,
+) -> Result<bool, Refusal> {
+    if submitted(edge, project).await?.as_ref() != Some(attempt) {
+        return Ok(false);
+    }
+    let operation = Operation::Discard {
+        queue: QUEUE,
+        id: format!("{SUBMITTED}{project}"),
+        now: edge.now_ms(),
+    };
+    match call(edge, None, operation).await {
+        Err(refusal) if refusal.code == crate::outbox::LEASED => Ok(false),
+        other => Ok(other?["removed"].as_u64() > Some(0)),
+    }
 }
 
 fn queued_tasks(rows: &[Value]) -> Vec<Value> {
@@ -203,21 +283,55 @@ enum Commit {
     Refused(String),
 }
 
-async fn commit(edge: &impl Edge, project: &str, envelope: &Value) -> Commit {
-    let command = match command_wire::encode(&envelope["command"]) {
-        Ok(command) => command,
-        Err(message) => return Commit::Refused(message),
-    };
-    let base_revision = envelope["baseRevision"].as_i64().unwrap_or(0);
+/// Brain's commit_command for one envelope.
+fn command_request(project: &str, envelope: &Value) -> Result<Map<String, Value>, String> {
     let mut request = Map::new();
     request.insert("action".into(), json!("commit_command"));
     request.insert("ds_project".into(), json!(project));
     request.insert("command_id".into(), envelope["commandId"].clone());
-    request.insert("base_revision".into(), json!(base_revision));
-    request.insert("command".into(), command);
+    request.insert(
+        "base_revision".into(),
+        json!(envelope["baseRevision"].as_i64().unwrap_or(0)),
+    );
+    request.insert(
+        "command".into(),
+        command_wire::encode(&envelope["command"])?,
+    );
     if envelope["context"].is_object() {
         request.insert("context".into(), snake(&envelope["context"]));
     }
+    Ok(request)
+}
+
+/// Brain's commit_batch for one submitted batch.
+fn batch_request(project: &str, attempt: &Value) -> Result<Map<String, Value>, String> {
+    let commands = attempt["commands"]
+        .as_array()
+        .filter(|commands| !commands.is_empty())
+        .ok_or("A saved batch carries at least one command.")?
+        .iter()
+        .map(command_wire::encode)
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut request = Map::new();
+    request.insert("action".into(), json!("commit_batch"));
+    request.insert("ds_project".into(), json!(project));
+    request.insert("command_id".into(), attempt["commandId"].clone());
+    request.insert(
+        "base_revision".into(),
+        json!(attempt["baseRevision"].as_i64().unwrap_or(0)),
+    );
+    request.insert("commands".into(), Value::Array(commands));
+    Ok(request)
+}
+
+/// Send one commit and judge its answer against the command it sent.
+async fn commit(edge: &impl Edge, request: Result<Map<String, Value>, String>) -> Commit {
+    let request = match request {
+        Ok(request) => request,
+        Err(message) => return Commit::Refused(message),
+    };
+    let base_revision = request["base_revision"].as_i64().unwrap_or(0);
+    let command_id = request["command_id"].clone();
     match edge.fetch(ProjectWork { request }).await {
         Ok(answer) => {
             let result = wire_result(&answer);
@@ -230,7 +344,7 @@ async fn commit(edge: &impl Edge, project: &str, envelope: &Value) -> Commit {
                     }),
                 );
             }
-            if Some(decoded.command_id.as_str()) != envelope["commandId"].as_str() {
+            if Some(decoded.command_id.as_str()) != command_id.as_str() {
                 return Commit::Refused(
                     "The project change response did not match the submitted command.".into(),
                 );
@@ -377,17 +491,17 @@ async fn reload(edge: &impl Edge, project: &str) -> Option<Value> {
 pub struct Drained {
     /// The graph to show: what the server holds, with what is still queued.
     pub graph: Value,
-    /// Creates the server accepted.
+    /// Creates and held writes the server accepted.
     pub drained: u64,
     /// Creates still queued because nothing was decided.
     pub deferred: u64,
-    /// Creates the server refused: `id`, `title` and `message`, for the person
-    /// to enter again. They leave the queue.
+    /// Creates and held writes the server refused: `id`, `title` (empty for a
+    /// held write) and `message`, for the person to act on. They leave the line.
     pub failed: Vec<Value>,
 }
 
-/// Replay every queued create of `project` on `graph`, oldest first, until
-/// the queue is empty or an answer decides nothing. `lease` is a fresh host
+/// Replay every queued create and held write of `project` on `graph`, oldest
+/// first, until the line is empty or an answer decides nothing. `lease` is a fresh host
 /// nonce naming this drain.
 pub async fn drain(
     edge: &impl Edge,
@@ -430,39 +544,57 @@ pub async fn drain(
             settlement,
             now: edge.now_ms(),
         };
-        if !task["id"].is_string() || command_id.is_empty() {
+        let submitted = &row["payload"]["submitted"];
+        let decided = if submitted.is_object() {
+            // A write the page submitted is sent again exactly as it was.
+            let request = if submitted["kind"] == "batch" {
+                batch_request(project, submitted)
+            } else {
+                command_request(project, &submitted["envelope"])
+            };
+            match commit(edge, request).await {
+                Commit::Stale => Commit::Refused(
+                    "The project changed before this write arrived; it was not applied.".into(),
+                ),
+                decided => decided,
+            }
+        } else if !task["id"].is_string() || command_id.is_empty() {
             // A row no drain can read would block the queue behind it.
             call(edge, owner.as_deref(), settle(Settlement::Sent)).await?;
             drained.failed.push(json!({"id": id, "title": "", "message": "A queued project entry could not be read and was discarded."}));
             continue;
-        }
-        let mut sent = match row["payload"]
-            .get("envelope")
-            .filter(|envelope| envelope.is_object())
-        {
-            Some(frozen) => frozen.clone(),
-            None => envelope(&base, project, &command_id, &task, &Value::Null),
-        };
-        let freeze = |envelope: &Value| Operation::Revise {
-            queue: QUEUE,
-            id: id.clone(),
-            lease: lease.into(),
-            payload: Some(json!({"command_id": command_id, "task": task, "envelope": envelope})),
-            meta: None,
-            lease_ms: None,
-            now: edge.now_ms(),
-        };
-        call(edge, owner.as_deref(), freeze(&sent)).await?;
-        let mut decided = commit(edge, project, &sent).await;
-        if matches!(decided, Commit::Stale) {
-            // A definitive revision refusal proves this create did not commit.
-            if let Some(fresh) = reload(edge, project).await {
-                base = without_tasks(&fresh, &queued);
-                sent = envelope(&base, project, &command_id, &task, &sent["context"]);
-                call(edge, owner.as_deref(), freeze(&sent)).await?;
-                decided = commit(edge, project, &sent).await;
+        } else {
+            let mut sent = match row["payload"]
+                .get("envelope")
+                .filter(|envelope| envelope.is_object())
+            {
+                Some(frozen) => frozen.clone(),
+                None => envelope(&base, project, &command_id, &task, &Value::Null),
+            };
+            let freeze = |envelope: &Value| Operation::Revise {
+                queue: QUEUE,
+                id: id.clone(),
+                lease: lease.into(),
+                payload: Some(
+                    json!({"command_id": command_id, "task": task, "envelope": envelope}),
+                ),
+                meta: None,
+                lease_ms: None,
+                now: edge.now_ms(),
+            };
+            call(edge, owner.as_deref(), freeze(&sent)).await?;
+            let mut decided = commit(edge, command_request(project, &sent)).await;
+            if matches!(decided, Commit::Stale) {
+                // A definitive revision refusal proves this create did not commit.
+                if let Some(fresh) = reload(edge, project).await {
+                    base = without_tasks(&fresh, &queued);
+                    sent = envelope(&base, project, &command_id, &task, &sent["context"]);
+                    call(edge, owner.as_deref(), freeze(&sent)).await?;
+                    decided = commit(edge, command_request(project, &sent)).await;
+                }
             }
-        }
+            decided
+        };
         let (settlement, stop) = match decided {
             Commit::Accepted(raw) => {
                 // A replayed receipt can precede the head: keep the newer row.
@@ -500,9 +632,10 @@ pub async fn drain(
             ),
             Commit::Refused(message) => {
                 // The server decided; the person enters it again from its title.
+                let title = task["title"].as_str().unwrap_or_default();
                 drained
                     .failed
-                    .push(json!({"id": id, "title": task["title"], "message": message}));
+                    .push(json!({"id": id, "title": title, "message": message}));
                 sent_ids.push(task["id"].clone());
                 (Settlement::Sent, false)
             }
@@ -615,6 +748,43 @@ export interface ProjectWorkOutboxDrained { graph: unknown; drained: number; def
         )
         .await;
         typed(&drained.map_err(|refusal| rejection(&refusal))?)
+    }
+
+    /// The write submitted for the project whose answer is not known yet.
+    #[wasm_bindgen(js_name = projectWorkSubmittedHeld, unchecked_return_type = "unknown")]
+    pub async fn submitted(
+        host: GatewayHost,
+        store: StoreHost,
+        project: String,
+    ) -> Result<JsValue, JsValue> {
+        let held = super::submitted(&BrowserEdge::new(host, store), &project).await;
+        typed(&held.map_err(|refusal| rejection(&refusal))?)
+    }
+
+    /// Hold a write before it is sent; a different held one refuses `PM_RETRY_REQUIRED`.
+    #[wasm_bindgen(js_name = projectWorkSubmittedAdmit)]
+    pub async fn admit_submitted(
+        host: GatewayHost,
+        store: StoreHost,
+        project: String,
+        #[wasm_bindgen(unchecked_param_type = "unknown")] attempt: JsValue,
+    ) -> Result<(), JsValue> {
+        super::admit_submitted(&BrowserEdge::new(host, store), &project, value(attempt)?)
+            .await
+            .map_err(|refusal| rejection(&refusal))
+    }
+
+    /// Forget a held write once its answer is known.
+    #[wasm_bindgen(js_name = projectWorkSubmittedClear)]
+    pub async fn clear_submitted(
+        host: GatewayHost,
+        store: StoreHost,
+        project: String,
+        #[wasm_bindgen(unchecked_param_type = "unknown")] attempt: JsValue,
+    ) -> Result<bool, JsValue> {
+        super::clear_submitted(&BrowserEdge::new(host, store), &project, &value(attempt)?)
+            .await
+            .map_err(|refusal| rejection(&refusal))
     }
 }
 
