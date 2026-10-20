@@ -15,7 +15,9 @@
 use serde::Serialize;
 
 #[cfg(all(feature = "platform-desktop", feature = "platform-web"))]
-compile_error!("a Kernel build serves exactly one platform: platform-desktop or platform-web, not both");
+compile_error!(
+    "a Kernel build serves exactly one platform: platform-desktop or platform-web, not both"
+);
 #[cfg(all(
     feature = "platform-core",
     any(feature = "platform-desktop", feature = "platform-web")
@@ -252,7 +254,9 @@ export interface NetworkRefusal extends Error {
     fn admit(envelope: &JsValue, spec: &CoreDoor) -> Result<JsValue, JsValue> {
         if member(envelope, "status").as_string().as_deref() != Some("ok") {
             let error = member(envelope, "error");
-            let code = member(&error, "code").as_string().unwrap_or_else(|| "core_refused".into());
+            let code = member(&error, "code")
+                .as_string()
+                .unwrap_or_else(|| "core_refused".into());
             let message = member(&error, "message")
                 .as_string()
                 .unwrap_or_else(|| "DS Core refused the command.".into());
@@ -293,11 +297,18 @@ export interface NetworkRefusal extends Error {
         let route = capability.route(super::PLATFORM);
         match route.executor {
             Executor::Refuse => {
-                let refusal_text = route.refusal.expect("build.rs requires a refusal to name its code");
+                let refusal_text = route
+                    .refusal
+                    .expect("build.rs requires a refusal to name its code");
                 Err(refusal(refusal_text.code, refusal_text.message))
             }
             Executor::NetworkUnit => {
-                open(&host, "unit", [capability.name.into(), input, JsValue::UNDEFINED]).await
+                open(
+                    &host,
+                    "unit",
+                    [capability.name.into(), input, JsValue::UNDEFINED],
+                )
+                .await
             }
             Executor::Core => {
                 let spec = capability
@@ -322,7 +333,8 @@ export interface NetworkRefusal extends Error {
                     Reflect::set(&args, &(*switch).into(), &JsValue::TRUE)?;
                 }
                 let command = spec.command.expect("build.rs requires a command or a door");
-                let envelope = open(&host, "core", [command.into(), project.into(), args.into()]).await?;
+                let envelope =
+                    open(&host, "core", [command.into(), project.into(), args.into()]).await?;
                 admit(&envelope, &spec)
             }
         }

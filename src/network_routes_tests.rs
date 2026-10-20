@@ -56,33 +56,64 @@ fn engineering_jobs_never_reach_a_browser_engine_and_the_web_refuses_processing(
 fn core_routes_name_the_command_or_door_that_serves_them() {
     let plan = capability("lv.plan").unwrap().core.unwrap();
     assert_eq!(plan.command, Some("design.autoprocess.plan"));
-    assert_eq!((plan.input, plan.wrap, plan.answer), (Some("changes"), Some("differential_scope"), Some("differential_scope")));
+    assert_eq!(
+        (plan.input, plan.wrap, plan.answer),
+        (
+            Some("changes"),
+            Some("differential_scope"),
+            Some("differential_scope")
+        )
+    );
     let catalog = capability("process.catalog").unwrap().core.unwrap();
     assert_eq!(catalog.switches, &["catalog"]);
     assert_eq!(catalog.answer, Some("catalog"));
     let process = capability("lv.process").unwrap().core.unwrap();
     assert_eq!(process.door, Some("network_lv_process"));
-    assert_eq!(capability("lv.process").unwrap().route(Platform::Desktop).page_lanes, Some(1));
+    assert_eq!(
+        capability("lv.process")
+            .unwrap()
+            .route(Platform::Desktop)
+            .page_lanes,
+        Some(1)
+    );
 }
 
 #[test]
 fn this_build_answers_its_own_platform_without_being_told() {
     let answer = route("lv.process").unwrap();
     assert_eq!(answer.platform, PLATFORM);
-    assert_eq!(answer.route, capability("lv.process").unwrap().route(PLATFORM));
+    assert_eq!(
+        answer.route,
+        capability("lv.process").unwrap().route(PLATFORM)
+    );
     let wire: Value = serde_json::from_str(
-        &evaluate(json!({"schema": SCHEMA, "capability": "lv.plan"}).to_string().as_bytes()).unwrap(),
+        &evaluate(
+            json!({"schema": SCHEMA, "capability": "lv.plan"})
+                .to_string()
+                .as_bytes(),
+        )
+        .unwrap(),
     )
     .unwrap();
     assert_eq!(wire["capability"], "lv.plan");
-    assert!(evaluate(json!({"schema": SCHEMA, "capability": "lv.plan", "platform": "web"}).to_string().as_bytes()).is_err());
-    assert!(route("nope").unwrap_err().starts_with("network_route_unknown"));
+    assert!(evaluate(
+        json!({"schema": SCHEMA, "capability": "lv.plan", "platform": "web"})
+            .to_string()
+            .as_bytes()
+    )
+    .is_err());
+    assert!(route("nope")
+        .unwrap_err()
+        .starts_with("network_route_unknown"));
 }
 
 #[test]
 fn each_gate_refuses_a_manifest_that_breaks_it() {
     let mut missing = committed();
-    missing["capabilities"]["lv.plan"]["routes"].as_object_mut().unwrap().remove("core");
+    missing["capabilities"]["lv.plan"]["routes"]
+        .as_object_mut()
+        .unwrap()
+        .remove("core");
     assert!(refused(missing).contains("must route every declared platform"));
 
     let mut extra = committed();
@@ -90,7 +121,8 @@ fn each_gate_refuses_a_manifest_that_breaks_it() {
     assert!(refused(extra).contains("must route every declared platform"));
 
     let mut absent_here = committed();
-    absent_here["capabilities"]["lv.plan"]["routes"]["desktop"] = json!({"executor": "network_unit"});
+    absent_here["capabilities"]["lv.plan"]["routes"]["desktop"] =
+        json!({"executor": "network_unit"});
     assert!(refused(absent_here).contains("does not exist there"));
 
     let mut unknown = committed();
@@ -98,7 +130,10 @@ fn each_gate_refuses_a_manifest_that_breaks_it() {
     assert!(refused(unknown).contains("unknown executor `cloud`"));
 
     let mut undeclared = committed();
-    undeclared["executors"].as_object_mut().unwrap().remove("refuse");
+    undeclared["executors"]
+        .as_object_mut()
+        .unwrap()
+        .remove("refuse");
     assert!(refused(undeclared).contains("executor refuse is not declared"));
 
     let mut stray_platform = committed();
@@ -107,7 +142,8 @@ fn each_gate_refuses_a_manifest_that_breaks_it() {
 
     let mut job_in_page = committed();
     job_in_page["executors"]["network_unit"]["platforms"] = json!(["web", "desktop"]);
-    job_in_page["capabilities"]["lv.process"]["routes"]["desktop"] = json!({"executor": "network_unit", "page_lanes": 1});
+    job_in_page["capabilities"]["lv.process"]["routes"]["desktop"] =
+        json!({"executor": "network_unit", "page_lanes": 1});
     assert!(refused(job_in_page).contains("where Core is installed"));
 
     let mut silent = committed();
@@ -128,7 +164,10 @@ fn each_gate_refuses_a_manifest_that_breaks_it() {
     assert!(refused(field).contains("unknown member `door`"));
 
     let mut doorless = committed();
-    doorless["capabilities"]["lv.plan"].as_object_mut().unwrap().remove("core");
+    doorless["capabilities"]["lv.plan"]
+        .as_object_mut()
+        .unwrap()
+        .remove("core");
     assert!(refused(doorless).contains("names no Core command or door"));
 
     let mut both = committed();

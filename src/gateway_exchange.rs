@@ -39,6 +39,7 @@ pub mod assets_index;
 pub mod compute_artifacts;
 pub mod deadletter;
 pub mod design;
+pub mod design_collab;
 pub mod feedback;
 pub mod forms;
 pub mod geocode;

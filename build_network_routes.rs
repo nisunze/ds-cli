@@ -40,9 +40,9 @@ fn name(value: Option<&Value>, what: &str) -> String {
     let text = text(value, what);
     let valid = text.len() <= 64
         && text.as_bytes()[0].is_ascii_lowercase()
-        && text
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-'));
+        && text.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')
+        });
     if !valid {
         fail(format!("{what} `{text}` is not a lowercase identifier"));
     }
@@ -54,7 +54,10 @@ fn literal(text: &str) -> String {
 }
 
 fn optional(value: Option<String>) -> String {
-    value.map_or_else(|| "None".to_owned(), |text| format!("Some({})", literal(&text)))
+    value.map_or_else(
+        || "None".to_owned(),
+        |text| format!("Some({})", literal(&text)),
+    )
 }
 
 fn executor_variant(executor: &str) -> &'static str {
@@ -71,25 +74,40 @@ fn executor_variant(executor: &str) -> &'static str {
 fn core_spec(capability: &str, value: Option<&Value>, uses_core: bool) -> String {
     let Some(value) = value else {
         if uses_core {
-            fail(format!("`{capability}` routes to core but names no Core command or door"));
+            fail(format!(
+                "`{capability}` routes to core but names no Core command or door"
+            ));
         }
         return "None".to_owned();
     };
     if !uses_core {
-        fail(format!("`{capability}` names a Core door but no platform routes to core"));
+        fail(format!(
+            "`{capability}` names a Core door but no platform routes to core"
+        ));
     }
     let spec = object(value, &format!("`{capability}` core"));
-    closed(spec, &["command", "door", "input", "wrap", "answer", "switches"], &format!("`{capability}` core"));
-    let field = |key: &str| spec.get(key).map(|value| name(Some(value), &format!("`{capability}` core.{key}")));
+    closed(
+        spec,
+        &["command", "door", "input", "wrap", "answer", "switches"],
+        &format!("`{capability}` core"),
+    );
+    let field = |key: &str| {
+        spec.get(key)
+            .map(|value| name(Some(value), &format!("`{capability}` core.{key}")))
+    };
     let (command, door) = (field("command"), field("door"));
     if command.is_some() == door.is_some() {
-        fail(format!("`{capability}` names exactly one Core command or one door"));
+        fail(format!(
+            "`{capability}` names exactly one Core command or one door"
+        ));
     }
     let (input, wrap, answer) = (field("input"), field("wrap"), field("answer"));
     if wrap.is_some() && input.is_none() {
         fail(format!("`{capability}` wraps an input it does not name"));
     }
-    if door.is_some() && (input.is_some() || wrap.is_some() || answer.is_some() || spec.contains_key("switches")) {
+    if door.is_some()
+        && (input.is_some() || wrap.is_some() || answer.is_some() || spec.contains_key("switches"))
+    {
         fail(format!("`{capability}` passes its input whole to a door"));
     }
     let switches: Vec<String> = match spec.get("switches") {
@@ -126,7 +144,9 @@ fn route(
         fail(format!("{what} names the unknown executor `{executor}`"));
     }
     if !exists(executor, platform) {
-        fail(format!("{what} names {executor}, which does not exist there"));
+        fail(format!(
+            "{what} names {executor}, which does not exist there"
+        ));
     }
     if kind == "engineering_job" && executor == "network_unit" && exists("core", platform) {
         fail(format!(
@@ -153,7 +173,9 @@ fn route(
         None => "None".to_owned(),
         Some(lanes) => match lanes.as_u64() {
             Some(lanes) if (1..=MAX_PAGE_LANES).contains(&lanes) => format!("Some({lanes})"),
-            _ => fail(format!("{what} bounds its page lanes outside 1..={MAX_PAGE_LANES}")),
+            _ => fail(format!(
+                "{what} bounds its page lanes outside 1..={MAX_PAGE_LANES}"
+            )),
         },
     };
     (
@@ -170,7 +192,11 @@ pub fn compile(json: &str) -> String {
     let manifest: Value =
         serde_json::from_str(json).unwrap_or_else(|error| fail(format!("not JSON: {error}")));
     let manifest = object(&manifest, "the manifest");
-    closed(manifest, &["schema", "doc", "platforms", "executors", "capabilities"], "the manifest");
+    closed(
+        manifest,
+        &["schema", "doc", "platforms", "executors", "capabilities"],
+        "the manifest",
+    );
     if text(manifest.get("schema"), "schema") != SCHEMA {
         fail(format!("expected schema {SCHEMA}"));
     }
@@ -191,20 +217,29 @@ pub fn compile(json: &str) -> String {
     );
     for executor in EXECUTORS {
         let spec = object(
-            executors.get(executor).unwrap_or_else(|| fail(format!("executor {executor} is not declared"))),
+            executors
+                .get(executor)
+                .unwrap_or_else(|| fail(format!("executor {executor} is not declared"))),
             &format!("executor {executor}"),
         );
         closed(spec, &["platforms"], &format!("executor {executor}"));
-        for platform in spec.get("platforms").and_then(Value::as_array).unwrap_or_else(|| {
-            fail(format!("executor {executor} must list its platforms"))
-        }) {
+        for platform in spec
+            .get("platforms")
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| fail(format!("executor {executor} must list its platforms")))
+        {
             let platform = text(Some(platform), "an executor platform");
             if !declared.contains(platform) {
-                fail(format!("executor {executor} names the undeclared platform `{platform}`"));
+                fail(format!(
+                    "executor {executor} names the undeclared platform `{platform}`"
+                ));
             }
         }
     }
-    if let Some(unknown) = executors.keys().find(|key| !EXECUTORS.contains(&key.as_str())) {
+    if let Some(unknown) = executors
+        .keys()
+        .find(|key| !EXECUTORS.contains(&key.as_str()))
+    {
         fail(format!("the unknown executor `{unknown}` is declared"));
     }
     let exists = |executor: &str, platform: &str| {
@@ -223,16 +258,25 @@ pub fn compile(json: &str) -> String {
     for (capability, entry) in capabilities {
         name(Some(&Value::String(capability.clone())), "a capability");
         let entry = object(entry, &format!("`{capability}`"));
-        closed(entry, &["kind", "doc", "core", "routes"], &format!("`{capability}`"));
+        closed(
+            entry,
+            &["kind", "doc", "core", "routes"],
+            &format!("`{capability}`"),
+        );
         let kind = text(entry.get("kind"), &format!("`{capability}` kind"));
         if !KINDS.contains(&kind) {
             fail(format!("`{capability}` has the unknown kind `{kind}`"));
         }
         text(entry.get("doc"), &format!("`{capability}` doc"));
-        let routes = object(entry.get("routes").unwrap_or(&Value::Null), &format!("`{capability}` routes"));
+        let routes = object(
+            entry.get("routes").unwrap_or(&Value::Null),
+            &format!("`{capability}` routes"),
+        );
         let routed: BTreeSet<&str> = routes.keys().map(String::as_str).collect();
         if routed != declared {
-            fail(format!("`{capability}` must route every declared platform, and only those"));
+            fail(format!(
+                "`{capability}` must route every declared platform, and only those"
+            ));
         }
         let mut uses_core = false;
         let mut columns = Vec::new();
@@ -265,7 +309,8 @@ pub fn compile(json: &str) -> String {
 pub fn emit(root: &Path) {
     let manifest = root.join("routing/network-routes.json");
     println!("cargo:rerun-if-changed={}", manifest.display());
-    let json = fs::read_to_string(&manifest).expect("routing/network-routes.json is a Kernel build input");
+    let json =
+        fs::read_to_string(&manifest).expect("routing/network-routes.json is a Kernel build input");
     let out = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("Cargo sets OUT_DIR"));
     fs::write(out.join("network_routes_table.rs"), compile(&json))
         .expect("the compiled route table is writable");
