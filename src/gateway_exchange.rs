@@ -51,6 +51,8 @@ pub mod uploads;
 pub mod storage;
 #[cfg(feature = "durable-store")]
 pub mod retained;
+#[cfg(feature = "durable-store")]
+pub mod survey_media;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub(crate) mod browser;
