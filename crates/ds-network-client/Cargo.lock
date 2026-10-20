@@ -264,6 +264,7 @@ dependencies = [
  "ds-solar-contracts",
  "image",
  "imagesize",
+ "percent-encoding",
  "quick-xml 0.41.0",
  "regex",
  "ryu",
