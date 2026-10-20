@@ -45,6 +45,7 @@ pub mod help;
 pub mod installations;
 pub mod layers;
 pub mod maps;
+pub mod media_grants;
 pub mod messaging;
 pub mod notes;
 pub mod notifications;

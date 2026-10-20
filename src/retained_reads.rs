@@ -125,6 +125,8 @@ kinds! {
     /// The governance page: role definitions and, for a user manager, the
     /// user registry.
     GovernancePage = "governance_page": Account, KeyGrammar::Single, 4 * MIB, 1;
+    /// A durable media-link grant of one project's media tree, keyed by project.
+    MediaGrant = "media_grant": Account, KeyGrammar::Token(128), 16 * KIB, 64;
 }
 
 /// The generation row one kind reads and advances.
