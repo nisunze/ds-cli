@@ -555,6 +555,12 @@ pub fn execute(
     Ok(answer)
 }
 
+/// How a Kernel flow reaches storage on every host.
+pub mod port;
+/// The hosted Web's storage worker host (rusqlite over sqlite-wasm-rs on OPFS).
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+pub mod opfs;
+
 #[cfg(test)]
 #[path = "durable_store_tests.rs"]
 mod tests;

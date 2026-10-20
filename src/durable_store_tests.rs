@@ -172,3 +172,35 @@ fn bytes_are_bounded_in_both_directions() {
     let refused = execute(&mut db, Some(&owner()), call(get), Some(vec![1])).unwrap_err();
     assert!(refused.contains("no payload bytes"), "{refused}");
 }
+
+/// Drive a native port call, which completes without suspending.
+fn ready<F: std::future::Future>(future: F) -> F::Output {
+    let mut future = std::pin::pin!(future);
+    match future
+        .as_mut()
+        .poll(&mut std::task::Context::from_waker(std::task::Waker::noop()))
+    {
+        std::task::Poll::Ready(value) => value,
+        std::task::Poll::Pending => panic!("a native store call completes at once"),
+    }
+}
+
+#[test]
+fn the_native_port_runs_the_same_transaction_and_fences_a_flow_by_owner() {
+    use port::StorePort;
+    let mut db = Connection::open_in_memory().unwrap();
+    let port = port::Direct::new(&mut db, owner());
+    let request = |value: Value| serde_json::from_value::<Request>(value).unwrap();
+    let set = request(json!({"store":"ui_preferences","operation":{"action":"set","key":"active_project","value":"kigali_north","now":7}}));
+    let written = ready(port.call(set.clone(), None, None)).unwrap();
+    assert_eq!(written.owner(), Some(owner().owner().as_str()));
+    assert_eq!(written.answer["generation"], 1);
+    let again = ready(port.call(set.clone(), Some(owner().owner()), None)).unwrap();
+    assert_eq!(again.answer["generation"], 2);
+    let stale = ready(port.call(set, Some("0".repeat(64)), None)).unwrap_err();
+    assert!(stale.starts_with(OWNER_CHANGED), "{stale}");
+    let status = request(json!({"store":"status","operation":{"action":"read","scope":
+        {"principal":"owner","lane":"canary","audience":"a","project":"p"}}}));
+    let held = ready(port.call(status, None, None)).unwrap();
+    assert!(held.owner().is_none(), "statement stores carry their callers' scopes");
+}
