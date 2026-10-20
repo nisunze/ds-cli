@@ -102,7 +102,7 @@ pub static UPDATE: Command = declaration(
     "notes.update",
     &["notes", "update"],
     "Replace one reviewed private note's authored fields.",
-    "Closed complete authored draft JSON replaces title, content, folder, tags, checklist, links, geometry, reminder, canvas, pin and archive against --version with --yes. Omitted authored fields clear or take owner defaults; review notes read first and preserve every field you intend to keep. Legacy simple checklist rows retain richer matching item fields; explicit rich clears use notes checklist edit. Authenticated author, history, trash and attachment state remain owner-controlled. Existing reminder effects apply. After an uncertain outcome read the selected note before retrying; a successful write advances version and stale retry refuses. Meaningful project rulings belong in shared pm note commands.",
+    "Closed complete authored draft JSON replaces the note against --version with --yes; omitted fields clear or take owner defaults, so read the note first (draft fields, checklist and reminder rules: docs/reference/pm.md). After an uncertain outcome read the note before retrying; a successful write advances version and a stale retry refuses. Project rulings belong in shared pm note commands.",
     Effect::GlobalWrite,
     &[NOTE, VERSION, INPUT, crate::LANE_ARG],
 );
