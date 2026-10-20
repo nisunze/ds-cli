@@ -221,3 +221,24 @@ fn mv_acquisition_resolves_paper_and_policy_from_one_project_table() {
         .unwrap_err()
         .contains("style_resolution_unknown"));
 }
+
+#[test]
+fn the_standard_intent_prints_no_grid_while_an_adopted_revision_keeps_its_own() {
+    let input = approved_input();
+    let mut layout: printing::Layout =
+        serde_json::from_value(input["printing_setups"][0]["layout"].clone()).unwrap();
+    layout.mv.as_mut().unwrap().settings.show_profile_grid = true;
+    layout.mv.as_mut().unwrap().settings.show_plan_grid = Some(true);
+    let adopted = serde_json::to_value(&layout.mv.as_ref().unwrap().settings).unwrap();
+    assert_eq!(adopted["show_profile_grid"], true);
+    assert_eq!(adopted["show_plan_grid"], true);
+    let standard = mv::standardize(layout).unwrap();
+    let settings = &standard.mv.as_ref().unwrap().settings;
+    assert!(!settings.show_profile_grid);
+    assert_eq!(settings.show_plan_grid, None);
+    // Absent stays absent, so existing revisions keep their exact settings digest.
+    let held = serde_json::to_value(settings).unwrap();
+    assert!(held.get("show_plan_grid").is_none());
+    let decoded: printing::mv_settings::SheetSettings = serde_json::from_value(held).unwrap();
+    assert_eq!(decoded.show_plan_grid, None);
+}

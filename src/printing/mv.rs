@@ -134,7 +134,10 @@ pub fn standardize(mut layout: Layout) -> Result<Layout, String> {
     settings.show_clearance_thresholds = Some(true);
     settings.show_attachment_points = Some(true);
     settings.show_span_labels = Some(true);
-    settings.show_profile_grid = true;
+    // New standard revisions print no grid (owner, 2026-10-17); a template
+    // may enable either grid deliberately, and adopted revisions keep theirs.
+    settings.show_profile_grid = false;
+    settings.show_plan_grid = None;
     settings.show_obstacle_sticks = false;
     settings.show_profile_continuations = true;
     settings.profile_elevation_breaks = true;

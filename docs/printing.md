@@ -394,6 +394,15 @@ reproducible. Preview and PDF use the same effective settings and context pins.
 Acceptance includes a real MV sheet with project-clipped global layers and building
 footprints, and checks that an unauthored grid is absent.
 
+The template switches are `show_profile_grid` and `show_plan_grid`; an absent
+`show_plan_grid` prints no plan grid, and the project-wide LV map grid policy never
+turns it on. The Kernel's `printing::mv_context` names the carried families once:
+sheets carry roads, rivers, settlement sites, existing LV, terrain contours and
+building footprints from held project rooms, plus new LV and transformers from
+held design rooms; the key plan carries roads, HV/MV lines, places and project
+transformers by name. Every family prints in the API's `mv_context` paper role.
+Hosts read held data and hand it to `mv_context::assemble`; they choose no family.
+
 The preferred MV reference is the October 1 Nyamagabe Model 1 A3 booklet:
 `Nyamagabe-MV-Model1-Plan-and-Profile-A3.pdf`, 100 A3 landscape pages,
 SHA-256 `13e82d117c84c0b80b2cff271de3927a1ca6335bc09a967a3f7ed7d6c689d9cb`.

@@ -206,6 +206,11 @@ pub struct SheetSettings {
     pub plan_buffer_m: f64,
     #[serde(default = "default_true")]
     pub show_profile_grid: bool,
+    /// The plan panel's coordinate grid. MV sheets print none unless a
+    /// template deliberately sets `true` (owner, 2026-10-17 and 2026-10-20);
+    /// the project-wide LV map grid policy never switches it on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_plan_grid: Option<bool>,
     #[serde(default)]
     pub show_attachment_points: Option<bool>,
     #[serde(default)]
@@ -274,6 +279,7 @@ impl SheetSettings {
             minimum_angle_deg: 0.0,
             plan_buffer_m: default_buffer_m(),
             show_profile_grid: true,
+            show_plan_grid: None,
             show_attachment_points: None,
             show_span_labels: None,
             show_obstacle_sticks: false,
