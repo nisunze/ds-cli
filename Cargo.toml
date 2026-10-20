@@ -25,6 +25,12 @@ path = "src/bin/ds-print-layout-validate.rs"
 
 [features]
 default = []
+# The platform this Kernel build serves; at most one (none is platform-core,
+# the native default). Each decides, at compile time, the executor of every
+# routed Network capability (routing/network-routes.json).
+platform-core = []
+platform-desktop = []
+platform-web = []
 # The Kernel durable stores on SQLite (rusqlite): Core runs them in its
 # protected Store; the browser storage worker runs the same code on OPFS.
 durable-store = ["dep:rusqlite"]
