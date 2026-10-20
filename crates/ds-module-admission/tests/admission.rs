@@ -151,3 +151,59 @@ fn requests_are_closed_bounded_and_argument_free() {
     assert_eq!(code, 2);
     assert!(stdout.is_empty());
 }
+
+#[test]
+fn browser_engine_and_ui_units_answer_their_unit_facts() {
+    let network = json!({"schema":"ds.network-engine/v1","protocolMajor":1,"protocolMinor":0,"coreVersion":"0.1.0",
+        "sourceSha":"a".repeat(40),"dependencyClosureSha256":"b".repeat(64),"environment":"wasm",
+        "runtime":{"environment":"wasm","logicalCpus":1,"internalWorkerThreads":1},"jsonObjectOrder":"sorted",
+        "capabilities":["lv_processing_v1"]});
+    let (code, stdout, stderr) = run(&request("network", "browser", network.clone()), &[]);
+    assert_eq!(code, 0, "{stderr}");
+    let answer: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(answer["kind"], "engine");
+    assert_eq!(answer["protocol"], "ds.network-wasm/v1");
+    assert_eq!(
+        answer["files"],
+        json!([
+            "ds_network_wasm.js",
+            "ds_network_wasm.d.ts",
+            "ds_network_wasm_bg.wasm",
+            "ds_network_wasm_bg.wasm.d.ts"
+        ])
+    );
+    assert_eq!(
+        answer["release"],
+        format!("ds-network@0.1.0+{}", "a".repeat(40))
+    );
+    let identity: Value = serde_json::from_str(include_str!(
+        "../../../src/module_release/fixtures/interactions-ui-engine-build.json"
+    ))
+    .unwrap();
+    let (code, stdout, stderr) = run(&request("interactions", "browser", identity.clone()), &[]);
+    assert_eq!(code, 0, "{stderr}");
+    let answer: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(answer["kind"], "ui");
+    assert_eq!(answer["owner"], "ds-interactions");
+    assert_eq!(answer["buildManifest"], identity);
+    assert_eq!(answer["manifestSha256"].as_str().unwrap().len(), 64);
+    let mut native = network;
+    native["environment"] = json!("native");
+    let (code, _, stderr) = run(&request("network", "browser", native), &[]);
+    assert_eq!(code, 1);
+    assert!(
+        stderr.starts_with("module_engine_incompatible:"),
+        "{stderr}"
+    );
+    let (code, _, stderr) = run(&request("solar", "browser", json!({})), &[]);
+    assert_eq!(code, 1);
+    assert!(
+        stderr.starts_with("module_admission_request_invalid:"),
+        "{stderr}"
+    );
+    let (code, _, _) = run(&request("command-kernel", "browser", identity), &[]);
+    assert_eq!(
+        code, 1,
+        "an interactions identity cannot admit the Kernel unit"
+    );
+}

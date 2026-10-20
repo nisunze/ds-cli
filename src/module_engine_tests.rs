@@ -326,3 +326,190 @@ fn platforms_and_component_names_are_closed() {
     assert_eq!(ModuleComponent::Reporter.protocol(), MODULE_PROTOCOL);
     assert_eq!(ModuleComponent::Solar.engine_owner(), "ds-solar");
 }
+
+fn browser_network() -> Value {
+    json!({"schema":"ds.network-engine/v1","protocolMajor":1,"protocolMinor":0,"coreVersion":"0.1.0",
+        "sourceSha":SOURCE,"dependencyClosureSha256":CLOSURE,"environment":"wasm",
+        "runtime":{"environment":"wasm","logicalCpus":1,"internalWorkerThreads":1},"jsonObjectOrder":"sorted",
+        "capabilities":["lv_processing_v1","grid_query_v1"]})
+}
+
+fn browser_reporter() -> Value {
+    json!({"schema":"ds.reporter-engine/v1","protocolMajor":1,"coreVersion":"0.1.0","sourceSha":SOURCE,
+        "dependencyClosureSha256":CLOSURE,"environment":"wasm","capabilities":["render_held_svg_pdf_v1"]})
+}
+
+#[test]
+fn browser_engine_units_admit_their_identity_facts() {
+    let admitted =
+        admit_browser_engine_build(ModuleComponent::Network, &browser_network(), None).unwrap();
+    assert_eq!(admitted.release, format!("ds-network@0.1.0+{SOURCE}"));
+    assert_eq!(admitted.manifest_sha256, CLOSURE);
+    let producer = BrowserEngineProducer {
+        version: "0.1.0",
+        source_sha: SOURCE,
+        manifest_sha256: CLOSURE,
+    };
+    assert!(admit_browser_engine_build(
+        ModuleComponent::Reporter,
+        &browser_reporter(),
+        Some(producer)
+    )
+    .is_ok());
+    assert_eq!(
+        browser_engine_profile(ModuleComponent::Reporter)
+            .unwrap()
+            .stem,
+        "ds_reporter_wasm"
+    );
+    assert!(browser_engine_profile(ModuleComponent::Solar).is_none());
+    let solar = admit_browser_engine_build(ModuleComponent::Solar, &browser_network(), None);
+    assert!(solar
+        .unwrap_err()
+        .starts_with("module_release_target_unsupported:"));
+}
+
+#[test]
+fn browser_engine_units_refuse_native_crossed_or_unversioned_identities() {
+    for (component, base, path, value) in [
+        (
+            ModuleComponent::Network,
+            browser_network(),
+            "/environment",
+            json!("native"),
+        ),
+        (
+            ModuleComponent::Network,
+            browser_network(),
+            "/runtime/environment",
+            json!("native"),
+        ),
+        (
+            ModuleComponent::Network,
+            browser_network(),
+            "/schema",
+            json!("ds.reporter-engine/v1"),
+        ),
+        (
+            ModuleComponent::Network,
+            browser_network(),
+            "/protocolMajor",
+            json!(2),
+        ),
+        (
+            ModuleComponent::Network,
+            browser_network(),
+            "/jsonObjectOrder",
+            json!("random"),
+        ),
+        (
+            ModuleComponent::Network,
+            browser_network(),
+            "/capabilities",
+            json!(["grid_query_v1"]),
+        ),
+        (
+            ModuleComponent::Network,
+            browser_network(),
+            "/coreVersion",
+            json!("0.1"),
+        ),
+        (
+            ModuleComponent::Network,
+            browser_network(),
+            "/sourceSha",
+            json!("main"),
+        ),
+        (
+            ModuleComponent::Reporter,
+            browser_reporter(),
+            "/capabilities",
+            json!(["render_held_svg_pdf_v1", "extra_v1"]),
+        ),
+        (
+            ModuleComponent::Reporter,
+            browser_reporter(),
+            "/coreVersion",
+            json!("0.2.0"),
+        ),
+    ] {
+        let mut changed = base;
+        *changed.pointer_mut(path).unwrap() = value;
+        let error = admit_browser_engine_build(component, &changed, None).unwrap_err();
+        assert!(
+            error.starts_with("module_engine_incompatible:"),
+            "{path}: {error}"
+        );
+    }
+    let crossed = BrowserEngineProducer {
+        version: "0.1.0",
+        source_sha: SOURCE,
+        manifest_sha256: &"0".repeat(64),
+    };
+    assert!(admit_browser_engine_build(
+        ModuleComponent::Network,
+        &browser_network(),
+        Some(crossed)
+    )
+    .is_err());
+    let mut oversize = browser_network();
+    oversize["padding"] = json!("x".repeat(MAX_BUILD_INFO_BYTES));
+    let error = admit_browser_engine_build(ModuleComponent::Network, &oversize, None).unwrap_err();
+    assert!(error.contains("exceeds 16 KiB"), "{error}");
+}
+
+fn ui_identity() -> Value {
+    serde_json::from_str(include_str!(
+        "module_release/fixtures/interactions-ui-engine-build.json"
+    ))
+    .unwrap()
+}
+
+#[test]
+fn ui_units_admit_their_closed_identity() {
+    let identity = parse_ui_identity(&ui_identity()).unwrap();
+    admit_ui_identity(UiComponent::Interactions, &identity, None).unwrap();
+    admit_ui_identity(
+        UiComponent::Interactions,
+        &identity,
+        Some(&identity.source_sha),
+    )
+    .unwrap();
+    assert_eq!(identity.manifest_sha256().len(), 64);
+    assert!(admit_ui_identity(UiComponent::CommandKernel, &identity, None).is_err());
+    assert!(admit_ui_identity(UiComponent::Interactions, &identity, Some(SOURCE)).is_err());
+    for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
+        assert_eq!(UiComponent::from_name(component.as_str()), Some(component));
+    }
+    assert_eq!(UiComponent::CommandKernel.stem(), "ds_command_kernel");
+    assert_eq!(UiComponent::from_name("network"), None);
+}
+
+#[test]
+fn ui_units_refuse_unknown_fields_compilers_and_targets() {
+    let mut unknown = ui_identity();
+    unknown["extra"] = json!(true);
+    assert!(parse_ui_identity(&unknown)
+        .unwrap_err()
+        .starts_with("module_engine_incompatible:"));
+    for (key, value) in [
+        ("rustc", json!("rustc different")),
+        ("target", json!("x86_64-unknown-linux-gnu")),
+        ("profile", json!("debug")),
+        ("protocol", json!("ds.ui-wasm/v2")),
+        ("config_sha256", json!("d")),
+    ] {
+        let mut changed = ui_identity();
+        changed[key] = value;
+        let identity = parse_ui_identity(&changed).unwrap();
+        let error = admit_ui_identity(UiComponent::Interactions, &identity, None).unwrap_err();
+        assert!(
+            error.starts_with("module_engine_incompatible:"),
+            "{key}: {error}"
+        );
+    }
+    let mut contract = ui_identity();
+    contract["ui_contract"] = json!(2);
+    let identity = parse_ui_identity(&contract).unwrap();
+    assert!(admit_ui_identity(UiComponent::Interactions, &identity, None).is_err());
+}

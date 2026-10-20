@@ -2,7 +2,9 @@
 //!
 //! Reads one bounded request on stdin and answers with the producer facts the
 //! Kernel admits, or refuses with the typed reason an installation would give.
-//! The decision is `src/module_engine.rs`, compiled here unchanged.
+//! Native executables use platform `linux` or `windows`; browser engine and
+//! UI units use platform `browser`. The decision is `src/module_engine.rs`,
+//! compiled here unchanged.
 use std::io::{Read, Write};
 use std::process::ExitCode;
 
@@ -12,7 +14,10 @@ use serde_json::{json, Value};
 #[path = "../../../src/module_engine.rs"]
 mod module_engine;
 
-use module_engine::{admit_engine_build, platform_target, ModuleComponent};
+use module_engine::{
+    admit_browser_engine_build, admit_engine_build, admit_ui_identity, browser_engine_profile,
+    parse_ui_identity, platform_target, ModuleComponent, UiComponent, UI_PROTOCOL,
+};
 
 pub const REQUEST_SCHEMA: &str = "ds.module-build-admission-request/v1";
 pub const RESPONSE_SCHEMA: &str = "ds.module-build-admission/v1";
@@ -37,6 +42,9 @@ fn admit(bytes: &[u8]) -> Result<Value, String> {
     if request.schema != REQUEST_SCHEMA {
         return Err("module_admission_request_invalid: unsupported request schema".into());
     }
+    if request.platform == "browser" {
+        return admit_browser(&request);
+    }
     let component = ModuleComponent::from_name(&request.component).ok_or_else(|| {
         "module_admission_request_invalid: component must be solar, reporter or network".to_string()
     })?;
@@ -55,6 +63,56 @@ fn admit(bytes: &[u8]) -> Result<Value, String> {
         "owner": component.engine_owner(),
         "protocol": component.protocol(),
         "filename": format!("{}{suffix}", component.executable()),
+        "version": admitted.version,
+        "sourceSha": admitted.source_sha,
+        "manifestSha256": admitted.manifest_sha256,
+        "release": admitted.release,
+    }))
+}
+
+/// Browser units: the two engine units and the two UI units.
+fn admit_browser(request: &Request) -> Result<Value, String> {
+    let files = |stem: &str| {
+        json!([
+            format!("{stem}.js"),
+            format!("{stem}.d.ts"),
+            format!("{stem}_bg.wasm"),
+            format!("{stem}_bg.wasm.d.ts")
+        ])
+    };
+    if let Some(component) = UiComponent::from_name(&request.component) {
+        let identity = parse_ui_identity(&request.build_info)?;
+        admit_ui_identity(component, &identity, None)?;
+        return Ok(json!({
+            "schema": RESPONSE_SCHEMA,
+            "component": component.as_str(),
+            "platform": "browser",
+            "target": "wasm32-unknown-unknown",
+            "kind": "ui",
+            "owner": component.owner(),
+            "protocol": UI_PROTOCOL,
+            "files": files(component.stem()),
+            "sourceSha": identity.source_sha,
+            "manifestSha256": identity.manifest_sha256(),
+            "buildManifest": identity,
+        }));
+    }
+    let component = ModuleComponent::from_name(&request.component)
+        .filter(|component| browser_engine_profile(*component).is_some())
+        .ok_or_else(|| {
+            "module_admission_request_invalid: browser units are network, reporter, interactions or command-kernel".to_string()
+        })?;
+    let profile = browser_engine_profile(component).expect("filtered browser engine");
+    let admitted = admit_browser_engine_build(component, &request.build_info, None)?;
+    Ok(json!({
+        "schema": RESPONSE_SCHEMA,
+        "component": component.as_str(),
+        "platform": "browser",
+        "target": "wasm32-unknown-unknown",
+        "kind": "engine",
+        "owner": component.engine_owner(),
+        "protocol": profile.protocol,
+        "files": files(profile.stem),
         "version": admitted.version,
         "sourceSha": admitted.source_sha,
         "manifestSha256": admitted.manifest_sha256,

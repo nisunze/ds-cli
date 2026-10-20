@@ -3,6 +3,10 @@
 //! receipts are deliberately not accepted here. Public metadata alone never
 //! grants installation, execution or project authority.
 use super::*;
+// The UI component catalog and identity rule are shared with release
+// packaging (module_engine); these paths remain the public names.
+use crate::module_engine::{admit_ui_identity, parse_ui_identity};
+pub use crate::module_engine::{UiComponent, UiEngineIdentity};
 use crate::module_install::ActivationGuard;
 use sha2::{Digest, Sha256};
 
@@ -12,26 +16,7 @@ pub const SELECTION_SCHEMA: &str = "ds.ui-module-selection/v1";
 pub const MAX_WIRE_BYTES: usize = 384 * 1024;
 const MAX_UNIT_BYTES: i64 = 128 * 1024 * 1024;
 const MAX_GENERATION: u64 = crate::desktop_instance::MAX_GENERATION;
-/// UI components are deliberately separate from the three native engines.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum UiComponent {
-    Interactions,
-    CommandKernel,
-}
 impl UiComponent {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Interactions => "interactions",
-            Self::CommandKernel => "command-kernel",
-        }
-    }
-    pub fn owner(self) -> &'static str {
-        match self {
-            Self::Interactions => "ds-interactions",
-            Self::CommandKernel => "ds-command-kernel",
-        }
-    }
     pub fn parse(value: &str) -> Result<Self, ModuleReleaseError> {
         match value {
             "interactions" => Ok(Self::Interactions),
@@ -57,33 +42,6 @@ impl UiComponent {
                 ("ds_command_kernel_bg.wasm.d.ts", "module-types"),
             ],
         }
-    }
-}
-
-/// Compiler/source facts exported by the loaded WASM, in canonical digest order.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct UiEngineIdentity {
-    pub schema: String,
-    pub component: UiComponent,
-    pub protocol: String,
-    pub ui_contract: u32,
-    pub source_sha: String,
-    pub cargo_lock_sha256: String,
-    pub rustc: String,
-    pub target: String,
-    pub profile: String,
-    pub config_sha256: String,
-}
-impl UiEngineIdentity {
-    pub fn manifest_sha256(&self) -> String {
-        // Canonical flat ten-key JSON: alphabetic keys, compact UTF-8, no newline.
-        let value = serde_json::to_value(self).expect("typed UI identity");
-        let ordered: BTreeMap<_, _> = value.as_object().expect("identity object").iter().collect();
-        format!(
-            "{:x}",
-            Sha256::digest(serde_json::to_vec(&ordered).expect("ordered UI identity"))
-        )
     }
 }
 
@@ -250,37 +208,14 @@ fn validate_provenance(
 }
 /// Decode the closed identity before admitting compiler/source facts.
 pub fn parse_identity(value: &Value) -> Result<UiEngineIdentity, ModuleReleaseError> {
-    const KEYS: [&str; 10] = [
-        "schema",
-        "component",
-        "protocol",
-        "ui_contract",
-        "source_sha",
-        "cargo_lock_sha256",
-        "rustc",
-        "target",
-        "profile",
-        "config_sha256",
-    ];
-    let valid = value.as_object().is_some_and(|object| {
-        object.len() == KEYS.len()
-            && object.iter().all(|(key, value)| {
-                KEYS.contains(&key.as_str())
-                    && if key == "ui_contract" {
-                        value.as_u64().is_some()
-                    } else {
-                        value.as_str().is_some_and(|text| text.len() <= 4096)
-                    }
-            })
-    });
-    if !valid {
-        return fail(
+    parse_ui_identity(value).map_err(|error| {
+        refuse(
             "module_engine_incompatible",
-            "UI identity exceeds its closed bounded shape",
-        );
-    }
-    serde_json::from_value(value.clone())
-        .map_err(|_| refuse("module_engine_incompatible", "Invalid UI identity schema"))
+            error
+                .strip_prefix("module_engine_incompatible: ")
+                .unwrap_or(&error),
+        )
+    })
 }
 
 pub fn validate_identity(
@@ -322,17 +257,7 @@ fn validate_build_manifest(
         .engines
         .first()
         .ok_or_else(|| refuse("module_engine_incompatible", "UI build receipt is absent"))?;
-    if identity.schema != "ds.ui-engine-build/v1"
-        || identity.component != release.component
-        || identity.protocol != PROTOCOL
-        || identity.ui_contract != 1
-        || !hex(&identity.source_sha, 40)
-        || identity.source_sha != asset.source_sha
-        || !hex(&identity.cargo_lock_sha256, 64)
-        || !hex(&identity.config_sha256, 64)
-        || !valid_compiler_identity(&identity.rustc)
-        || identity.target != "wasm32-unknown-unknown"
-        || identity.profile != "release"
+    if admit_ui_identity(release.component, identity, Some(&asset.source_sha)).is_err()
         || identity.manifest_sha256() != producer.manifest_sha256
     {
         return fail(
@@ -341,52 +266,6 @@ fn validate_build_manifest(
         );
     }
     Ok(())
-}
-
-fn valid_compiler_identity(text: &str) -> bool {
-    if text.len() > 4096 || text.bytes().any(|byte| byte.is_ascii_control()) {
-        return false;
-    }
-    let mut parts = text.split("; ");
-    let Some(headline) = parts.next() else {
-        return false;
-    };
-    let expression = Regex::new(r"^rustc ([0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.-]+)?) \(([0-9a-f]{7,40}) ([0-9]{4}-[0-9]{2}-[0-9]{2})\)$").unwrap();
-    let Some(head) = expression.captures(headline) else {
-        return false;
-    };
-    let mut facts = std::collections::BTreeMap::new();
-    for part in parts {
-        let Some((key, value)) = part.split_once(": ") else {
-            return false;
-        };
-        if value.is_empty() || facts.insert(key, value).is_some() {
-            return false;
-        }
-    }
-    let expected = [
-        "binary",
-        "commit-hash",
-        "commit-date",
-        "host",
-        "release",
-        "LLVM version",
-    ];
-    if facts.len() != expected.len() || expected.iter().any(|key| !facts.contains_key(key)) {
-        return false;
-    }
-    let commit = facts["commit-hash"];
-    facts["binary"] == "rustc"
-        && hex(commit, 40)
-        && commit.starts_with(&head[2])
-        && facts["commit-date"] == &head[3]
-        && facts["release"] == &head[1]
-        && Regex::new(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$")
-            .unwrap()
-            .is_match(facts["host"])
-        && Regex::new(r"^[0-9]+\.[0-9]+(?:\.[0-9]+)?$")
-            .unwrap()
-            .is_match(facts["LLVM version"])
 }
 
 fn filename(asset: &ModuleReleaseAsset) -> Result<String, ModuleReleaseError> {
@@ -899,357 +778,5 @@ pub fn rollback(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn fixture(component: UiComponent) -> (Value, Value) {
-        let (release, identity) = match component {
-            UiComponent::Interactions => (
-                include_str!("fixtures/interactions-ui-wasm-canary.json"),
-                include_str!("fixtures/interactions-ui-engine-build.json"),
-            ),
-            UiComponent::CommandKernel => (
-                include_str!("fixtures/command-kernel-ui-wasm-canary.json"),
-                include_str!("fixtures/command-kernel-ui-engine-build.json"),
-            ),
-        };
-        (
-            serde_json::from_str(release).unwrap(),
-            serde_json::from_str(identity).unwrap(),
-        )
-    }
-    fn files(unit: &UiUnit) -> Vec<VerifiedFile> {
-        unit.release
-            .assets
-            .iter()
-            .map(|asset| {
-                let name = filename(asset).unwrap();
-                let bytes = format!("fixture:{name}\n");
-                VerifiedFile {
-                    filename: name,
-                    sha256: format!("{:x}", Sha256::digest(bytes.as_bytes())),
-                    size_bytes: bytes.len() as i64,
-                }
-            })
-            .collect()
-    }
-    fn ready() -> (InstalledUiModule, Vec<VerifiedFile>, Value) {
-        let (release, identity) = fixture(UiComponent::Interactions);
-        let unit = inspect("interactions", "canary", &release).unwrap();
-        let verified = files(&unit);
-        let receipt = prepare(
-            unit,
-            UiAuthority {
-                gateway_origin: "https://gateway.example".into(),
-                route_manifest_sha256: "e".repeat(64),
-            },
-            &verified,
-            true,
-        )
-        .unwrap();
-        (receipt, verified, identity)
-    }
-    fn guard() -> ActivationGuard {
-        ActivationGuard {
-            unsaved_edits: false,
-            uncaptured_sessions: 0,
-            host_restart_required: false,
-        }
-    }
-
-    #[test]
-    fn both_fixed_ui_units_preserve_exact_receipts_and_canonical_identity() {
-        for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
-            let (release, identity) = fixture(component);
-            let unit = inspect(component.as_str(), "canary", &release).unwrap();
-            assert_eq!(serde_json::to_value(&unit.release).unwrap(), release);
-            verify_files(&unit, &files(&unit)).unwrap();
-            let identity = parse_identity(&identity).unwrap();
-            validate_identity(&unit, &identity).unwrap();
-            assert_eq!(
-                identity.manifest_sha256(),
-                unit.release.assets[0].engines[0].manifest_sha256
-            );
-            let mut reordered = release.clone();
-            reordered["assets"].as_array_mut().unwrap().reverse();
-            assert_eq!(
-                inspect(component.as_str(), "canary", &reordered)
-                    .unwrap()
-                    .unit_sha256,
-                unit.unit_sha256
-            );
-        }
-        assert!(super::super::ModuleComponent::parse("interactions").is_err());
-        assert!(admit_target("network", "canary").is_err());
-    }
-
-    #[test]
-    fn compiler_facts_are_complete_bounded_and_consistent() {
-        let (_, identity) = fixture(UiComponent::Interactions);
-        let compiler = identity["rustc"].as_str().unwrap();
-        assert!(valid_compiler_identity(compiler));
-        for invalid in [
-            compiler.split("; ").next().unwrap().to_owned(),
-            compiler.replace("; host: x86_64-unknown-linux-gnu", ""),
-            format!("{compiler}; binary: rustc"),
-            format!("{compiler}; unknown: fact"),
-            compiler.replace("binary: rustc", "binary: clang"),
-            compiler.replace("commit-hash: 1159", "commit-hash: 2159"),
-            compiler.replace("commit-date: 2025-09-14", "commit-date: 2025-09-15"),
-            compiler.replace("release: 1.90.0", "release: 1.91.0"),
-            compiler.replace("LLVM version: 20.1.8", "LLVM version: unknown"),
-            compiler.replace(
-                "host: x86_64-unknown-linux-gnu",
-                "host: x86_64\n-unknown-linux-gnu",
-            ),
-            "x".repeat(4097),
-        ] {
-            assert!(!valid_compiler_identity(&invalid), "{invalid}");
-        }
-    }
-
-    #[test]
-    fn closed_ui_identity_rejects_unknown_abi_source_compiler_and_config() {
-        let (receipt, _, identity) = ready();
-        let mut unknown = identity.clone();
-        unknown["future"] = json!(true);
-        assert!(parse_identity(&unknown).is_err());
-        for (key, value) in [
-            ("schema", json!("ds.engine-build/v1")),
-            ("component", json!("command-kernel")),
-            ("protocol", json!("ds.ui-wasm/v2")),
-            ("ui_contract", json!(2)),
-            ("source_sha", json!("B".repeat(40))),
-            ("source_sha", json!("a".repeat(40))),
-            ("cargo_lock_sha256", json!("a".repeat(64))),
-            ("rustc", json!("rustc different")),
-            ("target", json!("x86_64-unknown-linux-gnu")),
-            ("profile", json!("debug")),
-            ("config_sha256", json!("a".repeat(64))),
-        ] {
-            let mut changed = identity.clone();
-            changed[key] = value;
-            assert!(
-                validate_identity(&receipt.unit, &parse_identity(&changed).unwrap()).is_err(),
-                "{key}"
-            );
-        }
-        let mut oversized = identity;
-        oversized["rustc"] = json!("x".repeat(4097));
-        assert!(parse_identity(&oversized).is_err());
-    }
-
-    #[test]
-    fn complete_catalog_refuses_crossed_lane_source_member_and_unknown_keys() {
-        let (catalog, _) = fixture(UiComponent::Interactions);
-        assert!(inspect("interactions", "stable", &catalog).is_err());
-        assert!(inspect("command-kernel", "canary", &catalog).is_err());
-        for (path, value) in [
-            ("/runtime", json!("native")), ("/product_id", json!("rw.datasolutions.module.interactions")),
-            ("/assets/0/platform", json!("linux")), ("/assets/0/sha256", json!("A".repeat(64))),
-            ("/assets/0/source_revisions", json!({"ds-command-kernel":"b".repeat(40)})),
-            ("/assets/1/source_sha", json!("c".repeat(40))),
-            ("/assets/1/built_at", json!("2026-10-14T08:00:00Z")),
-            ("/assets/1/engines/0/manifest_sha256", json!("f".repeat(64))),
-            ("/assets/0/engines/0/release", json!("ds-interactions@0.2.0+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")),
-            ("/assets/0/url", json!("https://storage.googleapis.com/another-bucket/modules/interactions/canary/wasm/0.1.0-r1/ds_interactions_wasm.js")),
-            ("/assets/0/url", json!("https://storage.googleapis.com/dedicated-public-releases/modules/interactions/stable/wasm/0.1.0-r1/ds_interactions_wasm.js")),
-        ] {
-            let mut changed = catalog.clone(); *changed.pointer_mut(path).unwrap() = value;
-            assert!(inspect("interactions", "canary", &changed).is_err(), "{path}");
-        }
-        let mut missing = catalog.clone();
-        missing["assets"].as_array_mut().unwrap().pop();
-        assert!(inspect("interactions", "canary", &missing).is_err());
-        let mut duplicate = catalog.clone();
-        duplicate["assets"][3] = duplicate["assets"][0].clone();
-        assert!(inspect("interactions", "canary", &duplicate).is_err());
-        for path in ["", "/assets/0", "/assets/0/engines/0"] {
-            let mut unknown = catalog.clone();
-            unknown.pointer_mut(path).unwrap()["future"] = json!(true);
-            assert!(inspect("interactions", "canary", &unknown).is_err());
-        }
-    }
-
-    #[test]
-    fn trusted_catalog_manifest_is_required_before_transfer_or_adapter_evaluation() {
-        let (catalog, identity) = fixture(UiComponent::Interactions);
-        let mut missing = catalog.clone();
-        missing.as_object_mut().unwrap().remove("build_manifest");
-        assert!(inspect("interactions", "canary", &missing).is_err());
-        let mut unknown = catalog.clone();
-        unknown["build_manifest"]["future"] = json!(true);
-        assert!(inspect("interactions", "canary", &unknown).is_err());
-        for (key, value) in [
-            ("schema", json!("ds.engine-build/v1")),
-            ("component", json!("command-kernel")),
-            ("source_sha", json!("a".repeat(40))),
-            ("ui_contract", json!(2)),
-            ("target", json!("x86_64-unknown-linux-gnu")),
-            ("profile", json!("debug")),
-            ("cargo_lock_sha256", json!("a".repeat(64))),
-            ("config_sha256", json!("a".repeat(64))),
-            ("rustc", json!("rustc 1.91.0 (1159e78c4 2025-09-14)")),
-        ] {
-            let mut tampered = catalog.clone();
-            tampered["build_manifest"][key] = value;
-            assert!(
-                inspect("interactions", "canary", &tampered).is_err(),
-                "{key}"
-            );
-        }
-        let unit = inspect("interactions", "canary", &catalog).unwrap();
-        let (prepared, _, _) = ready();
-        assert_eq!(prepared.engine_identity, unit.release.build_manifest);
-        assert_eq!(
-            serde_json::to_value(&prepared.engine_identity).unwrap(),
-            identity
-        );
-    }
-
-    #[test]
-    fn bytes_precede_loaded_identity_and_bind_all_four_members() {
-        let (receipt, verified, identity) = ready();
-        let selection = activate(None, receipt.clone(), 0, true, guard()).unwrap();
-        let captured = capture(
-            Some(&selection),
-            UiComponent::Interactions,
-            "canary",
-            "https://gateway.example",
-        )
-        .unwrap();
-        admit_loaded(&captured, &verified, &identity).unwrap();
-        let mut corrupted = verified.clone();
-        corrupted[0].sha256 = "a".repeat(64);
-        assert_eq!(
-            admit_loaded(&captured, &corrupted, &Value::Null)
-                .unwrap_err()
-                .code,
-            "module_artifact_invalid"
-        );
-        assert!(verify_files(&receipt.unit, &verified[..3]).is_err());
-        let mut duplicate = verified.clone();
-        duplicate[3] = duplicate[0].clone();
-        assert!(verify_files(&receipt.unit, &duplicate).is_err());
-        let mut tampered = receipt.unit.clone();
-        tampered.total_bytes += 1;
-        assert!(verify_files(&tampered, &verified).is_err());
-        assert!(admit_loaded(&captured, &verified, &json!({})).is_err());
-    }
-
-    #[test]
-    fn held_generation_lane_authority_and_guard_fence_offline_transitions() {
-        let (receipt, _, _) = ready();
-        assert!(prepare(
-            receipt.unit.clone(),
-            receipt.authority.clone(),
-            &files(&receipt.unit),
-            false
-        )
-        .is_err());
-        let first = activate(None, receipt.clone(), 0, true, guard()).unwrap();
-        assert!(activate(Some(&first), receipt.clone(), 0, true, guard()).is_err());
-        let mut dirty = guard();
-        dirty.unsaved_edits = true;
-        assert_eq!(
-            activate(Some(&first), receipt.clone(), 1, true, dirty)
-                .unwrap_err()
-                .code,
-            "module_activation_deferred"
-        );
-        assert!(admit_retained(&receipt, "stable", "https://gateway.example").is_err());
-        assert!(admit_retained(&receipt, "canary", "https://other.example").is_err());
-        assert!(capture(
-            Some(&first),
-            UiComponent::CommandKernel,
-            "canary",
-            "https://gateway.example"
-        )
-        .is_err());
-        // A second complete immutable version retains the former active unit.
-        let mut next_catalog = serde_json::to_value(&receipt.unit.release).unwrap();
-        next_catalog["version"] = json!("0.1.0-r2");
-        for asset in next_catalog["assets"].as_array_mut().unwrap() {
-            let url = asset["url"]
-                .as_str()
-                .unwrap()
-                .replace("/0.1.0-r1/", "/0.1.0-r2/");
-            asset["url"] = json!(url);
-        }
-        let next_unit = inspect("interactions", "canary", &next_catalog).unwrap();
-        let next = prepare(
-            next_unit.clone(),
-            receipt.authority.clone(),
-            &files(&next_unit),
-            true,
-        )
-        .unwrap();
-        let advanced = activate(Some(&first), next, 1, true, guard()).unwrap();
-        let rolled_back = rollback(&advanced, 2, true, guard()).unwrap();
-        assert_eq!(
-            capture(
-                Some(&rolled_back),
-                UiComponent::Interactions,
-                "canary",
-                "https://gateway.example"
-            )
-            .unwrap()
-            .receipt,
-            receipt
-        );
-        assert_eq!(rolled_back.generation, 3);
-        let removed = remove(&first, 1, true).unwrap();
-        assert_eq!(
-            capture(
-                Some(&removed),
-                UiComponent::Interactions,
-                "canary",
-                "https://gateway.example"
-            )
-            .unwrap_err()
-            .code,
-            "module_removed"
-        );
-        let restored = rollback(&removed, 2, true, guard()).unwrap();
-        assert_eq!(restored.generation, 3);
-        assert_eq!(
-            capture(
-                Some(&restored),
-                UiComponent::Interactions,
-                "canary",
-                "https://gateway.example"
-            )
-            .unwrap()
-            .receipt,
-            receipt
-        );
-        let mut corrupt = restored.clone();
-        if let UiSelectionState::Installed { active, .. } = &mut corrupt.selection {
-            active.engine_identity.config_sha256 = "f".repeat(64);
-        }
-        assert!(validate_selection(&corrupt, UiComponent::Interactions, "canary").is_err());
-    }
-
-    #[test]
-    fn acquisition_plan_is_bounded_and_withdrawn_catalogs_stay_visible() {
-        let (receipt, _, _) = ready();
-        let unit = &receipt.unit;
-        assert_eq!(
-            acquisition_plan(unit, "canary", &unit.unit_sha256, true)
-                .unwrap()
-                .len(),
-            4
-        );
-        assert!(acquisition_plan(unit, "canary", &unit.unit_sha256, false).is_err());
-        assert!(acquisition_plan(unit, "stable", &unit.unit_sha256, true).is_err());
-        assert!(acquisition_plan(unit, "canary", &"f".repeat(64), true).is_err());
-        for status in ["blocked", "stopped", "rolled_back"] {
-            let mut release = serde_json::to_value(&unit.release).unwrap();
-            release["status"] = json!(status);
-            let withdrawn = inspect("interactions", "canary", &release).unwrap();
-            assert_eq!(withdrawn.release.status, status);
-            assert!(acquisition_plan(&withdrawn, "canary", &withdrawn.unit_sha256, true).is_err());
-        }
-    }
-}
+#[path = "ui_tests.rs"]
+mod tests;
