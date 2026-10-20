@@ -3459,6 +3459,14 @@ static SERVER_ENTRIES: &[Entry] = &[
         render: ds_cli_server::render,
     },
     Entry {
+        command: &ds_cli_server::release_identity::INSPECT,
+        // Core's own build identity is this binary's, exactly as `ds version`.
+        handler: |inputs, context| {
+            ds_cli_server::release_identity::inspect(inputs, context, crate::build::identity())
+        },
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::modules::INVENTORY,
         handler: ds_cli_server::modules::inventory,
         render: ds_cli_server::render,

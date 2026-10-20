@@ -208,6 +208,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("core.module-stage", "machine_write", "none"),
     ("core.component.selection", "read_only", "none"),
     ("core.update-inspect", "read_only", "none"),
+    // One public catalog read; retains only the installed build's proof.
+    ("core.release-identity", "read_only", "none"),
     ("core.modules", "discovery", "none"),
     ("core.module-release", "read_only", "none"),
     ("core.sync.status", "read_only", "headless_user"),
@@ -1562,6 +1564,7 @@ fn one_operation_has_one_command_id_whichever_host_executes_it() {
                 | "core.component.rollback"
                 | "core.component.remove"
                 | "core.update-inspect"
+                | "core.release-identity"
                 | "core.modules"
                 | "core.module-release"
                 | "core.identity"

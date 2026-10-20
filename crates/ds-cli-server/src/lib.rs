@@ -10,6 +10,7 @@ pub mod modules;
 pub mod profile_session;
 #[doc(hidden)]
 pub mod profile_sessions;
+pub mod release_identity;
 pub mod ui_components;
 mod ui_updates;
 // The HTTP host and the layer binding are reachable from an integration test
@@ -983,6 +984,7 @@ pub static DOMAIN: Domain = Domain {
         &component_lifecycle::ACTIVATE,
         &component_lifecycle::ROLLBACK,
         &desktop_update::INSPECT,
+        &release_identity::INSPECT,
         &profile_session::COMMAND,
         &cache_retire::COMMAND,
         &SERVE,
