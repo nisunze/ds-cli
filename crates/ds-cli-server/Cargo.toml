@@ -45,7 +45,7 @@ ds-cli-contract = { workspace = true, features = ["testing"] }
 # for months actually holds — is the only honest way to prove the Solar
 # projection is bounded rather than hard-failing. It needs the same SQLite the
 # store itself uses, and is already in this lock through ds-sync-store.
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "fallible_uint"] }
 # The proof builds the protected device credential a real `ds auth link`
 # leaves, so the production authorizer can be exercised over a real machine.
 # Two values in that record are the closed core's own — the credential
