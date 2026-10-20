@@ -3,10 +3,9 @@
 //! A failed upload returns the committed task and ready receipts, never a
 //! claim of atomic file delivery or permission to repeat an ambiguous write.
 
-use super::{
-    attach_to_task, project_note_id_valid, send, AttachmentFile, Command, MAX_ATTACHMENT_BYTES,
-};
+use super::{project_note_id_valid, send, AttachmentFile, Command, MAX_ATTACHMENT_BYTES};
 use crate::{authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind};
+use ds_command_kernel::project_management::writes;
 use serde_json::{json, Value};
 
 pub const MAX_CREATE_ATTACHMENTS: usize = 10;
@@ -76,32 +75,28 @@ pub(super) fn run<T: AuthorizedTransport>(
         .unwrap_or(data);
     let mut receipts = Vec::new();
     // A refused or malformed commit must never create upload reservations.
-    if result["applied"] == true
-        && result["committed_revision"]
-            .as_i64()
-            .or_else(|| result["next_graph_revision"].as_i64())
-            .is_none()
-    {
+    // ds-brain answers `violations: null` when there are none, which the
+    // canonical receipt decoder reads as an empty list.
+    let receipt = writes::decode_operation_result(&result);
+    if receipt.applied && receipt.committed_revision < 1 {
         return Err(ClientError::new(
             ErrorKind::UnreadableResponse,
             "task creation receipt lacks its committed revision; read the task before retrying",
         ));
     }
-    if result["applied"] != true || !result["violations"].as_array().is_some_and(Vec::is_empty) {
+    let violations = &result["violations"];
+    if !receipt.applied
+        || !receipt.violations.is_empty()
+        || !(violations.is_null() || violations.is_array())
+    {
         return Ok(
             json!({"result": result, "task_id": task_id, "attachments": receipts,
             "complete": false, "requested_attachment_count": files.len()}),
         );
     }
     for (index, file) in files.iter().enumerate() {
-        match attach_to_task(
-            profile,
-            transport,
-            authority,
-            project,
-            super::attachment_start_payload(project, task_id, file),
-            task_id,
-            file,
+        match super::attachment_upload::attach(
+            profile, transport, authority, project, task_id, file,
         ) {
             Ok(receipt) => receipts.push(receipt),
             Err(error) => {

@@ -11,7 +11,7 @@ pub struct Request {
     pub expected_version: i64,
 }
 
-fn reference(value: &str) -> bool {
+pub(crate) fn reference(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 256
         && !matches!(value, "." | "..")
