@@ -65,7 +65,6 @@ pub mod releases;
 pub mod report_artifacts;
 #[cfg(feature = "durable-store")]
 pub mod report_receipts;
-pub mod solar_inputs;
 pub mod sre;
 pub mod survey;
 pub mod survey_create;
