@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 mod core_release;
+pub mod installation;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -131,6 +132,46 @@ fn semver(value: &str) -> Option<[u64; 3]> {
     values.try_into().ok()
 }
 
+/// The publication of one platform's bytes. Brain carries an unchanged
+/// platform asset into a later catalog member, keeping its object under the
+/// release folder that first published it (`…/{version}-r{n}/{file}`) and its
+/// own date. That folder and date are the asset's publication; an asset
+/// without such a folder of the member's version is the member's own. A
+/// carried asset without its own date has no known date, never the member's.
+fn asset_publication(
+    member_version: &str,
+    member_date: &str,
+    url: &str,
+    asset_date: &str,
+) -> (String, String) {
+    let member_base = parse_release_number(member_version).map_or(member_version, |(b, _)| b);
+    let folder = url::Url::parse(url).ok().and_then(|url| {
+        let segments: Vec<String> = url.path_segments()?.map(str::to_owned).collect();
+        let folder = segments.len().checked_sub(2).map(|i| segments[i].clone())?;
+        parse_release_number(&folder)
+            .is_some_and(|(base, _)| base == member_base)
+            .then_some(folder)
+    });
+    let carried = folder.as_deref().is_some_and(|f| f != member_version);
+    let date = match (asset_date.is_empty(), carried) {
+        (false, _) => asset_date,
+        (true, false) => member_date,
+        (true, true) => "",
+    };
+    (
+        folder.unwrap_or_else(|| member_version.to_owned()),
+        date.to_owned(),
+    )
+}
+
+/// The catalog member's platform publication, proven to be the installed
+/// build itself. Hosts may retain it as the installation's identity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Proven {
+    pub release_version: String,
+    pub released_at: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReleaseAsset {
@@ -214,6 +255,16 @@ pub fn inspect(
     channel: &str,
     input: InspectionInput,
 ) -> Result<Inspection, String> {
+    inspect_proving(component, channel, input).map(|(inspection, _)| inspection)
+}
+
+/// [`inspect`], also naming the platform publication when the admitted
+/// member's asset is provably the installed main application or Core build.
+pub(crate) fn inspect_proving(
+    component: &str,
+    channel: &str,
+    input: InspectionInput,
+) -> Result<(Inspection, Option<Proven>), String> {
     if !matches!(
         component,
         "shell" | "core" | "solar" | "reporter" | "network"
@@ -265,15 +316,18 @@ pub fn inspect(
                     .map_err(|e| e.to_string())?,
             )
         };
-        return Ok(Inspection {
-            component: component.into(),
-            installed,
-            published: release
-                .as_ref()
-                .map(|r| release_identity(Some(&r.version), Some(&r.released_at))),
-            release: serde_json::to_value(release).map_err(|e| e.to_string())?,
-            update: None,
-        });
+        return Ok((
+            Inspection {
+                component: component.into(),
+                installed,
+                published: release
+                    .as_ref()
+                    .map(|r| release_identity(Some(&r.version), Some(&r.released_at))),
+                release: serde_json::to_value(release).map_err(|e| e.to_string())?,
+                update: None,
+            },
+            None,
+        ));
     }
     let identity: BuildIdentity = if input.installed.is_null() {
         BuildIdentity::default()
@@ -290,13 +344,16 @@ pub fn inspect(
         identity.released_at.as_deref(),
     );
     if input.release.is_null() {
-        return Ok(Inspection {
-            component: component.into(),
-            installed,
-            published: None,
-            release: Value::Null,
-            update: None,
-        });
+        return Ok((
+            Inspection {
+                component: component.into(),
+                installed,
+                published: None,
+                release: Value::Null,
+                update: None,
+            },
+            None,
+        ));
     }
     let release: DesktopRelease = serde_json::from_value(input.release)
         .map_err(|_| "The held desktop release is malformed")?;
@@ -326,15 +383,23 @@ pub fn inspect(
                 .find(|a| a.platform == input.platform && a.arch == "x86_64" && a.kind == *kind)
         })
         .cloned();
-    // This platform's bytes carry their own publication date.
-    let published_date = asset
-        .as_ref()
-        .map(|a| a.released_at.as_str())
-        .filter(|date| !date.is_empty())
-        .unwrap_or(&release.released_at);
-    let published = release_identity(Some(&release.version), Some(published_date));
+    // This platform's bytes carry their own publication: a carried asset
+    // keeps the release folder and date that first published it.
+    let (published_version, published_date) = asset.as_ref().map_or_else(
+        || (release.version.clone(), release.released_at.clone()),
+        |a| {
+            asset_publication(
+                &release.version,
+                &release.released_at,
+                &a.url,
+                &a.released_at,
+            )
+        },
+    );
+    let published = release_identity(Some(&published_version), Some(&published_date));
     let mut installed = installed;
     let mut update = None;
+    let mut proven = None;
     if let Some(asset) = asset {
         let request = DownloadRequest {
             version: release.version.clone(),
@@ -371,8 +436,14 @@ pub fn inspect(
                 .is_some_and(|(installed, published)| installed == published);
         // The installed bytes are this published asset, so its publication
         // identity is proven rather than invented from build time.
-        if same_build && installed.build_number.is_none() && installed.release_date.is_none() {
-            installed = published.clone();
+        if same_build {
+            if installed.build_number.is_none() && installed.release_date.is_none() {
+                installed = published.clone();
+            }
+            proven = Some(Proven {
+                release_version: published_version.clone(),
+                released_at: published_date.clone(),
+            });
         }
         let newer = !same_build
             && match (latest, current) {
@@ -416,13 +487,16 @@ pub fn inspect(
             });
         }
     }
-    Ok(Inspection {
-        component: component.into(),
-        installed,
-        published: Some(published),
-        release: serde_json::to_value(release).map_err(|e| e.to_string())?,
-        update,
-    })
+    Ok((
+        Inspection {
+            component: component.into(),
+            installed,
+            published: Some(published),
+            release: serde_json::to_value(release).map_err(|e| e.to_string())?,
+            update,
+        },
+        proven,
+    ))
 }
 
 #[cfg(test)]

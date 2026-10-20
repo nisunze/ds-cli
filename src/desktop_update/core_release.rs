@@ -1,6 +1,6 @@
 //! DS Core's own published release, projected beside the shell's. Read-only:
 //! Core installation stays with its installer; nothing here downloads or runs.
-use super::{release_identity, Inspection, InspectionInput, ReleaseIdentity};
+use super::{asset_publication, release_identity, Inspection, InspectionInput, Proven};
 use crate::module_release::MODULE_RELEASE_SCHEMA;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -92,27 +92,51 @@ fn admit(channel: &str, release: Value) -> Result<CoreRelease, String> {
     Ok(release)
 }
 
-/// Installed Core's runtime identity names its exact source revision. The
-/// release built from that revision is the installed release; a different or
-/// missing revision keeps the installed publication fields unrecorded.
-pub(super) fn inspect(channel: &str, input: InspectionInput) -> Result<Inspection, String> {
-    let text = |key: &str| {
-        input
-            .installed
-            .get(key)
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-    };
-    let mut installed = release_identity(text("version"), None);
-    let source = text("source_sha").map(str::to_owned);
+/// The runtime's declared source closure, beside the producing revisions an
+/// asset names. Every revision both declare must agree.
+const CLOSURE: [(&str, &str); 2] = [
+    ("command_kernel_source_sha", "ds-command-kernel"),
+    ("ds_network_source_sha", "ds-network"),
+];
+
+/// Whether this platform asset is provably the installed Core build: the same
+/// producing revision and closure, from a clean release build. A debug or
+/// dirty executable compiled from a published commit is not that release.
+fn installed_build(installed: &Value, asset: &CoreAsset) -> bool {
+    let text = |key: &str| installed.get(key).and_then(Value::as_str);
+    text("source_sha").is_some_and(|sha| !sha.is_empty() && sha == asset.source_sha)
+        && CLOSURE.iter().all(|(runtime, producer)| {
+            match (text(runtime), asset.source_revisions.get(*producer)) {
+                (Some(installed), Some(published)) => installed == published,
+                _ => true,
+            }
+        })
+        && installed.get("dirty") != Some(&Value::Bool(true))
+        && text("profile").is_none_or(|profile| profile == "release")
+}
+
+/// Installed Core's runtime identity names its exact producing revisions. The
+/// release built from them is the installed release; a different or missing
+/// revision keeps the installed publication fields unrecorded.
+pub(super) fn inspect(
+    channel: &str,
+    input: InspectionInput,
+) -> Result<(Inspection, Option<Proven>), String> {
+    let version = input
+        .installed
+        .get("version")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty());
+    let mut installed = release_identity(version, None);
     if input.release.is_null() {
-        return Ok(Inspection {
+        let inspection = Inspection {
             component: "core".into(),
             installed,
             published: None,
             release: Value::Null,
             update: None,
-        });
+        };
+        return Ok((inspection, None));
     }
     let release = admit(channel, input.release)?;
     let asset = executable_kind(&input.platform).and_then(|kind| {
@@ -121,19 +145,34 @@ pub(super) fn inspect(channel: &str, input: InspectionInput) -> Result<Inspectio
             .iter()
             .find(|a| a.platform == input.platform && a.arch == "x86_64" && a.kind == kind)
     });
-    let date = asset
-        .map(|a| a.released_at.as_str())
-        .filter(|date| !date.is_empty())
-        .unwrap_or(&release.released_at);
-    let published: ReleaseIdentity = release_identity(Some(&release.version), Some(date));
-    if asset.is_some_and(|a| source.as_deref() == Some(a.source_sha.as_str())) {
+    // A carried platform executable keeps the folder and date that first
+    // published it; the member's own fields describe only its new bytes.
+    let (published_version, published_date) = asset.map_or_else(
+        || (release.version.clone(), release.released_at.clone()),
+        |a| {
+            asset_publication(
+                &release.version,
+                &release.released_at,
+                &a.url,
+                &a.released_at,
+            )
+        },
+    );
+    let published = release_identity(Some(&published_version), Some(&published_date));
+    let mut proven = None;
+    if asset.is_some_and(|a| installed_build(&input.installed, a)) {
         installed = published.clone();
+        proven = Some(Proven {
+            release_version: published_version,
+            released_at: published_date,
+        });
     }
-    Ok(Inspection {
+    let inspection = Inspection {
         component: "core".into(),
         installed,
         published: Some(published),
         release: serde_json::to_value(&release).map_err(|e| e.to_string())?,
         update: None,
-    })
+    };
+    Ok((inspection, proven))
 }
