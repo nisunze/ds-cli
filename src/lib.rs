@@ -231,6 +231,14 @@ pub mod grid_model_store;
 pub mod import_batches;
 #[cfg(feature = "durable-store")]
 pub mod design_rooms;
+#[cfg(feature = "durable-store")]
+pub mod byte_parts;
+#[cfg(feature = "durable-store")]
+pub mod byte_cache;
+#[cfg(feature = "durable-store")]
+pub mod media_outbox;
+#[cfg(feature = "durable-store")]
+pub mod upload_chunks;
 
 pub mod sync_store;
 #[cfg(feature = "wasm")]

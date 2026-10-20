@@ -138,6 +138,13 @@ Only a store whose operation takes bytes accepts them; others refuse. The
 browser worker transfers them as `ArrayBuffer`s; `core.store` reads and writes
 them as private files beside the request and answer.
 
+A payload over one part (`src/byte_parts.rs`, 16 MiB) arrives as consecutive
+calls of the same operation carrying `payload: {byte_length, part,
+staging}`: the first part's answer names its `staging`, every later part
+carries it, and only the last call takes effect, once the store verified the
+whole payload. A staging untouched for an hour is swept. Stored bytes keep a
+SHA-256 per part, so a read verifies only the parts it returns.
+
 ## Stores
 
 | Store | Module | Scope | Keys or rows |
@@ -148,6 +155,9 @@ them as private files beside the request and answer.
 | `folder_connections` | `src/folder_connections.rs` | identity; the project per row, matched exactly | logical key, project, folder name, kind (`gis_folder`, `pls_folder`, `export_workspace`, `other`), a unique 128-bit token, times. `drop` names the tokens the web adapter deletes. Legacy source `ds_web_store/folder_connections` |
 | `local_layer_store` | `src/local_layer_store.rs`; decisions stay in `src/local_layers.rs` | identity | the held catalogue records verbatim (at most 2000, 16 MiB) and one payload per record id (one JSON array of features, at most 256 MiB, counted). The sweep prunes payloads no record names and drops only unreferenced `gisFolder:` connections. Generations `catalogue` and `payloads`. Batched legacy source `ds-web/app` |
 | `grid_model_store` | `src/grid_model_store.rs` | identity; a session per project or none | retained check results, temporary groups (id derived from the source digest) and remembered sessions; `remove_model` removes a model's groups, results and sessions in one transaction. Generations `results`, `groups`, `sessions`. Batched legacy source `ds-grid-catalog` (`results`, `temp_groups`); the `.dsgrid` working copies join with the byte store |
+| `byte_cache` | `src/byte_cache.rs`; parts in `src/byte_parts.rs` | identity | content-addressed: content is unique per owner and SHA-256 and never shared across owners. Entries are `(kind, key)` of the closed kinds `photo`, `compute_artifact`, `report_preview`, `grid_remote_version`, each naming content with a media type and a small JSON `meta`. `has` compares stored lengths and reads no bytes; `get` verifies the part it answers, and a corrupt part drops its content with every entry naming it and answers a miss; `put` arrives part by part and a declared SHA-256 must match; `delete`. One retention rule: past its kind's byte budget, the owner's oldest entries of that kind leave first. A photo read serves a pending upload's bytes first and a photo put never replaces them. Generations `byte_cache.<kind>`; no importer |
+| `media_outbox` | `src/media_outbox.rs`; transitions in `src/survey_photo_outbox.rs` | identity; a signed-in account queues | one row per pending upload and its bytes (the original, then its thumbnail companion) in its own work tables, which no retention reaches: `admit`, `claim` (recover abandoned leases, drive, dispatch each target with its SHA-256), `read` (a target's bytes for its transfer), `settle` (a verified upload moves both into `byte_cache` as photos and removes the row), `retry_failed`, `counts`, `failed`. Batched legacy source `ds_web_store` `blob_outbox` with its pinned `photos` bytes: this account's rows only |
+| `upload_chunks` | `src/upload_chunks.rs` | identity, the signed-out one included | Arrow IPC chunks by (workspace, file, layer, chunk), the keys sketch layers keep: `put` (replaces), `get`, `list` (no bytes), `clear_layer`, `clear_workspace`; damaged bytes are reported, never dropped. Batched legacy source `ds_web_store` `upload_chunks` (inline bytes or OPFS spill files) |
 
 ### Plain caches reuse `retained_reads`
 

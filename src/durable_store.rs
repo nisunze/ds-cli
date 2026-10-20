@@ -142,6 +142,18 @@ pub enum Request {
     DesignRooms {
         operation: Box<crate::design_rooms::Operation>,
     },
+    /// Every reconstructible byte cache, content-addressed per owner.
+    ByteCache {
+        operation: crate::byte_cache::Operation,
+    },
+    /// Pending media uploads and the bytes they own.
+    MediaOutbox {
+        operation: Box<crate::media_outbox::Operation>,
+    },
+    /// Upload workspace chunks and chunk-backed sketch features.
+    UploadChunks {
+        operation: crate::upload_chunks::Operation,
+    },
 }
 impl Request {
     pub fn store(&self) -> &'static str {
@@ -155,6 +167,9 @@ impl Request {
             Request::LocalLayerStore { .. } => crate::local_layer_store::STORE,
             Request::GridModelStore { .. } => crate::grid_model_store::STORE,
             Request::DesignRooms { .. } => crate::design_rooms::STORE,
+            Request::ByteCache { .. } => crate::byte_cache::STORE,
+            Request::MediaOutbox { .. } => crate::media_outbox::STORE,
+            Request::UploadChunks { .. } => crate::upload_chunks::STORE,
         }
     }
     /// Refuse a store whose native home is its own Core command, so one store
@@ -174,6 +189,7 @@ impl Request {
             | Request::LocalLayerStore { .. }
             | Request::GridModelStore { .. } => Ok(()),
             Request::DesignRooms { .. } => Ok(()),
+            Request::ByteCache { .. } | Request::MediaOutbox { .. } | Request::UploadChunks { .. } => Ok(()),
         }
     }
 }
@@ -295,7 +311,7 @@ pub(crate) fn generation(connection: &Connection, store: &str) -> Result<u64, St
         .map_err(sql)?;
     Ok(held.unwrap_or(0) as u64)
 }
-fn advance(connection: &Connection, store: &str) -> Result<u64, String> {
+pub(crate) fn advance(connection: &Connection, store: &str) -> Result<u64, String> {
     connection.execute_batch(GENERATIONS).map_err(sql)?;
     connection
         .execute(
@@ -525,6 +541,15 @@ pub fn execute(
                 }
                 Request::DesignRooms { operation } => {
                     crate::design_rooms::execute(&transaction, input, *operation)?
+                }
+                Request::ByteCache { operation } => {
+                    crate::byte_cache::execute(&transaction, input, operation)?
+                }
+                Request::MediaOutbox { operation } => {
+                    crate::media_outbox::execute(&transaction, input, *operation)?
+                }
+                Request::UploadChunks { operation } => {
+                    crate::upload_chunks::execute(&transaction, input, operation)?
                 }
                 Request::Status { .. } | Request::GridProjectCatalog { .. } => {
                     unreachable!("statement-protocol stores are answered above")
