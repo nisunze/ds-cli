@@ -229,6 +229,8 @@ pub mod local_layer_store;
 pub mod grid_model_store;
 #[cfg(feature = "durable-store")]
 pub mod import_batches;
+#[cfg(feature = "durable-store")]
+pub mod design_rooms;
 
 pub mod sync_store;
 #[cfg(feature = "wasm")]

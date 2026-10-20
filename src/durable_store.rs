@@ -138,6 +138,10 @@ pub enum Request {
     GridModelStore {
         operation: crate::grid_model_store::Operation,
     },
+    /// LV and MV design rooms with their save state.
+    DesignRooms {
+        operation: Box<crate::design_rooms::Operation>,
+    },
 }
 impl Request {
     pub fn store(&self) -> &'static str {
@@ -150,6 +154,7 @@ impl Request {
             Request::FolderConnections { .. } => crate::folder_connections::STORE,
             Request::LocalLayerStore { .. } => crate::local_layer_store::STORE,
             Request::GridModelStore { .. } => crate::grid_model_store::STORE,
+            Request::DesignRooms { .. } => crate::design_rooms::STORE,
         }
     }
     /// Refuse a store whose native home is its own Core command, so one store
@@ -168,6 +173,7 @@ impl Request {
             | Request::FolderConnections { .. }
             | Request::LocalLayerStore { .. }
             | Request::GridModelStore { .. } => Ok(()),
+            Request::DesignRooms { .. } => Ok(()),
         }
     }
 }
@@ -516,6 +522,9 @@ pub fn execute(
                 }
                 Request::GridModelStore { operation } => {
                     crate::grid_model_store::execute(&transaction, input, operation)?
+                }
+                Request::DesignRooms { operation } => {
+                    crate::design_rooms::execute(&transaction, input, *operation)?
                 }
                 Request::Status { .. } | Request::GridProjectCatalog { .. } => {
                     unreachable!("statement-protocol stores are answered above")
