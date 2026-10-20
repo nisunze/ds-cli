@@ -1477,6 +1477,8 @@ pub fn response_policy_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
 /// answer and decides each retry. The browser runs it through each domain's
 /// typed WASM exports, which send with reqwest.
 pub mod gateway_exchange;
+/// The gateway a page build speaks to, fixed when the Kernel is built.
+pub mod gateway_target;
 
 /// Client state as Rust signals (Leptos's reactive core) fed by the Kernel;
 /// Svelte subscribes to them through `ds-web`'s `rust-state.ts`.

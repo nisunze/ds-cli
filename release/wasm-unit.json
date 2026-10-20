@@ -19,5 +19,35 @@
     "file": "release/ui-wasm-source.json",
     "schema": "ds.ui-wasm-source/v1",
     "component": "command-kernel"
+  },
+  "targets": {
+    "web-local": {
+      "features": ["wasm", "platform-desktop", "lane-canary", "topology-local"],
+      "env": []
+    },
+    "web-canary": {
+      "features": ["wasm", "platform-web", "lane-canary"],
+      "env": ["DS_GATEWAY_URL_CANARY", "DS_PLATFORM_API_KEY"]
+    },
+    "web-production": {
+      "features": ["wasm", "platform-web", "lane-production"],
+      "env": ["DS_GATEWAY_URL_PRODUCTION", "DS_PLATFORM_API_KEY"]
+    },
+    "desktop-dev-canary": {
+      "features": ["wasm", "platform-desktop", "lane-canary"],
+      "env": ["DS_GATEWAY_URL_CANARY", "DS_PLATFORM_API_KEY"]
+    },
+    "desktop-canary": {
+      "features": ["wasm", "platform-desktop", "lane-canary"],
+      "env": ["DS_GATEWAY_URL_CANARY", "DS_PLATFORM_API_KEY"]
+    },
+    "desktop-production": {
+      "features": ["wasm", "platform-desktop", "lane-production"],
+      "env": ["DS_GATEWAY_URL_PRODUCTION", "DS_PLATFORM_API_KEY"]
+    }
+  },
+  "releaseTargets": {
+    "canary": "desktop-canary",
+    "stable": "desktop-production"
   }
 }

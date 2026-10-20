@@ -1,6 +1,7 @@
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 
+mod build_gateway;
 mod build_network_routes;
 mod build_ui;
 
@@ -30,6 +31,7 @@ fn main() {
         root.join("Cargo.toml"),
         root.join("build.rs"),
         root.join("build_ui.rs"),
+        root.join("build_gateway.rs"),
         root.join("build_network_routes.rs"),
         root.join("routing/network-routes.json"),
     ];
@@ -59,4 +61,5 @@ fn main() {
     );
     build_ui::emit(&root);
     build_network_routes::emit(&root);
+    build_gateway::emit();
 }

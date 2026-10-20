@@ -4,10 +4,11 @@
 //! Svelte calls one typed export per operation; each domain declares its
 //! exports beside its operations, and every export runs [`run`]. The page
 //! passes a [`GatewayHost`] answering only what the page holds:
-//! `credentials()` — this build's gateway origin, the session's bearer and
-//! email and the platform key, asked before every request so a long exchange
-//! never sends a stale bearer; `facts()` — its clock and its session, offline
-//! and link state; `refused()` — told each refusal that followed a request,
+//! `credentials()` — the session's bearer and email, asked before every
+//! request so a long exchange never sends a stale bearer (the gateway origin
+//! and the platform key are constants of the build,
+//! [`crate::gateway_target`]); `facts()` — its clock and its session,
+//! offline and link state; `refused()` — told each refusal that followed a request,
 //! with the SRE event when the policy decided one is worth posting.
 //! Headers, the deadline, the response bound, pauses and refusals happen
 //! here. A refusal rejects as an `Error` named `GatewayRefusal` (or
@@ -39,7 +40,7 @@ const PROCESSING_LANE: &str = "fast";
 const GATEWAY_HOST: &'static str = r#"
 /** What the page answers for a gateway call; every decision is the Kernel's. */
 export interface GatewayHost {
-    /** This build's gateway origin, the session's bearer and email and the platform key, for the next request. A rejection ends the call with it. */
+    /** The session's bearer and email, for the next request. A rejection ends the call with it. */
     credentials(): Promise<GatewayCredentials>;
     /** The page's clock and its session, offline and link state right now. */
     facts(): GatewayFacts;
@@ -74,17 +75,30 @@ extern "C" {
     fn tell_refused(this: &GatewayHost, refused: JsValue) -> Result<(), JsValue>;
 }
 
+/// What only the page holds: the session's bearer and email. The gateway
+/// origin and the platform key are constants of this build
+/// ([`crate::gateway_target`]).
 #[derive(Deserialize, Tsify)]
-#[serde(deny_unknown_fields)]
 pub struct GatewayCredentials {
-    pub origin: String,
     #[serde(default)]
     #[tsify(optional)]
     pub token: Option<String>,
     #[serde(default)]
     pub email: String,
-    #[serde(default)]
-    pub api_key: String,
+}
+
+/// Where this build's requests go: the deployed gateway it was compiled for,
+/// or, on the local stack, the page's own origin, which proxies it.
+fn gateway_origin() -> Result<String, JsValue> {
+    if let Some(origin) = crate::gateway_target::GATEWAY_ORIGIN {
+        return Ok(origin.to_owned());
+    }
+    Reflect::get(&js_sys::global(), &"location".into())
+        .and_then(|location| Reflect::get(&location, &"origin".into()))
+        .ok()
+        .and_then(|origin| origin.as_string())
+        .filter(|origin| !origin.is_empty())
+        .ok_or_else(|| unreadable("the local stack's page origin"))
 }
 
 #[derive(Deserialize, Tsify)]
@@ -257,7 +271,7 @@ fn builder(
     credentials: &GatewayCredentials,
     request_id: &str,
 ) -> Result<reqwest::RequestBuilder, JsValue> {
-    let mut url = url::Url::parse(&credentials.origin)
+    let mut url = url::Url::parse(&gateway_origin()?)
         .and_then(|origin| origin.join(&request.path))
         .map_err(|_| unreadable("an invalid gateway origin"))?;
     if !request.query.is_empty() {
@@ -267,8 +281,8 @@ fn builder(
         .request(http_method(request.method), url)
         .header("Content-Type", "application/json");
     if request.minimal_headers {
-        if !credentials.api_key.is_empty() {
-            builder = builder.header("x-api-key", &credentials.api_key);
+        if let Some(key) = crate::gateway_target::PLATFORM_API_KEY {
+            builder = builder.header("x-api-key", key);
         }
         if let Some(token) = credentials
             .token
@@ -293,8 +307,8 @@ fn builder(
     if !email.is_empty() {
         builder = builder.header("X-User-Email", email);
     }
-    if !credentials.api_key.is_empty() {
-        builder = builder.header("x-api-key", &credentials.api_key);
+    if let Some(key) = crate::gateway_target::PLATFORM_API_KEY {
+        builder = builder.header("x-api-key", key);
     }
     if let Some(token) = credentials
         .token

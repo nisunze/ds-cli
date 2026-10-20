@@ -31,6 +31,12 @@ default = []
 platform-core = []
 platform-desktop = []
 platform-web = []
+# The gateway lane a page build speaks to, and the local development stack,
+# where the page's own origin proxies the gateway. The origins, the platform
+# key and the Firebase project come from the build environment (build_gateway.rs).
+lane-canary = []
+lane-production = []
+topology-local = []
 # The Kernel durable stores on SQLite (rusqlite): Core runs them in its
 # protected Store; the browser storage worker runs the same code on OPFS.
 durable-store = ["dep:rusqlite"]
