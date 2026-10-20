@@ -155,7 +155,6 @@ fn the_corpus_covers_every_op_change_and_refusal_the_contract_names() {
         [
             "duplicate_layer",
             "malformed_descriptor",
-            "project_context_changed",
             "scope_mismatch",
             "unknown_layer",
             "unsupported_source_kind",

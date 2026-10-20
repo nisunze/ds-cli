@@ -213,103 +213,6 @@
       }
     },
     {
-      "id": "register-gis-folder-origin",
-      "why": "A folder connection is normalised: the file name is taken from the path and the format from the file name, both lower-cased, and a missing refresh time takes the host's clock.",
-      "request": {
-        "kind": "register",
-        "registry": {
-          "schema": 1,
-          "revision": 4,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": []
-        },
-        "scope": {
-          "host": "browser"
-        },
-        "now_ms": 1758000000000,
-        "sequence": 4,
-        "colorIndex": 1,
-        "draft": {
-          "name": "Roads",
-          "geometryType": "LineString",
-          "sourceKind": "derived",
-          "sourceMetadata": {
-            "kind": "gis_folder",
-            "dsProject": " p-kigali ",
-            "handleKey": "handle-7",
-            "folderName": "gis",
-            "filePath": "survey/gis/Roads.GeoJSON"
-          }
-        }
-      },
-      "expected": {
-        "registry": {
-          "schema": 1,
-          "revision": 5,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "sketch-1758000000000-4",
-              "name": "Roads",
-              "sourceName": "Derived layers",
-              "sourceLayerName": "Roads",
-              "sourceKind": "derived",
-              "sourceMetadata": {
-                "kind": "gis_folder",
-                "dsProject": "p-kigali",
-                "handleKey": "handle-7",
-                "folderName": "gis",
-                "filePath": "survey/gis/Roads.GeoJSON",
-                "fileName": "Roads.GeoJSON",
-                "format": "geojson",
-                "lastRefreshAt": 1758000000000
-              },
-              "geometryType": "LineString",
-              "color": "#dc2626",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": true,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "receipt": {
-          "id": "sketch-1758000000000-4",
-          "name": "Roads",
-          "sourceName": "Derived layers",
-          "sourceLayerName": "Roads",
-          "sourceKind": "derived",
-          "sourceMetadata": {
-            "kind": "gis_folder",
-            "dsProject": "p-kigali",
-            "handleKey": "handle-7",
-            "folderName": "gis",
-            "filePath": "survey/gis/Roads.GeoJSON",
-            "fileName": "Roads.GeoJSON",
-            "format": "geojson",
-            "lastRefreshAt": 1758000000000
-          },
-          "geometryType": "LineString",
-          "color": "#dc2626",
-          "lineWidth": 2.5,
-          "pointRadius": 5.0,
-          "fillOpacity": 0.15,
-          "schema": [],
-          "featureCount": 0,
-          "visible": true,
-          "createdAt": 1758000000000
-        },
-        "changed": true
-      }
-    },
-    {
       "id": "register-import-file-origin",
       "why": "An imported file keeps its container name, its inner member and its size; an empty source path and a non-positive timestamp are absent rather than zeroed.",
       "request": {
@@ -467,82 +370,6 @@
           "sourceLayerName": "Access road",
           "sourceKind": "manual",
           "geometryType": "LineString",
-          "color": "#2563eb",
-          "lineWidth": 2.5,
-          "pointRadius": 5.0,
-          "fillOpacity": 0.15,
-          "schema": [],
-          "featureCount": 0,
-          "visible": true,
-          "createdAt": 1758000000000
-        },
-        "changed": true
-      }
-    },
-    {
-      "id": "register-folder-metadata-without-a-handle-is-dropped",
-      "why": "A folder connection that cannot be reopened — no handle key — is not a folder connection, so the whole metadata is dropped rather than kept unusable.",
-      "request": {
-        "kind": "register",
-        "registry": {
-          "schema": 1,
-          "revision": 4,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": []
-        },
-        "scope": {
-          "host": "browser"
-        },
-        "now_ms": 1758000000000,
-        "sequence": 7,
-        "colorIndex": 0,
-        "draft": {
-          "name": "Roads",
-          "geometryType": "Polygon",
-          "sourceMetadata": {
-            "kind": "gis_folder",
-            "dsProject": "p-kigali",
-            "folderName": "gis",
-            "filePath": "gis/roads.geojson",
-            "lastRefreshAt": 1757000000000
-          }
-        }
-      },
-      "expected": {
-        "registry": {
-          "schema": 1,
-          "revision": 5,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "sketch-1758000000000-7",
-              "name": "Roads",
-              "sourceName": "Manual layers",
-              "sourceLayerName": "Roads",
-              "sourceKind": "manual",
-              "geometryType": "Polygon",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": true,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "receipt": {
-          "id": "sketch-1758000000000-7",
-          "name": "Roads",
-          "sourceName": "Manual layers",
-          "sourceLayerName": "Roads",
-          "sourceKind": "manual",
-          "geometryType": "Polygon",
           "color": "#2563eb",
           "lineWidth": 2.5,
           "pointRadius": 5.0,
@@ -2565,83 +2392,6 @@
       }
     },
     {
-      "id": "restore-folder-metadata-without-a-handle-is-repaired-away",
-      "why": "A folder connection missing its handle key is dropped and the drop is reported under repaired, so the host knows its persisted bytes are no longer the admitted store.",
-      "request": {
-        "kind": "restore",
-        "scope": {
-          "host": "browser"
-        },
-        "records": [
-          {
-            "id": "a",
-            "name": "Access road",
-            "sourceName": "Manual layers",
-            "sourceLayerName": "Access road",
-            "sourceKind": "manual",
-            "sourceMetadata": {
-              "kind": "gis_folder",
-              "dsProject": "p-kigali",
-              "folderName": "gis",
-              "filePath": "gis/roads.geojson",
-              "lastRefreshAt": 1757000000000
-            },
-            "geometryType": "LineString",
-            "color": "#2563eb",
-            "lineWidth": 2.5,
-            "pointRadius": 5.0,
-            "fillOpacity": 0.15,
-            "schema": [],
-            "featureCount": 0,
-            "visible": true,
-            "createdAt": 1758000000000
-          }
-        ],
-        "now_ms": 1758000000000
-      },
-      "expected": {
-        "registry": {
-          "schema": 1,
-          "revision": 1,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "a",
-              "name": "Access road",
-              "sourceName": "Manual layers",
-              "sourceLayerName": "Access road",
-              "sourceKind": "manual",
-              "geometryType": "LineString",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": true,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "receipt": {
-          "restored": 1,
-          "retired": [],
-          "repaired": [
-            {
-              "id": "a",
-              "fields": [
-                "sourceMetadata"
-              ]
-            }
-          ],
-          "release": []
-        },
-        "changed": true
-      }
-    },
-    {
       "id": "restore-a-legacy-schema-column-is-repaired-not-lost",
       "why": "An unreadable column type reads as text and a nameless column is dropped; the user's columns survive a reopen.",
       "request": {
@@ -3252,98 +3002,6 @@
       }
     },
     {
-      "id": "update-source-metadata-attaches-a-folder-connection",
-      "why": "Connecting a layer to a folder is an admitted change of its origin, normalised by the same rule as at registration.",
-      "request": {
-        "kind": "update",
-        "registry": {
-          "schema": 1,
-          "revision": 4,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "sketch-1758000000000-1",
-              "name": "Access road",
-              "sourceName": "Manual layers",
-              "sourceLayerName": "Access road",
-              "sourceKind": "manual",
-              "geometryType": "LineString",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": true,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "scope": {
-          "host": "browser"
-        },
-        "id": "sketch-1758000000000-1",
-        "now_ms": 1758000000000,
-        "change": {
-          "kind": "source_metadata",
-          "sourceMetadata": {
-            "kind": "gis_folder",
-            "dsProject": "p-kigali",
-            "handleKey": "handle-7",
-            "folderName": "gis",
-            "filePath": "survey/gis/roads.geojson",
-            "dirtySinceRefresh": 1757500000000
-          }
-        }
-      },
-      "expected": {
-        "registry": {
-          "schema": 1,
-          "revision": 5,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "sketch-1758000000000-1",
-              "name": "Access road",
-              "sourceName": "Manual layers",
-              "sourceLayerName": "Access road",
-              "sourceKind": "manual",
-              "sourceMetadata": {
-                "kind": "gis_folder",
-                "dsProject": "p-kigali",
-                "handleKey": "handle-7",
-                "folderName": "gis",
-                "filePath": "survey/gis/roads.geojson",
-                "fileName": "roads.geojson",
-                "format": "geojson",
-                "lastRefreshAt": 1758000000000,
-                "dirtySinceRefresh": 1757500000000
-              },
-              "geometryType": "LineString",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": true,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "receipt": {
-          "id": "sketch-1758000000000-1",
-          "applied": "source_metadata",
-          "release": []
-        },
-        "changed": true
-      }
-    },
-    {
       "id": "update-source-metadata-null-detaches-it",
       "why": "A null origin detaches the layer from its source; the layer itself stays.",
       "request": {
@@ -3358,17 +3016,13 @@
             {
               "id": "sketch-1758000000000-1",
               "name": "Access road",
-              "sourceName": "Manual layers",
+              "sourceName": "roads.geojson",
               "sourceLayerName": "Access road",
-              "sourceKind": "manual",
+              "sourceKind": "import",
               "sourceMetadata": {
-                "kind": "gis_folder",
-                "dsProject": "p-kigali",
-                "handleKey": "handle-7",
-                "folderName": "gis",
-                "filePath": "survey/gis/roads.geojson",
+                "kind": "import_file",
                 "fileName": "roads.geojson",
-                "format": "geojson",
+                "sourceName": "roads.geojson",
                 "lastRefreshAt": 1757000000000
               },
               "geometryType": "LineString",
@@ -3403,9 +3057,9 @@
             {
               "id": "sketch-1758000000000-1",
               "name": "Access road",
-              "sourceName": "Manual layers",
+              "sourceName": "roads.geojson",
               "sourceLayerName": "Access road",
-              "sourceKind": "manual",
+              "sourceKind": "import",
               "geometryType": "LineString",
               "color": "#2563eb",
               "lineWidth": 2.5,
@@ -3931,91 +3585,6 @@
       }
     },
     {
-      "id": "update-rename-a-source-is-fenced-by-every-layer-it-would-move",
-      "why": "A source rename moves every layer filed under that label, so the project fence is asked of every one of them and not only of the layer the op named: a rename raised under one project would otherwise rewrite another project's folder layers. Nothing moves.",
-      "request": {
-        "kind": "update",
-        "registry": {
-          "schema": 1,
-          "revision": 4,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "sketch-1758000000000-1",
-              "name": "Access road",
-              "sourceName": "Shared folder",
-              "sourceLayerName": "Access road",
-              "sourceKind": "manual",
-              "sourceMetadata": {
-                "kind": "gis_folder",
-                "dsProject": "p-kigali",
-                "handleKey": "handle-7",
-                "folderName": "gis",
-                "filePath": "survey/gis/roads.geojson",
-                "fileName": "roads.geojson",
-                "format": "geojson",
-                "lastRefreshAt": 1757000000000
-              },
-              "geometryType": "LineString",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": true,
-              "createdAt": 1758000000000
-            },
-            {
-              "id": "sketch-1758000000000-2",
-              "name": "Poles",
-              "sourceName": "Shared folder",
-              "sourceLayerName": "Access road",
-              "sourceKind": "manual",
-              "sourceMetadata": {
-                "kind": "gis_folder",
-                "dsProject": "p-musanze",
-                "handleKey": "handle-7",
-                "folderName": "gis",
-                "filePath": "survey/gis/poles.geojson",
-                "fileName": "poles.geojson",
-                "format": "geojson",
-                "lastRefreshAt": 1757000000000
-              },
-              "geometryType": "LineString",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": true,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "scope": {
-          "host": "browser"
-        },
-        "id": "sketch-1758000000000-1",
-        "project": "p-kigali",
-        "change": {
-          "kind": "rename_source",
-          "sourceName": "Shared folder",
-          "name": "Renamed folder"
-        }
-      },
-      "expected": {
-        "outcome": "refused",
-        "refusal": {
-          "code": "project_context_changed",
-          "message": "local layer sketch-1758000000000-2 belongs to project p-musanze"
-        }
-      }
-    },
-    {
       "id": "update-style-in-bounds-and-the-document-is-carried",
       "why": "A style change inside the descriptor’s range is admitted as given and carries the rich style document untouched — the kernel never reads it.",
       "request": {
@@ -4396,248 +3965,6 @@
           "code": "scope_mismatch",
           "message": "the registry belongs to another local layer scope"
         }
-      }
-    },
-    {
-      "id": "update-project-context-changed",
-      "why": "A layer prepared from a folder belongs to the project that folder was connected for; a change raised under another project is a stale hand and changes nothing.",
-      "request": {
-        "kind": "update",
-        "registry": {
-          "schema": 1,
-          "revision": 4,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "sketch-1758000000000-1",
-              "name": "Access road",
-              "sourceName": "Manual layers",
-              "sourceLayerName": "Access road",
-              "sourceKind": "manual",
-              "sourceMetadata": {
-                "kind": "gis_folder",
-                "dsProject": "p-kigali",
-                "handleKey": "handle-7",
-                "folderName": "gis",
-                "filePath": "survey/gis/roads.geojson",
-                "fileName": "roads.geojson",
-                "format": "geojson",
-                "lastRefreshAt": 1757000000000
-              },
-              "geometryType": "LineString",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": true,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "scope": {
-          "host": "browser"
-        },
-        "id": "sketch-1758000000000-1",
-        "project": "p-musanze",
-        "change": {
-          "kind": "visible",
-          "visible": false
-        }
-      },
-      "expected": {
-        "outcome": "refused",
-        "refusal": {
-          "code": "project_context_changed",
-          "message": "local layer sketch-1758000000000-1 belongs to project p-kigali"
-        }
-      }
-    },
-    {
-      "id": "update-under-the-owning-project",
-      "why": "The same change under the project the folder belongs to is applied.",
-      "request": {
-        "kind": "update",
-        "registry": {
-          "schema": 1,
-          "revision": 4,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "sketch-1758000000000-1",
-              "name": "Access road",
-              "sourceName": "Manual layers",
-              "sourceLayerName": "Access road",
-              "sourceKind": "manual",
-              "sourceMetadata": {
-                "kind": "gis_folder",
-                "dsProject": "p-kigali",
-                "handleKey": "handle-7",
-                "folderName": "gis",
-                "filePath": "survey/gis/roads.geojson",
-                "fileName": "roads.geojson",
-                "format": "geojson",
-                "lastRefreshAt": 1757000000000
-              },
-              "geometryType": "LineString",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": true,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "scope": {
-          "host": "browser"
-        },
-        "id": "sketch-1758000000000-1",
-        "project": "p-kigali",
-        "change": {
-          "kind": "visible",
-          "visible": false
-        }
-      },
-      "expected": {
-        "registry": {
-          "schema": 1,
-          "revision": 5,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "sketch-1758000000000-1",
-              "name": "Access road",
-              "sourceName": "Manual layers",
-              "sourceLayerName": "Access road",
-              "sourceKind": "manual",
-              "sourceMetadata": {
-                "kind": "gis_folder",
-                "dsProject": "p-kigali",
-                "handleKey": "handle-7",
-                "folderName": "gis",
-                "filePath": "survey/gis/roads.geojson",
-                "fileName": "roads.geojson",
-                "format": "geojson",
-                "lastRefreshAt": 1757000000000
-              },
-              "geometryType": "LineString",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": false,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "receipt": {
-          "id": "sketch-1758000000000-1",
-          "applied": "visible",
-          "release": []
-        },
-        "changed": true
-      }
-    },
-    {
-      "id": "update-an-imported-layer-is-fenced-by-no-project",
-      "why": "An imported file belongs to no project, so a project switch cannot fence it — the browser's catalogue is not project-bound.",
-      "request": {
-        "kind": "update",
-        "registry": {
-          "schema": 1,
-          "revision": 4,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "sketch-1758000000000-1",
-              "name": "Access road",
-              "sourceName": "roads.zip",
-              "sourceLayerName": "Access road",
-              "sourceKind": "import",
-              "sourceMetadata": {
-                "kind": "import_file",
-                "fileName": "roads.zip",
-                "sourceName": "roads.zip",
-                "archiveInnerName": "roads",
-                "sizeBytes": 4096,
-                "lastRefreshAt": 1757000000000
-              },
-              "geometryType": "LineString",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": true,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "scope": {
-          "host": "browser"
-        },
-        "id": "sketch-1758000000000-1",
-        "project": "p-musanze",
-        "change": {
-          "kind": "visible",
-          "visible": false
-        }
-      },
-      "expected": {
-        "registry": {
-          "schema": 1,
-          "revision": 5,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "sketch-1758000000000-1",
-              "name": "Access road",
-              "sourceName": "roads.zip",
-              "sourceLayerName": "Access road",
-              "sourceKind": "import",
-              "sourceMetadata": {
-                "kind": "import_file",
-                "fileName": "roads.zip",
-                "sourceName": "roads.zip",
-                "archiveInnerName": "roads",
-                "sizeBytes": 4096,
-                "lastRefreshAt": 1757000000000
-              },
-              "geometryType": "LineString",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": false,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "receipt": {
-          "id": "sketch-1758000000000-1",
-          "applied": "visible",
-          "release": []
-        },
-        "changed": true
       }
     },
     {
@@ -5113,62 +4440,8 @@
       }
     },
     {
-      "id": "remove-project-context-changed",
-      "why": "A removal raised under another project than the layer's folder connection is refused — a project switch must not delete another project's prepared layer.",
-      "request": {
-        "kind": "remove",
-        "registry": {
-          "schema": 1,
-          "revision": 4,
-          "scope": {
-            "host": "browser"
-          },
-          "layers": [
-            {
-              "id": "sketch-1758000000000-1",
-              "name": "Access road",
-              "sourceName": "Manual layers",
-              "sourceLayerName": "Access road",
-              "sourceKind": "manual",
-              "sourceMetadata": {
-                "kind": "gis_folder",
-                "dsProject": "p-kigali",
-                "handleKey": "handle-7",
-                "folderName": "gis",
-                "filePath": "survey/gis/roads.geojson",
-                "fileName": "roads.geojson",
-                "format": "geojson",
-                "lastRefreshAt": 1757000000000
-              },
-              "geometryType": "LineString",
-              "color": "#2563eb",
-              "lineWidth": 2.5,
-              "pointRadius": 5.0,
-              "fillOpacity": 0.15,
-              "schema": [],
-              "featureCount": 0,
-              "visible": true,
-              "createdAt": 1758000000000
-            }
-          ]
-        },
-        "scope": {
-          "host": "browser"
-        },
-        "id": "sketch-1758000000000-1",
-        "project": "p-musanze"
-      },
-      "expected": {
-        "outcome": "refused",
-        "refusal": {
-          "code": "project_context_changed",
-          "message": "local layer sketch-1758000000000-1 belongs to project p-kigali"
-        }
-      }
-    },
-    {
       "id": "list-bounded-rows-with-their-origin",
-      "why": "A catalogue listing is bounded rows plus where each layer came from: never the style, never the schema, and never the folder handle key — a listing is not a capability.",
+      "why": "A catalogue listing is bounded rows plus where each layer came from: never the style and never the schema — a listing is not a capability.",
       "request": {
         "kind": "list",
         "registry": {
@@ -5181,17 +4454,13 @@
             {
               "id": "sketch-1758000000000-1",
               "name": "Access road",
-              "sourceName": "Manual layers",
+              "sourceName": "roads.geojson",
               "sourceLayerName": "Access road",
-              "sourceKind": "manual",
+              "sourceKind": "import",
               "sourceMetadata": {
-                "kind": "gis_folder",
-                "dsProject": "p-kigali",
-                "handleKey": "handle-7",
-                "folderName": "gis",
-                "filePath": "survey/gis/roads.geojson",
+                "kind": "import_file",
                 "fileName": "roads.geojson",
-                "format": "geojson",
+                "sourceName": "roads.geojson",
                 "lastRefreshAt": 1757000000000
               },
               "geometryType": "LineString",
@@ -5245,17 +4514,13 @@
             {
               "id": "sketch-1758000000000-1",
               "name": "Access road",
-              "sourceName": "Manual layers",
+              "sourceName": "roads.geojson",
               "sourceLayerName": "Access road",
-              "sourceKind": "manual",
+              "sourceKind": "import",
               "sourceMetadata": {
-                "kind": "gis_folder",
-                "dsProject": "p-kigali",
-                "handleKey": "handle-7",
-                "folderName": "gis",
-                "filePath": "survey/gis/roads.geojson",
+                "kind": "import_file",
                 "fileName": "roads.geojson",
-                "format": "geojson",
+                "sourceName": "roads.geojson",
                 "lastRefreshAt": 1757000000000
               },
               "geometryType": "LineString",
@@ -5299,17 +4564,16 @@
             {
               "id": "sketch-1758000000000-1",
               "name": "Access road",
-              "sourceName": "Manual layers",
+              "sourceName": "roads.geojson",
               "sourceLayerName": "Access road",
-              "sourceKind": "manual",
+              "sourceKind": "import",
               "geometryType": "LineString",
               "featureCount": 0,
               "visible": true,
               "createdAt": 1758000000000,
               "origin": {
-                "kind": "gis_folder",
-                "label": "survey/gis/roads.geojson",
-                "dsProject": "p-kigali"
+                "kind": "import_file",
+                "label": "roads.geojson"
               }
             },
             {

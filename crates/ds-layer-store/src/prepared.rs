@@ -70,7 +70,7 @@ pub const PERSISTED: &str = "native_local";
 pub enum StoreError {
     /// The kernel refused. The code is the kernel's own, closed vocabulary
     /// (`malformed_descriptor`, `duplicate_layer`, `unknown_layer`,
-    /// `scope_mismatch`, `project_context_changed`, `unsupported_source_kind`)
+    /// `scope_mismatch`, `unsupported_source_kind`)
     /// and callers re-raise it literally rather than renaming it.
     Refused { code: String, message: String },
     /// The file named for a payload is not an admissible bounded GeoJSON
