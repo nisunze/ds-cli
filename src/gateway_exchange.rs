@@ -28,12 +28,17 @@ use serde_json::{json, Value};
 
 use crate::response_policy::{self, Classify, Outcome, Telemetry, RESPONSE_POLICY_SCHEMA};
 
+pub mod account;
+pub mod admin;
+pub mod architecture;
 pub mod assets_index;
 pub mod deadletter;
 pub mod feedback;
 pub mod governance;
 pub mod help;
+pub mod installations;
 pub mod maps;
+pub mod sre;
 #[cfg(feature = "durable-store")]
 pub mod retained;
 
