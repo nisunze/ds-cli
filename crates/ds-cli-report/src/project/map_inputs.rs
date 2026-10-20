@@ -352,6 +352,26 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         .transpose()
         .map_err(invalid)?;
     let receipt = InputReceipt::from_config(&config.result().document).map_err(invalid)?;
+    // The Kernel decides the sheet text; a layout printing text nobody can
+    // bind refuses here, before any source is acquired.
+    let caption = receipt
+        .printing_context_for_project(project)
+        .ok()
+        .and_then(|context| context["project"].as_str().map(str::to_owned));
+    let (country, date) = (
+        receipt.country.clone(),
+        ds_command_kernel::time::OffsetDateTime::now_utc()
+            .date()
+            .to_string(),
+    );
+    let sheet = |incomplete| printing::map_text::Sheet {
+        caption: caption.as_deref(),
+        country: &country,
+        date: &date,
+        page: (1, 1),
+        incomplete,
+    };
+    printing::map_text::bindings(&layout, &sheet(false)).map_err(invalid)?;
     let server_sheets_sha256 = receipt.sheets_sha256.clone();
     let styles = {
         let (lane, project) = (lane.to_owned(), project.to_owned());
@@ -634,7 +654,9 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     )
     .map_err(invalid)?;
     let report_config = json!({"sheets":sheets,"printing_style_capture":style_capture});
-    let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"admin_reference":admin_reference,"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":resolved_styles["print_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":{"project":project,"transformer":layout.name}},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
+    let text = printing::map_text::bindings(&layout, &sheet(!context.omitted.is_empty()))
+        .map_err(invalid)?;
+    let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"admin_reference":admin_reference,"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":resolved_styles["print_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":text},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
     let path = out.join("render-request.json");
     let data = serde_json::to_vec(&render).map_err(invalid)?;
     std::fs::OpenOptions::new()
