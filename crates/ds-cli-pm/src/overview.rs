@@ -18,7 +18,7 @@ pub static COMMAND: Command = Command {
     path: &["pm", "overview"],
     contract: 1,
     summary: "Read tasks, milestones, records and project notes together.",
-    purpose: "Read a named project's work overview, including inbox tasks and project notes without map geometry. One captured native authority reads get_graph and one bounded get_context page; the kernel returns four independently bounded lists with exact graph/schedule revisions, stable ids, record versions and revision labels. Graph and context are separate reads; no atomic snapshot is claimed. Truncated or cursor-paged record/note counts are lower bounds. Project notes are project records, never personal notes. No polling, speculative reads or automatic pagination.",
+    purpose: "Read a named project's work overview: tasks, milestones, records and project notes, without geometry. One native authority reads get_graph and one bounded get_context page; the kernel returns four bounded lists with exact revisions, ids and versions. Graph and context are separate reads, not one snapshot; truncated or paged counts are lower bounds. No polling or automatic pagination.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,

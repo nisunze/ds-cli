@@ -13,16 +13,16 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Preview a retained form's visible and required field rules.",
-    purpose: "Validate proposed values with the same Rust field evaluator used by Survey submission. Reads one explicit ds.survey-form-validation/v1 document containing form_revision, fields and values; at most 1 MiB and 512 fields. Reports visible/hidden fields and errors without creating an entry, fetching metadata, signing in or checking freshness. The supplied revision label and exact input digest identify the reviewed snapshot; they do not prove its cloud freshness. Hidden required fields do not block a submission.",
+    purpose: "Check proposed values with the Rust field evaluator Survey submission uses, from one ds.survey-form-validation/v1 document (at most 1 MiB, 512 fields); reports visible and hidden fields and errors. No entry, fetch, sign-in or freshness check; hidden required fields never block.",
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[Arg::value("document", "<json-path>", "Regular non-link UTF-8 JSON: schema=ds.survey-form-validation/v1, form_revision, fields and values. At most 1 MiB.").required()],
-    output: "A ds.survey-form-validation-result/v1 verdict: valid, visible_keys, hidden_keys, required_visible_keys, errors, form_revision, input_sha256 and effects=none. Invalid values produce a valid=false preview; malformed requests are typed refusals. Source field values are never echoed.",
-    examples: &[Example { command: "ds survey form validate --document form-values.json --output json", note: "Preview a retained form revision and values before publishing or submitting; this performs no acquisition or write.", runnable: false }],
+    args: &[Arg::value("document", "<json-path>", "Regular UTF-8 JSON file within 1 MiB: ds.survey-form-validation/v1 with form_revision, fields and values.").required()],
+    output: "ds.survey-form-validation-result/v1: valid, visible_keys, hidden_keys, required_visible_keys, errors, form_revision, input_sha256, effects=none. Invalid values give valid=false; malformed requests refuse. Values are never echoed.",
+    examples: &[Example { command: "ds survey form validate --document form-values.json --output json", note: "Preview a retained form revision and values; no acquisition or write.", runnable: false }],
     refusals: &[
         Refusal { code: "survey_form_validation_document_invalid", when: "the input is missing, linked, nonregular, unreadable or over 1 MiB", remedy: "use one regular non-link UTF-8 validation document within 1 MiB" },
-        Refusal { code: "survey_form_validation_invalid", when: "the closed request shape, revision label or field schema violates the shared validator", remedy: "use schema ds.survey-form-validation/v1, a retained form_revision, at most 512 fields and a values object; correct the named field" },
+        Refusal { code: "survey_form_validation_invalid", when: "the request, revision label or field schema violates the validator", remedy: "use ds.survey-form-validation/v1 with a retained form_revision, at most 512 fields and values; fix the named field" },
     ],
     reference: Some("docs/reference/survey.md"),
     search: &["conditional", "hidden", "validation"],
@@ -92,7 +92,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 fn evaluate_document(bytes: &[u8]) -> Result<Value, Failure> {
     ds_command_kernel::survey::preview::validate(bytes).map_err(|message| {
         Failure::invalid("survey_form_validation_invalid", message)
-            .remedy("use schema ds.survey-form-validation/v1, a retained form_revision, at most 512 fields and a values object; correct the named field")
+            .remedy("use ds.survey-form-validation/v1 with a retained form_revision, at most 512 fields and values; fix the named field")
     })
 }
 pub fn render(data: &Value) -> String {

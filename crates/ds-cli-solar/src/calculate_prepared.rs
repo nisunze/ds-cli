@@ -25,7 +25,7 @@ pub static COMMAND: Command = Command {
     path: &["solar", "calculate-prepared"],
     contract: 1,
     summary: "Calculate one prepared Solar city offline into a fresh directory.",
-    purpose: "Calculate one complete prepared-city request through the same Solar owner as Cloud. The request owns prepared input, chart choice and run id. Capture one engine from the declared native addon lane, require its task schema, and execute the fixed file task using that same immutable path. Offline only: no intake, account/project read, project API, provider, publication or Desktop. Completion names local files and makes no sync claim.",
+    purpose: "Calculate one complete prepared-city request through the Cloud's Solar owner. The request holds the prepared input, chart choice and run id. One engine is captured from the native addon lane, its task schema checked, and the fixed file task run on that immutable path. Offline: no intake, account, project, provider, publication or Desktop. Completion names local files and claims no sync.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -40,12 +40,12 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "out",
             "<fresh-dir>",
-            "Absent directory for the native task-result.json and artifacts; never overwritten.",
+            "New directory for task-result.json and artifacts; never overwritten.",
         )
         .required(),
         ENGINE_LANE,
     ],
-    output: "Completion within 16 KiB: captured engine identity, request/input/result digests, artifact count/bytes and task-result.json/artifacts paths. The native typed receipt is read within 64 MiB; artifact bytes stay on disk and are not re-verified by CLI. Development provenance is never invented.",
+    output: "Within 16 KiB: engine identity, request, input and result digests, artifact count and bytes, and the task-result.json and artifacts paths. The typed receipt is read within 64 MiB; artifact bytes stay on disk. Development provenance is never invented.",
     examples: &[Example {
         command: "ds solar calculate-prepared --request ./prepared-request.json --out ./calculation --output json",
         note: "One complete prepared request, with no network acquisition or publication.",
@@ -75,7 +75,7 @@ pub static COMMAND: Command = Command {
         Refusal {
             code: "engine_refused",
             when: "the native engine refuses the request or fresh output directory",
-            remedy: "read detail.engine and detail.native for the owner's refusal; correct the prepared input or choose an absent output directory",
+            remedy: "read detail.engine and detail.native; fix the prepared input or choose an absent output directory",
         },
         Refusal {
             code: "callee_contract_mismatch",

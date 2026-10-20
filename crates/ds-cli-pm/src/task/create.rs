@@ -23,7 +23,7 @@ const ATTACH_ARG: Arg = Arg {
 const ATTACH_PARTIAL: Refusal = Refusal {
     code: "task_attachments_incomplete",
     when: "the task was committed but one attachment upload was refused, failed or could not be verified",
-    remedy: "read the task and detail.taskId/attachments; retain its existing task id and attach only confirmed missing files with pm.task.attach; do not create a replacement task or blindly retry an uncertain upload",
+    remedy: "read the task; keep its task id and attach only the confirmed missing files with pm.task.attach, never a replacement task or a blind retry",
 };
 
 const TITLE_ARG: Arg = Arg {
@@ -131,16 +131,7 @@ pub static COMMAND: Command = Command {
     path: &["pm", "task", "create"],
     contract: 2,
     summary: "Add one task or milestone to the project's plan.",
-    purpose: "\
-Creates one work item through the same governed command the Plan sheet uses, \
-so it lands with the sort key, schedule state and duration the surface would \
-have given it. A retry that passes the same --id is refused rather than \
-duplicated, which is what makes this safe to run again after a lost answer. \
-Headless: commits to the named project of the signed-in native credential, \
-no window. --dry-run previews the task and creates nothing. With repeatable --attach, the native PM owner creates the task \
-then verifies each task-owned upload. The task remains durable if an upload \
-fails; the refusal carries its taskId and verified ready receipts. Do not \
-repeat task creation to recover an attachment.",
+    purpose: "Create one work item through the Plan sheet's governed command, so it gets the same sort key, schedule state and duration. A retry with the same --id is refused, not duplicated, so it is safe after a lost answer. Headless, for the named project of the signed-in credential. --dry-run previews and creates nothing. With --attach the task is created first and each upload verified; a failed upload keeps the task and refuses with its taskId and ready receipts. Never re-create a task to recover an attachment.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -160,10 +151,7 @@ repeat task creation to recover an attachment.",
         LANE_ARG,
         crate::PROJECT_ARG,
     ],
-    output: "\
-The project, the minted `taskId`, the `committedRevision` the plan moved to, \
-any `warnings` the engine returned, and `link` — the deep link that opens the \
-new item in the app. With --dry-run, the prepared command and no task. With --attach, attachments contains server-verified ready rows and exact local bytes/SHA; an incomplete upload returns task_attachments_incomplete with the committed task and ready receipts.",
+    output: "The project, minted `taskId`, `committedRevision`, engine `warnings` and the `link` that opens it. --dry-run returns the prepared command and no task. --attach adds verified `attachments` with local bytes and SHA; an incomplete upload refuses with the committed task and ready receipts.",
     examples: &[
         Example {
             command: "ds pm task create --project <exact-id> --kind inbox --title \"Review crossing\" --attach ./source.eml --attach ./drawing.pdf --yes --output json",

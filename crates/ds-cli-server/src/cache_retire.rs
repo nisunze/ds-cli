@@ -30,7 +30,7 @@ pub static COMMAND: Command = Command {
     path: &["core", "cache", "retire"],
     contract: 1,
     summary: "Retain an old account's stopped Core cache before starting fresh.",
-    purpose: "After an intentional native account change, inspect with --dry-run, then explicitly retire that exact plan with --digest and --yes. Holds Core's existing protected single-owner transport lock and rechecks the current native credential. Retains connection.json, store.sqlite and fixed SQLite sidecars as one digest-bound epoch; a pending journal fences startup and permits explicit same-plan continuation after interruption. No old rows are imported. The canonical state path, native installation identity, credentials, installed components and authored files are preserved. Does not stop or start Core, switch accounts, install software or contact the network.",
+    purpose: "After an intentional native account change, inspect with --dry-run, then retire that exact plan with --digest and --yes. Under Core's single-owner transport lock and a recheck of the current credential, connection.json, store.sqlite and its fixed sidecars are retained as one digest-bound epoch; an interrupted plan continues explicitly. No rows are imported; the state path, installation identity, credentials, components and authored files are kept. No Core start or stop, account switch, install or network.",
     chapter: Chapter::Operations,
     effect: Effect::MachineWrite,
     authority: Authority::HeadlessUser,

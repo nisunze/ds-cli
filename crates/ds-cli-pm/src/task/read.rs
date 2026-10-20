@@ -39,15 +39,7 @@ Headless: the named project of the signed-in native credential, no window.",
         LANE_ARG,
         crate::PROJECT_ARG,
     ],
-    output: "\
-`task` with the canonical fields — including `awaitingCorrespondence`, \
-`blockedRecordIds` and every `correspondenceBlockers` entry with who set \
-it and how it cleared — `dependencies`, `residuals` (open first), \
-`episodes`, `records` referencing it, `recordsTruncated`, `recordsNextCursor`, \
-`recordTotalKind` (exact or lower_bound), and a `*Total` for each bounded related \
-collection; plus the project's `permissions`, graph `revision`, and `link`. \
-With --timeline, `timeline.entries` in time order with `total`, `truncated` \
-and per-source counts. `retained` reports capture-only permission/source freshness, independent source revisions and known local invalidation. --offline never acquires missing data.",
+    output: "`task` with its canonical fields (including `awaitingCorrespondence`, `blockedRecordIds` and `correspondenceBlockers`), `dependencies`, `residuals` (open first), `episodes`, referencing `records` with `recordsTruncated`, `recordsNextCursor` and `recordTotalKind`, a `*Total` for each bounded list, `permissions`, `revision` and `link`. --timeline adds `timeline.entries` in time order with counts. `retained` reports capture-time freshness; --offline never acquires missing data.",
     examples: &[Example {
         command: "ds pm task read --task T-0007 --output json --project <exact-id>",
         note: "`.data.task.assignmentOpen` tells you whether respond is available.",

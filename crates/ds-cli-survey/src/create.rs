@@ -187,7 +187,7 @@ pub static COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Create one Survey entry through the existing native Firebase session.",
-    purpose: "Validates the closed document, identity, timestamp, context, GeoJSON and byte bounds, then uses the explicit project with one fixed Firestore documents:commit call under the existing Firebase user session. Trusted-device DS credentials refuse before IO. The shared Rust encoder sets exists:false and the server replication timestamp; it preserves the original idempotency key but does not claim replay success for an existing document. Existing Firestore rules authorize the write; this does not claim Brain-equivalent membership checks. A validated commit receipt proves commit only; mirror convergence requires a later governed BQ read. No arbitrary URL, admin credential, overwrite, transport fallback or extra retry is admitted.",
+    purpose: "Validate the closed document, identity, timestamp, context, GeoJSON and bounds, then make one fixed Firestore documents:commit for the explicit project under the existing Firebase user session; trusted-device credentials refuse first. The shared Rust encoder sets exists:false and the replication timestamp and keeps the idempotency key, without claiming replay success. Firestore rules authorize the write. A commit receipt proves commit only; the BigQuery mirror needs a later read. No URL, admin credential, overwrite, fallback or retry.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
     execution: Execution::Sync,

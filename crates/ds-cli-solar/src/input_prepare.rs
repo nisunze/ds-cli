@@ -21,7 +21,7 @@ pub static COMMAND: Command = Command {
     path: &["solar", "input", "prepare"],
     contract: 2,
     summary: "Prepare one governed Solar intake from a verified local cache.",
-    purpose: "Calls the linked engine-free ds-solar-project preparation owner for one intake and one populated local reference cache. The fresh private directory contains the prepared city input, its publication handoff claim, and a validated Server submission envelope. Submit the returned server_submission path with server solar submit. This is headless, cache-only preparation: it has no Desktop dependency, project override, provider URL, token, API key, overwrite, fixture, or generic engine argument. A cache miss refuses instead of reaching the network.",
+    purpose: "Prepare one intake from a populated local reference cache through the linked engine-free ds-solar-project owner. The fresh private directory holds the prepared city input, its publication claim and a validated Server submission envelope; submit that with server solar submit. Headless and cache-only: a cache miss refuses instead of reaching the network.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -46,7 +46,7 @@ pub static COMMAND: Command = Command {
         )
         .required(),
     ],
-    output: "The city id, fresh private output directory, exact prepared-input, publication-claim and Server-submission paths, byte counts and SHA-256 digests, plus preparation_owner with name ds-solar-project, source_sha (null for an unstamped development build), and contracts_build_manifest_sha256. This is linked preparation provenance, never a selected calculation addon identity. Intake contents, receipt authority and cache records are never emitted.",
+    output: "City id, output directory, prepared-input, publication-claim and Server-submission paths with byte counts and SHA-256, and preparation_owner (ds-solar-project, source_sha or null, contracts_build_manifest_sha256). Intake contents and cache records are never emitted.",
     examples: &[Example {
         command: "ds solar input prepare --intake ./pala.intake.json --cache ./solar-reference-cache --out ./pala-prepared --output json",
         note: "Prepare one captured city without Desktop or a network call.",
@@ -70,7 +70,7 @@ pub static COMMAND: Command = Command {
         },
         Refusal {
             code: "solar_prepare_output_unsafe",
-            when: "the private output directory cannot be created or the owner emits anything except one safe prepared input, one claim, or a valid generated Server envelope",
+            when: "the output directory cannot be created, or the owner emits anything but one prepared input, one claim and a valid Server envelope",
             remedy: "choose a safe writable fresh directory and use the matching ds release",
         },
         Refusal {

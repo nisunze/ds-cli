@@ -255,6 +255,9 @@ fn domain_help_carries_no_command_prose() {
 
 #[test]
 fn command_help_is_bounded() {
+    // Every command is measured before the test answers, so one run lists
+    // every command over its budget instead of only the first.
+    let mut over = Vec::new();
     for command in every_command() {
         let path: Vec<String> = command["path"]
             .as_array()
@@ -267,18 +270,24 @@ fn command_help_is_bounded() {
 
         let ceiling = command_help_ceiling(&command);
         let size = bytes(&args);
-        assert!(
-            size <= ceiling,
-            "`ds {} --help` is {size} bytes against a {ceiling}-byte budget \
-             ({} inputs, {} refusals).\n\
-             The allowance already scales with what the command declares, so \
-             this is prose. Move it to the command's reference document and \
-             cross-link.",
-            path.join(" "),
-            command["inputs"].as_array().map_or(0, Vec::len),
-            command["refusals"].as_array().map_or(0, Vec::len),
-        );
+        if size > ceiling {
+            over.push(format!(
+                "`ds {} --help` is {size} bytes against a {ceiling}-byte budget \
+                 ({} inputs, {} refusals)",
+                path.join(" "),
+                command["inputs"].as_array().map_or(0, Vec::len),
+                command["refusals"].as_array().map_or(0, Vec::len),
+            ));
+        }
     }
+    assert!(
+        over.is_empty(),
+        "{} commands are over their help budget:\n{}\n\
+         The allowance already scales with what each command declares, so this \
+         is prose. Move it to the command's reference document and cross-link.",
+        over.len(),
+        over.join("\n")
+    );
 }
 
 #[test]
@@ -309,15 +318,23 @@ fn mcp_install_help_stays_inside_its_derived_command_budget() {
 fn command_descriptors_are_bounded() {
     // The machine tier carries the same facts with less framing, so it gets
     // the same allowance plus a little for JSON's own punctuation.
+    let mut over = Vec::new();
     for command in every_command() {
         let id = command["id"].as_str().expect("id");
         let ceiling = command_help_ceiling(&command) + 600;
         let size = bytes(&["capabilities", id, "--output", "json"]);
-        assert!(
-            size <= ceiling,
-            "the descriptor for `{id}` is {size} bytes against a {ceiling}-byte budget"
-        );
+        if size > ceiling {
+            over.push(format!(
+                "the descriptor for `{id}` is {size} bytes against a {ceiling}-byte budget"
+            ));
+        }
     }
+    assert!(
+        over.is_empty(),
+        "{} descriptors are over budget:\n{}",
+        over.len(),
+        over.join("\n")
+    );
 }
 
 #[test]

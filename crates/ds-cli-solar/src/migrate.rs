@@ -116,12 +116,12 @@ const KIND_ARG: Arg = Arg::value(
 const ITEM_ARG: Arg = Arg::repeated(
     "item",
     "<name>",
-    "One source city id (kind city) or portfolio NAME (kind portfolio). Repeat, up to 64. Omit for every source object of the kind.",
+    "One source city id (kind city) or portfolio name (kind portfolio); repeat up to 64. Omit for every object of the kind.",
 );
 
 const OVERWRITE_ARG: Arg = Arg::switch(
     "overwrite",
-    "Replace an object that already exists in the destination with a different definition; bind this choice in both plan and apply.",
+    "Replace a different existing destination object; bind the choice in both plan and apply.",
 );
 
 const LANE_ARG: Arg = ds_cli_contract::spec::Arg {
@@ -244,16 +244,7 @@ pub static PLAN_COMMAND: Command = Command {
     path: &["solar", "migrate", "plan"],
     contract: 1,
     summary: "Plan which Solar objects would migrate in from another project.",
-    purpose: "\
-Plans what WOULD move from one project's Solar root into \
-another's: with --kind city each city's authored input documents, with --kind \
-portfolio each portfolio definition and its ordered member cities. It writes \
-nothing — the plan carries the server's own `mutated: false`. COMPUTATION \
-RESULTS NEVER MIGRATE: the plan names the result collections it leaves behind \
-and the destination recomputes. A portfolio whose member cities are absent \
-there is reported `refused`, naming them, never written as a definition that \
-would read back empty. Confirm the returned `migrate_digest` with `ds solar \
-migrate apply` to write it.",
+    purpose: "Plan what would move from one project's Solar root into another's: with --kind city each city's authored input documents, with --kind portfolio each definition and its ordered member cities. Writes nothing (`mutated: false`). Computation results never migrate; the plan names the collections it leaves behind. A portfolio whose member cities are absent in the destination is `refused`, never written empty. Confirm `migrate_digest` with `ds solar migrate apply`.",
     chapter: Chapter::Solar,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
@@ -294,15 +285,7 @@ pub static APPLY_COMMAND: Command = Command {
     path: &["solar", "migrate", "apply"],
     contract: 1,
     summary: "Migrate exactly the planned objects, bound to the plan's digest.",
-    purpose: "\
-Confirms one plan `ds solar migrate plan` returned. --migrate-digest is echoed \
-from that plan and is never derived here: it is what proves the set being \
-written is the set someone read. ds-brain re-plans server-side and refuses with \
-`solar_migrate_digest_mismatch` if either end moved. A migrated city arrives \
-marked `computation_state: never_computed_in_this_project` — so \"not computed \
-here yet\" can never be mistaken for \"computed to nothing\" — and one city \
-commits atomically. A migrated portfolio writes its definition only; its result \
-shell is created by the first calculation in the destination.",
+    purpose: "Confirm one plan from `ds solar migrate plan`. --migrate-digest is echoed from that plan, never derived: it proves the set written is the set read. ds-brain re-plans and refuses with `solar_migrate_digest_mismatch` if either end moved. A migrated city is marked `computation_state: never_computed_in_this_project` and commits atomically; a portfolio writes its definition only, and its first calculation creates the results.",
     chapter: Chapter::Solar,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,

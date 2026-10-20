@@ -14,15 +14,7 @@ pub static COMMAND: Command = Command {
     path: &["pm", "record", "read"],
     contract: 1,
     summary: "Read one record: body, who owes the answer, attachments, blockers.",
-    purpose: "\
-The whole record: what it is, which direction it travelled, what state it \
-is in, whether a response is owed — by which party or person, by when, and \
-whether it is outstanding, overdue, answered or waived — what it affects, \
-what it was authored against, and, projected beside it, its `attachments` \
-(the .eml with its parts, screenshots, external links), its registered \
-`documents`, the tasks blocked on it and the tasks made from it. The body \
-is bounded, and a body that was cut says so. Headless: the named project \
-of the signed-in native credential, no window.",
+    purpose: "The whole record: kind, direction and state; whether a response is owed, by whom and by when, and whether it is outstanding, overdue, answered or waived; what it affects and was authored against; and beside it its `attachments`, registered `documents`, and the tasks blocked on it or made from it. A cut body says so. Headless, for the named project of the signed-in credential.",
     chapter: Chapter::Project,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,

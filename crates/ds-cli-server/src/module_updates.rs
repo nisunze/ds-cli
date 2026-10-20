@@ -55,7 +55,7 @@ pub static STAGE: Command = Command {
     path: &["core", "module-stage"],
     contract: 2,
     summary: "Stage one exact published component without activating it.",
-    purpose: "Native is the default. Explicit runtime wasm stages only Interactions or UI Kernel locally under this OS account before login, using the complete UI unit digest; all four members and trusted source/compiler/configuration identity are admitted before staging, with zero JavaScript or WASM evaluation. Capture the packaged production lane's release authority, intentionally read its fixed public catalog once, and require the exact selected native asset SHA-256. The shared native updater performs bounded verified transfer and one fixed build-info compatibility probe, then retains an immutable executable and private ready receipt. Staging changes no active selection and acquires no project data. Held JSON, development catalogs, caller URLs and paths grant no installation trust. Requires --yes; never exits or activates the application.",
+    purpose: "Native is the default. Runtime wasm stages only Interactions or UI Kernel locally before login, by the complete UI unit digest; all four members and their trusted source, compiler and configuration identity are admitted first, with no JavaScript or WASM evaluated. Native staging reads the packaged lane's fixed public catalog once, requires the selected asset's exact SHA-256, and lets the shared updater transfer, probe build-info once and retain an immutable executable with a private ready receipt. No selection changes and no project data. Requires --yes; never activates the application.",
     chapter: Chapter::Design,
     effect: Effect::MachineWrite,
     authority: Authority::None,
@@ -71,7 +71,7 @@ pub static STAGE: Command = Command {
         )
         .required(),
     ],
-    output: "UI runtime wasm returns ds.ui-module-stage/v1 ready receipt and expectedGeneration. Native returns a ready receipt with state, receiptId, component, channel, version and sha256. Retains staged bytes only; active/previous selection and captured jobs are unchanged. Progress is diagnostic stderr, separate from the result envelope.",
+    output: "UI runtime wasm: ds.ui-module-stage/v1 ready receipt and expectedGeneration. Native: ready receipt with state, receiptId, component, channel, version and sha256. Only staged bytes are retained; selection and captured jobs are unchanged. Progress goes to stderr.",
     examples: &[],
     refusals: &[
         Refusal {

@@ -54,19 +54,7 @@ vocabulary the write commands take their state values from.",
         crate::LANE_ARG,
         crate::PROJECT_ARG,
     ],
-    output: "\
-`project`, `revision`, `today`, `dashboard` with the rollups, `phases` by \
-discipline, `attention` rows with their magnitude, `recent` task changes, \
-full `phaseTotal`/`attentionTotal`/`recentTotal` counts for those bounded lists, \
-`permissions` for the signed-in user, `vocabulary` — the delivery, review \
-and closeout states this project's engine accepts, plus the correspondence \
-lists (channels, record categories and states, directions, response \
-statuses, blocker kinds, party kinds and roles) — and `correspondence`: the \
-counters `recordsOutstanding`, `recordsOverdue`, `tasksAwaitingCorrespondence` \
-and `retained` capture-time scope/freshness qualifications. With --offline no network \
-or freshness checks run; current source and permission freshness remain unknown. \
-The attention rows are grouped by the party the answer is owed to (`null` on \
-a server that predates the contract).",
+    output: "`project`, `revision`, `today`, `dashboard` rollups, `phases` by discipline, `attention` rows grouped by the party owed the answer, `recent` task changes with `phaseTotal`/`attentionTotal`/`recentTotal`, the user's `permissions`, the project's `vocabulary` (delivery, review and closeout states and the correspondence lists), and `correspondence` counters with `retained` freshness. --offline runs no network or freshness check.",
     examples: &[Example {
         command: "ds pm plan --output json --project <exact-id>",
         note: "Read .data.vocabulary before calling `ds pm task update --delivery`.",

@@ -57,6 +57,10 @@ generation zero; removing it fences unmanaged fallback for the component/lane.
 Removal returns the committed removed-v2 receipt, increments the generation
 under the owner's exclusive lock and retains immutable version directories for
 already captured jobs. A stale stage cannot reactivate against that generation.
+After removal, new managed captures refuse instead of falling back to packaged
+or PATH executables. Removal involves no project, release catalog, download,
+licence, executable probe or Desktop launch; an absent or older Core runtime
+refuses.
 
 Removal uses the selected lane's already running default per-user Core
 background runtime over its existing private owner-only local transport. An
@@ -539,8 +543,34 @@ Desktop reaches it through its Core door for the published window identity;
 telemetry for it is recorded locally and never delivered on its own.
 
 `core.survey.queue` exposes the retained native Survey queue offline through a
-closed private request file and a new private result file. Discover its command
-contract for actions, identity fences, bounds and mutation completion receipts.
+closed private request file and a new private result file. It uses the
+installed Core SQLite owner under the lane's protected account, deployment and
+installation, and runs no transport, Core daemon, network, credential refresh,
+project selection or store repair. Reads never create a missing store or table;
+admissions refuse foreign or ownerless rows. Output is preadmitted before
+mutations, bounded to 64 MiB and acknowledged only after a protected identity
+recheck.
+
+The request file is owner-only, single-link and at most 64 MiB. Its `action`
+selects exactly one shape, with no extra fields:
+
+| action | fields | result |
+| --- | --- | --- |
+| `headers` | none | queue headers |
+| `row` | `id` | one row |
+| `admit` | `rows`, `now` | admitted rows |
+| `transition` | `event`, `now` | Kernel effects, kept after atomic persistence |
+| `prepare_create` | `fence` | `{expected:{fence,row_sha256},plan}`: the shared direct Firestore commit effect from the exact retained row and protected profile |
+| `verify_create_receipt` | `expected {fence,row_sha256,direct_sha256}`, `status`, `response` | `{expected,receipt}`: the effect rebuilt and the actual commit receipt checked against account, project, lifecycle, full-row and direct-plan digests |
+| `prepare_discard` | `ids`, `now` | `{rows:[{fence,row_sha256,row}]}` |
+| `commit_discard` | `expected [{fence,row_sha256}]`, `now` | `{removed:[id]}` |
+
+Prepare and verify actions neither mutate nor dispatch. The Kernel decides
+replay; persist and remove actions commit atomically before transport effects
+are returned. The receipt is `ds.survey-queue-file/v1` (path, sha256,
+size_bytes, action, project, lane and the safe owner context: account,
+deployment_sha256, install_id); the bound file is `ds.survey-queue/v1` with the
+same context and the result above.
 
 For discard, first call `prepare_discard {ids,now}` and retain its exact
 `result.rows` entries (`fence`, `row_sha256`, `row`). Audit those prepared rows

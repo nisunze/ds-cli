@@ -46,8 +46,8 @@ pub(crate) const REFUSALS: &[Refusal] = &[
     crate::PLATFORM,
     Refusal {
         code: "ui_component_platform_unavailable",
-        when: "UI installation or retained reads are requested on an unqualified native platform",
-        remedy: "use Linux x86_64; retain Windows UI installation until its private DACL adapter is qualified",
+        when: "UI installation or reads run on an unqualified platform",
+        remedy: "use Linux x86_64; Windows UI installation awaits its DACL adapter",
     },
     Refusal {
         code: "module_not_installed",
@@ -76,8 +76,8 @@ pub(crate) const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "component_runtime_unavailable",
-        when: "this lane's owned Core background runtime is absent, incompatible or cannot answer the fixed local request",
-        remedy: "start this lane's supported Core background runtime under this operating-system account and retry; absence never authorizes removal",
+        when: "this lane's Core background runtime is absent, incompatible or not answering",
+        remedy: "start this lane's Core under this OS account and retry; its absence never authorizes removal",
     },
     Refusal {
         code: "component_runtime_identity_mismatch",
@@ -91,18 +91,18 @@ pub(crate) const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "component_request_invalid",
-        when: "the private typed removal request is malformed, excessive or carries undeclared fields",
-        remedy: "invoke the declared Core component removal command with its closed component, channel and generation inputs",
+        when: "the typed removal request is malformed, excessive or has undeclared fields",
+        remedy: "use the declared removal command with component, channel and generation",
     },
     Refusal {
         code: "component_uncaptured_jobs",
         when: "the owned Core runtime has pending work without a valid immutable engine capture",
-        remedy: "finish or cancel the pending legacy work before removing this component; its stored input remains retained",
+        remedy: "finish or cancel the pending legacy work first; its stored input is kept",
     },
     Refusal {
         code: "module_removed",
         when: "the component has an authoritative removed selection and no active unit",
-        remedy: "explicitly stage and activate a compatible published component at the current removed generation",
+        remedy: "stage and activate a compatible published component at the removed generation",
     },
     Refusal {
         code: "module_rollback_unavailable",
@@ -201,7 +201,7 @@ pub static REMOVE: Command = Command {
     path: &["core", "component", "remove"],
     contract: 2,
     summary: "Remove one managed component selection from this machine.",
-    purpose: "Explicit runtime wasm removes an installed UI selection locally under this OS account, retaining its immutable bytes and previous receipt for rollback without requiring login or a running Core. Native remains the default: confirm removal of one fixed component and lane at an explicitly held generation through that lane's existing owned Core background runtime. Its native owner fences new job admission, checks every owned pending job across projects for a valid immutable engine capture, then the shared native updater locks and atomically commits a removed-v2 selection. Legacy uncaptured jobs refuse. Existing immutable versions and captured jobs remain retained; new managed captures refuse instead of falling back to packaged or PATH executables. Generation zero may fence an absent selection. No project, release catalog, download, licence, executable probe or Desktop launch is involved; an absent or older Core runtime refuses.",
+    purpose: "Runtime wasm removes an installed UI selection locally, keeping its bytes and previous receipt for rollback, without login or a running Core. Native (default) confirms removal of one component and lane at an explicitly held generation through that lane's running Core: it fences job admission, checks that every pending job holds an immutable engine capture, and commits a removed-v2 selection. Uncaptured legacy jobs refuse; captured jobs and installed versions remain. Generation zero may fence an absent selection. Details: docs/reference/core.md.",
     chapter: Chapter::Workstation,
     effect: Effect::MachineWrite,
     authority: Authority::None,
@@ -217,7 +217,7 @@ pub static REMOVE: Command = Command {
         )
         .required(),
     ],
-    output: "For UI runtime wasm, committed ds.ui-module-selection/v1 removed state retaining the previous unit for rollback. For native, committed ds.module-selection/v2 removal receipt: exact component, channel, incremented generation and state removed. No active or previous selection remains; version directories are retained for already captured jobs.",
+    output: "UI runtime wasm: committed ds.ui-module-selection/v1 removed state, previous unit kept. Native: committed ds.module-selection/v2 removal receipt with component, channel, incremented generation and state removed.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
@@ -231,13 +231,13 @@ pub static SELECTION: Command = Command {
     path: &["core", "component", "selection"],
     contract: 2,
     summary: "Read a component's retained selection and generation offline.",
-    purpose: "Read the protected local native selection, including installed-v1 and removed-v2 records, to capture the exact generation for component removal. An absent record returns null and has generation zero. Reads retained provenance without creating directories, changing permissions, taking an update lock, querying release authority or probing an executable. No account or project authority is needed for this per-user machine state.",
+    purpose: "Read the protected local selection (installed-v1 or removed-v2) to capture the exact generation for removal; an absent record is null with generation zero. Reads only: no directories, permission changes, update lock, release query or executable probe, and no account or project authority.",
     chapter: Chapter::Workstation,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[COMPONENT, CHANNEL, RUNTIME],
-    output: "UI runtime wasm returns ds.ui-module-selection/v1 offline, including active/previous or removed state. Native returns retained ds.module-selection/v1 installed record or ds.module-selection/v2 removed record, including component, channel and generation; null when absent. No fresh executable availability is implied.",
+    output: "UI runtime wasm: ds.ui-module-selection/v1 (active/previous or removed). Native: the retained ds.module-selection/v1 or v2 record with component, channel and generation, or null. It does not imply the executable is available.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),

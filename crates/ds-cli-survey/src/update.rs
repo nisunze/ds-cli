@@ -9,12 +9,12 @@ const OWN: [Refusal; 3] = [
     Refusal {
         code: "survey_update_document_invalid",
         when: "the retained document is linked, nonregular, unreadable, over 1 MiB or invalid JSON",
-        remedy: "pass one regular bounded ds.survey-entry-update/v1 document with prior, changes, fields, form_revision and expected_version",
+        remedy: "pass one regular ds.survey-entry-update/v1 document within 1 MiB",
     },
     Refusal {
         code: "survey_update_plan_invalid",
         when: "identity, version, clock, changes or merged visible form fields fail native validation",
-        remedy: "use the exact retained Feature and form fields, fix declared data changes and visible requirements, and retain the observed client_version (legacy missing is zero)",
+        remedy: "use the exact retained Feature and form fields, fix the declared changes and visible requirements, and keep the observed client_version",
     },
     Refusal {
         code: "survey_update_incomplete",
@@ -40,7 +40,7 @@ const ARGS:[Arg;6]=[
     Arg::value("project","<exact-id>","Exact project of the retained entry.").required(),
     Arg::value("form","<slug>","Exact governed form slug.").required(),
     Arg::value("doc-id","<id>","Existing document identity; never creates a missing entry.").required(),
-    Arg::value("document","<json-path>","Regular non-link JSON within 1 MiB: schema=ds.survey-entry-update/v1, prior Feature, changes object, fields, form_revision, expected_version; optional context_key.").required(),
+    Arg::value("document","<json-path>","Regular JSON file within 1 MiB: ds.survey-entry-update/v1 with prior Feature, changes, fields, form_revision, expected_version and optional context_key.").required(),
     Arg::value("idempotency-key","<key>","Replay key for this exact reviewed correction; keep unchanged on an exact retry.").required(),
     Arg::value("now","<RFC3339>","Device audit time for this correction; capture time is preserved.").required(),
 ];
@@ -50,7 +50,7 @@ pub static PLAN: Command = Command {
     contract: 1,
     chapter: Chapter::Survey,
     summary: "Preview a version-fenced correction of held Survey data.",
-    purpose: "Validate a retained Survey entry and its declared data-only changes with the kernel's actual form evaluator. Requires an observed expected_version (zero for legacy rows without client_version). Refuses unknown document keys, undeclared/no-op changes, retargeted rows and visible-field validation errors. Preserves geometry, connectivity and capture metadata; only named declared data fields can change. Performs no cloud read, auth or write; the retained form label is not a cloud freshness fence. Review before update.",
+    purpose: "Validate a retained Survey entry and its declared data-only changes with the kernel's form evaluator, against an observed expected_version (zero for legacy rows). Refuses unknown keys, undeclared or no-op changes, retargeted rows and visible-field errors. Geometry, connectivity and capture metadata are preserved. No cloud read, auth or write; the retained form label is not a freshness fence.",
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
@@ -58,7 +58,7 @@ pub static PLAN: Command = Command {
     output: "A bounded ds.survey-entry-update-plan/v1: exact target, expected_version, changed field names, form revision/validation, preservation assertions, effects=none, authorized=false, cloud_freshness=unconfirmed. No source values or replay key.",
     examples: &[Example {
         command: "ds survey entries update-plan --project <exact-id> --form <form-slug> --doc-id <document-id> --document correction.json --idempotency-key '<opaque-key>' --now 2026-10-12T00:00:00Z --output json",
-        note: "Validate the held row without acquisition or effects; the exact slug comes from `ds survey forms list`.",
+        note: "Validate the held row without effects; the slug comes from `ds survey forms list`.",
         runnable: false,
     }],
     refusals: &[OWN[0], OWN[1]],

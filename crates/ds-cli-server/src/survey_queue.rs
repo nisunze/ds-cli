@@ -19,22 +19,22 @@ const MAX_BYTES: usize = 64 * 1024 * 1024;
 const INVALID: Refusal = Refusal {
     code: "survey_queue_invalid_input",
     when: "the closed request, exact project, or absolute private input file is invalid",
-    remedy: "use headers {}, row {id}, admit {rows,now}, transition {event,now}, prepare_create {fence}, verify_create_receipt {expected,status,response}, prepare_discard {ids,now}, or commit_discard {expected,now} with action as the discriminator; preserve the source file",
+    remedy: "send one closed action with exactly its fields (docs/reference/core.md); the source file is preserved",
 };
 const DISCARD: Refusal = Refusal {
     code: "survey_queue_discard_requires_audit",
     when: "a generic transition attempts to discard retained Survey rows",
-    remedy: "use prepare_discard, submit the exact prepared rows to the existing audit endpoint, then commit_discard with their fences and row_sha256 values",
+    remedy: "prepare_discard, audit the exact prepared rows, then commit_discard with their fences and row_sha256",
 };
 const STORE: Refusal = Refusal {
     code: "survey_queue_store_refused",
     when: "the existing private native store is unsafe, corrupt, incompatible, or rejects the requested queue operation",
-    remedy: "retain the existing store and source, inspect the exact owned project queue and resolve the native refusal; no repair or alternate identity is attempted",
+    remedy: "keep the store and source and resolve the native refusal; nothing is repaired",
 };
 const OUTPUT: Refusal = Refusal {
     code: "survey_queue_output_invalid",
     when: "the absolute new output cannot be created privately or the result exceeds 64 MiB",
-    remedy: "use an unused absolute output file in an existing protected directory; if detail says mutation_completed, inspect the retained queue before retrying",
+    remedy: "use a new absolute output path in an existing protected directory; after mutation_completed, inspect the queue before retrying",
 };
 const CHANGED: Refusal = Refusal {
     code: "survey_queue_identity_changed",
@@ -45,12 +45,12 @@ const CHANGED: Refusal = Refusal {
 pub static COMMAND: Command = Command {
     id: "core.survey.queue", path: &["core", "survey", "queue"], contract: 2,
     summary: "Read, admit or transition the native Survey entry queue offline.",
-    purpose: "Use the installed Core SQLite owner under the existing lane's protected account, deployment and installation and one exact project. Closed request actions are headers, row, admit, transition, prepare_create, verify_create_receipt, prepare_discard and commit_discard. Create preparation returns the shared Rust direct Firestore commit effect from the exact retained row and protected principal/public Firebase profile. Verification reconstructs that effect and checks the actual commit receipt, fenced by account, project, lifecycle, full-row and direct-plan digests; neither action mutates or dispatches. Prepare is read-only; callers audit its exact rows before commit, which atomically rechecks every row digest, lifecycle fence and Kernel discard decision. Generic discard transitions refuse. The Kernel decides replay; persist/remove actions commit atomically before transport effects are returned. This command runs no transport, Core daemon, network, credential refresh, project selection or store repair. Reads never create a missing store or table. Admissions refuse foreign or ownerless rows. Output is preadmitted before mutations, bounded to 64 MiB and acknowledged only after a protected identity recheck.",
+    purpose: "Run one closed action on one exact project's queue in the installed Core store, under the lane's protected identity. Prepare and verify actions are read-only; commits recheck every fence and digest atomically. No transport, network, credential refresh or store repair; reads never create a store. Request and result shapes are in docs/reference/core.md.",
     chapter: Chapter::Survey, effect: Effect::LocalAuthState, authority: Authority::HeadlessUser, execution: Execution::Sync,
     args: &[Arg::value("lane", "<stable|canary>", "Existing protected native identity lane.").choices(&["stable", "canary"]).required(), super::PROJECT.required(),
-        Arg::value("request", "<absolute-existing-json-file>", "Owner-only ordinary single-link file, at most 64 MiB. Closed JSON discriminator action: headers; row with id; admit with rows and now; transition with event and now; prepare_create with fence; verify_create_receipt with expected {fence,row_sha256,direct_sha256}, status and response; prepare_discard with ids and now; commit_discard with expected [{fence,row_sha256}] and now. Discard batches contain at most 500 unique IDs. No extra request fields.").required(),
+        Arg::value("request", "<absolute-existing-json-file>", "Owner-only JSON file, at most 64 MiB; action is headers, row, admit, transition, prepare_create, verify_create_receipt, prepare_discard or commit_discard, with no extra fields.").required(),
         Arg::value("out", "<absolute-new-json-file>", "New owner-only result file in an existing protected directory; never replaced, at most 64 MiB.").required()],
-    output: "Bounded ds.survey-queue-file/v1 receipt with path, sha256, size_bytes, action, project, lane and safe owner context (account, deployment_sha256, install_id). The bound file is ds.survey-queue/v1 with the same context and result. Transition results retain Kernel effects after atomic persistence. Create preparation returns {expected:{fence,row_sha256},plan}; receipt verification returns {expected,receipt}. Discard prepare returns {rows:[{fence,row_sha256,row}]}; commit returns {removed:[id]}.",
+    output: "ds.survey-queue-file/v1 receipt (path, sha256, size_bytes, action, project, lane, owner context); the file holds ds.survey-queue/v1 with the action's result.",
     examples: &[], refusals: &[super::PLATFORM, INVALID, DISCARD, STORE, OUTPUT, CHANGED, super::CONTEXT_CORRUPT, super::PROJECT_REQUIRED],
     reference: Some("docs/reference/core.md"), search: &["sqlite"], requires: Requires::Server, availability: super::native_host_availability,
 };
