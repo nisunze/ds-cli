@@ -76,6 +76,7 @@ fn a_listing_follows_every_page_and_reads_newest_first() {
         Some(json!({"action": "list_models", "project_id": "kigali", "page_size": 500}))
     );
     assert_eq!(sent[1].body.as_ref().unwrap()["cursor"], "c2");
+    assert_eq!(sent[0].timeout_ms, READ_TIMEOUT_MS);
 
     let (refused, _) = answered(
         GridModelsList::new("kigali".into(), false),

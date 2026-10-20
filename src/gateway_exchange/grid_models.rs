@@ -11,6 +11,8 @@ use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
 const PATH: &str = "/api/v1/grid/models";
 const PAGE_SIZE: u64 = 500;
+/// A cold Desktop session prepares its route and credentials before a read.
+const READ_TIMEOUT_MS: u64 = 120_000;
 /// Pages one listing follows; a project holding more is refused, not cut.
 const MAX_PAGES: usize = 200;
 pub const INVALID: &str = "grid_models_answer_invalid";
@@ -50,9 +52,7 @@ pub struct GridObjectRef {
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
 pub struct GridModelSummary {
     pub model_id: String,
-    #[serde(default)]
     pub display_name: String,
-    #[serde(default)]
     pub head_revision_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manifest_model_id: Option<String>,
@@ -331,9 +331,7 @@ pub struct GridModelDeletion {
     pub head_revision_id: String,
     pub head_model_digest: String,
     pub deleted_at: String,
-    #[serde(default)]
     pub revisions_retained: bool,
-    #[serde(default)]
     pub model_object_retained: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(
@@ -418,7 +416,9 @@ impl Exchange for GridModelsList {
         if let Some(cursor) = &self.cursor {
             body["cursor"] = cursor.clone().into();
         }
-        Ok(post("list_models", &self.project, body).into())
+        Ok(post("list_models", &self.project, body)
+            .timeout_ms(READ_TIMEOUT_MS)
+            .into())
     }
 
     fn admit(mut self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -451,7 +451,8 @@ impl Exchange for GridModelGet {
     type Output = GridModelSummary;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(post("get_model", &self.project, json!({"model_id": self.model})).into())
+        let request = post("get_model", &self.project, json!({"model_id": self.model}));
+        Ok(request.timeout_ms(READ_TIMEOUT_MS).into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -489,7 +490,9 @@ impl Exchange for GridVersionsList {
         if let Some(cursor) = &self.cursor {
             body["cursor"] = cursor.clone().into();
         }
-        Ok(post("list_versions", &self.project, body).into())
+        Ok(post("list_versions", &self.project, body)
+            .timeout_ms(READ_TIMEOUT_MS)
+            .into())
     }
 
     fn admit(mut self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -524,7 +527,9 @@ impl Exchange for GridVersionResolve {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"model_id": self.model, "revision_id": self.revision});
-        Ok(post("get_version", &self.project, body).into())
+        Ok(post("get_version", &self.project, body)
+            .timeout_ms(READ_TIMEOUT_MS)
+            .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -562,7 +567,9 @@ impl Exchange for GridExportsList {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"model_id": self.model, "revision_id": self.revision});
-        Ok(post("list_exports", &self.project, body).into())
+        Ok(post("list_exports", &self.project, body)
+            .timeout_ms(READ_TIMEOUT_MS)
+            .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
