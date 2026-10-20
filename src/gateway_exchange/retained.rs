@@ -242,3 +242,6 @@ pub async fn forget(
 
 #[cfg(test)]
 pub(crate) mod testing;
+
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+pub(crate) mod browser;

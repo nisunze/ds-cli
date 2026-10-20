@@ -122,6 +122,9 @@ kinds! {
     ProjectWorkGraph = "project_work_graph": Project, KeyGrammar::Single, 16 * MIB, 32;
     /// Rwanda administrative children, keyed `level:parent_code`.
     AdminChildren = "admin_children": Account, KeyGrammar::Token(64), MIB, 1024;
+    /// The governance page: role definitions and, for a user manager, the
+    /// user registry.
+    GovernancePage = "governance_page": Account, KeyGrammar::Single, 4 * MIB, 1;
 }
 
 /// The generation row one kind reads and advances.

@@ -31,6 +31,7 @@ use crate::response_policy::{self, Classify, Outcome, Telemetry, RESPONSE_POLICY
 pub mod assets_index;
 pub mod deadletter;
 pub mod feedback;
+pub mod governance;
 pub mod help;
 pub mod maps;
 #[cfg(feature = "durable-store")]
