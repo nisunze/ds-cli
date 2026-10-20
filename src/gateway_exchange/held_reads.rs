@@ -1,5 +1,6 @@
 //! Held-first reads a person sees: the platform's transformer delete ledger,
-//! a lane's latest release and a project's Assets catalogue. What this device holds answers at once and
+//! a lane's latest release (or its installation manager's publication) and a
+//! project's Assets catalogue. What this device holds answers at once and
 //! offline (`*Held`); a refresh (`*Refresh`) fetches through the gateway
 //! exchange, admits the answer and retains it in [`crate::retained_reads`].
 //! A refresh that fails leaves the held value as it was; a refusal that says
@@ -191,7 +192,7 @@ mod exports {
     use super::{assets_catalogue, backup_ledger, release};
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{rejection, typed, GatewayHost};
-    use crate::gateway_exchange::releases::{exports::read as read_release, release_member};
+    use crate::gateway_exchange::releases::{exports::read, installation_manager, release_member, ANSWER_CAP, MANAGER_CAP};
     use crate::gateway_exchange::retained::browser::BrowserEdge;
     use wasm_bindgen::prelude::*;
 
@@ -234,9 +235,21 @@ export interface AssetsCatalogue { assets: Record<string, unknown>[]; folders: R
     /// `{ release }`; undefined when there is none or the read failed.
     #[wasm_bindgen(js_name = releaseRefresh, unchecked_return_type = "{ release: unknown } | undefined")]
     pub async fn release_refresh(host: GatewayHost, store: StoreHost, url: String) -> Result<JsValue, JsValue> {
-        match read_release(&url).await.as_ref().map(release_member) {
+        match read(&url, ANSWER_CAP).await.as_ref().map(release_member) {
             Some(Some(member)) => typed(&release::retain(&edge(host, store), &url, member).await.value),
             _ => Ok(JsValue::UNDEFINED),
+        }
+    }
+
+    /// The installation manager's publication for `channel` at `url`, read
+    /// anonymously, admitted and retained, as `{ release }` (`releaseHeld`
+    /// answers it offline); undefined when there is none or it is not exactly
+    /// what the publisher writes.
+    #[wasm_bindgen(js_name = installationManagerRefresh, unchecked_return_type = "{ release: unknown } | undefined")]
+    pub async fn installation_manager_refresh(host: GatewayHost, store: StoreHost, url: String, channel: String) -> Result<JsValue, JsValue> {
+        match read(&url, MANAGER_CAP).await.and_then(|body| installation_manager(&body, &channel)) {
+            Some(publication) => typed(&release::retain(&edge(host, store), &url, publication).await.value),
+            None => Ok(JsValue::UNDEFINED),
         }
     }
 
