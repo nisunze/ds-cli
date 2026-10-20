@@ -2,7 +2,10 @@
 //! the existing verified transfer; inspection never installs or activates.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+
+mod core_release;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -142,6 +145,19 @@ pub struct ReleaseAsset {
     pub source_sha: String,
     #[serde(default, alias = "built_at")]
     pub built_at: String,
+    /// Publication date of these bytes; a carried asset keeps its own.
+    #[serde(
+        default,
+        alias = "released_at",
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub released_at: String,
+    #[serde(
+        default,
+        alias = "source_revisions",
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub source_revisions: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -198,8 +214,10 @@ pub fn inspect(
     channel: &str,
     input: InspectionInput,
 ) -> Result<Inspection, String> {
-    if !matches!(component, "shell" | "solar" | "reporter" | "network")
-        || !matches!(channel, "stable" | "canary" | "local")
+    if !matches!(
+        component,
+        "shell" | "core" | "solar" | "reporter" | "network"
+    ) || !matches!(channel, "stable" | "canary" | "local")
         || !matches!(input.platform.as_str(), "windows" | "linux" | "macos")
     {
         return Err("Name the exact installed component, release lane and platform".into());
@@ -210,6 +228,9 @@ pub fn inspect(
     if input.release.to_string().len() > 128 * 1024 || input.installed.to_string().len() > 32 * 1024
     {
         return Err("The held update identity exceeds its bound".into());
+    }
+    if component == "core" {
+        return core_release::inspect(channel, input);
     }
     if component != "shell" {
         let version = ["release_version", "package_version", "version"]
@@ -296,7 +317,6 @@ pub fn inspect(
     if release.channel != channel || release.product_id != expected {
         return Err("The desktop release belongs to another lane".into());
     }
-    let published = release_identity(Some(&release.version), Some(&release.released_at));
     let asset = kind_order(&input.platform)
         .iter()
         .find_map(|kind| {
@@ -306,6 +326,14 @@ pub fn inspect(
                 .find(|a| a.platform == input.platform && a.arch == "x86_64" && a.kind == *kind)
         })
         .cloned();
+    // This platform's bytes carry their own publication date.
+    let published_date = asset
+        .as_ref()
+        .map(|a| a.released_at.as_str())
+        .filter(|date| !date.is_empty())
+        .unwrap_or(&release.released_at);
+    let published = release_identity(Some(&release.version), Some(published_date));
+    let mut installed = installed;
     let mut update = None;
     if let Some(asset) = asset {
         let request = DownloadRequest {
@@ -341,6 +369,11 @@ pub fn inspect(
                 .and_then(|v| OffsetDateTime::parse(v, &Rfc3339).ok())
                 .zip(OffsetDateTime::parse(asset_time, &Rfc3339).ok())
                 .is_some_and(|(installed, published)| installed == published);
+        // The installed bytes are this published asset, so its publication
+        // identity is proven rather than invented from build time.
+        if same_build && installed.build_number.is_none() && installed.release_date.is_none() {
+            installed = published.clone();
+        }
         let newer = !same_build
             && match (latest, current) {
                 (Some(latest), Some(current)) if latest > current => true,
@@ -393,208 +426,5 @@ pub fn inspect(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    fn input() -> InspectionInput {
-        serde_json::from_value(json!({"platform":"linux","installed":{"version":"1.0.0","sourceSha":"old","builtAt":"2026-10-01T00:00:00Z"},"release":{"channel":"canary","productId":"rw.datasolutions.desktop.canary","version":"1.0.0-r4","releasedAt":"2026-10-03T00:00:00Z","assets":[{"platform":"linux","arch":"x86_64","kind":"deb","url":"https://example.test/app.deb","sizeBytes":10,"sha256":"a".repeat(64),"sourceSha":"new","builtAt":"2026-10-02T00:00:00Z"}]}})).unwrap()
-    }
-    #[test]
-    fn release_number_is_real_publication_identity_not_build_time() {
-        assert_eq!(
-            release_identity(Some("1.0.0-r4"), Some("2026-10-03T00:00:00Z")),
-            ReleaseIdentity {
-                version: Some("1.0.0".into()),
-                build_number: Some(4),
-                release_date: Some("2026-10-03T00:00:00Z".into())
-            }
-        );
-        assert_eq!(release_identity(Some("1.0.0"), None).build_number, None);
-        assert_eq!(
-            release_identity(Some("1.0.0-rx"), Some("invalid")).release_date,
-            None
-        );
-    }
-    #[test]
-    fn inspection_admits_main_update_and_truthful_missing_installed_fields() {
-        let result = inspect("shell", "canary", input()).unwrap();
-        assert!(result.update.is_some());
-        assert_eq!(result.installed.build_number, None);
-        assert_eq!(result.installed.release_date, None);
-        assert_eq!(result.published.unwrap().build_number, Some(4));
-    }
-
-    #[test]
-    fn network_inspection_projects_engine_version_without_inventing_publication() {
-        let held = InspectionInput {
-            release: Value::Null,
-            installed: json!({"schema":"ds.engine-build/v1","module":"network", "engineIdentity":{"coreVersion":"1.4.0","builtAt":"2026-10-14T00:00:00Z"}}),
-            platform: "linux".into(),
-        };
-        let result = inspect("network", "local", held).unwrap();
-        assert_eq!(result.installed.version.as_deref(), Some("1.4.0"));
-        assert_eq!(result.installed.build_number, None);
-        assert_eq!(result.installed.release_date, None);
-        assert!(result.update.is_none());
-        assert!(result.published.is_none());
-        let missing = InspectionInput {
-            release: Value::Null,
-            installed: Value::Null,
-            platform: "linux".into(),
-        };
-        let result = inspect("network", "canary", missing).unwrap();
-        assert_eq!(result.installed.version, None);
-        assert!(result.update.is_none());
-    }
-    #[test]
-    fn carried_asset_ahead_identity_withdrawal_and_crossed_lane_never_update() {
-        for (field, value) in [("status", json!("blocked")), ("version", json!("0.9.0-r8"))] {
-            let mut held = input();
-            held.release[field] = value;
-            assert!(inspect("shell", "canary", held).unwrap().update.is_none());
-        }
-        let mut held = input();
-        held.release["assets"][0]["builtAt"] = json!("2026-09-01T00:00:00Z");
-        assert!(inspect("shell", "canary", held).unwrap().update.is_none());
-        let mut held = input();
-        held.release["productId"] = json!("rw.datasolutions.desktop");
-        assert!(inspect("shell", "canary", held).is_err());
-        let mut held = input();
-        held.release["assets"][0]["sha256"] = json!("wrong");
-        assert!(inspect("shell", "canary", held).is_err());
-        let mut held = input();
-        held.release["assets"][0]["sizeBytes"] = json!(0);
-        assert!(inspect("shell", "canary", held).is_err());
-        let mut held = input();
-        held.release["assets"][0]["arch"] = json!("arm64");
-        assert!(inspect("shell", "canary", held).unwrap().update.is_none());
-    }
-    #[test]
-    fn development_acquisition_and_unbounded_metadata_refuse() {
-        let request = DownloadRequest {
-            version: "1.0.0-r2".into(),
-            channel: "canary".into(),
-            product_id: "rw.datasolutions.desktop.canary".into(),
-            platform: "linux".into(),
-            kind: "deb".into(),
-            url: "https://example.test/app".into(),
-            size_bytes: 1,
-            sha256: "a".repeat(64),
-        };
-        assert!(validate_request(&request, "local", "linux").is_err());
-        assert!(validate_request(&request, "stable", "linux").is_err());
-        let mut held = input();
-        held.installed = json!({"version":"x".repeat(33*1024)});
-        assert!(inspect("shell", "canary", held).is_err());
-    }
-
-    #[test]
-    fn same_version_identity_comparison_preserves_rebuilds_offsets_and_missing_facts() {
-        let mut same_source = input();
-        same_source.release["assets"][0]["sourceSha"] = json!("old");
-        assert!(inspect("shell", "canary", same_source)
-            .unwrap()
-            .update
-            .is_some());
-        let mut offset = input();
-        offset.installed["builtAt"] = json!("2026-10-02T01:00:00+02:00");
-        assert!(inspect("shell", "canary", offset).unwrap().update.is_some());
-        for field in ["sourceSha", "builtAt"] {
-            let mut missing = input();
-            missing.installed[field] = Value::Null;
-            assert!(inspect("shell", "canary", missing)
-                .unwrap()
-                .update
-                .is_none());
-            let mut missing = input();
-            missing.release["assets"][0][field] = json!("");
-            assert!(inspect("shell", "canary", missing)
-                .unwrap()
-                .update
-                .is_none());
-        }
-        let mut malformed = input();
-        malformed.release["assets"][0]["builtAt"] = json!("later-ish");
-        assert!(inspect("shell", "canary", malformed)
-            .unwrap()
-            .update
-            .is_none());
-        let mut newer = input();
-        newer.release["version"] = json!("2.0.0-r1");
-        newer.installed["sourceSha"] = Value::Null;
-        newer.installed["builtAt"] = Value::Null;
-        assert!(inspect("shell", "canary", newer).unwrap().update.is_some());
-        let mut identical = input();
-        identical.release["assets"][0]["sourceSha"] = json!("old");
-        identical.release["assets"][0]["builtAt"] = json!("2026-10-01T00:00:00Z");
-        assert!(inspect("shell", "canary", identical)
-            .unwrap()
-            .update
-            .is_none());
-    }
-
-    #[test]
-    fn carry_is_platform_specific_and_legacy_source_fallback_remains_readable() {
-        let mut carry = input();
-        let mut windows = carry.release["assets"][0].clone();
-        windows["platform"] = json!("windows");
-        windows["kind"] = json!("nsis");
-        windows["sourceSha"] = json!("old");
-        windows["builtAt"] = json!("2026-10-01T00:00:00Z");
-        carry.release["assets"]
-            .as_array_mut()
-            .unwrap()
-            .push(windows);
-        let mut win = carry.clone();
-        win.platform = "windows".into();
-        assert!(inspect("shell", "canary", win).unwrap().update.is_none());
-        let mut newer_pointer = carry.clone();
-        newer_pointer.release["version"] = json!("2.0.0-r5");
-        newer_pointer.platform = "windows".into();
-        assert!(inspect("shell", "canary", newer_pointer)
-            .unwrap()
-            .update
-            .is_none());
-        assert!(inspect("shell", "canary", carry).unwrap().update.is_some());
-        let mut legacy = input();
-        legacy.release["sourceSha"] = json!("new");
-        legacy.release["builtAt"] = json!("2026-10-02T00:00:00Z");
-        legacy.release["assets"][0]["sourceSha"] = json!("");
-        legacy.release["assets"][0]["builtAt"] = json!("");
-        assert!(inspect("shell", "canary", legacy).unwrap().update.is_some());
-        let mut unsupported = input();
-        unsupported.platform = "windows".into();
-        assert!(inspect("shell", "canary", unsupported)
-            .unwrap()
-            .update
-            .is_none());
-    }
-    #[test]
-    fn absent_optional_receipt_fields_do_not_hide_known_versions() {
-        for missing in [Value::Null, json!("")] {
-            let input = InspectionInput {
-                release: Value::Null,
-                installed: json!({"release_version":missing,"package_version":"1.2.3"}),
-                platform: "linux".into(),
-            };
-            assert_eq!(
-                inspect("solar", "local", input)
-                    .unwrap()
-                    .installed
-                    .version
-                    .as_deref(),
-                Some("1.2.3")
-            );
-        }
-        let mut held = input();
-        held.installed["releaseVersion"] = json!("");
-        assert_eq!(
-            inspect("shell", "canary", held)
-                .unwrap()
-                .installed
-                .version
-                .as_deref(),
-            Some("1.0.0")
-        );
-    }
-}
+#[path = "desktop_update_tests.rs"]
+mod tests;
