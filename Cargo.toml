@@ -71,6 +71,7 @@ ds-kml = { path = "crates/ds-kml" }
 ryu = "1"
 schemars = "1.2.2"
 base64 = "0.22"
+mail-parser = { version = "=0.11.9", default-features = false }
 reactive_graph = { version = "0.2.16", features = ["effects"], optional = true }
 any_spawner = { version = "0.3.0", optional = true }
 ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts", default-features = false }

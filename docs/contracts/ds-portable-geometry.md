@@ -43,8 +43,15 @@ hole/boundary and centroid semantics, and makes no coverage/freshness claim.
 Admission (including the BigQuery corpus), exact spatial predicates, region
 algebra, measurement and viewport extents are now canonical Lite modules.
 Network keeps compatibility module paths and calls this same implementation.
-The optional `codec` feature owns the fixed 2D WKB writer and structural bbox
-reader; cleaning and columnar retain their own schema/IPC responsibilities.
+The optional `codec` feature owns the fixed 2D WKB writer through pinned
+geozero 0.15.1 public events, one bounded decoder with strict XY and native
+ISO/EWKB profiles, and the compatibility structural bbox reader. Network's
+GeoPackage boundary delegates WKB to this owner and retains its own header,
+envelope and SRS admission. Strict decoding keeps complete consumption,
+finite-coordinate, child-type, depth and node-budget checks; the native
+profile checks every Z/M ordinate and optionally preserves it. The default
+feature set remains dependency-free. Cleaning and columnar retain their own
+schema/IPC responsibilities.
 
 The following remaining snapshots retain their existing Network authority:
 

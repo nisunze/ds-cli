@@ -5,14 +5,25 @@
 //! byte order flag `1`, u32 type code, then the body. XY only — a third
 //! ordinate is carried in a property column, never in the geometry.
 
+use geozero::wkb::{WkbDialect, WkbWriter};
+use geozero::{GeomProcessor, error::GeozeroError};
 use serde_json::Value;
 
 pub fn geometry_to_wkb(geometry: &Value) -> Option<Vec<u8>> {
     let kind = geometry.get("type")?.as_str()?;
-    let coordinates = geometry.get("coordinates")?;
-    let mut out = Vec::new();
-    write_geometry(&mut out, kind, coordinates).ok()?;
-    Some(out)
+    if kind == "GeometryCollection" {
+        return None;
+    }
+    geometry_to_wkb_with_collections(geometry)
+}
+
+/// Encode the same canonical XY bytes, also admitting GeoPackage collections.
+/// Extra ordinates remain outside the geometry, as in the columnar profile.
+pub fn geometry_to_wkb_with_collections(geometry: &Value) -> Option<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let mut writer = WkbWriter::new(&mut bytes, WkbDialect::Wkb);
+    process_geometry(geometry, &mut writer, 0, 0).ok()?;
+    Some(bytes)
 }
 
 /// Decode one complete 2D WKB geometry for native columnar consumers.
@@ -22,10 +33,32 @@ pub fn geometry_to_wkb(geometry: &Value) -> Option<Vec<u8>> {
 /// number of geometries, rings and coordinates, including empty parts. CRS
 /// and geometric validity remain the source/mask authority's responsibility.
 pub fn geometry_from_wkb(wkb: &[u8], max_nodes: usize) -> Result<Value, String> {
+    decode(wkb, max_nodes, false, false)
+}
+
+/// Decode ISO/EWKB dimensions for source interchange. Every ordinate is checked
+/// for finiteness even when the browser profile retains only XY. This keeps the
+/// original 64-level native limit; strict columnar decoding retains its limit.
+pub fn geometry_from_extended_wkb(
+    wkb: &[u8],
+    max_nodes: usize,
+    preserve_dimensions: bool,
+) -> Result<Value, String> {
+    decode(wkb, max_nodes, true, preserve_dimensions)
+}
+
+fn decode(
+    wkb: &[u8],
+    max_nodes: usize,
+    extended: bool,
+    preserve_dimensions: bool,
+) -> Result<Value, String> {
     let mut decoder = GeometryDecoder {
         bytes: wkb,
         cursor: 0,
         remaining: max_nodes,
+        extended,
+        preserve_dimensions,
     };
     let geometry = decoder.geometry(0, None)?;
     if decoder.cursor != wkb.len() {
@@ -38,6 +71,8 @@ struct GeometryDecoder<'a> {
     bytes: &'a [u8],
     cursor: usize,
     remaining: usize,
+    extended: bool,
+    preserve_dimensions: bool,
 }
 
 impl GeometryDecoder<'_> {
@@ -53,32 +88,38 @@ impl GeometryDecoder<'_> {
         let count =
             read_u32(self.bytes, &mut self.cursor, order).ok_or("truncated WKB count")? as usize;
         if count > self.remaining || count > (self.bytes.len() - self.cursor) / minimum_bytes {
-            return Err("WKB count exceeds node budget or remaining bytes".into());
+            return Err("WKB count exceeds the remaining geometry bytes or node budget".into());
         }
         Ok(count)
     }
 
-    fn point(&mut self, order: u8) -> Result<Value, String> {
+    fn point(&mut self, order: u8, dimensions: usize) -> Result<Value, String> {
         self.admit(1)?;
-        let x = read_f64(self.bytes, &mut self.cursor, order).ok_or("truncated WKB coordinate")?;
-        let y = read_f64(self.bytes, &mut self.cursor, order).ok_or("truncated WKB coordinate")?;
-        if !x.is_finite() || !y.is_finite() {
-            return Err("WKB coordinates must be finite".into());
+        let mut position = Vec::with_capacity(dimensions);
+        for dimension in 0..dimensions {
+            let value =
+                read_f64(self.bytes, &mut self.cursor, order).ok_or("truncated WKB coordinate")?;
+            if !value.is_finite() {
+                return Err("WKB coordinates must be finite".into());
+            }
+            if self.preserve_dimensions || dimension < 2 {
+                position.push(Value::from(value));
+            }
         }
-        Ok(serde_json::json!([x, y]))
+        Ok(Value::Array(position))
     }
 
-    fn line(&mut self, order: u8) -> Result<Value, String> {
-        let count = self.count(order, 16)?;
+    fn line(&mut self, order: u8, dimensions: usize) -> Result<Value, String> {
+        let count = self.count(order, dimensions * 8)?;
         let mut points = Vec::with_capacity(count);
         for _ in 0..count {
-            points.push(self.point(order)?);
+            points.push(self.point(order, dimensions)?);
         }
         Ok(Value::Array(points))
     }
 
     fn geometry(&mut self, depth: usize, expected: Option<u32>) -> Result<Value, String> {
-        if depth > MAX_WKB_DEPTH {
+        if depth > if self.extended { 64 } else { MAX_WKB_DEPTH } {
             return Err("WKB nesting limit exceeded".into());
         }
         self.admit(1)?;
@@ -87,19 +128,31 @@ impl GeometryDecoder<'_> {
         if order > 1 {
             return Err("invalid WKB byte order".into());
         }
-        let code = read_u32(self.bytes, &mut self.cursor, order).ok_or("truncated WKB type")?;
+        let raw = read_u32(self.bytes, &mut self.cursor, order).ok_or("truncated WKB type")?;
+        let (code, dimensions) = if self.extended {
+            if raw & 0x2000_0000 != 0 {
+                read_u32(self.bytes, &mut self.cursor, order).ok_or("truncated WKB SRID")?;
+            }
+            let family = ((raw & 0xffff) % 4000) / 1000;
+            let dimensions = 2
+                + usize::from(raw & 0x8000_0000 != 0 || matches!(family, 1 | 3))
+                + usize::from(raw & 0x4000_0000 != 0 || matches!(family, 2 | 3));
+            ((raw & 0xffff) % 1000, dimensions)
+        } else {
+            (raw, 2)
+        };
         if expected.is_some_and(|kind| kind != code) {
             return Err("WKB multipart member type mismatch".into());
         }
         let (kind, coordinates) = match code {
-            1 => ("Point", self.point(order)?),
-            2 => ("LineString", self.line(order)?),
+            1 => ("Point", self.point(order, dimensions)?),
+            2 => ("LineString", self.line(order, dimensions)?),
             3 => {
                 let count = self.count(order, 4)?;
                 self.admit(count)?;
                 let mut rings = Vec::with_capacity(count);
                 for _ in 0..count {
-                    rings.push(self.line(order)?);
+                    rings.push(self.line(order, dimensions)?);
                 }
                 ("Polygon", Value::Array(rings))
             }
@@ -132,103 +185,117 @@ impl GeometryDecoder<'_> {
     }
 }
 
-fn write_geometry(out: &mut Vec<u8>, kind: &str, coords: &Value) -> Result<(), String> {
+// Stream admitted JSON coordinates directly into the upstream writer. A text
+// round trip would reparse floats and would reject otherwise ignored ordinates.
+fn process_geometry<P: GeomProcessor>(
+    geometry: &Value,
+    writer: &mut P,
+    depth: usize,
+    idx: usize,
+) -> geozero::error::Result<()> {
+    if depth > 64 {
+        return Err(GeozeroError::Geometry("WKB nesting limit exceeded".into()));
+    }
+    let kind = geometry.get("type").and_then(Value::as_str).unwrap_or("");
+    if kind == "GeometryCollection" {
+        let parts = parts(&geometry["geometries"])?;
+        writer.geometrycollection_begin(parts.len(), idx)?;
+        for (idx, part) in parts.iter().enumerate() {
+            process_geometry(part, writer, depth + 1, idx)?;
+        }
+        return writer.geometrycollection_end(idx);
+    }
+    process_coordinates(kind, &geometry["coordinates"], writer, idx)
+}
+
+fn process_coordinates<P: GeomProcessor>(
+    kind: &str,
+    coordinates: &Value,
+    writer: &mut P,
+    idx: usize,
+) -> geozero::error::Result<()> {
     match kind {
         "Point" => {
-            write_header(out, 1);
-            write_point_body(out, point_coords(coords)?);
+            writer.point_begin(idx)?;
+            process_position(coordinates, writer, 0)?;
+            writer.point_end(idx)
         }
-        "LineString" => {
-            write_header(out, 2);
-            write_line_body(out, coords)?;
-        }
-        "Polygon" => {
-            write_header(out, 3);
-            write_polygon_body(out, coords)?;
-        }
-        "MultiPoint" => {
-            write_header(out, 4);
-            let points = as_array(coords, "MultiPoint")?;
-            write_u32(out, points.len())?;
-            for point in points {
-                write_header(out, 1);
-                write_point_body(out, point_coords(point)?);
+        "LineString" => process_line(coordinates, writer, true, idx),
+        "Polygon" => process_polygon(coordinates, writer, true, idx),
+        "MultiPoint" | "MultiLineString" | "MultiPolygon" => {
+            let parts = parts(coordinates)?;
+            match kind {
+                "MultiPoint" => writer.multipoint_begin(parts.len(), idx)?,
+                "MultiLineString" => writer.multilinestring_begin(parts.len(), idx)?,
+                _ => writer.multipolygon_begin(parts.len(), idx)?,
+            }
+            for (part_idx, part) in parts.iter().enumerate() {
+                match kind {
+                    "MultiPoint" => process_position(part, writer, part_idx)?,
+                    "MultiLineString" => process_line(part, writer, false, part_idx)?,
+                    _ => process_polygon(part, writer, false, part_idx)?,
+                }
+            }
+            match kind {
+                "MultiPoint" => writer.multipoint_end(idx),
+                "MultiLineString" => writer.multilinestring_end(idx),
+                _ => writer.multipolygon_end(idx),
             }
         }
-        "MultiLineString" => {
-            write_header(out, 5);
-            let lines = as_array(coords, "MultiLineString")?;
-            write_u32(out, lines.len())?;
-            for line in lines {
-                write_header(out, 2);
-                write_line_body(out, line)?;
-            }
-        }
-        "MultiPolygon" => {
-            write_header(out, 6);
-            let polygons = as_array(coords, "MultiPolygon")?;
-            write_u32(out, polygons.len())?;
-            for polygon in polygons {
-                write_header(out, 3);
-                write_polygon_body(out, polygon)?;
-            }
-        }
-        other => return Err(format!("unsupported geometry type {other}")),
+        _ => Err(GeozeroError::Geometry("unsupported geometry type".into())),
     }
-    Ok(())
 }
 
-fn as_array<'a>(value: &'a Value, kind: &str) -> Result<&'a Vec<Value>, String> {
+fn parts(value: &Value) -> geozero::error::Result<&[Value]> {
     value
         .as_array()
-        .ok_or_else(|| format!("{kind} coordinates must be an array"))
+        .filter(|parts| u32::try_from(parts.len()).is_ok())
+        .map(Vec::as_slice)
+        .ok_or_else(|| GeozeroError::Geometry("invalid geometry coordinates or part count".into()))
 }
 
-fn write_header(out: &mut Vec<u8>, kind: u32) {
-    out.push(1);
-    out.extend_from_slice(&kind.to_le_bytes());
+fn process_position<P: GeomProcessor>(
+    value: &Value,
+    writer: &mut P,
+    idx: usize,
+) -> geozero::error::Result<()> {
+    let position = parts(value)?;
+    let ordinate = |idx| {
+        position
+            .get(idx)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+            .ok_or_else(|| GeozeroError::Geometry("invalid XY coordinate".into()))
+    };
+    writer.xy(ordinate(0)?, ordinate(1)?, idx)
 }
 
-fn write_point_body(out: &mut Vec<u8>, point: (f64, f64)) {
-    out.extend_from_slice(&point.0.to_le_bytes());
-    out.extend_from_slice(&point.1.to_le_bytes());
-}
-
-fn write_line_body(out: &mut Vec<u8>, coords: &Value) -> Result<(), String> {
-    let points = as_array(coords, "LineString")?;
-    write_u32(out, points.len())?;
-    for point in points {
-        write_point_body(out, point_coords(point)?);
+fn process_line<P: GeomProcessor>(
+    value: &Value,
+    writer: &mut P,
+    tagged: bool,
+    idx: usize,
+) -> geozero::error::Result<()> {
+    let positions = parts(value)?;
+    writer.linestring_begin(tagged, positions.len(), idx)?;
+    for (idx, position) in positions.iter().enumerate() {
+        process_position(position, writer, idx)?;
     }
-    Ok(())
+    writer.linestring_end(tagged, idx)
 }
 
-fn write_polygon_body(out: &mut Vec<u8>, coords: &Value) -> Result<(), String> {
-    let rings = as_array(coords, "Polygon")?;
-    write_u32(out, rings.len())?;
-    for ring in rings {
-        write_line_body(out, ring)?;
+fn process_polygon<P: GeomProcessor>(
+    value: &Value,
+    writer: &mut P,
+    tagged: bool,
+    idx: usize,
+) -> geozero::error::Result<()> {
+    let rings = parts(value)?;
+    writer.polygon_begin(tagged, rings.len(), idx)?;
+    for (idx, ring) in rings.iter().enumerate() {
+        process_line(ring, writer, false, idx)?;
     }
-    Ok(())
-}
-
-fn write_u32(out: &mut Vec<u8>, value: usize) -> Result<(), String> {
-    let value = u32::try_from(value).map_err(|_| "geometry part count exceeds u32".to_string())?;
-    out.extend_from_slice(&value.to_le_bytes());
-    Ok(())
-}
-
-fn point_coords(value: &Value) -> Result<(f64, f64), String> {
-    let coords = as_array(value, "Point")?;
-    let x = coords
-        .first()
-        .and_then(Value::as_f64)
-        .ok_or("point x is missing or not a number")?;
-    let y = coords
-        .get(1)
-        .and_then(Value::as_f64)
-        .ok_or("point y is missing or not a number")?;
-    Ok((x, y))
+    writer.polygon_end(tagged, idx)
 }
 
 /// The coordinate of a WKB point.
@@ -376,187 +443,4 @@ fn read_f64(wkb: &[u8], cursor: &mut usize, order: u8) -> Option<f64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn native_decoder_preserves_holes_and_multipart_geometry() {
-        let fixtures = [
-            json!({"type":"Point","coordinates":[30.0,-2.0]}),
-            json!({"type":"LineString","coordinates":[[1.0,2.0],[3.0,4.0]]}),
-            json!({"type":"Polygon","coordinates":[[[0.0,0.0],[9.0,0.0],[9.0,9.0],[0.0,0.0]],[[1.0,1.0],[2.0,1.0],[2.0,2.0],[1.0,1.0]]]}),
-            json!({"type":"MultiPoint","coordinates":[[1.0,2.0],[3.0,4.0]]}),
-            json!({"type":"MultiLineString","coordinates":[[[1.0,2.0],[3.0,4.0]],[]]}),
-            json!({"type":"MultiPolygon","coordinates":[[[[0.0,0.0],[2.0,0.0],[2.0,2.0],[0.0,0.0]]],[]]}),
-        ];
-        for geometry in fixtures {
-            let bytes = geometry_to_wkb(&geometry).unwrap();
-            assert_eq!(geometry_from_wkb(&bytes, 100).unwrap(), geometry);
-            for end in 0..bytes.len() {
-                assert!(geometry_from_wkb(&bytes[..end], 100).is_err());
-            }
-            assert!(geometry_from_wkb(&bytes, 1).is_err());
-            let mut trailing = bytes;
-            trailing.push(0);
-            assert!(geometry_from_wkb(&trailing, 100).is_err());
-        }
-    }
-
-    #[test]
-    fn native_decoder_rejects_nonfinite_wrong_types_and_hostile_counts() {
-        let mut point = vec![0];
-        point.extend_from_slice(&1_u32.to_be_bytes());
-        point.extend_from_slice(&30_f64.to_be_bytes());
-        point.extend_from_slice(&(-2_f64).to_be_bytes());
-        assert_eq!(
-            geometry_from_wkb(&point, 2).unwrap()["coordinates"],
-            json!([30.0, -2.0])
-        );
-        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            point[5..13].copy_from_slice(&bad.to_be_bytes());
-            assert!(geometry_from_wkb(&point, 2).is_err());
-        }
-        let valid = geometry_to_wkb(&json!({"type":"Point","coordinates":[1.0,2.0]})).unwrap();
-        let mut multi = vec![1];
-        multi.extend_from_slice(&5_u32.to_le_bytes()); // MultiLineString cannot contain Point.
-        multi.extend_from_slice(&1_u32.to_le_bytes());
-        multi.extend_from_slice(&valid);
-        assert!(geometry_from_wkb(&multi, 100).is_err());
-        multi[5..9].copy_from_slice(&u32::MAX.to_le_bytes());
-        assert!(geometry_from_wkb(&multi, usize::MAX).is_err());
-        let mut invalid_order = valid;
-        invalid_order[0] = 2;
-        assert!(geometry_from_wkb(&invalid_order, 100).is_err());
-    }
-
-    #[test]
-    fn native_decoder_bounds_nested_empty_collections() {
-        let mut bytes = vec![1];
-        bytes.extend_from_slice(&7_u32.to_le_bytes());
-        bytes.extend_from_slice(&0_u32.to_le_bytes());
-        assert_eq!(
-            geometry_from_wkb(&bytes, 1).unwrap(),
-            json!({"type":"GeometryCollection","geometries":[]})
-        );
-        for _ in 0..40 {
-            let mut outer = vec![1];
-            outer.extend_from_slice(&7_u32.to_le_bytes());
-            outer.extend_from_slice(&1_u32.to_le_bytes());
-            outer.extend(bytes);
-            bytes = outer;
-        }
-        assert!(
-            geometry_from_wkb(&bytes, 100)
-                .unwrap_err()
-                .contains("nesting")
-        );
-    }
-
-    #[test]
-    fn truncated_blob_retains_its_read_prefix_during_relocation() {
-        let mut truncated = vec![1];
-        truncated.extend_from_slice(&2_u32.to_le_bytes());
-        truncated.extend_from_slice(&2_u32.to_le_bytes());
-        truncated.extend_from_slice(&100_f64.to_le_bytes());
-        truncated.extend_from_slice(&100_f64.to_le_bytes());
-        let valid = geometry_to_wkb(&json!({"type":"Point","coordinates":[1.,2.]}));
-        assert_eq!(
-            bbox_of(&[Some(truncated), valid]),
-            Some([1., 2., 100., 100.])
-        );
-    }
-
-    #[test]
-    fn a_point_is_twenty_one_bytes_little_endian() {
-        let wkb = geometry_to_wkb(&json!({"type":"Point","coordinates":[30.0,-2.0]})).unwrap();
-        assert_eq!(wkb.len(), 21, "1 byte order + 4 type + 2 x f64");
-        assert_eq!(wkb[0], 1, "little endian flag");
-        assert_eq!(u32::from_le_bytes(wkb[1..5].try_into().unwrap()), 1);
-        assert_eq!(f64::from_le_bytes(wkb[5..13].try_into().unwrap()), 30.0);
-        assert_eq!(f64::from_le_bytes(wkb[13..21].try_into().unwrap()), -2.0);
-    }
-
-    #[test]
-    fn a_third_ordinate_is_dropped_from_the_geometry() {
-        let wkb =
-            geometry_to_wkb(&json!({"type":"Point","coordinates":[30.0,-2.0,1500.0]})).unwrap();
-        assert_eq!(wkb.len(), 21, "z belongs in a property column, not in WKB");
-    }
-
-    #[test]
-    fn an_unsupported_geometry_is_refused_rather_than_written_wrong() {
-        assert!(geometry_to_wkb(&json!({"type":"Triangle","coordinates":[]})).is_none());
-        assert!(geometry_to_wkb(&json!({"type":"Point","coordinates":["a","b"]})).is_none());
-    }
-
-    #[test]
-    fn a_point_decodes_back_to_its_coordinate() {
-        let wkb = geometry_to_wkb(&json!({"type":"Point","coordinates":[30.06,-1.94]})).unwrap();
-        assert_eq!(point_xy(&wkb), Some((30.06, -1.94)));
-    }
-
-    #[test]
-    fn a_compound_geometry_is_refused_rather_than_partially_decoded() {
-        let wkb =
-            geometry_to_wkb(&json!({"type":"LineString","coordinates":[[30.0,-1.0],[30.9,-1.2]]}))
-                .unwrap();
-        assert_eq!(
-            point_xy(&wkb),
-            None,
-            "returning the first vertex would be a lie"
-        );
-    }
-
-    #[test]
-    fn bbox_spans_every_geometry_in_the_batch() {
-        let a = geometry_to_wkb(&json!({"type":"Point","coordinates":[29.0,-2.5]}));
-        let b =
-            geometry_to_wkb(&json!({"type":"LineString","coordinates":[[30.0,-1.0],[30.9,-1.2]]}));
-        let bbox = bbox_of(&[a, b, None]).unwrap();
-        assert_eq!(bbox, [29.0, -2.5, 30.9, -1.0]);
-    }
-
-    #[test]
-    fn bbox_of_a_multi_ring_polygon_reads_coordinates_not_length_prefixes() {
-        // The regression that shipped a bbox of ±1.8e308: a polygon with a
-        // hole has a second ring whose point count sits mid-blob, and a
-        // scanner that does not follow the structure reads it as an f64.
-        let polygon = geometry_to_wkb(&json!({
-            "type": "Polygon",
-            "coordinates": [
-                [[29.0, -2.0], [30.0, -2.0], [30.0, -1.0], [29.0, -1.0], [29.0, -2.0]],
-                [[29.4, -1.8], [29.6, -1.8], [29.6, -1.6], [29.4, -1.6], [29.4, -1.8]]
-            ]
-        }))
-        .unwrap();
-        assert_eq!(bbox_of(&[Some(polygon)]).unwrap(), [29.0, -2.0, 30.0, -1.0]);
-    }
-
-    #[test]
-    fn bbox_of_a_multipolygon_follows_every_member() {
-        let multi = geometry_to_wkb(&json!({
-            "type": "MultiPolygon",
-            "coordinates": [
-                [[[29.0, -2.0], [29.5, -2.0], [29.5, -1.5], [29.0, -2.0]]],
-                [[[30.0, -1.0], [30.9, -1.0], [30.9, -0.5], [30.0, -1.0]]]
-            ]
-        }))
-        .unwrap();
-        assert_eq!(bbox_of(&[Some(multi)]).unwrap(), [29.0, -2.0, 30.9, -0.5]);
-    }
-
-    #[test]
-    fn a_truncated_blob_contributes_nothing_rather_than_garbage() {
-        let point = geometry_to_wkb(&json!({"type":"Point","coordinates":[30.0,-2.0]})).unwrap();
-        let good = point.clone();
-        let truncated = point[..12].to_vec();
-        let bbox = bbox_of(&[Some(good), Some(truncated)]).unwrap();
-        assert_eq!(bbox, [30.0, -2.0, 30.0, -2.0]);
-    }
-
-    #[test]
-    fn bbox_is_absent_when_nothing_carried_a_geometry() {
-        assert!(bbox_of(&[None, None]).is_none());
-    }
-}
+mod tests;
