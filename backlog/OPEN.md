@@ -19,7 +19,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 7 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 10 |
 | [10. Voltage drop](#10-voltage-drop) | 3 |
-| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 9 |
+| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 10 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 9 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 4 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 2 |
@@ -246,6 +246,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - `90cf2311` (minor): a bounded PLS workspace export of only the members an edit touches (e.g. the Model 2 cables folder for a creep check) is not possible without first earthing every existing structure. The refusal already names every unearthed structure and its remedy.
 
 - **Imported PLS structure orientation** (needs characterization): a structure's `orientation_rad` is its travel bearing (e.g. 5.0776 rad at Nyamagabe `str-423815a32fed4309-420`), but the imported PLS STRUCT puts its transverse offset in `local_x`; `placed_local_xy` rotates local x by orientation, so imported transverse phase offsets would be placed along the line, and `resolve_directional_strain` reads PLS strain azimuths (1.571/4.712) as transverse and refuses. Compare ds-grid-exchange `pls_cadd_workspace.rs` attachment import with ds-grid-engine `projection.rs` `placed_local_xy` and `structure_placement.rs` `resolve_directional_strain`; prove placement against a PLS reference.
+
+- **Stored `ï¿½` in Gisagara Model 1 structure descriptions (owner-approved data repair pending)** (2026-10-20): ds-network `8c4e3024` fixes the decoders (per-line Windows-1252 `ds_io::pls_text`; byte-exact `pls_struct` geometry lines), but stored revisions keep the damaged `structure_types` text that every MV booklet prints faithfully. Package `sha256:e89b7a1c0416d65879aad8829c6a6faffc55105b746f4e683502620cec03bdc1` (authored `rev:ac5cb6985a93cea7e7ebd859857490660eec9c3177d70deb85e7163b6d716b47`) is `model_3a3b10e2146b7e7219bef7f7912316f3d8f0416bb5c50abbb0eaf786199733ba` in `wnmajona_edcl_rural_electrification_template` (revision `mig_e89b7a1c0416d65879aad8829c6a6faf`) and `czgmdwth_gisagara` (revision `rev-79def71dce4cdf6c2450a24d7d96a716c7b6ed92c652ff283a65028fcffe65b4`). There `j-w-S190.012` (45 placed) and `j-w-S255.012` (2) read `STRUCTURE TYPE J: H-POLE STRUCTURE - DEVIATION LESS THAN 15ï¿½`, and `j-w-60d-S190.012` (13) reads `… LESS THAN 60ï¿½`. U+FFFD lost the original byte, so no deterministic repair exists. The clean source is the template's test copy `model_31e0fb95c3c90f1cb228896392db12a5bc1a86377cc11f97adb46f855e1562cf` (`mig_93686db0040b8c8a52d3783eb79aa7a5`, `sha256:93686db0040b8c8a52d3783eb79aa7a59cdb04ed98e6b9cf9658921e0cd58cf1`): the same members read `… LESS THAN 15º`, `… LESS THAN 15º` and `… LESS THAN 60º`, as Model 3 does. On owner approval, save one revision that changes only those three type descriptions to that text. The package also holds damaged native copies `dc487ec3…/j-w-S190.012`, `cda18a65…/j-w-60d-S190.012` and `6bb1537e…/j-w-S255.012` (U+FFFD on the name line, 0xBA in the support block) beside clean ones.
 
 ## 12. DS Grid engineering (Codex main)
 
