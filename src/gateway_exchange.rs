@@ -82,6 +82,8 @@ pub mod map_state;
 pub mod style_catalog;
 #[cfg(feature = "durable-store")]
 pub mod survey_media;
+#[cfg(feature = "durable-store")]
+pub mod messaging_outbox;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub(crate) mod browser;
