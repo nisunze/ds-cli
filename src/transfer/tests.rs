@@ -674,3 +674,42 @@ fn an_operator_reads_a_cause_without_any_address() {
     );
     assert_eq!(Cause::Cancelled.describe(), "the transfer was cancelled");
 }
+
+#[test]
+fn a_single_put_retries_what_a_later_attempt_could_fix_and_nothing_else() {
+    assert_eq!(single_put_end(Some(Ok(200))), Ok(200));
+    assert_eq!(single_put_end(Some(Ok(201))), Ok(201));
+    // A dropped link: the send got no answer.
+    assert_eq!(
+        single_put_end(Some(Err(unanswered()))),
+        Err((Cause::BlockedByHostPolicy, true))
+    );
+    // Out of time waiting for storage.
+    assert_eq!(
+        single_put_end(None),
+        Err((
+            Cause::Timeout {
+                phase: Phase::Response
+            },
+            true
+        ))
+    );
+    // An abort the page asked for.
+    assert_eq!(
+        single_put_end(Some(Err(Cause::Cancelled))),
+        Err((Cause::Cancelled, true))
+    );
+    for status in [408, 429, 500, 503] {
+        assert_eq!(
+            single_put_end(Some(Ok(status))),
+            Err((Cause::HttpStatus { status }, true))
+        );
+    }
+    // Control: storage refusing the request is not fixed by sending it again.
+    for status in [400, 403, 404, 413] {
+        assert_eq!(
+            single_put_end(Some(Ok(status))),
+            Err((Cause::HttpStatus { status }, false))
+        );
+    }
+}

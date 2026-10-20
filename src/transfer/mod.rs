@@ -54,6 +54,33 @@ pub enum SessionRefusal {
     NonDefaultPort,
 }
 
+/// What a send that got no answer means. A browser reports a dropped link and
+/// a platform refusal the same way, without a status, so both read as the
+/// platform's refusal and [`Cause::retryable`] lets a later attempt try again.
+/// Every executor maps an unanswered send through this one rule.
+#[cfg(any(test, all(feature = "wasm", target_arch = "wasm32")))]
+pub(crate) fn unanswered() -> Cause {
+    Cause::BlockedByHostPolicy
+}
+
+/// How one single-request PUT ended: the status storage committed with, or
+/// the cause and whether a later attempt could fix it, by the same
+/// classification the resumable machine acts on. `None` is a send that ran
+/// out of time.
+#[cfg(any(test, all(feature = "wasm", target_arch = "wasm32")))]
+pub(crate) fn single_put_end(answer: Option<Result<u16, Cause>>) -> Result<u16, (Cause, bool)> {
+    let cause = match answer {
+        Some(Ok(status @ (200 | 201))) => return Ok(status),
+        Some(Ok(status)) => Cause::HttpStatus { status },
+        Some(Err(cause)) => cause,
+        None => Cause::Timeout {
+            phase: Phase::Response,
+        },
+    };
+    let retryable = cause.retryable();
+    Err((cause, retryable))
+}
+
 /// Validate the DS-minted resumable-session credential before DNS or any
 /// request: HTTPS on the default port, a storage host, no user info. Every
 /// host's executor asks this one rule.

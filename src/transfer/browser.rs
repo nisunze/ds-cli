@@ -22,8 +22,8 @@ use futures_util::StreamExt;
 use gloo_timers::future::TimeoutFuture;
 
 use super::{
-    machine::apply, validated_storage_session, Action, Cause, Event, Phase, RangeObservation,
-    TransferPlan, TransferState,
+    machine::apply, unanswered, validated_storage_session, Action, Cause, Event, Phase,
+    RangeObservation, TransferPlan, TransferState,
 };
 
 const PROBE_TIMEOUT_MS: u64 = 30_000;
@@ -137,10 +137,7 @@ async fn put(
         builder = builder.body(part);
     }
     let exchange = async {
-        let response = builder
-            .send()
-            .await
-            .map_err(|_| Cause::BlockedByHostPolicy)?;
+        let response = builder.send().await.map_err(|_| unanswered())?;
         if response.url().as_str() != session {
             return Err(Cause::BlockedByHostPolicy);
         }
@@ -344,7 +341,7 @@ pub(crate) mod exports {
     use super::{upload, within, Link, PartSource, Upload, Uploaded};
     use crate::gateway_exchange::browser::{facts, typed, GatewayHost};
     use crate::gateway_exchange::Refusal;
-    use crate::transfer::{validated_storage_session, Cause, Phase};
+    use crate::transfer::{single_put_end, unanswered, validated_storage_session, Cause};
 
     /// The most bytes one single-request upload carries.
     const SINGLE_PUT_MAX_BYTES: u64 = 64 * 1024 * 1024;
@@ -657,11 +654,9 @@ export interface UploadSource {
                 .body(bytes)
                 .send()
                 .await
-                .map_err(|_| Cause::BlockedByHostPolicy)?;
-            if response.url().as_str() != url {
-                return Err(Cause::BlockedByHostPolicy);
-            }
-            Ok(response.status().as_u16())
+                .map_err(|_| unanswered())?;
+            // A redirect away from the admitted URL is the host policy refusing it.
+            Ok((response.url().as_str() == url, response.status().as_u16()))
         };
         let bounded = std::pin::pin!(within(sent, timeout_ms));
         let answer = match signal {
@@ -679,23 +674,19 @@ export interface UploadSource {
         if facts(host).map_or(true, |after| after.principal != before.principal) {
             return failed(Cause::Cancelled, false);
         }
-        match answer {
-            None => failed(
-                Cause::Timeout {
-                    phase: Phase::Response,
-                },
-                true,
-            ),
-            Some(Err(cause)) => failed(cause, false),
-            Some(Ok(status @ (200 | 201))) => UploadOutcome::Done {
+        let answer = match answer {
+            Some(Ok((false, _))) => return failed(Cause::BlockedByHostPolicy, false),
+            Some(Ok((true, status))) => Some(Ok(status)),
+            Some(Err(cause)) => Some(Err(cause)),
+            None => None,
+        };
+        match single_put_end(answer) {
+            Ok(status) => UploadOutcome::Done {
                 committed: size,
                 status,
                 answer: String::new(),
             },
-            Some(Ok(status)) => failed(
-                Cause::HttpStatus { status },
-                status == 408 || status == 429 || status >= 500,
-            ),
+            Err((cause, retryable)) => failed(cause, retryable),
         }
     }
 
