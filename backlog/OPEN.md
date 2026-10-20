@@ -11,7 +11,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 6 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 8 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 9 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
@@ -129,6 +129,8 @@ Found by a read-only trace of `ds solar` against installed canary (2026-10-20), 
 - **Stabilization after the 7 October test sweep** (owner, 2026-10-07): the full list is in [STABILIZATION.md](STABILIZATION.md). It may touch any other backlog surface it intersects.
 
 - **National ID and phone in external reports: not urgent, no code now** (owner, 2026-10-07): DS does handle national IDs. Reporter `a69402e` hides `nid`, `national_id` and phone from every external report projection, but that restriction came from the datasolutions.rw product context and was not meant for everything. Kernel `3e23208` overstated it as a general "personal identity never prints" rule, and reporter `ac7e740` aligned the XLSX and as-built schedule tests with `a69402e`, so the former XLSX test failure is green. Implement no identity removal or restoration until the owner scopes it; correct the `3e23208` wording when this is taken up.
+
+- **Hosting validation tests a different Kernel unit than it ships** (2026-10-20 Linux canary release). Since ds-web `7120a4a10` / Kernel `578c56f` the page Kernel's platform, lane and gateway are build constants, and the Vitest suite is written for the local-topology `desktop-local` unit (tests stand at a page origin; `autoprocess-native-process` expects the desktop platform). `ds-web/firebase-deploy.sh` captures one `vendor/` snapshot and both validates (`npm run check`, `npm run test:web`) and bundles it. A `web-canary` vendor therefore fails 4 tests (`gateway-exchange-artifacts` ×2, `autoprocess-native-process` ×2), while a `desktop-local` vendor passes them but would ship a desktop/local Kernel to the page. The 10-20 canary shipped with `--no-tests` after `check` + `test:web` passed at ds-web `08ca93fd7` on a `desktop-local` unit from Kernel `a12baf9`, plus a signed-out headless-Chrome smoke of the `web-canary` bundle (one Kernel instance per load, no traps). Make the shared validation run on the test-target unit while the bundle captures the lane's web target (two receipt-verified vendor sets), prove one canary deploy without `--no-tests`, then remove this entry.
 
 ## 3. Template creation code
 
