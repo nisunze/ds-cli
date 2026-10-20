@@ -381,13 +381,36 @@ impl Exchange for DeviceApproval {
     }
 }
 
+/// The account's profile from Brain, or as stored by a write, kept so the
+/// next open paints it at once and offline.
+#[cfg(feature = "durable-store")]
+pub async fn kept_profile<C>(edge: &impl super::retained::Edge, call: C) -> Result<C::Output, Refusal>
+where
+    C: Exchange<Output = Map<String, Value>>,
+{
+    let kind = crate::retained_reads::Kind::AccountProfile;
+    super::retained::keep_fresh(edge, kind, None, "", call).await
+}
+
+/// The profile this device holds, with no transport.
+#[cfg(feature = "durable-store")]
+pub async fn held_profile(edge: &impl super::retained::Edge) -> Option<Map<String, Value>> {
+    let kind = crate::retained_reads::Kind::AccountProfile;
+    super::retained::kept(edge, kind, None, "")
+        .await
+        .map(|held| held.value)
+}
+
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
     use super::{
-        Capabilities, DeviceApproval, DeviceDecision, IdentityRepair, Profile, ProfileWrite,
+        held_profile, kept_profile, Capabilities, DeviceApproval, DeviceDecision, IdentityRepair,
+        Profile, ProfileWrite,
     };
-    use crate::gateway_exchange::browser::{attempt, run, typed, GatewayHost};
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::browser::{attempt, rejection, run, typed, GatewayHost};
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
     use serde_json::{Map, Value};
     use wasm_bindgen::prelude::*;
 
@@ -409,21 +432,43 @@ mod exports {
         ))
     }
 
-    /// The account's own profile document.
+    /// The account's own profile document, kept for the next open.
     #[wasm_bindgen(js_name = accountProfile, unchecked_return_type = "Record<string, unknown>")]
-    pub async fn account_profile(host: GatewayHost) -> Result<JsValue, JsValue> {
-        typed(&run(&host, Profile).await?)
+    pub async fn account_profile(host: GatewayHost, store: StoreHost) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        typed(
+            &kept_profile(&edge, Profile)
+                .await
+                .map_err(|refusal| rejection(&refusal))?,
+        )
     }
 
-    /// Write fields of the account's own profile; answers the stored profile.
+    /// The profile this device holds, at once and offline.
+    #[wasm_bindgen(
+        js_name = accountProfileHeld,
+        unchecked_return_type = "Record<string, unknown> | undefined"
+    )]
+    pub async fn account_profile_held(host: GatewayHost, store: StoreHost) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        typed(&held_profile(&edge).await)
+    }
+
+    /// Write fields of the account's own profile; answers the stored profile,
+    /// kept for the next open.
     #[wasm_bindgen(js_name = accountProfileWrite, unchecked_return_type = "Record<string, unknown>")]
     pub async fn account_profile_write(
         host: GatewayHost,
+        store: StoreHost,
         #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
     ) -> Result<JsValue, JsValue> {
         let fields: Map<String, Value> =
             tsify::serde_wasm_bindgen::from_value(fields).map_err(unreadable)?;
-        typed(&run(&host, ProfileWrite { fields }).await?)
+        let edge = BrowserEdge::new(host, store);
+        typed(
+            &kept_profile(&edge, ProfileWrite { fields })
+                .await
+                .map_err(|refusal| rejection(&refusal))?,
+        )
     }
 
     /// The capabilities the account holds, for the platform or one project.

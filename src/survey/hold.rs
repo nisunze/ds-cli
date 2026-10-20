@@ -592,6 +592,15 @@ mod tests {
     }
 
     #[test]
+    fn a_row_without_metadata_is_held_with_no_cursor() {
+        let row = json!({"type":"Feature","geometry":{"type":"Point","coordinates":[29.5,-2.0]},
+                         "properties":{"id":"a"}});
+        let applied = apply("p", "f", None, &Filter::default(), ReadMode::Replace, &stream(&[row]),
+            at("2026-09-25T09:58:00Z")).unwrap();
+        assert_eq!((applied.rows.len(), applied.manifest.cursor), (1, None));
+    }
+
+    #[test]
     fn a_filter_has_one_spelling_and_says_what_it_covers() {
         let a = Filter {
             surveyors: vec!["b".into(), "a".into(), "a".into()],

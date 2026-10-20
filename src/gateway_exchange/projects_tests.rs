@@ -133,3 +133,19 @@ fn an_action_outside_its_endpoint_or_with_a_bad_project_is_never_sent() {
         PROJECT_INVALID
     );
 }
+
+#[cfg(feature = "durable-store")]
+#[test]
+fn a_directory_is_kept_per_state_and_account_and_painted_offline() {
+    use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
+    let edge = TestEdge::new();
+    assert_eq!(block_on(held_directory(&edge, "active")), None);
+    let listed = json!({"status": "active", "projects": [{"eds_project_id": "it_rwanda"}]});
+    edge.json(json!({"success": true, "data": listed}));
+    assert_eq!(block_on(directory(&edge, "active")).unwrap(), listed);
+    edge.online.set(false);
+    assert_eq!(block_on(held_directory(&edge, "active")), Some(listed));
+    assert_eq!(block_on(held_directory(&edge, "archived")), None);
+    edge.sign_in("someone-else");
+    assert_eq!(block_on(held_directory(&edge, "active")), None);
+}

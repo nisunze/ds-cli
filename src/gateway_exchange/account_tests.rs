@@ -235,3 +235,24 @@ fn a_device_decision_outside_its_contract_is_never_sent() {
     anonymous.uid.clear();
     assert!(refused(anonymous));
 }
+
+#[cfg(feature = "durable-store")]
+#[test]
+fn the_profile_is_kept_from_a_read_and_from_a_write() {
+    use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
+    let edge = TestEdge::new();
+    assert_eq!(block_on(held_profile(&edge)), None);
+    edge.json(json!({"success": true, "data": {"display_name": "Ana"}}));
+    block_on(kept_profile(&edge, Profile)).unwrap();
+    assert_eq!(
+        block_on(held_profile(&edge)).unwrap().get("display_name"),
+        Some(&json!("Ana"))
+    );
+    edge.json(json!({"success": true, "data": {"display_name": "Ana M"}}));
+    let fields = json!({"display_name": "Ana M"}).as_object().cloned().unwrap();
+    block_on(kept_profile(&edge, ProfileWrite { fields })).unwrap();
+    assert_eq!(
+        block_on(held_profile(&edge)).unwrap().get("display_name"),
+        Some(&json!("Ana M"))
+    );
+}

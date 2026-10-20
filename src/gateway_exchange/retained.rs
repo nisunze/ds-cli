@@ -240,6 +240,76 @@ pub async fn forget(
     call(edge, operation, owner).await.map(drop)
 }
 
+/// What this device holds under one key, with no transport: what an open
+/// paints at once and offline. A store that cannot answer holds nothing.
+pub async fn kept<T: DeserializeOwned>(
+    edge: &impl Edge,
+    kind: Kind,
+    in_project: Option<&str>,
+    key: &str,
+) -> Option<Held<T>> {
+    read(edge, kind, in_project, key).await.ok()?.held
+}
+
+/// One exchange's fresh answer, kept under the account its read observed so
+/// the next open paints it at once and offline. Keeping is a cache: a store
+/// that cannot keep it never hides the answer.
+pub async fn keep_fresh<C>(
+    edge: &impl Edge,
+    kind: Kind,
+    in_project: Option<&str>,
+    key: &str,
+    call: C,
+) -> Result<C::Output, Refusal>
+where
+    C: Exchange,
+    C::Output: Serialize,
+{
+    let observed = read::<Value>(edge, kind, in_project, key).await.ok();
+    let fresh = edge.fetch(call).await?;
+    if let Some(observed) = observed {
+        let owner = observed.owner.as_deref();
+        let _ = write(edge, owner, kind, in_project, key, &fresh, None).await;
+    }
+    Ok(fresh)
+}
+
+/// The held answer while offline or when no answer arrives, else the fresh
+/// one, kept. A refusal Brain decided (signed out, forbidden, invalid) is
+/// never papered over by what is held.
+pub async fn held_or_fresh<C>(
+    edge: &impl Edge,
+    kind: Kind,
+    in_project: Option<&str>,
+    key: &str,
+    call: C,
+) -> Result<C::Output, Refusal>
+where
+    C: Exchange,
+    C::Output: Serialize + DeserializeOwned,
+{
+    // `owner` is the store's answer: `None` when the store could not read.
+    let (owner, held) = match read::<C::Output>(edge, kind, in_project, key).await {
+        Ok(observed) => (Some(observed.owner), observed.held.map(|held| held.value)),
+        Err(_) => (None, None),
+    };
+    if !edge.online() {
+        if let Some(value) = held {
+            return Ok(value);
+        }
+    }
+    match edge.fetch(call).await {
+        Ok(fresh) => {
+            if let Some(owner) = &owner {
+                let _ = write(edge, owner.as_deref(), kind, in_project, key, &fresh, None).await;
+            }
+            Ok(fresh)
+        }
+        Err(refusal) if refusal.status.is_none() && !refusal.signed_out => held.ok_or(refusal),
+        Err(refusal) => Err(refusal),
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod testing;
 

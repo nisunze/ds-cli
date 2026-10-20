@@ -178,3 +178,22 @@ fn push_config_registration_and_revoke_are_read_without_secrets() {
     };
     assert!(matches!(start(plain), Step::Refused(r) if r.code == INPUT_INVALID));
 }
+
+#[cfg(feature = "durable-store")]
+#[test]
+fn the_newest_page_is_kept_and_a_later_page_never_replaces_it() {
+    use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
+    let edge = TestEdge::new();
+    assert_eq!(block_on(held_page(&edge)), None);
+    edge.json(json!({"success": true, "data": {"notifications": [
+        {"id": "n1", "title": "Report ready", "severity": "success", "created_at": 5}
+    ], "has_more": true, "next_cursor": "c2", "limit": 50}}));
+    let newest = block_on(page(&edge, Some(50), None)).unwrap();
+    assert_eq!(newest.notifications[0].id, "n1");
+    edge.json(json!({"success": true, "data": {"notifications": [
+        {"id": "n0", "title": "Older", "created_at": 1}
+    ], "has_more": false, "limit": 50}}));
+    block_on(page(&edge, Some(50), Some("c2".into()))).unwrap();
+    edge.online.set(false);
+    assert_eq!(block_on(held_page(&edge)), Some(newest));
+}

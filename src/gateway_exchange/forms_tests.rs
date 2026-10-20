@@ -69,3 +69,36 @@ fn an_unknown_action_or_project_is_never_sent() {
         PROJECT_INVALID
     );
 }
+
+#[cfg(feature = "durable-store")]
+#[test]
+fn a_form_read_is_kept_and_a_change_marks_it_stale() {
+    use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
+    let edge = TestEdge::new();
+    let get = json!({"action": "get", "slug": "poles", "ignored": null})
+        .as_object()
+        .cloned()
+        .unwrap();
+    assert_eq!(block_on(held(&edge, FormsEndpoint::FormFactory, &get)).unwrap(), None);
+    let form = json!({"status": "success", "form": {"slug": "poles"}});
+    edge.json(form.clone());
+    assert_eq!(
+        block_on(request(&edge, FormsEndpoint::FormFactory, get.clone())).unwrap(),
+        form
+    );
+    let same = json!({"slug": "poles", "action": "get"}).as_object().cloned().unwrap();
+    let kept = block_on(held(&edge, FormsEndpoint::FormFactory, &same)).unwrap();
+    assert_eq!(kept, Some(HeldForms { value: form.clone(), stale: false }));
+    edge.json(json!({"status": "success"}));
+    let update = json!({"action": "update", "slug": "poles"}).as_object().cloned().unwrap();
+    block_on(request(&edge, FormsEndpoint::FormFactory, update.clone())).unwrap();
+    let stale = block_on(held(&edge, FormsEndpoint::FormFactory, &get)).unwrap();
+    assert_eq!(stale, Some(HeldForms { value: form, stale: true }));
+    assert!(block_on(held(&edge, FormsEndpoint::FormFactory, &update)).is_err());
+    let activate = json!({"action": "activate", "project_id": "it_rwanda"})
+        .as_object()
+        .cloned()
+        .unwrap();
+    assert!(FormsEndpoint::ProjectForms.kept("activate"));
+    assert_eq!(block_on(held(&edge, FormsEndpoint::ProjectForms, &activate)).unwrap(), None);
+}

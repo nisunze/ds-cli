@@ -353,10 +353,22 @@ pub async fn refresh_children(
     Ok(rows)
 }
 
+/// One unit's boundary: what this device holds while offline or when no
+/// answer arrives, else Brain's, kept for the next open.
+#[cfg(feature = "durable-store")]
+pub async fn boundary(
+    edge: &impl super::retained::Edge,
+    call: Boundary,
+) -> Result<AdminBoundary, Refusal> {
+    let kind = crate::retained_reads::Kind::AdminBoundary;
+    let key = call.code.clone();
+    super::retained::held_or_fresh(edge, kind, None, &key, call).await
+}
+
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::{held_children, refresh_children, Boundary, Children, Descendants, Locate, Name};
+    use super::{boundary, held_children, refresh_children, Boundary, Children, Descendants, Locate, Name};
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};
     use crate::gateway_exchange::retained::browser::BrowserEdge;
@@ -417,22 +429,24 @@ mod exports {
         )
     }
 
-    /// One unit's boundary as GeoJSON.
+    /// One unit's boundary as GeoJSON: held while offline, else fresh and
+    /// kept.
     #[wasm_bindgen(js_name = adminBoundary, unchecked_return_type = "AdminBoundary")]
     pub async fn admin_boundary(
         host: GatewayHost,
+        store: StoreHost,
         code: String,
         timeout_ms: Option<u32>,
     ) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        let call = Boundary {
+            code,
+            timeout_ms: deadline(timeout_ms),
+        };
         typed(
-            &run(
-                &host,
-                Boundary {
-                    code,
-                    timeout_ms: deadline(timeout_ms),
-                },
-            )
-            .await?,
+            &boundary(&edge, call)
+                .await
+                .map_err(|refusal| rejection(&refusal))?,
         )
     }
 

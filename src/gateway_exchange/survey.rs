@@ -1,13 +1,16 @@
-//! Survey entries over the gateway: one form's entries as Brain streams them
-//! (`query_entries`, NDJSON ending in a summary line), one entry correction or
+//! Survey entries over the gateway. A page holds each form it reads the way
+//! the core does (`survey::hold`): the kernel decides reuse | delta |
+//! replace over what this device holds, Brain streams `query_entries` when
+//! asked, and the verified rows are kept on the page's Kernel store so the
+//! next open, online or not, paints at once. Also one entry correction or
 //! deletion from the capture outbox, and the audit of entries a person chose
-//! to discard. Brain authorizes each project and form; the survey read policy
-//! decides what the streamed rows mean.
+//! to discard. Brain authorizes each project and form.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{data, project_reference, Admitted, Exchange, Method, Plan, Refusal, Request};
+use crate::survey::hold::{self, Filter, Manifest};
 
 const DATA_PATH: &str = "/api/v1/data";
 const MUTATE_PATH: &str = "/api/v1/entries/mutate";
@@ -21,116 +24,32 @@ const ENTRIES_TIMEOUT_MS: u64 = 900_000;
 const MUTATE_TIMEOUT_MS: u64 = 120_000;
 const MUTATE_CAP: u64 = 64 * 1024;
 const DISCARD_MAX_ENTRIES: usize = 5_000;
-const SLUG_MAX_CHARS: usize = 128;
 pub const INPUT_INVALID: &str = "survey_input_invalid";
 pub const INVALID: &str = "survey_answer_invalid";
+/// `local` and nothing covering is held: the core's own code.
+pub const NOT_HELD: &str = "survey_hold_not_held";
 
-fn input_invalid(message: &str) -> Refusal {
+fn input_invalid(message: impl Into<String>) -> Refusal {
     Refusal::new(INPUT_INVALID, message)
 }
 
-/// Which entries of a form a read asks for; every member is optional and an
-/// empty filter reads the whole form.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
-pub struct SurveyFilter {
-    /// `[west, south, east, north]` in degrees.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
-    pub bbox: Option<Vec<f64>>,
-    /// One administrative unit, as Brain resolves it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        all(feature = "wasm", target_arch = "wasm32"),
-        tsify(optional, type = "Record<string, string>")
-    )]
-    pub admin_boundary: Option<Map<String, Value>>,
-    /// A GeoJSON boundary.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        all(feature = "wasm", target_arch = "wasm32"),
-        tsify(optional, type = "Record<string, unknown>")
-    )]
-    pub boundary: Option<Map<String, Value>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
-    pub date_from: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
-    pub date_to: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
-    pub surveyors: Option<Vec<String>>,
-}
-
-/// One form's entries, filtered, optionally only those changed since a
-/// cutoff and with their tombstones.
+/// The `query_entries` request the hold decided, streamed as NDJSON.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Entries {
+pub struct Query {
     pub project: String,
-    pub form: String,
-    pub filter: SurveyFilter,
-    pub updated_after: Option<String>,
-    pub include_tombstones: bool,
+    pub body: Value,
 }
 
-fn slug(text: &str) -> bool {
-    !text.trim().is_empty()
-        && text.chars().count() <= SLUG_MAX_CHARS
-        && !text.chars().any(char::is_control)
-}
-
-impl Exchange for Entries {
+impl Exchange for Query {
     /// Every streamed line in order: the entries, then Brain's summary.
     type Output = Vec<Value>;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        let project = project_reference(&self.project)?;
-        if !slug(&self.form) {
-            return Err(input_invalid("A survey read names one form."));
+        project_reference(&self.project)?;
+        if self.body["action"] != hold::QUERY_ACTION || self.body["eds_project_id"] != self.project.as_str() {
+            return Err(input_invalid("A survey read is one query_entries of its project."));
         }
-        if self
-            .filter
-            .bbox
-            .as_ref()
-            .is_some_and(|bbox| bbox.len() != 4)
-        {
-            return Err(input_invalid(
-                "A survey bbox is west, south, east and north.",
-            ));
-        }
-        let mut body = json!({"action": "query_entries", "eds_project_id": project,
-            "form_slugs": [self.form]});
-        let filter = &self.filter;
-        if let Some(bbox) = &filter.bbox {
-            body["bbox"] = json!(bbox);
-        }
-        if let Some(admin) = &filter.admin_boundary {
-            body["filter_admin_boundary"] = Value::Object(admin.clone());
-        }
-        if let Some(boundary) = &filter.boundary {
-            body["filter_boundary"] = Value::Object(boundary.clone());
-        }
-        if let Some(from) = filter.date_from.as_deref().filter(|date| !date.is_empty()) {
-            body["date_from"] = json!(from);
-        }
-        if let Some(to) = filter.date_to.as_deref().filter(|date| !date.is_empty()) {
-            body["date_to"] = json!(to);
-        }
-        if let Some(surveyors) = filter.surveyors.as_ref().filter(|list| !list.is_empty()) {
-            body["surveyors"] = json!(surveyors);
-        }
-        if let Some(after) = self
-            .updated_after
-            .as_deref()
-            .filter(|after| !after.is_empty())
-        {
-            body["updated_after"] = json!(after);
-        }
-        if self.include_tombstones {
-            body["exclude_deleted"] = json!(false);
-        }
-        Ok(Request::post(DATA_PATH, body)
+        Ok(Request::post(DATA_PATH, self.body.clone())
             .timeout_ms(ENTRIES_TIMEOUT_MS)
             .response_cap(ENTRIES_CAP)
             .ndjson(ENTRIES_MAX_LINES)
@@ -147,6 +66,178 @@ impl Exchange for Entries {
     fn project(&self) -> Option<&str> {
         Some(&self.project)
     }
+}
+
+/// One read of one form, as the window asks it.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct HoldRequest {
+    pub project: String,
+    pub form: String,
+    #[serde(default)]
+    pub filter: Filter,
+    /// `auto` (the default), `delta`, `full` or `local`.
+    #[serde(default)]
+    pub refresh: Option<String>,
+    /// Only rows changed after this instant, from what is held.
+    #[serde(default, rename = "updatedAfter")]
+    pub updated_after: Option<String>,
+}
+
+/// Who answered: the held copy as it was, or a refresh of it.
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Source {
+    Held,
+    Delta,
+    Replace,
+}
+
+/// The rows of one form in the window's view, and what is held of it.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct HoldAnswer {
+    pub source: Source,
+    pub held: Manifest,
+    pub rows: Vec<Value>,
+}
+
+#[cfg(feature = "durable-store")]
+/// What the page's store keeps of one form.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+struct HeldForm {
+    manifest: Manifest,
+    rows: Vec<Value>,
+}
+
+#[cfg(feature = "durable-store")]
+fn refresh_policy(refresh: Option<&str>) -> Result<hold::Refresh, Refusal> {
+    Ok(match refresh.unwrap_or("auto") {
+        "auto" => hold::Refresh::Auto {
+            max_age_seconds: hold::DEFAULT_MAX_AGE_SECONDS,
+        },
+        "delta" => hold::Refresh::Delta,
+        "full" => hold::Refresh::Full,
+        "local" => hold::Refresh::Local,
+        _ => return Err(input_invalid("A survey read refreshes auto, delta, full or local.")),
+    })
+}
+
+#[cfg(feature = "durable-store")]
+fn instant(now_ms: u64) -> Result<time::OffsetDateTime, Refusal> {
+    time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(now_ms) * 1_000_000)
+        .map_err(|_| Refusal::new(INVALID, "The host clock is out of range."))
+}
+
+/// The held rows as NDJSON text, as the core's rows file digests them.
+#[cfg(feature = "durable-store")]
+fn rows_sha256(rows: &[Value]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut digest = Sha256::new();
+    for row in rows {
+        digest.update(row.to_string().as_bytes());
+        digest.update(b"\n");
+    }
+    format!("{:x}", digest.finalize())
+}
+
+#[cfg(feature = "durable-store")]
+fn stream(lines: &[Value]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for line in lines {
+        out.extend_from_slice(line.to_string().as_bytes());
+        out.push(b'\n');
+    }
+    out
+}
+
+/// Answer one read of one form: reuse, refresh or read it, as the kernel
+/// decides over what this device holds, then keep the result. A refresh that
+/// fails leaves what is held as it was.
+#[cfg(feature = "durable-store")]
+pub async fn hold_read(
+    edge: &impl super::retained::Edge,
+    request: HoldRequest,
+) -> Result<HoldAnswer, Refusal> {
+    use hold::{ReadMode, View};
+    let project = project_reference(&request.project)?.to_owned();
+    let form = request.form;
+    if !hold::valid_form_slug(&form) {
+        return Err(input_invalid("A survey read names one exact form slug."));
+    }
+    let refresh = refresh_policy(request.refresh.as_deref())?;
+    let wanted = request.filter.canonical().map_err(input_invalid)?;
+    let now = instant(edge.now_ms())?;
+    let kind = crate::retained_reads::Kind::SurveyHold;
+    // `owner` is the store's answer; `None` when the store could not read.
+    let (owner, held) =
+        match super::retained::read::<HeldForm>(edge, kind, Some(&project), &form).await {
+            Ok(observed) => (Some(observed.owner), observed.held.map(|held| held.value)),
+            Err(_) => (None, None),
+        };
+    let decision = hold::decide(
+        &project,
+        &form,
+        held.as_ref().map(|held| &held.manifest),
+        &wanted,
+        refresh,
+        now,
+    )
+    .map_err(|error| Refusal::new(INVALID, error))?;
+    let (source, kept) = match decision {
+        hold::Decision::NotHeld => {
+            return Err(Refusal::new(NOT_HELD, "Nothing of this form is held here."))
+        }
+        hold::Decision::Reuse => (
+            Source::Held,
+            held.ok_or_else(|| Refusal::new(NOT_HELD, "The held copy vanished."))?,
+        ),
+        hold::Decision::Query { mode, body } => {
+            let lines = edge
+                .fetch(Query {
+                    project: project.clone(),
+                    body,
+                })
+                .await?;
+            // A delta merges onto the held copy under its own filter; a
+            // replace is the requested filter from nothing.
+            let applied = match (mode, held) {
+                (ReadMode::Delta, Some(HeldForm { manifest, rows })) => {
+                    let filter = manifest.filter.clone();
+                    hold::apply(&project, &form, Some((&manifest, rows)), &filter, mode, &stream(&lines), now)
+                }
+                (_, held) => {
+                    let base = held.as_ref().map(|held| (&held.manifest, Vec::new()));
+                    hold::apply(&project, &form, base, &wanted, mode, &stream(&lines), now)
+                }
+            }
+            .map_err(|error| Refusal::new(INVALID, error))?;
+            let mut manifest = applied.manifest;
+            manifest.rows_sha256 = rows_sha256(&applied.rows);
+            let kept = HeldForm {
+                manifest,
+                rows: applied.rows,
+            };
+            if let Some(owner) = &owner {
+                let _ = super::retained::write(edge, owner.as_deref(), kind, Some(&project), &form, &kept, None)
+                    .await;
+            }
+            let source = match mode {
+                ReadMode::Delta => Source::Delta,
+                ReadMode::Replace => Source::Replace,
+            };
+            (source, kept)
+        }
+    };
+    let view = View {
+        bbox: wanted.bbox,
+        updated_after: request.updated_after,
+    };
+    let rows = kept.rows.into_iter().filter(|row| view.admits(row)).collect();
+    Ok(HoldAnswer {
+        source,
+        held: kept.manifest,
+        rows,
+    })
 }
 
 /// One correction or deletion of an existing entry, as the capture outbox
@@ -267,8 +358,10 @@ pub fn mutation_outcome(outcome: Result<Value, Refusal>) -> MutationOutcome {
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::{mutation_outcome, Discarded, Entries, Mutation, SurveyFilter};
-    use crate::gateway_exchange::browser::{attempt, run, typed, GatewayHost};
+    use super::{hold_read, mutation_outcome, Discarded, HoldRequest, Mutation};
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::browser::{attempt, rejection, run, typed, GatewayHost};
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
     use serde_json::{Map, Value};
     use wasm_bindgen::prelude::*;
 
@@ -276,30 +369,24 @@ mod exports {
         js_sys::Error::new(&error.to_string()).into()
     }
 
-    /// One form's entries as Brain streams them: every line in order, the
-    /// summary last.
-    #[wasm_bindgen(js_name = surveyEntriesRead, unchecked_return_type = "Record<string, unknown>[]")]
-    pub async fn survey_entries_read(
+    /// One form's rows in the window's view, from what this device holds,
+    /// refreshed as the kernel decides; `local` never reaches the cloud.
+    #[wasm_bindgen(
+        js_name = surveyHoldRead,
+        unchecked_return_type = "{ source: 'held' | 'delta' | 'replace'; held: Record<string, unknown>; rows: Record<string, unknown>[] }"
+    )]
+    pub async fn survey_hold_read(
         host: GatewayHost,
-        project: String,
-        form: String,
-        #[wasm_bindgen(unchecked_param_type = "SurveyFilter")] filter: JsValue,
-        updated_after: Option<String>,
-        include_tombstones: bool,
+        store: StoreHost,
+        #[wasm_bindgen(
+            unchecked_param_type = "{ project: string; form: string; filter?: { bbox?: [number, number, number, number]; admin_boundary?: { code: string; name?: string }; boundary?: Record<string, unknown>; date_from?: string; date_to?: string; surveyors?: string[] }; refresh?: 'auto' | 'delta' | 'full' | 'local'; updatedAfter?: string }"
+        )]
+        request: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let filter: SurveyFilter = if filter.is_undefined() || filter.is_null() {
-            SurveyFilter::default()
-        } else {
-            tsify::serde_wasm_bindgen::from_value(filter).map_err(unreadable)?
-        };
-        let call = Entries {
-            project,
-            form,
-            filter,
-            updated_after,
-            include_tombstones,
-        };
-        typed(&run(&host, call).await?)
+        let request: HoldRequest =
+            tsify::serde_wasm_bindgen::from_value(request).map_err(unreadable)?;
+        let edge = BrowserEdge::new(host, store);
+        typed(&hold_read(&edge, request).await.map_err(|refusal| rejection(&refusal))?)
     }
 
     /// Send one outbox correction or deletion once; answers how it ended.

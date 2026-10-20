@@ -65,6 +65,12 @@ impl FormsEndpoint {
         }
     }
 
+    /// Whether this device keeps the answer: every read, and a project's form
+    /// activation (the form set a project opens with).
+    pub fn kept(self, action: &str) -> bool {
+        self.read(action) || (self == Self::ProjectForms && action == "activate")
+    }
+
     fn read(self, action: &str) -> bool {
         match self {
             Self::FormFactory => matches!(
@@ -148,11 +154,84 @@ impl Exchange for Forms {
     }
 }
 
+/// The key a form read is kept under: the digest of its endpoint and request.
+#[cfg(feature = "durable-store")]
+fn kept_key(endpoint: FormsEndpoint, request: &Map<String, Value>) -> Result<String, Refusal> {
+    let request: Map<String, Value> = request
+        .iter()
+        .filter(|(_, value)| !value.is_null())
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    let identity = serde_json::json!({"endpoint": endpoint, "request": request});
+    crate::report_export::jcs::sha256(&identity).map_err(|error| Refusal::new(INPUT_INVALID, error))
+}
+
+#[cfg(feature = "durable-store")]
+fn action(request: &Map<String, Value>) -> &str {
+    request
+        .get("action")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+}
+
+/// One request of one form endpoint. A read is kept so the next open paints
+/// it at once and offline; a change Brain accepted marks every kept form
+/// read stale, to be refreshed before it is trusted.
+#[cfg(feature = "durable-store")]
+pub async fn request(
+    edge: &impl super::retained::Edge,
+    endpoint: FormsEndpoint,
+    request: Map<String, Value>,
+) -> Result<Value, Refusal> {
+    let kind = crate::retained_reads::Kind::FormsRead;
+    let call = Forms {
+        endpoint,
+        request: request.clone(),
+    };
+    if endpoint.kept(action(&request)) {
+        let key = kept_key(endpoint, &request)?;
+        return super::retained::keep_fresh(edge, kind, None, &key, call).await;
+    }
+    let answer = edge.fetch(call).await?;
+    // Marking stale changes no value, so it binds to whoever is signed in.
+    let _ = super::retained::invalidate(edge, None, kind, None, None).await;
+    Ok(answer)
+}
+
+/// A kept form read, and whether a change since made it stale.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct HeldForms {
+    pub value: Value,
+    pub stale: bool,
+}
+
+/// What this device holds of one form read, with no transport.
+#[cfg(feature = "durable-store")]
+pub async fn held(
+    edge: &impl super::retained::Edge,
+    endpoint: FormsEndpoint,
+    request: &Map<String, Value>,
+) -> Result<Option<HeldForms>, Refusal> {
+    if !endpoint.kept(action(request)) {
+        return Err(Refusal::new(INPUT_INVALID, "Only a form read is held."));
+    }
+    let kind = crate::retained_reads::Kind::FormsRead;
+    let key = kept_key(endpoint, request)?;
+    Ok(super::retained::kept(edge, kind, None, &key)
+        .await
+        .map(|held| HeldForms {
+            value: held.value,
+            stale: held.invalidated,
+        }))
+}
+
 /// The typed browser export Svelte calls; it runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::{Forms, FormsEndpoint};
-    use crate::gateway_exchange::browser::{run, typed, GatewayHost};
+    use super::{held, request, FormsEndpoint};
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::browser::{rejection, typed, GatewayHost};
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
     use serde_json::{Map, Value};
     use wasm_bindgen::prelude::*;
 
@@ -160,18 +239,50 @@ mod exports {
         js_sys::Error::new(&error.to_string()).into()
     }
 
-    /// One request of one form endpoint; answers Brain's `data` as served.
+    fn parts(endpoint: JsValue, request: JsValue) -> Result<(FormsEndpoint, Map<String, Value>), JsValue> {
+        Ok((
+            tsify::serde_wasm_bindgen::from_value(endpoint).map_err(unreadable)?,
+            tsify::serde_wasm_bindgen::from_value(request).map_err(unreadable)?,
+        ))
+    }
+
+    /// One request of one form endpoint; answers Brain's `data` as served. A
+    /// read is kept for the next open; a change marks kept reads stale.
     #[wasm_bindgen(js_name = formsRequest, unchecked_return_type = "Record<string, unknown>")]
     pub async fn forms_request(
         host: GatewayHost,
+        store: StoreHost,
         #[wasm_bindgen(unchecked_param_type = "FormsEndpoint")] endpoint: JsValue,
-        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] request: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] body: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let endpoint: FormsEndpoint =
-            tsify::serde_wasm_bindgen::from_value(endpoint).map_err(unreadable)?;
-        let request: Map<String, Value> =
-            tsify::serde_wasm_bindgen::from_value(request).map_err(unreadable)?;
-        typed(&run(&host, Forms { endpoint, request }).await?)
+        let (endpoint, body) = parts(endpoint, body)?;
+        let edge = BrowserEdge::new(host, store);
+        typed(
+            &request(&edge, endpoint, body)
+                .await
+                .map_err(|refusal| rejection(&refusal))?,
+        )
+    }
+
+    /// What this device holds of one form read, at once and offline; `stale`
+    /// after a change since.
+    #[wasm_bindgen(
+        js_name = formsHeld,
+        unchecked_return_type = "{ value: Record<string, unknown>; stale: boolean } | undefined"
+    )]
+    pub async fn forms_held(
+        host: GatewayHost,
+        store: StoreHost,
+        #[wasm_bindgen(unchecked_param_type = "FormsEndpoint")] endpoint: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] body: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let (endpoint, body) = parts(endpoint, body)?;
+        let edge = BrowserEdge::new(host, store);
+        typed(
+            &held(&edge, endpoint, &body)
+                .await
+                .map_err(|refusal| rejection(&refusal))?,
+        )
     }
 }
 

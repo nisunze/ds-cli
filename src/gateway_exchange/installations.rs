@@ -150,22 +150,111 @@ impl Exchange for Installations {
     }
 }
 
-/// The typed browser export Svelte calls; it runs the shared executor.
+/// The key a first page is kept under: `list`, or `install:<id>`. A later
+/// page is never kept.
+#[cfg(feature = "durable-store")]
+fn kept_key(command: &InstallCommand) -> Option<String> {
+    match command {
+        InstallCommand::ListInstalls { cursor, .. } if cursor.is_empty() => Some("list".into()),
+        InstallCommand::GetInstall {
+            install_id,
+            user_cursor,
+            event_cursor,
+            ..
+        } if user_cursor.is_empty() && event_cursor.is_empty() => {
+            Some(format!("install:{install_id}"))
+        }
+        _ => None,
+    }
+}
+
+/// One installation-governance command. A first page is kept so the next
+/// open paints it at once and offline; a change Brain accepted marks what
+/// is kept stale.
+#[cfg(feature = "durable-store")]
+pub async fn command(
+    edge: &impl super::retained::Edge,
+    command: InstallCommand,
+) -> Result<Value, Refusal> {
+    let kind = crate::retained_reads::Kind::Installations;
+    let change = matches!(
+        command,
+        InstallCommand::SetInstallPolicy { .. } | InstallCommand::SetInstallRetirement { .. }
+    );
+    let key = kept_key(&command);
+    let call = Installations { command };
+    if let Some(key) = key {
+        return super::retained::keep_fresh(edge, kind, None, &key, call).await;
+    }
+    let answer = edge.fetch(call).await?;
+    if change {
+        let _ = super::retained::invalidate(edge, None, kind, None, None).await;
+    }
+    Ok(answer)
+}
+
+/// A kept first page and when it was observed.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct HeldPage {
+    pub value: Value,
+    pub observed_at_ms: u64,
+}
+
+/// The first page this device holds for a command, with no transport.
+#[cfg(feature = "durable-store")]
+pub async fn held(edge: &impl super::retained::Edge, command: &InstallCommand) -> Option<HeldPage> {
+    let key = kept_key(command)?;
+    let kind = crate::retained_reads::Kind::Installations;
+    super::retained::kept(edge, kind, None, &key)
+        .await
+        .map(|held| HeldPage {
+            value: held.value,
+            observed_at_ms: held.saved_at_ms,
+        })
+}
+
+/// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::{InstallCommand, Installations};
-    use crate::gateway_exchange::browser::{run, typed, GatewayHost};
+    use super::{command, held, InstallCommand};
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::browser::{rejection, typed, GatewayHost};
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
     use wasm_bindgen::prelude::*;
+
+    fn parse(value: JsValue) -> Result<InstallCommand, JsValue> {
+        tsify::serde_wasm_bindgen::from_value(value)
+            .map_err(|error| js_sys::Error::new(&error.to_string()).into())
+    }
 
     /// One installation-governance command; answers Brain's result as served.
     #[wasm_bindgen(js_name = installationsCommand, unchecked_return_type = "Record<string, unknown>")]
     pub async fn installations_command(
         host: GatewayHost,
-        #[wasm_bindgen(unchecked_param_type = "InstallCommand")] command: JsValue,
+        store: StoreHost,
+        #[wasm_bindgen(unchecked_param_type = "InstallCommand")] value: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let command: InstallCommand = tsify::serde_wasm_bindgen::from_value(command)
-            .map_err(|error| js_sys::Error::new(&error.to_string()))?;
-        typed(&run(&host, Installations { command }).await?)
+        let edge = BrowserEdge::new(host, store);
+        typed(
+            &command(&edge, parse(value)?)
+                .await
+                .map_err(|refusal| rejection(&refusal))?,
+        )
+    }
+
+    /// The first page this device holds for a list or history command, at
+    /// once and offline.
+    #[wasm_bindgen(
+        js_name = installationsHeld,
+        unchecked_return_type = "{ value: Record<string, unknown>; observed_at_ms: number } | undefined"
+    )]
+    pub async fn installations_held(
+        host: GatewayHost,
+        store: StoreHost,
+        #[wasm_bindgen(unchecked_param_type = "InstallCommand")] value: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        typed(&held(&edge, &parse(value)?).await)
     }
 }
 

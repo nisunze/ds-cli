@@ -272,3 +272,31 @@ mod held_children {
         );
     }
 }
+
+#[cfg(feature = "durable-store")]
+#[test]
+fn a_boundary_is_held_offline_and_when_no_answer_arrives_but_never_over_a_refusal() {
+    use crate::gateway_exchange::retained::testing::{block_on, Answer, TestEdge};
+    use crate::gateway_exchange::Failure;
+    let edge = TestEdge::new();
+    let call = || Boundary {
+        code: "1102".into(),
+        timeout_ms: None,
+    };
+    let unit = json!({"level": "sector", "name": "Gitega", "code": "1102", "geometry": null});
+    edge.json(json!({"success": true, "data": unit}));
+    let fresh = block_on(boundary(&edge, call())).unwrap();
+    edge.online.set(false);
+    assert_eq!(block_on(boundary(&edge, call())).unwrap(), fresh);
+    edge.online.set(true);
+    edge.answer(Answer::Failed(Failure::Network));
+    assert_eq!(block_on(boundary(&edge, call())).unwrap(), fresh);
+    edge.answer(Answer::Json(403, json!({"success": false, "error": {"code": "FORBIDDEN", "message": "no"}})));
+    assert!(block_on(boundary(&edge, call())).is_err());
+    let other = Boundary {
+        code: "1103".into(),
+        timeout_ms: None,
+    };
+    edge.online.set(false);
+    assert!(block_on(boundary(&edge, other)).is_err(), "nothing held and no link");
+}

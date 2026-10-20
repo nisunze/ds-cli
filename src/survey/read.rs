@@ -760,8 +760,9 @@ pub(super) fn deleted(feature: &Value) -> bool {
             == Some(true)
 }
 
+/// The newest server stamp of one row; a row without metadata has none.
 pub(super) fn cutoff(feature: &Value) -> Option<String> {
-    canonical_cutoff(&feature_properties(feature)?["metadata"]["firestore_updated_at"])
+    canonical_cutoff(feature_properties(feature)?.get("metadata")?.get("firestore_updated_at")?)
 }
 
 fn summary_valid(summary: &Value) -> Result<(), String> {

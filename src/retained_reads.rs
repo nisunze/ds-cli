@@ -144,6 +144,23 @@ kinds! {
     AppRelease = "app_release": Account, KeyGrammar::Digest, MIB, 64;
     /// A project's Assets catalogue: its folders and every row.
     AssetsCatalogue = "assets_catalogue": Project, KeyGrammar::Single, 32 * MIB, 32;
+    /// A form of a project as this device last read it: the survey hold's
+    /// manifest and live rows, keyed by the form slug.
+    SurveyHold = "survey_hold": Project, KeyGrammar::Token(128), 48 * MIB, 48;
+    /// The projects of one lifecycle state the account sees.
+    ProjectsDirectory = "projects_directory": Account, KeyGrammar::Choice(&["active", "archived", "testing", "template"]), 8 * MIB, 4;
+    /// One read of the Form Factory or a project's forms, keyed by the digest
+    /// of its request.
+    FormsRead = "forms_read": Account, KeyGrammar::Digest, 16 * MIB, 256;
+    /// The installations the account administers (`list`) and one
+    /// installation's history (`install:<id>`), each its first page.
+    Installations = "installations": Account, KeyGrammar::Token(160), 4 * MIB, 64;
+    /// The newest page of the account's notification center.
+    NotificationsPage = "notifications_page": Account, KeyGrammar::Single, 2 * MIB, 1;
+    /// The account's own profile.
+    AccountProfile = "account_profile": Account, KeyGrammar::Single, 256 * KIB, 1;
+    /// One administrative unit's boundary, keyed by its code.
+    AdminBoundary = "admin_boundary": Account, KeyGrammar::Token(64), 4 * MIB, 256;
 }
 
 /// The generation row one kind reads and advances.

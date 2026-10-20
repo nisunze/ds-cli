@@ -72,7 +72,7 @@ pub enum NotificationSeverity {
 }
 
 /// One canonical notification.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
 pub struct CanonicalNotification {
     pub id: String,
@@ -151,7 +151,7 @@ pub fn canonical(row: &Value) -> Option<CanonicalNotification> {
 }
 
 /// One page of the center, newest first.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
 pub struct NotificationPage {
     pub notifications: Vec<CanonicalNotification>,
@@ -466,28 +466,74 @@ impl Exchange for Revoke {
     }
 }
 
+/// One page of the center. The newest page is kept so the next open paints
+/// it at once and offline; a later page is never kept.
+#[cfg(feature = "durable-store")]
+pub async fn page(
+    edge: &impl super::retained::Edge,
+    limit: Option<u32>,
+    cursor: Option<String>,
+) -> Result<NotificationPage, Refusal> {
+    let kind = crate::retained_reads::Kind::NotificationsPage;
+    let newest = cursor.is_none();
+    let call = Page { limit, cursor };
+    if newest {
+        super::retained::keep_fresh(edge, kind, None, "", call).await
+    } else {
+        edge.fetch(call).await
+    }
+}
+
+/// The newest page this device holds, with no transport.
+#[cfg(feature = "durable-store")]
+pub async fn held_page(edge: &impl super::retained::Edge) -> Option<NotificationPage> {
+    let kind = crate::retained_reads::Kind::NotificationsPage;
+    super::retained::kept(edge, kind, None, "")
+        .await
+        .map(|held| held.value)
+}
+
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
     use super::{
-        chunks, BrowserPushSubscription, Config, MarkResult, Marked, NotificationMark, Page,
-        Register, Revoke,
+        chunks, held_page, page, BrowserPushSubscription, Config, MarkResult, Marked,
+        NotificationMark, Register, Revoke,
     };
-    use crate::gateway_exchange::browser::{attempt, run, typed, GatewayHost};
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::browser::{attempt, rejection, run, typed, GatewayHost};
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
     use wasm_bindgen::prelude::*;
 
     fn unreadable(error: impl std::fmt::Display) -> JsValue {
         js_sys::Error::new(&error.to_string()).into()
     }
 
-    /// One page of the account's notifications, newest first.
+    /// One page of the account's notifications, newest first; the newest is
+    /// kept for the next open.
     #[wasm_bindgen(js_name = notificationsPage, unchecked_return_type = "NotificationPage")]
     pub async fn notifications_page(
         host: GatewayHost,
+        store: StoreHost,
         limit: Option<u32>,
         cursor: Option<String>,
     ) -> Result<JsValue, JsValue> {
-        typed(&run(&host, Page { limit, cursor }).await?)
+        let edge = BrowserEdge::new(host, store);
+        typed(
+            &page(&edge, limit, cursor)
+                .await
+                .map_err(|refusal| rejection(&refusal))?,
+        )
+    }
+
+    /// The newest page this device holds, at once and offline.
+    #[wasm_bindgen(
+        js_name = notificationsHeld,
+        unchecked_return_type = "NotificationPage | undefined"
+    )]
+    pub async fn notifications_held(host: GatewayHost, store: StoreHost) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        typed(&held_page(&edge).await)
     }
 
     /// Mark notifications read or dismissed, in request-sized chunks; answers

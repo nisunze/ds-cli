@@ -208,11 +208,36 @@ impl Exchange for ProjectAction {
     }
 }
 
+/// The projects of one lifecycle state from Brain, kept so the next open
+/// paints them at once and offline.
+#[cfg(feature = "durable-store")]
+pub async fn directory(
+    edge: &impl super::retained::Edge,
+    status: &str,
+) -> Result<Value, Refusal> {
+    let kind = crate::retained_reads::Kind::ProjectsDirectory;
+    let call = Directory {
+        status: status.into(),
+    };
+    super::retained::keep_fresh(edge, kind, None, status, call).await
+}
+
+/// The projects of one lifecycle state this device holds, with no transport.
+#[cfg(feature = "durable-store")]
+pub async fn held_directory(edge: &impl super::retained::Edge, status: &str) -> Option<Value> {
+    let kind = crate::retained_reads::Kind::ProjectsDirectory;
+    super::retained::kept(edge, kind, None, status)
+        .await
+        .map(|held| held.value)
+}
+
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::{Directory, ProjectAction, ProjectEndpoint};
-    use crate::gateway_exchange::browser::{run, typed, GatewayHost};
+    use super::{directory, held_directory, ProjectAction, ProjectEndpoint};
+    use crate::durable_store::port::StoreHost;
+    use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};
+    use crate::gateway_exchange::retained::browser::BrowserEdge;
     use serde_json::{Map, Value};
     use wasm_bindgen::prelude::*;
 
@@ -220,10 +245,31 @@ mod exports {
         js_sys::Error::new(&error.to_string()).into()
     }
 
-    /// The account's projects in one lifecycle state, as Brain lists them.
+    /// The account's projects in one lifecycle state, as Brain lists them,
+    /// kept for the next open.
     #[wasm_bindgen(js_name = projectsDirectory, unchecked_return_type = "Record<string, unknown>")]
-    pub async fn projects_directory(host: GatewayHost, status: String) -> Result<JsValue, JsValue> {
-        typed(&run(&host, Directory { status }).await?)
+    pub async fn projects_directory(
+        host: GatewayHost,
+        store: StoreHost,
+        status: String,
+    ) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        typed(&directory(&edge, &status).await.map_err(|refusal| rejection(&refusal))?)
+    }
+
+    /// The projects of one lifecycle state this device holds, at once and
+    /// offline.
+    #[wasm_bindgen(
+        js_name = projectsDirectoryHeld,
+        unchecked_return_type = "Record<string, unknown> | undefined"
+    )]
+    pub async fn projects_directory_held(
+        host: GatewayHost,
+        store: StoreHost,
+        status: String,
+    ) -> Result<JsValue, JsValue> {
+        let edge = BrowserEdge::new(host, store);
+        typed(&held_directory(&edge, &status).await)
     }
 
     /// One action on one of Brain's project endpoints; answers Brain's `data`.

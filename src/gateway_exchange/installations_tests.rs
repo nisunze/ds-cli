@@ -92,3 +92,42 @@ fn an_answer_without_its_record_is_refused() {
     )
     .is_ok());
 }
+
+#[cfg(feature = "durable-store")]
+#[test]
+fn a_first_page_is_kept_and_a_change_leaves_it_held() {
+    use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
+    let edge = TestEdge::new();
+    let list = InstallCommand::ListInstalls {
+        cursor: String::new(),
+        limit: 50,
+    };
+    assert_eq!(block_on(held(&edge, &list)), None);
+    let page = json!({"installs": [{"install_id": "i1"}]});
+    edge.json(json!({"success": true, "data": page}));
+    assert_eq!(block_on(super::command(&edge, list.clone())).unwrap(), page);
+    assert_eq!(block_on(held(&edge, &list)).map(|held| held.value), Some(page.clone()));
+    let later = InstallCommand::ListInstalls {
+        cursor: "c2".into(),
+        limit: 50,
+    };
+    edge.json(json!({"success": true, "data": {"installs": []}}));
+    block_on(super::command(&edge, later.clone())).unwrap();
+    assert_eq!(block_on(held(&edge, &later)), None, "a later page is never kept");
+    edge.json(json!({"success": true, "data": {"install_id": "i1"}}));
+    block_on(super::command(
+        &edge,
+        InstallCommand::SetInstallRetirement {
+            install_id: "i1".into(),
+            expected_revision: 3,
+            retired: true,
+            reason: "lost".into(),
+        },
+    ))
+    .unwrap();
+    assert_eq!(
+        block_on(held(&edge, &list)).map(|held| (held.value, held.observed_at_ms)),
+        Some((page, edge.now.get())),
+        "a change marks it stale, never gone"
+    );
+}
