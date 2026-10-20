@@ -58,6 +58,7 @@ wasm = [
     "dep:web-sys",
     "client-state",
     "dep:send_wrapper",
+    "dep:console_error_panic_hook",
     "any_spawner/wasm-bindgen",
 ]
 # Client state as Rust signals (`client_state`): Leptos's reactive core,
@@ -112,6 +113,8 @@ uuid = { version = "1", features = ["v4", "js"], optional = true }
 # The page's own Blob and AbortSignal, for the resumable upload executor.
 web-sys = { version = "0.3", features = ["Blob", "AbortSignal", "EventTarget", "DedicatedWorkerGlobalScope", "WorkerNavigator", "StorageManager", "FileSystemDirectoryHandle", "FileSystemFileHandle", "FileSystemGetDirectoryOptions", "FileSystemGetFileOptions", "FileSystemSyncAccessHandle", "DomException"], optional = true }
 send_wrapper = { version = "0.6", optional = true }
+# A page panic reaches the console with its message instead of a bare trap.
+console_error_panic_hook = { version = "0.1.7", optional = true }
 # The browser storage worker: rusqlite over sqlite-wasm-rs on OPFS (sahpool).
 sqlite-wasm-rs = { version = "0.5", optional = true }
 sqlite-wasm-vfs = { version = "0.2", optional = true }

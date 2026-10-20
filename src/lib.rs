@@ -1479,6 +1479,14 @@ pub fn response_policy_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
 /// answer and decides each retry. The browser runs it through each domain's
 /// typed WASM exports, which send with reqwest.
 pub mod gateway_exchange;
+
+/// A page Kernel's panic reaches the console with its message and site,
+/// instead of a bare trap that leaves every later call failing.
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[wasm_bindgen::prelude::wasm_bindgen(start)]
+pub fn kernel_start() {
+    console_error_panic_hook::set_once();
+}
 /// The gateway a page build speaks to, fixed when the Kernel is built.
 pub mod gateway_target;
 
