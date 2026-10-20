@@ -32,23 +32,25 @@ dramatise what the result states.
 
 ## Produce the A4 report
 
-The owner requires a separate, system-generated A4 PDF. After the new build is
-installed, configure an existing Chrome, Edge, or Chromium once with
+The owner requires a separate, system-generated A4 PDF. Configure an existing
+Chrome, Edge, or Chromium once with
 `ds workstation configure --component chromium --target reporter --yes`, then
-verify it with `ds workstation verify --component chromium`. Discover
-`ds capabilities report.project.export --output json` and
-`ds capabilities desktop.printing.export --output json`, then select the
-explicit `voltage_drop_pdf` project output. `ds report project export` and
-`ds desktop printing export` produce `<Display Name> voltage drop.pdf`; the
-extended report is the default and the brief variant is selectable. The local
-printing engine invokes Chromium in that one export command. Preview or
-download the published artifact through the app; the web does not render it.
-Do not put voltage-drop values, sheets or columns in individual or combined
-transformer Excel reports.
+verify it with `ds workstation verify --component chromium`.
 
-The `voltage_drop_pdf` output is not yet available in the installed build. Do
-not claim a PDF was generated or published until the new build is installed
-and the `ds` receipt and artifact are verified.
+- A saved analysis prints as the explicit `voltage_drop_pdf` project output of
+  `report.project.export` (or `desktop.printing.export`); nothing is
+  recalculated. `design.lv.project-run` saves an analysis first, and only when
+  the user authorizes a project write.
+- Without a saved analysis, or without writing the project, print read-only:
+  `design.lv.voltage-drop` declares an A4 input that prints the one transformer
+  exported with its project configuration, from the result it writes and the
+  export's sealed capture. Nothing is saved or published.
+
+The extended report is the default; brief is the project's choice. A4 prints
+calculated transformers only; `report.voltage-drop-combined` shows refused,
+reserved and held ones on A3. Claim a PDF only from a verified `ds` receipt and
+file; a local print is not a publication. Do not put voltage-drop values,
+sheets or columns in individual or combined transformer Excel reports.
 
 ## Read it in this order
 
