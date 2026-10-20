@@ -15,7 +15,7 @@
 //! §6).
 
 pub mod cache_health;
-pub mod sql_effect;
+mod durable;
 pub mod survey_entries;
 pub use survey_entries::SurveyEntryScope;
 mod jobs;

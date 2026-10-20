@@ -146,3 +146,7 @@ pub fn execute(
     result.validate(effect)?;
     Ok(result)
 }
+
+#[cfg(all(test, feature = "durable-store"))]
+#[path = "sql_effect_tests.rs"]
+mod tests;

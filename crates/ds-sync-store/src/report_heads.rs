@@ -17,8 +17,8 @@ fn drive(
                 statement,
                 continuation,
             } => {
-                let result =
-                    crate::sql_effect::execute(connection, &statement).map_err(Error::Kernel)?;
+                let result = ds_command_kernel::sql_effect::execute(connection, &statement)
+                    .map_err(Error::Kernel)?;
                 effects::resume(continuation, result).map_err(Error::Kernel)?
             }
         };

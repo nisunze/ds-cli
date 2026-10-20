@@ -7,7 +7,7 @@ publish = false
 description = "The native host of the sync store: SQLite persistence for the kernel's rows and transitions (desktop, CLI, server). No engine, no transport."
 
 [dependencies]
-ds-command-kernel = { path = "../.." }
+ds-command-kernel = { path = "../..", features = ["durable-store"] }
 rusqlite = { version = "0.40.2", features = ["bundled", "blob", "fallible_uint"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

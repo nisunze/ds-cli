@@ -246,6 +246,7 @@ dependencies = [
  "percent-encoding",
  "quick-xml 0.41.0",
  "regex",
+ "rusqlite",
  "ryu",
  "schemars",
  "serde",

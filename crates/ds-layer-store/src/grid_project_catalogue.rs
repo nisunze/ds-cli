@@ -166,65 +166,6 @@ fn open(root: &Path, writable: bool) -> Result<Option<Connection>, String> {
     }
     Ok(Some(connection))
 }
-/// Mechanical execution of one bounded Kernel statement (the same effect the
-/// browser worker and `ds-sync-store` execute); no decision lives here.
-fn execute(
-    connection: &Connection,
-    effect: &ds_command_kernel::sql_effect::Statement,
-) -> Result<ds_command_kernel::sql_effect::ResultRows, String> {
-    use rusqlite::types::{Value as SqlValue, ValueRef};
-    effect.validate()?;
-    let values = effect
-        .bind
-        .iter()
-        .map(|value| match value {
-            Value::Null => Ok(SqlValue::Null),
-            Value::String(text) => Ok(SqlValue::Text(text.clone())),
-            Value::Number(number) => number
-                .as_i64()
-                .map(SqlValue::Integer)
-                .or_else(|| number.as_f64().map(SqlValue::Real))
-                .ok_or_else(|| "invalid SQL number".to_string()),
-            _ => Err("invalid SQL scalar".to_string()),
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    let mut statement = connection.prepare(&effect.sql).map_err(sql)?;
-    let columns = statement.column_count();
-    let mut cursor = statement
-        .query(rusqlite::params_from_iter(values))
-        .map_err(sql)?;
-    let mut rows = Vec::new();
-    let mut bytes = 2usize;
-    while let Some(row) = cursor.next().map_err(sql)? {
-        if rows.len() >= effect.max_rows as usize {
-            return Err("SQLite row bound exceeded".into());
-        }
-        let mut values = Vec::with_capacity(columns);
-        for column in 0..columns {
-            let value = match row.get_ref(column).map_err(sql)? {
-                ValueRef::Null => Value::Null,
-                ValueRef::Integer(n) => Value::from(n),
-                ValueRef::Real(n) => Value::from(n),
-                ValueRef::Text(text) => {
-                    Value::String(std::str::from_utf8(text).map_err(|e| e.to_string())?.into())
-                }
-                ValueRef::Blob(_) => return Err("SQLite blob needs a byte-handle effect".into()),
-            };
-            bytes += serde_json::to_vec(&value).map_err(|e| e.to_string())?.len() + 1;
-            if bytes > effect.max_bytes as usize {
-                return Err("SQLite byte bound exceeded".into());
-            }
-            values.push(value);
-        }
-        rows.push(values);
-    }
-    let result = ds_command_kernel::sql_effect::ResultRows {
-        rows,
-        changes: connection.changes(),
-    };
-    result.validate(effect)?;
-    Ok(result)
-}
 /// One Kernel operation in one transaction; the host only executes its SQL.
 fn run(
     connection: &Connection,
@@ -251,7 +192,10 @@ fn run(
                 statement,
                 continuation,
             } => {
-                step = kernel::resume(continuation, execute(&transaction, &statement)?)?;
+                step = kernel::resume(
+                    continuation,
+                    ds_command_kernel::sql_effect::execute(&transaction, &statement)?,
+                )?;
             }
         }
     }

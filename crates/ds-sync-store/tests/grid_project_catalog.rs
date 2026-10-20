@@ -4,7 +4,7 @@
 use ds_command_kernel::grid_project_catalog::{
     self as catalog, Changes, Held, Operation, Scope, Source, Step,
 };
-use ds_sync_store::sql_effect::execute;
+use ds_command_kernel::sql_effect::execute;
 use rusqlite::Connection;
 use serde_json::{json, Value};
 

@@ -7,7 +7,7 @@ rust-version = "1.90"
 publish = false
 
 [dependencies]
-ds-command-kernel = { path = "../.." }
+ds-command-kernel = { path = "../..", features = ["durable-store"] }
 ds-sync-store = { path = "../ds-sync-store" }
 ds-layer-store = { path = "../ds-layer-store" }
 serde = { version = "1", features = ["derive"] }

@@ -1,8 +1,8 @@
 //! Whole-project transformer observations. No legacy JSON reader or network IO.
 use super::{Error, Kind, Scope};
+use ds_command_kernel::sql_effect::execute;
 use ds_command_kernel::transformer_status_store as shared;
 use ds_layer_store::{private, snapshot_privacy};
-use ds_sync_store::sql_effect::execute;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
 pub use shared::Observation;
