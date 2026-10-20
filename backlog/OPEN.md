@@ -83,6 +83,16 @@ is ruled in the sync contract: simple local clean and recompute.
   findings to its owner and the remaining findings to their owning gate slices;
   proof requires the strict command to pass without lint suppression.
 
+## Solar CLI: a calculation reachable from the documented commands (Claude)
+
+Found by a read-only trace of `ds solar` against installed canary (2026-10-20), city `aderm_kyabe` in `arjgpydw_aderm_loc7`.
+
+- **No offline calculation path from the documented commands.** `ds solar project run` refuses "the native host does not link the Solar engine". `ds solar input prepare` refuses `engine_refused` (ReferenceUnitInvalid, bundle "is not cached") and its remedy names no route. The only route is `ds solar reference plan`, then an undocumented external producer, then `ds solar reference import`. Acceptance: a signed-in user goes from `ds solar input capture` to a committed, readable result (`ds solar results read --section boq`) using documented `ds solar` commands only, and `project run` either computes or is retired from help and skills.
+- **The real compute path is hard to reach.** `ds solar application` (45 operations; `ds solar application schema` lists them, `calculate` is the compute) needs a running `ds core serve`, `--yes`, `--lane` and a hand-written JSON request file. Help and the Solar skills describe `project run` as the lifecycle instead. Acceptance: help, skills and the Web Solar page name one reachable lifecycle, with each step's request shape discoverable from the command (a request template or a typed command per common operation such as `calculate`, `readiness` and `prepare_captured`), and no skill step that refuses on a current build.
+- **The stable lane has no Solar addon installed.** `ds solar engine` refuses `solar_engine_missing` on stable while canary works, so every engine-backed `ds solar` command refuses on stable. Release and install matter: Acceptance is an installed stable Core whose `ds solar engine` reports the matching Solar owner, per the per-component admission in [DECOUPLING.md](../../ds-architecture/backlog/DECOUPLING.md#2-release-acceptance).
+- **`ds solar sync status` is not in the source.** The Desktop-paired command was retired with the Solar window (`999a832b`); the installed canary still lists it, and it refuses on a lane the shell cannot fence. The working equivalents are `ds core sync status` and `ds desktop sync status`. Acceptance: no help, skill or doc names `ds solar sync status`, and the installed Solar help points at the Core and Desktop commands instead.
+
+
 ## 2. Green `run` and release gates
 
 - **Standalone columnar benchmark lock is stale.** `ds-network/benchmarks/columnar/Cargo.lock` still retains retired `ds-geo-ops` and omits the already-consolidated `ds-geo-lite`/`ds-cleaning`/`ds-kml` graph. Its isolated lock refresh needs unrelated package removals beyond the Calamine addition, so it was preserved rather than swept into application lock updates. Refresh and qualify that benchmark workspace separately before relying on its locked builds or measurements.
