@@ -32,12 +32,27 @@ use ds_cli_contract::{Context, help};
 
 fn main() -> ExitCode {
     console_utf8();
-    let argv: Vec<String> = std::env::args().skip(1).collect();
+    // `std::env::args()` panics on a non-UTF-8 argument; read the raw words and
+    // let `run` refuse by name instead.
+    let raw: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    let argv: Vec<String> = raw
+        .iter()
+        .map(|word| word.to_string_lossy().into_owned())
+        .collect();
+    let non_utf8 = raw.iter().position(|word| word.to_str().is_none());
+    // A channel binary runs on its own lane when `--lane` is omitted.
+    ds_cli_contract::spec::set_channel_lane(
+        if ds_cli_auth::reliability::release_lane() == "canary" {
+            "canary"
+        } else {
+            "stable"
+        },
+    );
     let started = std::time::Instant::now();
     // The answer is written inside `run`; reliability reporting happens after
     // it and never changes it. A panic is reported, then resumed unchanged, so
     // its message and exit code are exactly what they were.
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&argv))) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&argv, non_utf8))) {
         Ok(result) => {
             reliability::report(&argv, started, None);
             match result {
@@ -222,7 +237,7 @@ fn parse_format(value: &str) -> Result<Format, Failure> {
     }
 }
 
-fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
+fn run(argv: &[String], non_utf8: Option<usize>) -> Result<(), (ExitClass, ())> {
     // Global parsing can itself fail, and it fails before any command is
     // known — so the envelope names `ds` rather than inventing a command.
     let (globals, rest) = match split_globals(argv) {
@@ -232,6 +247,10 @@ fn run(argv: &[String]) -> Result<(), (ExitClass, ())> {
             return emit_failure(output, "ds", 1, &[], &failure);
         }
     };
+
+    if let Some(index) = non_utf8 {
+        return emit_failure(globals.output, "ds", 1, &[], &argument_not_utf8(index));
+    }
 
     let domains: Vec<&'static Domain> = registry::domains()
         .iter()
@@ -528,6 +547,16 @@ fn declared_remedy(refusals: &'static [Refusal], failure: &Failure) -> Option<Fa
 }
 
 fn unknown_domain(name: &str, domains: &[&'static Domain]) -> Failure {
+    // `--lane` is an input of the commands that declare it, not a global flag.
+    // Before the domain it used to read as a mistyped domain.
+    if name == "--lane" || name.starts_with("--lane=") {
+        return Failure::invalid(
+            "lane_after_command",
+            "`--lane` belongs after the command, not before the domain",
+        )
+        .remedy("put it after the command, as in `ds <domain> <command> --lane canary`")
+        .next("ds --help");
+    }
     let mut failure = Failure::invalid(
         "unknown_domain",
         format!("`{name}` is not a ds domain or command"),
@@ -837,4 +866,16 @@ mod tests {
             }
         }
     }
+}
+
+/// A word on the command line that is not valid UTF-8 cannot be an input of any
+/// command: every declared input is text. Refuse it by position, never echoing
+/// the bytes.
+fn argument_not_utf8(index: usize) -> Failure {
+    Failure::invalid(
+        "argument_not_utf8",
+        format!("command-line argument {} is not valid UTF-8", index + 1),
+    )
+    .remedy("pass text as UTF-8; to send arbitrary bytes, write them to a file and pass its path")
+    .detail(serde_json::json!({ "argument_index": index + 1 }))
 }

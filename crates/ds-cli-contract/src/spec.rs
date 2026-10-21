@@ -458,8 +458,51 @@ pub const LANE: Arg = Arg::value("lane", "<stable|canary>", "Native credential l
     .choices(&["stable", "canary"])
     .default("stable");
 
+/// The lane a channel binary runs on when `--lane` is omitted: `ds-canary` is the
+/// canary channel and `ds` the stable one. The host sets it once at start-up
+/// from its compiled release lane; an unset process (tests, libraries) keeps
+/// the stable default the declaration states.
+static CHANNEL_LANE: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// Record the channel this binary belongs to (`"stable"` or `"canary"`). Later
+/// calls are ignored.
+pub fn set_channel_lane(lane: &'static str) {
+    let _ = CHANNEL_LANE.set(lane);
+}
+
+/// The lane an omitted `--lane` resolves to in this process.
+pub fn channel_lane() -> &'static str {
+    CHANNEL_LANE.get().copied().unwrap_or("stable")
+}
+
 impl Arg {
-    pub const fn summary(mut self, summary: &'static str) -> Self {
+    /// The value used when the flag is absent. The shared lane default follows
+    /// the binary's own channel instead of always naming `stable`.
+    pub fn effective_default(&self) -> Option<&'static str> {
+        match self.default {
+            Some("stable") if self.name == "lane" => Some(channel_lane()),
+            other => other,
+        }
+    }
+
+    /// The summary as help shows it. Many lane summaries state "stable is the
+    /// default"; on a canary binary the effective default is canary, and help
+    /// must not contradict the `(default: canary)` it prints beside it.
+    pub fn display_summary(&self) -> std::borrow::Cow<'static, str> {
+        let channel = channel_lane();
+        if self.name != "lane" || self.default != Some("stable") || channel == "stable" {
+            return std::borrow::Cow::Borrowed(self.summary);
+        }
+        std::borrow::Cow::Owned(
+            self.summary
+                .replace("stable is the default", &format!("{channel} is the default"))
+                .replace("defaults to stable", &format!("defaults to {channel}"))
+                .replace("default stable", &format!("default {channel}")),
+        )
+    }
+
+    pub const fn summary(mut self
+, summary: &'static str) -> Self {
         self.summary = summary;
         self
     }

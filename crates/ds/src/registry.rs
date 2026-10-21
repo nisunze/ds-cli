@@ -3856,7 +3856,8 @@ fn report_held_read(id: &str) -> bool {
 }
 
 /// A declared command lane keeps its own default. Lane-less paired commands
-/// may select the existing Core lane explicitly; absent selection stays Stable.
+/// may select the existing Core lane explicitly; absent selection is this
+/// binary's own channel (Stable for `ds`, Canary for `ds-canary`).
 fn paired_auth_lane(
     command_lane: Option<&str>,
     core_lane: Option<&std::ffi::OsStr>,
@@ -3865,7 +3866,7 @@ fn paired_auth_lane(
         return ds_cli_auth::Lane::parse(lane);
     }
     let Some(lane) = core_lane else {
-        return Ok(ds_cli_auth::Lane::Stable);
+        return ds_cli_auth::Lane::parse(ds_cli_contract::spec::channel_lane());
     };
     let lane = lane.to_str().ok_or_else(|| {
         Failure::invalid("invalid_lane", "DS_CORE_LANE must be stable or canary")

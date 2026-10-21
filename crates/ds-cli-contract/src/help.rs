@@ -181,13 +181,13 @@ pub fn command(command: &Command) -> String {
             if arg.required {
                 tail.push_str("  (required)");
             }
-            if let Some(default) = arg.default {
+            if let Some(default) = arg.effective_default() {
                 let _ = write!(tail, "  (default: {default})");
             }
             if !arg.choices.is_empty() {
                 let _ = write!(tail, "  (one of: {})", arg.choices.join(", "));
             }
-            let _ = writeln!(out, "  {form:<width$}  {}{tail}", arg.summary);
+            let _ = writeln!(out, "  {form:<width$}  {}{tail}", arg.display_summary());
         }
     }
 
@@ -377,12 +377,12 @@ fn arg_json(arg: &Arg) -> Value {
             ArgKind::Positional => "positional",
         },
         "required": arg.required,
-        "summary": arg.summary,
+        "summary": arg.display_summary(),
     });
     if arg.kind != ArgKind::Switch {
         value["value"] = json!(arg.value);
     }
-    if let Some(default) = arg.default {
+    if let Some(default) = arg.effective_default() {
         value["default"] = json!(default);
     }
     if !arg.choices.is_empty() {

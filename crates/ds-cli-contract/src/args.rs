@@ -181,37 +181,61 @@ pub fn parse(command: &Command, tokens: &[String]) -> Result<Inputs, Failure> {
         }
     }
 
+    // Every missing required input is reported at once, so a caller fixes the
+    // invocation in one step instead of one refusal per omitted flag.
+    let mut missing: Vec<&Arg> = Vec::new();
     for arg in command.args {
         match arg.kind {
             ArgKind::Positional | ArgKind::Value => {
                 if !inputs.values.contains_key(arg.name) {
-                    if let Some(default) = arg.default {
+                    if let Some(default) = arg.effective_default() {
                         inputs.values.insert(arg.name, default.to_string());
                     } else if arg.required {
-                        return Err(Failure::invalid(
-                            "missing_input",
-                            format!("`--{}` is required", arg.name),
-                        )
-                        .remedy(format!("pass `--{} {}`", arg.name, arg.value))
-                        .next(format!("ds {} --help", command.path.join(" "))));
+                        missing.push(arg);
                     }
                 }
             }
             ArgKind::Repeated => {
                 if arg.required && !inputs.repeated.contains_key(arg.name) {
-                    return Err(Failure::invalid(
-                        "missing_input",
-                        format!("`--{}` is required at least once", arg.name),
-                    )
-                    .remedy(format!("pass `--{} {}`", arg.name, arg.value))
-                    .next(format!("ds {} --help", command.path.join(" "))));
+                    missing.push(arg);
                 }
             }
             ArgKind::Switch => {}
         }
     }
+    if !missing.is_empty() {
+        return Err(missing_inputs(command, &missing));
+    }
 
     Ok(inputs)
+}
+
+/// The refusal for one or several omitted required inputs. A single omission
+/// keeps its exact sentence; several are named together with one remedy.
+fn missing_inputs(command: &Command, missing: &[&Arg]) -> Failure {
+    let next = format!("ds {} --help", command.path.join(" "));
+    let pass = |arg: &Arg| format!("`--{} {}`", arg.name, arg.value);
+    if let [arg] = missing {
+        let message = if arg.kind == ArgKind::Repeated {
+            format!("`--{}` is required at least once", arg.name)
+        } else {
+            format!("`--{}` is required", arg.name)
+        };
+        return Failure::invalid("missing_input", message)
+            .remedy(format!("pass {}", pass(arg)))
+            .next(next);
+    }
+    let names: Vec<String> = missing.iter().map(|arg| format!("`--{}`", arg.name)).collect();
+    let (last, rest) = names.split_last().expect("at least two names");
+    let passes: Vec<String> = missing.iter().map(|arg| pass(arg)).collect();
+    let (last_pass, rest_pass) = passes.split_last().expect("at least two inputs");
+    Failure::invalid(
+        "missing_input",
+        format!("{} and {last} are required", rest.join(", ")),
+    )
+    .remedy(format!("pass {} and {last_pass}", rest_pass.join(", ")))
+    .detail(json!({ "missing": missing.iter().map(|arg| arg.name).collect::<Vec<_>>() }))
+    .next(next)
 }
 
 fn check_choice(command: &Command, arg: &Arg, value: &str) -> Result<(), Failure> {
