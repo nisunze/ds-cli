@@ -79,10 +79,13 @@ impl Transfer for Wire {
     }
 }
 
-/// The web's create route: commits recorded, answered by a receipt.
+/// Firestore's create-only commit: every commit recorded; a document that
+/// exists already is refused as Firestore refuses it, so a replay never
+/// writes a second one.
 #[derive(Default)]
 struct Fire {
     commits: RefCell<Vec<Value>>,
+    documents: RefCell<Vec<String>>,
 }
 
 impl Firestore for Fire {
@@ -97,6 +100,15 @@ impl Firestore for Fire {
     }
     async fn commit(&self, _url: &str, _bearer: &str, body: &Value) -> Posted {
         self.commits.borrow_mut().push(body.clone());
+        let name = body["writes"][0]["update"]["name"].as_str().unwrap_or_default().to_owned();
+        if self.documents.borrow().contains(&name) {
+            let exists = json!({"error": {"code": 409, "status": "ALREADY_EXISTS", "message": "Document already exists"}});
+            return Posted::Answer {
+                status: 409,
+                body: serde_json::to_vec(&exists).unwrap(),
+            };
+        }
+        self.documents.borrow_mut().push(name);
         let receipt = json!({"commitTime": "2026-10-20T10:00:01.000001Z",
             "writeResults": [{"updateTime": "2026-10-20T10:00:01.000001Z",
             "transformResults": [{"timestampValue": "2026-10-20T10:00:01Z"}]}]});
@@ -178,7 +190,7 @@ fn one_large_upload_in_flight_lets_twenty_photos_drain_and_a_second_drain_never_
     started(&edge, VIDEO);
     let start = edge.now.get();
 
-    let mut first = std::pin::pin!(drain(&edge, &port, &wire, &fire, Route::Mutate, None, "drain-a"));
+    let mut first = std::pin::pin!(drain(&edge, &port, &wire, &fire, None, "drain-a"));
     assert!(poll(first.as_mut()).is_pending(), "the large transfer is in flight");
     let video = rows(&edge);
     assert_eq!((video.len(), video[0]["lane"].clone(), video[0]["status"].clone()), (1, json!("large"), json!("syncing")));
@@ -189,7 +201,7 @@ fn one_large_upload_in_flight_lets_twenty_photos_drain_and_a_second_drain_never_
         uploads(&edge, &photo(entry));
     }
     edge.now.set(start + 9 * 60 * 1000);
-    let second = block_on(drain(&edge, &port, &wire, &fire, Route::Mutate, None, "drain-b")).unwrap();
+    let second = block_on(drain(&edge, &port, &wire, &fire, None, "drain-b")).unwrap();
     assert_eq!((second.delivered, second.failed, second.stopped), (20, 0, false));
     assert_eq!(starts_of(&edge, VIDEO), 1, "the second drain never dispatches the leased transfer");
     for entry in 0..20 {
@@ -224,7 +236,7 @@ fn create_row(id: &str, doc: &str) -> Value {
 }
 
 #[test]
-fn an_entrys_create_leaves_before_its_photo_on_the_webs_direct_route() {
+fn an_entrys_create_leaves_before_its_photo_straight_to_firestore() {
     let edge = TestEdge::new();
     let fire = Fire::default();
     let path = "kigali/forms/poles/e_0123456789abcdef/survey.jpg";
@@ -238,28 +250,48 @@ fn an_entrys_create_leaves_before_its_photo_on_the_webs_direct_route() {
     );
     assert_eq!(queued[0]["record"], queued[1]["record"]);
     uploads(&edge, path);
-    let drained = block_on(drain(&edge, &Port(&edge), &Wire::default(), &fire, Route::FirestoreDirect, Some("kigali"), "d")).unwrap();
+    let drained = block_on(drain(&edge, &Port(&edge), &Wire::default(), &fire, Some("kigali"), "d")).unwrap();
     assert_eq!(drained.delivered, 2);
     let commits = fire.commits.borrow();
     assert_eq!(commits.len(), 1);
     assert_eq!(commits[0]["writes"][0]["currentDocument"], json!({"exists": false}));
     assert!(rows(&edge).is_empty());
+    assert!(
+        edge.requests().iter().all(|request| request.path != "/api/v1/entries/mutate"),
+        "Brain never sees a create"
+    );
 }
 
+/// Every build (this test runs on whichever platform feature it is built
+/// with) writes a create straight to Firestore as its author: captured
+/// offline it waits queued, the returning link delivers it, and an identical
+/// replay meets the create-only precondition instead of a second document.
 #[test]
-fn a_native_create_waits_for_its_route_and_holds_its_entrys_later_steps() {
+fn a_create_queues_offline_drains_on_reconnect_and_never_writes_twice() {
     let edge = TestEdge::new();
-    let path = "kigali/forms/poles/e_0123456789abcdef/survey.jpg";
-    admit(&edge, path, 4096);
-    block_on(enqueue(&edge, &Port(&edge), vec![create_row("survey_key_1", "e_0123456789abcdef")])).unwrap();
-    let drained = block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), Route::Mutate, None, "d")).unwrap();
-    assert_eq!((drained.delivered, drained.failed), (0, 0));
-    assert!(edge.requests().is_empty(), "nothing is sent while Brain takes no creates");
-    let held = rows(&edge);
-    assert_eq!((held[0]["status"].clone(), held[0]["error"].clone()), (json!("pending"), json!(ROUTE_PENDING)));
-    assert_eq!(held[0]["attempts"], 0, "waiting spends no attempt");
-    assert_eq!(drained.due_at, Some(edge.now.get() + ROUTE_PENDING_MS));
-    assert_eq!(held[1]["status"], "pending", "the photo waits behind its create");
+    let fire = Fire::default();
+    let row = create_row("survey_key_1", "e_0123456789abcdef");
+    block_on(enqueue(&edge, &Port(&edge), vec![row.clone()])).unwrap();
+
+    edge.online.set(false);
+    let offline = block_on(drain(&edge, &Port(&edge), &Wire::default(), &fire, None, "d")).unwrap();
+    assert!(offline.stopped);
+    assert_eq!((rows(&edge)[0]["status"].clone(), rows(&edge)[0]["attempts"].clone()), (json!("pending"), json!(0)));
+    assert!(fire.commits.borrow().is_empty());
+
+    edge.online.set(true);
+    let online = block_on(drain(&edge, &Port(&edge), &Wire::default(), &fire, None, "d")).unwrap();
+    assert_eq!((online.delivered, online.failed), (1, 0));
+    assert!(rows(&edge).is_empty());
+    assert_eq!(fire.documents.borrow().len(), 1);
+
+    block_on(enqueue(&edge, &Port(&edge), vec![row])).unwrap();
+    let replay = block_on(drain(&edge, &Port(&edge), &Wire::default(), &fire, None, "d")).unwrap();
+    assert_eq!((replay.delivered, replay.failed), (0, 1));
+    assert_eq!((fire.commits.borrow().len(), fire.documents.borrow().len()), (2, 1), "no second document");
+    let parked = &rows(&edge)[0];
+    assert_eq!((parked["status"].clone(), parked["remedy"].clone()), (json!("failed"), json!("review")));
+    assert!(edge.requests().is_empty(), "no create, first or replayed, reaches Brain");
 }
 
 fn mutation_row(id: &str, operation: &str) -> Value {
@@ -277,7 +309,7 @@ fn a_stale_correction_goes_again_once_against_the_version_brain_named() {
     let stale = json!({"error": {"code": "VERSION_CONFLICT", "message": "stale", "details": {"server_version": 7}}});
     edge.answer(Answer::Json(409, stale.clone()))
         .json(json!({"data": {"ok": true}}));
-    let drained = block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), Route::Mutate, None, "d")).unwrap();
+    let drained = block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), None, "d")).unwrap();
     assert_eq!(drained.delivered, 1);
     let sent = edge.requests();
     assert_eq!(sent.len(), 2);
@@ -285,7 +317,7 @@ fn a_stale_correction_goes_again_once_against_the_version_brain_named() {
 
     block_on(enqueue(&edge, &Port(&edge), vec![mutation_row("m2", "delete")])).unwrap();
     edge.answer(Answer::Json(409, stale.clone())).answer(Answer::Json(409, stale));
-    let parked = block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), Route::Mutate, None, "d")).unwrap();
+    let parked = block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), None, "d")).unwrap();
     assert_eq!(parked.failed, 1);
     let row = &rows(&edge)[0];
     assert_eq!((row["status"].clone(), row["remedy"].clone()), (json!("failed"), json!("review")));
@@ -326,7 +358,7 @@ fn offline_claims_nothing_and_strands_nothing() {
     let edge = TestEdge::new();
     block_on(enqueue(&edge, &Port(&edge), vec![mutation_row("m1", "update")])).unwrap();
     edge.online.set(false);
-    let drained = block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), Route::Mutate, None, "d")).unwrap();
+    let drained = block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), None, "d")).unwrap();
     assert!(drained.stopped);
     assert_eq!(rows(&edge)[0]["status"], "pending");
 }
@@ -339,7 +371,7 @@ fn discarding_a_parked_create_audits_and_drops_its_entrys_every_step() {
     let mut foreign = create_row("survey_key_2", "e_fedcba9876543210");
     foreign["payload"]["uid"] = json!("someone-else");
     block_on(enqueue(&edge, &Port(&edge), vec![foreign])).unwrap();
-    let parked = block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), Route::FirestoreDirect, None, "d")).unwrap();
+    let parked = block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), None, "d")).unwrap();
     assert_eq!(parked.failed, 1, "another account's create is never written");
     assert!(edge.requests().is_empty());
     let held = rows(&edge);
@@ -357,7 +389,7 @@ fn discarding_a_parked_create_audits_and_drops_its_entrys_every_step() {
     assert_eq!((audit["entries"][0]["doc_id"].clone(), audit["entries"][0]["form_id"].clone()), (json!("e_fedcba9876543210"), json!("poles")));
     assert!(rows(&edge).is_empty());
     assert_eq!(media(&edge, json!({"action": "counts"}), None)["pending"], 0, "the photo's bytes left with it");
-    block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), Route::FirestoreDirect, None, "d")).unwrap();
+    block_on(drain(&edge, &Port(&edge), &Wire::default(), &Fire::default(), None, "d")).unwrap();
     assert!(rows(&edge).is_empty(), "a dropped file is never scheduled again");
 }
 
@@ -385,7 +417,7 @@ fn cached(edge: &TestEdge, path: &str) -> Reply {
     block_on(Port(edge).call(request, None, None)).unwrap()
 }
 fn drain_once(edge: &TestEdge, wire: &Wire) -> Drained {
-    block_on(drain(edge, &Port(edge), wire, &Fire::default(), Route::Mutate, None, "d")).unwrap()
+    block_on(drain(edge, &Port(edge), wire, &Fire::default(), None, "d")).unwrap()
 }
 
 #[test]

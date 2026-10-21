@@ -92,11 +92,3 @@ fn another_accounts_row_or_a_malformed_payload_is_never_sent() {
     foreign["project_id"] = json!("another_project");
     assert!(Create::prepare(&header("u1"), &foreign, &author("u1")).is_none());
 }
-
-#[test]
-fn a_native_build_routes_creates_through_brain() {
-    #[cfg(not(feature = "platform-web"))]
-    assert_eq!(ROUTE, Route::Mutate);
-    #[cfg(feature = "platform-web")]
-    assert_eq!(ROUTE, Route::FirestoreDirect);
-}

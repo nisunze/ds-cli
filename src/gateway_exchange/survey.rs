@@ -251,15 +251,9 @@ impl Exchange for Mutation {
     type Output = Value;
 
     fn plan(&self) -> Result<Plan, Refusal> {
+        // A create is never a mutation: it is a direct Firestore write as its
+        // author ([`super::survey_create`]); Brain never creates.
         let operation = self.payload.get("operation").and_then(Value::as_str);
-        if operation == Some("create") {
-            // Native survey creates go through the mutate API once Brain takes
-            // them; until then the create waits in its queue.
-            return Err(Refusal::new(
-                super::survey_create::ROUTE_PENDING,
-                "Brain's mutate API does not take survey creates yet; the create waits.",
-            ));
-        }
         if !matches!(operation, Some("update" | "delete" | "restore")) {
             return Err(input_invalid(
                 "A survey mutation updates, deletes or restores one entry.",

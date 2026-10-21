@@ -169,9 +169,10 @@ fn the_process_path_calls_core_the_way_the_page_did() {
 #[test]
 fn owner_rulings_hold_in_the_table() {
     let on = |id: &str, platform: &str| capability(id).unwrap().route_on(platform).unwrap();
-    // Survey entries: the Web and the Desktop write through the Kernel's survey
-    // exchanges (natively, mutate only; the create step picks its route);
-    // Android is planned.
+    // Survey entries: a create is the same direct Firestore write as its author
+    // on every platform that offers it (the page's Kernel survey queue on the
+    // Web and the Desktop, Core's own writer on cli); only changes go through
+    // Brain's mutate exchange. Android is planned.
     assert_eq!(
         on("survey.entries.create", "web"),
         Route::Supported {
@@ -182,6 +183,13 @@ fn owner_rulings_hold_in_the_table() {
     assert_eq!(
         on("survey.entries.create", "desktop"),
         on("survey.entries.create", "web")
+    );
+    assert_eq!(
+        on("survey.entries.create", "cli"),
+        Route::Supported {
+            executor: Executor::Core,
+            exchange: None
+        }
     );
     assert_eq!(
         on("survey.entries.create", "android").status(),

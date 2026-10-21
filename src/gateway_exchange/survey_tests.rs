@@ -233,12 +233,12 @@ fn a_restore_is_a_mutation_too() {
 }
 
 #[test]
-fn a_native_create_waits_with_a_typed_refusal_until_brain_takes_creates() {
+fn a_create_is_never_a_mutation_brain_never_creates() {
     let call = Mutation {
-        payload: json!({"operation": "create", "project_id": "it_rwanda", "form_id": "poles", "doc_id": "d1"})
+        payload: json!({"operation": "create", "project_id": "kigali", "form_id": "poles", "doc_id": "d1"})
             .as_object()
             .cloned()
             .unwrap(),
     };
-    assert_eq!(call.plan().unwrap_err().code, crate::gateway_exchange::survey_create::ROUTE_PENDING);
+    assert_eq!(call.plan().unwrap_err().code, INPUT_INVALID);
 }

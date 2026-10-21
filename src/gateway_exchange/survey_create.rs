@@ -1,36 +1,16 @@
-//! One queued survey create on this build's route, and what its answer
-//! means to the survey queue ([`super::survey_queue`]). On the web the page
-//! writes the create straight to Firestore, create-only, under the signed-in
-//! person's own Firebase ID token (owner rule, October 2026), with the commit
+//! One queued survey create, and what its answer means to the survey queue
+//! ([`super::survey_queue`]). On every platform (Web, Desktop, Android and
+//! Core) a create is written straight to Firestore, create-only, under the
+//! signed-in author's own Firebase ID token, with the commit
 //! [`crate::survey_entry_create::direct`] plans; it counts as delivered only
-//! when Firestore's answer proves this exact write with its server clock. A
-//! native edge sends creates through Brain's mutate API
-//! ([`super::survey::Mutation`]). Corrections, deletions and restores always
-//! go through that API; files travel the media upload.
+//! when Firestore's answer proves this exact write with its server clock.
+//! Brain never creates. Corrections, deletions and restores go through
+//! Brain's mutate API ([`super::survey::Mutation`]); files travel the media
+//! upload.
 
 use serde_json::{json, Value};
 
 use crate::survey_entry_create::{direct, direct_plan_for};
-
-/// Where a create goes. The web writes Firestore directly, create-only;
-/// native edges (Desktop, Android, Core) send every survey write through
-/// Brain's mutate API (owner ruling: "Native: mutate only").
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Route {
-    FirestoreDirect,
-    Mutate,
-}
-
-/// This build's create route, fixed at compile time by its platform.
-pub const ROUTE: Route = if cfg!(feature = "platform-web") {
-    Route::FirestoreDirect
-} else {
-    Route::Mutate
-};
-
-/// Brain's mutate API does not take creates yet, so a native create waits in
-/// the queue instead of being sent or failed.
-pub const ROUTE_PENDING: &str = "survey_create_route_pending";
 
 /// Firestore answers a single-document commit well within this.
 pub const TIMEOUT_MS: u64 = 120_000;

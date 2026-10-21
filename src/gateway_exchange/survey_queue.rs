@@ -1,7 +1,8 @@
 //! The survey queue: every step of an entry this device captured, held on
 //! the outbox's `survey` queue ([`crate::outbox`]) until it is delivered. A
-//! create goes on the build's route ([`super::survey_create`]); a
-//! correction, deletion or restore through Brain's mutate API
+//! create is written straight to Firestore as its author on every platform
+//! ([`super::survey_create`]); a correction, deletion or restore goes
+//! through Brain's mutate API
 //! ([`super::survey::Mutation`]); a photo or other file through the media
 //! upload ([`super::survey_media`]), whose bytes stay in
 //! [`crate::media_outbox`]. The entry is the record: its create leaves
@@ -21,7 +22,7 @@ use serde_json::{json, Value};
 
 use super::retained::{store_refusal, Edge};
 use super::survey::{mutation_outcome, Discarded, Mutation};
-use super::survey_create::{Author, Create, Queued, Route, Sent as Posted, ROUTE_PENDING};
+use super::survey_create::{Author, Create, Queued, Sent as Posted};
 use super::survey_media::{carry, Dispatch, Renew, Transfer};
 use super::Refusal;
 use crate::durable_store::port::{Reply, StorePort};
@@ -43,12 +44,10 @@ const BASE_BACKOFF_MS: u64 = 2_000;
 const MAX_BACKOFF_MS: u64 = 300_000;
 /// Rejected sessions a step survives before it asks the person to sign in.
 const AUTH_CAP: u64 = 3;
-/// How long a create waits while its route cannot send it yet.
-const ROUTE_PENDING_MS: u64 = 60 * 60 * 1000;
 const MAX_SAFE: u64 = 9_007_199_254_740_991;
 
-/// The web's create route: the signed-in author with their Firebase ID
-/// token, and one create-only commit.
+/// Every platform's create route: the signed-in author with their Firebase
+/// ID token, and one create-only commit.
 #[allow(async_fn_in_trait)]
 pub trait Firestore {
     /// Who creates are written as, or why no one can be (signed out, a
@@ -182,7 +181,6 @@ struct Drain<'a, E, S, T, F> {
     store: &'a S,
     transfer: &'a T,
     firestore: &'a F,
-    route: Route,
     project: Option<&'a str>,
     lease: &'a str,
     owner: String,
@@ -282,22 +280,9 @@ impl<E: Edge, S: StorePort, T: Transfer, F: Firestore> Drain<'_, E, S, T, F> {
         let payload = &row["payload"];
         let attempts = row["attempts"].as_u64().unwrap_or(0);
         let outcome = match text(&payload["operation"]) {
-            "create" => match self.route {
-                Route::FirestoreDirect => match self.create(row).await {
-                    Ok(outcome) => outcome,
-                    Err(reason) => return Ok(Verdict::stopped(&reason)),
-                },
-                Route::Mutate => {
-                    let mut body = payload["wire"].as_object().cloned().unwrap_or_default();
-                    body.insert("operation".into(), "create".into());
-                    match self.edge.fetch(Mutation { payload: body }).await {
-                        Err(refusal) if refusal.code == ROUTE_PENDING => {
-                            let at = self.edge.now_ms().saturating_add(ROUTE_PENDING_MS);
-                            return Ok(Verdict::wait(ROUTE_PENDING, at));
-                        }
-                        outcome => json!(mutation_outcome(outcome)),
-                    }
-                }
+            "create" => match self.create(row).await {
+                Ok(outcome) => outcome,
+                Err(reason) => return Ok(Verdict::stopped(&reason)),
             },
             "update" | "delete" | "restore" => {
                 let Some(body) = payload["wire"].as_object().cloned() else {
@@ -426,7 +411,7 @@ impl<E: Edge, S: StorePort, T: Transfer, F: Firestore> Drain<'_, E, S, T, F> {
 }
 
 /// Deliver every startable step of the account's survey queue (of one
-/// project when named) on `route`, both lanes at once, under `lease`, a
+/// project when named), both lanes at once, under `lease`, a
 /// token unique to this drain. Files held before the queue carried them are
 /// scheduled first. Every store call after the first is fenced by the
 /// account the first answered for, so a sign-out mid-drain stops it.
@@ -435,7 +420,6 @@ pub async fn drain(
     store: &impl StorePort,
     transfer: &impl Transfer,
     firestore: &impl Firestore,
-    route: Route,
     project: Option<&str>,
     lease: &str,
 ) -> Result<Drained, Refusal> {
@@ -448,7 +432,6 @@ pub async fn drain(
         store,
         transfer,
         firestore,
-        route,
         project,
         lease,
         owner: reply.owner().unwrap_or_default().to_owned(),
@@ -588,7 +571,7 @@ mod browser {
     use crate::durable_store::port::{PageStore, StoreHost};
     use crate::gateway_exchange::browser::{credentials, direct_post, facts, rejection, typed, GatewayHost};
     use crate::gateway_exchange::retained::browser::BrowserEdge;
-    use crate::gateway_exchange::survey_create::{RESPONSE_CAP, ROUTE, TIMEOUT_MS};
+    use crate::gateway_exchange::survey_create::{RESPONSE_CAP, TIMEOUT_MS};
     use crate::gateway_exchange::survey_media::browser::Storage;
     use crate::gateway_target::{FIREBASE_PROJECT, LANE};
     use serde_json::Value;
@@ -650,7 +633,7 @@ mod browser {
         let port = PageStore::new(store);
         let lease = format!("survey-{}", uuid::Uuid::new_v4());
         let transfer = Storage(JsValue::clone(&host).unchecked_into());
-        drain(&page, &port, &transfer, &Page(host), ROUTE, project.as_deref(), &lease).await
+        drain(&page, &port, &transfer, &Page(host), project.as_deref(), &lease).await
     }
 
     /// Every queued step (of one project when named), oldest first: what it

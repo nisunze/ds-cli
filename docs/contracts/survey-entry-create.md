@@ -6,6 +6,13 @@ module constructs the fixed Firestore `documents:commit` request and interprets
 the commit receipt for both native and browser consumers. No Brain create endpoint
 exists; update/delete/restore continue through Brain.
 
+Every platform makes the same create: Web, Desktop, Android and Core. The Kernel
+survey queue (`gateway_exchange::survey_queue`, on the shared outbox store) drains
+a queued create with this one direct commit whatever platform feature the build
+carries, and Core's `survey entries create` makes it directly. No build routes a
+create through Brain's mutate API or waits for one to; that API takes only
+update, delete and restore, and refuses a create as invalid input.
+
 The direct authority consists of the verified Firebase project, UID, canonical
 email and deployment lane. Native preparation derives it from the protected principal and packaged public
 Firebase project; it needs no transport credential. Desktop IO uses the published
