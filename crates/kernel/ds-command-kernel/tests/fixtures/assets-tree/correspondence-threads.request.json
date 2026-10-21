@@ -1,0 +1,49 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "pm_parties": [
+      {"id": "p_acme", "data": {"name": "Acme Consultancy", "kind": "organisation"}},
+      {"id": "p_zed", "name": "Zed Ltd"}
+    ],
+    "pm_records": [
+      {"id": "R1", "data": {"subject": "Review of the MV design", "thread_id": "R1", "happened_at": "2026-09-14T09:00:00Z",
+       "external_party_ids": ["p_acme", "p_zed"], "source_asset_id": "a_mail", "document_ids": ["a_doc", "a_hidden"]}},
+      {"id": "R2", "data": {"subject": "Re: Review", "thread_id": "R1", "happened_at": "2026-09-18T09:00:00Z",
+       "external_party_ids": ["p_zed"], "source_asset_id": "a_mail"}},
+      {"id": "R3", "subject": "Site note", "threadId": "R3", "happenedAt": "2026-09-19T09:00:00Z",
+       "externalParticipantNames": ["nobody"]},
+      {"id": "R4", "subject": "Letter", "threadId": "R4", "happenedAt": "2026-09-19T09:00:00Z", "sourceAssetId": "a_gone"}
+    ]
+  },
+  "assets": [
+    {"schema": "ds.assets.asset/v1", "asset_id": "a_mail", "project_id": "p", "folder": "correspondence/2026-09",
+     "name": "review.eml", "kind": "mail", "format": "eml", "bytes": 10, "digest": "sha256:ab", "status": "fresh",
+     "sensitivity": "internal", "dated": {}, "owner": {"kind": "user", "id": "u"},
+     "source": {"kind": "upload"}, "classified_by": "user", "links": [],
+     "created_by": "u", "updated_at": "2026-09-20T00:00:00Z", "updated_by": "u", "version": 1,
+     "mail": {
+       "from": "x@example.com", "to": ["y@example.com"], "cc": [], "subject": "Review", "message_id": "<m@example.com>",
+       "parts": [
+         {"path": "part-1.txt", "section": "1", "content_type": "text/plain", "disposition": "body", "bytes": 12, "kind": "doc", "format": "txt", "named": false},
+         {"path": "drawing.pdf", "section": "2", "content_type": "application/pdf", "disposition": "attachment", "bytes": 3000, "kind": "doc", "format": "pdf", "named": true}
+       ], "parts_total": 2, "truncated": false}},
+    {"schema": "ds.assets.asset/v1", "asset_id": "a_doc", "project_id": "p", "folder": "correspondence/2026-09",
+     "name": "GTP-001.pdf", "kind": "doc", "format": "pdf", "bytes": 10, "digest": "sha256:ab", "status": "fresh",
+     "sensitivity": "internal", "dated": {}, "owner": {"kind": "user", "id": "u"},
+     "source": {"kind": "upload"}, "classified_by": "user", "links": [],
+     "created_by": "u", "updated_at": "2026-09-20T00:00:00Z", "updated_by": "u", "version": 1,
+     "document": {"number": "GTP-001", "revision_label": "B", "state": "issued"}},
+    {"schema": "ds.assets.asset/v1", "asset_id": "a_ref", "project_id": "p", "folder": "correspondence/2026-09",
+     "name": "package.zip", "kind": "pack", "format": "unknown", "bytes": 10, "digest": "sha256:ab", "status": "fresh",
+     "sensitivity": "internal", "dated": {}, "owner": {"kind": "user", "id": "u"},
+     "source": {"kind": "external_reference"}, "classified_by": "user", "links": [{"kind": "pm_record", "id": "R2"}],
+     "created_by": "u", "updated_at": "2026-09-20T00:00:00Z", "updated_by": "u", "version": 1,
+     "bytes_held": false,
+     "external": {"url": "https://drive.google.com/file/d/abc", "provider": "google_drive"}},
+    {"schema": "ds.assets.asset/v1", "asset_id": "a_note", "project_id": "p", "folder": "correspondence/2026-09",
+     "name": "note.md", "kind": "note", "format": "unknown", "bytes": 10, "digest": "sha256:ab", "status": "fresh",
+     "sensitivity": "internal", "dated": {}, "owner": {"kind": "user", "id": "u"},
+     "source": {"kind": "upload"}, "classified_by": "user", "links": [{"kind": "pm_record", "id": "R3"}],
+     "created_by": "u", "updated_at": "2026-09-20T00:00:00Z", "updated_by": "u", "version": 1}
+  ]
+}

@@ -1,0 +1,2115 @@
+{
+  "schema": "ds.style-document-cases/v1",
+  "purpose": "What ds-command-kernel::style_document answers for the style family's wire: the publish payload, the request body per action, and every admission rule. The kernel replays this file in tests/style_document_cases.rs and ds-web replays the identical copy through the vendored WASM, so no rule can be true on one host only.",
+  "source": "ds-command-kernel/docs/contracts/ds-style-document.md; the rules moved out of ds-web src/lib/api/styles.ts (buildStyleSavePayload), src/lib/layers/user-data-style.ts (mapGeometryToSeed), src/lib/components/styles/StyleCenterDialog.svelte (extractIssueMessages, extractWarningMessages) and ds-client-core::authorized::style_edit.",
+  "note": "Each case is the op WITHOUT the schema wrapper; `schema` overrides the default ds.style-document/v1. `expected` is the parsed answer, or {\"error\": \"<the exact Err string>\"} when the request itself is malformed.",
+  "cases": [
+    {
+      "id": "save_payload_routes_from_the_editor_row",
+      "why": "A registered design_vt ref takes its target and identity from /layers.style_editors, keeps the authored zoom range and filter, and carries no project_id for a shared-class target.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "required_images": [
+            {
+              "id": "pin-red-24",
+              "source": "pin",
+              "color": "#FF0000"
+            },
+            {
+              "id": "dot-blue-16",
+              "source": "dot",
+              "color": "#0055FF"
+            }
+          ],
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/lv_lines_vt",
+              "style_target": "design_vt",
+              "layer_name": "lv_lines",
+              "template_name": "rwanda_lv",
+              "styling_template_id": "tpl_lv_1",
+              "available_fields": [
+                "status",
+                "phase"
+              ],
+              "field_values": {
+                "status": [
+                  "built",
+                  "planned"
+                ]
+              }
+            },
+            {
+              "style_ref": "survey_layer",
+              "style_target": "survey",
+              "slug": "poles"
+            },
+            {
+              "style_ref": "master/customers",
+              "style_target": "design",
+              "layer_name": "customers"
+            },
+            {
+              "style_ref": "ud/sketch_a",
+              "template_name": "sketch_default"
+            }
+          ]
+        },
+        "reference": "master/lv_lines_vt",
+        "document": {
+          "type": "line",
+          "minzoom": 7,
+          "maxzoom": 18,
+          "filter": [
+            "==",
+            [
+              "get",
+              "status"
+            ],
+            "built"
+          ],
+          "paint": {
+            "line-width": 2,
+            "line-color": "#334455"
+          }
+        }
+      },
+      "expected": {
+        "payload": {
+          "style_ref": "master/lv_lines_vt",
+          "style_data": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          },
+          "style_target": "design_vt",
+          "template_name": "rwanda_lv",
+          "styling_template_id": "tpl_lv_1",
+          "layer_name": "lv_lines",
+          "available_fields": [
+            "status",
+            "phase"
+          ],
+          "field_values": {
+            "status": [
+              "built",
+              "planned"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "save_payload_carries_the_project_for_a_project_scoped_target",
+      "why": "Only a project-scoped target (here survey, addressed by slug) is written with the project it belongs to.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "required_images": [
+            {
+              "id": "pin-red-24",
+              "source": "pin",
+              "color": "#FF0000"
+            },
+            {
+              "id": "dot-blue-16",
+              "source": "dot",
+              "color": "#0055FF"
+            }
+          ],
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/lv_lines_vt",
+              "style_target": "design_vt",
+              "layer_name": "lv_lines",
+              "template_name": "rwanda_lv",
+              "styling_template_id": "tpl_lv_1",
+              "available_fields": [
+                "status",
+                "phase"
+              ],
+              "field_values": {
+                "status": [
+                  "built",
+                  "planned"
+                ]
+              }
+            },
+            {
+              "style_ref": "survey_layer",
+              "style_target": "survey",
+              "slug": "poles"
+            },
+            {
+              "style_ref": "master/customers",
+              "style_target": "design",
+              "layer_name": "customers"
+            },
+            {
+              "style_ref": "ud/sketch_a",
+              "template_name": "sketch_default"
+            }
+          ]
+        },
+        "reference": "survey_layer",
+        "document": {
+          "type": "circle",
+          "paint": {
+            "circle-radius": 4
+          }
+        }
+      },
+      "expected": {
+        "payload": {
+          "style_ref": "survey_layer",
+          "style_data": {
+            "type": "circle",
+            "paint": {
+              "circle-radius": 4
+            }
+          },
+          "style_target": "survey",
+          "slug": "poles",
+          "project_id": "p1"
+        }
+      }
+    },
+    {
+      "id": "save_payload_normalises_a_runtime_symbol_icon",
+      "why": "A runtime sprite id is written back as the catalog icon name, and the catalog colour it was minted with becomes the authored icon-color.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "required_images": [
+            {
+              "id": "pin-red-24",
+              "source": "pin",
+              "color": "#FF0000"
+            },
+            {
+              "id": "dot-blue-16",
+              "source": "dot",
+              "color": "#0055FF"
+            }
+          ],
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/lv_lines_vt",
+              "style_target": "design_vt",
+              "layer_name": "lv_lines",
+              "template_name": "rwanda_lv",
+              "styling_template_id": "tpl_lv_1",
+              "available_fields": [
+                "status",
+                "phase"
+              ],
+              "field_values": {
+                "status": [
+                  "built",
+                  "planned"
+                ]
+              }
+            },
+            {
+              "style_ref": "survey_layer",
+              "style_target": "survey",
+              "slug": "poles"
+            },
+            {
+              "style_ref": "master/customers",
+              "style_target": "design",
+              "layer_name": "customers"
+            },
+            {
+              "style_ref": "ud/sketch_a",
+              "template_name": "sketch_default"
+            }
+          ]
+        },
+        "reference": "master/customers",
+        "document": {
+          "type": "symbol",
+          "layout": {
+            "icon-image": "pin-red-24",
+            "icon-size": 1
+          },
+          "paint": {}
+        }
+      },
+      "expected": {
+        "payload": {
+          "style_ref": "master/customers",
+          "style_data": {
+            "type": "symbol",
+            "layout": {
+              "icon-image": "pin",
+              "icon-size": 1
+            },
+            "paint": {
+              "icon-color": "#FF0000"
+            }
+          },
+          "style_target": "design",
+          "layer_name": "customers"
+        }
+      }
+    },
+    {
+      "id": "save_payload_derives_user_data_routing",
+      "why": "`ud/<slug>` names the shared class it lives in, so a ref /layers never registered routes itself to user_data with <slug> as the layer name.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "required_images": [
+            {
+              "id": "pin-red-24",
+              "source": "pin",
+              "color": "#FF0000"
+            },
+            {
+              "id": "dot-blue-16",
+              "source": "dot",
+              "color": "#0055FF"
+            }
+          ],
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/lv_lines_vt",
+              "style_target": "design_vt",
+              "layer_name": "lv_lines",
+              "template_name": "rwanda_lv",
+              "styling_template_id": "tpl_lv_1",
+              "available_fields": [
+                "status",
+                "phase"
+              ],
+              "field_values": {
+                "status": [
+                  "built",
+                  "planned"
+                ]
+              }
+            },
+            {
+              "style_ref": "survey_layer",
+              "style_target": "survey",
+              "slug": "poles"
+            },
+            {
+              "style_ref": "master/customers",
+              "style_target": "design",
+              "layer_name": "customers"
+            },
+            {
+              "style_ref": "ud/sketch_a",
+              "template_name": "sketch_default"
+            }
+          ]
+        },
+        "reference": "ud/non_snapping_lv_lines",
+        "document": {
+          "type": "circle",
+          "paint": {
+            "circle-radius": 4
+          }
+        }
+      },
+      "expected": {
+        "payload": {
+          "style_ref": "ud/non_snapping_lv_lines",
+          "style_data": {
+            "type": "circle",
+            "paint": {
+              "circle-radius": 4
+            }
+          },
+          "style_target": "user_data",
+          "layer_name": "non_snapping_lv_lines"
+        }
+      }
+    },
+    {
+      "id": "save_payload_derives_project_data_routing",
+      "why": "`pd/<slug>` names the shared class it lives in, so a ref /layers never registered routes itself to project_data with <slug> as the layer name.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "required_images": [
+            {
+              "id": "pin-red-24",
+              "source": "pin",
+              "color": "#FF0000"
+            },
+            {
+              "id": "dot-blue-16",
+              "source": "dot",
+              "color": "#0055FF"
+            }
+          ],
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/lv_lines_vt",
+              "style_target": "design_vt",
+              "layer_name": "lv_lines",
+              "template_name": "rwanda_lv",
+              "styling_template_id": "tpl_lv_1",
+              "available_fields": [
+                "status",
+                "phase"
+              ],
+              "field_values": {
+                "status": [
+                  "built",
+                  "planned"
+                ]
+              }
+            },
+            {
+              "style_ref": "survey_layer",
+              "style_target": "survey",
+              "slug": "poles"
+            },
+            {
+              "style_ref": "master/customers",
+              "style_target": "design",
+              "layer_name": "customers"
+            },
+            {
+              "style_ref": "ud/sketch_a",
+              "template_name": "sketch_default"
+            }
+          ]
+        },
+        "reference": "pd/network_a",
+        "document": {
+          "type": "circle",
+          "paint": {
+            "circle-radius": 4
+          }
+        }
+      },
+      "expected": {
+        "payload": {
+          "style_ref": "pd/network_a",
+          "style_data": {
+            "type": "circle",
+            "paint": {
+              "circle-radius": 4
+            }
+          },
+          "style_target": "project_data",
+          "layer_name": "network_a"
+        }
+      }
+    },
+    {
+      "id": "save_payload_derives_global_tile_routing",
+      "why": "`gt/<slug>` names the shared class it lives in, so a ref /layers never registered routes itself to global_tile with <slug> as the layer name.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "required_images": [
+            {
+              "id": "pin-red-24",
+              "source": "pin",
+              "color": "#FF0000"
+            },
+            {
+              "id": "dot-blue-16",
+              "source": "dot",
+              "color": "#0055FF"
+            }
+          ],
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/lv_lines_vt",
+              "style_target": "design_vt",
+              "layer_name": "lv_lines",
+              "template_name": "rwanda_lv",
+              "styling_template_id": "tpl_lv_1",
+              "available_fields": [
+                "status",
+                "phase"
+              ],
+              "field_values": {
+                "status": [
+                  "built",
+                  "planned"
+                ]
+              }
+            },
+            {
+              "style_ref": "survey_layer",
+              "style_target": "survey",
+              "slug": "poles"
+            },
+            {
+              "style_ref": "master/customers",
+              "style_target": "design",
+              "layer_name": "customers"
+            },
+            {
+              "style_ref": "ud/sketch_a",
+              "template_name": "sketch_default"
+            }
+          ]
+        },
+        "reference": "gt/rwanda_roads",
+        "document": {
+          "type": "circle",
+          "paint": {
+            "circle-radius": 4
+          }
+        }
+      },
+      "expected": {
+        "payload": {
+          "style_ref": "gt/rwanda_roads",
+          "style_data": {
+            "type": "circle",
+            "paint": {
+              "circle-radius": 4
+            }
+          },
+          "style_target": "global_tile",
+          "layer_name": "rwanda_roads"
+        }
+      }
+    },
+    {
+      "id": "save_payload_derives_routing_when_the_row_cannot_route",
+      "why": "A row that exists but declares no style_target reaches the same rule, and every other field it declared is still carried.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "required_images": [
+            {
+              "id": "pin-red-24",
+              "source": "pin",
+              "color": "#FF0000"
+            },
+            {
+              "id": "dot-blue-16",
+              "source": "dot",
+              "color": "#0055FF"
+            }
+          ],
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/lv_lines_vt",
+              "style_target": "design_vt",
+              "layer_name": "lv_lines",
+              "template_name": "rwanda_lv",
+              "styling_template_id": "tpl_lv_1",
+              "available_fields": [
+                "status",
+                "phase"
+              ],
+              "field_values": {
+                "status": [
+                  "built",
+                  "planned"
+                ]
+              }
+            },
+            {
+              "style_ref": "survey_layer",
+              "style_target": "survey",
+              "slug": "poles"
+            },
+            {
+              "style_ref": "master/customers",
+              "style_target": "design",
+              "layer_name": "customers"
+            },
+            {
+              "style_ref": "ud/sketch_a",
+              "template_name": "sketch_default"
+            }
+          ]
+        },
+        "reference": "ud/sketch_a",
+        "document": {
+          "type": "circle",
+          "paint": {
+            "circle-radius": 4
+          }
+        }
+      },
+      "expected": {
+        "payload": {
+          "style_ref": "ud/sketch_a",
+          "style_data": {
+            "type": "circle",
+            "paint": {
+              "circle-radius": 4
+            }
+          },
+          "template_name": "sketch_default",
+          "style_target": "user_data",
+          "layer_name": "sketch_a"
+        }
+      }
+    },
+    {
+      "id": "save_payload_refuses_a_reference_nothing_can_route",
+      "why": "A ref with no row and no shared-class shape fails closed with the words that name what the backend owes.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "required_images": [
+            {
+              "id": "pin-red-24",
+              "source": "pin",
+              "color": "#FF0000"
+            },
+            {
+              "id": "dot-blue-16",
+              "source": "dot",
+              "color": "#0055FF"
+            }
+          ],
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/lv_lines_vt",
+              "style_target": "design_vt",
+              "layer_name": "lv_lines",
+              "template_name": "rwanda_lv",
+              "styling_template_id": "tpl_lv_1",
+              "available_fields": [
+                "status",
+                "phase"
+              ],
+              "field_values": {
+                "status": [
+                  "built",
+                  "planned"
+                ]
+              }
+            },
+            {
+              "style_ref": "survey_layer",
+              "style_target": "survey",
+              "slug": "poles"
+            },
+            {
+              "style_ref": "master/customers",
+              "style_target": "design",
+              "layer_name": "customers"
+            },
+            {
+              "style_ref": "ud/sketch_a",
+              "template_name": "sketch_default"
+            }
+          ]
+        },
+        "reference": "master/unknown_layer",
+        "document": {
+          "type": "circle",
+          "paint": {
+            "circle-radius": 4
+          }
+        }
+      },
+      "expected": {
+        "error": "no backend style routing for master/unknown_layer: /layers.style_editors must declare style_target plus layer_name or slug"
+      }
+    },
+    {
+      "id": "save_payload_refuses_a_document_without_a_type",
+      "why": "A style document names its MapLibre type; a bag of paint is not a style.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "required_images": [
+            {
+              "id": "pin-red-24",
+              "source": "pin",
+              "color": "#FF0000"
+            },
+            {
+              "id": "dot-blue-16",
+              "source": "dot",
+              "color": "#0055FF"
+            }
+          ],
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/lv_lines_vt",
+              "style_target": "design_vt",
+              "layer_name": "lv_lines",
+              "template_name": "rwanda_lv",
+              "styling_template_id": "tpl_lv_1",
+              "available_fields": [
+                "status",
+                "phase"
+              ],
+              "field_values": {
+                "status": [
+                  "built",
+                  "planned"
+                ]
+              }
+            },
+            {
+              "style_ref": "survey_layer",
+              "style_target": "survey",
+              "slug": "poles"
+            },
+            {
+              "style_ref": "master/customers",
+              "style_target": "design",
+              "layer_name": "customers"
+            },
+            {
+              "style_ref": "ud/sketch_a",
+              "template_name": "sketch_default"
+            }
+          ]
+        },
+        "reference": "master/lv_lines_vt",
+        "document": {
+          "paint": {
+            "line-width": 2
+          }
+        }
+      },
+      "expected": {
+        "error": "a style save needs a style document with a string type"
+      }
+    },
+    {
+      "id": "publish_request_body",
+      "why": "A publish is the declared domains.styles.update operation with the payload under `data`, read under the 1 MiB bound the registry declares.",
+      "request": {
+        "kind": "request",
+        "action": "publish",
+        "payload": {
+          "style_ref": "master/lv_lines_vt",
+          "style_data": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          },
+          "style_target": "design_vt",
+          "template_name": "rwanda_lv",
+          "styling_template_id": "tpl_lv_1",
+          "layer_name": "lv_lines",
+          "available_fields": [
+            "status",
+            "phase"
+          ],
+          "field_values": {
+            "status": [
+              "built",
+              "planned"
+            ]
+          }
+        }
+      },
+      "expected": {
+        "operation": "domains.styles.update",
+        "method": "POST",
+        "path": "/api/v1/styles",
+        "action": "update_style",
+        "body": {
+          "action": "update_style",
+          "data": {
+            "style_ref": "master/lv_lines_vt",
+            "style_data": {
+              "type": "line",
+              "minzoom": 7,
+              "maxzoom": 18,
+              "filter": [
+                "==",
+                [
+                  "get",
+                  "status"
+                ],
+                "built"
+              ],
+              "paint": {
+                "line-width": 2,
+                "line-color": "#334455"
+              }
+            },
+            "style_target": "design_vt",
+            "template_name": "rwanda_lv",
+            "styling_template_id": "tpl_lv_1",
+            "layer_name": "lv_lines",
+            "available_fields": [
+              "status",
+              "phase"
+            ],
+            "field_values": {
+              "status": [
+                "built",
+                "planned"
+              ]
+            }
+          }
+        },
+        "response_limit": 1048576,
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "publish_request_refuses_an_unknown_payload_field",
+      "why": "The payload is closed: a field the backend never declared is a malformed request, not something to send and hope.",
+      "request": {
+        "kind": "request",
+        "action": "publish",
+        "payload": {
+          "style_ref": "master/lv_lines_vt",
+          "style_data": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          },
+          "style_target": "design_vt",
+          "template_name": "rwanda_lv",
+          "styling_template_id": "tpl_lv_1",
+          "layer_name": "lv_lines",
+          "available_fields": [
+            "status",
+            "phase"
+          ],
+          "field_values": {
+            "status": [
+              "built",
+              "planned"
+            ]
+          },
+          "colour": "red"
+        }
+      },
+      "expected": {
+        "error": "unknown style payload field colour"
+      }
+    },
+    {
+      "id": "publish_request_refuses_an_unbounded_style_ref",
+      "why": "Every style reference is bounded at 500 characters; the 2 MiB payload and 16 MiB input bounds are proven in-module, since a fixture both hosts parse cannot carry them.",
+      "request": {
+        "kind": "request",
+        "action": "publish",
+        "payload": {
+          "style_ref": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "style_data": {
+            "type": "circle",
+            "paint": {
+              "circle-radius": 4
+            }
+          },
+          "style_target": "user_data",
+          "layer_name": "x"
+        }
+      },
+      "expected": {
+        "error": "a style request needs a bounded style_ref"
+      }
+    },
+    {
+      "id": "seed_request_canonicalises_the_geometry",
+      "why": "The kernel maps a GeoJSON geometry to the one styleable seed shape — this replaces ds-web's mapGeometryToSeed and Project Work's seedGeometry. `seed_kind` names the tile kind because `kind` names the op; the wire word stays `kind`.",
+      "request": {
+        "kind": "request",
+        "action": "seed",
+        "style_ref": "ud/non_snapping_lv_lines",
+        "geometry": "MultiLineString",
+        "seed_kind": "vt",
+        "seed": "non_snapping_lv_lines"
+      },
+      "expected": {
+        "operation": "domains.styles.action",
+        "method": "POST",
+        "path": "/api/v1/styles",
+        "action": "seed_style",
+        "body": {
+          "action": "seed_style",
+          "data": {
+            "style_ref": "ud/non_snapping_lv_lines",
+            "geometry": "line",
+            "kind": "vt",
+            "seed": "non_snapping_lv_lines"
+          }
+        },
+        "response_limit": 4194304,
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "seed_request_refuses_an_unmappable_geometry",
+      "why": "A shape with no styleable seed is refused by name instead of being seeded as a point.",
+      "request": {
+        "kind": "request",
+        "action": "seed",
+        "style_ref": "ud/x",
+        "geometry": "GeometryCollection"
+      },
+      "expected": {
+        "error": "no styleable seed geometry for GeometryCollection"
+      }
+    },
+    {
+      "id": "read_shared_request_body",
+      "why": "A shared-class read is the declared domains.styles.action operation with the backend's own action word.",
+      "request": {
+        "kind": "request",
+        "action": "read_shared",
+        "style_ref": "ud/non_snapping_lv_lines"
+      },
+      "expected": {
+        "operation": "domains.styles.action",
+        "method": "POST",
+        "path": "/api/v1/styles",
+        "action": "get_user_data_style",
+        "body": {
+          "action": "get_user_data_style",
+          "data": {
+            "style_ref": "ud/non_snapping_lv_lines"
+          }
+        },
+        "response_limit": 4194304,
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "assemble_runtime_request_body",
+      "why": "The client names only the logical root, the geometry and the authored document; every runtime identity is the backend's.",
+      "request": {
+        "kind": "request",
+        "action": "assemble_runtime",
+        "logical_root": "personal_notes",
+        "geometry": "Point",
+        "style_data": {
+          "type": "circle",
+          "paint": {
+            "circle-radius": 4
+          }
+        }
+      },
+      "expected": {
+        "operation": "domains.styles.action",
+        "method": "POST",
+        "path": "/api/v1/styles",
+        "action": "assemble_work_map_runtime_style",
+        "body": {
+          "action": "assemble_work_map_runtime_style",
+          "data": {
+            "logical_root": "personal_notes",
+            "geometry": "Point",
+            "style_data": {
+              "type": "circle",
+              "paint": {
+                "circle-radius": 4
+              }
+            }
+          }
+        },
+        "response_limit": 4194304,
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "publish_admits_and_normalises_issue_object_warnings",
+      "why": "ds-brain's expression warnings are {path,message} issue objects; they are admitted and normalised to text, next to plain strings and the older property+issue.message shape. Native used to refuse them while the browser accepted them.",
+      "request": {
+        "kind": "admit",
+        "action": "publish",
+        "expected": {
+          "style_ref": "master/lv_lines_vt",
+          "style_data": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          },
+          "style_target": "design_vt",
+          "template_name": "rwanda_lv",
+          "styling_template_id": "tpl_lv_1",
+          "layer_name": "lv_lines",
+          "available_fields": [
+            "status",
+            "phase"
+          ],
+          "field_values": {
+            "status": [
+              "built",
+              "planned"
+            ]
+          }
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "updated": true,
+            "style_target": "design_vt",
+            "template_name": "rwanda_lv",
+            "styling_template_id": "tpl_lv_1",
+            "layer_name": "lv_lines",
+            "style_data": {
+              "type": "line",
+              "minzoom": 7,
+              "maxzoom": 18,
+              "filter": [
+                "==",
+                [
+                  "get",
+                  "status"
+                ],
+                "built"
+              ],
+              "paint": {
+                "line-width": 2,
+                "line-color": "#334455"
+              }
+            },
+            "warnings": [
+              {
+                "path": "paint.line-width",
+                "message": "clamped to the declared maximum"
+              },
+              "label styling was omitted",
+              {
+                "property": "label",
+                "issue": {
+                  "message": "no text-field"
+                }
+              },
+              {
+                "message": "no property"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "outcome": "admitted",
+        "data": {
+          "style_ref": "master/lv_lines_vt",
+          "style_target": "design_vt",
+          "template_name": "rwanda_lv",
+          "styling_template_id": "tpl_lv_1",
+          "layer_name": "lv_lines",
+          "document": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          },
+          "warnings": [
+            "paint.line-width: clamped to the declared maximum",
+            "label styling was omitted",
+            "label: no text-field",
+            "no property"
+          ]
+        }
+      }
+    },
+    {
+      "id": "publish_refused_on_a_target_mismatch",
+      "why": "The receipt must name the target that was authored; a write that landed somewhere else is not this publish.",
+      "request": {
+        "kind": "admit",
+        "action": "publish",
+        "expected": {
+          "style_ref": "master/lv_lines_vt",
+          "style_data": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          },
+          "style_target": "design_vt",
+          "template_name": "rwanda_lv",
+          "styling_template_id": "tpl_lv_1",
+          "layer_name": "lv_lines",
+          "available_fields": [
+            "status",
+            "phase"
+          ],
+          "field_values": {
+            "status": [
+              "built",
+              "planned"
+            ]
+          }
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "updated": true,
+            "style_target": "user_data",
+            "template_name": "rwanda_lv",
+            "styling_template_id": "tpl_lv_1",
+            "layer_name": "lv_lines",
+            "style_data": {
+              "type": "line",
+              "minzoom": 7,
+              "maxzoom": 18,
+              "filter": [
+                "==",
+                [
+                  "get",
+                  "status"
+                ],
+                "built"
+              ],
+              "paint": {
+                "line-width": 2,
+                "line-color": "#334455"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "unreadable_response",
+          "message": "style publish receipt does not match the authored target"
+        }
+      }
+    },
+    {
+      "id": "publish_refused_on_an_identity_mismatch",
+      "why": "Every optional identity the payload declared must come back unchanged.",
+      "request": {
+        "kind": "admit",
+        "action": "publish",
+        "expected": {
+          "style_ref": "master/lv_lines_vt",
+          "style_data": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          },
+          "style_target": "design_vt",
+          "template_name": "rwanda_lv",
+          "styling_template_id": "tpl_lv_1",
+          "layer_name": "lv_lines",
+          "available_fields": [
+            "status",
+            "phase"
+          ],
+          "field_values": {
+            "status": [
+              "built",
+              "planned"
+            ]
+          }
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "updated": true,
+            "style_target": "design_vt",
+            "template_name": "rwanda_lv",
+            "styling_template_id": "tpl_lv_1",
+            "layer_name": "another_layer",
+            "style_data": {
+              "type": "line",
+              "minzoom": 7,
+              "maxzoom": 18,
+              "filter": [
+                "==",
+                [
+                  "get",
+                  "status"
+                ],
+                "built"
+              ],
+              "paint": {
+                "line-width": 2,
+                "line-color": "#334455"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "unreadable_response",
+          "message": "style publish receipt does not match the authored target"
+        }
+      }
+    },
+    {
+      "id": "publish_refused_when_nothing_was_updated",
+      "why": "`updated` is the backend's word for 'this was written'; without it there is no publication to report.",
+      "request": {
+        "kind": "admit",
+        "action": "publish",
+        "expected": {
+          "style_ref": "master/lv_lines_vt",
+          "style_data": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          },
+          "style_target": "design_vt",
+          "template_name": "rwanda_lv",
+          "styling_template_id": "tpl_lv_1",
+          "layer_name": "lv_lines",
+          "available_fields": [
+            "status",
+            "phase"
+          ],
+          "field_values": {
+            "status": [
+              "built",
+              "planned"
+            ]
+          }
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "updated": false,
+            "style_target": "design_vt",
+            "template_name": "rwanda_lv",
+            "styling_template_id": "tpl_lv_1",
+            "layer_name": "lv_lines",
+            "style_data": {
+              "type": "line",
+              "minzoom": 7,
+              "maxzoom": 18,
+              "filter": [
+                "==",
+                [
+                  "get",
+                  "status"
+                ],
+                "built"
+              ],
+              "paint": {
+                "line-width": 2,
+                "line-color": "#334455"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "unreadable_response",
+          "message": "style publish receipt does not match the authored target"
+        }
+      }
+    },
+    {
+      "id": "publish_refused_on_malformed_warnings",
+      "why": "A warning is text or a named issue object; a number is a contract slip, and the receipt is unreadable rather than half-read.",
+      "request": {
+        "kind": "admit",
+        "action": "publish",
+        "expected": {
+          "style_ref": "master/lv_lines_vt",
+          "style_data": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          },
+          "style_target": "design_vt",
+          "template_name": "rwanda_lv",
+          "styling_template_id": "tpl_lv_1",
+          "layer_name": "lv_lines",
+          "available_fields": [
+            "status",
+            "phase"
+          ],
+          "field_values": {
+            "status": [
+              "built",
+              "planned"
+            ]
+          }
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "updated": true,
+            "style_target": "design_vt",
+            "template_name": "rwanda_lv",
+            "styling_template_id": "tpl_lv_1",
+            "layer_name": "lv_lines",
+            "style_data": {
+              "type": "line",
+              "minzoom": 7,
+              "maxzoom": 18,
+              "filter": [
+                "==",
+                [
+                  "get",
+                  "status"
+                ],
+                "built"
+              ],
+              "paint": {
+                "line-width": 2,
+                "line-color": "#334455"
+              }
+            },
+            "warnings": [
+              7
+            ]
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "unreadable_response",
+          "message": "style publish warnings are malformed"
+        }
+      }
+    },
+    {
+      "id": "publish_refused_by_the_backend_carries_its_words_and_issues",
+      "why": "A backend refusal is reported in the backend's own words with its status and code, and error_details.issues become `path: message` strings.",
+      "request": {
+        "kind": "admit",
+        "action": "publish",
+        "expected": {
+          "style_ref": "master/lv_lines_vt",
+          "style_data": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          },
+          "style_target": "design_vt",
+          "template_name": "rwanda_lv",
+          "styling_template_id": "tpl_lv_1",
+          "layer_name": "lv_lines",
+          "available_fields": [
+            "status",
+            "phase"
+          ],
+          "field_values": {
+            "status": [
+              "built",
+              "planned"
+            ]
+          }
+        },
+        "response": {
+          "success": false,
+          "error": "Invalid style document",
+          "status": 400,
+          "error_code": "validation_failed",
+          "error_details": {
+            "issues": [
+              {
+                "path": "paint.line-color",
+                "message": "unknown expression operator"
+              },
+              {
+                "message": "document has no type"
+              },
+              {
+                "path": "layout"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "backend_refused",
+          "message": "Invalid style document (400 validation_failed)",
+          "issues": [
+            "paint.line-color: unknown expression operator",
+            "document has no type"
+          ]
+        }
+      }
+    },
+    {
+      "id": "seed_admitted",
+      "why": "A seed is the ref and canonical geometry that were asked for, a known tile kind, a real document — and nothing persisted.",
+      "request": {
+        "kind": "admit",
+        "action": "seed",
+        "expected": {
+          "style_ref": "ud/non_snapping_lv_lines",
+          "geometry": "line"
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "style_ref": "ud/non_snapping_lv_lines",
+            "geometry": "line",
+            "kind": "vt",
+            "seed": "non_snapping_lv_lines",
+            "persisted": false,
+            "style_data": {
+              "type": "line",
+              "minzoom": 7,
+              "maxzoom": 18,
+              "filter": [
+                "==",
+                [
+                  "get",
+                  "status"
+                ],
+                "built"
+              ],
+              "paint": {
+                "line-width": 2,
+                "line-color": "#334455"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "outcome": "admitted",
+        "data": {
+          "style_ref": "ud/non_snapping_lv_lines",
+          "geometry": "line",
+          "kind": "vt",
+          "style_data": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "seed_refused_when_the_backend_persisted_it",
+      "why": "The seed path never writes: a persisted seed is a different operation than the one that was asked for.",
+      "request": {
+        "kind": "admit",
+        "action": "seed",
+        "expected": {
+          "style_ref": "ud/non_snapping_lv_lines",
+          "geometry": "line"
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "style_ref": "ud/non_snapping_lv_lines",
+            "geometry": "line",
+            "kind": "geojson",
+            "persisted": true,
+            "style_data": {
+              "type": "line",
+              "minzoom": 7,
+              "maxzoom": 18,
+              "filter": [
+                "==",
+                [
+                  "get",
+                  "status"
+                ],
+                "built"
+              ],
+              "paint": {
+                "line-width": 2,
+                "line-color": "#334455"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "unreadable_response",
+          "message": "invalid style seed for ud/non_snapping_lv_lines"
+        }
+      }
+    },
+    {
+      "id": "seed_refused_for_another_reference",
+      "why": "A seed for a different ref cannot seed this editor.",
+      "request": {
+        "kind": "admit",
+        "action": "seed",
+        "expected": {
+          "style_ref": "ud/non_snapping_lv_lines",
+          "geometry": "line"
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "style_ref": "ud/other",
+            "geometry": "line",
+            "kind": "geojson",
+            "persisted": false,
+            "style_data": {
+              "type": "line",
+              "minzoom": 7,
+              "maxzoom": 18,
+              "filter": [
+                "==",
+                [
+                  "get",
+                  "status"
+                ],
+                "built"
+              ],
+              "paint": {
+                "line-width": 2,
+                "line-color": "#334455"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "unreadable_response",
+          "message": "invalid style seed for ud/non_snapping_lv_lines"
+        }
+      }
+    },
+    {
+      "id": "read_shared_found",
+      "why": "A found shared-class document is answered with the document itself.",
+      "request": {
+        "kind": "admit",
+        "action": "read_shared",
+        "expected": {
+          "style_ref": "ud/non_snapping_lv_lines"
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "style_ref": "ud/non_snapping_lv_lines",
+            "layer_name": "non_snapping_lv_lines",
+            "found": true,
+            "style_data": {
+              "type": "line",
+              "minzoom": 7,
+              "maxzoom": 18,
+              "filter": [
+                "==",
+                [
+                  "get",
+                  "status"
+                ],
+                "built"
+              ],
+              "paint": {
+                "line-width": 2,
+                "line-color": "#334455"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "outcome": "admitted",
+        "data": {
+          "style_ref": "ud/non_snapping_lv_lines",
+          "found": true,
+          "style_data": {
+            "type": "line",
+            "minzoom": 7,
+            "maxzoom": 18,
+            "filter": [
+              "==",
+              [
+                "get",
+                "status"
+              ],
+              "built"
+            ],
+            "paint": {
+              "line-width": 2,
+              "line-color": "#334455"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "read_shared_not_found",
+      "why": "An absence is an answer, not a failure: the class simply has no shared document yet.",
+      "request": {
+        "kind": "admit",
+        "action": "read_shared",
+        "expected": {
+          "style_ref": "ud/non_snapping_lv_lines"
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "style_ref": "ud/non_snapping_lv_lines",
+            "layer_name": "non_snapping_lv_lines",
+            "found": false
+          }
+        }
+      },
+      "expected": {
+        "outcome": "admitted",
+        "data": {
+          "style_ref": "ud/non_snapping_lv_lines",
+          "found": false
+        }
+      }
+    },
+    {
+      "id": "read_shared_found_without_a_document_is_refused",
+      "why": "A found document that is not there is a contract slip, never an empty style.",
+      "request": {
+        "kind": "admit",
+        "action": "read_shared",
+        "expected": {
+          "style_ref": "ud/non_snapping_lv_lines"
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "style_ref": "ud/non_snapping_lv_lines",
+            "found": true
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "unreadable_response",
+          "message": "invalid shared style for ud/non_snapping_lv_lines"
+        }
+      }
+    },
+    {
+      "id": "assemble_runtime_admitted",
+      "why": "The family is answered unchanged: the backend owns every runtime identity in it.",
+      "request": {
+        "kind": "admit",
+        "action": "assemble_runtime",
+        "expected": {
+          "logical_root": "personal_notes",
+          "geometry": "Point"
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "authority": "ds-brain/work-map-runtime-family/v1",
+            "logical_root": "personal_notes",
+            "geometry": "Point",
+            "source_id": "ds-work-notes-source",
+            "layer_id": "ds-work-notes-point",
+            "style_ref": "ud/personal_notes_point",
+            "style_data": {
+              "type": "circle",
+              "paint": {
+                "circle-radius": 4
+              }
+            },
+            "layers": [
+              {
+                "id": "ds-work-notes-point",
+                "type": "circle",
+                "source": "ds-work-notes-source"
+              },
+              {
+                "id": "ds-work-notes-point__label",
+                "type": "symbol",
+                "source": "ds-work-notes-source"
+              }
+            ],
+            "required_images": [
+              {
+                "id": "dot-blue-16",
+                "url": "data:image/png;base64,AA"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "outcome": "admitted",
+        "data": {
+          "authority": "ds-brain/work-map-runtime-family/v1",
+          "logical_root": "personal_notes",
+          "geometry": "Point",
+          "source_id": "ds-work-notes-source",
+          "layer_id": "ds-work-notes-point",
+          "style_ref": "ud/personal_notes_point",
+          "style_data": {
+            "type": "circle",
+            "paint": {
+              "circle-radius": 4
+            }
+          },
+          "layers": [
+            {
+              "id": "ds-work-notes-point",
+              "type": "circle",
+              "source": "ds-work-notes-source"
+            },
+            {
+              "id": "ds-work-notes-point__label",
+              "type": "symbol",
+              "source": "ds-work-notes-source"
+            }
+          ],
+          "required_images": [
+            {
+              "id": "dot-blue-16",
+              "url": "data:image/png;base64,AA"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "assemble_runtime_refused_on_a_foreign_authority",
+      "why": "Only ds-brain's work-map assembler may name a work-map family.",
+      "request": {
+        "kind": "admit",
+        "action": "assemble_runtime",
+        "expected": {
+          "logical_root": "personal_notes",
+          "geometry": "Point"
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "authority": "ds-brain/some-other-family/v1",
+            "logical_root": "personal_notes",
+            "geometry": "Point",
+            "source_id": "ds-work-notes-source",
+            "layer_id": "ds-work-notes-point",
+            "style_ref": "ud/personal_notes_point",
+            "style_data": {
+              "type": "circle",
+              "paint": {
+                "circle-radius": 4
+              }
+            },
+            "layers": [
+              {
+                "id": "ds-work-notes-point",
+                "type": "circle",
+                "source": "ds-work-notes-source"
+              },
+              {
+                "id": "ds-work-notes-point__label",
+                "type": "symbol",
+                "source": "ds-work-notes-source"
+              }
+            ],
+            "required_images": [
+              {
+                "id": "dot-blue-16",
+                "url": "data:image/png;base64,AA"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "unreadable_response",
+          "message": "invalid work-map runtime family"
+        }
+      }
+    },
+    {
+      "id": "assemble_runtime_refused_on_another_root",
+      "why": "A family assembled for another logical root cannot render this one.",
+      "request": {
+        "kind": "admit",
+        "action": "assemble_runtime",
+        "expected": {
+          "logical_root": "personal_notes",
+          "geometry": "Point"
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "authority": "ds-brain/work-map-runtime-family/v1",
+            "logical_root": "project_work",
+            "geometry": "Point",
+            "source_id": "ds-work-notes-source",
+            "layer_id": "ds-work-notes-point",
+            "style_ref": "ud/personal_notes_point",
+            "style_data": {
+              "type": "circle",
+              "paint": {
+                "circle-radius": 4
+              }
+            },
+            "layers": [
+              {
+                "id": "ds-work-notes-point",
+                "type": "circle",
+                "source": "ds-work-notes-source"
+              },
+              {
+                "id": "ds-work-notes-point__label",
+                "type": "symbol",
+                "source": "ds-work-notes-source"
+              }
+            ],
+            "required_images": [
+              {
+                "id": "dot-blue-16",
+                "url": "data:image/png;base64,AA"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "unreadable_response",
+          "message": "invalid work-map runtime family"
+        }
+      }
+    },
+    {
+      "id": "assemble_runtime_refused_on_an_empty_family",
+      "why": "A family with no layers renders nothing; it is a contract slip, not an empty map.",
+      "request": {
+        "kind": "admit",
+        "action": "assemble_runtime",
+        "expected": {
+          "logical_root": "personal_notes",
+          "geometry": "Point"
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "authority": "ds-brain/work-map-runtime-family/v1",
+            "logical_root": "personal_notes",
+            "geometry": "Point",
+            "source_id": "ds-work-notes-source",
+            "layer_id": "ds-work-notes-point",
+            "style_ref": "ud/personal_notes_point",
+            "style_data": {
+              "type": "circle",
+              "paint": {
+                "circle-radius": 4
+              }
+            },
+            "layers": [],
+            "required_images": [
+              {
+                "id": "dot-blue-16",
+                "url": "data:image/png;base64,AA"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "unreadable_response",
+          "message": "invalid work-map runtime family"
+        }
+      }
+    },
+    {
+      "id": "assemble_runtime_refused_when_a_layer_belongs_to_another_source",
+      "why": "Every layer in the family belongs to the one source the backend named — otherwise the client would mount a layer over data it never asked for.",
+      "request": {
+        "kind": "admit",
+        "action": "assemble_runtime",
+        "expected": {
+          "logical_root": "personal_notes",
+          "geometry": "Point"
+        },
+        "response": {
+          "success": true,
+          "data": {
+            "authority": "ds-brain/work-map-runtime-family/v1",
+            "logical_root": "personal_notes",
+            "geometry": "Point",
+            "source_id": "ds-work-notes-source",
+            "layer_id": "ds-work-notes-point",
+            "style_ref": "ud/personal_notes_point",
+            "style_data": {
+              "type": "circle",
+              "paint": {
+                "circle-radius": 4
+              }
+            },
+            "layers": [
+              {
+                "id": "ds-work-notes-point",
+                "type": "circle",
+                "source": "someone-elses-source"
+              }
+            ],
+            "required_images": [
+              {
+                "id": "dot-blue-16",
+                "url": "data:image/png;base64,AA"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "unreadable_response",
+          "message": "invalid work-map runtime family"
+        }
+      }
+    },
+    {
+      "id": "an_unknown_op_is_refused",
+      "why": "The request grammar is closed: only save_payload, request and admit exist.",
+      "request": {
+        "kind": "republish",
+        "action": "publish"
+      },
+      "expected": {
+        "error": "invalid style document request: unknown variant `republish`, expected one of `save_payload`, `request`, `admit` at line 1 column 57"
+      }
+    },
+    {
+      "id": "an_unknown_schema_is_refused",
+      "why": "A client speaking another version of this contract is refused by name rather than answered approximately.",
+      "schema": "ds.style-document/v2",
+      "request": {
+        "kind": "request",
+        "action": "read_shared",
+        "style_ref": "ud/x"
+      },
+      "expected": {
+        "error": "unsupported style document schema; expected ds.style-document/v1"
+      }
+    },
+    {
+      "id": "raw_json_refuses_empty_text_field",
+      "why": "Direct JSON cannot preview or publish a match with no branches, including implicit label companions.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/roads",
+              "style_target": "design",
+              "layer_name": "roads"
+            }
+          ]
+        },
+        "reference": "master/roads",
+        "document": {
+          "type": "line",
+          "paint": {},
+          "label": {
+            "layout": {
+              "text-field": [
+                "match",
+                [
+                  "get",
+                  "kind"
+                ],
+                "fallback"
+              ]
+            }
+          }
+        }
+      },
+      "expected": {
+        "error": "style.label.layout.text-field: match needs at least one label/output pair and a fallback"
+      }
+    },
+    {
+      "id": "raw_json_refuses_empty_icon_image",
+      "why": "Direct JSON cannot preview or publish a match with no branches, including implicit label companions.",
+      "request": {
+        "kind": "save_payload",
+        "snapshot": {
+          "project_id": "p1",
+          "styles": {},
+          "style_editors": [
+            {
+              "style_ref": "master/roads",
+              "style_target": "design",
+              "layer_name": "roads"
+            }
+          ]
+        },
+        "reference": "master/roads",
+        "document": {
+          "type": "line",
+          "paint": {},
+          "label": {
+            "layout": {
+              "icon-image": [
+                "match",
+                [
+                  "get",
+                  "kind"
+                ],
+                "fallback"
+              ]
+            }
+          }
+        }
+      },
+      "expected": {
+        "error": "style.label.layout.icon-image: match needs at least one label/output pair and a fallback"
+      }
+    }
+  ]
+}

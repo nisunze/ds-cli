@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "9817e17e-74cc-4d5f-820a-14614a7df880",
+    "known_version": 2,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Matching `a5e3c94a` debug control exports both containers with byte-identical unchanged native CRI/backup. Filed Nyamagabe RevA2 source digest is only abbreviated `3d9820c4\u2026`; exact source is still needed. [Report](hard-problems/9817e17e/report.json); [control equality](../../ds-network/out/feedback-native-20261013/cri-replay/control-byte-equality.json); [exchange boundary](../../ds-network/docs/contracts/dsgrid-authority/02-exchange-boundary.md).",
+  "remaining_blocker": "Edited criteria still use the authenticated v89 writer. Filed acceptance requires raw-v94 patch-only emission with field/old/new/owner-rule receipts, exact RevA2, native section-verdict parity and retained sheet assets.",
+  "bounded_next_attempt": "Characterize one source-anchored v94 patch in its owning native grammar before broad emission work; preserve unrepresented sections and cable bytes. Native Restore/section/sheet acceptance remains separate and must not restart printing here.",
+  "evidence_files": [
+    {
+      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hardproblems/9817e17e/report.json",
+      "byte_len": 5894,
+      "sha256": "95d0b93a3ef0d98425c6374f84a2ea321fa1527b09470bee9d7713dc87cc1760"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-native-20261013/cri-replay/control-byte-equality.json",
+      "byte_len": 1011,
+      "sha256": "7e4c97e9aa0817bdbf9022fa6fa838a5e006940fc670043256e045b37a0950b1"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/docs/contracts/dsgrid-authority/02-exchange-boundary.md",
+      "byte_len": 12922,
+      "sha256": "c43d17183c9326fa931d96466d16482f7190fdab5507e7455aec310050585d63"
+    }
+  ],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences."
+}

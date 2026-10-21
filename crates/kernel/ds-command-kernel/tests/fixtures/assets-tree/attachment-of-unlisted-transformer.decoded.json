@@ -1,0 +1,22 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "design_attachments": [
+      {
+        "attachment_id": "att_g",
+        "object_key": "lv_transformer:TX-ghost",
+        "label": "permits",
+        "file_name": "permit.pdf",
+        "latest_revision_id": "r1",
+        "latest_revision": 1
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

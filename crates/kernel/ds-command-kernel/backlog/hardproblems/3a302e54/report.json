@@ -1,0 +1,44 @@
+{
+  "request": {
+    "operation": "invoke",
+    "command": "feedback.list",
+    "arguments": {
+      "view": "all",
+      "query": "PLS export writes blank Final After Creep weather case",
+      "limit": 2,
+      "detail": true,
+      "lane": "stable"
+    }
+  },
+  "report": {
+    "id": "3a302e54-a1ae-4341-af22-d19e36575dde",
+    "status": "open",
+    "kind": "bug",
+    "severity": "major",
+    "component": "ds-network/ds-grid-exchange",
+    "surface": "cli",
+    "title": "PLS export writes blank Final After Creep weather case: PLS-CADD stops on open (wc_name_to_index couldnt find weather case)",
+    "detail": "Strict DS Grid -> PLS-CADD 16.81 export of Gisagara Model 3 (dsgrid-exchange convert --target pls-bak, plan:66cef…/5a4da… family; artifact Gisagara_MV_Model3-16.81.bak sha256 5aa110e96c80df6646afec2a385abc28020dbbc68c3352655c565d1b07a2ab90, 30 members verified) restores, but PLS-CADD 16.81 stops on open with an uncatalogued dialog:\n\ntitle 'Weather Case for Final After Creep', body \"wc_name_to_index: couldn't find weather case '' Continue displaying warning messages (Click No to redirect further occurrences of this warning for the duration of this operation)?\" — `ds pls desktop restore` (Windows ds b4783c2) returned unknown_dialog at driver line 252; PLS-CADD left open (pid 37860); restored workspace G:\\Shared drives\\Pro\\CJIC\\Gisagara\\Working\\MV Model 3 PLS 2026-10-05\\workspace.\n\nCause in the emitted A Project.CRI (VERSION='89'): line 99 `'' ; Weather Case for Final After Creep` is blank, and the stringing data weather is `'High wind'`. The model's criteria derive from Model 1's native Gisagararev3.cri (VERSION='94'), which has `'EDT' ; Weather Case for Final After Creep` and stringing data condition I at `EDT`. These native criteria settings are not carried by the DS criterion set and are not emitted.\n\nExpected: the export carries (or derives from the criterion set's after-creep reference) a valid final-after-creep weather case and the stringing-data weather, so the workspace opens without warnings; when DS cannot establish them, planning reports a blocker instead of emitting ''. Also catalogue this dialog for the desktop drivers with a reviewed decision.\n\nNegative control: Model 1 (PLS-imported) round trips keep its native 'EDT' values unchanged.\n\nAcceptance: re-export of Model 3 restores and opens in PLS-CADD 16.81 with no 'Weather Case for Final After Creep' dialog; the CRI line reads a named weather case. Related: criteria tension-unit report 2c311576. No code from this session.",
+    "occurrences": 1,
+    "reporters": [
+      "nisunze@yahoo.fr"
+    ],
+    "reporter_kind": "agent",
+    "version": 5,
+    "last_seen_at": "2026-10-05T21:21:30.782979Z",
+    "updated_at": "2026-10-13T06:06:29.550694Z",
+    "updated_by": "nisunze@yahoo.fr",
+    "resolution": "",
+    "blocked": true,
+    "blocked_on": "Fresh Model3 export + PLS-CADD16.81 Restore/open with no final-weather dialog; unchanged Model1 control and authored final-after-load selector evidence",
+    "blocked_since": "2026-10-09T05:34:44.826999Z",
+    "note_count": 4,
+    "latest_note": {
+      "author": "nisunze@yahoo.fr",
+      "at": "2026-10-13T06:06:29.550694Z",
+      "text": "Current ds-server canary carries ef473944; source-aware CRI overlay retains both final-after-creep and final-after-load selectors and validates their weather references. The filed acceptance still requires a fresh Model3 export restored/opened in native PLS-CADD16.81 with no final-weather dialog, plus unchanged Model1 control. Linux tests or a syntactically valid zero-count load-selector scaffold cannot establish that native acceptance. No project design, native workspace or engineering selector was altered in this session; no guessed final-after-load history was introduced.",
+      "blocked_on": "Fresh Model3 export + PLS-CADD16.81 Restore/open with no final-weather dialog; unchanged Model1 control and authored final-after-load selector evidence"
+    },
+    "detail_truncated": false
+  }
+}

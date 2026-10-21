@@ -1,0 +1,43 @@
+[package]
+name = "ds-geo-lite"
+description = "Canonical portable geometry primitives and vector operations shared by kernel and Network, plus fenced legacy geometry snapshots."
+version = "0.1.0"
+# The snapshot is taken from ds-network, whose workspace is edition 2024
+# (comparison.rs uses a let-chain). Compiling the bytes as they were written is
+# part of snapshotting rather than rewriting them.
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+vector_types = ["dep:serde"]
+projection = ["dep:serde"]
+codec = ["geojson", "dep:geozero"]
+geojson = ["dep:serde", "dep:serde_json"]
+revision = ["geojson"]
+overlay = ["geojson", "dep:geo"]
+index = ["dep:rstar"]
+editing = []
+corridor = []
+line_corridor = []
+planar = ["overlay"]
+sampling = []
+tin = ["dep:spade"]
+profile = ["index"]
+
+[dependencies]
+# Exact polygon predicates only (BooleanOps, BoundingRect, Centroid, Intersects).
+# Pinned to the version ds-network resolves, so the snapshot compiles against
+# the same geo the source was written for.
+geo = { version = "0.33.1", default-features = false, optional = true }
+geozero = { version = "=0.15.1", default-features = false, features = ["with-wkb"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+rstar = { version = "0.12", optional = true }
+# Mesh construction and local updates use upstream public APIs. DS retains
+# integer admission, stable identities and canonical cocircular tie handling.
+spade = { version = "=2.15.1", default-features = false, optional = true }

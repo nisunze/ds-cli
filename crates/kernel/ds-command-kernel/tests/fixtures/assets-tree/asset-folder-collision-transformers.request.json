@@ -1,0 +1,7 @@
+{
+  "schema": "ds.assets.request/v1",
+  "assets": [{
+    "asset_id": "a_1", "project_id": "p", "folder": "Transformers/TX-1",
+    "name": "sneaky.pdf", "bytes": 1, "source": {"kind": "upload"}
+  }]
+}

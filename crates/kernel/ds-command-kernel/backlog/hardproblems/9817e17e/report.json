@@ -1,0 +1,44 @@
+{
+  "request": {
+    "operation": "invoke",
+    "command": "feedback.list",
+    "arguments": {
+      "view": "all",
+      "query": "PLS export re-authors the CRI and cable files instead of carrying the imported ones; sections lose criteria",
+      "limit": 2,
+      "detail": true,
+      "lane": "stable"
+    }
+  },
+  "report": {
+    "id": "9817e17e-74cc-4d5f-820a-14614a7df880",
+    "status": "open",
+    "kind": "bug",
+    "severity": "major",
+    "component": "ds-network/ds-grid-exchange",
+    "surface": "cli",
+    "title": "PLS export re-authors the CRI and cable files instead of carrying the imported ones; sections lose criteria",
+    "detail": "EXPECTED\nA DS Grid model imported from a PLS-CADD workspace keeps that workspace's native criteria and cable members as imported evidence (exact bytes, per the owner rule \"native files are patched raw, never re-authored\"). `dsgrid-exchange convert --target pls-bak` then writes those same bytes back and patches only characterized, owner-ruled values, for example an added weather case or a clearance-voltage value. The export must never synthesize a CRI or cable file.\n\nOBSERVED (Nyamagabe MV, 2026-09-24, export chain final-v17, ds build ds-claude-fast2)\n- Incoming workspace Rev A2 (PLS-CADD 16.81 backup, sha256 3d9820c4...): nyamagabe.cri is VERSION 94, 13608 B. The exported .bak carries a DS-authored CRI, VERSION 89, 14018 B, USER 'datasolutions.rw dsgrid v0.1.0'.\n- The export dropped the incoming cable tension/autosag table (16 rows, e.g. ACSR EDT 700 / MinT 840 / HighWind 1120 / MaxCT 560 and 1150 rows; OPGW EDT 1113 / MinT 1335 / HighWind 1780 / MaxCT 890). It wrote 8 bare cable-path rows with no limits, so PLS-CADD reports sections without stringing criteria (catalogued dialog check_section: \"No criteria defined\").\n- It replaced the incoming vertical_clear list (EDT, High wind, Minimum Temperature) and phase_clear list (High Temp., High wind) with DS cases.\n- It dropped the structure-clearance weather cases (m_wccoStructureClearance, 4 entries).\n- It changed the clearance-line buffer from 6 to 0 and the clearance-line case from EDT 6.5 to REG 75C 6.\n- Cable files were re-authored: acsr 70-12mm2 went from VERSION 15, 1013 B, to VERSION 14, 452 B, and lost the v15 property line '0.422 0.5215 20 80 0.5 0.5 900 0 1 0'. opgw.wir lost its property notes.\n- The PPS and the DON sheet furniture were not carried: the DXF title block 'A3 - cjic - Gisagara.dxf' and 3 BMP logo attachments are missing, so sheets print without the title block and logos.\n- Native result: the incoming Rev A2 Section Usage reads \"0 section violations OK\"; the DS export has failing sections.\n\nWORKAROUND APPLIED (delivery pressure, not the fix)\nround17/reuse_incoming.py rebuilds the .bak from the DS export plus the incoming member bytes. It uses the incoming CRI v94 with only the owner-ruled deltas: + weather case 'REG max conductor temperature 75C, no wind', + that case in vertical_clear, clearance_voltage 30, and the clearance-report feature-code list set to the model's FEA codes. It also takes the incoming cable files and PPS, and the incoming DXF/BMP attachment blocks with their members. Output: cap4 .bak sha256 c10e6365... See cap4-incoming-receipt.json.\n\nACCEPTANCE (for the fixer; do the research first)\n1. Import keeps the CRI, cable files, PPS and DON attachment/sheet sub-documents of the source workspace as exact native evidence in the .dsgrid (resources with digests). It never parses them into DS rows and re-emits them.\n2. Export writes those bytes back and patches only characterized fields. Each patch is receipted (field, old, new, owner rule). The CRI VERSION stays what 16.81 wrote (94); stop the v94->v89 transcode for 16.81 sources.\n3. Criterion-set edits made in DS (weather cases, clearance cases) land as raw patches on the carried CRI, not as a new CRI.\n4. On the Nyamagabe model, a DS export restores in PLS-CADD 16.81 with 0 section violations and the same section-usage verdicts as the incoming, and the sheets show the incoming title block and logos.\n5. Research to record: which CRI sections (cable tension/autosag table, vertical_clear, phase_clear, structure clearance, clearance-line buffer) the current DS criterion model cannot represent, and where the v89 writer drops them.",
+    "occurrences": 1,
+    "reporters": [
+      "magese@datasolutions.rw"
+    ],
+    "reporter_kind": "agent",
+    "version": 2,
+    "last_seen_at": "2026-09-24T13:55:39.540866Z",
+    "updated_at": "2026-10-13T07:54:24.656515Z",
+    "updated_by": "nisunze@yahoo.fr",
+    "resolution": "",
+    "blocked": true,
+    "blocked_on": "Characterized raw-v94 CRI patch writer with field receipts, exact Nyamagabe RevA2 source, then PLS-CADD16.81 section-verdict and retained-sheet-asset acceptance.",
+    "blocked_since": "2026-10-13T07:54:24.656515Z",
+    "note_count": 1,
+    "latest_note": {
+      "author": "nisunze@yahoo.fr",
+      "at": "2026-10-13T07:54:24.656515Z",
+      "text": "Unchanged native CRI retention is proven on a matching local debug CLI carrying ds-network a5e3c94a: the humble native control exports both containers with byte-identical CRI and backup. Edited criteria still use the source-anchored authenticated v89 writer, as the owning exchange contract states; this does not prove the filing's raw-v94 patch-only acceptance. Remaining scope includes characterized raw CRI edits with field/old/new/owner-rule receipts, exact RevA2 native evidence, and PLS-CADD16.81 parity for section verdicts and retained sheet assets. No real criteria, native files, project design or submission was changed, and printing/native delivery was not resumed.",
+      "blocked_on": "Characterized raw-v94 CRI patch writer with field receipts, exact Nyamagabe RevA2 source, then PLS-CADD16.81 section-verdict and retained-sheet-asset acceptance."
+    },
+    "detail_truncated": false
+  }
+}

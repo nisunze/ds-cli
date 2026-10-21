@@ -1,0 +1,406 @@
+//! Closed Solar synchronization. Credentials never enter a local workspace.
+use crate::{
+    authorized::{classify_tile_error, Authority},
+    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, SolarProjectCall,
+};
+use ds_command_kernel::is_solar_id as id;
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+
+pub enum Command {
+    ListCities,
+    ReadMedia {
+        city: String,
+        reference: String,
+    },
+    Portfolio(crate::solar_portfolio::Command),
+    ImportMap {
+        city: String,
+        role: String,
+        file_name: String,
+        bytes: Vec<u8>,
+    },
+    Reference {
+        request: ds_solar_contracts::reference_request::ReferenceRequest,
+    },
+    /// Project-to-project Solar migration: inputs and parameters only, never a
+    /// computation result. `kind` is `city` or `portfolio` and selects which
+    /// Solar object moves; it never reaches outside the Solar domain.
+    Migrate {
+        kind: String,
+        source_project: String,
+        selection: Vec<String>,
+        overwrite: bool,
+        digest: Option<String>,
+    },
+    CommitCity {
+        city: String,
+        expected_base: String,
+        snapshot_json: String,
+        fingerprint: String,
+    },
+}
+fn sha(s: &str) -> bool {
+    s.len() == 64
+        && s.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+fn invalid() -> ClientError {
+    ClientError::new(
+        ErrorKind::InvalidInput,
+        "invalid bounded Solar project handoff",
+    )
+}
+fn unreadable() -> ClientError {
+    ClientError::new(
+        ErrorKind::UnreadableResponse,
+        "Solar publication response does not match its request",
+    )
+}
+fn conflict() -> ClientError {
+    ClientError::new(
+        ErrorKind::InvalidInput,
+        "Solar publication authority has moved; local results remain available",
+    )
+}
+impl Command {
+    pub fn validate(&self, project: &str) -> Result<(), ClientError> {
+        if !id(project) {
+            return Err(invalid());
+        }
+        match self {
+            Self::ListCities => {}
+            Self::ReadMedia { city, reference } => {
+                crate::solar_media::validate_read(project, city, reference)?
+            }
+            Self::Portfolio(command) => command.validate(project)?,
+            Self::ImportMap {
+                city,
+                role,
+                file_name,
+                bytes,
+            } => {
+                crate::solar_media::validate(city, role, file_name, bytes)?;
+            }
+            Self::Reference { request } => {
+                if request.city.trim().is_empty()
+                    || request.city.len() > 256
+                    || request.country.trim().is_empty()
+                    || request.country.len() > 128
+                    || !request.latitude.is_finite()
+                    || !request.longitude.is_finite()
+                    || !(-90.0..=90.0).contains(&request.latitude)
+                    || !(-180.0..=180.0).contains(&request.longitude)
+                    || serde_json::to_vec(request).map_err(|_| invalid())?.len() > 8192
+                {
+                    return Err(invalid());
+                }
+            }
+            Self::Migrate {
+                kind,
+                source_project,
+                selection,
+                digest,
+                ..
+            } => {
+                let context = ds_command_kernel::solar_migration::Context {
+                    kind: kind.clone(),
+                    root: String::new(),
+                    // The destination is bound by the session that carries this
+                    // command; what has to be admissible HERE is the source and
+                    // the selection, which is what the caller chose.
+                    ds_project: String::new(),
+                    source_project: source_project.clone(),
+                    selection: selection.clone(),
+                };
+                if ds_command_kernel::solar_migration::validate_context(&context, false).is_err()
+                    || source_project == project
+                    || digest.as_ref().is_some_and(|value| !sha(value))
+                {
+                    return Err(invalid());
+                }
+            }
+            Self::CommitCity {
+                city,
+                expected_base,
+                snapshot_json,
+                fingerprint,
+            } => {
+                if !id(city)
+                    || (!expected_base.is_empty() && !sha(expected_base))
+                    || !sha(fingerprint)
+                    || snapshot_json.is_empty()
+                    || snapshot_json.len() > 8 * 1024 * 1024
+                {
+                    return Err(invalid());
+                }
+                let value: Value = serde_json::from_str(snapshot_json).map_err(|_| invalid())?;
+                if !value.is_object()
+                    || format!("{:x}", Sha256::digest(snapshot_json.as_bytes())) != *fingerprint
+                {
+                    return Err(invalid());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+pub(crate) fn call<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    artifacts: bool,
+    payload: Value,
+) -> Result<Value, ClientError> {
+    let catalog = payload["action"] == "list_portfolios";
+    let action = payload["action"].as_str().unwrap_or("request").to_owned();
+    let response = transport
+        .solar_project(SolarProjectCall {
+            profile,
+            authority: authority.call(),
+            artifacts,
+            payload,
+        })
+        .map_err(|e| {
+            let e: ClientError = e.into();
+            ClientError::new(
+                e.kind(),
+                match action.as_str() {
+                    "open" => "Solar publication opening transport is temporarily unavailable",
+                    "finalize" => {
+                        "Solar publication finalization transport is temporarily unavailable"
+                    }
+                    _ => "Solar project producer transport is temporarily unavailable",
+                },
+            )
+        })?;
+    if artifacts && response.status == 404 && matches!(action.as_str(), "read" | "download") {
+        return Err(ClientError::new(
+            ErrorKind::ResourceNotFound,
+            "The exact Solar artifact head or output has not been published",
+        ));
+    }
+    if response.status == 409 {
+        return Err(conflict());
+    }
+    if response.status != 200 {
+        let error = classify_tile_error(response.status);
+        return Err(ClientError::new(
+            error.kind(),
+            match (action.as_str(), response.status) {
+                ("open", 500) => "Solar publication opening returned HTTP 500",
+                ("finalize", 500) => "Solar publication finalization returned HTTP 500",
+                ("open", _) => "Solar publication opening was refused by its producer",
+                ("finalize", _) => "Solar publication finalization was refused by its producer",
+                _ => "Solar project producer refused the request",
+            },
+        ));
+    }
+    if response.body.len() > 8 * 1024 * 1024 {
+        return Err(unreadable());
+    }
+    let value: Value = serde_json::from_slice(&response.body).map_err(|_| unreadable())?;
+    if value["success"] != true
+        || !(value["data"].is_object()
+            || (catalog && (value["data"].is_array() || value["data"].is_null())))
+    {
+        return Err(unreadable());
+    }
+    Ok(if catalog && value["data"].is_null() {
+        json!([])
+    } else {
+        value["data"].clone()
+    })
+}
+
+pub(crate) fn run<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    command: &Command,
+) -> Result<Value, ClientError> {
+    command.validate(project)?;
+    let root = format!("eds_project/{project}/eds_solar");
+    match command {
+        Command::ReadMedia { city, reference } => {
+            let snapshot =
+                crate::authorized::solar_snapshot(profile, transport, authority, project, city)?;
+            snapshot.download_media(transport, reference)
+        }
+        Command::Portfolio(command) => {
+            crate::solar_portfolio::run(profile, transport, authority, project, command)
+        }
+        Command::ImportMap {
+            city,
+            role,
+            file_name,
+            bytes,
+        } => crate::solar_media::upload(
+            profile, transport, authority, project, city, role, file_name, bytes,
+        ),
+        Command::Reference { request } => {
+            use base64::Engine;
+            let bundle = match transport.solar_reference(crate::SolarReferenceCall {
+                profile,
+                authority: authority.call(),
+                request,
+            }) {
+                Ok(bundle) => bundle,
+                Err(error) => {
+                    return Ok(
+                        json!({"project":project,"reference_error":{"code":error.code.as_str(),"message":error.message.chars().take(800).collect::<String>()}}),
+                    )
+                }
+            };
+            let artifacts = [
+                ("weather.json", bundle.weather_json),
+                ("reference-unit.json", bundle.reference_unit_json),
+                ("reference-unit.parquet", bundle.reference_unit_parquet),
+                ("manifest.json", bundle.manifest_json),
+            ].into_iter().map(|(name, bytes)| {
+                if bytes.is_empty() || bytes.len() > 16 * 1024 * 1024 { return Err(unreadable()); }
+                Ok(json!({"name":name,"sha256":format!("{:x}", Sha256::digest(&bytes)),
+                    "bytes":bytes.len(),"base64":base64::engine::general_purpose::STANDARD.encode(bytes)}))
+            }).collect::<Result<Vec<_>, ClientError>>()?;
+            Ok(json!({"project":project,"artifacts":artifacts}))
+        }
+        Command::ListCities => {
+            let mut result = call(
+                profile,
+                transport,
+                authority,
+                false,
+                json!({"action":"list_templates","root":root}),
+            )?;
+            // The service's empty list is historically null; normalize it once.
+            if result["count"] == 0 && result["templates"].is_null() {
+                result["templates"] = json!([]);
+            }
+            let rows = result["templates"].as_array().ok_or_else(unreadable)?;
+            if rows.len() > 1000
+                || result["count"].as_u64() != Some(rows.len() as u64)
+                || rows
+                    .iter()
+                    .any(|r| !r["template_id"].as_str().is_some_and(id))
+            {
+                return Err(unreadable());
+            }
+            result["project"] = json!(project);
+            Ok(result)
+        }
+        Command::Migrate {
+            kind,
+            source_project,
+            selection,
+            overwrite,
+            digest,
+        } => {
+            let mut payload = json!({
+                "action": if digest.is_some() { "migrate_apply" } else { "migrate_plan" },
+                "root": root,
+                "migrate_kind": kind,
+                "migrate_source_project": source_project,
+            });
+            if !selection.is_empty() {
+                // The selection key depends on the kind, because the grant
+                // refuses the other kind's key outright rather than ignoring
+                // it — a selection quietly dropped is a plan that describes
+                // less than the caller asked for.
+                let key = if kind == ds_command_kernel::solar_migration::KIND_PORTFOLIO {
+                    "portfolios"
+                } else {
+                    "cities"
+                };
+                payload[key] = json!(selection);
+            }
+            if *overwrite {
+                payload["migrate_overwrite"] = json!(true);
+            }
+            if let Some(digest) = digest {
+                payload["migrate_digest"] = json!(digest);
+            }
+            let result = call(profile, transport, authority, false, payload)?;
+            let plan = &result["plan"];
+            let context = ds_command_kernel::solar_migration::Context {
+                kind: kind.clone(),
+                root: root.to_string(),
+                ds_project: project.to_string(),
+                source_project: source_project.clone(),
+                selection: selection.clone(),
+            };
+            let parsed: ds_command_kernel::solar_migration::Plan =
+                serde_json::from_value(plan.clone()).map_err(|_| unreadable())?;
+            // The kernel owns "does this plan describe the call I made". A
+            // portfolio plan returned to a city call would otherwise render as
+            // "0 cities" instead of as an error.
+            if ds_command_kernel::solar_migration::drift(&parsed, &context)
+                != ds_command_kernel::solar_migration::Drift::None
+            {
+                return Err(unreadable());
+            }
+            if !plan["migrate_digest"]
+                .as_str()
+                .is_some_and(ds_command_kernel::solar_migration::is_migrate_digest)
+            {
+                return Err(unreadable());
+            }
+            if let Some(digest) = digest {
+                if result["migrate_digest"].as_str() != Some(digest.as_str()) {
+                    return Err(unreadable());
+                }
+                // The one boolean this endpoint's whole contract rests on. A
+                // receipt claiming results migrated did not come from it.
+                if !ds_command_kernel::solar_migration::results_are_honest(
+                    result["computation_results_migrated"]
+                        .as_bool()
+                        .unwrap_or(true),
+                ) {
+                    return Err(unreadable());
+                }
+            }
+            Ok(result)
+        }
+        Command::CommitCity {
+            city,
+            expected_base,
+            snapshot_json,
+            fingerprint,
+        } => {
+            let receipt = call(
+                profile,
+                transport,
+                authority,
+                false,
+                json!({"action":"project_commit","root":root,"template_id":city,"project_commit":{"expected_base":expected_base,"snapshot_json":snapshot_json}}),
+            )?;
+            if receipt["root"] != root
+                || receipt["city_id"] != *city
+                || receipt["client_snapshot_sha256"] != *fingerprint
+                || !receipt["input_base_fingerprint"].as_str().is_some_and(sha)
+            {
+                return Err(unreadable());
+            }
+            Ok(receipt)
+        }
+    }
+}
+pub(crate) fn validate_upload_uri(uri: &str) -> Result<(), ClientError> {
+    let u = url::Url::parse(uri).map_err(|_| unreadable())?;
+    if uri.len() > 8192
+        || u.scheme() != "https"
+        || u.host_str() != Some("storage.googleapis.com")
+        || u.port().is_some()
+        || !u.username().is_empty()
+        || u.password().is_some()
+        || u.fragment().is_some()
+        || !u.path().starts_with("/upload/storage/v1/b/")
+        || !u.path().ends_with("/o")
+        || !u
+            .query_pairs()
+            .any(|(k, v)| k == "upload_id" && !v.is_empty())
+    {
+        return Err(unreadable());
+    }
+    Ok(())
+}

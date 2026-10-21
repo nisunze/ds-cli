@@ -1,0 +1,695 @@
+{
+  "schema": "ds.envelope-cases/v1",
+  "purpose": "The DS envelope v1, replayed. Each case carries the command id, its contract version and either the data of a success or the refusal of an error, and the exact envelope both externals must emit: ds on stdout under --output json and the desktop shell to the webview. The kernel replays it through ds_command_kernel::envelope::{success, error} and ds-cli replays the same file through ds-cli-contract's success_envelope/error_envelope, so the answer shape cannot be true in one process and not the other. Byte-for-byte: member order is part of the contract, and every object under data and detail is written with its keys already in sorted order so a serializer that sorts maps and one that preserves insertion order emit the same bytes.",
+  "source": "Transcribed from ds-cli/crates/ds-cli-contract/src/outcome.rs (ENVELOPE_VERSION, ExitClass::token and ::retryable, SuccessEnvelope, ErrorEnvelope, ErrorBody, success_envelope, error_envelope), 2026-09-17, under the owner's ruling that ds-cli is an external client exactly like Svelte: same id, same declared arg names, same DS envelope.",
+  "note": "Re-record expected with DS_ENVELOPE_CASES_WRITE=1 cargo test --test envelope_cases after a deliberate envelope change, and say why in the commit; the envelope version is raised only for a breaking change to the envelope itself, never for a change inside data. remedy and detail are written only when the refusal carries them and next only when it names at least one command; retryable is a function of the class alone.",
+  "cases": [
+    {
+      "id": "ok-preview-page",
+      "why": "A successful command answers exactly five members in this order, and data is carried as the command built it; here the preview row a desktop door and the CLI both project.",
+      "request": {
+        "kind": "success",
+        "command": "report.project.export",
+        "contract": 1,
+        "data": {
+          "preview": {
+            "layout_sha256": "9f2c0d4e1b7a6c5d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d"
+          },
+          "results": [
+            {
+              "elapsed_ms": 812,
+              "page": {
+                "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>"
+              },
+              "transformer": "TX-0421",
+              "warnings": []
+            }
+          ]
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "ok",
+        "data": {
+          "preview": {
+            "layout_sha256": "9f2c0d4e1b7a6c5d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d"
+          },
+          "results": [
+            {
+              "elapsed_ms": 812,
+              "page": {
+                "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>"
+              },
+              "transformer": "TX-0421",
+              "warnings": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ok-empty-data",
+      "why": "A command with nothing to say still answers an object under data, never null and never a missing member; a consumer reads data.x without a presence check first.",
+      "request": {
+        "kind": "success",
+        "command": "project.status",
+        "contract": 3,
+        "data": {}
+      },
+      "expected": {
+        "v": 1,
+        "command": "project.status",
+        "contract": 3,
+        "status": "ok",
+        "data": {}
+      }
+    },
+    {
+      "id": "ok-data-is-a-list",
+      "why": "data is whatever JSON the command's contract declares, so a listing command answers an array there without wrapping it.",
+      "request": {
+        "kind": "success",
+        "command": "feedback.list",
+        "contract": 2,
+        "data": [
+          {
+            "id": "fb-1",
+            "state": "open"
+          },
+          {
+            "id": "fb-2",
+            "state": "closed"
+          }
+        ]
+      },
+      "expected": {
+        "v": 1,
+        "command": "feedback.list",
+        "contract": 2,
+        "status": "ok",
+        "data": [
+          {
+            "id": "fb-1",
+            "state": "open"
+          },
+          {
+            "id": "fb-2",
+            "state": "closed"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ok-contract-zero",
+      "why": "A contract version of zero is a legal number, not an absence: the envelope carries it as 0 and never omits it.",
+      "request": {
+        "kind": "success",
+        "command": "ds",
+        "contract": 0,
+        "data": {
+          "version": "0.0.0"
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "ds",
+        "contract": 0,
+        "status": "ok",
+        "data": {
+          "version": "0.0.0"
+        }
+      }
+    },
+    {
+      "id": "error-internal-bare",
+      "why": "An internal refusal is not retryable and, carrying nothing but its three required members, the body ends at retryable: no null remedy, no empty next, no null detail.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "internal",
+          "code": "kernel_defect",
+          "message": "the preview entry answered a page without a layout id"
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "internal",
+          "code": "kernel_defect",
+          "message": "the preview entry answered a page without a layout id",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "id": "error-internal-full",
+      "why": "An internal refusal may still say what to do about it; remedy, next and detail are written in that order after retryable.",
+      "request": {
+        "kind": "error",
+        "command": "ds",
+        "contract": 0,
+        "refusal": {
+          "class": "internal",
+          "code": "envelope_defect",
+          "message": "a command answered with no status",
+          "remedy": "report this with the command you ran",
+          "next": [
+            "ds doctor"
+          ],
+          "detail": {
+            "command": "report.project.export"
+          }
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "ds",
+        "contract": 0,
+        "status": "error",
+        "error": {
+          "class": "internal",
+          "code": "envelope_defect",
+          "message": "a command answered with no status",
+          "retryable": false,
+          "remedy": "report this with the command you ran",
+          "next": [
+            "ds doctor"
+          ],
+          "detail": {
+            "command": "report.project.export"
+          }
+        }
+      }
+    },
+    {
+      "id": "error-invalid-input-remedy-only",
+      "why": "An invalid invocation is the caller's to fix, so it is not retryable unchanged; a remedy alone is written between retryable and nothing else.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "invalid_input",
+          "code": "report_inputs_invalid",
+          "message": "`--seed` is host-owned or not a preview argument on the desktop",
+          "remedy": "pass only --transformer and --preview-layout with a preview"
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "invalid_input",
+          "code": "report_inputs_invalid",
+          "message": "`--seed` is host-owned or not a preview argument on the desktop",
+          "retryable": false,
+          "remedy": "pass only --transformer and --preview-layout with a preview"
+        }
+      }
+    },
+    {
+      "id": "error-invalid-input-full",
+      "why": "A localised surface renders detail.message_key with detail.params instead of message; detail is carried exactly as the refusal built it, nested objects included.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "invalid_input",
+          "code": "print_context_survey_empty",
+          "message": "the survey capture for poles has no entries",
+          "remedy": "synchronise the poles form on this computer, then preview again",
+          "next": [
+            "ds report project export --transformer TX-0421 --preview-layout draft.json"
+          ],
+          "detail": {
+            "message_key": "printing_context_survey_empty",
+            "params": {
+              "bound": "50000",
+              "name": "poles"
+            }
+          }
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "invalid_input",
+          "code": "print_context_survey_empty",
+          "message": "the survey capture for poles has no entries",
+          "retryable": false,
+          "remedy": "synchronise the poles form on this computer, then preview again",
+          "next": [
+            "ds report project export --transformer TX-0421 --preview-layout draft.json"
+          ],
+          "detail": {
+            "message_key": "printing_context_survey_empty",
+            "params": {
+              "bound": "50000",
+              "name": "poles"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "error-invalid-input-bare",
+      "why": "An unknown command is refused before any contract is chosen: command is the closest thing to an id, contract 0, and the body ends at retryable false.",
+      "request": {
+        "kind": "error",
+        "command": "ds",
+        "contract": 0,
+        "refusal": {
+          "class": "invalid_input",
+          "code": "unknown_command",
+          "message": "`report.project.preview` is not a ds command"
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "ds",
+        "contract": 0,
+        "status": "error",
+        "error": {
+          "class": "invalid_input",
+          "code": "unknown_command",
+          "message": "`report.project.preview` is not a ds command",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "id": "error-unavailable-next-only",
+      "why": "An unavailable engine is the world's to fix, so the class is retryable; next alone is written after retryable, with no remedy member at all.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "unavailable",
+          "code": "reporter_engine_missing",
+          "message": "the ds-report engine is not installed beside this executable",
+          "next": [
+            "ds doctor",
+            "ds workstation install --component ds-report"
+          ]
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "unavailable",
+          "code": "reporter_engine_missing",
+          "message": "the ds-report engine is not installed beside this executable",
+          "retryable": true,
+          "next": [
+            "ds doctor",
+            "ds workstation install --component ds-report"
+          ]
+        }
+      }
+    },
+    {
+      "id": "error-unavailable-full",
+      "why": "An unavailable refusal with everything: retryable true, then remedy, next and detail in that order.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "unavailable",
+          "code": "admin_bounds_unavailable",
+          "message": "the administrative boundary asset is not installed",
+          "remedy": "install the Rwanda reference components",
+          "next": [
+            "ds workstation verify"
+          ],
+          "detail": {
+            "asset": "rw-admin-bounds",
+            "root": "rw.datasolutions.desktop.shared"
+          }
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "unavailable",
+          "code": "admin_bounds_unavailable",
+          "message": "the administrative boundary asset is not installed",
+          "retryable": true,
+          "remedy": "install the Rwanda reference components",
+          "next": [
+            "ds workstation verify"
+          ],
+          "detail": {
+            "asset": "rw-admin-bounds",
+            "root": "rw.datasolutions.desktop.shared"
+          }
+        }
+      }
+    },
+    {
+      "id": "error-unavailable-bare",
+      "why": "An unavailable refusal with nothing but its three members still answers retryable true, because the class alone decides it.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "unavailable",
+          "code": "desktop_not_running",
+          "message": "no desktop instance is running for this account"
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "unavailable",
+          "code": "desktop_not_running",
+          "message": "no desktop instance is running for this account",
+          "retryable": true
+        }
+      }
+    },
+    {
+      "id": "error-unauthorized-detail-only",
+      "why": "An unauthorized refusal is not retryable; detail alone follows retryable directly, with neither remedy nor next written.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "unauthorized",
+          "code": "auth_context_mismatch",
+          "message": "the caller's identity is not the identity this desktop is signed in as",
+          "detail": {
+            "expected": "desktop session",
+            "given": "request context"
+          }
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "unauthorized",
+          "code": "auth_context_mismatch",
+          "message": "the caller's identity is not the identity this desktop is signed in as",
+          "retryable": false,
+          "detail": {
+            "expected": "desktop session",
+            "given": "request context"
+          }
+        }
+      }
+    },
+    {
+      "id": "error-unauthorized-bare",
+      "why": "An unauthorized refusal that says nothing more than its code and sentence.",
+      "request": {
+        "kind": "error",
+        "command": "project.select",
+        "contract": 2,
+        "refusal": {
+          "class": "unauthorized",
+          "code": "principal_not_verified",
+          "message": "no verified principal is signed in"
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "project.select",
+        "contract": 2,
+        "status": "error",
+        "error": {
+          "class": "unauthorized",
+          "code": "principal_not_verified",
+          "message": "no verified principal is signed in",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "id": "error-unauthorized-full",
+      "why": "An unauthorized refusal with everything: retryable false, then remedy, next and detail in that order.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "unauthorized",
+          "code": "project_not_entitled",
+          "message": "this principal is not a member of project P-2026-014",
+          "remedy": "ask the project owner for membership",
+          "next": [
+            "ds project list"
+          ],
+          "detail": {
+            "project": "P-2026-014",
+            "role": "none"
+          }
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "unauthorized",
+          "code": "project_not_entitled",
+          "message": "this principal is not a member of project P-2026-014",
+          "retryable": false,
+          "remedy": "ask the project owner for membership",
+          "next": [
+            "ds project list"
+          ],
+          "detail": {
+            "project": "P-2026-014",
+            "role": "none"
+          }
+        }
+      }
+    },
+    {
+      "id": "error-conflict-remedy-and-next",
+      "why": "A stale view is retryable once the world has moved; remedy and next are both written, and detail is absent.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "conflict",
+          "code": "desktop_project_not_open",
+          "message": "the desktop has another project open",
+          "remedy": "open the project the request names",
+          "next": [
+            "ds project select P-2026-014",
+            "ds report project export --transformer TX-0421 --preview-layout draft.json"
+          ]
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "conflict",
+          "code": "desktop_project_not_open",
+          "message": "the desktop has another project open",
+          "retryable": true,
+          "remedy": "open the project the request names",
+          "next": [
+            "ds project select P-2026-014",
+            "ds report project export --transformer TX-0421 --preview-layout draft.json"
+          ]
+        }
+      }
+    },
+    {
+      "id": "error-conflict-full",
+      "why": "A conflict with everything, including an empty-object detail, which is still a present member because the refusal carried one.",
+      "request": {
+        "kind": "error",
+        "command": "design.save",
+        "contract": 4,
+        "refusal": {
+          "class": "conflict",
+          "code": "design_version_stale",
+          "message": "the design changed on the server since this draft was read",
+          "remedy": "reload the design and reapply the change",
+          "next": [
+            "ds design status"
+          ],
+          "detail": {}
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "design.save",
+        "contract": 4,
+        "status": "error",
+        "error": {
+          "class": "conflict",
+          "code": "design_version_stale",
+          "message": "the design changed on the server since this draft was read",
+          "retryable": true,
+          "remedy": "reload the design and reapply the change",
+          "next": [
+            "ds design status"
+          ],
+          "detail": {}
+        }
+      }
+    },
+    {
+      "id": "error-conflict-bare",
+      "why": "A conflict with nothing but its three members still answers retryable true.",
+      "request": {
+        "kind": "error",
+        "command": "design.save",
+        "contract": 4,
+        "refusal": {
+          "class": "conflict",
+          "code": "design_locked",
+          "message": "another editor holds the design lease"
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "design.save",
+        "contract": 4,
+        "status": "error",
+        "error": {
+          "class": "conflict",
+          "code": "design_locked",
+          "message": "another editor holds the design lease",
+          "retryable": true
+        }
+      }
+    },
+    {
+      "id": "error-failed-bare",
+      "why": "The command ran and the work did not happen; not retryable unchanged, nothing else to say.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "failed",
+          "code": "engine_refused",
+          "message": "the engine refused the transformer sheet"
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "failed",
+          "code": "engine_refused",
+          "message": "the engine refused the transformer sheet",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "id": "error-failed-detail-and-next",
+      "why": "A failed export names its blockers under detail and the command worth running next; remedy is absent because there is no single fix.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "failed",
+          "code": "export_blocked",
+          "message": "the export is blocked by 2 findings",
+          "next": [
+            "ds report project verify --transformer TX-0421"
+          ],
+          "detail": {
+            "blockers": [
+              "missing_pole_heights",
+              "unclosed_lv_feeder"
+            ]
+          }
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "failed",
+          "code": "export_blocked",
+          "message": "the export is blocked by 2 findings",
+          "retryable": false,
+          "next": [
+            "ds report project verify --transformer TX-0421"
+          ],
+          "detail": {
+            "blockers": [
+              "missing_pole_heights",
+              "unclosed_lv_feeder"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "error-failed-empty-next-is-omitted",
+      "why": "A refusal that names no next command carries an empty list in memory but the envelope omits the member; an absent next means nothing to run, not a null.",
+      "request": {
+        "kind": "error",
+        "command": "report.project.export",
+        "contract": 1,
+        "refusal": {
+          "class": "failed",
+          "code": "report_staging_failed",
+          "message": "could not create the staging directory under the output directory",
+          "remedy": "choose a writable --out-dir",
+          "next": []
+        }
+      },
+      "expected": {
+        "v": 1,
+        "command": "report.project.export",
+        "contract": 1,
+        "status": "error",
+        "error": {
+          "class": "failed",
+          "code": "report_staging_failed",
+          "message": "could not create the staging directory under the output directory",
+          "retryable": false,
+          "remedy": "choose a writable --out-dir"
+        }
+      }
+    }
+  ]
+}

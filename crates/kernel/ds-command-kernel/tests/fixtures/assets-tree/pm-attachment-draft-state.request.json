@@ -1,0 +1,10 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "pm_tasks": [{"id": "t_1", "wbs": "1.2.3"}],
+    "pm_attachments": [{
+      "id": "pa_3", "linkedEntityType": "task", "linkedEntityId": "t_1",
+      "originalName": "draft.docx", "documentState": "draft"
+    }]
+  }
+}

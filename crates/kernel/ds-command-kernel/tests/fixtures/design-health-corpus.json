@@ -1,0 +1,3654 @@
+{
+	"schema": "ds.design-health-parity/v1",
+	"purpose": "What is wrong with a transformer, asked once. Each case holds a status row, what the deleted ds-web `design/health.ts` answered for it (`expected_ts`, recorded by running that code once before it was deleted) and what `ds-command-kernel::design_health` answers (`expected`). A case where the two differ carries a `why`; the kernel is right in every one. `surface_divergences` records the same row as the two OTHER deleted enumerations saw it — `transformer-info.ts`'s permanent-warning scan and the register's project-wide error/warning tables — with what the one finding list says instead. Read by ds-web `src/tests/design-health-parity.test.ts` over the vendored WASM and by ds-command-kernel `tests/design_health_corpus.rs` over the native build, from byte-identical copies.",
+	"cases": [
+		{
+			"id": "no-metadata",
+			"note": "A row that carries no phase metadata at all.",
+			"row": {
+				"name": "tr_1",
+				"kind": "individual"
+			},
+			"expected_ts": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			}
+		},
+		{
+			"id": "process-error-message",
+			"note": "A process error, message on error_message.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "error",
+					"error_message": "network build failed"
+				}
+			},
+			"expected_ts": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "network build failed"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "network build failed",
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			}
+		},
+		{
+			"id": "report-error-nested-message",
+			"note": "A report error whose message is nested under error.",
+			"row": {
+				"name": "tr_1",
+				"report_metadata": {
+					"status": "error",
+					"error": {
+						"message": "export crashed"
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "export crashed"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "export crashed",
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			}
+		},
+		{
+			"id": "coded-warning-locatable-count",
+			"note": "A coded warning with a locatable directive and a stated count.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "unconnected_lv_lines",
+						"message": "3 LV lines could not connect",
+						"count": 3
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_lv_lines",
+						"label_key": "dsh_finding_unconnected_lv_lines",
+						"message": "3 LV lines could not connect",
+						"count": 3,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_lv_lines",
+						"label_key": "dsh_finding_unconnected_lv_lines",
+						"message": "3 LV lines could not connect",
+						"count": 3,
+						"affected": 3,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "warning-count-from-details-length",
+			"note": "No stated count: the details list length is the count.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "lost_nodes",
+						"message": "nodes lost",
+						"details": [
+							"n1",
+							"n2",
+							"n3",
+							"n4"
+						]
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lost_nodes",
+						"label_key": "dsh_finding_lost_nodes",
+						"message": "nodes lost",
+						"count": 4
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lost_nodes",
+						"label_key": "dsh_finding_lost_nodes",
+						"message": "nodes lost",
+						"count": 4,
+						"affected": 4,
+						"detail_parts": [
+							"n1",
+							"n2",
+							"n3",
+							"n4"
+						],
+						"detail_total": 4,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "diagnostic-non-snapping-lv-lines",
+			"note": "The BURY contract: a positive diagnostic layer count IS the warning.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "success"
+				},
+				"layers": {
+					"lv_lines": 40,
+					"non_snapping_lv_lines": 5,
+					"lv_poles": 12
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "non_snapping_lv_lines",
+						"label_key": "dsh_finding_non_snapping_lv_lines",
+						"message": "",
+						"count": 5,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "non_snapping_lv_lines",
+						"label_key": "dsh_finding_non_snapping_lv_lines",
+						"message": "",
+						"count": 5,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "diagnostic-drafting-errors",
+			"note": "drafting_errors is locatable as a whole layer.",
+			"row": {
+				"name": "tr_1",
+				"layers": {
+					"drafting_errors": 2
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "drafting_errors",
+						"label_key": "dsh_finding_drafting_errors",
+						"message": "",
+						"count": 2,
+						"locatable": {
+							"kind": "layer",
+							"layer": "drafting_errors"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "drafting_errors",
+						"label_key": "dsh_finding_drafting_errors",
+						"message": "",
+						"count": 2,
+						"locatable": {
+							"kind": "layer",
+							"layer": "drafting_errors"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "no-double-count-phase-and-layer",
+			"note": "A phase warning that already named the layer is not counted twice.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "non_snapping_lv_lines",
+						"message": "buried",
+						"count": 2
+					}
+				},
+				"layers": {
+					"non_snapping_lv_lines": 2
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "non_snapping_lv_lines",
+						"label_key": "dsh_finding_non_snapping_lv_lines",
+						"message": "buried",
+						"count": 2,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "non_snapping_lv_lines",
+						"label_key": "dsh_finding_non_snapping_lv_lines",
+						"message": "buried",
+						"count": 2,
+						"affected": 2,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "stale-processing-stuck",
+			"note": "A run that started and never landed a terminal stamp.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "stale_processing"
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "stuck_processing",
+						"label_key": "dsh_phase_stuck",
+						"message": ""
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "stuck_processing",
+						"label_key": "dsh_phase_stuck",
+						"message": "",
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "processing-in-flight",
+			"note": "An in-flight run is a state, not a problem.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "processing",
+					"progress": {
+						"message": "building network"
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "processing",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "processing",
+						"code": "",
+						"label_key": "dsh_phase_processing",
+						"message": "building network"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "processing",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "processing",
+						"code": "",
+						"label_key": "dsh_phase_processing",
+						"message": "building network",
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 0
+			}
+		},
+		{
+			"id": "routine-stale-report",
+			"note": "A report going stale after a save is routine: no finding today.",
+			"row": {
+				"name": "tr_1",
+				"report_metadata": {
+					"status": "stale"
+				},
+				"combined_inclusion_metadata": {
+					"status": "stale"
+				}
+			},
+			"expected_ts": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			}
+		},
+		{
+			"id": "outcome-warning-sub-leg",
+			"note": "A sub-leg warns while its phase reads success.",
+			"row": {
+				"name": "tr_1",
+				"report_metadata": {
+					"status": "success",
+					"outcomes": {
+						"report_export_partial": {
+							"status": "warning",
+							"message": "partial export",
+							"count": 2
+						}
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "warning",
+						"code": "report_export_partial",
+						"label_key": "dsh_phase_warning",
+						"message": "partial export",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "warning",
+						"code": "report_export_partial",
+						"label_key": "dlbl_warn_report_export_partial",
+						"message": "partial export",
+						"count": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"why": "The unified vocabulary gives this code the label key the register already had for it; the severity normaliser labelled it generically because it did not know the code."
+		},
+		{
+			"id": "outcome-error-sub-leg",
+			"note": "A sub-leg fails while its phase reads success; severity escalates.",
+			"row": {
+				"name": "tr_1",
+				"report_metadata": {
+					"status": "success",
+					"outcomes": {
+						"survey_form_export": {
+							"status": "error",
+							"error_message": "form export failed"
+						}
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "error",
+						"code": "survey_form_export",
+						"label_key": "dsh_phase_error",
+						"message": "form export failed"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "error",
+						"code": "survey_form_export",
+						"label_key": "dlbl_warn_survey_form_export",
+						"message": "form export failed",
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"why": "The unified vocabulary gives this code the label key the register already had for it; the severity normaliser labelled it generically because it did not know the code."
+		},
+		{
+			"id": "ordering-error-before-warning",
+			"note": "Error first, then warnings in phase-slot order; worst wins.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "lost_nodes",
+						"message": "w"
+					}
+				},
+				"report_metadata": {
+					"status": "error",
+					"error_message": "boom"
+				},
+				"layers": {
+					"drafting_errors": 1
+				}
+			},
+			"expected_ts": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "boom"
+					},
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lost_nodes",
+						"label_key": "dsh_finding_lost_nodes",
+						"message": "w"
+					},
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "drafting_errors",
+						"label_key": "dsh_finding_drafting_errors",
+						"message": "",
+						"count": 1,
+						"locatable": {
+							"kind": "layer",
+							"layer": "drafting_errors"
+						}
+					}
+				],
+				"error_count": 1,
+				"warning_count": 2
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "boom",
+						"source": "document"
+					},
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lost_nodes",
+						"label_key": "dsh_finding_lost_nodes",
+						"message": "w",
+						"source": "document"
+					},
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "drafting_errors",
+						"label_key": "dsh_finding_drafting_errors",
+						"message": "",
+						"count": 1,
+						"locatable": {
+							"kind": "layer",
+							"layer": "drafting_errors"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 2
+			}
+		},
+		{
+			"id": "diagnostic-layer-as-feature-array",
+			"note": "A diagnostic layer supplied as a feature array, not a count.",
+			"row": {
+				"name": "tr_1",
+				"layers": {
+					"unconnected_customers": [
+						{},
+						{},
+						{}
+					]
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_customers",
+						"label_key": "dsh_finding_unconnected_customers",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_customers"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_customers",
+						"label_key": "dsh_finding_unconnected_customers",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_customers"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "phase-error-with-no-message",
+			"note": "A phase error the backend left wordless.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "error"
+				}
+			},
+			"expected_ts": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": ""
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "",
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"surface_divergences": [
+				{
+					"surface": "transformer-info",
+					"was": [],
+					"now": [
+						{
+							"phase": "process",
+							"severity": "error",
+							"code": "",
+							"label_key": "dsh_phase_error",
+							"message": "",
+							"source": "document"
+						}
+					],
+					"why": "The permanent-warning scan required a message before it would report an error, so a wordless failure was invisible on the row info surface. The finding list reports the error and leaves the message empty."
+				},
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": []
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "error",
+							"code": "",
+							"label_key": "dsh_phase_error",
+							"message": "",
+							"source": "document"
+						}
+					],
+					"why": "The register error table required a message too. The finding is reported with an empty message rather than dropped."
+				}
+			]
+		},
+		{
+			"id": "code-unconnected_lv_lines",
+			"note": "Warning code unconnected_lv_lines, already in the severity normaliser's vocabulary.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "unconnected_lv_lines",
+						"message": "unconnected_lv_lines reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_lv_lines",
+						"label_key": "dsh_finding_unconnected_lv_lines",
+						"message": "unconnected_lv_lines reported",
+						"count": 2,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_lv_lines",
+						"label_key": "dsh_finding_unconnected_lv_lines",
+						"message": "unconnected_lv_lines reported",
+						"count": 2,
+						"affected": 2,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "code-non_snapping_lv_lines",
+			"note": "Warning code non_snapping_lv_lines, already in the severity normaliser's vocabulary.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "non_snapping_lv_lines",
+						"message": "non_snapping_lv_lines reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "non_snapping_lv_lines",
+						"label_key": "dsh_finding_non_snapping_lv_lines",
+						"message": "non_snapping_lv_lines reported",
+						"count": 2,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "non_snapping_lv_lines",
+						"label_key": "dsh_finding_non_snapping_lv_lines",
+						"message": "non_snapping_lv_lines reported",
+						"count": 2,
+						"affected": 2,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "code-unconnected_customers",
+			"note": "Warning code unconnected_customers, already in the severity normaliser's vocabulary.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "unconnected_customers",
+						"message": "unconnected_customers reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_customers",
+						"label_key": "dsh_finding_unconnected_customers",
+						"message": "unconnected_customers reported",
+						"count": 2,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_customers"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_customers",
+						"label_key": "dsh_finding_unconnected_customers",
+						"message": "unconnected_customers reported",
+						"count": 2,
+						"affected": 2,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_customers"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "code-unconnected_lv_poles",
+			"note": "Warning code unconnected_lv_poles, already in the severity normaliser's vocabulary.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "unconnected_lv_poles",
+						"message": "unconnected_lv_poles reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_lv_poles",
+						"label_key": "dsh_finding_unconnected_lv_poles",
+						"message": "unconnected_lv_poles reported",
+						"count": 2,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_lv_poles"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_lv_poles",
+						"label_key": "dsh_finding_unconnected_lv_poles",
+						"message": "unconnected_lv_poles reported",
+						"count": 2,
+						"affected": 2,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_lv_poles"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "code-unconnected_service_cables",
+			"note": "Warning code unconnected_service_cables, already in the severity normaliser's vocabulary.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "unconnected_service_cables",
+						"message": "unconnected_service_cables reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_service_cables",
+						"label_key": "dsh_finding_unconnected_service_cables",
+						"message": "unconnected_service_cables reported",
+						"count": 2,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_service_cables"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_service_cables",
+						"label_key": "dsh_finding_unconnected_service_cables",
+						"message": "unconnected_service_cables reported",
+						"count": 2,
+						"affected": 2,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_service_cables"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "code-dropped_lv_poles",
+			"note": "Warning code dropped_lv_poles, already in the severity normaliser's vocabulary.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "dropped_lv_poles",
+						"message": "dropped_lv_poles reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "dropped_lv_poles",
+						"label_key": "dsh_finding_dropped_lv_poles",
+						"message": "dropped_lv_poles reported",
+						"count": 2,
+						"locatable": {
+							"kind": "layer",
+							"layer": "dropped_lv_poles"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "dropped_lv_poles",
+						"label_key": "dsh_finding_dropped_lv_poles",
+						"message": "dropped_lv_poles reported",
+						"count": 2,
+						"affected": 2,
+						"locatable": {
+							"kind": "layer",
+							"layer": "dropped_lv_poles"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "code-lost_nodes",
+			"note": "Warning code lost_nodes, already in the severity normaliser's vocabulary.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "lost_nodes",
+						"message": "lost_nodes reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lost_nodes",
+						"label_key": "dsh_finding_lost_nodes",
+						"message": "lost_nodes reported",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lost_nodes",
+						"label_key": "dsh_finding_lost_nodes",
+						"message": "lost_nodes reported",
+						"count": 2,
+						"affected": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "code-cycle",
+			"note": "Warning code cycle, already in the severity normaliser's vocabulary.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "cycle",
+						"message": "cycle reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "cycle",
+						"label_key": "dsh_finding_lv_line_loop",
+						"message": "cycle reported",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "cycle",
+						"label_key": "dsh_finding_lv_line_loop",
+						"message": "cycle reported",
+						"count": 2,
+						"affected": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "code-lv_line_loop",
+			"note": "Warning code lv_line_loop, already in the severity normaliser's vocabulary.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "lv_line_loop",
+						"message": "lv_line_loop reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lv_line_loop",
+						"label_key": "dsh_finding_lv_line_loop",
+						"message": "lv_line_loop reported",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lv_line_loop",
+						"label_key": "dsh_finding_lv_line_loop",
+						"message": "lv_line_loop reported",
+						"count": 2,
+						"affected": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "code-missing_geometry_dropped",
+			"note": "Warning code missing_geometry_dropped: named by the register and unknown to the severity normaliser.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "missing_geometry_dropped",
+						"message": "missing_geometry_dropped reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "missing_geometry_dropped",
+						"label_key": "dsh_phase_warning",
+						"message": "missing_geometry_dropped reported",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "missing_geometry_dropped",
+						"label_key": "dlbl_warn_missing_geometry_dropped",
+						"message": "missing_geometry_dropped reported",
+						"count": 2,
+						"affected": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"why": "The register named this code and the severity normaliser did not, so the normaliser labelled it generically. One vocabulary now, with the register's own label key.",
+			"surface_divergences": [
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": [
+							{
+								"transformer": "tr_1",
+								"phase": "Process",
+								"code": "missing_geometry_dropped",
+								"label": "Missing geometry dropped",
+								"message": "missing_geometry_dropped reported",
+								"layer": "",
+								"affected": "2",
+								"details": ""
+							}
+						]
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "missing_geometry_dropped",
+							"label_key": "dlbl_warn_missing_geometry_dropped",
+							"message": "missing_geometry_dropped reported",
+							"count": 2,
+							"affected": 2,
+							"source": "document"
+						}
+					],
+					"why": "Same code, same label key — the register's vocabulary is now the only one, so this row reads identically on both surfaces instead of only on one."
+				}
+			]
+		},
+		{
+			"id": "code-invalid_geometry_dropped",
+			"note": "Warning code invalid_geometry_dropped: named by the register and unknown to the severity normaliser.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "invalid_geometry_dropped",
+						"message": "invalid_geometry_dropped reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "invalid_geometry_dropped",
+						"label_key": "dsh_phase_warning",
+						"message": "invalid_geometry_dropped reported",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "invalid_geometry_dropped",
+						"label_key": "dlbl_warn_invalid_geometry_dropped",
+						"message": "invalid_geometry_dropped reported",
+						"count": 2,
+						"affected": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"why": "The register named this code and the severity normaliser did not, so the normaliser labelled it generically. One vocabulary now, with the register's own label key.",
+			"surface_divergences": [
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": [
+							{
+								"transformer": "tr_1",
+								"phase": "Process",
+								"code": "invalid_geometry_dropped",
+								"label": "Invalid geometry dropped",
+								"message": "invalid_geometry_dropped reported",
+								"layer": "",
+								"affected": "2",
+								"details": ""
+							}
+						]
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "invalid_geometry_dropped",
+							"label_key": "dlbl_warn_invalid_geometry_dropped",
+							"message": "invalid_geometry_dropped reported",
+							"count": 2,
+							"affected": 2,
+							"source": "document"
+						}
+					],
+					"why": "Same code, same label key — the register's vocabulary is now the only one, so this row reads identically on both surfaces instead of only on one."
+				}
+			]
+		},
+		{
+			"id": "code-self_loop_dropped",
+			"note": "Warning code self_loop_dropped: named by the register and unknown to the severity normaliser.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "self_loop_dropped",
+						"message": "self_loop_dropped reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "self_loop_dropped",
+						"label_key": "dsh_phase_warning",
+						"message": "self_loop_dropped reported",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "self_loop_dropped",
+						"label_key": "dlbl_warn_self_loop_dropped",
+						"message": "self_loop_dropped reported",
+						"count": 2,
+						"affected": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"why": "The register named this code and the severity normaliser did not, so the normaliser labelled it generically. One vocabulary now, with the register's own label key.",
+			"surface_divergences": [
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": [
+							{
+								"transformer": "tr_1",
+								"phase": "Process",
+								"code": "self_loop_dropped",
+								"label": "Self-loop geometry dropped",
+								"message": "self_loop_dropped reported",
+								"layer": "",
+								"affected": "2",
+								"details": ""
+							}
+						]
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "self_loop_dropped",
+							"label_key": "dlbl_warn_self_loop_dropped",
+							"message": "self_loop_dropped reported",
+							"count": 2,
+							"affected": 2,
+							"source": "document"
+						}
+					],
+					"why": "Same code, same label key — the register's vocabulary is now the only one, so this row reads identically on both surfaces instead of only on one."
+				}
+			]
+		},
+		{
+			"id": "code-survey_form_export",
+			"note": "Warning code survey_form_export: named by the register and unknown to the severity normaliser.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "survey_form_export",
+						"message": "survey_form_export reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "survey_form_export",
+						"label_key": "dsh_phase_warning",
+						"message": "survey_form_export reported",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "survey_form_export",
+						"label_key": "dlbl_warn_survey_form_export",
+						"message": "survey_form_export reported",
+						"count": 2,
+						"affected": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"why": "The register named this code and the severity normaliser did not, so the normaliser labelled it generically. One vocabulary now, with the register's own label key.",
+			"surface_divergences": [
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": [
+							{
+								"transformer": "tr_1",
+								"phase": "Process",
+								"code": "survey_form_export",
+								"label": "Survey form export",
+								"message": "survey_form_export reported",
+								"layer": "",
+								"affected": "2",
+								"details": ""
+							}
+						]
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "survey_form_export",
+							"label_key": "dlbl_warn_survey_form_export",
+							"message": "survey_form_export reported",
+							"count": 2,
+							"affected": 2,
+							"source": "document"
+						}
+					],
+					"why": "Same code, same label key — the register's vocabulary is now the only one, so this row reads identically on both surfaces instead of only on one."
+				}
+			]
+		},
+		{
+			"id": "code-report_export_partial",
+			"note": "Warning code report_export_partial: named by the register and unknown to the severity normaliser.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "report_export_partial",
+						"message": "report_export_partial reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "report_export_partial",
+						"label_key": "dsh_phase_warning",
+						"message": "report_export_partial reported",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "report_export_partial",
+						"label_key": "dlbl_warn_report_export_partial",
+						"message": "report_export_partial reported",
+						"count": 2,
+						"affected": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"why": "The register named this code and the severity normaliser did not, so the normaliser labelled it generically. One vocabulary now, with the register's own label key.",
+			"surface_divergences": [
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": [
+							{
+								"transformer": "tr_1",
+								"phase": "Process",
+								"code": "report_export_partial",
+								"label": "Partial report export",
+								"message": "report_export_partial reported",
+								"layer": "",
+								"affected": "2",
+								"details": ""
+							}
+						]
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "report_export_partial",
+							"label_key": "dlbl_warn_report_export_partial",
+							"message": "report_export_partial reported",
+							"count": 2,
+							"affected": 2,
+							"source": "document"
+						}
+					],
+					"why": "Same code, same label key — the register's vocabulary is now the only one, so this row reads identically on both surfaces instead of only on one."
+				}
+			]
+		},
+		{
+			"id": "code-input_warning",
+			"note": "Warning code input_warning: named by the register and unknown to the severity normaliser.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "input_warning",
+						"message": "input_warning reported",
+						"count": 2
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "input_warning",
+						"label_key": "dsh_phase_warning",
+						"message": "input_warning reported",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "input_warning",
+						"label_key": "dlbl_warn_input_warning",
+						"message": "input_warning reported",
+						"count": 2,
+						"affected": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"why": "The register named this code and the severity normaliser did not, so the normaliser labelled it generically. One vocabulary now, with the register's own label key.",
+			"surface_divergences": [
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": [
+							{
+								"transformer": "tr_1",
+								"phase": "Process",
+								"code": "input_warning",
+								"label": "Input data warning",
+								"message": "input_warning reported",
+								"layer": "",
+								"affected": "2",
+								"details": ""
+							}
+						]
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "input_warning",
+							"label_key": "dlbl_warn_input_warning",
+							"message": "input_warning reported",
+							"count": 2,
+							"affected": 2,
+							"source": "document"
+						}
+					],
+					"why": "Same code, same label key — the register's vocabulary is now the only one, so this row reads identically on both surfaces instead of only on one."
+				}
+			]
+		},
+		{
+			"id": "layer-non_snapping_lv_lines",
+			"note": "The non_snapping_lv_lines diagnostic layer, positive and unnamed by any phase warning.",
+			"row": {
+				"name": "tr_1",
+				"layers": {
+					"non_snapping_lv_lines": 3
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "non_snapping_lv_lines",
+						"label_key": "dsh_finding_non_snapping_lv_lines",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "non_snapping_lv_lines",
+						"label_key": "dsh_finding_non_snapping_lv_lines",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "attribute",
+							"layer": "lv_lines",
+							"filter": {
+								"field": "connected",
+								"value": false
+							},
+							"fallback_layer": "non_snapping_lv_lines"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"surface_divergences": [
+				{
+					"surface": "transformer-info",
+					"was": [],
+					"now": [
+						{
+							"phase": "process",
+							"severity": "warning",
+							"code": "non_snapping_lv_lines",
+							"label_key": "dsh_finding_non_snapping_lv_lines",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "attribute",
+								"layer": "lv_lines",
+								"filter": {
+									"field": "connected",
+									"value": false
+								},
+								"fallback_layer": "non_snapping_lv_lines"
+							},
+							"source": "document"
+						}
+					],
+					"why": "Neither the permanent-warning scan nor the register read the diagnostic layer counts, so a transformer with buried features looked clean on both. The finding list reads them."
+				},
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": []
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "non_snapping_lv_lines",
+							"label_key": "dsh_finding_non_snapping_lv_lines",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "attribute",
+								"layer": "lv_lines",
+								"filter": {
+									"field": "connected",
+									"value": false
+								},
+								"fallback_layer": "non_snapping_lv_lines"
+							},
+							"source": "document"
+						}
+					],
+					"why": "The register scanned phase blobs only; a positive diagnostic layer never reached its warning table."
+				}
+			]
+		},
+		{
+			"id": "layer-drafting_errors",
+			"note": "The drafting_errors diagnostic layer, positive and unnamed by any phase warning.",
+			"row": {
+				"name": "tr_1",
+				"layers": {
+					"drafting_errors": 3
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "drafting_errors",
+						"label_key": "dsh_finding_drafting_errors",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "drafting_errors"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "drafting_errors",
+						"label_key": "dsh_finding_drafting_errors",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "drafting_errors"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"surface_divergences": [
+				{
+					"surface": "transformer-info",
+					"was": [],
+					"now": [
+						{
+							"phase": "process",
+							"severity": "warning",
+							"code": "drafting_errors",
+							"label_key": "dsh_finding_drafting_errors",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "layer",
+								"layer": "drafting_errors"
+							},
+							"source": "document"
+						}
+					],
+					"why": "Neither the permanent-warning scan nor the register read the diagnostic layer counts, so a transformer with buried features looked clean on both. The finding list reads them."
+				},
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": []
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "drafting_errors",
+							"label_key": "dsh_finding_drafting_errors",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "layer",
+								"layer": "drafting_errors"
+							},
+							"source": "document"
+						}
+					],
+					"why": "The register scanned phase blobs only; a positive diagnostic layer never reached its warning table."
+				}
+			]
+		},
+		{
+			"id": "layer-unconnected_customers",
+			"note": "The unconnected_customers diagnostic layer, positive and unnamed by any phase warning.",
+			"row": {
+				"name": "tr_1",
+				"layers": {
+					"unconnected_customers": 3
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_customers",
+						"label_key": "dsh_finding_unconnected_customers",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_customers"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_customers",
+						"label_key": "dsh_finding_unconnected_customers",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_customers"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"surface_divergences": [
+				{
+					"surface": "transformer-info",
+					"was": [],
+					"now": [
+						{
+							"phase": "process",
+							"severity": "warning",
+							"code": "unconnected_customers",
+							"label_key": "dsh_finding_unconnected_customers",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "layer",
+								"layer": "unconnected_customers"
+							},
+							"source": "document"
+						}
+					],
+					"why": "Neither the permanent-warning scan nor the register read the diagnostic layer counts, so a transformer with buried features looked clean on both. The finding list reads them."
+				},
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": []
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "unconnected_customers",
+							"label_key": "dsh_finding_unconnected_customers",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "layer",
+								"layer": "unconnected_customers"
+							},
+							"source": "document"
+						}
+					],
+					"why": "The register scanned phase blobs only; a positive diagnostic layer never reached its warning table."
+				}
+			]
+		},
+		{
+			"id": "layer-unconnected_lv_poles",
+			"note": "The unconnected_lv_poles diagnostic layer, positive and unnamed by any phase warning.",
+			"row": {
+				"name": "tr_1",
+				"layers": {
+					"unconnected_lv_poles": 3
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_lv_poles",
+						"label_key": "dsh_finding_unconnected_lv_poles",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_lv_poles"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_lv_poles",
+						"label_key": "dsh_finding_unconnected_lv_poles",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_lv_poles"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"surface_divergences": [
+				{
+					"surface": "transformer-info",
+					"was": [],
+					"now": [
+						{
+							"phase": "process",
+							"severity": "warning",
+							"code": "unconnected_lv_poles",
+							"label_key": "dsh_finding_unconnected_lv_poles",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "layer",
+								"layer": "unconnected_lv_poles"
+							},
+							"source": "document"
+						}
+					],
+					"why": "Neither the permanent-warning scan nor the register read the diagnostic layer counts, so a transformer with buried features looked clean on both. The finding list reads them."
+				},
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": []
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "unconnected_lv_poles",
+							"label_key": "dsh_finding_unconnected_lv_poles",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "layer",
+								"layer": "unconnected_lv_poles"
+							},
+							"source": "document"
+						}
+					],
+					"why": "The register scanned phase blobs only; a positive diagnostic layer never reached its warning table."
+				}
+			]
+		},
+		{
+			"id": "layer-unconnected_service_cables",
+			"note": "The unconnected_service_cables diagnostic layer, positive and unnamed by any phase warning.",
+			"row": {
+				"name": "tr_1",
+				"layers": {
+					"unconnected_service_cables": 3
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_service_cables",
+						"label_key": "dsh_finding_unconnected_service_cables",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_service_cables"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "unconnected_service_cables",
+						"label_key": "dsh_finding_unconnected_service_cables",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "unconnected_service_cables"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"surface_divergences": [
+				{
+					"surface": "transformer-info",
+					"was": [],
+					"now": [
+						{
+							"phase": "process",
+							"severity": "warning",
+							"code": "unconnected_service_cables",
+							"label_key": "dsh_finding_unconnected_service_cables",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "layer",
+								"layer": "unconnected_service_cables"
+							},
+							"source": "document"
+						}
+					],
+					"why": "Neither the permanent-warning scan nor the register read the diagnostic layer counts, so a transformer with buried features looked clean on both. The finding list reads them."
+				},
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": []
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "unconnected_service_cables",
+							"label_key": "dsh_finding_unconnected_service_cables",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "layer",
+								"layer": "unconnected_service_cables"
+							},
+							"source": "document"
+						}
+					],
+					"why": "The register scanned phase blobs only; a positive diagnostic layer never reached its warning table."
+				}
+			]
+		},
+		{
+			"id": "layer-dropped_lv_poles",
+			"note": "The dropped_lv_poles diagnostic layer, positive and unnamed by any phase warning.",
+			"row": {
+				"name": "tr_1",
+				"layers": {
+					"dropped_lv_poles": 3
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "dropped_lv_poles",
+						"label_key": "dsh_finding_dropped_lv_poles",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "dropped_lv_poles"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "dropped_lv_poles",
+						"label_key": "dsh_finding_dropped_lv_poles",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "dropped_lv_poles"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"surface_divergences": [
+				{
+					"surface": "transformer-info",
+					"was": [],
+					"now": [
+						{
+							"phase": "process",
+							"severity": "warning",
+							"code": "dropped_lv_poles",
+							"label_key": "dsh_finding_dropped_lv_poles",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "layer",
+								"layer": "dropped_lv_poles"
+							},
+							"source": "document"
+						}
+					],
+					"why": "Neither the permanent-warning scan nor the register read the diagnostic layer counts, so a transformer with buried features looked clean on both. The finding list reads them."
+				},
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": []
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "dropped_lv_poles",
+							"label_key": "dsh_finding_dropped_lv_poles",
+							"message": "",
+							"count": 3,
+							"locatable": {
+								"kind": "layer",
+								"layer": "dropped_lv_poles"
+							},
+							"source": "document"
+						}
+					],
+					"why": "The register scanned phase blobs only; a positive diagnostic layer never reached its warning table."
+				}
+			]
+		},
+		{
+			"id": "processed-output-missing",
+			"note": "Process says success and the saved record holds none of its output layers.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "success"
+				},
+				"layers": {
+					"customers": 10,
+					"lv_lines": 4
+				}
+			},
+			"expected_ts": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "error",
+						"code": "processed_output_missing",
+						"label_key": "dsh_finding_processed_output_missing",
+						"message": "",
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"why": "New finding. The Dashboard already treated this row as red and the severity normaliser did not know about it at all; one list now says so once."
+		},
+		{
+			"id": "processed-output-missing-silent",
+			"note": "The deliberate no-alarm case: an older document with no layer counts.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "success"
+				},
+				"layers": {}
+			},
+			"expected_ts": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			}
+		},
+		{
+			"id": "processed-output-present",
+			"note": "The saved record holds spans, so the badge is honest.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "success"
+				},
+				"layers": {
+					"spans": 12,
+					"customers": 10
+				}
+			},
+			"expected_ts": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			}
+		},
+		{
+			"id": "processed-output-special-row",
+			"note": "An aggregate row is not an LV transformer and never persists those layers.",
+			"row": {
+				"name": "mv_data",
+				"process_metadata": {
+					"status": "success"
+				},
+				"layers": {
+					"mv_lines": 30
+				}
+			},
+			"expected_ts": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			}
+		},
+		{
+			"id": "outcome-nested-warnings",
+			"note": "A successful sub-leg carrying its own warning list.",
+			"row": {
+				"name": "tr_1",
+				"report_metadata": {
+					"status": "success",
+					"outcomes": {
+						"media": {
+							"status": "success",
+							"warnings": [
+								{
+									"code": "missing_geometry_dropped",
+									"message": "2 rows dropped",
+									"count": 2
+								},
+								{
+									"code": "self_loop_dropped",
+									"severity": "error"
+								},
+								{
+									"message": "no code, never reported"
+								}
+							]
+						}
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "error",
+						"code": "self_loop_dropped",
+						"label_key": "dsh_phase_error",
+						"message": ""
+					},
+					{
+						"phase": "report",
+						"severity": "warning",
+						"code": "missing_geometry_dropped",
+						"label_key": "dsh_phase_warning",
+						"message": "2 rows dropped",
+						"count": 2
+					}
+				],
+				"error_count": 1,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "error",
+						"code": "self_loop_dropped",
+						"label_key": "dlbl_warn_self_loop_dropped",
+						"message": "",
+						"source": "document"
+					},
+					{
+						"phase": "report",
+						"severity": "warning",
+						"code": "missing_geometry_dropped",
+						"label_key": "dlbl_warn_missing_geometry_dropped",
+						"message": "2 rows dropped",
+						"count": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 1
+			},
+			"why": "The unified vocabulary gives this code the label key the register already had for it; the severity normaliser labelled it generically because it did not know the code.",
+			"surface_divergences": [
+				{
+					"surface": "transformer-info",
+					"was": [],
+					"now": [
+						{
+							"phase": "report",
+							"severity": "error",
+							"code": "self_loop_dropped",
+							"label_key": "dlbl_warn_self_loop_dropped",
+							"message": "",
+							"source": "document"
+						},
+						{
+							"phase": "report",
+							"severity": "warning",
+							"code": "missing_geometry_dropped",
+							"label_key": "dlbl_warn_missing_geometry_dropped",
+							"message": "2 rows dropped",
+							"count": 2,
+							"source": "document"
+						}
+					],
+					"why": "The permanent-warning scan read a sub-leg's own status and stopped there; a nested warning list under a successful leg was dropped."
+				}
+			]
+		},
+		{
+			"id": "outcome-error-from-errors-list",
+			"note": "A sub-leg with no message of its own reaches into the errors beneath it.",
+			"row": {
+				"name": "tr_1",
+				"report_metadata": {
+					"status": "success",
+					"outcomes": {
+						"export": {
+							"status": "error",
+							"errors": [
+								{},
+								{
+									"technical_detail": "row 4 has no geometry"
+								}
+							]
+						}
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "error",
+						"code": "export",
+						"label_key": "dsh_phase_error",
+						"message": "row 4 has no geometry"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "error",
+						"code": "export",
+						"label_key": "dsh_phase_error",
+						"message": "row 4 has no geometry",
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			}
+		},
+		{
+			"id": "outcome-partial-success",
+			"note": "A sub-leg that reports partial_success.",
+			"row": {
+				"name": "tr_1",
+				"report_metadata": {
+					"status": "success",
+					"outcomes": {
+						"design_layer_export": {
+							"status": "partial_success",
+							"message": "half the layers exported"
+						}
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"surface_divergences": [
+				{
+					"surface": "transformer-info",
+					"was": [
+						{
+							"phase": "Report",
+							"severity": "warning",
+							"code": "design_layer_export",
+							"message": "half the layers exported",
+							"transient": false
+						}
+					],
+					"now": [],
+					"why": "The permanent-warning scan promoted partial_success to a warning; the severity normaliser never did, so the row info surface warned where the badge stayed green. The kernel keeps the normaliser's answer: a partial success is a success the backend qualified, not an amber flag."
+				}
+			]
+		},
+		{
+			"id": "message-with-url-and-bearer",
+			"note": "A backend message carrying a signed URL and a bearer credential.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "error",
+					"error_message": "upload to https://storage.googleapis.com/b/o?X-Goog-Signature=deadbeef failed with Bearer ya29.a0AfH6SMBsecretvalue"
+				}
+			},
+			"expected_ts": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "upload to https://storage.googleapis.com/b/o?X-Goog-Signature=deadbeef failed with Bearer ya29.a0AfH6SMBsecretvalue"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "upload to [redacted] failed with [redacted]",
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"why": "The kernel bounds and sanitises every message it emits; the deleted TypeScript sanitised only the in-flight progress line and passed error and warning text through verbatim, credentials included."
+		},
+		{
+			"id": "message-with-platform-jargon",
+			"note": "A backend message naming infrastructure the operator cannot act on.",
+			"row": {
+				"name": "tr_1",
+				"report_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "report_export_partial",
+						"message": "the Firestore write failed and IndexedDB is full"
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "warning",
+						"code": "report_export_partial",
+						"label_key": "dsh_phase_warning",
+						"message": "the Firestore write failed and IndexedDB is full"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "warning",
+						"code": "report_export_partial",
+						"label_key": "dlbl_warn_report_export_partial",
+						"message": "the project database write failed and this browser's local storage is full",
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"why": "Same rule: the rewrite the browser applied only at its display sink is now applied where the finding is decided, so `ds` and the browser read the same sentence."
+		},
+		{
+			"id": "numeric-string-detail-count",
+			"note": "A details entry whose count arrived as a numeric string.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "lost_nodes",
+						"details": [
+							{
+								"layer": "customers",
+								"count": 2,
+								"code": "dropped"
+							},
+							{
+								"layer": "spans",
+								"count": "3"
+							}
+						]
+					}
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lost_nodes",
+						"label_key": "dsh_finding_lost_nodes",
+						"message": "",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lost_nodes",
+						"label_key": "dsh_finding_lost_nodes",
+						"message": "",
+						"count": 2,
+						"affected": 5,
+						"detail_parts": [
+							"customers / 2 / dropped",
+							"spans / 3"
+						],
+						"detail_total": 2,
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"surface_divergences": [
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": [
+							{
+								"transformer": "tr_1",
+								"phase": "Process",
+								"code": "lost_nodes",
+								"label": "Unreachable network nodes",
+								"message": "",
+								"layer": "",
+								"affected": "5",
+								"details": "customers / 2 / dropped, spans / 3"
+							}
+						]
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "lost_nodes",
+							"label_key": "dsh_finding_lost_nodes",
+							"message": "",
+							"count": 2,
+							"affected": 5,
+							"detail_parts": [
+								"customers / 2 / dropped",
+								"spans / 3"
+							],
+							"detail_total": 2,
+							"source": "document"
+						}
+					],
+					"why": "Only the register summed the detail counts, and only the register coerced a numeric string. That arithmetic is now the finding's `affected` and every surface can read it."
+				}
+			]
+		},
+		{
+			"id": "warning-with-no-warning-block",
+			"note": "A phase that reads warning without a warning block.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"error_message": "the run finished with reservations"
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "",
+						"label_key": "dsh_phase_warning",
+						"message": "the run finished with reservations"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "",
+						"label_key": "dsh_phase_warning",
+						"message": "the run finished with reservations",
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"surface_divergences": [
+				{
+					"surface": "transformer-info",
+					"was": [],
+					"now": [
+						{
+							"phase": "process",
+							"severity": "warning",
+							"code": "",
+							"label_key": "dsh_phase_warning",
+							"message": "the run finished with reservations",
+							"source": "document"
+						}
+					],
+					"why": "The permanent-warning scan required a warning block before it would report a warning, so this row read clean on the info surface while the badge showed amber."
+				}
+			]
+		},
+		{
+			"id": "combined-phase-error",
+			"note": "The combined-inclusion phase failed.",
+			"row": {
+				"name": "tr_1",
+				"combined_inclusion_metadata": {
+					"status": "error",
+					"error_message": "combined mirror rejected the row"
+				}
+			},
+			"expected_ts": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "combined",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "combined mirror rejected the row"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "combined",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "combined mirror rejected the row",
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"surface_divergences": [
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": []
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "combined",
+							"severity": "error",
+							"code": "",
+							"label_key": "dsh_phase_error",
+							"message": "combined mirror rejected the row",
+							"source": "document"
+						}
+					],
+					"why": "The register scanned four phases and Combined was not one of them, so a combined failure never appeared in the project error table. The finding list has always folded five."
+				}
+			]
+		},
+		{
+			"id": "sketch-and-draft-order",
+			"note": "Both legacy phases carry an error.",
+			"row": {
+				"name": "tr_1",
+				"sketch_metadata": {
+					"status": "error",
+					"error_message": "sketch failed"
+				},
+				"draft_metadata": {
+					"status": "error",
+					"error_message": "draft failed"
+				}
+			},
+			"expected_ts": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "sketch",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "sketch failed"
+					},
+					{
+						"phase": "draft",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "draft failed"
+					}
+				],
+				"error_count": 2,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "sketch",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "sketch failed",
+						"source": "document"
+					},
+					{
+						"phase": "draft",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "draft failed",
+						"source": "document"
+					}
+				],
+				"error_count": 2,
+				"warning_count": 0
+			},
+			"surface_divergences": [
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [
+							{
+								"transformer": "tr_1",
+								"phase": "Draft",
+								"message": "draft failed"
+							},
+							{
+								"transformer": "tr_1",
+								"phase": "Sketch",
+								"message": "sketch failed"
+							}
+						],
+						"warnings": []
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "sketch",
+							"severity": "error",
+							"code": "",
+							"label_key": "dsh_phase_error",
+							"message": "sketch failed",
+							"source": "document"
+						},
+						{
+							"transformer": "tr_1",
+							"phase": "draft",
+							"severity": "error",
+							"code": "",
+							"label_key": "dsh_phase_error",
+							"message": "draft failed",
+							"source": "document"
+						}
+					],
+					"why": "The register listed Draft before Sketch; the finding list reads the phase slots in their pipeline order, Sketch first. One order now, and it is the pipeline's."
+				}
+			]
+		},
+		{
+			"id": "outcomes-and-layers-together",
+			"note": "A row whose only issues are a sub-leg and a buried layer.",
+			"row": {
+				"name": "tr_1",
+				"report_metadata": {
+					"status": "success",
+					"outcomes": {
+						"survey_form_export": {
+							"status": "warning",
+							"message": "one form skipped"
+						}
+					}
+				},
+				"layers": {
+					"dropped_lv_poles": 4
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "warning",
+						"code": "survey_form_export",
+						"label_key": "dsh_phase_warning",
+						"message": "one form skipped"
+					},
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "dropped_lv_poles",
+						"label_key": "dsh_finding_dropped_lv_poles",
+						"message": "",
+						"count": 4,
+						"locatable": {
+							"kind": "layer",
+							"layer": "dropped_lv_poles"
+						}
+					}
+				],
+				"error_count": 0,
+				"warning_count": 2
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "warning",
+						"code": "survey_form_export",
+						"label_key": "dlbl_warn_survey_form_export",
+						"message": "one form skipped",
+						"source": "document"
+					},
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "dropped_lv_poles",
+						"label_key": "dsh_finding_dropped_lv_poles",
+						"message": "",
+						"count": 4,
+						"locatable": {
+							"kind": "layer",
+							"layer": "dropped_lv_poles"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 2
+			},
+			"why": "The unified vocabulary gives this code the label key the register already had for it; the severity normaliser labelled it generically because it did not know the code.",
+			"surface_divergences": [
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": []
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "report",
+							"severity": "warning",
+							"code": "survey_form_export",
+							"label_key": "dlbl_warn_survey_form_export",
+							"message": "one form skipped",
+							"source": "document"
+						},
+						{
+							"transformer": "tr_1",
+							"phase": "process",
+							"severity": "warning",
+							"code": "dropped_lv_poles",
+							"label_key": "dsh_finding_dropped_lv_poles",
+							"message": "",
+							"count": 4,
+							"locatable": {
+								"kind": "layer",
+								"layer": "dropped_lv_poles"
+							},
+							"source": "document"
+						}
+					],
+					"why": "Neither an outcome sub-leg nor a diagnostic layer reached the register's warning table; both are findings, so both appear."
+				}
+			]
+		},
+		{
+			"id": "stuck-processing-not-in-tables",
+			"note": "A stuck run is actionable and was in no project table.",
+			"row": {
+				"name": "tr_1",
+				"report_metadata": {
+					"status": "stale_processing"
+				}
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "warning",
+						"code": "stuck_processing",
+						"label_key": "dsh_phase_stuck",
+						"message": ""
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "report",
+						"severity": "warning",
+						"code": "stuck_processing",
+						"label_key": "dsh_phase_stuck",
+						"message": "",
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"surface_divergences": [
+				{
+					"surface": "issue-tables",
+					"was": {
+						"errors": [],
+						"warnings": []
+					},
+					"now": [
+						{
+							"transformer": "tr_1",
+							"phase": "report",
+							"severity": "warning",
+							"code": "stuck_processing",
+							"label_key": "dsh_phase_stuck",
+							"message": "",
+							"source": "document"
+						}
+					],
+					"why": "The register only read status === \"warning\"; a run stuck at stale_processing was reported by the badge and by nothing else."
+				}
+			]
+		},
+		{
+			"id": "run-warnings-beside-the-document",
+			"note": "The response of the run that just finished, folded in as transient findings.",
+			"row": {
+				"name": "tr_1",
+				"process_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "lost_nodes",
+						"message": "nodes lost",
+						"count": 2
+					}
+				}
+			},
+			"run": {
+				"warnings": [
+					{
+						"code": "lost_nodes",
+						"message": "nodes lost",
+						"count": 2
+					},
+					{
+						"code": "welded_lv_lines",
+						"message": "3 taps noded",
+						"count": 3,
+						"layer": "lv_lines"
+					},
+					{
+						"code": "dropped_lv_poles",
+						"severity": "error",
+						"message": "1 pole dropped"
+					}
+				]
+			},
+			"expected_ts": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lost_nodes",
+						"label_key": "dsh_finding_lost_nodes",
+						"message": "nodes lost",
+						"count": 2
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			"expected": {
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "lost_nodes",
+						"label_key": "dsh_finding_lost_nodes",
+						"message": "nodes lost",
+						"count": 2,
+						"affected": 2,
+						"source": "document"
+					},
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "welded_lv_lines",
+						"label_key": "dsh_phase_warning",
+						"message": "3 taps noded",
+						"count": 3,
+						"layer": "lv_lines",
+						"source": "run"
+					},
+					{
+						"phase": "process",
+						"severity": "error",
+						"code": "dropped_lv_poles",
+						"label_key": "dsh_finding_dropped_lv_poles",
+						"message": "1 pole dropped",
+						"locatable": {
+							"kind": "layer",
+							"layer": "dropped_lv_poles"
+						},
+						"source": "run"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			}
+		},
+		{
+			"id": "legacy-draft-error-superseded",
+			"note": "A Draft error that a newer terminal Process run overwrote. The store used to rewrite the phase to `stale` and move the message to `superseded_error_message`, so health never saw it.",
+			"row": {
+				"name": "tx_1",
+				"draft_metadata": {
+					"status": "error",
+					"when": "2026-08-20T10:00:00Z",
+					"error_message": "Drafting failed on 12 poles.",
+					"user": "a@x.com"
+				},
+				"process_metadata": {
+					"status": "success",
+					"when": "2026-08-25T10:00:00Z",
+					"lane": "fast",
+					"user": "b@x.com"
+				}
+			},
+			"expected_ts": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "draft",
+						"severity": "error",
+						"code": "legacy_phase_superseded",
+						"label_key": "dsh_finding_legacy_phase_superseded",
+						"message": "Drafting failed on 12 poles.",
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"why": "CORRECTION. `normalizeSupersededLegacyPhase` (stores/design.ts) REWROTE a superseded legacy phase to `status: 'stale'` and moved `error_message` to `superseded_error_message` before health ever read the row, so the error went quiet — while `supersededPhase`'s own docstring in the same feature said \"Errors are never reported as superseded — they stay loud.\" The supersession is an explicit output now (`design_status_row::phase_supersession`, one rule at ingest) and the retained error is a `legacy_phase_superseded` error finding. No document is mutated on the way in."
+		},
+		{
+			"id": "legacy-draft-error-already-normalised",
+			"note": "A cached row the deleted normaliser already rewrote: the retained error is read back rather than lost with the code that wrote it.",
+			"row": {
+				"name": "tx_1",
+				"draft_metadata": {
+					"status": "stale",
+					"superseded_by": "process_metadata",
+					"superseded_at": "2026-08-25T10:00:00Z",
+					"superseded_error_message": "Drafting failed on 12 poles."
+				},
+				"process_metadata": {
+					"status": "success",
+					"when": "2026-08-25T10:00:00Z",
+					"lane": "fast"
+				}
+			},
+			"expected_ts": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "draft",
+						"severity": "error",
+						"code": "legacy_phase_superseded",
+						"label_key": "dsh_finding_legacy_phase_superseded",
+						"message": "Drafting failed on 12 poles.",
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			"why": "CORRECTION, same rule. A row cached by an older build already carries the normaliser's rewrite; the kernel reads `superseded_by`/`superseded_error_message` rather than treating the phase as a routine `stale`, so a retained error survives the deletion of the code that hid it."
+		},
+		{
+			"id": "legacy-sketch-processing-superseded",
+			"note": "A Sketch left running when Process landed: superseded, and silent — a superseded run in flight is not news.",
+			"row": {
+				"name": "tx_1",
+				"sketch_metadata": {
+					"status": "processing",
+					"when": "2026-08-20T10:00:00Z"
+				},
+				"process_metadata": {
+					"status": "success",
+					"when": "2026-08-25T10:00:00Z",
+					"lane": "fast"
+				}
+			},
+			"expected_ts": {
+				"severity": "processing",
+				"findings": [
+					{
+						"phase": "sketch",
+						"severity": "processing",
+						"code": "",
+						"label_key": "dsh_phase_processing",
+						"message": ""
+					}
+				],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"expected": {
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			"why": "The normaliser rewrote a superseded `processing` legacy phase to `stale`, which silenced it — but only because the rewrite happened in the store. A row that reached health WITHOUT passing the normaliser (the `ds design status` path, which had no normaliser at all) reported the fleet as processing forever. One rule, applied at ingest by whoever asks, answers both callers the same way: superseded and silent."
+		}
+	],
+	"fleet": {
+		"rows": [
+			{
+				"name": "a",
+				"process_metadata": {
+					"status": "error",
+					"error_message": "boom"
+				},
+				"report_metadata": {
+					"status": "processing",
+					"progress": {
+						"message": "exporting"
+					}
+				}
+			},
+			{
+				"name": "b",
+				"layers": {
+					"drafting_errors": 3
+				}
+			},
+			{
+				"name": "c",
+				"process_metadata": {
+					"status": "processing"
+				}
+			},
+			{
+				"name": "d",
+				"process_metadata": {
+					"status": "success"
+				},
+				"layers": {
+					"spans": 4
+				}
+			},
+			{
+				"name": "e",
+				"report_metadata": {
+					"status": "warning",
+					"warning": {
+						"code": "input_warning",
+						"message": "two rows dropped",
+						"details": [
+							{
+								"layer": "customers",
+								"count": 2
+							}
+						]
+					}
+				},
+				"combined_inclusion_metadata": {
+					"status": "error",
+					"error_message": "mirror rejected"
+				}
+			}
+		],
+		"expected_rows": [
+			{
+				"name": "a",
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "boom",
+						"source": "document"
+					},
+					{
+						"phase": "report",
+						"severity": "processing",
+						"code": "",
+						"label_key": "dsh_phase_processing",
+						"message": "exporting",
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 0
+			},
+			{
+				"name": "b",
+				"severity": "warning",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "warning",
+						"code": "drafting_errors",
+						"label_key": "dsh_finding_drafting_errors",
+						"message": "",
+						"count": 3,
+						"locatable": {
+							"kind": "layer",
+							"layer": "drafting_errors"
+						},
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 1
+			},
+			{
+				"name": "c",
+				"severity": "processing",
+				"findings": [
+					{
+						"phase": "process",
+						"severity": "processing",
+						"code": "",
+						"label_key": "dsh_phase_processing",
+						"message": "",
+						"source": "document"
+					}
+				],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			{
+				"name": "d",
+				"severity": "ok",
+				"findings": [],
+				"error_count": 0,
+				"warning_count": 0
+			},
+			{
+				"name": "e",
+				"severity": "error",
+				"findings": [
+					{
+						"phase": "combined",
+						"severity": "error",
+						"code": "",
+						"label_key": "dsh_phase_error",
+						"message": "mirror rejected",
+						"source": "document"
+					},
+					{
+						"phase": "report",
+						"severity": "warning",
+						"code": "input_warning",
+						"label_key": "dlbl_warn_input_warning",
+						"message": "two rows dropped",
+						"count": 1,
+						"affected": 2,
+						"detail_parts": [
+							"customers / 2"
+						],
+						"detail_total": 1,
+						"source": "document"
+					}
+				],
+				"error_count": 1,
+				"warning_count": 1
+			}
+		],
+		"expected_summary": {
+			"total": 5,
+			"processing": 2,
+			"warnings": 2,
+			"errors": 2
+		}
+	}
+}

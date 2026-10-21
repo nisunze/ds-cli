@@ -1,0 +1,87 @@
+{
+  "compounded_reports": [
+    {
+      "stem": "261002-0910-report-huye-2-0123456789abcdef0123456789abcdef",
+      "filename": "261002-0910-report-huye-2-0123456789abcdef0123456789abcdef.zip",
+      "gcs_path": "gs://lv-reports/compounded/261002-0910-report-huye-2-0123456789abcdef0123456789abcdef/261002-0910-report-huye-2-0123456789abcdef0123456789abcdef.zip",
+      "gcs_generation": "1790000000123456",
+      "gcs_size_bytes": "987654321",
+      "created_at": "2026-10-02T09:10:05Z",
+      "created_by": "engineer@example.com",
+      "status": "success",
+      "project_display_name": "Huye 2",
+      "transformer_count": 4,
+      "transformers": ["agatare", "busoro", "kinazi", "rusatira"],
+      "group_count": 2,
+      "groups": ["Huye", "Nyamagabe"],
+      "grouping": {
+        "applied": true,
+        "purpose": "report_archive",
+        "definition_ids": ["loc_admin_level_2", "loc_admin_level_3"],
+        "plan_digest": "4f9c2a1e0d3b5c6a7e8f90112233445566778899aabbccddeeff001122334455",
+        "projection_sha256": "aa11bb22cc33dd44ee55ff6677889900aa11bb22cc33dd44ee55ff6677889900",
+        "revision": 3,
+        "member_count": 4,
+        "unassigned_count": 0,
+        "group_count": 3
+      },
+      "manifest_summary": { "zip_entries": 18, "zip_errors": 0 },
+      "archive_layout": {
+        "transformer_folders": true,
+        "combine_per_group": true,
+        "combine_per_district": true,
+        "file_level": "transformer",
+        "transformer_grouping": "district_sector"
+      },
+      "orchestrator": "ds-brain",
+      "combined_strategy": "overall_and_optional_district_exports_via_reporter_bulk",
+      "individual_artifact_transformer_count": 4,
+      "missing_individual_artifact_count": 0,
+      "missing_individual_artifacts": [],
+      "missing_individual_artifact_causes": []
+    },
+    {
+      "stem": "261002-0800-report-huye-2-fedcba9876543210fedcba9876543210",
+      "filename": "261002-0800-report-huye-2-fedcba9876543210fedcba9876543210.zip",
+      "gcs_path": "gs://lv-reports/compounded/261002-0800-report-huye-2-fedcba9876543210fedcba9876543210/261002-0800-report-huye-2-fedcba9876543210fedcba9876543210.zip",
+      "created_at": "2026-10-02T08:00:00Z",
+      "created_by": "engineer@example.com",
+      "status": "success",
+      "transformer_count": 2,
+      "transformers": ["agatare", "busoro"],
+      "group_count": 0,
+      "groups": [],
+      "grouping": {
+        "applied": false,
+        "detail": "no report_archive grouping plan is applied; the archive is flat"
+      },
+      "archive_layout": {
+        "transformer_folders": true,
+        "combine_per_group": false,
+        "combine_per_district": false,
+        "file_level": "transformer",
+        "transformer_grouping": "district_sector"
+      },
+      "orchestrator": "ds-brain",
+      "individual_artifact_transformer_count": 2,
+      "missing_individual_artifact_count": 0
+    },
+    {
+      "stem": "260526-1430-report-huye-2",
+      "filename": "260526-1430-report-huye-2.zip",
+      "gcs_path": "gs://lv-reports/compounded/260526-1430-report-huye-2/260526-1430-report-huye-2.zip",
+      "created_at": "2026-05-26T14:30:05Z",
+      "created_by": "engineer@example.com",
+      "status": "success",
+      "transformer_count": 194,
+      "transformers": ["agatare"],
+      "district_count": 3,
+      "districts": ["Huye", "Nyamagabe", "Nyaruguru"],
+      "archive_layout": { "file_level": "transformer", "transformer_grouping": "district_sector", "combine_per_district": true },
+      "orchestrator": "ds-brain",
+      "individual_artifact_transformer_count": 193,
+      "missing_individual_artifact_count": 1,
+      "errors": ["agatare: no artifacts"]
+    }
+  ]
+}

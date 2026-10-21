@@ -1,0 +1,44 @@
+{
+  "request": {
+    "operation": "invoke",
+    "command": "feedback.list",
+    "arguments": {
+      "view": "all",
+      "query": "Cable creep temperature shift has no canonical field; nominal modulus disagrees with curves and GTP",
+      "limit": 2,
+      "detail": true,
+      "lane": "stable"
+    }
+  },
+  "report": {
+    "id": "3d1c735c-2e40-42a0-b796-671d217ba23b",
+    "status": "open",
+    "kind": "obstacle",
+    "severity": "major",
+    "component": "ds-network / dsgrid cable model",
+    "surface": "cli",
+    "title": "Cable creep temperature shift has no canonical field; nominal modulus disagrees with curves and GTP",
+    "detail": "The client (EDCL/TBEA review 2026-09-25) requires 'temperature shift used to model long-term creep' = 15 C for ACSR 70/12 and OPGW M81. The DS cable row (diameter, area, mass, RTS, nominal modulus, reference temperature) has no such field, and the 16.81 export's .wir has no identifiable place for it, so it cannot be carried or checked in DS. An equivalent +15 C clearance case was rejected by the owner as too severe. Separately, the OPGW row carries nominal_elastic_modulus_pa 68.9474 GPa (the 10,000 ksi PLS default) while its curves, the native .wir (973 MPa/100) and the approved GTP say 97.3 kN/mm2. The ACSR row carries 7.7e9 against a GTP of 77 kN/mm2 (units unclear). Expected: a canonical creep_temperature_shift_c on the cable, carried by import and export and used by the after_creep condition; documentation of which modulus field governs; a finding when the nominal modulus contradicts the curves.",
+    "occurrences": 1,
+    "reporters": [
+      "magese@datasolutions.rw"
+    ],
+    "reporter_kind": "agent",
+    "version": 6,
+    "last_seen_at": "2026-09-25T20:22:15.682453Z",
+    "updated_at": "2026-10-13T07:39:18.079144Z",
+    "updated_by": "nisunze@yahoo.fr",
+    "resolution": "",
+    "blocked": true,
+    "blocked_on": "Complete source-qualified CRI phase_clear/criterion bindings permitting the authored 15 C native export and reimport; retain zero-shift and modulus-conflict controls.",
+    "blocked_since": "2026-10-09T05:33:53.198316Z",
+    "note_count": 5,
+    "latest_note": {
+      "author": "nisunze@yahoo.fr",
+      "at": "2026-10-13T07:39:18.079144Z",
+      "text": "The export preflight gap is fixed in pushed ds-network a5e3c94a and proven through matching debug CLI e4646cfc...8716ef. For both folder and backup targets, the compact CRI now blocks on five named sections versus the authenticated 182-section profile; the full pinned v89 scaffold blocks on undefined analysis phase_clear. Conversion returns plan_blocked and creates no output directory. The unchanged native source control completes with exact CRI and backup bytes. This preserves the cable-edit/source-equality fence. The earlier 15 C calculation and modulus-conflict controls passed, but this refusal proof does not establish successful native export/reimport. Exact envelopes/hashes are in ds-network/out/feedback-native-20261013/cri-replay.",
+      "blocked_on": "Complete source-qualified CRI phase_clear/criterion bindings permitting the authored 15 C native export and reimport; retain zero-shift and modulus-conflict controls."
+    },
+    "detail_truncated": false
+  }
+}

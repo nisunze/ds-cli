@@ -1,0 +1,2471 @@
+{
+	"schema": "ds.design-download-parity/v1",
+	"purpose": "Campaign slice 14a — download scope, delivery URLs, artifact placement and freshness, owned by ds-command-kernel::project_control::plan_artifact_download. `expected_ts` is status-table.ts:1073-1175 + status-downloads.ts:101-113 + StatusTable.svelte deliveryFiles, recorded by running that code once before deleting it. `expected` is the kernel plan.",
+	"cases": [
+		{
+			"id": "whole-project",
+			"note": "No tick: the scope is every non-special row the filter left, and special rows are never in it.",
+			"request": {
+				"rows": [
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx"
+						],
+						"report_metadata": {
+							"status": "success",
+							"cached_urls": [
+								{
+									"url": "gs://bucket/reports/a.gpkg"
+								},
+								"gs://bucket/reports/a.shp.zip"
+							]
+						}
+					},
+					{
+						"name": "batikoti",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"https://storage.googleapis.com/reports/batikoti_info_tables.xlsx?sig=aaa",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa"
+						],
+						"print_files": [
+							"ds-reporter://prints/batikoti_sheet.pdf"
+						]
+					},
+					{
+						"name": "local_first",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"file:///local/exports/local_first.kmz"
+						]
+					},
+					{
+						"name": "pointer_race",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/report_lv/pointer_race/pointer_race.xlsx",
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						]
+					},
+					{
+						"name": "desktop_host",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"https://storage.googleapis.com/reports/desktop_host.xlsx?sig=a",
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"compute-artifact://runs/7/desktop_host.gpkg",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						]
+					},
+					{
+						"name": "stale_with_files",
+						"report_metadata": {
+							"status": "stale"
+						},
+						"report_files": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						]
+					},
+					{
+						"name": "stale_without_files",
+						"report_metadata": {
+							"status": "stale"
+						}
+					},
+					{
+						"name": "missing",
+						"report_metadata": {
+							"status": "success"
+						}
+					},
+					{
+						"name": "with_uploads",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"uploads": {
+							"draft": [
+								{
+									"filename": "d1.zip",
+									"download_url": "https://x/d1.zip"
+								},
+								{
+									"filename": "d2.zip"
+								}
+							],
+							"sketch": [
+								{
+									"filename": "s1.zip",
+									"download_url": "https://x/s1.zip"
+								}
+							],
+							"process": []
+						}
+					},
+					{
+						"name": "mv_data",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/mv_data.gpkg"
+						]
+					},
+					{
+						"name": "combined_transformer",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.kmz"
+						]
+					},
+					{
+						"name": "collisions",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/collisions.gpkg"
+						]
+					}
+				],
+				"selection": [],
+				"formats": [],
+				"mutation_cache": {
+					"batikoti": [
+						"file:///local/exports/batikoti_info_tables.xlsx",
+						"C:\\Users\\op\\exports\\batikoti.shp.zip"
+					],
+					"local_first": [
+						"https://storage.googleapis.com/reports/local_first.kmz?sig=bbb"
+					],
+					"combined_transformer": [
+						"gs://bucket/reports/combined.gpkg?token=1"
+					]
+				},
+				"extra_urls": []
+			},
+			"expected_ts": {
+				"scope": [
+					"artifact_shapes",
+					"batikoti",
+					"local_first",
+					"pointer_race",
+					"desktop_host",
+					"stale_with_files",
+					"stale_without_files",
+					"missing",
+					"with_uploads"
+				],
+				"rows": [
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"urls": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						]
+					},
+					{
+						"name": "batikoti",
+						"report_files": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip"
+						],
+						"urls": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip",
+							"ds-reporter://prints/batikoti_sheet.pdf"
+						]
+					},
+					{
+						"name": "local_first",
+						"report_files": [
+							"file:///local/exports/local_first.kmz"
+						],
+						"urls": [
+							"file:///local/exports/local_first.kmz"
+						]
+					},
+					{
+						"name": "pointer_race",
+						"report_files": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						],
+						"urls": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						]
+					},
+					{
+						"name": "desktop_host",
+						"report_files": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						],
+						"urls": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						]
+					},
+					{
+						"name": "stale_with_files",
+						"report_files": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						]
+					},
+					{
+						"name": "stale_without_files",
+						"report_files": [],
+						"urls": []
+					},
+					{
+						"name": "missing",
+						"report_files": [],
+						"urls": []
+					},
+					{
+						"name": "with_uploads",
+						"report_files": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						]
+					},
+					{
+						"name": "mv_data",
+						"report_files": [
+							"gs://bucket/reports/mv_data.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/mv_data.gpkg"
+						]
+					},
+					{
+						"name": "combined_transformer",
+						"report_files": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						],
+						"urls": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						]
+					},
+					{
+						"name": "collisions",
+						"report_files": [
+							"gs://bucket/reports/collisions.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/collisions.gpkg"
+						]
+					}
+				],
+				"urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.gpkg",
+					"gs://bucket/reports/a.shp.zip",
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"ds-reporter://prints/batikoti_sheet.pdf",
+					"file:///local/exports/local_first.kmz",
+					"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh",
+					"http://tauri.localhost/exports/desktop_host.xlsx",
+					"http://asset.localhost/exports/desktop_host.gpkg",
+					"gs://bucket/reports/stale_with_files.xlsx",
+					"gs://bucket/reports/with_uploads.xlsx"
+				],
+				"filtered_urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.gpkg",
+					"gs://bucket/reports/a.shp.zip",
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"ds-reporter://prints/batikoti_sheet.pdf",
+					"file:///local/exports/local_first.kmz",
+					"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh",
+					"http://tauri.localhost/exports/desktop_host.xlsx",
+					"http://asset.localhost/exports/desktop_host.gpkg",
+					"gs://bucket/reports/stale_with_files.xlsx",
+					"gs://bucket/reports/with_uploads.xlsx"
+				],
+				"summary": {
+					"fresh": 6,
+					"stale": 2,
+					"missing": 1,
+					"staleWithFiles": 1,
+					"cachedTransformers": 7
+				},
+				"source_uploads": {
+					"draft": 2,
+					"sketch": 1,
+					"process": 0,
+					"total": 3,
+					"downloadable": 2
+				}
+			},
+			"expected": {
+				"schema": "ds.project-control.artifact-download/v2",
+				"scope": [
+					"artifact_shapes",
+					"batikoti",
+					"local_first",
+					"pointer_race",
+					"desktop_host",
+					"stale_with_files",
+					"stale_without_files",
+					"missing",
+					"with_uploads"
+				],
+				"rows": [
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"urls": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "batikoti",
+						"report_files": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip"
+						],
+						"urls": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip",
+							"ds-reporter://prints/batikoti_sheet.pdf"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "local_first",
+						"report_files": [
+							"file:///local/exports/local_first.kmz"
+						],
+						"urls": [
+							"file:///local/exports/local_first.kmz"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "pointer_race",
+						"report_files": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						],
+						"urls": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "desktop_host",
+						"report_files": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						],
+						"urls": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "stale_with_files",
+						"report_files": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						],
+						"report_status": "stale",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "stale_without_files",
+						"report_files": [],
+						"urls": [],
+						"report_status": "stale",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "unknown"
+					},
+					{
+						"name": "missing",
+						"report_files": [],
+						"urls": [],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "unknown"
+					},
+					{
+						"name": "with_uploads",
+						"report_files": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available",
+						"source_files": {
+							"draft": [
+								{
+									"filename": "d1.zip",
+									"download_url": "https://x/d1.zip"
+								},
+								{
+									"filename": "d2.zip"
+								}
+							],
+							"sketch": [
+								{
+									"filename": "s1.zip",
+									"download_url": "https://x/s1.zip"
+								}
+							],
+							"process": []
+						},
+						"source_entries": {
+							"draft": [
+								{
+									"url": "https://x/d1.zip",
+									"name": "draft/d1.zip"
+								}
+							],
+							"sketch": [
+								{
+									"url": "https://x/s1.zip",
+									"name": "sketch/s1.zip"
+								}
+							],
+							"process": []
+						}
+					},
+					{
+						"name": "mv_data",
+						"report_files": [
+							"gs://bucket/reports/mv_data.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/mv_data.gpkg"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "combined_transformer",
+						"report_files": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						],
+						"urls": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "collisions",
+						"report_files": [
+							"gs://bucket/reports/collisions.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/collisions.gpkg"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					}
+				],
+				"urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.gpkg",
+					"gs://bucket/reports/a.shp.zip",
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"ds-reporter://prints/batikoti_sheet.pdf",
+					"file:///local/exports/local_first.kmz",
+					"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh",
+					"http://tauri.localhost/exports/desktop_host.xlsx",
+					"http://asset.localhost/exports/desktop_host.gpkg",
+					"gs://bucket/reports/stale_with_files.xlsx",
+					"gs://bucket/reports/with_uploads.xlsx",
+					"gs://bucket/reports/mv_data.gpkg",
+					"gs://bucket/reports/combined.xlsx",
+					"gs://bucket/reports/combined.gpkg?token=1",
+					"gs://bucket/reports/collisions.gpkg"
+				],
+				"filtered_urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.gpkg",
+					"gs://bucket/reports/a.shp.zip",
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"ds-reporter://prints/batikoti_sheet.pdf",
+					"file:///local/exports/local_first.kmz",
+					"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh",
+					"http://tauri.localhost/exports/desktop_host.xlsx",
+					"http://asset.localhost/exports/desktop_host.gpkg",
+					"gs://bucket/reports/stale_with_files.xlsx",
+					"gs://bucket/reports/with_uploads.xlsx",
+					"gs://bucket/reports/mv_data.gpkg",
+					"gs://bucket/reports/combined.xlsx",
+					"gs://bucket/reports/combined.gpkg?token=1",
+					"gs://bucket/reports/collisions.gpkg"
+				],
+				"filtered_extra_urls": [],
+				"placement": [
+					{
+						"row": "artifact_shapes",
+						"name": "a.xlsx",
+						"chosen": "gs://bucket/reports/a.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.xlsx"
+						]
+					},
+					{
+						"row": "artifact_shapes",
+						"name": "a.gpkg",
+						"chosen": "gs://bucket/reports/a.gpkg",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.gpkg"
+						]
+					},
+					{
+						"row": "artifact_shapes",
+						"name": "a.shp.zip",
+						"chosen": "gs://bucket/reports/a.shp.zip",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.shp.zip"
+						]
+					},
+					{
+						"row": "batikoti",
+						"name": "batikoti_info_tables.xlsx",
+						"chosen": "file:///local/exports/batikoti_info_tables.xlsx",
+						"why": "local_wins",
+						"candidates": [
+							"https://storage.googleapis.com/reports/batikoti_info_tables.xlsx?sig=aaa",
+							"file:///local/exports/batikoti_info_tables.xlsx"
+						]
+					},
+					{
+						"row": "batikoti",
+						"name": "batikoti.kmz",
+						"chosen": "https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+						"why": "only",
+						"candidates": [
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa"
+						]
+					},
+					{
+						"row": "batikoti",
+						"name": "batikoti.shp.zip",
+						"chosen": "C:\\Users\\op\\exports\\batikoti.shp.zip",
+						"why": "only",
+						"candidates": [
+							"C:\\Users\\op\\exports\\batikoti.shp.zip"
+						]
+					},
+					{
+						"row": "local_first",
+						"name": "local_first.kmz",
+						"chosen": "file:///local/exports/local_first.kmz",
+						"why": "local_wins",
+						"candidates": [
+							"file:///local/exports/local_first.kmz",
+							"https://storage.googleapis.com/reports/local_first.kmz?sig=bbb"
+						]
+					},
+					{
+						"row": "pointer_race",
+						"name": "pointer_race.xlsx",
+						"chosen": "https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh",
+						"why": "later_wins",
+						"candidates": [
+							"gs://bucket/report_lv/pointer_race/pointer_race.xlsx",
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						]
+					},
+					{
+						"row": "desktop_host",
+						"name": "desktop_host.xlsx",
+						"chosen": "http://tauri.localhost/exports/desktop_host.xlsx",
+						"why": "local_wins",
+						"candidates": [
+							"https://storage.googleapis.com/reports/desktop_host.xlsx?sig=a",
+							"http://tauri.localhost/exports/desktop_host.xlsx"
+						]
+					},
+					{
+						"row": "desktop_host",
+						"name": "desktop_host.gpkg",
+						"chosen": "http://asset.localhost/exports/desktop_host.gpkg",
+						"why": "local_wins",
+						"candidates": [
+							"compute-artifact://runs/7/desktop_host.gpkg",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						]
+					},
+					{
+						"row": "stale_with_files",
+						"name": "stale_with_files.xlsx",
+						"chosen": "gs://bucket/reports/stale_with_files.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						]
+					},
+					{
+						"row": "with_uploads",
+						"name": "with_uploads.xlsx",
+						"chosen": "gs://bucket/reports/with_uploads.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						]
+					},
+					{
+						"row": "mv_data",
+						"name": "mv_data.gpkg",
+						"chosen": "gs://bucket/reports/mv_data.gpkg",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/mv_data.gpkg"
+						]
+					},
+					{
+						"row": "combined_transformer",
+						"name": "combined.xlsx",
+						"chosen": "gs://bucket/reports/combined.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/combined.xlsx"
+						]
+					},
+					{
+						"row": "combined_transformer",
+						"name": "combined.gpkg",
+						"chosen": "gs://bucket/reports/combined.gpkg?token=1",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/combined.gpkg?token=1"
+						]
+					},
+					{
+						"row": "collisions",
+						"name": "collisions.gpkg",
+						"chosen": "gs://bucket/reports/collisions.gpkg",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/collisions.gpkg"
+						]
+					}
+				],
+				"summary": {
+					"fresh": 6,
+					"stale": 2,
+					"missing": 0,
+					"stale_with_files": 1,
+					"cached": 7,
+					"unknown": 1
+				},
+				"source_uploads": {
+					"draft": 2,
+					"sketch": 1,
+					"process": 0,
+					"total": 3,
+					"downloadable": 2
+				},
+				"source_entries": [
+					{
+						"url": "https://x/d1.zip",
+						"name": "draft/d1.zip"
+					},
+					{
+						"url": "https://x/s1.zip",
+						"name": "sketch/s1.zip"
+					}
+				],
+				"scope_precedence": "filtered_rows",
+				"archives": [],
+				"project_artifacts": [
+					"gs://bucket/reports/mv_data.gpkg",
+					"gs://bucket/reports/combined.xlsx",
+					"gs://bucket/reports/combined.gpkg?token=1",
+					"gs://bucket/reports/collisions.gpkg"
+				],
+				"archive_discovery": "not_requested"
+			},
+			"why": "Project artifacts remain discoverable outside transformer selection; without archive discovery, absent direct files are unknown rather than proven missing."
+		},
+		{
+			"id": "explicit-selection",
+			"note": "A tick narrows the scope to exactly those rows, whatever the filter left.",
+			"request": {
+				"rows": [
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx"
+						],
+						"report_metadata": {
+							"status": "success",
+							"cached_urls": [
+								{
+									"url": "gs://bucket/reports/a.gpkg"
+								},
+								"gs://bucket/reports/a.shp.zip"
+							]
+						}
+					},
+					{
+						"name": "batikoti",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"https://storage.googleapis.com/reports/batikoti_info_tables.xlsx?sig=aaa",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa"
+						],
+						"print_files": [
+							"ds-reporter://prints/batikoti_sheet.pdf"
+						]
+					},
+					{
+						"name": "local_first",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"file:///local/exports/local_first.kmz"
+						]
+					},
+					{
+						"name": "pointer_race",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/report_lv/pointer_race/pointer_race.xlsx",
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						]
+					},
+					{
+						"name": "desktop_host",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"https://storage.googleapis.com/reports/desktop_host.xlsx?sig=a",
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"compute-artifact://runs/7/desktop_host.gpkg",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						]
+					},
+					{
+						"name": "stale_with_files",
+						"report_metadata": {
+							"status": "stale"
+						},
+						"report_files": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						]
+					},
+					{
+						"name": "stale_without_files",
+						"report_metadata": {
+							"status": "stale"
+						}
+					},
+					{
+						"name": "missing",
+						"report_metadata": {
+							"status": "success"
+						}
+					},
+					{
+						"name": "with_uploads",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"uploads": {
+							"draft": [
+								{
+									"filename": "d1.zip",
+									"download_url": "https://x/d1.zip"
+								},
+								{
+									"filename": "d2.zip"
+								}
+							],
+							"sketch": [
+								{
+									"filename": "s1.zip",
+									"download_url": "https://x/s1.zip"
+								}
+							],
+							"process": []
+						}
+					},
+					{
+						"name": "mv_data",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/mv_data.gpkg"
+						]
+					},
+					{
+						"name": "combined_transformer",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.kmz"
+						]
+					},
+					{
+						"name": "collisions",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/collisions.gpkg"
+						]
+					}
+				],
+				"selection": [
+					"batikoti",
+					"missing",
+					"combined_transformer"
+				],
+				"formats": [],
+				"mutation_cache": {
+					"batikoti": [
+						"file:///local/exports/batikoti_info_tables.xlsx",
+						"C:\\Users\\op\\exports\\batikoti.shp.zip"
+					],
+					"local_first": [
+						"https://storage.googleapis.com/reports/local_first.kmz?sig=bbb"
+					],
+					"combined_transformer": [
+						"gs://bucket/reports/combined.gpkg?token=1"
+					]
+				},
+				"extra_urls": []
+			},
+			"expected_ts": {
+				"scope": [
+					"batikoti",
+					"missing"
+				],
+				"rows": [
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"urls": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						]
+					},
+					{
+						"name": "batikoti",
+						"report_files": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip"
+						],
+						"urls": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip",
+							"ds-reporter://prints/batikoti_sheet.pdf"
+						]
+					},
+					{
+						"name": "local_first",
+						"report_files": [
+							"file:///local/exports/local_first.kmz"
+						],
+						"urls": [
+							"file:///local/exports/local_first.kmz"
+						]
+					},
+					{
+						"name": "pointer_race",
+						"report_files": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						],
+						"urls": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						]
+					},
+					{
+						"name": "desktop_host",
+						"report_files": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						],
+						"urls": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						]
+					},
+					{
+						"name": "stale_with_files",
+						"report_files": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						]
+					},
+					{
+						"name": "stale_without_files",
+						"report_files": [],
+						"urls": []
+					},
+					{
+						"name": "missing",
+						"report_files": [],
+						"urls": []
+					},
+					{
+						"name": "with_uploads",
+						"report_files": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						]
+					},
+					{
+						"name": "mv_data",
+						"report_files": [
+							"gs://bucket/reports/mv_data.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/mv_data.gpkg"
+						]
+					},
+					{
+						"name": "combined_transformer",
+						"report_files": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						],
+						"urls": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						]
+					},
+					{
+						"name": "collisions",
+						"report_files": [
+							"gs://bucket/reports/collisions.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/collisions.gpkg"
+						]
+					}
+				],
+				"urls": [
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"ds-reporter://prints/batikoti_sheet.pdf"
+				],
+				"filtered_urls": [
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"ds-reporter://prints/batikoti_sheet.pdf"
+				],
+				"summary": {
+					"fresh": 1,
+					"stale": 0,
+					"missing": 1,
+					"staleWithFiles": 0,
+					"cachedTransformers": 1
+				},
+				"source_uploads": {
+					"draft": 0,
+					"sketch": 0,
+					"process": 0,
+					"total": 0,
+					"downloadable": 0
+				}
+			},
+			"expected": {
+				"schema": "ds.project-control.artifact-download/v2",
+				"scope": [
+					"batikoti",
+					"missing"
+				],
+				"rows": [
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"urls": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "batikoti",
+						"report_files": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip"
+						],
+						"urls": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip",
+							"ds-reporter://prints/batikoti_sheet.pdf"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "local_first",
+						"report_files": [
+							"file:///local/exports/local_first.kmz"
+						],
+						"urls": [
+							"file:///local/exports/local_first.kmz"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "pointer_race",
+						"report_files": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						],
+						"urls": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "desktop_host",
+						"report_files": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						],
+						"urls": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "stale_with_files",
+						"report_files": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						],
+						"report_status": "stale",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "stale_without_files",
+						"report_files": [],
+						"urls": [],
+						"report_status": "stale",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "unknown"
+					},
+					{
+						"name": "missing",
+						"report_files": [],
+						"urls": [],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "unknown"
+					},
+					{
+						"name": "with_uploads",
+						"report_files": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available",
+						"source_files": {
+							"draft": [
+								{
+									"filename": "d1.zip",
+									"download_url": "https://x/d1.zip"
+								},
+								{
+									"filename": "d2.zip"
+								}
+							],
+							"sketch": [
+								{
+									"filename": "s1.zip",
+									"download_url": "https://x/s1.zip"
+								}
+							],
+							"process": []
+						},
+						"source_entries": {
+							"draft": [
+								{
+									"url": "https://x/d1.zip",
+									"name": "draft/d1.zip"
+								}
+							],
+							"sketch": [
+								{
+									"url": "https://x/s1.zip",
+									"name": "sketch/s1.zip"
+								}
+							],
+							"process": []
+						}
+					},
+					{
+						"name": "mv_data",
+						"report_files": [
+							"gs://bucket/reports/mv_data.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/mv_data.gpkg"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "combined_transformer",
+						"report_files": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						],
+						"urls": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "collisions",
+						"report_files": [
+							"gs://bucket/reports/collisions.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/collisions.gpkg"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					}
+				],
+				"urls": [
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"ds-reporter://prints/batikoti_sheet.pdf",
+					"gs://bucket/reports/mv_data.gpkg",
+					"gs://bucket/reports/combined.xlsx",
+					"gs://bucket/reports/combined.gpkg?token=1",
+					"gs://bucket/reports/collisions.gpkg"
+				],
+				"filtered_urls": [
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"ds-reporter://prints/batikoti_sheet.pdf",
+					"gs://bucket/reports/mv_data.gpkg",
+					"gs://bucket/reports/combined.xlsx",
+					"gs://bucket/reports/combined.gpkg?token=1",
+					"gs://bucket/reports/collisions.gpkg"
+				],
+				"filtered_extra_urls": [],
+				"placement": [
+					{
+						"row": "artifact_shapes",
+						"name": "a.xlsx",
+						"chosen": "gs://bucket/reports/a.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.xlsx"
+						]
+					},
+					{
+						"row": "artifact_shapes",
+						"name": "a.gpkg",
+						"chosen": "gs://bucket/reports/a.gpkg",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.gpkg"
+						]
+					},
+					{
+						"row": "artifact_shapes",
+						"name": "a.shp.zip",
+						"chosen": "gs://bucket/reports/a.shp.zip",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.shp.zip"
+						]
+					},
+					{
+						"row": "batikoti",
+						"name": "batikoti_info_tables.xlsx",
+						"chosen": "file:///local/exports/batikoti_info_tables.xlsx",
+						"why": "local_wins",
+						"candidates": [
+							"https://storage.googleapis.com/reports/batikoti_info_tables.xlsx?sig=aaa",
+							"file:///local/exports/batikoti_info_tables.xlsx"
+						]
+					},
+					{
+						"row": "batikoti",
+						"name": "batikoti.kmz",
+						"chosen": "https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+						"why": "only",
+						"candidates": [
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa"
+						]
+					},
+					{
+						"row": "batikoti",
+						"name": "batikoti.shp.zip",
+						"chosen": "C:\\Users\\op\\exports\\batikoti.shp.zip",
+						"why": "only",
+						"candidates": [
+							"C:\\Users\\op\\exports\\batikoti.shp.zip"
+						]
+					},
+					{
+						"row": "local_first",
+						"name": "local_first.kmz",
+						"chosen": "file:///local/exports/local_first.kmz",
+						"why": "local_wins",
+						"candidates": [
+							"file:///local/exports/local_first.kmz",
+							"https://storage.googleapis.com/reports/local_first.kmz?sig=bbb"
+						]
+					},
+					{
+						"row": "pointer_race",
+						"name": "pointer_race.xlsx",
+						"chosen": "https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh",
+						"why": "later_wins",
+						"candidates": [
+							"gs://bucket/report_lv/pointer_race/pointer_race.xlsx",
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						]
+					},
+					{
+						"row": "desktop_host",
+						"name": "desktop_host.xlsx",
+						"chosen": "http://tauri.localhost/exports/desktop_host.xlsx",
+						"why": "local_wins",
+						"candidates": [
+							"https://storage.googleapis.com/reports/desktop_host.xlsx?sig=a",
+							"http://tauri.localhost/exports/desktop_host.xlsx"
+						]
+					},
+					{
+						"row": "desktop_host",
+						"name": "desktop_host.gpkg",
+						"chosen": "http://asset.localhost/exports/desktop_host.gpkg",
+						"why": "local_wins",
+						"candidates": [
+							"compute-artifact://runs/7/desktop_host.gpkg",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						]
+					},
+					{
+						"row": "stale_with_files",
+						"name": "stale_with_files.xlsx",
+						"chosen": "gs://bucket/reports/stale_with_files.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						]
+					},
+					{
+						"row": "with_uploads",
+						"name": "with_uploads.xlsx",
+						"chosen": "gs://bucket/reports/with_uploads.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						]
+					},
+					{
+						"row": "mv_data",
+						"name": "mv_data.gpkg",
+						"chosen": "gs://bucket/reports/mv_data.gpkg",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/mv_data.gpkg"
+						]
+					},
+					{
+						"row": "combined_transformer",
+						"name": "combined.xlsx",
+						"chosen": "gs://bucket/reports/combined.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/combined.xlsx"
+						]
+					},
+					{
+						"row": "combined_transformer",
+						"name": "combined.gpkg",
+						"chosen": "gs://bucket/reports/combined.gpkg?token=1",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/combined.gpkg?token=1"
+						]
+					},
+					{
+						"row": "collisions",
+						"name": "collisions.gpkg",
+						"chosen": "gs://bucket/reports/collisions.gpkg",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/collisions.gpkg"
+						]
+					}
+				],
+				"summary": {
+					"fresh": 1,
+					"stale": 0,
+					"missing": 0,
+					"stale_with_files": 0,
+					"cached": 1,
+					"unknown": 1
+				},
+				"source_uploads": {
+					"draft": 0,
+					"sketch": 0,
+					"process": 0,
+					"total": 0,
+					"downloadable": 0
+				},
+				"source_entries": [],
+				"scope_precedence": "explicit_selection",
+				"archives": [],
+				"project_artifacts": [
+					"gs://bucket/reports/mv_data.gpkg",
+					"gs://bucket/reports/combined.xlsx",
+					"gs://bucket/reports/combined.gpkg?token=1",
+					"gs://bucket/reports/collisions.gpkg"
+				],
+				"archive_discovery": "not_requested"
+			},
+			"why": "Project artifacts remain discoverable outside transformer selection; without archive discovery, absent direct files are unknown rather than proven missing."
+		},
+		{
+			"id": "format-filter-xlsx-shp",
+			"note": "The operator asked for spreadsheets and shapefiles only.",
+			"request": {
+				"rows": [
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx"
+						],
+						"report_metadata": {
+							"status": "success",
+							"cached_urls": [
+								{
+									"url": "gs://bucket/reports/a.gpkg"
+								},
+								"gs://bucket/reports/a.shp.zip"
+							]
+						}
+					},
+					{
+						"name": "batikoti",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"https://storage.googleapis.com/reports/batikoti_info_tables.xlsx?sig=aaa",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa"
+						],
+						"print_files": [
+							"ds-reporter://prints/batikoti_sheet.pdf"
+						]
+					},
+					{
+						"name": "local_first",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"file:///local/exports/local_first.kmz"
+						]
+					},
+					{
+						"name": "pointer_race",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/report_lv/pointer_race/pointer_race.xlsx",
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						]
+					},
+					{
+						"name": "desktop_host",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"https://storage.googleapis.com/reports/desktop_host.xlsx?sig=a",
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"compute-artifact://runs/7/desktop_host.gpkg",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						]
+					},
+					{
+						"name": "stale_with_files",
+						"report_metadata": {
+							"status": "stale"
+						},
+						"report_files": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						]
+					},
+					{
+						"name": "stale_without_files",
+						"report_metadata": {
+							"status": "stale"
+						}
+					},
+					{
+						"name": "missing",
+						"report_metadata": {
+							"status": "success"
+						}
+					},
+					{
+						"name": "with_uploads",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"uploads": {
+							"draft": [
+								{
+									"filename": "d1.zip",
+									"download_url": "https://x/d1.zip"
+								},
+								{
+									"filename": "d2.zip"
+								}
+							],
+							"sketch": [
+								{
+									"filename": "s1.zip",
+									"download_url": "https://x/s1.zip"
+								}
+							],
+							"process": []
+						}
+					},
+					{
+						"name": "mv_data",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/mv_data.gpkg"
+						]
+					},
+					{
+						"name": "combined_transformer",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.kmz"
+						]
+					},
+					{
+						"name": "collisions",
+						"report_metadata": {
+							"status": "success"
+						},
+						"report_files": [
+							"gs://bucket/reports/collisions.gpkg"
+						]
+					}
+				],
+				"selection": [],
+				"formats": [
+					"xlsx",
+					"shp"
+				],
+				"mutation_cache": {
+					"batikoti": [
+						"file:///local/exports/batikoti_info_tables.xlsx",
+						"C:\\Users\\op\\exports\\batikoti.shp.zip"
+					],
+					"local_first": [
+						"https://storage.googleapis.com/reports/local_first.kmz?sig=bbb"
+					],
+					"combined_transformer": [
+						"gs://bucket/reports/combined.gpkg?token=1"
+					]
+				},
+				"extra_urls": []
+			},
+			"expected_ts": {
+				"scope": [
+					"artifact_shapes",
+					"batikoti",
+					"local_first",
+					"pointer_race",
+					"desktop_host",
+					"stale_with_files",
+					"stale_without_files",
+					"missing",
+					"with_uploads"
+				],
+				"rows": [
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"urls": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						]
+					},
+					{
+						"name": "batikoti",
+						"report_files": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip"
+						],
+						"urls": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip",
+							"ds-reporter://prints/batikoti_sheet.pdf"
+						]
+					},
+					{
+						"name": "local_first",
+						"report_files": [
+							"file:///local/exports/local_first.kmz"
+						],
+						"urls": [
+							"file:///local/exports/local_first.kmz"
+						]
+					},
+					{
+						"name": "pointer_race",
+						"report_files": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						],
+						"urls": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						]
+					},
+					{
+						"name": "desktop_host",
+						"report_files": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						],
+						"urls": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						]
+					},
+					{
+						"name": "stale_with_files",
+						"report_files": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						]
+					},
+					{
+						"name": "stale_without_files",
+						"report_files": [],
+						"urls": []
+					},
+					{
+						"name": "missing",
+						"report_files": [],
+						"urls": []
+					},
+					{
+						"name": "with_uploads",
+						"report_files": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						]
+					},
+					{
+						"name": "mv_data",
+						"report_files": [
+							"gs://bucket/reports/mv_data.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/mv_data.gpkg"
+						]
+					},
+					{
+						"name": "combined_transformer",
+						"report_files": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						],
+						"urls": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						]
+					},
+					{
+						"name": "collisions",
+						"report_files": [
+							"gs://bucket/reports/collisions.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/collisions.gpkg"
+						]
+					}
+				],
+				"urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.gpkg",
+					"gs://bucket/reports/a.shp.zip",
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"ds-reporter://prints/batikoti_sheet.pdf",
+					"file:///local/exports/local_first.kmz",
+					"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh",
+					"http://tauri.localhost/exports/desktop_host.xlsx",
+					"http://asset.localhost/exports/desktop_host.gpkg",
+					"gs://bucket/reports/stale_with_files.xlsx",
+					"gs://bucket/reports/with_uploads.xlsx"
+				],
+				"filtered_urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.shp.zip",
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh",
+					"http://tauri.localhost/exports/desktop_host.xlsx",
+					"gs://bucket/reports/stale_with_files.xlsx",
+					"gs://bucket/reports/with_uploads.xlsx"
+				],
+				"summary": {
+					"fresh": 6,
+					"stale": 2,
+					"missing": 1,
+					"staleWithFiles": 1,
+					"cachedTransformers": 7
+				},
+				"source_uploads": {
+					"draft": 2,
+					"sketch": 1,
+					"process": 0,
+					"total": 3,
+					"downloadable": 2
+				}
+			},
+			"expected": {
+				"schema": "ds.project-control.artifact-download/v2",
+				"scope": [
+					"artifact_shapes",
+					"batikoti",
+					"local_first",
+					"pointer_race",
+					"desktop_host",
+					"stale_with_files",
+					"stale_without_files",
+					"missing",
+					"with_uploads"
+				],
+				"rows": [
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"urls": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "batikoti",
+						"report_files": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip"
+						],
+						"urls": [
+							"file:///local/exports/batikoti_info_tables.xlsx",
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+							"C:\\Users\\op\\exports\\batikoti.shp.zip",
+							"ds-reporter://prints/batikoti_sheet.pdf"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "local_first",
+						"report_files": [
+							"file:///local/exports/local_first.kmz"
+						],
+						"urls": [
+							"file:///local/exports/local_first.kmz"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "pointer_race",
+						"report_files": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						],
+						"urls": [
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "desktop_host",
+						"report_files": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						],
+						"urls": [
+							"http://tauri.localhost/exports/desktop_host.xlsx",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "stale_with_files",
+						"report_files": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						],
+						"report_status": "stale",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "stale_without_files",
+						"report_files": [],
+						"urls": [],
+						"report_status": "stale",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "unknown"
+					},
+					{
+						"name": "missing",
+						"report_files": [],
+						"urls": [],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "unknown"
+					},
+					{
+						"name": "with_uploads",
+						"report_files": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"urls": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available",
+						"source_files": {
+							"draft": [
+								{
+									"filename": "d1.zip",
+									"download_url": "https://x/d1.zip"
+								},
+								{
+									"filename": "d2.zip"
+								}
+							],
+							"sketch": [
+								{
+									"filename": "s1.zip",
+									"download_url": "https://x/s1.zip"
+								}
+							],
+							"process": []
+						},
+						"source_entries": {
+							"draft": [
+								{
+									"url": "https://x/d1.zip",
+									"name": "draft/d1.zip"
+								}
+							],
+							"sketch": [
+								{
+									"url": "https://x/s1.zip",
+									"name": "sketch/s1.zip"
+								}
+							],
+							"process": []
+						}
+					},
+					{
+						"name": "mv_data",
+						"report_files": [
+							"gs://bucket/reports/mv_data.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/mv_data.gpkg"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "combined_transformer",
+						"report_files": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						],
+						"urls": [
+							"gs://bucket/reports/combined.xlsx",
+							"gs://bucket/reports/combined.gpkg?token=1"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					},
+					{
+						"name": "collisions",
+						"report_files": [
+							"gs://bucket/reports/collisions.gpkg"
+						],
+						"urls": [
+							"gs://bucket/reports/collisions.gpkg"
+						],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "available"
+					}
+				],
+				"urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.gpkg",
+					"gs://bucket/reports/a.shp.zip",
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"ds-reporter://prints/batikoti_sheet.pdf",
+					"file:///local/exports/local_first.kmz",
+					"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh",
+					"http://tauri.localhost/exports/desktop_host.xlsx",
+					"http://asset.localhost/exports/desktop_host.gpkg",
+					"gs://bucket/reports/stale_with_files.xlsx",
+					"gs://bucket/reports/with_uploads.xlsx",
+					"gs://bucket/reports/mv_data.gpkg",
+					"gs://bucket/reports/combined.xlsx",
+					"gs://bucket/reports/combined.gpkg?token=1",
+					"gs://bucket/reports/collisions.gpkg"
+				],
+				"filtered_urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.shp.zip",
+					"file:///local/exports/batikoti_info_tables.xlsx",
+					"C:\\Users\\op\\exports\\batikoti.shp.zip",
+					"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh",
+					"http://tauri.localhost/exports/desktop_host.xlsx",
+					"gs://bucket/reports/stale_with_files.xlsx",
+					"gs://bucket/reports/with_uploads.xlsx",
+					"gs://bucket/reports/combined.xlsx"
+				],
+				"filtered_extra_urls": [],
+				"placement": [
+					{
+						"row": "artifact_shapes",
+						"name": "a.xlsx",
+						"chosen": "gs://bucket/reports/a.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.xlsx"
+						]
+					},
+					{
+						"row": "artifact_shapes",
+						"name": "a.gpkg",
+						"chosen": "gs://bucket/reports/a.gpkg",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.gpkg"
+						]
+					},
+					{
+						"row": "artifact_shapes",
+						"name": "a.shp.zip",
+						"chosen": "gs://bucket/reports/a.shp.zip",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.shp.zip"
+						]
+					},
+					{
+						"row": "batikoti",
+						"name": "batikoti_info_tables.xlsx",
+						"chosen": "file:///local/exports/batikoti_info_tables.xlsx",
+						"why": "local_wins",
+						"candidates": [
+							"https://storage.googleapis.com/reports/batikoti_info_tables.xlsx?sig=aaa",
+							"file:///local/exports/batikoti_info_tables.xlsx"
+						]
+					},
+					{
+						"row": "batikoti",
+						"name": "batikoti.kmz",
+						"chosen": "https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa",
+						"why": "only",
+						"candidates": [
+							"https://storage.googleapis.com/reports/batikoti.kmz?sig=aaa"
+						]
+					},
+					{
+						"row": "batikoti",
+						"name": "batikoti.shp.zip",
+						"chosen": "C:\\Users\\op\\exports\\batikoti.shp.zip",
+						"why": "only",
+						"candidates": [
+							"C:\\Users\\op\\exports\\batikoti.shp.zip"
+						]
+					},
+					{
+						"row": "local_first",
+						"name": "local_first.kmz",
+						"chosen": "file:///local/exports/local_first.kmz",
+						"why": "local_wins",
+						"candidates": [
+							"file:///local/exports/local_first.kmz",
+							"https://storage.googleapis.com/reports/local_first.kmz?sig=bbb"
+						]
+					},
+					{
+						"row": "pointer_race",
+						"name": "pointer_race.xlsx",
+						"chosen": "https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh",
+						"why": "later_wins",
+						"candidates": [
+							"gs://bucket/report_lv/pointer_race/pointer_race.xlsx",
+							"https://storage.googleapis.com/bucket/report_lv/pointer_race/pointer_race.xlsx?sig=fresh"
+						]
+					},
+					{
+						"row": "desktop_host",
+						"name": "desktop_host.xlsx",
+						"chosen": "http://tauri.localhost/exports/desktop_host.xlsx",
+						"why": "local_wins",
+						"candidates": [
+							"https://storage.googleapis.com/reports/desktop_host.xlsx?sig=a",
+							"http://tauri.localhost/exports/desktop_host.xlsx"
+						]
+					},
+					{
+						"row": "desktop_host",
+						"name": "desktop_host.gpkg",
+						"chosen": "http://asset.localhost/exports/desktop_host.gpkg",
+						"why": "local_wins",
+						"candidates": [
+							"compute-artifact://runs/7/desktop_host.gpkg",
+							"http://asset.localhost/exports/desktop_host.gpkg"
+						]
+					},
+					{
+						"row": "stale_with_files",
+						"name": "stale_with_files.xlsx",
+						"chosen": "gs://bucket/reports/stale_with_files.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/stale_with_files.xlsx"
+						]
+					},
+					{
+						"row": "with_uploads",
+						"name": "with_uploads.xlsx",
+						"chosen": "gs://bucket/reports/with_uploads.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/with_uploads.xlsx"
+						]
+					},
+					{
+						"row": "mv_data",
+						"name": "mv_data.gpkg",
+						"chosen": "gs://bucket/reports/mv_data.gpkg",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/mv_data.gpkg"
+						]
+					},
+					{
+						"row": "combined_transformer",
+						"name": "combined.xlsx",
+						"chosen": "gs://bucket/reports/combined.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/combined.xlsx"
+						]
+					},
+					{
+						"row": "combined_transformer",
+						"name": "combined.gpkg",
+						"chosen": "gs://bucket/reports/combined.gpkg?token=1",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/combined.gpkg?token=1"
+						]
+					},
+					{
+						"row": "collisions",
+						"name": "collisions.gpkg",
+						"chosen": "gs://bucket/reports/collisions.gpkg",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/collisions.gpkg"
+						]
+					}
+				],
+				"summary": {
+					"fresh": 6,
+					"stale": 2,
+					"missing": 0,
+					"stale_with_files": 1,
+					"cached": 7,
+					"unknown": 1
+				},
+				"source_uploads": {
+					"draft": 2,
+					"sketch": 1,
+					"process": 0,
+					"total": 3,
+					"downloadable": 2
+				},
+				"source_entries": [
+					{
+						"url": "https://x/d1.zip",
+						"name": "draft/d1.zip"
+					},
+					{
+						"url": "https://x/s1.zip",
+						"name": "sketch/s1.zip"
+					}
+				],
+				"scope_precedence": "filtered_rows",
+				"archives": [],
+				"project_artifacts": [
+					"gs://bucket/reports/mv_data.gpkg",
+					"gs://bucket/reports/combined.xlsx",
+					"gs://bucket/reports/combined.gpkg?token=1",
+					"gs://bucket/reports/collisions.gpkg"
+				],
+				"archive_discovery": "not_requested"
+			},
+			"why": "Project artifacts remain discoverable outside transformer selection; without archive discovery, absent direct files are unknown rather than proven missing."
+		},
+		{
+			"id": "zero-row-combined",
+			"note": "A combined report with zero rows delivers nothing, whatever URLs the document still carries.",
+			"request": {
+				"rows": [
+					{
+						"name": "combined_transformer",
+						"report_metadata": {
+							"status": "success",
+							"outcomes": {
+								"report_export": {
+									"details": {
+										"row_count": 0
+									}
+								}
+							}
+						},
+						"report_files": [
+							"gs://bucket/reports/combined.xlsx"
+						]
+					},
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx"
+						],
+						"report_metadata": {
+							"status": "success",
+							"cached_urls": [
+								{
+									"url": "gs://bucket/reports/a.gpkg"
+								},
+								"gs://bucket/reports/a.shp.zip"
+							]
+						}
+					}
+				],
+				"selection": [],
+				"formats": [],
+				"mutation_cache": {
+					"batikoti": [
+						"file:///local/exports/batikoti_info_tables.xlsx",
+						"C:\\Users\\op\\exports\\batikoti.shp.zip"
+					],
+					"local_first": [
+						"https://storage.googleapis.com/reports/local_first.kmz?sig=bbb"
+					],
+					"combined_transformer": [
+						"gs://bucket/reports/combined.gpkg?token=1"
+					]
+				},
+				"extra_urls": []
+			},
+			"expected_ts": {
+				"scope": [
+					"artifact_shapes"
+				],
+				"rows": [
+					{
+						"name": "combined_transformer",
+						"report_files": [],
+						"urls": []
+					},
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"urls": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						]
+					}
+				],
+				"urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.gpkg",
+					"gs://bucket/reports/a.shp.zip"
+				],
+				"filtered_urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.gpkg",
+					"gs://bucket/reports/a.shp.zip"
+				],
+				"summary": {
+					"fresh": 1,
+					"stale": 0,
+					"missing": 0,
+					"staleWithFiles": 0,
+					"cachedTransformers": 1
+				},
+				"source_uploads": {
+					"draft": 0,
+					"sketch": 0,
+					"process": 0,
+					"total": 0,
+					"downloadable": 0
+				}
+			},
+			"expected": {
+				"schema": "ds.project-control.artifact-download/v2",
+				"scope": [
+					"artifact_shapes"
+				],
+				"rows": [
+					{
+						"name": "combined_transformer",
+						"report_files": [],
+						"urls": [],
+						"report_status": "success",
+						"in_scope": false,
+						"archive_members": [],
+						"download_state": "unknown"
+					},
+					{
+						"name": "artifact_shapes",
+						"report_files": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"urls": [
+							"gs://bucket/reports/a.xlsx",
+							"gs://bucket/reports/a.gpkg",
+							"gs://bucket/reports/a.shp.zip"
+						],
+						"report_status": "success",
+						"in_scope": true,
+						"archive_members": [],
+						"download_state": "available"
+					}
+				],
+				"urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.gpkg",
+					"gs://bucket/reports/a.shp.zip"
+				],
+				"filtered_urls": [
+					"gs://bucket/reports/a.xlsx",
+					"gs://bucket/reports/a.gpkg",
+					"gs://bucket/reports/a.shp.zip"
+				],
+				"filtered_extra_urls": [],
+				"placement": [
+					{
+						"row": "artifact_shapes",
+						"name": "a.xlsx",
+						"chosen": "gs://bucket/reports/a.xlsx",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.xlsx"
+						]
+					},
+					{
+						"row": "artifact_shapes",
+						"name": "a.gpkg",
+						"chosen": "gs://bucket/reports/a.gpkg",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.gpkg"
+						]
+					},
+					{
+						"row": "artifact_shapes",
+						"name": "a.shp.zip",
+						"chosen": "gs://bucket/reports/a.shp.zip",
+						"why": "only",
+						"candidates": [
+							"gs://bucket/reports/a.shp.zip"
+						]
+					}
+				],
+				"summary": {
+					"fresh": 1,
+					"stale": 0,
+					"missing": 0,
+					"stale_with_files": 0,
+					"cached": 1,
+					"unknown": 0
+				},
+				"source_uploads": {
+					"draft": 0,
+					"sketch": 0,
+					"process": 0,
+					"total": 0,
+					"downloadable": 0
+				},
+				"source_entries": [],
+				"scope_precedence": "filtered_rows",
+				"archives": [],
+				"project_artifacts": [],
+				"archive_discovery": "not_requested"
+			}
+		}
+	],
+	"placement_vocabulary": [
+		{
+			"url": "gs://bucket/report_lv/batikoti/batikoti.xlsx",
+			"remote_ts": true
+		},
+		{
+			"url": "file:///local/exports/batikoti.xlsx",
+			"remote_ts": false
+		},
+		{
+			"url": "http://asset.localhost/local/exports/batikoti.xlsx",
+			"remote_ts": false
+		},
+		{
+			"url": "http://tauri.localhost/exports/x.xlsx",
+			"remote_ts": false
+		},
+		{
+			"url": "https://storage.googleapis.com/b/x.xlsx?sig=1",
+			"remote_ts": true
+		},
+		{
+			"url": "compute-artifact://runs/1/x.gpkg",
+			"remote_ts": true
+		},
+		{
+			"url": "ds-reporter://prints/x.pdf",
+			"remote_ts": false
+		},
+		{
+			"url": "C:\\Users\\op\\exports\\x.shp.zip",
+			"remote_ts": false
+		},
+		{
+			"url": "not a url",
+			"remote_ts": false
+		}
+	]
+}

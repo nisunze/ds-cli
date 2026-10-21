@@ -1,0 +1,66 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "compounded": [
+      [
+        "lot-array",
+        "lot-array.zip"
+      ],
+      [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f"
+      ]
+    ],
+    "pm_attachments": [
+      [
+        "pa_arr",
+        "task",
+        "t_arr",
+        null,
+        "array.pdf"
+      ]
+    ],
+    "pm_tasks": [
+      [
+        "t_arr",
+        "9.9"
+      ]
+    ],
+    "print_setups": [
+      [
+        "layout-array",
+        "Array layout"
+      ]
+    ],
+    "survey_media": [
+      [
+        "form-a",
+        "entry-a",
+        "field-a"
+      ]
+    ],
+    "transformers": [
+      [
+        "TX-array"
+      ],
+      [
+        "TX-meta",
+        {
+          "updated_at": "2026-01-01T00:00:00Z"
+        }
+      ],
+      []
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

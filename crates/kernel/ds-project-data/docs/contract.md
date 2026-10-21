@@ -1,0 +1,184 @@
+# ds-project-data — the project's geographic context, held and read in Rust
+
+Extends `ds-command-kernel/docs/contracts/project-dataset-cache.md` (the
+decisions) with the host seam every DS host shares: how a project's rooms are
+filled, how a national bundle is installed, and how one transformer's
+`ds.print-context/v1` document is assembled. The desktop did all of this in
+TypeScript (`project-data/*.ts`, `reports/transformer-print-context.ts`,
+`reference-data/resources.ts`); this crate is that orchestration once, so the
+headless `ds` and the desktop shell hold the same rooms and print the same
+bytes.
+
+## Owners, unchanged
+
+| Decision or effect | Owner |
+|---|---|
+| Buffer policy, coverage plan, gap assessment, identity digests, seed order, decode of a provider page, the catalogue's default-on rows, the print-context document and its bounds | `ds-command-kernel` |
+| Rooms (`project-dataset-cache/v1/<key>/room.sqlite`), national bundle indexes (`reference-query-cache/…`), locks, fencing, staging | `ds-layer-store` |
+| The provider door (ds-brain `data-distribution`), bundle bytes, credentials | the host, through [`Provider`] and the fetch it lends |
+
+This crate decides nothing about geometry or document shape and never opens a
+socket.
+
+## Explicit local analytical project sources
+
+`local_source::Source` (`ds.local-analytical-source/v1`) names one exact project,
+asset revision, actual source origin, footprint/contour kind, local native
+GeoParquet artifact SHA-256, producer-source revision/digest and producer-completed coverage. The caller holds
+and authorizes the project context; a project string is not authorization.
+Google/Microsoft origins admit footprints; Rwanda DEM/Terrarium origins admit
+contours at explicitly declared intervals. Custom origin is explicit. No source
+is inferred or substituted, and feature bounds never imply complete coverage.
+The producer source pin is separate from the generated artifact revision: it
+records the elevation input for contours, with an exact SHA-256 or CRC32C
+(the Rwanda COG publishes CRC32C). It participates in room/index identity and
+the retained source receipt.
+
+`DeclaredSource::LocalAnalytical` validates that binding before acquisition.
+For genuinely missing cells it verifies and retains the analytical artifact,
+reads bounded Arrow batches once, admits explicit canonical CRS84/WKB footer
+metadata and geometry/stable identities, and builds
+the existing native reference RTree. Identical stable rows deduplicate;
+conflicting rows with the same identity refuse. Project subset queries use that
+exact index and the existing room ticket/commit fence. A cell outside the
+producer's complete coverage refuses. A completely empty analytical artifact
+and an empty subset inside complete coverage can both complete and reuse warm.
+The native columnar writer owns canonical CRS84 metadata
+(`ds-columnar::geoparquet::geo_metadata`); this seam admits the actual reader
+schema metadata against that owner, so a digest-valid file with altered CRS
+refuses before its index or any project coverage is published.
+
+Resource identity includes project/asset, actual origin and content parameters;
+revision identity includes the exact artifact and completed source coverage.
+Each selected revision has its own room. Old pinned revisions remain usable
+offline; selecting a new revision cannot inherit the old revision's completion.
+A warm seed and `Mode::Read` inspect no source file or national index, contact
+no provider and perform no download. Expansion reads/patches only missing cells;
+explicit `refresh` repeats local indexed subsets through the same ticket fence.
+The retained analytical source survives removal of the original input file.
+
+The CLI binds this seam through `data.project-cache.{seed,status,query}` and
+an explicit `--local-source` manifest. Shared publication, contour production,
+publisher download and contiguous city authority remain separate consumers.
+
+## Explicit pinned publisher footprint inputs
+
+`publisher_footprints::Input` (`ds.publisher-footprints/v1`) admits Google
+Open Buildings CSV.gz or Microsoft GeoJSONL.gz objects only. It names the exact
+project/asset revision, actual source, publisher revision, extraction coverage
+and 1–16 publisher object identities, absolute local paths, SHA-256 pins and
+publisher object coverage. The complete object coverage must cover every
+selected extraction cell before any object is opened. Neither geometry bounds
+nor a download request establishes completeness. Paths do not enter identity;
+source/version, stable object identities, byte pins, coverage and conversion
+revision do. Explicit source changes never substitute Microsoft for Google.
+
+The native producer verifies compressed bytes (128 MiB/object), then streams
+bounded records (2 MiB/record, 512 MiB expanded/object). Google geometry is strict
+2D Polygon/MultiPolygon WKT, including holes; unsupported types, dimensional or
+CRS modifiers, malformed/unclosed rings and nonfinite/non-WGS84 coordinates
+refuse. Microsoft rows require canonical WGS84 Polygon/MultiPolygon Features.
+The extraction is limited to 500000 selected footprints. Publisher ids are
+preserved under their source namespace; an absent publisher id uses a stable
+geometry digest. Identical ids deduplicate and conflicting rows refuse.
+Publisher properties are preserved losslessly in the declared
+`publisher_properties` JSON string column, avoiding schema drift between
+streaming Arrow batches.
+
+`ds-columnar::ConversionStream` owns canonical GeoParquet, CRS84/WKB metadata
+and bounded Arrow batches. Output is published under the immutable conversion
+identity with a source manifest and completed receipt published last; failed
+conversion publishes no source. The source carries the exact publisher
+revision and SHA-256 of the canonical pinned object/coverage/conversion
+description, separately from the generated artifact SHA-256. The completed
+receipt retains each publisher object pin. Empty verified extracts are valid.
+Unchanged explicit acquisition reads only this retained manifest and receipt;
+it never opens the original gzip objects or checks remote freshness. The
+existing local analytical owner builds/uses the spatial index and commits
+project coverage through the same ticket fence. There is no transport port,
+ADC, Earth Engine or Brain compute call in this producer.
+
+This is a local publisher-input producer, not an online publisher download or
+contour cutter. Google online acquisition needs an admitted frozen publisher
+catalogue/resource port. Existing Microsoft city acquisition remains explicit
+and separate. A retained full Rwanda COG is an elevation input; no native
+contour producer is admitted by this slice.
+
+## The registry the kernel echoes
+
+`datasets::{buildings_dataset, contours_dataset, catalog_dataset}` produce the
+`Dataset` documents — byte-identical to the desktop's — whose digest is the
+room address. The legacy Buildings/Contours provider value
+`ds-brain:query_print_context` remains in the identity to preserve old holdings;
+it is not permission to compute remotely. `datasets::local_resource_need`
+reports the selected missing local input and exact authored parameters. The
+CLI provider calls this owner instead of Brain compute; warm holdings still
+read without any acquisition. A catalogue layer is a project subset of the
+machine's installed national bundle (`desktop:reference_resource_cache`).
+Contours are one room dataset carrying both kinds; the assembler splits them
+back into `contours_index` / `contours_intermediate`.
+
+## Declared, not available
+
+`declared(resources)` maps the kernel's `printing::context::catalog`
+`default_on` rows and `derived_layers` onto datasets. Installed-ness never
+narrows a declaration. `project_dsgrid_mv` has no room and is not declared.
+
+## `ensure`
+
+`ensure(root, scope, dataset, source, policy, extents, focus, mode)`:
+
+1. `plan_focused` fuses the roster's buffered extents; `focus` narrows to the
+   clusters holding the named transformers.
+2. `Mode::Read` reads the room's status and never creates one; `Mode::Acquire`
+   opens it (and, for a catalogue dataset, installs the bundle first).
+3. `assess(completed, plan.coverage)`; covered → done, `acquired: 0`.
+4. Per gap cell: kernel identity → store `begin{wait_for_pending}` → the
+   provider (or the bundle index) → `commit`, or `fail` and stop with the
+   provider's failure. Held data is never touched by a failure; `ready` stays
+   false while a gap remains.
+5. `assess` again; an uncovered plan after acquiring is a warning, not a
+   holding.
+
+A second unchanged seed acquires nothing: the plan is deterministic, completed
+coverage answers `assess` with no gaps, and the store refuses a repeated digest.
+
+## Bundles
+
+`install_bundle(root, receipt, fetch)` verifies the compressed bytes (size and
+SHA-256) after `fetch(receipt, path)` writes them, expands and indexes them in a private
+staging directory with `BundleIndexWriter`, checks expanded size, digest and
+feature count, and promotes with `publish_staged`. A mismatch anywhere is
+`reference_bundle_unavailable` and nothing is published.
+
+## The print context
+
+`read_print_context(root, scope, transformer, layers, contexts, catalog, mode)`
+walks the kernel's `ContextPreparation` contexts:
+
+| Source kind | Headless answer |
+|---|---|
+| `catalog` | the room subset; `Mode::Acquire` installs and seeds on the first print |
+| `google_open_buildings`, `elevation_contours` | the rooms through the host's provider |
+| `project_dsgrid_mv` | omitted, reason `desktop_only` |
+| `survey`, `local_layer` | refused `print_context_unsupported` |
+
+As on the desktop, a catalogue or derived layer that cannot be supplied is a
+warning and an [`Omission`], never the end of the print; `Mode::Read` never
+acquires and names `ds data project-cache seed --yes` / `--seed`. The document
+is the kernel's `print_context_document` over the sheet-shaped capture area
+used by project-cache seed (both page orientations, with the widest selected
+metre buffer as a floor), its layers
+in `BTreeMap` order, its `sources` naming every layer; `sha256` is what the
+engine re-verifies and the run receipt records. A layer that would carry the
+document past the engine's feature, byte or layer bounds cannot be supplied
+either: the largest is omitted first (by bytes when the byte bound refused),
+reason `print_context_too_large: …; <layer> alone carries N features`, until
+the rest fits. The held coverage stays whole for smaller prints.
+
+## Failure codes
+
+`project_dataset_not_held`, `project_dataset_acquisition_failed`,
+`dataset_provider_unavailable`, `project_dataset_local_source_required`, `reference_bundle_unavailable`,
+`print_context_unsupported`, `print_context_too_large`, `catalog_invalid`,
+`project_dataset_store_failed`. A command declares the ones it can reach.

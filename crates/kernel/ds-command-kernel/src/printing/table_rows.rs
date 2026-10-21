@@ -1,0 +1,256 @@
+//! Physical table spacing shared by renderer and editor. Automatic row height
+//! may use less padding; it never shrinks authored text. Overflow is explicitly
+//! counted, with one reserved warning row when truncation is allowed.
+/// Why a table's panel ceiling is one whatever the setup authors: a workbook
+/// section keeps its workbook order, so it cannot be cut into panels. The
+/// refusal says so in these words, and [`crate::report_export::layout_knob`]
+/// reads them back, so an operator is never sent to raise a `panels` that
+/// cannot move.
+pub const ONE_PANEL_PRESENTATION: &str = "a workbook table prints in one panel";
+
+#[derive(Debug)]
+pub struct RowPlan {
+    pub step_mm: f64,
+    pub panels: usize,
+    pub rows_per_panel: usize,
+    pub visible_rows: usize,
+    pub omitted_rows: usize,
+}
+#[allow(clippy::too_many_arguments)] // one flat planner call shared with frames and report export
+pub fn plan(
+    id: &str,
+    rows: usize,
+    height: f64,
+    font_pt: f64,
+    row_mm: Option<f64>,
+    maximum_panels: usize,
+    styled: bool,
+    overflow: super::TableOverflow,
+) -> Result<RowPlan, String> {
+    if !height.is_finite()
+        || height <= 0.
+        || !font_pt.is_finite()
+        || font_pt <= 0.
+        || maximum_panels == 0
+        || maximum_panels > 8
+        || rows > 1_000_000
+    {
+        return Err("Invalid table row geometry.".into());
+    }
+    let minimum = font_pt * 25.4 / 72. * 1.25;
+    let permitted = if styled { 1 } else { maximum_panels };
+    let ideal = (font_pt * 25.4 / 72. * 1.6).max(3.);
+    // Unspecified spacing is automatic, and a panel is filled to its bottom
+    // before the next one is started. Size the rows against the panels the
+    // table ACTUALLY needs at readable type, not against every panel it is
+    // allowed — sizing against `permitted` shrinks the type to spread rows
+    // evenly over all of them, so a first column stops short of its own
+    // bottom while a later one carries the remainder. Shrink only when the
+    // authored size genuinely does not fit, which is what `fit` was for.
+    let at_ideal = ((height / ideal + 1e-9).floor() as usize).saturating_sub(2);
+    let needed = if at_ideal == 0 {
+        permitted
+    } else {
+        rows.max(1).div_ceil(at_ideal).clamp(1, permitted)
+    };
+    let fit = height / (rows.max(1).div_ceil(needed) + 2) as f64;
+    let step = row_mm.unwrap_or(ideal.min(fit.max(minimum.max(3.))));
+    if !step.is_finite() || step < minimum {
+        return Err(format!(
+            "table {id} row height cannot contain its readable type"
+        ));
+    }
+    let capacity = ((height / step + 1e-9).floor() as usize)
+        .checked_sub(2)
+        .filter(|n| *n > 0)
+        .ok_or_else(|| format!("table {id} frame needs room for its title, header and one row"))?;
+    let mut panels = rows.max(1).div_ceil(capacity);
+    let mut visible_rows = rows;
+    if panels > permitted && overflow == super::TableOverflow::TruncateWarn {
+        panels = permitted;
+        visible_rows = capacity.saturating_mul(panels).saturating_sub(1);
+        if visible_rows == 0 {
+            return Err(format!(
+                "table {id} frame has no room for data and a truncation warning"
+            ));
+        }
+    }
+    if panels > permitted {
+        // Say WHY the ceiling is what it is: a workbook table is held to one
+        // panel whatever `panels` the setup authors, and a remedy that names
+        // `panels` there is a dead end.
+        let ceiling = if styled {
+            format!("{permitted}; {ONE_PANEL_PRESENTATION}")
+        } else {
+            permitted.to_string()
+        };
+        return Err(format!(
+            "table {id} has {rows} rows; needs {panels} panels at the authored type size (maximum {ceiling})"
+        ));
+    }
+    Ok(RowPlan {
+        step_mm: step,
+        panels,
+        rows_per_panel: capacity.min(visible_rows.max(1)),
+        visible_rows,
+        omitted_rows: rows - visible_rows,
+    })
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A column is filled to its own bottom before the next is started.
+    ///
+    /// The rows below fit inside ONE panel at the authored type size, and the
+    /// layout permits three. Sizing against the permitted count used to shrink
+    /// the type so the same rows spread across all three, which is what leaves
+    /// a first column stopping short of its own bottom on a printed A0.
+    #[test]
+    fn rows_that_fit_one_column_do_not_spread_across_the_panels_allowed() {
+        let one = plan(
+            "lv_schedule",
+            30,
+            140.,
+            7.,
+            None,
+            3,
+            false,
+            super::super::TableOverflow::Error,
+        )
+        .expect("30 rows fit at readable type");
+        assert_eq!(one.panels, 1, "a table that fits one column must use one");
+        assert_eq!(one.omitted_rows, 0);
+
+        // The authored type size is kept rather than shrunk to spread rows.
+        let ideal = (7. * 25.4 / 72. * 1.6f64).max(3.);
+        assert!(
+            (one.step_mm - ideal).abs() < 1e-9,
+            "step {} should stay the authored {ideal}",
+            one.step_mm
+        );
+
+        // And a table too tall for one column still spills into the next
+        // rather than refusing — at 7pt in 140mm a column holds ~33 rows.
+        let many = plan(
+            "lv_schedule",
+            90,
+            140.,
+            7.,
+            None,
+            3,
+            false,
+            super::super::TableOverflow::Error,
+        )
+        .expect("90 rows still fit within three panels");
+        assert!(many.panels > 1, "90 rows must spill past one column");
+        assert!(many.panels <= 3);
+        assert_eq!(many.omitted_rows, 0);
+    }
+    #[test]
+    fn a3_agatare_keeps_all_26_rows_and_seven_point_type() {
+        let p = plan(
+            "lv-print-info",
+            26,
+            99.,
+            7.,
+            None,
+            1,
+            false,
+            super::super::TableOverflow::Error,
+        )
+        .unwrap();
+        assert_eq!(p.panels, 1);
+        assert_eq!(p.rows_per_panel, 26);
+        assert!((p.step_mm * 28. - 99.).abs() < 1e-6);
+        assert!(p.step_mm >= 7. * 25.4 / 72. * 1.25);
+    }
+    #[test]
+    fn never_overrides_authored_spacing_or_omits_overflow() {
+        assert!(plan(
+            "lv",
+            26,
+            99.,
+            7.,
+            Some(4.),
+            1,
+            false,
+            super::super::TableOverflow::Error
+        )
+        .unwrap_err()
+        .contains("needs 2 panels"));
+        assert!(plan(
+            "lv",
+            100,
+            99.,
+            7.,
+            None,
+            1,
+            false,
+            super::super::TableOverflow::Error
+        )
+        .is_err());
+        assert!(plan(
+            "lv",
+            26,
+            99.,
+            7.,
+            Some(2.),
+            1,
+            false,
+            super::super::TableOverflow::Error
+        )
+        .is_err());
+        let p = plan(
+            "lv",
+            26,
+            99.,
+            7.,
+            None,
+            2,
+            false,
+            super::super::TableOverflow::Error,
+        )
+        .unwrap();
+        assert_eq!(p.panels, 2);
+        assert_eq!(p.rows_per_panel, 23);
+    }
+}
+
+#[cfg(test)]
+mod truncation_tests {
+    use super::*;
+    #[test]
+    fn explicit_truncation_reserves_a_visible_warning_row_and_counts_omissions() {
+        let p = plan(
+            "table",
+            100,
+            99.,
+            7.,
+            None,
+            1,
+            false,
+            super::super::TableOverflow::TruncateWarn,
+        )
+        .unwrap();
+        assert_eq!(p.visible_rows + p.omitted_rows, 100);
+        assert!(p.omitted_rows > 0);
+        assert!((p.rows_per_panel + 2) as f64 * p.step_mm <= 99. + 1e-6);
+        let last_rows = (p.visible_rows - 1) % p.rows_per_panel + 1;
+        assert!((last_rows + 3) as f64 * p.step_mm <= 99. + 1e-6);
+    }
+}
+
+/// Actionable render diagnostics shared by the native host, GUI and CLI.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PrintWarning {
+    pub code: String,
+    pub transformer: String,
+    pub output_id: String,
+    pub layout_id: String,
+    pub element_id: String,
+    pub total_rows: usize,
+    pub omitted_rows: usize,
+    pub message: String,
+}

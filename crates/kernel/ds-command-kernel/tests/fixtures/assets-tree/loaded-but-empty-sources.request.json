@@ -1,0 +1,8 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "transformers": [], "transformer_versions": [], "design_attachments": [], "grid_models": [], "grid_exports": [],
+    "pm_attachments": [], "pm_tasks": [], "pm_records": [], "pm_parties": [], "compounded": [],
+    "compute_artifacts": [], "solar": [], "survey_media": [], "project_data": [], "print_setups": []
+  }
+}

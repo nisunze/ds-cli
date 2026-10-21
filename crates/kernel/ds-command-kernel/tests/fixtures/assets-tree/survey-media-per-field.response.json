@@ -1,0 +1,605 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_parties",
+        "pm_records"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_records",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "compounded",
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Survey/lv_poles",
+          "name": "lv_poles",
+          "counts": {
+            "assets": 0,
+            "folders": 4
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Survey/lv_poles/e_1",
+              "name": "e_1",
+              "counts": {
+                "assets": 4,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:lv_poles:e_1:",
+                  "project_id": "",
+                  "folder": "Survey/lv_poles/e_1",
+                  "name": "e_1",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "lv_poles",
+                      "entry_id": "e_1",
+                      "field": "",
+                      "path": "survey/lv_poles/e_1/"
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:lv_poles:e_1:photo",
+                  "project_id": "",
+                  "folder": "Survey/lv_poles/e_1",
+                  "name": "pole.jpg",
+                  "kind": "image",
+                  "format": "jpg",
+                  "bytes": 10,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "lv_poles",
+                      "entry_id": "e_1",
+                      "field": "photo",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:lv_poles:e_1:photo_2",
+                  "project_id": "",
+                  "folder": "Survey/lv_poles/e_1",
+                  "name": "pole.jpg",
+                  "kind": "image",
+                  "format": "jpg",
+                  "bytes": 11,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "lv_poles",
+                      "entry_id": "e_1",
+                      "field": "photo_2",
+                      "path": null
+                    }
+                  }
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:lv_poles:e_1:signature",
+                  "project_id": "",
+                  "folder": "Survey/lv_poles/e_1",
+                  "name": "sig.png",
+                  "kind": "image",
+                  "format": "png",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "lv_poles",
+                      "entry_id": "e_1",
+                      "field": "signature",
+                      "path": "/survey/sig.png"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Survey/lv_poles/e_3",
+              "name": "e_3",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:lv/poles:e_3:photo",
+                  "project_id": "",
+                  "folder": "Survey/lv_poles/e_3",
+                  "name": "slash.jpg",
+                  "kind": "image",
+                  "format": "jpg",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "lv/poles",
+                      "entry_id": "e_3",
+                      "field": "photo",
+                      "path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Survey/lv_poles/e_5",
+              "name": "e_5",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:lv_poles:e_5:photo",
+                  "project_id": "",
+                  "folder": "Survey/lv_poles/e_5",
+                  "name": "x",
+                  "kind": "image",
+                  "format": "jpg",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "lv_poles",
+                      "entry_id": "e_5",
+                      "field": "photo",
+                      "path": null
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "system",
+              "path": "Survey/lv_poles/e_6",
+              "name": "e_6",
+              "counts": {
+                "assets": 1,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:survey_media:lv_poles:e_6:photo",
+                  "project_id": "",
+                  "folder": "Survey/lv_poles/e_6",
+                  "name": "raw",
+                  "kind": "other",
+                  "format": "unknown",
+                  "bytes": 0,
+                  "digest": null,
+                  "status": "durable",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": null,
+                  "source": {
+                    "kind": "device_scan",
+                    "detail": "survey entry media"
+                  },
+                  "classified_by": "kernel",
+                  "container": null,
+                  "links": [],
+                  "origin": {
+                    "source": "survey_media",
+                    "ref": {
+                      "form": "lv_poles",
+                      "entry_id": "e_6",
+                      "field": "photo",
+                      "path": null
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "assets": []
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "design_attachments",
+        "transformer_versions",
+        "transformers"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Unclassified",
+      "name": "Unclassified",
+      "counts": {
+        "assets": 0,
+        "folders": 1
+      },
+      "children": [
+        {
+          "kind": "system",
+          "path": "Unclassified/survey_media",
+          "name": "survey_media",
+          "counts": {
+            "assets": 2,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:survey_media:noentry.jpg",
+              "project_id": "",
+              "folder": "Unclassified/survey_media",
+              "name": "noentry.jpg",
+              "kind": "image",
+              "format": "jpg",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "survey_media"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "survey_media",
+                "ref": {
+                  "source": "survey_media",
+                  "ref": "noentry.jpg"
+                }
+              }
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "sys:unclassified:survey_media:noform.jpg",
+              "project_id": "",
+              "folder": "Unclassified/survey_media",
+              "name": "noform.jpg",
+              "kind": "image",
+              "format": "jpg",
+              "bytes": 0,
+              "digest": null,
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": null,
+              "source": {
+                "kind": "system",
+                "detail": "survey_media"
+              },
+              "classified_by": "kernel",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "survey_media",
+                "ref": {
+                  "source": "survey_media",
+                  "ref": "noform.jpg"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "assets": []
+    }
+  ],
+  "total_assets": 9,
+  "total_folders": 18,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "compute_artifacts",
+    "dataset_rooms",
+    "design_attachments",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_parties",
+    "pm_records",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "transformer_versions",
+    "transformers",
+    "user_data"
+  ]
+}

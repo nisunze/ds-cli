@@ -1,0 +1,7 @@
+{
+  "schema": "ds.assets.request/v1",
+  "folders": [{
+    "folder_id": "f_1", "project_id": "p", "path": "contracts/2026/epc", "name": "epc",
+    "default_sensitivity": "confidential"
+  }]
+}

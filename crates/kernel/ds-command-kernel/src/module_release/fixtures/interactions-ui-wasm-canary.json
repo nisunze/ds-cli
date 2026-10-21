@@ -1,0 +1,109 @@
+{
+  "schema": "ds.module-release/v1",
+  "component": "interactions",
+  "runtime": "wasm",
+  "channel": "canary",
+  "product_id": "rw.datasolutions.module.interactions.canary",
+  "version": "0.1.0-r1",
+  "protocol": "ds.ui-wasm/v1",
+  "released_at": "2026-10-15T08:00:00Z",
+  "status": "active",
+  "assets": [
+    {
+      "platform": "browser",
+      "arch": "wasm32",
+      "kind": "module-javascript",
+      "protocol": "ds.ui-wasm/v1",
+      "url": "https://storage.googleapis.com/dedicated-public-releases/modules/interactions/canary/wasm/0.1.0-r1/ds_interactions_wasm.js",
+      "size_bytes": 32,
+      "sha256": "9d62fb53fb6397ef7bb6cf03de95d67ecb470d996b4d1af9a7946a61014857df",
+      "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "built_at": "2026-10-15T08:00:00Z",
+      "source_revisions": {
+        "ds-interactions": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "engines": [
+        {
+          "engine": "ds-interactions",
+          "release": "ds-interactions@0.1.0+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "manifest_sha256": "7d295014eefae91af88d3165d3df121f0c0a246792526a1e55a9c0cef74343b4"
+        }
+      ]
+    },
+    {
+      "platform": "browser",
+      "arch": "wasm32",
+      "kind": "module-wasm",
+      "protocol": "ds.ui-wasm/v1",
+      "url": "https://storage.googleapis.com/dedicated-public-releases/modules/interactions/canary/wasm/0.1.0-r1/ds_interactions_wasm_bg.wasm",
+      "size_bytes": 37,
+      "sha256": "af0d559d6d07b329a176a5a26ed24ebf4f0f0bdf29cb1c7251c804ac28db9788",
+      "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "built_at": "2026-10-15T08:00:00Z",
+      "source_revisions": {
+        "ds-interactions": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "engines": [
+        {
+          "engine": "ds-interactions",
+          "release": "ds-interactions@0.1.0+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "manifest_sha256": "7d295014eefae91af88d3165d3df121f0c0a246792526a1e55a9c0cef74343b4"
+        }
+      ]
+    },
+    {
+      "platform": "browser",
+      "arch": "wasm32",
+      "kind": "module-types",
+      "protocol": "ds.ui-wasm/v1",
+      "url": "https://storage.googleapis.com/dedicated-public-releases/modules/interactions/canary/wasm/0.1.0-r1/ds_interactions_wasm.d.ts",
+      "size_bytes": 34,
+      "sha256": "bdf2c7e32b41a35820c763a737377b35091da7112774513d0e2d86d97935582e",
+      "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "built_at": "2026-10-15T08:00:00Z",
+      "source_revisions": {
+        "ds-interactions": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "engines": [
+        {
+          "engine": "ds-interactions",
+          "release": "ds-interactions@0.1.0+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "manifest_sha256": "7d295014eefae91af88d3165d3df121f0c0a246792526a1e55a9c0cef74343b4"
+        }
+      ]
+    },
+    {
+      "platform": "browser",
+      "arch": "wasm32",
+      "kind": "module-types",
+      "protocol": "ds.ui-wasm/v1",
+      "url": "https://storage.googleapis.com/dedicated-public-releases/modules/interactions/canary/wasm/0.1.0-r1/ds_interactions_wasm_bg.wasm.d.ts",
+      "size_bytes": 42,
+      "sha256": "701712e84455bedda8a4e47faf8da4275cd6f67a2470d15d149d2ebc80332f65",
+      "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "built_at": "2026-10-15T08:00:00Z",
+      "source_revisions": {
+        "ds-interactions": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "engines": [
+        {
+          "engine": "ds-interactions",
+          "release": "ds-interactions@0.1.0+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "manifest_sha256": "7d295014eefae91af88d3165d3df121f0c0a246792526a1e55a9c0cef74343b4"
+        }
+      ]
+    }
+  ],
+  "build_manifest": {
+    "schema": "ds.ui-engine-build/v1",
+    "component": "interactions",
+    "protocol": "ds.ui-wasm/v1",
+    "ui_contract": 1,
+    "source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "cargo_lock_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "rustc": "rustc 1.90.0 (1159e78c4 2025-09-14); binary: rustc; commit-hash: 1159e78c4747b1e8c650a0b0c0d0e0f012345678; commit-date: 2025-09-14; host: x86_64-unknown-linux-gnu; release: 1.90.0; LLVM version: 20.1.8",
+    "target": "wasm32-unknown-unknown",
+    "profile": "release",
+    "config_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }
+}

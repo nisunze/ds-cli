@@ -1,0 +1,18 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "survey_media": [],
+    "transformers": [
+      {
+        "name": "TX-1"
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

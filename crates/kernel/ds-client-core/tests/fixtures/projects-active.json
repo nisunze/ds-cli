@@ -1,0 +1,17 @@
+{
+  "data": {
+    "projects": [
+      {
+        "eds_project_id": "active-project",
+        "project_name": "active_project",
+        "display_name": "Active Project",
+        "role": "editor",
+        "lifecycle_state": "active",
+        "is_archived": false,
+        "is_testing": false
+      }
+    ],
+    "elevated": false
+  },
+  "success": true
+}

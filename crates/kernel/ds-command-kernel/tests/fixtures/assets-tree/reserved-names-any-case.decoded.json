@@ -1,0 +1,58 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "design_attachments": [
+      {
+        "attachment_id": "att_r",
+        "object": {
+          "id": "COLLISIONS"
+        },
+        "label": "x",
+        "file_name": "x.pdf",
+        "latest_revision_id": "r1"
+      }
+    ],
+    "transformer_versions": [
+      {
+        "transformer_id": "Mv_Data",
+        "version_id": "v1"
+      }
+    ],
+    "transformers": [
+      {
+        "name": "MV_DATA",
+        "report_files": [
+          "gs://x/rows.csv"
+        ]
+      },
+      {
+        "name": "Combined Transformer",
+        "report_files": [
+          "gs://reports/combined/lot3-combined.xlsx"
+        ],
+        "report_artifacts": [
+          {
+            "url": "gs://reports/combined/lot3.pdf",
+            "sha256": "abc"
+          }
+        ]
+      },
+      {
+        "name": "COLLISIONS_3"
+      },
+      {
+        "name": " all transformers "
+      },
+      {
+        "name": "TX-2"
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

@@ -1,0 +1,17 @@
+{
+  "data": {
+    "projects": [
+      {
+        "eds_project_id": "archived-project",
+        "project_name": "archived_project",
+        "display_name": "Archived Project",
+        "role": "viewer",
+        "lifecycle_state": "archived",
+        "is_archived": true,
+        "is_testing": false
+      }
+    ],
+    "elevated": false
+  },
+  "success": true
+}

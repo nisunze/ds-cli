@@ -1,0 +1,145 @@
+{
+  "schema": "ds.fast-lv.request/v1",
+  "jobs": [
+    {
+      "transformer_name": "T1",
+      "settings": {},
+      "gdfs": {
+        "tr": {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "id": "tr-1",
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.0,
+                  -2.0
+                ]
+              },
+              "properties": {
+                "name": "T1",
+                "names": "T1",
+                "transfo_size": 25,
+                "transformer_nature": "new_transformer"
+              }
+            }
+          ]
+        },
+        "lv_poles": {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "id": "p1",
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.0004,
+                  -2.0
+                ]
+              },
+              "properties": {
+                "material": "concrete"
+              }
+            }
+          ]
+        },
+        "lv_lines": {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "id": "l1",
+              "geometry": {
+                "type": "LineString",
+                "coordinates": [
+                  [
+                    30.0,
+                    -2.0
+                  ],
+                  [
+                    30.0004,
+                    -2.0
+                  ]
+                ]
+              },
+              "properties": {
+                "cable_size": "3 x 35 + 54.6mm² ABC"
+              }
+            }
+          ]
+        },
+        "customers": {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "id": "c1",
+              "geometry": {
+                "type": "Point",
+                "coordinates": [
+                  30.0004,
+                  -2.0
+                ]
+              },
+              "properties": {
+                "category": "Residential"
+              }
+            }
+          ]
+        }
+      },
+      "config_dfs": {
+        "cust_category": [
+          {
+            "clean_name": "Residential",
+            "peak_power_w": 250
+          }
+        ],
+        "lv_lines": [
+          {
+            "clean_name": "3 x 35 + 54.6mm² ABC",
+            "electrical_params": {
+              "r_ohm_per_km": 0.868,
+              "x_ohm_per_km": 0.0982,
+              "max_i_ka": 0.132
+            }
+          }
+        ],
+        "service_cable_sizes": [
+          {
+            "service_cable_size": "2 x 6 mm²",
+            "peak_power_w": 1500,
+            "meter_type": "Single Phase",
+            "electrical_params": {
+              "r_ohm_per_km": 3.08,
+              "x_ohm_per_km": 0.09,
+              "max_i_ka": 0.039
+            }
+          }
+        ],
+        "transfo_sizes": [
+          {
+            "transfo_sizes": 25,
+            "electrical_params": {
+              "vk_percent": 4.0,
+              "vkr_percent": 1.45
+            }
+          }
+        ],
+        "project_settings": [
+          {
+            "parameter": "cos_phi",
+            "value": 0.85
+          },
+          {
+            "parameter": "sc_real_length",
+            "value": "x + 6"
+          }
+        ]
+      }
+    }
+  ]
+}

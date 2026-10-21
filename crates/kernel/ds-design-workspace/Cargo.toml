@@ -1,0 +1,32 @@
+[package]
+name = "ds-design-workspace"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Native offline Design persistence and job lifecycle; no renderer or network transport."
+
+# Its own workspace, deliberately — see docs/contracts/ds-portable-geometry.md §4.
+# This is a native host crate (rusqlite, fs2, no WASM) and it legitimately calls
+# the detached Network client. Cargo resolves every workspace member's manifest before building
+# any of them, so while this sat in ds-command-kernel's `members` the kernel
+# could not build with ds-network absent no matter what the kernel's own
+# dependencies said. Its path is unchanged, so ds-cli is unaffected.
+[workspace]
+
+[dependencies]
+ds-command-kernel = { path = "../.." }
+ds-network-contracts = { path = "../../../ds-network/crates/ds-network-contracts" }
+ds-network-client = { path = "../ds-network-client" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+sha2 = "0.10"
+rusqlite = { version = "0.40.2", features = ["bundled", "fallible_uint"] }
+rayon = "1"
+fs2 = "0.4"
+tempfile = "3"
+thiserror = "2"
+
+[dev-dependencies]
+ds-grid-model = { path = "../../../ds-network/crates/ds-grid-model" }
+ds-grid-engine = { path = "../../../ds-network/crates/ds-grid-engine" }
+ds-grid-exchange = { path = "../../../ds-network/crates/ds-grid-exchange" }

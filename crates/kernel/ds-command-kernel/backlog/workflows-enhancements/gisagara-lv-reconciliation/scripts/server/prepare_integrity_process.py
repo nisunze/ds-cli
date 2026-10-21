@@ -1,0 +1,5 @@
+import pathlib,json,copy
+r=pathlib.Path('/home/magese/projects/gisagara/refreshed87-20261010');b=r.parent;j=json.loads((r/'integrity-audit.json').read_text());names=[x['transformer'] for x in j['transformers'] if x['summary']];names.append('kibungo');config=json.loads((b/'kibungo-updated-20261010.json').read_text())['jobs'][0]['config_dfs'];jobs=[]
+for n in names:
+ job=json.loads((r/'inputs'/(n+'.json')).read_text())['jobs'][0];job['config_dfs']=config;job['settings'].update(keep_lv_poles=True,keep_service_cables=True,keep_lv_lines_topology=True,keep_lv_lines_sizes=True,keep_service_cables_sizes=True,keep_lv_lines_length=True,renumber_poles=False,renumber_houses=False,size_transformer_kva=False,size_spans=False,assign_assemblies=False,assign_struct_types=False,assign_earthing=False);jobs.append(job)
+q=json.loads((b/'kibungo-updated-20261010.json').read_text());q['jobs']=jobs;(r/'integrity-process-request.json').write_text(json.dumps(q));print('JOBS',len(jobs),'FEATURES',sum(len(v['features']) for j in jobs for v in j['gdfs'].values()))

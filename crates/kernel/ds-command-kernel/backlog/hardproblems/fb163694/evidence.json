@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "fb163694-c994-48d0-9745-7a7eef559056",
+    "known_version": 4,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Matching debug network `0eaf49dd`, binary SHA `5945349c921176589fefa12c4299d1ac171d893a60141ed01210bab85fdc6f9d`, proves ruling-span omission/null/explicit controls on authored and imported fixtures. Slack-first chooses a governed basis; slack-only refuses. Historical full report is v3. [report](../../ds-network/out/feedback-fb163694-20261013/feedback-v3.json); [sag proof](../../ds-network/out/feedback-fb163694-20261013/debug-replay/sag-acceptance-proof.json); [angle attempt](../../ds-network/out/feedback-fb163694-20261013/other-conditions/angle-attempt.json).",
+  "remaining_blocker": "The17.0615\u00b0 synthetic bend refuses missing `running_angle` duty/capacity before angle-ceiling/REG selection can be compared.",
+  "bounded_next_attempt": "Supply a qualified existing running-angle fixture and compare one baseline/constrained CLI/MCP plan. Preserve sag and non-slack controls; do not widen duties/capacity or resume rule-driven retyping.",
+  "evidence_files": [
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-fb163694-20261013/feedback-v3.json",
+      "byte_len": 3203,
+      "sha256": "311da6c8eb68cef46524cee8a7f900d23ca1bed3d08502ba06b2bb9c5ffdd9e2"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-fb163694-20261013/debug-replay/sag-acceptance-proof.json",
+      "byte_len": 8275,
+      "sha256": "33f620ca8a42604f64b5085c6e6351e59ca4df52e680449c41000b6e14eb6d20"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-fb163694-20261013/other-conditions/angle-attempt.json",
+      "byte_len": 26602,
+      "sha256": "22cd4a7beef7f7c5419f9727b87ab333a327cf1f9a9048314461aaa82c56b4b5"
+    }
+  ],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences."
+}

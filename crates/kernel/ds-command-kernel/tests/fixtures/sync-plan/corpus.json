@@ -1,0 +1,1566 @@
+{
+  "schema": "ds.sync-plan-corpus/v1",
+  "purpose": "The sync gate's one decision, recorded from ds-command-kernel::sync::plan. No TypeScript predecessor by design; `why` is the rationale per case.",
+  "cases": [
+    {
+      "id": "empty",
+      "why": "Nothing held anywhere: in sync, idle poll.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 0,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "offline",
+      "why": "Offline plans nothing and waits for reconnect.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": false,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "offline"
+          }
+        ],
+        "refresh_remote": {
+          "needed": false,
+          "reason": "offline"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": false,
+        "summary": {
+          "uploads": 0,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "local-only-with-grant",
+      "why": "A local result the record lacks uploads under a valid grant.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "reason": "absent_remotely"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 1,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "local-only-no-grant",
+      "why": "No credential: open a grant first, the upload follows.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "remote": []
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "open_grant",
+            "reason": "no_grant"
+          },
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "reason": "absent_remotely"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": false,
+        "summary": {
+          "uploads": 1,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "grant-expired",
+      "why": "An expired grant is renewed before uploading.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            }
+          ],
+          "expires_at_ms": 10000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "open_grant",
+            "reason": "grant_expired"
+          },
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "reason": "absent_remotely"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": false,
+        "summary": {
+          "uploads": 1,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "grant-engine-missing",
+      "why": "The grant does not cover the artifact's engine release.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "open_grant",
+            "reason": "grant_engine_missing"
+          },
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "reason": "absent_remotely"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": false,
+        "summary": {
+          "uploads": 1,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "remote-only",
+      "why": "A head this machine lacks downloads; no grant needed.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [],
+        "remote": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "revision": "r1",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "published_at_ms": 900
+          }
+        ]
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "download",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "revision": "r1",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "reason": "absent_locally"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": false,
+        "summary": {
+          "uploads": 0,
+          "downloads": 1,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "in-sync",
+      "why": "Equal digests: nothing to do, idle poll.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567",
+            "base_revision": "r1"
+          }
+        ],
+        "remote": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "revision": "r1",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "published_at_ms": 900
+          }
+        ],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "nothing",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "reason": "in_sync"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 0,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 1
+        }
+      }
+    },
+    {
+      "id": "local-newer",
+      "why": "Computed on the current head with a different digest: upload as newer.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567",
+            "base_revision": "r1"
+          }
+        ],
+        "remote": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "revision": "r1",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "published_at_ms": 900
+          }
+        ],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size_bytes": 4096,
+            "reason": "local_newer"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 1,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "base-moved",
+      "why": "Computed on an older base: conflict, never overwritten.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567",
+            "base_revision": "r0"
+          }
+        ],
+        "remote": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "revision": "r1",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "published_at_ms": 900
+          }
+        ],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "conflict",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "base_revision": "r0",
+            "current_revision": "r1",
+            "reason": "base_moved"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 0,
+          "downloads": 0,
+          "conflicts": 1,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "unknown-base",
+      "why": "Computed with no head in view while one exists now: conflict.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "remote": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "revision": "r1",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "published_at_ms": 900
+          }
+        ],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "conflict",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "base_revision": null,
+            "current_revision": "r1",
+            "reason": "base_moved"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 0,
+          "downloads": 0,
+          "conflicts": 1,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "unreadable-local-no-remote",
+      "why": "Unreadable bytes and no remote copy: refused, never uploaded.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": false,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "refused",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "reason": "local_unreadable"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 0,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 1,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "unreadable-local-with-remote",
+      "why": "Unreadable bytes with a remote copy: the record is the truth, download.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": false,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567",
+            "base_revision": "r1"
+          }
+        ],
+        "remote": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "revision": "r1",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "published_at_ms": 900
+          }
+        ],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "download",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "revision": "r1",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reason": "local_unreadable"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 0,
+          "downloads": 1,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "bad-rows-do-not-poison",
+      "why": "A malformed identity and a duplicate are refused one at a time; the rest proceeds.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "-bad",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          },
+          {
+            "engine": "network_reporter",
+            "operation": "dup",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          },
+          {
+            "engine": "network_reporter",
+            "operation": "dup",
+            "variant": "default",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          },
+          {
+            "engine": "network_reporter",
+            "operation": "ok",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "ok",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "reason": "absent_remotely"
+          },
+          {
+            "kind": "refused",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "-bad",
+              "variant": "default"
+            },
+            "reason": "identity_malformed"
+          },
+          {
+            "kind": "refused",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "dup",
+              "variant": "default"
+            },
+            "reason": "duplicate_identity"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 1,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 2,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "mixed-engines-ordered",
+      "why": "A Solar batch is plain artifacts; actions are ordered by identity.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "solar",
+            "operation": "calculate-city-b",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-solar-engine@0.1.0"
+          },
+          {
+            "engine": "solar",
+            "operation": "calculate-city-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-solar-engine@0.1.0"
+          },
+          {
+            "engine": "network_reporter",
+            "operation": "export-z",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567",
+            "base_revision": "r1"
+          }
+        ],
+        "remote": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-z",
+            "variant": "default",
+            "revision": "r1",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "published_at_ms": 900
+          },
+          {
+            "engine": "network_reporter",
+            "operation": "export-y",
+            "variant": "default",
+            "revision": "r2",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "published_at_ms": 900
+          }
+        ],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "download",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-y",
+              "variant": "default"
+            },
+            "revision": "r2",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "reason": "absent_locally"
+          },
+          {
+            "kind": "nothing",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-z",
+              "variant": "default"
+            },
+            "reason": "in_sync"
+          },
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "solar",
+              "operation": "calculate-city-a",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "reason": "absent_remotely"
+          },
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "solar",
+              "operation": "calculate-city-b",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "reason": "absent_remotely"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 2,
+          "downloads": 1,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 1
+        }
+      }
+    },
+    {
+      "id": "grant-renewal-is-the-only-timer",
+      "why": "An upload pending under a grant that expires soon: the one timed wake, renewal before expiry.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "navigation",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            }
+          ],
+          "expires_at_ms": 611000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "reason": "absent_remotely"
+          }
+        ],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "trigger_reads_record"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 11000,
+          "reason": "grant_renewal"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 1,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "local-change-uses-held-heads",
+      "why": "A local change never re-reads the record: uploads go first, from the held heads or none.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "local_change",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "network_reporter",
+            "operation": "export-a",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "produced_at_ms": 1000,
+            "readable": true,
+            "engine_release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+          }
+        ],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "network_reporter",
+              "operation": "export-a",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 4096,
+            "reason": "absent_remotely"
+          }
+        ],
+        "refresh_remote": {
+          "needed": false,
+          "reason": "upload_first"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 1,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "remote-push-reads-the-record",
+      "why": "A push from the messaging stream is the one reason to re-read without navigating.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "remote_push",
+        "remote_read_at_ms": 9000,
+        "local": [],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        }
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "record_changed"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 0,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "never-read-reads-once",
+      "why": "Heads never read are read once on a trigger that reads the record; a local change still uploads first.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "manual",
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "p",
+          "engines": [
+            {
+              "name": "network_reporter",
+              "release": "ds-network-reporter@0.1.0+0123456789abcdef0123456789abcdef01234567"
+            },
+            {
+              "name": "solar",
+              "release": "ds-solar-engine@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        },
+        "local": [],
+        "remote": []
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "p",
+        "personal": false,
+        "actions": [],
+        "refresh_remote": {
+          "needed": true,
+          "reason": "never_read"
+        },
+        "wake": {
+          "kind": "event"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 0,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    },
+    {
+      "id": "personal-bytes-same-gate",
+      "why": "Personal bytes (user data, notes) use the same gate under their own scope; the grant carries no project.",
+      "request": {
+        "schema": "ds.sync-plan/v1",
+        "project": "",
+        "install_id": "install-1",
+        "now_ms": 10000,
+        "online": true,
+        "trigger": "local_change",
+        "remote_read_at_ms": 9000,
+        "local": [
+          {
+            "engine": "user_data",
+            "operation": "notes",
+            "variant": "default",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 64,
+            "produced_at_ms": 1000,
+            "engine_release": "ds-web@0.1.0"
+          }
+        ],
+        "remote": [],
+        "grant": {
+          "grant_id": "g1",
+          "install_id": "install-1",
+          "project": "",
+          "engines": [
+            {
+              "name": "user_data",
+              "release": "ds-web@0.1.0"
+            }
+          ],
+          "expires_at_ms": 10000000
+        },
+        "personal": true
+      },
+      "expected": {
+        "schema": "ds.sync-plan/v1",
+        "project": "",
+        "personal": true,
+        "actions": [
+          {
+            "kind": "upload",
+            "identity": {
+              "engine": "user_data",
+              "operation": "notes",
+              "variant": "default"
+            },
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size_bytes": 64,
+            "reason": "absent_remotely"
+          }
+        ],
+        "refresh_remote": {
+          "needed": false,
+          "reason": "upload_first"
+        },
+        "wake": {
+          "kind": "at",
+          "at_ms": 9400000,
+          "reason": "grant_renewal"
+        },
+        "grant_valid": true,
+        "summary": {
+          "uploads": 1,
+          "downloads": 0,
+          "conflicts": 0,
+          "refused": 0,
+          "in_sync": 0
+        }
+      }
+    }
+  ]
+}

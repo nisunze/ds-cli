@@ -1,0 +1,14 @@
+[package]
+name = "ds-assets-pdf-host"
+description = "Bounded native Project Assets PDF text extraction through fixed installed Linux decoders."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tempfile = "3"
+
+# Native host: no PDF decoder or process dependency enters the WASM kernel.
+[workspace]

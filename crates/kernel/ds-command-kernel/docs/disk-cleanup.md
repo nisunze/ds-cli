@@ -1,0 +1,43 @@
+# Fast, scoped build cleanup on ds-server
+
+Use this procedure for build-output and cache cleanup under the owner's standing authorization. It is operational guidance,
+not a scheduled cleaner. A requested target belongs to that cleanup; it does not
+replace the workspace's ordinary 90% disk limit or authorize deleting project data.
+
+Start with `df -h /`, `free -h`, active build/release processes and the worktree
+registry at `git_trees/gittrees-index.json`. Check candidate process working
+directories and open files before removal. Never kill another process to clean its
+outputs. Leave active build/release roots alone, including a manual owner build.
+No SIGKILL. Preserve unsaved/unlanded work; prove every worktree commit landed on
+`origin/run` before retiring its tree through Git.
+
+Inventory these known locations directly instead of rescanning the whole home:
+
+| Class | Locations under `/home/magese` | Rule |
+| --- | --- | --- |
+| Disposable per-run output | `data-solutions/.release/`, named `ds-*/out/<run>/`, owned disk TMPDIRs, `.cache/claude-build-tmp/` | Delete only completed, unused output whose ownership and remaining evidence are known. A report or admitted artifact in `out/` is not disposable merely because of its parent directory. |
+| Cargo build caches | `data-solutions/{ds-cli,ds-network,ds-command-kernel}/target/`, `data-solutions/ds-command-kernel/crates/{ds-layer-store,ds-client-core,ds-report-host}/target/`, `data-solutions/ds-web/src-tauri/target/`, `.cache/ds-griddesign/` | Idle reproducible caches may be removed at any time without another permission request, even when another agent will need to rebuild (owner, 2026-10-13). Preserve running build roots and required executables/evidence. |
+| Other reproducible caches | `.cache/go-build/`, Go module cache, Cargo registry, web dependencies, Flutter `.dart_tool`/`.pub-cache`, Terraform `.terraform` | Included in the same standing authorization after activity checks; distinguish reproducible caches from authored inputs, installed artifacts and project data. |
+| Project data and deliverables | `projects/`, Drive mounts, report/publication artifacts, source assets, credentials and session recovery files | Preserve. A disk target is not permission to remove these. |
+
+Recorded inventory on 2026-10-10: CLI target 133 GiB, Network target 156 GiB,
+Kernel target 20 GiB plus nested crate targets 28 GiB, Desktop target 37 GiB, Web out 4 GiB,
+`.cache/ds-griddesign` 44 GiB and Go build cache 20 GiB. These are hints for the
+next bounded `du`, not proof that files are still idle or safe to delete. Those idle Cargo targets and the Desktop/Go compilation caches were removed
+during the owner-requested fresh-build cleanup; do not expect them still to exist.
+There were zero registered worktrees. Recheck sizes and activity each time.
+
+Remove admitted disposable classes first and recheck `df -h /` after each class;
+stop when the requested target is reached. Owner clarification, 2026-10-13:
+reproducible build output and caches may be cleared whenever needed, without another permission request;
+active streaming builds are the exception. Once sufficient room exists for the
+ongoing work, resume that work rather than alternating build waits and cache
+deletion to chase a percentage. This does not admit deleting deliverables.
+Do not run the old `~/.local/bin/ds-disk-steward` blindly: its
+age-based cleanup rules predate the current ownership/cache agreements.
+
+Keep scratch on disk, never `/tmp` or `/dev/shm`. Keep the next release's captured
+sources, active TMPDIR and immutable artifacts intact. Keep reusable caches warm
+when useful during coding; the standing authorization above governs their removal.
+There is no background cleanup or
+automatic deletion merely because a path exceeds a remembered size.

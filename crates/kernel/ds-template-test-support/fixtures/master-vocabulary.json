@@ -1,0 +1,2286 @@
+{
+  "source": "ds-brain/docs/master.seed.json",
+  "sha256": "c26a9eebfe5a7a417225c3657f92d3972e0e64e8731c9229555ecafe8f78fcd0",
+  "tokens": {
+    "Residential": [
+      {
+        "path": "/domains/customer_category/Residential",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Residential/accepts/0",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/meter_type/Single Phase/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "RESIDENTIAL": [
+      {
+        "path": "/domains/customer_category/Residential/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "residential": [
+      {
+        "path": "/domains/customer_category/Residential/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Commercial": [
+      {
+        "path": "/domains/customer_category/Commercial",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Commercial/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "COMMERCIAL": [
+      {
+        "path": "/domains/customer_category/Commercial/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Bar": [
+      {
+        "path": "/domains/customer_category/Commercial/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Lodge": [
+      {
+        "path": "/domains/customer_category/Lodge",
+        "kind": "canonical"
+      }
+    ],
+    "Moteri": [
+      {
+        "path": "/domains/customer_category/Lodge/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "lodge": [
+      {
+        "path": "/domains/customer_category/Lodge/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Cell Office": [
+      {
+        "path": "/domains/customer_category/Cell Office",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Cell Office/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Cell": [
+      {
+        "path": "/domains/customer_category/Cell Office/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "CELL": [
+      {
+        "path": "/domains/customer_category/Cell Office/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Office": [
+      {
+        "path": "/domains/customer_category/Cell Office/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "OFFICE": [
+      {
+        "path": "/domains/customer_category/Cell Office/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "cell_office": [
+      {
+        "path": "/domains/customer_category/Cell Office/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "Church": [
+      {
+        "path": "/domains/customer_category/Church",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Church/accepts/0",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/meter_type/Three Phase/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "CHURCH": [
+      {
+        "path": "/domains/customer_category/Church/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "church": [
+      {
+        "path": "/domains/customer_category/Church/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "churchl": [
+      {
+        "path": "/domains/customer_category/Church/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Cooperative": [
+      {
+        "path": "/domains/customer_category/Cooperative",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Cooperative/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "CCOPERATIVE": [
+      {
+        "path": "/domains/customer_category/Cooperative/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Coperative": [
+      {
+        "path": "/domains/customer_category/Cooperative/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "School": [
+      {
+        "path": "/domains/customer_category/School",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/School/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Ecole Primaire": [
+      {
+        "path": "/domains/customer_category/School/accepts/1",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/customer_category/Education_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Nursery School": [
+      {
+        "path": "/domains/customer_category/School/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "SCHOOL": [
+      {
+        "path": "/domains/customer_category/School/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Industry": [
+      {
+        "path": "/domains/customer_category/Industry",
+        "kind": "canonical"
+      }
+    ],
+    "industry": [
+      {
+        "path": "/domains/customer_category/Industry/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Farm": [
+      {
+        "path": "/domains/customer_category/Farm",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Farm/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Health Post": [
+      {
+        "path": "/domains/customer_category/Health Post",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Health Post/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Poste de Sante": [
+      {
+        "path": "/domains/customer_category/Health Post/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Centre de Sante": [
+      {
+        "path": "/domains/customer_category/Health Post/accepts/2",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/customer_category/Centre de Sante",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Centre de Sante/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Heath Post": [
+      {
+        "path": "/domains/customer_category/Health Post/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "HEALTH POST": [
+      {
+        "path": "/domains/customer_category/Health Post/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "Health Poste": [
+      {
+        "path": "/domains/customer_category/Health Post/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "health_post": [
+      {
+        "path": "/domains/customer_category/Health Post/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "Telecommunication Tower": [
+      {
+        "path": "/domains/customer_category/Telecommunication Tower",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Telecommunication Tower/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Water Pumping Station": [
+      {
+        "path": "/domains/customer_category/Water Pumping Station",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Water Pumping Station/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Pauvre": [
+      {
+        "path": "/domains/customer_category/Pauvre",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Pauvre/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "pouvre": [
+      {
+        "path": "/domains/customer_category/Pauvre/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Moyenne": [
+      {
+        "path": "/domains/customer_category/Moyenne",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Moyenne/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Moyen": [
+      {
+        "path": "/domains/customer_category/Moyenne/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Commerce_I": [
+      {
+        "path": "/domains/customer_category/Commerce_I",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Commerce_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Radio": [
+      {
+        "path": "/domains/customer_category/Commerce_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Communication": [
+      {
+        "path": "/domains/customer_category/Commerce_I/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Petit Commerce": [
+      {
+        "path": "/domains/customer_category/Commerce_I/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "boutique": [
+      {
+        "path": "/domains/customer_category/Commerce_I/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "Agence de voyage": [
+      {
+        "path": "/domains/customer_category/Commerce_I/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "ste": [
+      {
+        "path": "/domains/customer_category/Commerce_I/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "SOCIETE": [
+      {
+        "path": "/domains/customer_category/Commerce_I/accepts/7",
+        "kind": "alias"
+      }
+    ],
+    "Station communication": [
+      {
+        "path": "/domains/customer_category/Commerce_I/accepts/8",
+        "kind": "alias"
+      }
+    ],
+    "Salon de coiffure": [
+      {
+        "path": "/domains/customer_category/Commerce_I/accepts/9",
+        "kind": "alias"
+      }
+    ],
+    "ANATS": [
+      {
+        "path": "/domains/customer_category/Commerce_I/accepts/10",
+        "kind": "alias"
+      }
+    ],
+    "Industrie_I": [
+      {
+        "path": "/domains/customer_category/Industrie_I",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Industrie_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "atelier": [
+      {
+        "path": "/domains/customer_category/Industrie_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Atelier soudure": [
+      {
+        "path": "/domains/customer_category/Industrie_I/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Pompage_Eau_I": [
+      {
+        "path": "/domains/customer_category/Pompage_Eau_I",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Pompage_Eau_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Entreprise de fourniture d'eau": [
+      {
+        "path": "/domains/customer_category/Pompage_Eau_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Point d'eau": [
+      {
+        "path": "/domains/customer_category/Pompage_Eau_I/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Technologie_I": [
+      {
+        "path": "/domains/customer_category/Technologie_I",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Technologie_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Cyber café": [
+      {
+        "path": "/domains/customer_category/Technologie_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Cyber": [
+      {
+        "path": "/domains/customer_category/Technologie_I/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Centre multimedia": [
+      {
+        "path": "/domains/customer_category/Technologie_I/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Administration_I": [
+      {
+        "path": "/domains/customer_category/Administration_I",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Administration_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Justice": [
+      {
+        "path": "/domains/customer_category/Administration_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Anader/Environment": [
+      {
+        "path": "/domains/customer_category/Administration_I/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Projet": [
+      {
+        "path": "/domains/customer_category/Administration_I/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Impôts": [
+      {
+        "path": "/domains/customer_category/Administration_I/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "Trésor": [
+      {
+        "path": "/domains/customer_category/Administration_I/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "Delegation": [
+      {
+        "path": "/domains/customer_category/Administration_I/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "Service public": [
+      {
+        "path": "/domains/customer_category/Administration_I/accepts/7",
+        "kind": "alias"
+      }
+    ],
+    "Douanes": [
+      {
+        "path": "/domains/customer_category/Administration_I/accepts/8",
+        "kind": "alias"
+      }
+    ],
+    "Elevage": [
+      {
+        "path": "/domains/customer_category/Administration_I/accepts/9",
+        "kind": "alias"
+      }
+    ],
+    "Programme": [
+      {
+        "path": "/domains/customer_category/Administration_I/accepts/10",
+        "kind": "alias"
+      }
+    ],
+    "Education_I": [
+      {
+        "path": "/domains/customer_category/Education_I",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Education_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Education": [
+      {
+        "path": "/domains/customer_category/Education_I/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Éducation": [
+      {
+        "path": "/domains/customer_category/Education_I/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Ecole": [
+      {
+        "path": "/domains/customer_category/Education_I/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "Humanitaire_I": [
+      {
+        "path": "/domains/customer_category/Humanitaire_I",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Humanitaire_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "ONG": [
+      {
+        "path": "/domains/customer_category/Humanitaire_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Action social": [
+      {
+        "path": "/domains/customer_category/Humanitaire_I/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Croix rouge": [
+      {
+        "path": "/domains/customer_category/Humanitaire_I/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Agence humanitaire": [
+      {
+        "path": "/domains/customer_category/Humanitaire_I/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "Riche": [
+      {
+        "path": "/domains/customer_category/Riche",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Riche/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Elevé": [
+      {
+        "path": "/domains/customer_category/Riche/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Religion_I": [
+      {
+        "path": "/domains/customer_category/Religion_I",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Religion_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Religion": [
+      {
+        "path": "/domains/customer_category/Religion_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Eglise": [
+      {
+        "path": "/domains/customer_category/Religion_I/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Lieu de culte": [
+      {
+        "path": "/domains/customer_category/Religion_I/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Mission": [
+      {
+        "path": "/domains/customer_category/Religion_I/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "Securite Publique_I": [
+      {
+        "path": "/domains/customer_category/Securite Publique_I",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Securite Publique_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Police/Gendarme/Camp Militaire": [
+      {
+        "path": "/domains/customer_category/Securite Publique_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Securite publique": [
+      {
+        "path": "/domains/customer_category/Securite Publique_I/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Securité": [
+      {
+        "path": "/domains/customer_category/Securite Publique_I/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Centre de Santé": [
+      {
+        "path": "/domains/customer_category/Centre de Sante/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Clinique": [
+      {
+        "path": "/domains/customer_category/Centre de Sante/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Centre medicale": [
+      {
+        "path": "/domains/customer_category/Centre de Sante/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Santé": [
+      {
+        "path": "/domains/customer_category/Centre de Sante/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "Laboratoire": [
+      {
+        "path": "/domains/customer_category/Centre de Sante/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "Commerce_II": [
+      {
+        "path": "/domains/customer_category/Commerce_II",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Commerce_II/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Grand Commerce": [
+      {
+        "path": "/domains/customer_category/Commerce_II/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Pharmacie": [
+      {
+        "path": "/domains/customer_category/Commerce_II/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "pharmaci": [
+      {
+        "path": "/domains/customer_category/Commerce_II/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Boulangerie": [
+      {
+        "path": "/domains/customer_category/Commerce_II/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "super marcher": [
+      {
+        "path": "/domains/customer_category/Commerce_II/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "Alimentation buvette": [
+      {
+        "path": "/domains/customer_category/Commerce_II/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "Station service": [
+      {
+        "path": "/domains/customer_category/Commerce_II/accepts/7",
+        "kind": "alias"
+      }
+    ],
+    "Administration_II": [
+      {
+        "path": "/domains/customer_category/Administration_II",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Administration_II/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Mairie": [
+      {
+        "path": "/domains/customer_category/Administration_II/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Sous/Prefecture": [
+      {
+        "path": "/domains/customer_category/Administration_II/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Edifice public": [
+      {
+        "path": "/domains/customer_category/Administration_II/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Maison de la culture": [
+      {
+        "path": "/domains/customer_category/Administration_II/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "Ministere": [
+      {
+        "path": "/domains/customer_category/Administration_II/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "Banque_I": [
+      {
+        "path": "/domains/customer_category/Banque_I",
+        "kind": "canonical"
+      }
+    ],
+    "Banque/Micro-Finance": [
+      {
+        "path": "/domains/customer_category/Banque_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Finance": [
+      {
+        "path": "/domains/customer_category/Banque_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Hotel_I": [
+      {
+        "path": "/domains/customer_category/Hotel_I",
+        "kind": "canonical"
+      }
+    ],
+    "Auberge": [
+      {
+        "path": "/domains/customer_category/Hotel_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Hotel": [
+      {
+        "path": "/domains/customer_category/Hotel_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Administration_III": [
+      {
+        "path": "/domains/customer_category/Administration_III",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Administration_III/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Gouvernorat": [
+      {
+        "path": "/domains/customer_category/Administration_III/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Gourvernorat": [
+      {
+        "path": "/domains/customer_category/Administration_III/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Education_II": [
+      {
+        "path": "/domains/customer_category/Education_II",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Education_II/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Lycée": [
+      {
+        "path": "/domains/customer_category/Education_II/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Collège": [
+      {
+        "path": "/domains/customer_category/Education_II/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Ecole Professionelle": [
+      {
+        "path": "/domains/customer_category/Education_II/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "Ecole Normale": [
+      {
+        "path": "/domains/customer_category/Education_II/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "Mosque_I": [
+      {
+        "path": "/domains/customer_category/Mosque_I",
+        "kind": "canonical"
+      }
+    ],
+    "Mosque": [
+      {
+        "path": "/domains/customer_category/Mosque_I/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Mosquee": [
+      {
+        "path": "/domains/customer_category/Mosque_I/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Mosqué": [
+      {
+        "path": "/domains/customer_category/Mosque_I/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Pompage_Eau_II": [
+      {
+        "path": "/domains/customer_category/Pompage_Eau_II",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Pompage_Eau_II/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Château d'Eau": [
+      {
+        "path": "/domains/customer_category/Pompage_Eau_II/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Chateau d'eau": [
+      {
+        "path": "/domains/customer_category/Pompage_Eau_II/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "Education_III": [
+      {
+        "path": "/domains/customer_category/Education_III",
+        "kind": "canonical"
+      }
+    ],
+    "Universite": [
+      {
+        "path": "/domains/customer_category/Education_III/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Université": [
+      {
+        "path": "/domains/customer_category/Education_III/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Grand Marche": [
+      {
+        "path": "/domains/customer_category/Grand Marche",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Grand Marche/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Hopital de District": [
+      {
+        "path": "/domains/customer_category/Hopital de District",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/customer_category/Hopital de District/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Hopital": [
+      {
+        "path": "/domains/customer_category/Hopital de District/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Single Phase": [
+      {
+        "path": "/domains/meter_type/Single Phase",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/meter_type/Single Phase/accepts/3",
+        "kind": "alias"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/0/meter_type",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/1/meter_type",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/2/meter_type",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/3/meter_type",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/4/meter_type",
+        "kind": "catalogue"
+      }
+    ],
+    "SINGLE HASE": [
+      {
+        "path": "/domains/meter_type/Single Phase/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "SINGLE PHASE": [
+      {
+        "path": "/domains/meter_type/Single Phase/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "single Phase": [
+      {
+        "path": "/domains/meter_type/Single Phase/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "Single phase": [
+      {
+        "path": "/domains/meter_type/Single Phase/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "Singles Phase": [
+      {
+        "path": "/domains/meter_type/Single Phase/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "Single  Phase": [
+      {
+        "path": "/domains/meter_type/Single Phase/accepts/7",
+        "kind": "alias"
+      }
+    ],
+    "sing": [
+      {
+        "path": "/domains/meter_type/Single Phase/accepts/8",
+        "kind": "alias"
+      }
+    ],
+    "Three Phase": [
+      {
+        "path": "/domains/meter_type/Three Phase",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/meter_type/Three Phase/accepts/1",
+        "kind": "alias"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/5/meter_type",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/6/meter_type",
+        "kind": "catalogue"
+      }
+    ],
+    "Three phase": [
+      {
+        "path": "/domains/meter_type/Three Phase/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "THREE PHASE": [
+      {
+        "path": "/domains/meter_type/Three Phase/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "3- PHASE": [
+      {
+        "path": "/domains/meter_type/Three Phase/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "three": [
+      {
+        "path": "/domains/meter_type/Three Phase/accepts/5",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/service_cable_size/4 x 10 mm²/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "3": [
+      {
+        "path": "/domains/meter_type/Three Phase/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "ABC Suspension Assembly (0° - 30°)": [
+      {
+        "path": "/domains/assembly_type/ABC Suspension Assembly (0° - 30°)",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/assembly_type/ABC Suspension Assembly (0° - 30°)/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "ABC Suspension Assembly (0º - 30º)": [
+      {
+        "path": "/domains/assembly_type/ABC Suspension Assembly (0° - 30°)/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "ABC Suspension Assembly (0°-30°)": [
+      {
+        "path": "/domains/assembly_type/ABC Suspension Assembly (0° - 30°)/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "suspension": [
+      {
+        "path": "/domains/assembly_type/ABC Suspension Assembly (0° - 30°)/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "susp-30": [
+      {
+        "path": "/domains/assembly_type/ABC Suspension Assembly (0° - 30°)/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "Strain Assembly (0° - 60°)": [
+      {
+        "path": "/domains/assembly_type/Strain Assembly (0° - 60°)",
+        "kind": "canonical"
+      }
+    ],
+    "Strain Assembly (0º - 60º)": [
+      {
+        "path": "/domains/assembly_type/Strain Assembly (0° - 60°)/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Strain Assembly (0°-60°)": [
+      {
+        "path": "/domains/assembly_type/Strain Assembly (0° - 60°)/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Strain Assembly (30°-60°)": [
+      {
+        "path": "/domains/assembly_type/Strain Assembly (0° - 60°)/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "ABC Strain Assembly (30° - 60°)": [
+      {
+        "path": "/domains/assembly_type/Strain Assembly (0° - 60°)/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "str-30-60": [
+      {
+        "path": "/domains/assembly_type/Strain Assembly (0° - 60°)/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "Strain Assembly (60° - 90°)": [
+      {
+        "path": "/domains/assembly_type/Strain Assembly (60° - 90°)",
+        "kind": "canonical"
+      }
+    ],
+    "Strain Assembly (60º - 90º)": [
+      {
+        "path": "/domains/assembly_type/Strain Assembly (60° - 90°)/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Strain Assembly (60°-90°)": [
+      {
+        "path": "/domains/assembly_type/Strain Assembly (60° - 90°)/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "ABC Strain Assembly (60° - 90°)": [
+      {
+        "path": "/domains/assembly_type/Strain Assembly (60° - 90°)/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "str-60-90": [
+      {
+        "path": "/domains/assembly_type/Strain Assembly (60° - 90°)/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "ABC Terminal Assembly": [
+      {
+        "path": "/domains/assembly_type/ABC Terminal Assembly",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/assembly_type/ABC Terminal Assembly/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "terminal": [
+      {
+        "path": "/domains/assembly_type/ABC Terminal Assembly/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "termi": [
+      {
+        "path": "/domains/assembly_type/ABC Terminal Assembly/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "T-Off Assembly from Intermediate": [
+      {
+        "path": "/domains/assembly_type/T-Off Assembly from Intermediate",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/assembly_type/T-Off Assembly from Intermediate/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "T-Off Assemly from Intermediate": [
+      {
+        "path": "/domains/assembly_type/T-Off Assembly from Intermediate/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "T-Off Assembly fom Intermediate": [
+      {
+        "path": "/domains/assembly_type/T-Off Assembly from Intermediate/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "off-int": [
+      {
+        "path": "/domains/assembly_type/T-Off Assembly from Intermediate/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "T-Off Assembly from Strain": [
+      {
+        "path": "/domains/assembly_type/T-Off Assembly from Strain",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/assembly_type/T-Off Assembly from Strain/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "T-Off Assemly from Strain": [
+      {
+        "path": "/domains/assembly_type/T-Off Assembly from Strain/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "T-Off Assembly from strain": [
+      {
+        "path": "/domains/assembly_type/T-Off Assembly from Strain/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "T-Off Assembly fom Stain": [
+      {
+        "path": "/domains/assembly_type/T-Off Assembly from Strain/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "off-str": [
+      {
+        "path": "/domains/assembly_type/T-Off Assembly from Strain/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "Cross Intermediate-Intermediate Assembly": [
+      {
+        "path": "/domains/assembly_type/Cross Intermediate-Intermediate Assembly",
+        "kind": "canonical"
+      }
+    ],
+    "Cross Intermediate - Intermediate Assembly": [
+      {
+        "path": "/domains/assembly_type/Cross Intermediate-Intermediate Assembly/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "Cross Assembly fom Intermediate": [
+      {
+        "path": "/domains/assembly_type/Cross Intermediate-Intermediate Assembly/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "Cross Assembly from Intermediate": [
+      {
+        "path": "/domains/assembly_type/Cross Intermediate-Intermediate Assembly/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "cross-int": [
+      {
+        "path": "/domains/assembly_type/Cross Intermediate-Intermediate Assembly/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "Cross Intermediate-Strain Assembly": [
+      {
+        "path": "/domains/assembly_type/Cross Intermediate-Strain Assembly",
+        "kind": "canonical"
+      }
+    ],
+    "Cross Intermediate - Strain Assembly": [
+      {
+        "path": "/domains/assembly_type/Cross Intermediate-Strain Assembly/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "cross": [
+      {
+        "path": "/domains/assembly_type/Cross Intermediate-Strain Assembly/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "cross-strain": [
+      {
+        "path": "/domains/assembly_type/Cross Intermediate-Strain Assembly/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "Service Pole": [
+      {
+        "path": "/domains/assembly_type/Service Pole",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/assembly_type/Service Pole/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "service": [
+      {
+        "path": "/domains/assembly_type/Service Pole/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "Existing": [
+      {
+        "path": "/domains/assembly_type/Existing",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/existing/Yes/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "exist": [
+      {
+        "path": "/domains/assembly_type/Existing/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "exists": [
+      {
+        "path": "/domains/assembly_type/Existing/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "No": [
+      {
+        "path": "/domains/existing/No",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/existing/No/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "no": [
+      {
+        "path": "/domains/existing/No/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "false": [
+      {
+        "path": "/domains/existing/No/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "False": [
+      {
+        "path": "/domains/existing/No/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "0": [
+      {
+        "path": "/domains/existing/No/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "n": [
+      {
+        "path": "/domains/existing/No/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "N": [
+      {
+        "path": "/domains/existing/No/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "Yes": [
+      {
+        "path": "/domains/existing/Yes",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/existing/Yes/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "yes": [
+      {
+        "path": "/domains/existing/Yes/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "true": [
+      {
+        "path": "/domains/existing/Yes/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "True": [
+      {
+        "path": "/domains/existing/Yes/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "1": [
+      {
+        "path": "/domains/existing/Yes/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "existing": [
+      {
+        "path": "/domains/existing/Yes/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "EXISTING": [
+      {
+        "path": "/domains/existing/Yes/accepts/7",
+        "kind": "alias"
+      }
+    ],
+    "Replace": [
+      {
+        "path": "/domains/existing/Replace",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/existing/Replace/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "replace": [
+      {
+        "path": "/domains/existing/Replace/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "REPLACE": [
+      {
+        "path": "/domains/existing/Replace/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "A": [
+      {
+        "path": "/domains/level/A",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/level/A/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "a": [
+      {
+        "path": "/domains/level/A/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "B": [
+      {
+        "path": "/domains/level/B",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/level/B/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "b": [
+      {
+        "path": "/domains/level/B/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "C": [
+      {
+        "path": "/domains/level/C",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/level/C/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "c": [
+      {
+        "path": "/domains/level/C/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "D": [
+      {
+        "path": "/domains/level/D",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/level/D/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "d": [
+      {
+        "path": "/domains/level/D/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "S140": [
+      {
+        "path": "/domains/struct_type/S140",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/struct_type/S140/accepts/0",
+        "kind": "alias"
+      },
+      {
+        "path": "/electrical/struct_sizes/1/base_structure",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/struct_sizes/4/base_structure",
+        "kind": "catalogue"
+      }
+    ],
+    "140S": [
+      {
+        "path": "/domains/struct_type/S140/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "S100": [
+      {
+        "path": "/domains/struct_type/S140/accepts/2",
+        "kind": "alias"
+      },
+      {
+        "path": "/electrical/struct_sizes/0/base_structure",
+        "kind": "catalogue"
+      }
+    ],
+    "140": [
+      {
+        "path": "/domains/struct_type/S140/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "S190": [
+      {
+        "path": "/domains/struct_type/S190",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/struct_type/S190/accepts/0",
+        "kind": "alias"
+      },
+      {
+        "path": "/electrical/struct_sizes/2/base_structure",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/struct_sizes/5/base_structure",
+        "kind": "catalogue"
+      }
+    ],
+    "190S": [
+      {
+        "path": "/domains/struct_type/S190/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "190": [
+      {
+        "path": "/domains/struct_type/S190/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "SS190": [
+      {
+        "path": "/domains/struct_type/S190/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "S255": [
+      {
+        "path": "/domains/struct_type/S255",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/struct_type/S255/accepts/0",
+        "kind": "alias"
+      },
+      {
+        "path": "/electrical/struct_sizes/3/base_structure",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/struct_sizes/6/base_structure",
+        "kind": "catalogue"
+      }
+    ],
+    "255S": [
+      {
+        "path": "/domains/struct_type/S255/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "255": [
+      {
+        "path": "/domains/struct_type/S255/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "250": [
+      {
+        "path": "/domains/struct_type/S255/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "3 x 25 + 54.6mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 25 + 54.6mm² ABC",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/cable_size/3 x 25 + 54.6mm² ABC/accepts/0",
+        "kind": "alias"
+      },
+      {
+        "path": "/electrical/lv_cables/0/name",
+        "kind": "catalogue"
+      }
+    ],
+    "25": [
+      {
+        "path": "/domains/cable_size/3 x 25 + 54.6mm² ABC/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "3 x 35 + 54.6mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC",
+        "kind": "canonical"
+      },
+      {
+        "path": "/electrical/lv_cables/1/name",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/transfo_sizes/0/main_cable",
+        "kind": "catalogue"
+      }
+    ],
+    "3x35mm²+54.6mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/0",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/10",
+        "kind": "alias"
+      }
+    ],
+    "3C*35 mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/1",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/14",
+        "kind": "alias"
+      }
+    ],
+    "3C*35 mm²": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/2",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/11",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/13",
+        "kind": "alias"
+      }
+    ],
+    "3CX35 sqmm": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "4x35mm² - 35mm²": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "3*35 mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "3x35 Sqmm": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "3C*35mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/7",
+        "kind": "alias"
+      }
+    ],
+    "(3C*35 mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/8",
+        "kind": "alias"
+      }
+    ],
+    "(3x35mm²+54.6mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/9",
+        "kind": "alias"
+      }
+    ],
+    "4X35 sqmm": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/12",
+        "kind": "alias"
+      }
+    ],
+    "35": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/15",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "x35 25": [
+      {
+        "path": "/domains/cable_size/3 x 35 + 54.6mm² ABC/accepts/16",
+        "kind": "alias"
+      }
+    ],
+    "3 x 50 + 54.6mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC",
+        "kind": "canonical"
+      },
+      {
+        "path": "/electrical/lv_cables/2/name",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/transfo_sizes/1/main_cable",
+        "kind": "catalogue"
+      }
+    ],
+    "3x50mm²+54.6mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "3C*50 mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/1",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/8",
+        "kind": "alias"
+      }
+    ],
+    "3CX50 sqmm": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "3*50 mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "3C*50mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/4",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/5",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "3C*50mm² ABC#4X50 sqmm": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/7",
+        "kind": "alias"
+      }
+    ],
+    "4X50 sqmm": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/9",
+        "kind": "alias"
+      }
+    ],
+    "3x50mm²546mm²abc": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/10",
+        "kind": "alias"
+      }
+    ],
+    "4x50mm²50mm²": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/11",
+        "kind": "alias"
+      }
+    ],
+    "3x50sqmm": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/12",
+        "kind": "alias"
+      }
+    ],
+    "50": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/13",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "3x50": [
+      {
+        "path": "/domains/cable_size/3 x 50 + 54.6mm² ABC/accepts/14",
+        "kind": "alias"
+      }
+    ],
+    "3 x 70 + 54.6mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC",
+        "kind": "canonical"
+      },
+      {
+        "path": "/electrical/lv_cables/3/name",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/transfo_sizes/2/main_cable",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/transfo_sizes/3/main_cable",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/transfo_sizes/4/main_cable",
+        "kind": "catalogue"
+      }
+    ],
+    "3x70mm²+54.6mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/0",
+        "kind": "alias"
+      }
+    ],
+    "3C*70 mm² ABC": [
+      {
+        "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/1",
+        "kind": "alias"
+      }
+    ],
+    "3x70mm²546mm²abc": [
+      {
+        "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "4x70mm²70mm²": [
+      {
+        "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "3x70sqmm": [
+      {
+        "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "70": [
+      {
+        "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/5",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/simple_match",
+        "kind": "match-id"
+      }
+    ],
+    "3x75": [
+      {
+        "path": "/domains/cable_size/3 x 70 + 54.6mm² ABC/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "2 x 4 mm²": [
+      {
+        "path": "/domains/service_cable_size/2 x 4 mm²",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/service_cable_size/2 x 4 mm²/accepts/0",
+        "kind": "alias"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/0/service_cable_size",
+        "kind": "catalogue"
+      }
+    ],
+    "2 x 6 mm²": [
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/0",
+        "kind": "alias"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/1/service_cable_size",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/2/service_cable_size",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/3/service_cable_size",
+        "kind": "catalogue"
+      }
+    ],
+    "2CX6SQMM": [
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/1",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "(2CX6SQMM)": [
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "2Cx 6 Sqmm": [
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/4",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/5",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/8",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/10",
+        "kind": "alias"
+      }
+    ],
+    "2Cx6 Sqmm": [
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/6",
+        "kind": "alias"
+      }
+    ],
+    "2Cx6Sqmm": [
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/7",
+        "kind": "alias"
+      }
+    ],
+    "2Cx6 sqmm": [
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/9",
+        "kind": "alias"
+      }
+    ],
+    "2x6": [
+      {
+        "path": "/domains/service_cable_size/2 x 6 mm²/accepts/11",
+        "kind": "alias"
+      }
+    ],
+    "2 x 10 mm²": [
+      {
+        "path": "/domains/service_cable_size/2 x 10 mm²",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/service_cable_size/2 x 10 mm²/accepts/0",
+        "kind": "alias"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/4/service_cable_size",
+        "kind": "catalogue"
+      }
+    ],
+    "2CX10SQMM": [
+      {
+        "path": "/domains/service_cable_size/2 x 10 mm²/accepts/1",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/service_cable_size/2 x 10 mm²/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "2Cx10sqmm": [
+      {
+        "path": "/domains/service_cable_size/2 x 10 mm²/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "2Cx10 Sqmm": [
+      {
+        "path": "/domains/service_cable_size/2 x 10 mm²/accepts/4",
+        "kind": "alias"
+      }
+    ],
+    "2x10": [
+      {
+        "path": "/domains/service_cable_size/2 x 10 mm²/accepts/5",
+        "kind": "alias"
+      }
+    ],
+    "4 x 10 mm²": [
+      {
+        "path": "/domains/service_cable_size/4 x 10 mm²",
+        "kind": "canonical"
+      },
+      {
+        "path": "/domains/service_cable_size/4 x 10 mm²/accepts/0",
+        "kind": "alias"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/5/service_cable_size",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/service_cable_sizes/6/service_cable_size",
+        "kind": "catalogue"
+      }
+    ],
+    "4CX10SQMM": [
+      {
+        "path": "/domains/service_cable_size/4 x 10 mm²/accepts/1",
+        "kind": "alias"
+      },
+      {
+        "path": "/domains/service_cable_size/4 x 10 mm²/accepts/2",
+        "kind": "alias"
+      }
+    ],
+    "4Cx10 Sqmm": [
+      {
+        "path": "/domains/service_cable_size/4 x 10 mm²/accepts/3",
+        "kind": "alias"
+      }
+    ],
+    "3 x 95 + 54.6mm² ABC": [
+      {
+        "path": "/electrical/lv_cables/4/name",
+        "kind": "catalogue"
+      }
+    ],
+    "3 x 120 + 70mm² ABC": [
+      {
+        "path": "/electrical/lv_cables/5/name",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 35 mm²": [
+      {
+        "path": "/electrical/transfo_sizes/0/cable_to_db",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/transfo_sizes/1/cable_to_db",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 50 mm²": [
+      {
+        "path": "/electrical/transfo_sizes/2/cable_to_db",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 95 mm²": [
+      {
+        "path": "/electrical/transfo_sizes/3/cable_to_db",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 120 mm²": [
+      {
+        "path": "/electrical/transfo_sizes/4/cable_to_db",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 1 x 185 mm²": [
+      {
+        "path": "/electrical/transfo_sizes/5/cable_to_db",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 120": [
+      {
+        "path": "/electrical/transfo_sizes/5/main_cable",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 1 x 240 mm²": [
+      {
+        "path": "/electrical/transfo_sizes/6/cable_to_db",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/transfo_sizes/7/cable_to_db",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 150": [
+      {
+        "path": "/electrical/transfo_sizes/6/main_cable",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 185": [
+      {
+        "path": "/electrical/transfo_sizes/7/main_cable",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 1 x 300 mm²": [
+      {
+        "path": "/electrical/transfo_sizes/8/cable_to_db",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 240": [
+      {
+        "path": "/electrical/transfo_sizes/8/main_cable",
+        "kind": "catalogue"
+      }
+    ],
+    "2 x 4 x 1 x 240 mm²": [
+      {
+        "path": "/electrical/transfo_sizes/9/cable_to_db",
+        "kind": "catalogue"
+      }
+    ],
+    "4 x 300": [
+      {
+        "path": "/electrical/transfo_sizes/9/main_cable",
+        "kind": "catalogue"
+      }
+    ],
+    "8m 150daN": [
+      {
+        "path": "/electrical/struct_sizes/0/result_structure",
+        "kind": "catalogue"
+      }
+    ],
+    "9m 150daN": [
+      {
+        "path": "/electrical/struct_sizes/1/result_structure",
+        "kind": "catalogue"
+      }
+    ],
+    "9m 300daN": [
+      {
+        "path": "/electrical/struct_sizes/2/result_structure",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/struct_sizes/3/result_structure",
+        "kind": "catalogue"
+      },
+      {
+        "path": "/electrical/struct_sizes/5/result_structure",
+        "kind": "catalogue"
+      }
+    ],
+    "9m 500daN": [
+      {
+        "path": "/electrical/struct_sizes/4/result_structure",
+        "kind": "catalogue"
+      }
+    ],
+    "9m 650daN": [
+      {
+        "path": "/electrical/struct_sizes/6/result_structure",
+        "kind": "catalogue"
+      }
+    ],
+    "wood": [
+      {
+        "path": "/defaults/transformer/poles/material_type/value",
+        "kind": "default-vocabulary"
+      }
+    ]
+  }
+}

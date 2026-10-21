@@ -1,0 +1,23 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "compounded": [
+      {"z": 1, "a": {"y": [1.5, -2, 1e300, "éé\"\\/<>& \u0001\t\n"], "b": null}, "stem": ""},
+      {"note": "keys sort", "B": true, "a": false, "é": 0.30000000000000004},
+      {"n": 100000000000000000000, "m": -9223372036854775808, "k": 9223372036854775808, "f": 5e-324},
+      {"s": "\u0000\u001f\u007f\u0080￿😀", "big": 1.7976931348623157e308, "small": 123456789.125}
+    ],
+    "solar": [
+      {"artifacts": [{"name": "x"}], "head": {"run_id": 1.0}},
+      {"city": ""},
+      {"z": [], "y": {}, "x": [[]]}
+    ],
+    "design_attachments": [
+      {"revisions": [{"revision_id": "r"}], "attachment": {"label": "no attachment id", "n": -0.0}}
+    ],
+    "pm_attachments": [
+      {"id": "", "originalName": "  "},
+      {"id": "pa_blankname", "linkedEntityType": "comment", "originalName": "   "}
+    ]
+  }
+}

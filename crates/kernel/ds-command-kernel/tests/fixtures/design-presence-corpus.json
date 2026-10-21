@@ -1,0 +1,2852 @@
+{
+	"schema": "ds.design-presence-parity/v1",
+	"purpose": "Campaign slice 14a — lease reconciliation owned by ds-command-kernel::design_presence. `expected_ts` is the four-step pass of transformer-presence.ts with its lock call RECORDED instead of sent, so the order and the shared budget are observable; recorded by running that code once before deleting it. `expected` is the kernel plan.",
+	"bounds": {
+		"hold_refresh_ms": 300000,
+		"max_lock_calls_per_pass": 20
+	},
+	"cases": [
+		{
+			"id": "clean-after-save",
+			"note": "A saved room drops its hold and its draft: the save transaction already ended both.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_1",
+						"dirty": false,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [
+					{
+						"name": "tx_1",
+						"digest": "d1",
+						"at_ms": 1800000000000,
+						"unsaved_since": "2026-09-11T07:00:00.000Z"
+					}
+				],
+				"drafts": [
+					"tx_1"
+				],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [],
+				"deferred": 0,
+				"cleared": [
+					"tx_1"
+				],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [
+					"tx_1"
+				],
+				"hold": [],
+				"release": [],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 0,
+					"left": 20
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "vanished-on-complete",
+			"note": "A discarded room releases its lease and its draft — but only when the pass saw every room.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [],
+				"held": [
+					{
+						"name": "tx_9",
+						"digest": "d1",
+						"at_ms": 1800000000000,
+						"unsaved_since": "2026-09-11T07:00:00.000Z"
+					}
+				],
+				"drafts": [
+					"tx_9"
+				],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [
+					{
+						"op": "release",
+						"name": "tx_9"
+					}
+				],
+				"deferred": 0,
+				"cleared": [],
+				"deletedDrafts": [
+					"tx_9"
+				]
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [],
+				"release": [
+					{
+						"name": "tx_9",
+						"delete_draft": true
+					}
+				],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 1,
+					"left": 19
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "vanished-on-partial",
+			"note": "A partial refresh saw a subset; releasing on that evidence would drop a lease for a room that is merely off-screen.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [],
+				"held": [
+					{
+						"name": "tx_9",
+						"digest": "d1",
+						"at_ms": 1800000000000,
+						"unsaved_since": "2026-09-11T07:00:00.000Z"
+					}
+				],
+				"drafts": [
+					"tx_9"
+				],
+				"now_ms": 1800000000000,
+				"complete": false
+			},
+			"expected_ts": {
+				"calls": [],
+				"deferred": 0,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [],
+				"release": [],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 0,
+					"left": 20
+				},
+				"complete": false
+			}
+		},
+		{
+			"id": "new-room",
+			"note": "A dirty room this browser holds no lease for takes one, anchored to its write time.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [],
+				"drafts": [],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [
+					{
+						"op": "hold",
+						"name": "tx_1",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					}
+				],
+				"deferred": 0,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [
+					{
+						"name": "tx_1",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"release": [],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 1,
+					"left": 19
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "digest-changed",
+			"note": "The room moved under the lease, so the hold is retaken and the original anchor carried forward.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d2",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [
+					{
+						"name": "tx_1",
+						"digest": "d1",
+						"at_ms": 1799999999999,
+						"unsaved_since": "2026-09-11T07:00:00.000Z"
+					}
+				],
+				"drafts": [],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [
+					{
+						"op": "hold",
+						"name": "tx_1",
+						"unsavedSince": "2026-09-11T07:00:00.000Z",
+						"digest": "d2"
+					}
+				],
+				"deferred": 0,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [
+					{
+						"name": "tx_1",
+						"reason": "digest_changed",
+						"unsaved_since": "2026-09-11T07:00:00.000Z",
+						"digest": "d2",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"release": [],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 1,
+					"left": 19
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "digest-unknown",
+			"note": "No digest anywhere: the decision falls through to the staleness clause, and the host is told what it could read.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [
+					{
+						"name": "tx_1",
+						"digest": "d1",
+						"at_ms": 1799999999999,
+						"unsaved_since": "2026-09-11T07:00:00.000Z"
+					}
+				],
+				"drafts": [],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [],
+				"deferred": 0,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [],
+				"release": [],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [
+					"tx_1"
+				],
+				"budget": {
+					"limit": 20,
+					"spent": 0,
+					"left": 20
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "fresh-hold",
+			"note": "Nothing moved and the lease is young: no call at all.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [
+					{
+						"name": "tx_1",
+						"digest": "d1",
+						"at_ms": 1799999999999,
+						"unsaved_since": "2026-09-11T07:00:00.000Z"
+					}
+				],
+				"drafts": [],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [],
+				"deferred": 0,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [],
+				"release": [],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 0,
+					"left": 20
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "stale-beyond-refresh",
+			"note": "The lease is older than HOLD_REFRESH_MS.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [
+					{
+						"name": "tx_1",
+						"digest": "d1",
+						"at_ms": 1799999699999,
+						"unsaved_since": "2026-09-11T07:00:00.000Z"
+					}
+				],
+				"drafts": [],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [
+					{
+						"op": "hold",
+						"name": "tx_1",
+						"unsavedSince": "2026-09-11T07:00:00.000Z",
+						"digest": "d1"
+					}
+				],
+				"deferred": 0,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [
+					{
+						"name": "tx_1",
+						"reason": "stale",
+						"unsaved_since": "2026-09-11T07:00:00.000Z",
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"release": [],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 1,
+					"left": 19
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "conflict-fresh",
+			"note": "Another account holds it and the window has not passed: a moved digest must not jump it.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d2",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [
+					{
+						"name": "tx_1",
+						"digest": "d1",
+						"at_ms": 1799999999999,
+						"unsaved_since": "2026-09-11T07:00:00.000Z",
+						"conflict_with": "someone@example.com"
+					}
+				],
+				"drafts": [],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [],
+				"deferred": 0,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [],
+				"release": [],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 0,
+					"left": 20
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "conflict-stale",
+			"note": "Another account holds it and the window passed: re-ask.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d2",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [
+					{
+						"name": "tx_1",
+						"digest": "d1",
+						"at_ms": 1799999699999,
+						"unsaved_since": "2026-09-11T07:00:00.000Z",
+						"conflict_with": "someone@example.com"
+					}
+				],
+				"drafts": [],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [
+					{
+						"op": "hold",
+						"name": "tx_1",
+						"unsavedSince": "2026-09-11T07:00:00.000Z",
+						"digest": "d2"
+					}
+				],
+				"deferred": 0,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [
+					{
+						"name": "tx_1",
+						"reason": "conflict_refresh",
+						"unsaved_since": "2026-09-11T07:00:00.000Z",
+						"digest": "d2",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"release": [],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 1,
+					"left": 19
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "server-unknown",
+			"note": "A room the server does not know can carry no lease.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": false,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [],
+				"drafts": [],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [],
+				"deferred": 0,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [],
+				"release": [],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 0,
+					"left": 20
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "budget-exactly-twenty",
+			"note": "Twenty holds is the cap, not twenty-one.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_0",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_2",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_3",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_4",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_5",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_6",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_7",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_8",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_9",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_10",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_11",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_12",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_13",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_14",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_15",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_16",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_17",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_18",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_19",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [],
+				"drafts": [],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [
+					{
+						"op": "hold",
+						"name": "tx_0",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_1",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_2",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_3",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_4",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_5",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_6",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_7",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_8",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_9",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_10",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_11",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_12",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_13",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_14",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_15",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_16",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_17",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_18",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_19",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					}
+				],
+				"deferred": 0,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [
+					{
+						"name": "tx_0",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_1",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_2",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_3",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_4",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_5",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_6",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_7",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_8",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_9",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_10",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_11",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_12",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_13",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_14",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_15",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_16",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_17",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_18",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_19",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"release": [],
+				"deferred": [],
+				"deferred_count": 0,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 20,
+					"left": 0
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "budget-twenty-one",
+			"note": "The twenty-first hold waits for the next pass and is counted.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_0",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_2",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_3",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_4",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_5",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_6",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_7",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_8",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_9",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_10",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_11",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_12",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_13",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_14",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_15",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_16",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_17",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_18",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_19",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_20",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [],
+				"drafts": [],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [
+					{
+						"op": "hold",
+						"name": "tx_0",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_1",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_2",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_3",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_4",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_5",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_6",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_7",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_8",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_9",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_10",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_11",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_12",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_13",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_14",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_15",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_16",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_17",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_18",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_19",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					}
+				],
+				"deferred": 1,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [
+					{
+						"name": "tx_0",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_1",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_2",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_3",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_4",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_5",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_6",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_7",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_8",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_9",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_10",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_11",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_12",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_13",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_14",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_15",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_16",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_17",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_18",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_19",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"release": [],
+				"deferred": [
+					{
+						"name": "tx_20",
+						"call": "hold",
+						"reason": "budget_exhausted"
+					}
+				],
+				"deferred_count": 1,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 20,
+					"left": 0
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "shared-budget",
+			"note": "ONE budget: twenty holds defer EVERY release, so a vanished room keeps its server lease until a later pass.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_0",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_2",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_3",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_4",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_5",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_6",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_7",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_8",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_9",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_10",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_11",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_12",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_13",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_14",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_15",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_16",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_17",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_18",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_19",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [
+					{
+						"name": "gone_1",
+						"digest": "d1",
+						"at_ms": 1800000000000,
+						"unsaved_since": "2026-09-11T07:00:00.000Z"
+					},
+					{
+						"name": "gone_2",
+						"digest": "d1",
+						"at_ms": 1800000000000,
+						"unsaved_since": "2026-09-11T07:00:00.000Z"
+					}
+				],
+				"drafts": [
+					"gone_1",
+					"gone_2"
+				],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [
+					{
+						"op": "hold",
+						"name": "tx_0",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_1",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_2",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_3",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_4",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_5",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_6",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_7",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_8",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_9",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_10",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_11",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_12",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_13",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_14",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_15",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_16",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_17",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_18",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_19",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					}
+				],
+				"deferred": 2,
+				"cleared": [],
+				"deletedDrafts": []
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [
+					{
+						"name": "tx_0",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_1",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_2",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_3",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_4",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_5",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_6",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_7",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_8",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_9",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_10",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_11",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_12",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_13",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_14",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_15",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_16",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_17",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_18",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_19",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"release": [],
+				"deferred": [
+					{
+						"name": "gone_1",
+						"call": "release",
+						"reason": "budget_exhausted"
+					},
+					{
+						"name": "gone_2",
+						"call": "release",
+						"reason": "budget_exhausted"
+					}
+				],
+				"deferred_count": 2,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 20,
+					"left": 0
+				},
+				"complete": true
+			}
+		},
+		{
+			"id": "releases-after-holds",
+			"note": "Holds are spent first; what the budget leaves goes to the releases.",
+			"request": {
+				"op": "plan",
+				"schema": "ds.design-presence/v1",
+				"rooms": [
+					{
+						"name": "tx_0",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_1",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_2",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_3",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_4",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_5",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_6",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_7",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_8",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_9",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_10",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_11",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_12",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_13",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_14",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_15",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_16",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_17",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_18",
+						"dirty": true,
+						"server_known": true,
+						"updated_at_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"held": [
+					{
+						"name": "gone_1",
+						"digest": "d1",
+						"at_ms": 1800000000000,
+						"unsaved_since": "2026-09-11T07:00:00.000Z"
+					},
+					{
+						"name": "gone_2",
+						"digest": "d1",
+						"at_ms": 1800000000000,
+						"unsaved_since": "2026-09-11T07:00:00.000Z"
+					}
+				],
+				"drafts": [
+					"gone_1"
+				],
+				"now_ms": 1800000000000,
+				"complete": true
+			},
+			"expected_ts": {
+				"calls": [
+					{
+						"op": "hold",
+						"name": "tx_0",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_1",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_2",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_3",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_4",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_5",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_6",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_7",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_8",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_9",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_10",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_11",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_12",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_13",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_14",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_15",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_16",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_17",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "hold",
+						"name": "tx_18",
+						"unsavedSince": "2027-01-15T07:58:30.000Z",
+						"digest": "d1"
+					},
+					{
+						"op": "release",
+						"name": "gone_1"
+					}
+				],
+				"deferred": 1,
+				"cleared": [],
+				"deletedDrafts": [
+					"gone_1"
+				]
+			},
+			"expected": {
+				"schema": "ds.design-presence/v1",
+				"op": "plan",
+				"clear": [],
+				"hold": [
+					{
+						"name": "tx_0",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_1",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_2",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_3",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_4",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_5",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_6",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_7",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_8",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_9",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_10",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_11",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_12",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_13",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_14",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_15",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_16",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_17",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					},
+					{
+						"name": "tx_18",
+						"reason": "new",
+						"unsaved_since_ms": 1799999910000,
+						"digest": "d1",
+						"feature_counts": {
+							"lv_lines": 3
+						}
+					}
+				],
+				"release": [
+					{
+						"name": "gone_1",
+						"delete_draft": true
+					}
+				],
+				"deferred": [
+					{
+						"name": "gone_2",
+						"call": "release",
+						"reason": "budget_exhausted"
+					}
+				],
+				"deferred_count": 1,
+				"needs_digest": [],
+				"budget": {
+					"limit": 20,
+					"spent": 20,
+					"left": 0
+				},
+				"complete": true
+			}
+		}
+	]
+}

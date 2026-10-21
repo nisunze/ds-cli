@@ -1,0 +1,37 @@
+[package]
+name = "ds-sync-runtime"
+description = "The shared native sync runtime: the IO half of ds_command_kernel::sync, run once for desktop, the ds CLI and the Linux server. No Tauri, no webview, no credential of its own."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[features]
+# Test-only. Exposes the deterministic fakes (a scripted gateway, an
+# in-memory producer and a scripted transport) so a host crate's own tests
+# can drive the shared runtime end to end without a network. No release
+# build enables it: it is reached only through dev-dependencies.
+fakes = []
+
+[dependencies]
+ds-report-artifacts = { path = "../ds-report-artifacts" }
+ds-command-kernel = { path = "../.." }
+ds-sync-store = { path = "../ds-sync-store" }
+ds-compute-runtime = { path = "../ds-compute-runtime" }
+chrono = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+tempfile = "3"
+# Both native hosts already resolve ureq 3.4.x; this asks for nothing newer.
+ureq = "3.3"
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+# The route table is cross-checked against the reviewed gateway registry.
+ds-client-core = { path = "../ds-client-core" }
+ds-sync-runtime = { path = ".", features = ["fakes"] }
+
+# Native host crate: not part of the portable WASM workspace.
+[workspace]

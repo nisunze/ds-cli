@@ -1,0 +1,140 @@
+[package]
+name = "ds-command-kernel"
+description = "Shared deterministic DS command and state transitions for native and WASM clients."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+# `crates/ds-design-workspace` is deliberately NOT a member: it is a native
+# host crate that legitimately depends on ds-network, and cargo resolves every
+# member's manifest before building any of them — so while it sat here the
+# kernel could not build with ds-network absent no matter what the kernel's own
+# dependencies said. It carries its own [workspace] table at an unchanged path.
+# See docs/contracts/ds-portable-geometry.md §4.
+[workspace]
+members = ["crates/ds-template-test-support", "crates/ds-kml", "crates/ds-geo-lite", "crates/ds-profile-grid", "crates/ds-profile-policy", "crates/ds-sync-store", "crates/ds-profile-view"]
+resolver = "2"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "ds-print-layout-validate"
+path = "src/bin/ds-print-layout-validate.rs"
+
+[features]
+default = []
+# The platform this Kernel build serves; at most one. routing/capabilities.json
+# declares the platforms, names each one's feature and the default (none
+# enabled), and decides, at compile time, how every capability runs there.
+platform-core = []
+platform-desktop = []
+platform-web = []
+# The gateway lane a page build speaks to, and the local development stack,
+# where the page's own origin proxies the gateway. The origins, the platform
+# key and the Firebase project come from the build environment (build_gateway.rs).
+lane-canary = []
+lane-production = []
+topology-local = []
+# The Kernel durable stores on SQLite (rusqlite): Core runs them in its
+# protected Store; the browser storage worker runs the same code on OPFS.
+durable-store = ["dep:rusqlite"]
+# The browser executor of gateway exchanges (`gateway_exchange::browser`) and
+# its typed exports ride the WASM build only; native builds carry no HTTP
+# client and reach the gateway through Core.
+wasm = [
+    "profile-view",
+    "dep:wasm-bindgen",
+    "durable-store",
+    "dep:sqlite-wasm-rs",
+    "dep:sqlite-wasm-vfs",
+    "dep:reqwest",
+    "dep:wasm-bindgen-futures",
+    "dep:js-sys",
+    "dep:gloo-timers",
+    "dep:tsify",
+    "dep:uuid",
+    "dep:web-sys",
+    "client-state",
+    "dep:send_wrapper",
+    "dep:console_error_panic_hook",
+    "any_spawner/wasm-bindgen",
+]
+profile-view = ["dep:ds-profile-view", "dep:wasm-bindgen", "dep:web-sys", "dep:js-sys"]
+# Client state as Rust signals (`client_state`): Leptos's reactive core,
+# never its UI. The WASM build runs it on wasm-bindgen-futures; a native host
+# initializes any_spawner with its own runtime.
+client-state = ["durable-store", "dep:reactive_graph", "dep:any_spawner"]
+
+[dependencies]
+ds-profile-view = { path = "crates/ds-profile-view", optional = true }
+ds-profile-policy = { path = "crates/ds-profile-policy" }
+ds-kml = { path = "crates/ds-kml" }
+ryu = "1"
+schemars = "1.2.2"
+base64 = "0.22"
+mail-parser = { version = "=0.11.9", default-features = false }
+reactive_graph = { version = "0.2.16", features = ["effects"], optional = true }
+any_spawner = { version = "0.3.0", optional = true }
+ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "raw_value", "float_roundtrip"] }
+sha2 = "0.10"
+wasm-bindgen = { version = "0.2", optional = true }
+zeroize = "1"
+url = "2"
+regex = "1"
+# What JavaScript's encodeURIComponent does, for help asset data URIs.
+percent-encoding = "2"
+# Portable primitives are canonical in ds-geo-lite; Network delegates to it.
+# The remaining identity/comparison snapshots keep their existing drift fence.
+# Neither this kernel nor its portable crates depend on ds-network.
+ds-geo-lite = { path = "crates/ds-geo-lite", features = ["overlay", "revision", "vector_types"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = { version = "0.41", default-features = false, features = ["encoding"] }
+csv = "1.4"
+imagesize = "0.13"
+# The survey capture pipeline deliberately carries only the codecs it admits.
+# Keeping defaults off keeps native and WASM builds free of the larger codec set.
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+time = { version = "=0.3.47", features = ["formatting", "parsing"] }
+rusqlite = { version = "0.40.2", optional = true, features = ["bundled"] }
+# One drain runs its lanes at once (`future::join`).
+futures-util = { version = "0.3", default-features = false }
+
+# HTTP through reqwest (development philosophy §9): its WebAssembly client is
+# the page's own `fetch`. tsify generates the TypeScript types of the typed
+# exports from the Rust types they return.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+reqwest = { version = "0.13.5", default-features = false, features = ["stream"], optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+gloo-timers = { version = "0.3", features = ["futures"], optional = true }
+tsify = { version = "0.5.8", default-features = false, features = ["js"], optional = true }
+uuid = { version = "1", features = ["v4", "js"], optional = true }
+# The page's own Blob and AbortSignal, for the resumable upload executor.
+web-sys = { version = "0.3", features = ["Blob", "AbortSignal", "EventTarget", "DedicatedWorkerGlobalScope", "WorkerNavigator", "StorageManager", "FileSystemDirectoryHandle", "FileSystemFileHandle", "FileSystemGetDirectoryOptions", "FileSystemGetFileOptions", "FileSystemSyncAccessHandle", "DomException"], optional = true }
+send_wrapper = { version = "0.6", optional = true }
+# A page panic reaches the console with its message instead of a bare trap.
+console_error_panic_hook = { version = "0.1.7", optional = true }
+# The browser storage worker: rusqlite over sqlite-wasm-rs on OPFS (sahpool).
+sqlite-wasm-rs = { version = "0.5", optional = true }
+sqlite-wasm-vfs = { version = "0.2", optional = true }
+
+[dev-dependencies]
+ds-template-test-support = { path = "crates/ds-template-test-support" }
+wasm-bindgen-test = "0.3"
+# Client-state scenarios hold scripted gateway answers on oneshot channels.
+futures-channel = "0.3"
+
+# Native tests drive the client state on futures' local pool.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+any_spawner = { version = "0.3.0", features = ["futures-executor"] }
+
+[build-dependencies]
+sha2 = "0.10"
+serde_json = "1"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

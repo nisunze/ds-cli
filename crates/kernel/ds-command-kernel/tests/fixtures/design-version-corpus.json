@@ -1,0 +1,3604 @@
+{
+	"schema": "ds.design-version-parity/v1",
+	"purpose": "Campaign slice 14a — the deliberate-version prompt owned by ds-command-kernel::design_version. `expected_ts` is what transformer-version.ts answered, recorded by running that code once before deleting it; `expected` is the kernel. A case where the two differ carries a `why`. The accepted baseline migration at a8f6386 is accounted separately in baseline_migration; historical expected_ts values are retained, and baseline_cases prove pinned zero and missing-evidence behavior.",
+	"facts": {
+		"note": "Every version accessor the register read, answered once for the whole fleet.",
+		"request": {
+			"op": "facts",
+			"schema": "ds.design-version/v1",
+			"rows": [
+				{
+					"name": "tx_1",
+					"metadata": {
+						"version": 9
+					}
+				},
+				{
+					"name": "tx_1"
+				},
+				{
+					"name": "tx_1",
+					"metadata": {
+						"version": 4
+					},
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_source_version": 4
+					}
+				},
+				{
+					"name": "tx_1",
+					"metadata": {
+						"version": 6
+					},
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_source_version": 4
+					}
+				},
+				{
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 3
+					}
+				},
+				{
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 3,
+						"lead_source_version": 5
+					}
+				},
+				{
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 7,
+						"latest_version": 10
+					}
+				},
+				{
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 9,
+						"latest_version": 4
+					}
+				},
+				{
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": -2,
+						"latest_version": null
+					}
+				},
+				{
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_reason": "  before site visit  "
+					}
+				},
+				{
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 2,
+						"latest_version": 5,
+						"count": 9
+					}
+				},
+				{
+					"name": "mv_data",
+					"version_metadata": {
+						"lead_version": 1
+					}
+				},
+				{
+					"name": "collisions"
+				},
+				{
+					"name": "combined_transformer"
+				}
+			]
+		},
+		"expected_ts": [
+			{
+				"version": 0,
+				"label": "v0",
+				"latest": 0,
+				"restored": false,
+				"unversioned": true,
+				"next": 1,
+				"count": 0,
+				"changed_since_version": null,
+				"versionable": true
+			},
+			{
+				"version": 0,
+				"label": "v0",
+				"latest": 0,
+				"restored": false,
+				"unversioned": true,
+				"next": 1,
+				"count": 0,
+				"changed_since_version": null,
+				"versionable": true
+			},
+			{
+				"version": 2,
+				"label": "v2",
+				"latest": 2,
+				"restored": false,
+				"unversioned": false,
+				"next": 3,
+				"count": 2,
+				"changed_since_version": false,
+				"versionable": true
+			},
+			{
+				"version": 2,
+				"label": "v2",
+				"latest": 2,
+				"restored": false,
+				"unversioned": false,
+				"next": 3,
+				"count": 2,
+				"changed_since_version": true,
+				"versionable": true
+			},
+			{
+				"version": 3,
+				"label": "v3",
+				"latest": 3,
+				"restored": false,
+				"unversioned": false,
+				"next": 4,
+				"count": 3,
+				"changed_since_version": true,
+				"versionable": true
+			},
+			{
+				"version": 3,
+				"label": "v3",
+				"latest": 3,
+				"restored": false,
+				"unversioned": false,
+				"next": 4,
+				"count": 3,
+				"changed_since_version": true,
+				"versionable": true
+			},
+			{
+				"version": 7,
+				"label": "v7",
+				"latest": 10,
+				"restored": true,
+				"unversioned": false,
+				"next": 11,
+				"count": 10,
+				"changed_since_version": true,
+				"versionable": true
+			},
+			{
+				"version": 9,
+				"label": "v9",
+				"latest": 9,
+				"restored": false,
+				"unversioned": false,
+				"next": 10,
+				"count": 9,
+				"changed_since_version": true,
+				"versionable": true
+			},
+			{
+				"version": 0,
+				"label": "v0",
+				"latest": 0,
+				"restored": false,
+				"unversioned": true,
+				"next": 1,
+				"count": 0,
+				"changed_since_version": null,
+				"versionable": true
+			},
+			{
+				"version": 2,
+				"label": "v2",
+				"latest": 2,
+				"restored": false,
+				"unversioned": false,
+				"reason": "before site visit",
+				"next": 3,
+				"count": 2,
+				"changed_since_version": true,
+				"versionable": true
+			},
+			{
+				"version": 2,
+				"label": "v2",
+				"latest": 5,
+				"restored": true,
+				"unversioned": false,
+				"next": 6,
+				"count": 9,
+				"changed_since_version": true,
+				"versionable": true
+			},
+			{
+				"version": 1,
+				"label": "v1",
+				"latest": 1,
+				"restored": false,
+				"unversioned": false,
+				"next": 2,
+				"count": 1,
+				"changed_since_version": true,
+				"versionable": true
+			},
+			{
+				"version": 0,
+				"label": "v0",
+				"latest": 0,
+				"restored": false,
+				"unversioned": true,
+				"next": 1,
+				"count": 0,
+				"changed_since_version": null,
+				"versionable": false
+			},
+			{
+				"version": 0,
+				"label": "v0",
+				"latest": 0,
+				"restored": false,
+				"unversioned": true,
+				"next": 1,
+				"count": 0,
+				"changed_since_version": null,
+				"versionable": false
+			}
+		],
+		"expected": {
+			"schema": "ds.design-version/v1",
+			"op": "facts",
+			"versions": [
+				{
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				},
+				{
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				},
+				{
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				},
+				{
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				},
+				{
+					"name": "tx_1",
+					"version": 3,
+					"latest": 3,
+					"next": 4,
+					"count": 3,
+					"label": "v3",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				},
+				{
+					"name": "tx_1",
+					"version": 3,
+					"latest": 3,
+					"next": 4,
+					"count": 3,
+					"label": "v3",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				},
+				{
+					"name": "tx_1",
+					"version": 7,
+					"latest": 10,
+					"next": 11,
+					"count": 10,
+					"label": "v7",
+					"restored": true,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				},
+				{
+					"name": "tx_1",
+					"version": 9,
+					"latest": 9,
+					"next": 10,
+					"count": 9,
+					"label": "v9",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				},
+				{
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				},
+				{
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"reason": "before site visit",
+					"changed_since_version": null,
+					"versionable": true,
+					"lead": {
+						"reason": "before site visit"
+					},
+					"baseline_ready": false
+				},
+				{
+					"name": "tx_1",
+					"version": 2,
+					"latest": 5,
+					"next": 6,
+					"count": 9,
+					"label": "v2",
+					"restored": true,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				},
+				{
+					"name": "mv_data",
+					"version": 1,
+					"latest": 1,
+					"next": 2,
+					"count": 1,
+					"label": "v1",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				},
+				{
+					"name": "collisions",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": false,
+					"baseline_ready": false
+				},
+				{
+					"name": "combined_transformer",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": false,
+					"baseline_ready": false
+				}
+			]
+		}
+	},
+	"cases": [
+		{
+			"id": "unversioned-saved/exiting",
+			"note": "Never versioned, but saved nine times: the save counter is not a version. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 9
+					}
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "unversioned-saved/blocked",
+			"note": "Never versioned, but saved nine times: the save counter is not a version. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 9
+					}
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "unversioned-saved/locally-dirty",
+			"note": "Never versioned, but saved nine times: the save counter is not a version. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 9
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "unversioned-saved/plain",
+			"note": "Never versioned, but saved nine times: the save counter is not a version. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 9
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "ask",
+				"currentVersion": 0,
+				"nextVersion": 1,
+				"firstEver": true
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 0,
+				"next_version": 1,
+				"first_ever": true,
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "unversioned-empty/exiting",
+			"note": "A brand-new transformer with no metadata at all. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1"
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "unversioned-empty/blocked",
+			"note": "A brand-new transformer with no metadata at all. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1"
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "unversioned-empty/locally-dirty",
+			"note": "A brand-new transformer with no metadata at all. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1"
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "unversioned-empty/plain",
+			"note": "A brand-new transformer with no metadata at all. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1"
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "ask",
+				"currentVersion": 0,
+				"nextVersion": 1,
+				"firstEver": true
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 0,
+				"next_version": 1,
+				"first_ever": true,
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "unchanged-since-lead/exiting",
+			"note": "The save counter has not moved since the lead froze it. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 4
+					},
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_source_version": 4
+					}
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "unchanged-since-lead/blocked",
+			"note": "The save counter has not moved since the lead froze it. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 4
+					},
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_source_version": 4
+					}
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "unchanged-since-lead/locally-dirty",
+			"note": "The save counter has not moved since the lead froze it. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 4
+					},
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_source_version": 4
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "unchanged-since-lead/plain",
+			"note": "The save counter has not moved since the lead froze it. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 4
+					},
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_source_version": 4
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "unchanged"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 2,
+				"next_version": 3,
+				"first_ever": false,
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			},
+			"why": "Kernel a8f6386 requires pinned baseline provenance and immutable IDs; equal legacy save counters cannot establish unchanged content. Historical TypeScript answers remain recorded unchanged."
+		},
+		{
+			"id": "changed-since-lead/exiting",
+			"note": "The save counter moved past the frozen one. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 6
+					},
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_source_version": 4
+					}
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "changed-since-lead/blocked",
+			"note": "The save counter moved past the frozen one. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 6
+					},
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_source_version": 4
+					}
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "changed-since-lead/locally-dirty",
+			"note": "The save counter moved past the frozen one. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 6
+					},
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_source_version": 4
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "changed-since-lead/plain",
+			"note": "The save counter moved past the frozen one. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 6
+					},
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_source_version": 4
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "ask",
+				"currentVersion": 2,
+				"nextVersion": 3,
+				"firstEver": false
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 2,
+				"next_version": 3,
+				"first_ever": false,
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "no-source-version/exiting",
+			"note": "A backend that reports neither number cannot prove the document is unchanged. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 3
+					}
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "tx_1",
+					"version": 3,
+					"latest": 3,
+					"next": 4,
+					"count": 3,
+					"label": "v3",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "no-source-version/blocked",
+			"note": "A backend that reports neither number cannot prove the document is unchanged. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 3
+					}
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "tx_1",
+					"version": 3,
+					"latest": 3,
+					"next": 4,
+					"count": 3,
+					"label": "v3",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "no-source-version/locally-dirty",
+			"note": "A backend that reports neither number cannot prove the document is unchanged. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 3
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "tx_1",
+					"version": 3,
+					"latest": 3,
+					"next": 4,
+					"count": 3,
+					"label": "v3",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "no-source-version/plain",
+			"note": "A backend that reports neither number cannot prove the document is unchanged. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 3
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "ask",
+				"currentVersion": 3,
+				"nextVersion": 4,
+				"firstEver": false
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 3,
+				"next_version": 4,
+				"first_ever": false,
+				"facts": {
+					"name": "tx_1",
+					"version": 3,
+					"latest": 3,
+					"next": 4,
+					"count": 3,
+					"label": "v3",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "no-metadata-version/exiting",
+			"note": "The lead froze a generation but the row no longer reports one. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 3,
+						"lead_source_version": 5
+					}
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "tx_1",
+					"version": 3,
+					"latest": 3,
+					"next": 4,
+					"count": 3,
+					"label": "v3",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "no-metadata-version/blocked",
+			"note": "The lead froze a generation but the row no longer reports one. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 3,
+						"lead_source_version": 5
+					}
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "tx_1",
+					"version": 3,
+					"latest": 3,
+					"next": 4,
+					"count": 3,
+					"label": "v3",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "no-metadata-version/locally-dirty",
+			"note": "The lead froze a generation but the row no longer reports one. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 3,
+						"lead_source_version": 5
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "tx_1",
+					"version": 3,
+					"latest": 3,
+					"next": 4,
+					"count": 3,
+					"label": "v3",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "no-metadata-version/plain",
+			"note": "The lead froze a generation but the row no longer reports one. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 3,
+						"lead_source_version": 5
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "ask",
+				"currentVersion": 3,
+				"nextVersion": 4,
+				"firstEver": false
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 3,
+				"next_version": 4,
+				"first_ever": false,
+				"facts": {
+					"name": "tx_1",
+					"version": 3,
+					"latest": 3,
+					"next": 4,
+					"count": 3,
+					"label": "v3",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "restored/exiting",
+			"note": "Restored to v7 while v10 exists: the next cut is v11, never a second v8. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 7,
+						"latest_version": 10
+					}
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "tx_1",
+					"version": 7,
+					"latest": 10,
+					"next": 11,
+					"count": 10,
+					"label": "v7",
+					"restored": true,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "restored/blocked",
+			"note": "Restored to v7 while v10 exists: the next cut is v11, never a second v8. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 7,
+						"latest_version": 10
+					}
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "tx_1",
+					"version": 7,
+					"latest": 10,
+					"next": 11,
+					"count": 10,
+					"label": "v7",
+					"restored": true,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "restored/locally-dirty",
+			"note": "Restored to v7 while v10 exists: the next cut is v11, never a second v8. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 7,
+						"latest_version": 10
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "tx_1",
+					"version": 7,
+					"latest": 10,
+					"next": 11,
+					"count": 10,
+					"label": "v7",
+					"restored": true,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "restored/plain",
+			"note": "Restored to v7 while v10 exists: the next cut is v11, never a second v8. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 7,
+						"latest_version": 10
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "ask",
+				"currentVersion": 7,
+				"nextVersion": 11,
+				"firstEver": false
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 7,
+				"next_version": 11,
+				"first_ever": false,
+				"facts": {
+					"name": "tx_1",
+					"version": 7,
+					"latest": 10,
+					"next": 11,
+					"count": 10,
+					"label": "v7",
+					"restored": true,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "latest-below-lead/exiting",
+			"note": "A latest below the lead never lowers it. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 9,
+						"latest_version": 4
+					}
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "tx_1",
+					"version": 9,
+					"latest": 9,
+					"next": 10,
+					"count": 9,
+					"label": "v9",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "latest-below-lead/blocked",
+			"note": "A latest below the lead never lowers it. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 9,
+						"latest_version": 4
+					}
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "tx_1",
+					"version": 9,
+					"latest": 9,
+					"next": 10,
+					"count": 9,
+					"label": "v9",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "latest-below-lead/locally-dirty",
+			"note": "A latest below the lead never lowers it. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 9,
+						"latest_version": 4
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "tx_1",
+					"version": 9,
+					"latest": 9,
+					"next": 10,
+					"count": 9,
+					"label": "v9",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "latest-below-lead/plain",
+			"note": "A latest below the lead never lowers it. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 9,
+						"latest_version": 4
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "ask",
+				"currentVersion": 9,
+				"nextVersion": 10,
+				"firstEver": false
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 9,
+				"next_version": 10,
+				"first_ever": false,
+				"facts": {
+					"name": "tx_1",
+					"version": 9,
+					"latest": 9,
+					"next": 10,
+					"count": 9,
+					"label": "v9",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "negative-and-nan/exiting",
+			"note": "Neither a negative nor a NaN ordinal is a version. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": -2,
+						"latest_version": null
+					}
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "negative-and-nan/blocked",
+			"note": "Neither a negative nor a NaN ordinal is a version. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": -2,
+						"latest_version": null
+					}
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "negative-and-nan/locally-dirty",
+			"note": "Neither a negative nor a NaN ordinal is a version. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": -2,
+						"latest_version": null
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "negative-and-nan/plain",
+			"note": "Neither a negative nor a NaN ordinal is a version. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": -2,
+						"latest_version": null
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "ask",
+				"currentVersion": 0,
+				"nextVersion": 1,
+				"firstEver": true
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 0,
+				"next_version": 1,
+				"first_ever": true,
+				"facts": {
+					"name": "tx_1",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "reason-trimmed/exiting",
+			"note": "The lead reason is trimmed, and an empty one is absent. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_reason": "  before site visit  "
+					}
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"reason": "before site visit",
+					"changed_since_version": null,
+					"versionable": true,
+					"lead": {
+						"reason": "before site visit"
+					},
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "reason-trimmed/blocked",
+			"note": "The lead reason is trimmed, and an empty one is absent. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_reason": "  before site visit  "
+					}
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"reason": "before site visit",
+					"changed_since_version": null,
+					"versionable": true,
+					"lead": {
+						"reason": "before site visit"
+					},
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "reason-trimmed/locally-dirty",
+			"note": "The lead reason is trimmed, and an empty one is absent. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_reason": "  before site visit  "
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"reason": "before site visit",
+					"changed_since_version": null,
+					"versionable": true,
+					"lead": {
+						"reason": "before site visit"
+					},
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "reason-trimmed/plain",
+			"note": "The lead reason is trimmed, and an empty one is absent. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 2,
+						"lead_reason": "  before site visit  "
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "ask",
+				"currentVersion": 2,
+				"nextVersion": 3,
+				"firstEver": false
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 2,
+				"next_version": 3,
+				"first_ever": false,
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 2,
+					"next": 3,
+					"count": 2,
+					"label": "v2",
+					"restored": false,
+					"unversioned": false,
+					"reason": "before site visit",
+					"changed_since_version": null,
+					"versionable": true,
+					"lead": {
+						"reason": "before site visit"
+					},
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "count-explicit/exiting",
+			"note": "An explicit retained count outranks the derived one. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 2,
+						"latest_version": 5,
+						"count": 9
+					}
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 5,
+					"next": 6,
+					"count": 9,
+					"label": "v2",
+					"restored": true,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "count-explicit/blocked",
+			"note": "An explicit retained count outranks the derived one. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 2,
+						"latest_version": 5,
+						"count": 9
+					}
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 5,
+					"next": 6,
+					"count": 9,
+					"label": "v2",
+					"restored": true,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "count-explicit/locally-dirty",
+			"note": "An explicit retained count outranks the derived one. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 2,
+						"latest_version": 5,
+						"count": 9
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 5,
+					"next": 6,
+					"count": 9,
+					"label": "v2",
+					"restored": true,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "count-explicit/plain",
+			"note": "An explicit retained count outranks the derived one. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"row": {
+					"name": "tx_1",
+					"version_metadata": {
+						"lead_version": 2,
+						"latest_version": 5,
+						"count": 9
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "ask",
+				"currentVersion": 2,
+				"nextVersion": 6,
+				"firstEver": false
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 2,
+				"next_version": 6,
+				"first_ever": false,
+				"facts": {
+					"name": "tx_1",
+					"version": 2,
+					"latest": 5,
+					"next": 6,
+					"count": 9,
+					"label": "v2",
+					"restored": true,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "mv-data/exiting",
+			"note": "mv_data is a project document and versions. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "mv_data",
+				"row": {
+					"name": "mv_data",
+					"version_metadata": {
+						"lead_version": 1
+					}
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "mv_data",
+					"version": 1,
+					"latest": 1,
+					"next": 2,
+					"count": 1,
+					"label": "v1",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "mv-data/blocked",
+			"note": "mv_data is a project document and versions. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "mv_data",
+				"row": {
+					"name": "mv_data",
+					"version_metadata": {
+						"lead_version": 1
+					}
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "mv_data",
+					"version": 1,
+					"latest": 1,
+					"next": 2,
+					"count": 1,
+					"label": "v1",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "mv-data/locally-dirty",
+			"note": "mv_data is a project document and versions. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "mv_data",
+				"row": {
+					"name": "mv_data",
+					"version_metadata": {
+						"lead_version": 1
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "mv_data",
+					"version": 1,
+					"latest": 1,
+					"next": 2,
+					"count": 1,
+					"label": "v1",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "mv-data/plain",
+			"note": "mv_data is a project document and versions. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "mv_data",
+				"row": {
+					"name": "mv_data",
+					"version_metadata": {
+						"lead_version": 1
+					}
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "ask",
+				"currentVersion": 1,
+				"nextVersion": 2,
+				"firstEver": false
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 1,
+				"next_version": 2,
+				"first_ever": false,
+				"facts": {
+					"name": "mv_data",
+					"version": 1,
+					"latest": 1,
+					"next": 2,
+					"count": 1,
+					"label": "v1",
+					"restored": false,
+					"unversioned": false,
+					"changed_since_version": null,
+					"versionable": true,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "collisions/exiting",
+			"note": "The analysis document is never versionable. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "collisions",
+				"row": {
+					"name": "collisions"
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "collisions",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": false,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "collisions/blocked",
+			"note": "The analysis document is never versionable. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "collisions",
+				"row": {
+					"name": "collisions"
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "collisions",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": false,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "collisions/locally-dirty",
+			"note": "The analysis document is never versionable. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "collisions",
+				"row": {
+					"name": "collisions"
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "collisions",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": false,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "collisions/plain",
+			"note": "The analysis document is never versionable. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "collisions",
+				"row": {
+					"name": "collisions"
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "unversionable"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "unversionable",
+				"facts": {
+					"name": "collisions",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": false,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "combined/exiting",
+			"note": "The aggregate is a selection, not a document. A gesture that CLOSES a session is never a version moment.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "combined_transformer",
+				"row": {
+					"name": "combined_transformer"
+				},
+				"exiting_session": true,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "exiting"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "exiting",
+				"facts": {
+					"name": "combined_transformer",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": false,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "combined/blocked",
+			"note": "The aggregate is a selection, not a document. The entry gates already refused; do not stack a second dialog.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "combined_transformer",
+				"row": {
+					"name": "combined_transformer"
+				},
+				"exiting_session": false,
+				"blocked": true,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "blocked"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "blocked",
+				"facts": {
+					"name": "combined_transformer",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": false,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "combined/locally-dirty",
+			"note": "The aggregate is a selection, not a document. The version moment for this work has passed.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "combined_transformer",
+				"row": {
+					"name": "combined_transformer"
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": true
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "locally-dirty"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "locally-dirty",
+				"facts": {
+					"name": "combined_transformer",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": false,
+					"baseline_ready": false
+				}
+			}
+		},
+		{
+			"id": "combined/plain",
+			"note": "The aggregate is a selection, not a document. Nothing in the way: the row itself decides.",
+			"request": {
+				"op": "prompt",
+				"schema": "ds.design-version/v1",
+				"name": "combined_transformer",
+				"row": {
+					"name": "combined_transformer"
+				},
+				"exiting_session": false,
+				"blocked": false,
+				"locally_dirty": false
+			},
+			"expected_ts": {
+				"kind": "open",
+				"reason": "unversionable"
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "unversionable",
+				"facts": {
+					"name": "combined_transformer",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"changed_since_version": null,
+					"versionable": false,
+					"baseline_ready": false
+				}
+			}
+		}
+	],
+	"partition": {
+		"note": "Reserved and synthetic rows are dropped before anything is written; a repeat of a name already seen is not a second row.",
+		"request": {
+			"op": "partition",
+			"schema": "ds.design-version/v1",
+			"names": [
+				"tx_1",
+				"mv_data",
+				"collisions",
+				" tx_1 ",
+				"",
+				"combined_transformer",
+				"compounded_report",
+				"   "
+			]
+		},
+		"expected_ts": {
+			"versionable": [
+				"tx_1",
+				"mv_data",
+				"compounded_report"
+			],
+			"skipped": [
+				"collisions",
+				"combined_transformer"
+			]
+		},
+		"expected": {
+			"schema": "ds.design-version/v1",
+			"op": "partition",
+			"versionable": [
+				"tx_1",
+				"mv_data",
+				"compounded_report"
+			],
+			"skipped": [
+				"collisions",
+				"combined_transformer"
+			]
+		}
+	},
+	"reasons": [
+		{
+			"input": "",
+			"expected_ts": {
+				"normalized": "",
+				"valid": false
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "reason",
+				"normalized": "",
+				"valid": false,
+				"max": 280
+			}
+		},
+		{
+			"input": "   ",
+			"expected_ts": {
+				"normalized": "",
+				"valid": false
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "reason",
+				"normalized": "",
+				"valid": false,
+				"max": 280
+			}
+		},
+		{
+			"input": "pre-survey baseline",
+			"expected_ts": {
+				"normalized": "pre-survey baseline",
+				"valid": true
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "reason",
+				"normalized": "pre-survey baseline",
+				"valid": true,
+				"max": 280
+			}
+		},
+		{
+			"input": "  before site visit  ",
+			"expected_ts": {
+				"normalized": "before site visit",
+				"valid": true
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "reason",
+				"normalized": "before site visit",
+				"valid": true,
+				"max": 280
+			}
+		},
+		{
+			"input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+			"expected_ts": {
+				"normalized": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+				"valid": true
+			},
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "reason",
+				"normalized": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+				"valid": true,
+				"max": 280
+			}
+		}
+	],
+	"upload_overwrite": [
+		{
+			"id": "append",
+			"request": {
+				"op": "upload_overwrite",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"merge_mode": "append",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 3
+					}
+				}
+			},
+			"expected_ts": false,
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "upload_overwrite",
+				"eligible": false,
+				"reason": "append_mode"
+			}
+		},
+		{
+			"id": "replace-saved",
+			"request": {
+				"op": "upload_overwrite",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"merge_mode": "replace_all",
+				"row": {
+					"name": "tx_1",
+					"metadata": {
+						"version": 3
+					}
+				}
+			},
+			"expected_ts": true,
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "upload_overwrite",
+				"eligible": true,
+				"reason": "eligible"
+			}
+		},
+		{
+			"id": "replace-unsaved",
+			"request": {
+				"op": "upload_overwrite",
+				"schema": "ds.design-version/v1",
+				"name": "tx_1",
+				"merge_mode": "replace_key",
+				"row": {
+					"name": "tx_1"
+				}
+			},
+			"expected_ts": false,
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "upload_overwrite",
+				"eligible": false,
+				"reason": "nothing_saved"
+			}
+		},
+		{
+			"id": "replace-unversionable",
+			"request": {
+				"op": "upload_overwrite",
+				"schema": "ds.design-version/v1",
+				"name": "collisions",
+				"merge_mode": "replace_all",
+				"row": {
+					"name": "collisions",
+					"metadata": {
+						"version": 3
+					}
+				}
+			},
+			"expected_ts": false,
+			"expected": {
+				"schema": "ds.design-version/v1",
+				"op": "upload_overwrite",
+				"eligible": false,
+				"reason": "unversionable"
+			}
+		}
+	],
+	"baseline_migration": {
+		"source_commit": "a8f638621689d8abecf02914d7d4322a0915fb9d",
+		"reason": "Kernel a8f6386 requires pinned baseline provenance and immutable IDs; equal legacy save counters cannot establish unchanged content. Historical TypeScript answers remain recorded unchanged.",
+		"added_fact_fields": [
+			"baseline_ready"
+		],
+		"facts": [
+			{
+				"index": 0,
+				"fields": [
+					"label"
+				]
+			},
+			{
+				"index": 1,
+				"fields": [
+					"label"
+				]
+			},
+			{
+				"index": 2,
+				"fields": [
+					"changed_since_version"
+				]
+			},
+			{
+				"index": 3,
+				"fields": [
+					"changed_since_version"
+				]
+			},
+			{
+				"index": 4,
+				"fields": [
+					"changed_since_version"
+				]
+			},
+			{
+				"index": 5,
+				"fields": [
+					"changed_since_version"
+				]
+			},
+			{
+				"index": 6,
+				"fields": [
+					"changed_since_version"
+				]
+			},
+			{
+				"index": 7,
+				"fields": [
+					"changed_since_version"
+				]
+			},
+			{
+				"index": 8,
+				"fields": [
+					"label"
+				]
+			},
+			{
+				"index": 9,
+				"fields": [
+					"changed_since_version"
+				]
+			},
+			{
+				"index": 10,
+				"fields": [
+					"changed_since_version"
+				]
+			},
+			{
+				"index": 11,
+				"fields": [
+					"changed_since_version"
+				]
+			},
+			{
+				"index": 12,
+				"fields": [
+					"label"
+				]
+			},
+			{
+				"index": 13,
+				"fields": [
+					"label"
+				]
+			}
+		],
+		"prompt_divergences": [
+			"unchanged-since-lead/plain"
+		]
+	},
+	"baseline_cases": [
+		{
+			"id": "pinned-zero",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_facts": {
+				"name": "tx_baseline",
+				"version": 0,
+				"latest": 0,
+				"next": 1,
+				"count": 0,
+				"label": "v0",
+				"restored": false,
+				"unversioned": false,
+				"baseline_ready": true,
+				"baseline_origin": "source_pinned_import",
+				"current_version_id": "v0",
+				"current_revision_id": "v0",
+				"changed_since_version": false,
+				"versionable": true
+			},
+			"expected_prompt": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "open",
+				"reason": "unchanged",
+				"facts": {
+					"name": "tx_baseline",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "v0",
+					"restored": false,
+					"unversioned": false,
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": false,
+					"versionable": true
+				}
+			}
+		},
+		{
+			"id": "missing-baseline_ready",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_facts": {
+				"name": "tx_baseline",
+				"version": 0,
+				"latest": 0,
+				"next": 1,
+				"count": 0,
+				"label": "baseline_required",
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"changed_since_version": null,
+				"versionable": true
+			},
+			"expected_prompt": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 0,
+				"next_version": 1,
+				"first_ever": true,
+				"facts": {
+					"name": "tx_baseline",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"baseline_ready": false,
+					"changed_since_version": null,
+					"versionable": true
+				}
+			}
+		},
+		{
+			"id": "missing-baseline_origin",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_facts": {
+				"name": "tx_baseline",
+				"version": 0,
+				"latest": 0,
+				"next": 1,
+				"count": 0,
+				"label": "baseline_required",
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"changed_since_version": null,
+				"versionable": true
+			},
+			"expected_prompt": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 0,
+				"next_version": 1,
+				"first_ever": true,
+				"facts": {
+					"name": "tx_baseline",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"baseline_ready": false,
+					"changed_since_version": null,
+					"versionable": true
+				}
+			}
+		},
+		{
+			"id": "missing-current_version_id",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_facts": {
+				"name": "tx_baseline",
+				"version": 0,
+				"latest": 0,
+				"next": 1,
+				"count": 0,
+				"label": "baseline_required",
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"changed_since_version": null,
+				"versionable": true
+			},
+			"expected_prompt": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 0,
+				"next_version": 1,
+				"first_ever": true,
+				"facts": {
+					"name": "tx_baseline",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"baseline_ready": false,
+					"changed_since_version": null,
+					"versionable": true
+				}
+			}
+		},
+		{
+			"id": "missing-current_revision_id",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_facts": {
+				"name": "tx_baseline",
+				"version": 0,
+				"latest": 0,
+				"next": 1,
+				"count": 0,
+				"label": "baseline_required",
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"changed_since_version": null,
+				"versionable": true
+			},
+			"expected_prompt": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 0,
+				"next_version": 1,
+				"first_ever": true,
+				"facts": {
+					"name": "tx_baseline",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"baseline_ready": false,
+					"changed_since_version": null,
+					"versionable": true
+				}
+			}
+		},
+		{
+			"id": "missing-version_display",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_facts": {
+				"name": "tx_baseline",
+				"version": 0,
+				"latest": 0,
+				"next": 1,
+				"count": 0,
+				"label": "baseline_required",
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"changed_since_version": null,
+				"versionable": true
+			},
+			"expected_prompt": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 0,
+				"next_version": 1,
+				"first_ever": true,
+				"facts": {
+					"name": "tx_baseline",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"baseline_ready": false,
+					"changed_since_version": null,
+					"versionable": true
+				}
+			}
+		},
+		{
+			"id": "missing-change-verdict",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0"
+				}
+			},
+			"expected_facts": {
+				"name": "tx_baseline",
+				"version": 0,
+				"latest": 0,
+				"next": 1,
+				"count": 0,
+				"label": "v0",
+				"restored": false,
+				"unversioned": false,
+				"baseline_ready": true,
+				"baseline_origin": "source_pinned_import",
+				"current_version_id": "v0",
+				"current_revision_id": "v0",
+				"changed_since_version": null,
+				"versionable": true
+			},
+			"expected_prompt": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 0,
+				"next_version": 1,
+				"first_ever": false,
+				"facts": {
+					"name": "tx_baseline",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "v0",
+					"restored": false,
+					"unversioned": false,
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": null,
+					"versionable": true
+				}
+			}
+		},
+		{
+			"id": "changed-content",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": true
+				}
+			},
+			"expected_facts": {
+				"name": "tx_baseline",
+				"version": 0,
+				"latest": 0,
+				"next": 1,
+				"count": 0,
+				"label": "v0",
+				"restored": false,
+				"unversioned": false,
+				"baseline_ready": true,
+				"baseline_origin": "source_pinned_import",
+				"current_version_id": "v0",
+				"current_revision_id": "v0",
+				"changed_since_version": true,
+				"versionable": true
+			},
+			"expected_prompt": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 0,
+				"next_version": 1,
+				"first_ever": false,
+				"facts": {
+					"name": "tx_baseline",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "v0",
+					"restored": false,
+					"unversioned": false,
+					"baseline_ready": true,
+					"baseline_origin": "source_pinned_import",
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": true,
+					"versionable": true
+				}
+			}
+		},
+		{
+			"id": "invalid-origin",
+			"row": {
+				"name": "tx_baseline",
+				"metadata": {
+					"version": 100
+				},
+				"version_metadata": {
+					"baseline_ready": true,
+					"baseline_origin": "inferred_from_save_counter",
+					"version_display": 0,
+					"current_version_id": "v0",
+					"current_revision_id": "v0",
+					"changed_since_version": false
+				}
+			},
+			"expected_facts": {
+				"name": "tx_baseline",
+				"version": 0,
+				"latest": 0,
+				"next": 1,
+				"count": 0,
+				"label": "baseline_required",
+				"restored": false,
+				"unversioned": true,
+				"baseline_ready": false,
+				"changed_since_version": null,
+				"versionable": true
+			},
+			"expected_prompt": {
+				"schema": "ds.design-version/v1",
+				"op": "prompt",
+				"kind": "ask",
+				"current_version": 0,
+				"next_version": 1,
+				"first_ever": true,
+				"facts": {
+					"name": "tx_baseline",
+					"version": 0,
+					"latest": 0,
+					"next": 1,
+					"count": 0,
+					"label": "baseline_required",
+					"restored": false,
+					"unversioned": true,
+					"baseline_ready": false,
+					"changed_since_version": null,
+					"versionable": true
+				}
+			}
+		}
+	]
+}

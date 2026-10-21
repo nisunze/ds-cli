@@ -1,0 +1,44 @@
+{
+  "request": {
+    "operation": "invoke",
+    "command": "feedback.list",
+    "arguments": {
+      "view": "all",
+      "query": "A complete whole-model spotting receipt cannot be applied when its plans carry many rejection rows (16 MiB params cap; preview-receipt refuses untruncated receipts)",
+      "limit": 2,
+      "detail": true,
+      "lane": "stable"
+    }
+  },
+  "report": {
+    "id": "7a78525b-e62e-4078-88d5-ac8581d247be",
+    "status": "open",
+    "kind": "friction",
+    "severity": "major",
+    "component": "ds-grid/spotting",
+    "surface": "cli",
+    "title": "A complete whole-model spotting receipt cannot be applied when its plans carry many rejection rows (16 MiB params cap; preview-receipt refuses untruncated receipts)",
+    "detail": "Observed: plan_whole_model_spotting with settings.max_reported_rejections 20000 (the Nyamagabe B settings) returned 34 planned, untruncated plans totalling 233 MiB, 228 MiB of it plan.rejected diagnostics. spotting_layout_application takes the plans as --params, capped at 16 MiB (params_too_large), and the plans cannot be trimmed without breaking their digests. ds dsgrid spotting preview-receipt refuses the same receipt with receipt_truncation_scope (truncation_count 0) because it only accepts receipts truncated in rejected rows. So there is no apply path for a valid, complete receipt; the only way out was a second 10-minute run with max_reported_rejections 32, which gave byte-identical layouts. Expected: a verified plan can be applied however large its diagnostics are, e.g. spotting_layout_application reads plans from the receipt file (digest-verified, diagnostics ignored), or the planner refuses/warns up front when max_reported_rejections would exceed the apply bound. Acceptance: the attempt-2 receipt below applies to m2-prep2.dsgrid without a re-run.",
+    "occurrences": 1,
+    "reporters": [
+      "magese@datasolutions.rw"
+    ],
+    "reporter_kind": "agent",
+    "version": 3,
+    "last_seen_at": "2026-09-28T08:37:49.495092Z",
+    "updated_at": "2026-10-13T08:11:36.43867Z",
+    "updated_by": "nisunze@yahoo.fr",
+    "resolution": "",
+    "blocked": true,
+    "blocked_on": "Version-qualified replay of original attempt-2 sealed plans: recorded rev:c3b80112...aab66 differs from current canonical open rev:58fa3bfa...40fd despite exact source SHA.",
+    "blocked_since": "2026-10-13T08:11:36.43867Z",
+    "note_count": 2,
+    "latest_note": {
+      "author": "nisunze@yahoo.fr",
+      "at": "2026-10-13T08:11:36.43867Z",
+      "text": "Original inputs recovered: m2-prep2.dsgrid SHA842df1d6...df2d227 and attempt-2 receipt compressed SHA9fd57623...bce6a9, expanding byte-identically to234541394-byte raw SHAd38489c1...67c45a0. The installed apply-receipt dry run accepts the size but refuses receipt_revision_mismatch: sealed rev:c3b80112...aab66 versus opened source rev:58fa3bfa...40fd despite exact package SHA. No apply/output/replan was attempted; original package, raw and compressed receipt remain unchanged. Exact acceptance still requires version-qualified replay of these sealed plans against their recorded canonical revision, preserving all source/revision/plan digest guards. Evidence: ds-network/out/feedback-7a78525b-20261013/installed-replay/dry-run.json.",
+      "blocked_on": "Version-qualified replay of original attempt-2 sealed plans: recorded rev:c3b80112...aab66 differs from current canonical open rev:58fa3bfa...40fd despite exact source SHA."
+    },
+    "detail_truncated": false
+  }
+}

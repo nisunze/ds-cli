@@ -1,0 +1,208 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "survey_media": [
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "a",
+        "name": "noext",
+        "content_type": "image/jpeg"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "b",
+        "name": "noext",
+        "content_type": "jpeg"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "c",
+        "name": "noext",
+        "content_type": " PNG "
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "d",
+        "name": "file.unknownext",
+        "content_type": "tif"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "e",
+        "name": "photo.jpeg.bak",
+        "content_type": "tar.gz"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "f",
+        "name": "archive.tar.gz"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "g",
+        "name": "archive.tgz"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "h",
+        "name": "x.tab"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "i",
+        "name": "x.markdown"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "j",
+        "name": "x.htm"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "k",
+        "name": "x.log"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "l",
+        "name": "x.tiff"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "m",
+        "name": "x.7z"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "n",
+        "name": "x.msg"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "o",
+        "name": "x.odt"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "p",
+        "name": "x.ods"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "q",
+        "name": "x.rtf"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "r",
+        "name": "x.doc"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "s",
+        "name": "x.xls"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "t",
+        "name": "x.tsv"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "u",
+        "name": "x.txt.old.tmp"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "v",
+        "name": ".bak"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "w",
+        "name": "x.",
+        "content_type": "pdf"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "x",
+        "name": "dir\\win\\x.KML"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "y",
+        "name": "x.shp"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "z",
+        "name": "x.part",
+        "content_type": "application/pdf"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "aa",
+        "name": "x.gz"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "ab",
+        "name": "x.html",
+        "content_type": "dsgrid"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "ac",
+        "name": "x.download.backup.old.tmp.part.bak.pdf"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "ad",
+        "name": "x.pdf.download.backup.old.tmp.part.bak"
+      },
+      {
+        "form": "f",
+        "entry_id": "e",
+        "field": "ae",
+        "name": "x.pdf.bak.bak.bak.bak.bak.bak.bak"
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

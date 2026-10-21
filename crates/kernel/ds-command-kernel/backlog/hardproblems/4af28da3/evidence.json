@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "4af28da3-c1bd-4983-a129-dd09da8f8339",
+    "known_version": 2,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Installed historical-manifest fix `880af93a`; substitute humble schema3 plan is executable. Bounded named-path lookup did not recover the filed historical package, and no source digest/reference is filed. Historical report snapshot was v1.",
+  "remaining_blocker": "Exact `DS Grid Models/model2-nyamagabe-nyaruguru/Nyamagabe&Nyaruguru.1.dsgrid` bytes or admitted immutable reference.",
+  "bounded_next_attempt": "Obtain only that package; replay installed plan/inspect plus missing/corrupt retained-member negatives and filed staking-enrich hint. A substitute historical fixture does not prove the filed member/refusal/remedy acceptance.",
+  "evidence_files": [],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences.",
+  "prior_active_entries": [
+    {
+      "from": "STABILIZATION.md",
+      "text": "- `4af28da3` (minor): on the real Model 2 package (`drive/DS Grid Models/model2-nyamagabe-nyaruguru/Nyamagabe&Nyaruguru.1.dsgrid`), the current `run` plan refuses with \"preserved PLS source version could not be inspected for export: the package manifest records no snapshot content digest\". The package declares 44 table digests against the 47-table registry that `13c3a98c` requires (Gisagara rev-67c72f3f declares 46). The message wrongly says no digest exists and gives no remedy: name the registry mismatch (N of 47 tables) and the remedy, e.g. upgrade or re-import with the current `ds`."
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "7a78525b-e62e-4078-88d5-ac8581d247be",
+    "known_version": 3,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Original `m2-prep2.dsgrid` SHA `842df1d6455b6568c05a91ed699d5a561cc78fae1e37bf8fc007ffe62df2d227`; compressed receipt SHA `9fd576239d46c123844b6a6a0853a050e53e42b5c0c947b8e87e8a511fbce6a9` expands exactly to234541394 bytes. Installed dry-run admits size but refuses revision mismatch. [Report](hard-problems/7a78525b/report.json); [exact command](../../ds-network/out/feedback-7a78525b-20261013/installed-replay/dry-run-command.json); [pins/refusal](../../ds-network/out/feedback-7a78525b-20261013/installed-replay/input-pins.json).",
+  "remaining_blocker": "Sealed revision `rev:c3b8011274b3c77f4a86a10ae26af042b3f1bf128eb7641c07401e3a3c0aab66` versus current canonical open `rev:58fa3bfa49100a8a96d0183093eebcf2ab7d244e3de5183067266dd7fc3b40fd`, despite identical package SHA.",
+  "bounded_next_attempt": "Trace normalization/version compatibility using retained source and engine0.1.4 receipt; qualify sealed-plan replay without replanning, editing plans or waiving revision/digest guards.",
+  "evidence_files": [
+    {
+      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hardproblems/7a78525b/report.json",
+      "byte_len": 3499,
+      "sha256": "056e0d5732ba02324d764d25f3a0f67e4260981a6bb0f0f517bb1866303d4d94"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-7a78525b-20261013/installed-replay/dry-run-command.json",
+      "byte_len": 426,
+      "sha256": "6864facf788df91cb8e85c0126a245ffdd7578fe60dba51a0039bfbe989acfcb"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-7a78525b-20261013/installed-replay/input-pins.json",
+      "byte_len": 1874,
+      "sha256": "8c0966d0dd1219fe058a2ab3b23cbae9a82e0e4964e03c37181cf1941cadfef5"
+    }
+  ],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences."
+}

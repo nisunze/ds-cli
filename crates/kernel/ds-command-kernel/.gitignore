@@ -1,0 +1,34 @@
+/target/
+/dist/
+/pkg/
+/target-wasm/
+/_discardable/
+
+# The detached host crate builds in its own target (scripts/test-detached-workspaces.sh)
+crates/ds-design-workspace/target/
+
+# Shared native report artifact host
+crates/ds-report-artifacts/target/
+
+# Server core crates moved here from ds-web (2026-09-14): detached workspaces
+# with their own targets (scripts/test-detached-workspaces.sh)
+crates/ds-client-core/target/
+crates/ds-edge-authority/target/
+crates/ds-layer-store/target/
+crates/ds-project-data/target/
+crates/ds-report-host/target/
+crates/ds-assets-pdf-host/target/
+crates/ds-module-admission/target/
+crates/ds-sync-runtime/target/
+
+# Local scratch, never committed
+_discardable/
+
+# Native Profile host crate owns a detached workspace.
+crates/ds-profile-runtime/target/
+
+# Every detached crate workspace builds in its own target.
+crates/*/target/
+
+# Generated job logs, receipts and copied gate sources stay local.
+/out/

@@ -1,0 +1,27 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "compounded": [],
+    "compute_artifacts": [],
+    "design_attachments": [],
+    "grid_exports": [],
+    "grid_models": [],
+    "pm_attachments": [],
+    "pm_parties": [],
+    "pm_records": [],
+    "pm_tasks": [],
+    "print_setups": [],
+    "project_data": [],
+    "solar": [],
+    "survey_media": [],
+    "transformer_versions": [],
+    "transformers": []
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

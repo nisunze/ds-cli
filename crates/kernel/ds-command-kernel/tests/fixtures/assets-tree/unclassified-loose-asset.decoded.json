@@ -1,0 +1,39 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {},
+  "folders": [],
+  "assets": [
+    {
+      "schema": "ds.assets.asset/v1",
+      "asset_id": "a_1",
+      "project_id": "p",
+      "folder": "",
+      "name": "loose.pdf",
+      "kind": "other",
+      "format": "unknown",
+      "bytes": 1,
+      "digest": null,
+      "status": "fresh",
+      "sensitivity": "internal",
+      "dated": {
+        "document_date": null,
+        "received_at": null,
+        "created_at": null,
+        "source_modified_at": null
+      },
+      "owner": null,
+      "source": {
+        "kind": "upload",
+        "detail": null
+      },
+      "classified_by": "kernel",
+      "container": null,
+      "links": []
+    }
+  ],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

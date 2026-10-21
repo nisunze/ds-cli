@@ -1,0 +1,21 @@
+[package]
+name = "ds-module-admission"
+description = "Kernel engine build admission for release packaging, compiled from the same source the installed updater uses."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+# Detached on purpose: release packaging compiles only this crate and its two
+# registry dependencies, never the Kernel workspace or a sibling repository.
+[workspace]
+
+[[bin]]
+name = "ds-module-admission"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+regex = "1"

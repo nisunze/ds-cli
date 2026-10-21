@@ -1,0 +1,19 @@
+{
+  "schema": "ds.assets.request/v1",
+  "assets": [
+    {"asset_id": "a_city", "project_id": "p", "folder": "", "name": "huye.pdf", "bytes": 1, "source": {"kind": "report_output"},
+     "reference": {"work_id": "w", "output_id": "o", "role": "city_map"},
+     "links": [{"kind": "tag", "definition_id": "zone/a", "value": "B/C"}, {"kind": "tag", "definition_id": "city", "value": "Huye"}]},
+    {"asset_id": "a_district", "project_id": "p", "folder": "", "name": "district.pdf", "bytes": 1, "source": {"kind": "report_output"},
+     "reference": {"work_id": "w", "output_id": "o2", "role": "district_map"}, "links": []},
+    {"asset_id": "a_other_role", "project_id": "p", "folder": "", "name": "other.pdf", "bytes": 1, "source": {"kind": "report_output"},
+     "reference": {"work_id": "w", "output_id": "o3", "role": "report"},
+     "links": [{"kind": "tag", "definition_id": "city", "value": "Huye"}]},
+    {"asset_id": "a_filed", "project_id": "p", "folder": "maps", "name": "filed.pdf", "bytes": 1, "source": {"kind": "report_output"},
+     "reference": {"work_id": "w", "output_id": "o4", "role": "mv_map"},
+     "links": [{"kind": "tag", "definition_id": "city", "value": "Huye"}]},
+    {"asset_id": "a_tag_group", "project_id": "p", "folder": "  ", "name": "grouped.pdf", "bytes": 1, "source": {"kind": "report_output"},
+     "reference": {"work_id": "w", "output_id": "o5", "role": "tag_group_map"},
+     "links": [{"kind": "tag", "definition_id": "", "value": ""}]}
+  ]
+}

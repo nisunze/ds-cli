@@ -1,0 +1,3550 @@
+[
+  {
+    "request": {
+      "operation": "appearance",
+      "style": {
+        "type": "circle",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "change": {
+        "color": "#ABCDEF",
+        "icon": "school",
+        "size": 7
+      }
+    },
+    "expected": {
+      "type": "circle",
+      "paint": {
+        "custom-paint": 17,
+        "circle-color": "#ABCDEF",
+        "circle-radius": 7
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "dimension",
+      "style": {
+        "type": "circle",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "halo",
+      "state": {
+        "channel": "halo",
+        "field": "status",
+        "aliases": [
+          "old_status"
+        ],
+        "values": [
+          "built",
+          "new"
+        ],
+        "rawValues": {
+          "built": "built",
+          "new": "new"
+        },
+        "numbers": {
+          "built": 2,
+          "new": 0
+        },
+        "colors": {
+          "built": "#abcdef",
+          "new": "#112233"
+        },
+        "fallbackNumber": 1,
+        "fallbackColor": "#ffffff"
+      }
+    },
+    "expected": {
+      "type": "circle",
+      "paint": {
+        "custom-paint": 17,
+        "circle-stroke-width": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          2,
+          "new",
+          0,
+          1
+        ],
+        "circle-stroke-color": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          "#ABCDEF",
+          "new",
+          "#112233",
+          "#FFFFFF"
+        ]
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "clear_dimension",
+      "style": {
+        "type": "circle",
+        "paint": {
+          "custom-paint": 17,
+          "circle-stroke-width": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            2,
+            "new",
+            0,
+            1
+          ],
+          "circle-stroke-color": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            "#ABCDEF",
+            "new",
+            "#112233",
+            "#FFFFFF"
+          ]
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "halo"
+    },
+    "expected": {
+      "type": "circle",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "dimension",
+      "style": {
+        "type": "circle",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "opacity",
+      "state": {
+        "channel": "opacity",
+        "field": "status",
+        "aliases": [
+          "old_status"
+        ],
+        "values": [
+          "built",
+          "new"
+        ],
+        "rawValues": {
+          "built": "built",
+          "new": "new"
+        },
+        "numbers": {
+          "built": 2,
+          "new": 0
+        },
+        "colors": {
+          "built": "#abcdef",
+          "new": "#112233"
+        },
+        "fallbackNumber": 1,
+        "fallbackColor": "#ffffff"
+      }
+    },
+    "expected": {
+      "type": "circle",
+      "paint": {
+        "custom-paint": 17,
+        "circle-opacity": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          2,
+          "new",
+          0,
+          1
+        ]
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "clear_dimension",
+      "style": {
+        "type": "circle",
+        "paint": {
+          "custom-paint": 17,
+          "circle-opacity": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            2,
+            "new",
+            0,
+            1
+          ]
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "opacity"
+    },
+    "expected": {
+      "type": "circle",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "dimension",
+      "style": {
+        "type": "circle",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "size",
+      "state": {
+        "channel": "size",
+        "field": "status",
+        "aliases": [
+          "old_status"
+        ],
+        "values": [
+          "built",
+          "new"
+        ],
+        "rawValues": {
+          "built": "built",
+          "new": "new"
+        },
+        "numbers": {
+          "built": 2,
+          "new": 0
+        },
+        "colors": {
+          "built": "#abcdef",
+          "new": "#112233"
+        },
+        "fallbackNumber": 1,
+        "fallbackColor": "#ffffff"
+      }
+    },
+    "expected": {
+      "type": "circle",
+      "paint": {
+        "custom-paint": 17,
+        "circle-radius": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          2,
+          "new",
+          0,
+          1
+        ]
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "clear_dimension",
+      "style": {
+        "type": "circle",
+        "paint": {
+          "custom-paint": 17,
+          "circle-radius": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            2,
+            "new",
+            0,
+            1
+          ]
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "size"
+    },
+    "expected": {
+      "type": "circle",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "appearance",
+      "style": {
+        "type": "line",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "change": {
+        "color": "#ABCDEF",
+        "icon": "school",
+        "size": 7
+      }
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "custom-paint": 17,
+        "line-color": "#ABCDEF",
+        "line-width": 7
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "dimension",
+      "style": {
+        "type": "line",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "halo",
+      "state": {
+        "channel": "halo",
+        "field": "status",
+        "aliases": [
+          "old_status"
+        ],
+        "values": [
+          "built",
+          "new"
+        ],
+        "rawValues": {
+          "built": "built",
+          "new": "new"
+        },
+        "numbers": {
+          "built": 2,
+          "new": 0
+        },
+        "colors": {
+          "built": "#abcdef",
+          "new": "#112233"
+        },
+        "fallbackNumber": 1,
+        "fallbackColor": "#ffffff"
+      }
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "custom-paint": 17,
+        "line-gap-width": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          2,
+          "new",
+          0,
+          1
+        ]
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "clear_dimension",
+      "style": {
+        "type": "line",
+        "paint": {
+          "custom-paint": 17,
+          "line-gap-width": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            2,
+            "new",
+            0,
+            1
+          ]
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "halo"
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "dimension",
+      "style": {
+        "type": "line",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "opacity",
+      "state": {
+        "channel": "opacity",
+        "field": "status",
+        "aliases": [
+          "old_status"
+        ],
+        "values": [
+          "built",
+          "new"
+        ],
+        "rawValues": {
+          "built": "built",
+          "new": "new"
+        },
+        "numbers": {
+          "built": 2,
+          "new": 0
+        },
+        "colors": {
+          "built": "#abcdef",
+          "new": "#112233"
+        },
+        "fallbackNumber": 1,
+        "fallbackColor": "#ffffff"
+      }
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "custom-paint": 17,
+        "line-opacity": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          2,
+          "new",
+          0,
+          1
+        ]
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "clear_dimension",
+      "style": {
+        "type": "line",
+        "paint": {
+          "custom-paint": 17,
+          "line-opacity": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            2,
+            "new",
+            0,
+            1
+          ]
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "opacity"
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "dimension",
+      "style": {
+        "type": "line",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "size",
+      "state": {
+        "channel": "size",
+        "field": "status",
+        "aliases": [
+          "old_status"
+        ],
+        "values": [
+          "built",
+          "new"
+        ],
+        "rawValues": {
+          "built": "built",
+          "new": "new"
+        },
+        "numbers": {
+          "built": 2,
+          "new": 0
+        },
+        "colors": {
+          "built": "#abcdef",
+          "new": "#112233"
+        },
+        "fallbackNumber": 1,
+        "fallbackColor": "#ffffff"
+      }
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "custom-paint": 17,
+        "line-width": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          2,
+          "new",
+          0,
+          1
+        ]
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "clear_dimension",
+      "style": {
+        "type": "line",
+        "paint": {
+          "custom-paint": 17,
+          "line-width": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            2,
+            "new",
+            0,
+            1
+          ]
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "size"
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "appearance",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "change": {
+        "color": "#ABCDEF",
+        "icon": "school",
+        "size": 7
+      }
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "custom-paint": 17,
+        "fill-color": "#ABCDEF"
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "dimension",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "halo",
+      "state": {
+        "channel": "halo",
+        "field": "status",
+        "aliases": [
+          "old_status"
+        ],
+        "values": [
+          "built",
+          "new"
+        ],
+        "rawValues": {
+          "built": "built",
+          "new": "new"
+        },
+        "numbers": {
+          "built": 2,
+          "new": 0
+        },
+        "colors": {
+          "built": "#abcdef",
+          "new": "#112233"
+        },
+        "fallbackNumber": 1,
+        "fallbackColor": "#ffffff"
+      }
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "custom-paint": 17,
+        "fill-outline-color": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          "#ABCDEF",
+          "new",
+          "#112233",
+          "#FFFFFF"
+        ]
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "clear_dimension",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "custom-paint": 17,
+          "fill-outline-color": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            "#ABCDEF",
+            "new",
+            "#112233",
+            "#FFFFFF"
+          ]
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "halo"
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "dimension",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "opacity",
+      "state": {
+        "channel": "opacity",
+        "field": "status",
+        "aliases": [
+          "old_status"
+        ],
+        "values": [
+          "built",
+          "new"
+        ],
+        "rawValues": {
+          "built": "built",
+          "new": "new"
+        },
+        "numbers": {
+          "built": 2,
+          "new": 0
+        },
+        "colors": {
+          "built": "#abcdef",
+          "new": "#112233"
+        },
+        "fallbackNumber": 1,
+        "fallbackColor": "#ffffff"
+      }
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "custom-paint": 17,
+        "fill-opacity": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          2,
+          "new",
+          0,
+          1
+        ]
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "clear_dimension",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "custom-paint": 17,
+          "fill-opacity": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            2,
+            "new",
+            0,
+            1
+          ]
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "opacity"
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "appearance",
+      "style": {
+        "type": "symbol",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "change": {
+        "color": "#ABCDEF",
+        "icon": "school",
+        "size": 7
+      }
+    },
+    "expected": {
+      "type": "symbol",
+      "paint": {
+        "custom-paint": 17,
+        "icon-color": "#ABCDEF"
+      },
+      "layout": {
+        "visibility": "visible",
+        "icon-image": "school",
+        "icon-size": 7
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "dimension",
+      "style": {
+        "type": "symbol",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "halo",
+      "state": {
+        "channel": "halo",
+        "field": "status",
+        "aliases": [
+          "old_status"
+        ],
+        "values": [
+          "built",
+          "new"
+        ],
+        "rawValues": {
+          "built": "built",
+          "new": "new"
+        },
+        "numbers": {
+          "built": 2,
+          "new": 0
+        },
+        "colors": {
+          "built": "#abcdef",
+          "new": "#112233"
+        },
+        "fallbackNumber": 1,
+        "fallbackColor": "#ffffff"
+      }
+    },
+    "expected": {
+      "type": "symbol",
+      "paint": {
+        "custom-paint": 17,
+        "icon-halo-width": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          2,
+          "new",
+          0,
+          1
+        ],
+        "icon-halo-color": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          "#ABCDEF",
+          "new",
+          "#112233",
+          "#FFFFFF"
+        ]
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "clear_dimension",
+      "style": {
+        "type": "symbol",
+        "paint": {
+          "custom-paint": 17,
+          "icon-halo-width": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            2,
+            "new",
+            0,
+            1
+          ],
+          "icon-halo-color": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            "#ABCDEF",
+            "new",
+            "#112233",
+            "#FFFFFF"
+          ]
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "halo"
+    },
+    "expected": {
+      "type": "symbol",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "dimension",
+      "style": {
+        "type": "symbol",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "opacity",
+      "state": {
+        "channel": "opacity",
+        "field": "status",
+        "aliases": [
+          "old_status"
+        ],
+        "values": [
+          "built",
+          "new"
+        ],
+        "rawValues": {
+          "built": "built",
+          "new": "new"
+        },
+        "numbers": {
+          "built": 2,
+          "new": 0
+        },
+        "colors": {
+          "built": "#abcdef",
+          "new": "#112233"
+        },
+        "fallbackNumber": 1,
+        "fallbackColor": "#ffffff"
+      }
+    },
+    "expected": {
+      "type": "symbol",
+      "paint": {
+        "custom-paint": 17,
+        "icon-opacity": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          2,
+          "new",
+          0,
+          1
+        ]
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "clear_dimension",
+      "style": {
+        "type": "symbol",
+        "paint": {
+          "custom-paint": 17,
+          "icon-opacity": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            2,
+            "new",
+            0,
+            1
+          ]
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "opacity"
+    },
+    "expected": {
+      "type": "symbol",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "dimension",
+      "style": {
+        "type": "symbol",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "size",
+      "state": {
+        "channel": "size",
+        "field": "status",
+        "aliases": [
+          "old_status"
+        ],
+        "values": [
+          "built",
+          "new"
+        ],
+        "rawValues": {
+          "built": "built",
+          "new": "new"
+        },
+        "numbers": {
+          "built": 2,
+          "new": 0
+        },
+        "colors": {
+          "built": "#abcdef",
+          "new": "#112233"
+        },
+        "fallbackNumber": 1,
+        "fallbackColor": "#ffffff"
+      }
+    },
+    "expected": {
+      "type": "symbol",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible",
+        "icon-size": [
+          "match",
+          [
+            "coalesce",
+            [
+              "get",
+              "status"
+            ],
+            [
+              "get",
+              "old_status"
+            ]
+          ],
+          "built",
+          2,
+          "new",
+          0,
+          1
+        ]
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "clear_dimension",
+      "style": {
+        "type": "symbol",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible",
+          "icon-size": [
+            "match",
+            [
+              "coalesce",
+              [
+                "get",
+                "status"
+              ],
+              [
+                "get",
+                "old_status"
+              ]
+            ],
+            "built",
+            2,
+            "new",
+            0,
+            1
+          ]
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "channel": "size"
+    },
+    "expected": {
+      "type": "symbol",
+      "paint": {
+        "custom-paint": 17
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "appearance",
+      "style": {
+        "type": "fill-extrusion",
+        "paint": {
+          "custom-paint": 17
+        },
+        "layout": {
+          "visibility": "visible"
+        },
+        "minzoom": 9,
+        "filter": [
+          "==",
+          [
+            "get",
+            "x"
+          ],
+          1
+        ],
+        "label": {
+          "type": "symbol",
+          "paint": {
+            "text-color": "#FAFAFA"
+          }
+        }
+      },
+      "change": {
+        "color": "#ABCDEF",
+        "icon": "school",
+        "size": 7
+      }
+    },
+    "expected": {
+      "type": "fill-extrusion",
+      "paint": {
+        "custom-paint": 17,
+        "fill-extrusion-color": "#ABCDEF"
+      },
+      "layout": {
+        "visibility": "visible"
+      },
+      "minzoom": 9,
+      "filter": [
+        "==",
+        [
+          "get",
+          "x"
+        ],
+        1
+      ],
+      "label": {
+        "type": "symbol",
+        "paint": {
+          "text-color": "#FAFAFA"
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "line_type",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": 3,
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "line_type": "solid",
+      "table": {
+        "solid": null,
+        "dashed": [
+          2,
+          2
+        ],
+        "dotted": [
+          0.5,
+          1.5
+        ],
+        "dash-dot": [
+          3,
+          1,
+          0.5,
+          1
+        ],
+        "long-dash": [
+          5,
+          2
+        ],
+        "dash-dot-dot": [
+          3,
+          1,
+          0.5,
+          1,
+          0.5,
+          1
+        ]
+      },
+      "scale": {
+        "size": 14,
+        "spacing": 250
+      }
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": 3,
+        "line-color": "#123456"
+      },
+      "metadata": {
+        "keep": true
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19
+    }
+  },
+  {
+    "request": {
+      "operation": "line_type",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": 3,
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "line_type": "dashed",
+      "table": {
+        "solid": null,
+        "dashed": [
+          2,
+          2
+        ],
+        "dotted": [
+          0.5,
+          1.5
+        ],
+        "dash-dot": [
+          3,
+          1,
+          0.5,
+          1
+        ],
+        "long-dash": [
+          5,
+          2
+        ],
+        "dash-dot-dot": [
+          3,
+          1,
+          0.5,
+          1,
+          0.5,
+          1
+        ]
+      },
+      "scale": {
+        "size": 14,
+        "spacing": 250
+      }
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": 3,
+        "line-color": "#123456",
+        "line-dasharray": [
+          2,
+          2
+        ]
+      },
+      "metadata": {
+        "keep": true
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19
+    }
+  },
+  {
+    "request": {
+      "operation": "line_type",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": 3,
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "line_type": "dotted",
+      "table": {
+        "solid": null,
+        "dashed": [
+          2,
+          2
+        ],
+        "dotted": [
+          0.5,
+          1.5
+        ],
+        "dash-dot": [
+          3,
+          1,
+          0.5,
+          1
+        ],
+        "long-dash": [
+          5,
+          2
+        ],
+        "dash-dot-dot": [
+          3,
+          1,
+          0.5,
+          1,
+          0.5,
+          1
+        ]
+      },
+      "scale": {
+        "size": 14,
+        "spacing": 250
+      }
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": 3,
+        "line-color": "#123456",
+        "line-dasharray": [
+          0.5,
+          1.5
+        ]
+      },
+      "metadata": {
+        "keep": true
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19
+    }
+  },
+  {
+    "request": {
+      "operation": "line_type",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": 3,
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "line_type": "dash-dot",
+      "table": {
+        "solid": null,
+        "dashed": [
+          2,
+          2
+        ],
+        "dotted": [
+          0.5,
+          1.5
+        ],
+        "dash-dot": [
+          3,
+          1,
+          0.5,
+          1
+        ],
+        "long-dash": [
+          5,
+          2
+        ],
+        "dash-dot-dot": [
+          3,
+          1,
+          0.5,
+          1,
+          0.5,
+          1
+        ]
+      },
+      "scale": {
+        "size": 14,
+        "spacing": 250
+      }
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": 3,
+        "line-color": "#123456",
+        "line-dasharray": [
+          3,
+          1,
+          0.5,
+          1
+        ]
+      },
+      "metadata": {
+        "keep": true
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19
+    }
+  },
+  {
+    "request": {
+      "operation": "line_type",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": 3,
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "line_type": "long-dash",
+      "table": {
+        "solid": null,
+        "dashed": [
+          2,
+          2
+        ],
+        "dotted": [
+          0.5,
+          1.5
+        ],
+        "dash-dot": [
+          3,
+          1,
+          0.5,
+          1
+        ],
+        "long-dash": [
+          5,
+          2
+        ],
+        "dash-dot-dot": [
+          3,
+          1,
+          0.5,
+          1,
+          0.5,
+          1
+        ]
+      },
+      "scale": {
+        "size": 14,
+        "spacing": 250
+      }
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": 3,
+        "line-color": "#123456",
+        "line-dasharray": [
+          5,
+          2
+        ]
+      },
+      "metadata": {
+        "keep": true
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19
+    }
+  },
+  {
+    "request": {
+      "operation": "line_type",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": 3,
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "line_type": "dash-dot-dot",
+      "table": {
+        "solid": null,
+        "dashed": [
+          2,
+          2
+        ],
+        "dotted": [
+          0.5,
+          1.5
+        ],
+        "dash-dot": [
+          3,
+          1,
+          0.5,
+          1
+        ],
+        "long-dash": [
+          5,
+          2
+        ],
+        "dash-dot-dot": [
+          3,
+          1,
+          0.5,
+          1,
+          0.5,
+          1
+        ]
+      },
+      "scale": {
+        "size": 14,
+        "spacing": 250
+      }
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": 3,
+        "line-color": "#123456",
+        "line-dasharray": [
+          3,
+          1,
+          0.5,
+          1,
+          0.5,
+          1
+        ]
+      },
+      "metadata": {
+        "keep": true
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19
+    }
+  },
+  {
+    "request": {
+      "operation": "line_type",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": 3,
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "line_type": "directional",
+      "table": {
+        "solid": null,
+        "dashed": [
+          2,
+          2
+        ],
+        "dotted": [
+          0.5,
+          1.5
+        ],
+        "dash-dot": [
+          3,
+          1,
+          0.5,
+          1
+        ],
+        "long-dash": [
+          5,
+          2
+        ],
+        "dash-dot-dot": [
+          3,
+          1,
+          0.5,
+          1,
+          0.5,
+          1
+        ]
+      },
+      "scale": {
+        "size": 14,
+        "spacing": 250
+      }
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": 3,
+        "line-color": "#123456"
+      },
+      "metadata": {
+        "keep": true,
+        "line_marker": "arrow",
+        "line_marker_spacing_px": 250
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19
+    }
+  },
+  {
+    "request": {
+      "operation": "casing",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": 3,
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "color": "#FFFFFF",
+      "width": 1.5
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": 3,
+        "line-color": "#123456"
+      },
+      "metadata": {
+        "keep": true
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19,
+      "boundary": {
+        "paint": {
+          "line-color": "#FFFFFF",
+          "line-width": 6
+        },
+        "layout": {
+          "visibility": "visible",
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "casing",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": [
+            "interpolate",
+            [
+              "linear"
+            ],
+            [
+              "zoom"
+            ],
+            9,
+            1,
+            16,
+            4
+          ],
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "color": "#FFFFFF",
+      "width": 1.5
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          9,
+          1,
+          16,
+          4
+        ],
+        "line-color": "#123456"
+      },
+      "metadata": {
+        "keep": true
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19,
+      "boundary": {
+        "paint": {
+          "line-color": "#FFFFFF",
+          "line-width": [
+            "interpolate",
+            [
+              "linear"
+            ],
+            [
+              "zoom"
+            ],
+            9,
+            4,
+            16,
+            7
+          ]
+        },
+        "layout": {
+          "visibility": "visible",
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "casing",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": [
+            "match",
+            [
+              "get",
+              "kind"
+            ],
+            "a",
+            2,
+            1
+          ],
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "color": "#FFFFFF",
+      "width": 1.5
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": [
+          "match",
+          [
+            "get",
+            "kind"
+          ],
+          "a",
+          2,
+          1
+        ],
+        "line-color": "#123456"
+      },
+      "metadata": {
+        "keep": true
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19,
+      "boundary": {
+        "paint": {
+          "line-color": "#FFFFFF",
+          "line-width": [
+            "match",
+            [
+              "get",
+              "kind"
+            ],
+            "a",
+            5,
+            4
+          ]
+        },
+        "layout": {
+          "visibility": "visible",
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "casing",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": [
+            "case",
+            [
+              "==",
+              [
+                "get",
+                "x"
+              ],
+              1
+            ],
+            4,
+            2
+          ],
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "color": "#FFFFFF",
+      "width": 1.5
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": [
+          "case",
+          [
+            "==",
+            [
+              "get",
+              "x"
+            ],
+            1
+          ],
+          4,
+          2
+        ],
+        "line-color": "#123456"
+      },
+      "metadata": {
+        "keep": true
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19,
+      "boundary": {
+        "paint": {
+          "line-color": "#FFFFFF",
+          "line-width": [
+            "case",
+            [
+              "==",
+              [
+                "get",
+                "x"
+              ],
+              1
+            ],
+            7,
+            5
+          ]
+        },
+        "layout": {
+          "visibility": "visible",
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "casing",
+      "style": {
+        "type": "line",
+        "paint": {
+          "line-width": [
+            "step",
+            [
+              "zoom"
+            ],
+            1,
+            10,
+            3
+          ],
+          "line-color": "#123456"
+        },
+        "metadata": {
+          "keep": true
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      },
+      "color": "#FFFFFF",
+      "width": 1.5
+    },
+    "expected": {
+      "type": "line",
+      "paint": {
+        "line-width": [
+          "step",
+          [
+            "zoom"
+          ],
+          1,
+          10,
+          3
+        ],
+        "line-color": "#123456"
+      },
+      "metadata": {
+        "keep": true
+      },
+      "filter": [
+        "==",
+        [
+          "get",
+          "a"
+        ],
+        1
+      ],
+      "minzoom": 4,
+      "maxzoom": 19,
+      "boundary": {
+        "paint": {
+          "line-color": "#FFFFFF",
+          "line-width": [
+            "step",
+            [
+              "zoom"
+            ],
+            4,
+            10,
+            6
+          ]
+        },
+        "layout": {
+          "visibility": "visible",
+          "line-cap": "round",
+          "line-join": "round"
+        },
+        "filter": [
+          "==",
+          [
+            "get",
+            "a"
+          ],
+          1
+        ],
+        "minzoom": 4,
+        "maxzoom": 19
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "fill_pattern",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "fill-color": "#ABCDEF"
+        },
+        "metadata": {
+          "unrelated": true
+        }
+      },
+      "recipe": {
+        "pattern": "diagonal-forward",
+        "color": "#FFFFFF",
+        "background": "",
+        "spacing": 8,
+        "stroke": 2
+      }
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "fill-color": "#ABCDEF"
+      },
+      "metadata": {
+        "unrelated": true,
+        "fill_pattern": "diagonal-forward",
+        "fill_pattern_color": "#FFFFFF",
+        "fill_pattern_spacing_px": 8,
+        "fill_pattern_stroke_px": 2
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "fill_pattern",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "fill-color": "#ABCDEF"
+        },
+        "metadata": {
+          "unrelated": true,
+          "fill_pattern": "diagonal-forward",
+          "fill_pattern_color": "#FFFFFF",
+          "fill_pattern_spacing_px": 8,
+          "fill_pattern_stroke_px": 2
+        }
+      },
+      "recipe": null
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "fill-color": "#ABCDEF"
+      },
+      "metadata": {
+        "unrelated": true
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "fill_pattern",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "fill-color": "#ABCDEF"
+        },
+        "metadata": {
+          "unrelated": true
+        }
+      },
+      "recipe": {
+        "pattern": "diagonal-back",
+        "color": "#FFFFFF",
+        "background": "",
+        "spacing": 8,
+        "stroke": 2
+      }
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "fill-color": "#ABCDEF"
+      },
+      "metadata": {
+        "unrelated": true,
+        "fill_pattern": "diagonal-back",
+        "fill_pattern_color": "#FFFFFF",
+        "fill_pattern_spacing_px": 8,
+        "fill_pattern_stroke_px": 2
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "fill_pattern",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "fill-color": "#ABCDEF"
+        },
+        "metadata": {
+          "unrelated": true,
+          "fill_pattern": "diagonal-back",
+          "fill_pattern_color": "#FFFFFF",
+          "fill_pattern_spacing_px": 8,
+          "fill_pattern_stroke_px": 2
+        }
+      },
+      "recipe": null
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "fill-color": "#ABCDEF"
+      },
+      "metadata": {
+        "unrelated": true
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "fill_pattern",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "fill-color": "#ABCDEF"
+        },
+        "metadata": {
+          "unrelated": true
+        }
+      },
+      "recipe": {
+        "pattern": "crosshatch",
+        "color": "#FFFFFF",
+        "background": "",
+        "spacing": 8,
+        "stroke": 2
+      }
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "fill-color": "#ABCDEF"
+      },
+      "metadata": {
+        "unrelated": true,
+        "fill_pattern": "crosshatch",
+        "fill_pattern_color": "#FFFFFF",
+        "fill_pattern_spacing_px": 8,
+        "fill_pattern_stroke_px": 2
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "fill_pattern",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "fill-color": "#ABCDEF"
+        },
+        "metadata": {
+          "unrelated": true,
+          "fill_pattern": "crosshatch",
+          "fill_pattern_color": "#FFFFFF",
+          "fill_pattern_spacing_px": 8,
+          "fill_pattern_stroke_px": 2
+        }
+      },
+      "recipe": null
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "fill-color": "#ABCDEF"
+      },
+      "metadata": {
+        "unrelated": true
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "fill_pattern",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "fill-color": "#ABCDEF"
+        },
+        "metadata": {
+          "unrelated": true
+        }
+      },
+      "recipe": {
+        "pattern": "dots",
+        "color": "#FFFFFF",
+        "background": "",
+        "spacing": 8,
+        "stroke": 2
+      }
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "fill-color": "#ABCDEF"
+      },
+      "metadata": {
+        "unrelated": true,
+        "fill_pattern": "dots",
+        "fill_pattern_color": "#FFFFFF",
+        "fill_pattern_spacing_px": 8,
+        "fill_pattern_stroke_px": 2
+      }
+    }
+  },
+  {
+    "request": {
+      "operation": "fill_pattern",
+      "style": {
+        "type": "fill",
+        "paint": {
+          "fill-color": "#ABCDEF"
+        },
+        "metadata": {
+          "unrelated": true,
+          "fill_pattern": "dots",
+          "fill_pattern_color": "#FFFFFF",
+          "fill_pattern_spacing_px": 8,
+          "fill_pattern_stroke_px": 2
+        }
+      },
+      "recipe": null
+    },
+    "expected": {
+      "type": "fill",
+      "paint": {
+        "fill-color": "#ABCDEF"
+      },
+      "metadata": {
+        "unrelated": true
+      }
+    }
+  }
+]

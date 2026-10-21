@@ -1,0 +1,37 @@
+{
+  "release": {
+    "schema": "ds.module-release/v1",
+    "component": "network",
+    "channel": "canary",
+    "product_id": "rw.datasolutions.module.network.canary",
+    "version": "0.1.0-r2",
+    "protocol": "ds.network-engine/v1",
+    "released_at": "2026-10-14T20:16:13.58678Z",
+    "status": "active",
+    "assets": [
+      {
+        "platform": "linux",
+        "arch": "x86_64",
+        "kind": "module-executable",
+        "size_bytes": 20251680,
+        "sha256": "c52fd75068746d1fbded48b1c2b6d0394d7f9b7e139191dd97cdaa62ca5c50d7",
+        "source_sha": "3bc5f90729f030bb0d109f441a76ca2766b54745",
+        "built_at": "2026-10-14T19:59:58.812Z",
+        "url": "https://storage.googleapis.com/electrification-rural-desktop-releases/modules/network/canary/0.1.0-r2/ds-network",
+        "engines": [
+          {
+            "engine": "ds-network",
+            "release": "ds-network@0.1.0+3bc5f90729f030bb0d109f441a76ca2766b54745",
+            "manifest_sha256": "34121198613a9a18e4cbe37928162aa136a9c01941a7ec51caa7b2349df591d1"
+          }
+        ],
+        "source_revisions": {
+          "ds-command-kernel": "a2b196643c4da6a19352131082bfac1e026c6e66",
+          "ds-network": "3bc5f90729f030bb0d109f441a76ca2766b54745"
+        },
+        "protocol": "ds.network-engine/v1"
+      }
+    ]
+  },
+  "success": true
+}

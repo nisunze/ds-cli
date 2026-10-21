@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "3d1c735c-2e40-42a0-b796-671d217ba23b",
+    "known_version": 6,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Typed 15 C field, after-creep calculation, zero/proportional and modulus-conflict controls were tried. Compact CRI refuses five sections versus 182; complete v89 scaffold refuses undefined `phase_clear`; both containers return `plan_blocked` without output. [Report](hard-problems/3d1c735c/report.json); [runtime inputs/results](../../ds-network/out/feedback-native-20261013/creep-3d1c735c/runtime/source-hashes.json); [CRI replay](../../ds-network/out/feedback-native-20261013/cri-replay/results.json).",
+  "remaining_blocker": "Complete source-qualified CRI clearance-weather/criterion bindings permitting successful authored 15 C native export/reimport. Material-source precedence remains an authority boundary in OPEN-X \u00a712.",
+  "bounded_next_attempt": "Acquire only the missing authoritative bindings, then export/reimport the disposable fixture and compare after-creep with zero shift. Reuse `workspace_export.rs::authored_temperature_shift_survives_workspace_export_and_after_creep_solve`; do not invent selectors or a replacement modulus.",
+  "evidence_files": [
+    {
+      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hardproblems/3d1c735c/report.json",
+      "byte_len": 3229,
+      "sha256": "89519d47063f9062caf10141ec1551187aef18b331efc927a43d9b3a1953ad4c"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-native-20261013/creep-3d1c735c/runtime/source-hashes.json",
+      "byte_len": 1391,
+      "sha256": "a7df3610672031459826ffb5bb9a73d73bb1645aae08d8ba48a265d09c0457f2"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-native-20261013/cri-replay/results.json",
+      "byte_len": 14807,
+      "sha256": "8c4ea9a00dc4e7ccd3773ac9ec1aff28ceb65d00e85e0d37910c94464d9c4a21"
+    }
+  ],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences.",
+  "prior_active_entries": [
+    {
+      "from": "OPEN-X.md",
+      "text": "- **Material and capacity source conflicts** (`3d1c735c`, `df1f53ae`): nominal modulus disagrees with curves/GTP, and Method-2 artifacts remain unverified. **Input needed:** obtain the responsible engineering authority\u2019s source precedence and qualified final-condition material/capacity basis when exact source tracing cannot resolve the conflict. **Boundary:** selecting a physical law or certifying capacity. Canonical creep-field transport, provenance, truthful unknown verdicts and reproducible computation fixes stay in [OPEN.md block 12](OPEN.md#12-ds-grid-engineering-codex-main); acquiring and seeding authoritative evidence stays in SEEDING.md."
+    }
+  ]
+}

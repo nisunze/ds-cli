@@ -1,0 +1,2574 @@
+{
+  "schema": "ds.desktop-instance-cases/v1",
+  "purpose": "Desktop and Server instance routing, replayed. Each case carries the op (without the schema wrapper) and the answer the kernel must give: the parsed answer, or {\"error\": \"<the exact Err string>\"} when the request itself is malformed. ds-web replays the same file through the vendored WASM, so no rule about which live runtime an operation belongs to, or whose reply may still be applied, can be true on one host and not another.",
+  "source": "ds-web/docs/project-and-instance-isolation-contract.md (Desktop instances and CLI targeting; acceptance items 1 and 4), 2026-09-12, under the owner's rulings of the same day: CLI/MCP to Desktop or Server is one surface, and a saved CLI selection never flips a live map's project.",
+  "note": "Re-record expected with DS_DESKTOP_INSTANCE_CASES_WRITE=1 cargo test --test desktop_instance_cases after a deliberate rule change, and say why in the commit. Every select or list case with more than one candidate is replayed in several permutations and must answer identically: order never decides.",
+  "cases": [
+    {
+      "id": "descriptor-minted-identity",
+      "why": "A current instance mints its own id at start and publishes it with its lane, build, start and profile; the id is taken as given and nothing is derived.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711,
+          "instance_id": "11111111111111111111111111111111",
+          "lane": "canary",
+          "build": "2026.9.12+1",
+          "started_at_ms": 1757000000000,
+          "profile": "canary"
+        },
+        "profile": "canary"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "instance": {
+          "instance_id": "11111111111111111111111111111111",
+          "identity": "minted",
+          "origin": "http://127.0.0.1:41234",
+          "profile": "canary",
+          "lane": "canary",
+          "build": "2026.9.12+1",
+          "started_at_ms": 1757000000000,
+          "pid": 4711
+        }
+      }
+    },
+    {
+      "id": "descriptor-derived-identity",
+      "why": "A descriptor written before instance identity carries only the four fields version 1 always had, and still has to be enumerable and nameable, so an identity is derived from what it does say.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        },
+        "profile": "canary"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "instance": {
+          "instance_id": "c8e6ea3bff4dc553f5d63fd86072609f",
+          "identity": "derived",
+          "origin": "http://127.0.0.1:41234",
+          "profile": "canary",
+          "lane": null,
+          "build": null,
+          "started_at_ms": null,
+          "pid": 4711
+        }
+      }
+    },
+    {
+      "id": "descriptor-derived-identity-follows-the-port",
+      "why": "A restart re-rolls the ephemeral port, so the successor derives a different identity: a dead descriptor's id can never be answered by the process that replaced it.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41235",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        },
+        "profile": "canary"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "instance": {
+          "instance_id": "51e7c822e263e90d0da88a9e0b04bd94",
+          "identity": "derived",
+          "origin": "http://127.0.0.1:41235",
+          "profile": "canary",
+          "lane": null,
+          "build": null,
+          "started_at_ms": null,
+          "pid": 4711
+        }
+      }
+    },
+    {
+      "id": "descriptor-derived-identity-follows-the-process",
+      "why": "The same reason from the other side: a new process id derives a new instance, so a reused port cannot make a new runtime look like the old one.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4712
+        },
+        "profile": "canary"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "instance": {
+          "instance_id": "972dade9a972669dc0b158d319b1a97b",
+          "identity": "derived",
+          "origin": "http://127.0.0.1:41234",
+          "profile": "canary",
+          "lane": null,
+          "build": null,
+          "started_at_ms": null,
+          "pid": 4712
+        }
+      }
+    },
+    {
+      "id": "descriptor-derived-identity-follows-the-profile",
+      "why": "Two installs may publish the same origin and pid at different times; the profile is part of the derivation so Stable and Canary are never one instance.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        },
+        "profile": "stable"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "instance": {
+          "instance_id": "3a798ccf868eb93dace4c38156f65331",
+          "identity": "derived",
+          "origin": "http://127.0.0.1:41234",
+          "profile": "stable",
+          "lane": null,
+          "build": null,
+          "started_at_ms": null,
+          "pid": 4711
+        }
+      }
+    },
+    {
+      "id": "descriptor-origin-is-normalised",
+      "why": "The host sends the pairing token to whatever this answers, so the address is normalised here, once; two spellings of one origin are therefore one instance, as the derived id shows.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234/",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        },
+        "profile": "canary"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "instance": {
+          "instance_id": "c8e6ea3bff4dc553f5d63fd86072609f",
+          "identity": "derived",
+          "origin": "http://127.0.0.1:41234",
+          "profile": "canary",
+          "lane": null,
+          "build": null,
+          "started_at_ms": null,
+          "pid": 4711
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-another-version",
+      "why": "Version 1 is the compatibility promise of this whole slice: fields are added, the version is not, and a file that claims another one is not read.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 2,
+          "url": "http://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor speaks another version",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "speaks another version"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-a-remote-host",
+      "why": "The pairing secret is sent to this address. A descriptor naming a remote host would exfiltrate it on the first probe.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://bridge.example:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor does not point at the numeric loopback origin",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "does not point at the numeric loopback origin"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-a-host-name",
+      "why": "Only the numeric loopback address is accepted: a name resolves through whatever the machine's resolver says today, which is not a loopback guarantee.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://localhost:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor does not point at the numeric loopback origin",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "does not point at the numeric loopback origin"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-another-scheme",
+      "why": "The bridge publishes plain http on loopback; another scheme means the descriptor is describing something that is not this bridge.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "https://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor does not point at the numeric loopback origin",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "does not point at the numeric loopback origin"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-userinfo",
+      "why": "This is the exact spoof the origin check exists for: a prefix that looks like the loopback address but parses as userinfo, sending the token to a remote host.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1@evil.example/",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor does not point at the numeric loopback origin",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "does not point at the numeric loopback origin"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-a-path",
+      "why": "An origin has no path. Accepting one would let a descriptor aim the authenticated probe at an arbitrary route on whatever answers that port.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234/bridge",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor does not point at the numeric loopback origin",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "does not point at the numeric loopback origin"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-a-query",
+      "why": "Same reason as the path, and a query would additionally carry attacker-chosen text into the first authenticated request.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234/?to=elsewhere",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor does not point at the numeric loopback origin",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "does not point at the numeric loopback origin"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-a-fragment",
+      "why": "A fragment is never sent on the wire, so its presence means the text is not the origin this owner normalises and compares.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234/#f",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor does not point at the numeric loopback origin",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "does not point at the numeric loopback origin"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-a-default-port",
+      "why": "The bridge binds an ephemeral port every launch; an http default port means the descriptor is not describing a bridge this build published.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor does not point at the numeric loopback origin",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "does not point at the numeric loopback origin"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-port-zero",
+      "why": "Port zero is what a listener asks the kernel for, never what it publishes, so a descriptor naming it addresses nothing.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:0",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor does not point at the numeric loopback origin",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "does not point at the numeric loopback origin"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-a-short-token",
+      "why": "A pairing secret below its bound is not a secret; refusing here stops a weak token being tried against a live bridge at all.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234",
+          "token": "short",
+          "pid": 4711
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor carries no usable pairing secret",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "carries no usable pairing secret"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-a-malformed-instance-id",
+      "why": "An instance id is the name a caller types after --target, so a descriptor may not publish one that no target could ever match.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711,
+          "instance_id": "the-canary-one"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor names a malformed instance id",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "names a malformed instance id"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-another-install-profile",
+      "why": "A descriptor found under one install that names another has been copied out of its own install; it is refused before its token is used.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711,
+          "instance_id": "11111111111111111111111111111111",
+          "profile": "stable"
+        },
+        "profile": "canary"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor belongs to another install profile",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "belongs to another install profile"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-a-zero-pid",
+      "why": "A descriptor names the process that wrote it. Zero names none, and the derived identity would then be the same for every such file.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 0
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor names no process",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "names no process"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-refuses-a-zero-start",
+      "why": "A published start time of zero is a host that did not stamp one; an unstamped field is refused rather than shown to an operator as a real time.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711,
+          "instance_id": "11111111111111111111111111111111",
+          "started_at_ms": 0
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "descriptor_unusable",
+          "message": "the published descriptor names no start time",
+          "remedy": "restart DS GridDesign, or name a descriptor with --desktop-descriptor <path>",
+          "detail": {
+            "reason": "names no start time"
+          }
+        }
+      }
+    },
+    {
+      "id": "descriptor-admits-a-development-lane",
+      "why": "A local development build publishes its own lane and is a real live instance; whether it can serve a caller's work is the selection's answer, not the descriptor's.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711,
+          "instance_id": "11111111111111111111111111111111",
+          "lane": "local"
+        },
+        "profile": "dev"
+      },
+      "expected": {
+        "outcome": "admitted",
+        "instance": {
+          "instance_id": "11111111111111111111111111111111",
+          "identity": "minted",
+          "origin": "http://127.0.0.1:41234",
+          "profile": "dev",
+          "lane": "local",
+          "build": null,
+          "started_at_ms": null,
+          "pid": 4711
+        }
+      }
+    },
+    {
+      "id": "descriptor-ignores-a-member-it-does-not-know",
+      "why": "The descriptor is the one record a differently versioned build wrote, so a member this build does not know decides nothing and is ignored: closing the shape would turn the next additive field into the coordinated upgrade that keeping the version at 1 exists to avoid.",
+      "request": {
+        "kind": "admit_descriptor",
+        "descriptor": {
+          "version": 1,
+          "url": "http://127.0.0.1:41234",
+          "token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "pid": 4711,
+          "a_field_a_later_build_added": "whatever it means"
+        }
+      },
+      "expected": {
+        "outcome": "admitted",
+        "instance": {
+          "instance_id": "e25c3ac7a44c481d6893fed817700f36",
+          "identity": "derived",
+          "origin": "http://127.0.0.1:41234",
+          "profile": null,
+          "lane": null,
+          "build": null,
+          "started_at_ms": null,
+          "pid": 4711
+        }
+      }
+    },
+    {
+      "id": "select-the-only-live-instance",
+      "why": "The whole ordinary case: one live instance, signed in for this caller, and the operation goes there without anyone naming anything.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "routed",
+        "route": {
+          "instance_id": "11111111111111111111111111111111",
+          "window": null
+        }
+      }
+    },
+    {
+      "id": "select-nothing-live",
+      "why": "No instance at all is the refusal an operator sees before their first launch, and it names how to fix it rather than how it failed.",
+      "request": {
+        "kind": "select",
+        "candidates": [],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_not_paired",
+          "message": "no DS GridDesign session on this machine is signed in for this account",
+          "remedy": "start DS GridDesign and sign in, then retry"
+        }
+      }
+    },
+    {
+      "id": "select-another-account-is-not-a-candidate-and-is-not-disclosed",
+      "why": "An instance signed in as someone else is another person's session on this machine; the caller is told nothing is paired, and not that it exists.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-b",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_not_paired",
+          "message": "no DS GridDesign session on this machine is signed in for this account",
+          "remedy": "start DS GridDesign and sign in, then retry"
+        }
+      }
+    },
+    {
+      "id": "select-two-live-instances-refuse-before-an-effect",
+      "why": "Two instances that could both serve the work is the case the contract cares most about: nothing is chosen, and both choices are named.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_ambiguous",
+          "message": "more than one DS GridDesign instance can serve this operation",
+          "remedy": "name one with --target desktop:<instance_id>",
+          "detail": {
+            "candidates": [
+              {
+                "instance_id": "11111111111111111111111111111111",
+                "profile": "canary",
+                "lane": "canary",
+                "project": "project-a",
+                "build": "2026.9.12+1",
+                "started_at_ms": 1757000000000,
+                "windows": 0
+              },
+              {
+                "instance_id": "22222222222222222222222222222222",
+                "profile": "canary",
+                "lane": "canary",
+                "project": "project-b",
+                "build": "2026.9.12+1",
+                "started_at_ms": 1757000000000,
+                "windows": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "select-three-live-instances-are-named-in-identity-order",
+      "why": "The list a caller reads is ordered by identity, never by the order a host happened to enumerate in, so two hosts print the same thing.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "33333333333333333333333333333333",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-c",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_ambiguous",
+          "message": "more than one DS GridDesign instance can serve this operation",
+          "remedy": "name one with --target desktop:<instance_id>",
+          "detail": {
+            "candidates": [
+              {
+                "instance_id": "11111111111111111111111111111111",
+                "profile": "canary",
+                "lane": "canary",
+                "project": "project-a",
+                "build": "2026.9.12+1",
+                "started_at_ms": 1757000000000,
+                "windows": 0
+              },
+              {
+                "instance_id": "22222222222222222222222222222222",
+                "profile": "canary",
+                "lane": "canary",
+                "project": "project-b",
+                "build": "2026.9.12+1",
+                "started_at_ms": 1757000000000,
+                "windows": 0
+              },
+              {
+                "instance_id": "33333333333333333333333333333333",
+                "profile": "canary",
+                "lane": "canary",
+                "project": "project-c",
+                "build": "2026.9.12+1",
+                "started_at_ms": 1757000000000,
+                "windows": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "select-ambiguity-names-only-safe-metadata",
+      "why": "An ambiguity refusal is the one place instances are described to a caller, so it carries the id, profile, lane, project, build, start and window count and nothing else.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7,
+            "windows": [
+              {
+                "label": "main",
+                "project": "project-a",
+                "generation": 2
+              },
+              {
+                "label": "workspace-2",
+                "project": "project-b",
+                "generation": 1
+              }
+            ]
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "stable",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.11+4",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_ambiguous",
+          "message": "more than one DS GridDesign instance can serve this operation",
+          "remedy": "name one with --target desktop:<instance_id>",
+          "detail": {
+            "candidates": [
+              {
+                "instance_id": "11111111111111111111111111111111",
+                "profile": "canary",
+                "lane": "canary",
+                "project": "project-a",
+                "build": "2026.9.12+1",
+                "started_at_ms": 1757000000000,
+                "windows": 2
+              },
+              {
+                "instance_id": "22222222222222222222222222222222",
+                "profile": "stable",
+                "lane": "canary",
+                "project": "project-b",
+                "build": "2026.9.11+4",
+                "started_at_ms": 1757000000000,
+                "windows": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "select-the-instance-that-has-the-project",
+      "why": "A caller's project narrows which instance may serve the work; with exactly one holding it the answer is that one, and no window moves.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "project": "project-b"
+        }
+      },
+      "expected": {
+        "outcome": "routed",
+        "route": {
+          "instance_id": "22222222222222222222222222222222",
+          "window": null
+        }
+      }
+    },
+    {
+      "id": "select-the-project-open-in-a-second-window",
+      "why": "A project open in a workspace window is open in that instance; window layout is the shell's business, not a reason to refuse the operation.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7,
+            "windows": [
+              {
+                "label": "main",
+                "project": "project-a",
+                "generation": 3
+              },
+              {
+                "label": "workspace-2",
+                "project": "project-b",
+                "generation": 1
+              }
+            ]
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "project": "project-b"
+        }
+      },
+      "expected": {
+        "outcome": "routed",
+        "route": {
+          "instance_id": "11111111111111111111111111111111",
+          "window": null
+        }
+      }
+    },
+    {
+      "id": "select-the-project-is-open-nowhere",
+      "why": "Nothing has the project open, so the caller is refused with the explicit instance-qualified switch as the remedy; a saved selection never moves a live map.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "project": "project-c"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_project_not_open",
+          "message": "no targeted DS GridDesign instance has that project open",
+          "remedy": "open it in the app, or switch one explicitly with `ds desktop project switch --target desktop:<instance_id> --project <project>`",
+          "detail": {
+            "project": "project-c",
+            "instances": []
+          }
+        }
+      }
+    },
+    {
+      "id": "select-the-same-project-in-two-instances",
+      "why": "Acceptance item 1's same-project pair: two instances on one project are two targets, and choosing between them is the caller's, never the order's.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "project": "project-a"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_ambiguous",
+          "message": "more than one DS GridDesign instance can serve this operation",
+          "remedy": "name one with --target desktop:<instance_id>",
+          "detail": {
+            "candidates": [
+              {
+                "instance_id": "11111111111111111111111111111111",
+                "profile": "canary",
+                "lane": "canary",
+                "project": "project-a",
+                "build": "2026.9.12+1",
+                "started_at_ms": 1757000000000,
+                "windows": 0
+              },
+              {
+                "instance_id": "22222222222222222222222222222222",
+                "profile": "canary",
+                "lane": "canary",
+                "project": "project-a",
+                "build": "2026.9.12+1",
+                "started_at_ms": 1757000000000,
+                "windows": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "select-equal-display-names-are-still-two-projects",
+      "why": "Names alone do not distinguish projects, so nothing here has ever seen a name: two projects an operator would read alike are two ids and route apart.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a-2",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "project": "project-a-2"
+        }
+      },
+      "expected": {
+        "outcome": "routed",
+        "route": {
+          "instance_id": "22222222222222222222222222222222",
+          "window": null
+        }
+      }
+    },
+    {
+      "id": "select-a-project-independent-operation-ignores-the-project",
+      "why": "An operation that is not about a project runs wherever the identity matches; narrowing it by the caller's selection would refuse work that cannot be wrong.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "project": "project-c",
+          "project_independent": true
+        }
+      },
+      "expected": {
+        "outcome": "routed",
+        "route": {
+          "instance_id": "11111111111111111111111111111111",
+          "window": null
+        }
+      }
+    },
+    {
+      "id": "select-a-named-instance-among-several",
+      "why": "The explicit target is what makes two instances usable at once: the caller names one and the ambiguity that would otherwise refuse simply does not arise.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "target": {
+          "instance_id": "22222222222222222222222222222222"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "routed",
+        "route": {
+          "instance_id": "22222222222222222222222222222222",
+          "window": null
+        }
+      }
+    },
+    {
+      "id": "select-a-named-instance-that-is-not-live",
+      "why": "An operator naming an instance that has since exited is told exactly that, rather than having the work land somewhere they did not name.",
+      "request": {
+        "kind": "select",
+        "candidates": [],
+        "target": {
+          "instance_id": "99999999999999999999999999999999"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_target_not_live",
+          "message": "no live DS GridDesign instance answers to that target",
+          "remedy": "list the live instances with `ds desktop list` and name one of them",
+          "detail": {
+            "target": "99999999999999999999999999999999"
+          }
+        }
+      }
+    },
+    {
+      "id": "select-a-named-dead-instance-never-falls-through",
+      "why": "The load-bearing case of acceptance item 4: one other instance is live and would have been the automatic answer, and the named dead one still refuses.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "target": {
+          "instance_id": "99999999999999999999999999999999"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_target_not_live",
+          "message": "no live DS GridDesign instance answers to that target",
+          "remedy": "list the live instances with `ds desktop list` and name one of them",
+          "detail": {
+            "target": "99999999999999999999999999999999"
+          }
+        }
+      }
+    },
+    {
+      "id": "select-a-named-instance-on-another-lane",
+      "why": "A Canary instance cannot serve a Stable caller's work; the refusal says which mismatch it was so the operator can name the right one.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "stable",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "target": {
+          "instance_id": "22222222222222222222222222222222"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_target_mismatch",
+          "message": "that instance runs on another lane",
+          "remedy": "name an instance that can serve this operation, from `ds desktop list`",
+          "detail": {
+            "target": "22222222222222222222222222222222",
+            "reason": "lane"
+          }
+        }
+      }
+    },
+    {
+      "id": "select-a-named-instance-signed-in-elsewhere",
+      "why": "The named instance is live but belongs to another account, so it is refused by name; the account itself is not echoed back.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-b",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "target": {
+          "instance_id": "22222222222222222222222222222222"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_target_mismatch",
+          "message": "that instance is signed in as another account",
+          "remedy": "name an instance that can serve this operation, from `ds desktop list`",
+          "detail": {
+            "target": "22222222222222222222222222222222",
+            "reason": "account"
+          }
+        }
+      }
+    },
+    {
+      "id": "select-a-named-instance-with-another-audience",
+      "why": "A credential bound to another deployment audience is a different trust boundary even for the same uid and lane, and it refuses like the others.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "target": {
+          "instance_id": "22222222222222222222222222222222"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_target_mismatch",
+          "message": "that instance is bound to another credential audience",
+          "remedy": "name an instance that can serve this operation, from `ds desktop list`",
+          "detail": {
+            "target": "22222222222222222222222222222222",
+            "reason": "audience"
+          }
+        }
+      }
+    },
+    {
+      "id": "select-a-named-window",
+      "why": "A window is an identity inside an instance, so a caller may pin the exact view its work belongs to and the shell dispatches only there.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7,
+            "windows": [
+              {
+                "label": "main",
+                "project": "project-a",
+                "generation": 2
+              },
+              {
+                "label": "workspace-2",
+                "project": "project-b",
+                "generation": 1
+              }
+            ]
+          }
+        ],
+        "target": {
+          "instance_id": "11111111111111111111111111111111",
+          "window": "workspace-2"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "project": "project-b"
+        }
+      },
+      "expected": {
+        "outcome": "routed",
+        "route": {
+          "instance_id": "11111111111111111111111111111111",
+          "window": "workspace-2"
+        }
+      }
+    },
+    {
+      "id": "select-a-named-window-that-is-not-open",
+      "why": "A window that closed is refused by name for the same reason a dead instance is: the alternative is the work appearing in a view nobody named.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7,
+            "windows": [
+              {
+                "label": "main",
+                "project": "project-a",
+                "generation": 2
+              }
+            ]
+          }
+        ],
+        "target": {
+          "instance_id": "11111111111111111111111111111111",
+          "window": "workspace-9"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_target_mismatch",
+          "message": "that instance has no such window open",
+          "remedy": "name an instance that can serve this operation, from `ds desktop list`",
+          "detail": {
+            "target": "11111111111111111111111111111111",
+            "reason": "window"
+          }
+        }
+      }
+    },
+    {
+      "id": "select-a-named-instance-without-the-project",
+      "why": "The caller named an instance that does not hold the project; the refusal points at the sibling that does, so the remedy is a retarget rather than a switch.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "target": {
+          "instance_id": "11111111111111111111111111111111"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "project": "project-b"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_project_not_open",
+          "message": "no targeted DS GridDesign instance has that project open",
+          "remedy": "open it in the app, or switch one explicitly with `ds desktop project switch --target desktop:<instance_id> --project <project>`",
+          "detail": {
+            "project": "project-b",
+            "instances": [
+              {
+                "instance_id": "22222222222222222222222222222222",
+                "profile": "canary",
+                "lane": "canary",
+                "project": "project-b",
+                "build": "2026.9.12+1",
+                "started_at_ms": 1757000000000,
+                "windows": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "select-a-named-instance-that-holds-the-project",
+      "why": "Naming an instance and naming a project agree: the caller pinned the runtime and the work is about the project that runtime holds, so it goes there.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "target": {
+          "instance_id": "22222222222222222222222222222222"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "project": "project-b"
+        }
+      },
+      "expected": {
+        "outcome": "routed",
+        "route": {
+          "instance_id": "22222222222222222222222222222222",
+          "window": null
+        }
+      }
+    },
+    {
+      "id": "select-a-named-window-without-the-project",
+      "why": "Pinning a window pins the project too: the instance holds it in another view, and serving that would put the result in the wrong one, so the instance that does hold it is named back.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7,
+            "windows": [
+              {
+                "label": "main",
+                "project": "project-a",
+                "generation": 2
+              },
+              {
+                "label": "workspace-2",
+                "project": "project-b",
+                "generation": 1
+              }
+            ]
+          }
+        ],
+        "target": {
+          "instance_id": "11111111111111111111111111111111",
+          "window": "main"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "project": "project-b"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_project_not_open",
+          "message": "no targeted DS GridDesign instance has that project open",
+          "remedy": "open it in the app, or switch one explicitly with `ds desktop project switch --target desktop:<instance_id> --project <project>`",
+          "detail": {
+            "project": "project-b",
+            "instances": [
+              {
+                "instance_id": "11111111111111111111111111111111",
+                "profile": "canary",
+                "lane": "canary",
+                "project": "project-a",
+                "build": "2026.9.12+1",
+                "started_at_ms": 1757000000000,
+                "windows": 2
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "select-a-malformed-target",
+      "why": "A target that is not an instance id is refused before any candidate is read, so a typo can never be resolved into whichever instance is live.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "target": {
+          "instance_id": "the canary one"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_target_mismatch",
+          "message": "that target is not an instance id",
+          "remedy": "name an instance that can serve this operation, from `ds desktop list`",
+          "detail": {
+            "target": "the canary one",
+            "reason": "malformed"
+          }
+        }
+      }
+    },
+    {
+      "id": "select-a-development-lane-instance-is-not-a-candidate",
+      "why": "A local development build has no provisioned native lane, so it never becomes the automatic answer for provisioned work.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "local",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_not_paired",
+          "message": "no DS GridDesign session on this machine is signed in for this account",
+          "remedy": "start DS GridDesign and sign in, then retry"
+        }
+      }
+    },
+    {
+      "id": "select-a-development-lane-instance-may-still-be-named",
+      "why": "Naming it explicitly gets the honest reason rather than silence: it is live, it is simply on another lane.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "local",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "target": {
+          "instance_id": "11111111111111111111111111111111"
+        },
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_target_mismatch",
+          "message": "that instance runs on another lane",
+          "remedy": "name an instance that can serve this operation, from `ds desktop list`",
+          "detail": {
+            "target": "11111111111111111111111111111111",
+            "reason": "lane"
+          }
+        }
+      }
+    },
+    {
+      "id": "select-refuses-one-instance-enumerated-twice",
+      "why": "One instance publishes one descriptor; presenting it under two entries is the host's de-duplication to do, and doing it here would hide a broken registry.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "error": "the candidate set names one instance twice"
+      }
+    },
+    {
+      "id": "select-refuses-a-handshake-that-is-not-the-contract",
+      "why": "A live bridge answering with a malformed audience digest is not a candidate for anything; it is refused rather than trusted for the fields that did parse.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "short",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_contract_mismatch",
+          "message": "a live instance published a credential audience outside its contract",
+          "remedy": "update DS GridDesign and retry",
+          "detail": {
+            "field": "a credential audience"
+          }
+        }
+      }
+    },
+    {
+      "id": "select-refuses-a-window-published-twice",
+      "why": "Window labels are how a caller pins a view, so an instance publishing one twice makes every window target ambiguous and is refused whole.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7,
+            "windows": [
+              {
+                "label": "main",
+                "project": "project-a",
+                "generation": 1
+              },
+              {
+                "label": "main",
+                "project": "project-b",
+                "generation": 1
+              }
+            ]
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "desktop_contract_mismatch",
+          "message": "a live instance published the same window twice outside its contract",
+          "remedy": "update DS GridDesign and retry",
+          "detail": {
+            "field": "the same window twice"
+          }
+        }
+      }
+    },
+    {
+      "id": "select-refuses-a-requirement-on-a-lane-that-is-not-one",
+      "why": "The requirement is the host's own identity, not a caller's input, so a malformed one is the host's bug and never a typed refusal a user sees.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "preview",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "error": "a requirement names the caller's own lane"
+      }
+    },
+    {
+      "id": "select-refuses-a-requirement-without-a-credential-audience",
+      "why": "Same reason: without the audience the compatibility test would silently pass for a credential bound somewhere else entirely.",
+      "request": {
+        "kind": "select",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "none"
+        }
+      },
+      "expected": {
+        "error": "a requirement names the caller's own audience"
+      }
+    },
+    {
+      "id": "list-nothing-live",
+      "why": "`ds desktop list` with nothing running answers an empty list rather than refusing: there is no ambiguity to report and nothing went wrong.",
+      "request": {
+        "kind": "list",
+        "candidates": []
+      },
+      "expected": {
+        "outcome": "listed",
+        "instances": [],
+        "compatible": null
+      }
+    },
+    {
+      "id": "list-names-only-safe-metadata",
+      "why": "The projection a client prints is decided here so no host has to judge which handshake fields are safe: never the token, the address or the account.",
+      "request": {
+        "kind": "list",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7,
+            "windows": [
+              {
+                "label": "main",
+                "project": "project-a",
+                "generation": 4
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "outcome": "listed",
+        "instances": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "windows": 1
+          }
+        ],
+        "compatible": null
+      }
+    },
+    {
+      "id": "list-is-ordered-by-identity",
+      "why": "The order an operator reads is the same on every host and in every enumeration, so the row they name is the row they meant.",
+      "request": {
+        "kind": "list",
+        "candidates": [
+          {
+            "instance_id": "33333333333333333333333333333333",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-c",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ]
+      },
+      "expected": {
+        "outcome": "listed",
+        "instances": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "windows": 0
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "windows": 0
+          },
+          {
+            "instance_id": "33333333333333333333333333333333",
+            "profile": "canary",
+            "lane": "canary",
+            "project": "project-c",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "windows": 0
+          }
+        ],
+        "compatible": null
+      }
+    },
+    {
+      "id": "list-marks-which-instances-this-caller-can-use",
+      "why": "A caller sees its own instances and no one else's: the session signed in as another account is not listed, not counted and not hinted at, while its own instance on another lane is listed and marked incompatible so listing can still say why that one is not an option.",
+      "request": {
+        "kind": "list",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "22222222222222222222222222222222",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-b",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "33333333333333333333333333333333",
+            "profile": "canary",
+            "lane": "stable",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-c",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ],
+        "requirement": {
+          "lane": "canary",
+          "uid": "uid-a",
+          "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "outcome": "listed",
+        "instances": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "windows": 0
+          },
+          {
+            "instance_id": "33333333333333333333333333333333",
+            "profile": "canary",
+            "lane": "stable",
+            "project": "project-c",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "windows": 0
+          }
+        ],
+        "compatible": [
+          "11111111111111111111111111111111"
+        ]
+      }
+    },
+    {
+      "id": "list-without-a-requirement-marks-nothing",
+      "why": "Asked without an identity the answer says nothing about compatibility rather than guessing, and the member is present and null so the shape never moves.",
+      "request": {
+        "kind": "list",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ]
+      },
+      "expected": {
+        "outcome": "listed",
+        "instances": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "project": "project-a",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "windows": 0
+          }
+        ],
+        "compatible": null
+      }
+    },
+    {
+      "id": "list-refuses-one-instance-enumerated-twice",
+      "why": "The same host bug the selection refuses: a listing that showed one instance twice would invite an operator to target a duplicate.",
+      "request": {
+        "kind": "list",
+        "candidates": [
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          },
+          {
+            "instance_id": "11111111111111111111111111111111",
+            "profile": "canary",
+            "lane": "canary",
+            "uid": "uid-a",
+            "audience_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "project": "project-b",
+            "build": "2026.9.12+1",
+            "started_at_ms": 1757000000000,
+            "session_revision": 7
+          }
+        ]
+      },
+      "expected": {
+        "error": "the candidate set names one instance twice"
+      }
+    },
+    {
+      "id": "generation-advances-on-a-project-switch",
+      "why": "Switching a view's project is the event the whole generation exists for; everything captured before it belongs to a view that no longer exists.",
+      "request": {
+        "kind": "advance_generation",
+        "current": 4,
+        "reason": "project_switch"
+      },
+      "expected": {
+        "outcome": "advanced",
+        "reason": "project_switch",
+        "generation": 5
+      }
+    },
+    {
+      "id": "generation-advances-on-an-account-change",
+      "why": "An account change invalidates in-flight work for the same reason a project switch does, and by the same counter rather than a second mechanism.",
+      "request": {
+        "kind": "advance_generation",
+        "current": 4,
+        "reason": "account_change"
+      },
+      "expected": {
+        "outcome": "advanced",
+        "reason": "account_change",
+        "generation": 5
+      }
+    },
+    {
+      "id": "generation-advances-on-a-sign-out",
+      "why": "Signing out is a context change too: a reply that arrives afterwards must not be written into the signed-out view.",
+      "request": {
+        "kind": "advance_generation",
+        "current": 1,
+        "reason": "sign_out"
+      },
+      "expected": {
+        "outcome": "advanced",
+        "reason": "sign_out",
+        "generation": 2
+      }
+    },
+    {
+      "id": "generation-refuses-to-advance-a-view-that-has-none",
+      "why": "A view's generation starts at one, so advancing from zero means the host never established the view it is claiming to change.",
+      "request": {
+        "kind": "advance_generation",
+        "current": 0,
+        "reason": "project_switch"
+      },
+      "expected": {
+        "error": "a view's generation starts at 1"
+      }
+    },
+    {
+      "id": "result-admitted-in-its-own-generation",
+      "why": "The ordinary case: nothing changed while the operation ran, so the result is applied to the view that asked for it.",
+      "request": {
+        "kind": "admit_result",
+        "captured": 5,
+        "current": 5
+      },
+      "expected": {
+        "outcome": "admitted",
+        "generation": 5
+      }
+    },
+    {
+      "id": "result-from-the-old-generation-is-stale",
+      "why": "Acceptance item 3, stated as one comparison: a delayed reply from before the switch is refused rather than written into the new view.",
+      "request": {
+        "kind": "admit_result",
+        "captured": 4,
+        "current": 5
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "context_generation_stale",
+          "message": "this view's project or account changed while that was in flight",
+          "remedy": "retry the operation against the view as it is now",
+          "detail": {
+            "captured": 4,
+            "current": 5
+          }
+        }
+      }
+    },
+    {
+      "id": "result-from-a-generation-that-does-not-exist-yet",
+      "why": "A result captured after the view it is for cannot happen, so it is the host's own bug rather than a refusal a caller should ever be shown.",
+      "request": {
+        "kind": "admit_result",
+        "captured": 6,
+        "current": 5
+      },
+      "expected": {
+        "error": "a result cannot be captured after the view it is for"
+      }
+    },
+    {
+      "id": "request-id-minted",
+      "why": "A request id names the instance that dispatched it, which is what lets a completion be admitted by that instance and by no other.",
+      "request": {
+        "kind": "mint_request_id",
+        "instance_id": "11111111111111111111111111111111",
+        "sequence": 7
+      },
+      "expected": {
+        "outcome": "minted",
+        "request_id": "cli-11111111111111111111111111111111-7"
+      }
+    },
+    {
+      "id": "request-id-refuses-a-zero-sequence",
+      "why": "Sequences start at one, so a zero is a host that has not counted; minting it would make two requests share an id after a restart.",
+      "request": {
+        "kind": "mint_request_id",
+        "instance_id": "11111111111111111111111111111111",
+        "sequence": 0
+      },
+      "expected": {
+        "error": "a request sequence starts at 1 and is bounded"
+      }
+    },
+    {
+      "id": "request-id-refuses-an-instance-that-is-not-an-id",
+      "why": "The process id the old grammar used is not an instance identity, and minting one from it would resurrect exactly the ambiguity this slice removes.",
+      "request": {
+        "kind": "mint_request_id",
+        "instance_id": "4711",
+        "sequence": 1
+      },
+      "expected": {
+        "error": "a request id names a minted or derived instance id"
+      }
+    },
+    {
+      "id": "request-id-read",
+      "why": "Reading is the other half: a completion arrives as text and the instance it names has to come back out of it exactly.",
+      "request": {
+        "kind": "read_request_id",
+        "request_id": "cli-11111111111111111111111111111111-7"
+      },
+      "expected": {
+        "outcome": "read",
+        "instance_id": "11111111111111111111111111111111",
+        "sequence": 7
+      }
+    },
+    {
+      "id": "request-id-read-refuses-another-prefix",
+      "why": "Only this bridge's own grammar is admitted; anything else is a message from something that is not the bridge.",
+      "request": {
+        "kind": "read_request_id",
+        "request_id": "desktop-11111111111111111111111111111111-7"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "request_id_malformed",
+          "message": "that is not a bridge request id",
+          "remedy": "a request id is cli-<instance_id>-<n>, minted by the instance that dispatched it",
+          "detail": {
+            "request_id": "desktop-11111111111111111111111111111111-7"
+          }
+        }
+      }
+    },
+    {
+      "id": "request-id-read-refuses-a-padded-sequence",
+      "why": "One id per request means one spelling per id: a padded sequence would let the same request be completed twice under two texts.",
+      "request": {
+        "kind": "read_request_id",
+        "request_id": "cli-11111111111111111111111111111111-007"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "request_id_malformed",
+          "message": "that is not a bridge request id",
+          "remedy": "a request id is cli-<instance_id>-<n>, minted by the instance that dispatched it",
+          "detail": {
+            "request_id": "cli-11111111111111111111111111111111-007"
+          }
+        }
+      }
+    },
+    {
+      "id": "request-id-read-refuses-a-signed-sequence",
+      "why": "A leading plus parses as the same number, so admitting it would give one request two texts and let a host that keys pending work by the id it dispatched admit one completion twice.",
+      "request": {
+        "kind": "read_request_id",
+        "request_id": "cli-11111111111111111111111111111111-+1"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "request_id_malformed",
+          "message": "that is not a bridge request id",
+          "remedy": "a request id is cli-<instance_id>-<n>, minted by the instance that dispatched it",
+          "detail": {
+            "request_id": "cli-11111111111111111111111111111111-+1"
+          }
+        }
+      }
+    },
+    {
+      "id": "request-id-read-refuses-the-old-process-grammar",
+      "why": "`cli-<pid>-<n>` is what the shell minted before instance identity; it is refused rather than read as an instance, which it never was.",
+      "request": {
+        "kind": "read_request_id",
+        "request_id": "cli-4711-1"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "request_id_malformed",
+          "message": "that is not a bridge request id",
+          "remedy": "a request id is cli-<instance_id>-<n>, minted by the instance that dispatched it",
+          "detail": {
+            "request_id": "cli-4711-1"
+          }
+        }
+      }
+    },
+    {
+      "id": "request-id-read-refuses-an-uppercase-instance",
+      "why": "One instance has one spelling, so a case-shifted id is not the same id and must not complete that instance's request.",
+      "request": {
+        "kind": "read_request_id",
+        "request_id": "cli-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA-1"
+      },
+      "expected": {
+        "outcome": "refused",
+        "refusal": {
+          "code": "request_id_malformed",
+          "message": "that is not a bridge request id",
+          "remedy": "a request id is cli-<instance_id>-<n>, minted by the instance that dispatched it",
+          "detail": {
+            "request_id": "cli-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA-1"
+          }
+        }
+      }
+    },
+    {
+      "id": "wire-refuses-an-op-it-does-not-have",
+      "why": "The op vocabulary is closed: a host asking for something else gets an error, not a default answer it might act on.",
+      "request": {
+        "kind": "teleport"
+      },
+      "expected": {
+        "error": "invalid desktop instance request: unknown variant `teleport`, expected one of `admit_descriptor`, `select`, `list`, `advance_generation`, `admit_result`, `mint_request_id`, `read_request_id` at line 1 column 58"
+      }
+    },
+    {
+      "id": "wire-refuses-another-schema",
+      "why": "The schema is the version handshake between the kernel and every host that replays this corpus, so a mismatch stops before any decision is made.",
+      "schema": "ds.desktop-instance/v2",
+      "request": {
+        "kind": "list",
+        "candidates": []
+      },
+      "expected": {
+        "error": "unsupported desktop instance schema; expected ds.desktop-instance/v1"
+      }
+    },
+    {
+      "id": "wire-refuses-a-member-it-does-not-know",
+      "why": "Every request shape denies unknown members, so a host that adds a field gets told rather than having it silently ignored.",
+      "request": {
+        "kind": "admit_result",
+        "captured": 1,
+        "current": 1,
+        "nudge": true
+      },
+      "expected": {
+        "error": "invalid desktop instance request: unknown field `nudge`, expected `captured` or `current` at line 1 column 102"
+      }
+    }
+  ]
+}

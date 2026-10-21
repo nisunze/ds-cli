@@ -1,0 +1,44 @@
+{
+  "request": {
+    "operation": "invoke",
+    "command": "feedback.list",
+    "arguments": {
+      "view": "all",
+      "query": "15 shared-library capacity tables admit no straight line; a-w-S190.012 and a-w-S255.012 author one row at 120 deg",
+      "limit": 2,
+      "detail": true,
+      "lane": "stable"
+    }
+  },
+  "report": {
+    "id": "3acfd343-e452-49ef-b0f1-d655a0e826c0",
+    "status": "open",
+    "kind": "bug",
+    "severity": "major",
+    "component": "ds-network / shared nyamagabe structure library",
+    "surface": "cli",
+    "title": "15 shared-library capacity tables admit no straight line; a-w-S190.012 and a-w-S255.012 author one row at 120 deg",
+    "detail": "Observed: the new read ds dsgrid run --operation structure_capacity_tables --params '{\"only_findings\":true}' on m2-r18-planpolicy reports angle_domain_excludes_tangent on 15 artifacts and single_angle_knot on 16. Two of them are the ones the owner already suspected: a-w-S190.012 and a-w-S255.012 each author exactly one allowable-span row at 120 deg with outside_domain reject, so those suspensions can never be spotted on tangent -- the planner refuses them at every straight station with AngleOutsideDomain (47 rejections each on one alignment). Others: a-w-S140(1).012 and a-w-S190(1).012 start at 0.5 deg, l-w-S140/S190/S255/S325 at 5 deg, b-w-* at 1 deg, e-w-* at 30 deg, j-w-120d-* at 60 deg. This is a DATA report, not a code report: the code now surfaces it (import receipt warning, capacity_angle_domain_excludes_structure finding on report structures, and the read above). Expected: the canonical library's .012 tables are corrected where the angle domain is wrong -- the owner's rule is that suspensions are 0-0.5 deg -- and the corrected library is re-versioned. Acceptance: structure_capacity_tables --only-findings reports no angle_domain_excludes_tangent for a family the project spots on tangent.",
+    "occurrences": 1,
+    "reporters": [
+      "magese@datasolutions.rw"
+    ],
+    "reporter_kind": "agent",
+    "version": 2,
+    "last_seen_at": "2026-09-26T10:52:31.800732Z",
+    "updated_at": "2026-10-13T07:29:06.021915Z",
+    "updated_by": "nisunze@yahoo.fr",
+    "resolution": "",
+    "blocked": true,
+    "blocked_on": "Reviewed native corrected0-0.5deg suspension tables, qualified immutable library re-version/attachment, and target Model2 angle-domain audit; no project design edits in this session",
+    "blocked_since": "2026-10-13T07:29:06.021915Z",
+    "note_count": 1,
+    "latest_note": {
+      "author": "nisunze@yahoo.fr",
+      "at": "2026-10-13T07:29:06.021915Z",
+      "text": "The report is explicitly library DATA correction. Installed structure_capacity_tables already reports angle_domain_excludes_tangent; code must preserve native authored angle domains. The retained audit proves a corrected a-w-S1900/0.5deg only on a testing model, not the shared library or target project. rw-pls-native-truth/2026-10-07-computed-members-v1 remains review_pending with incomplete criteria/load/factor qualification. No native values, library release or project attachment were changed in this coding session. Closure requires authoritative corrected tables, reviewed immutable re-version/attachment and the filed target audit with no tangent-domain findings.",
+      "blocked_on": "Reviewed native corrected0-0.5deg suspension tables, qualified immutable library re-version/attachment, and target Model2 angle-domain audit; no project design edits in this session"
+    },
+    "detail_truncated": false
+  }
+}

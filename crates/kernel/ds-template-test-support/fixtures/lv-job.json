@@ -1,0 +1,118 @@
+{
+  "ds_project": "fixture-invariance",
+  "transformer_name": "fixture-Ω",
+  "settings": {
+    "size_transformer_kva": true,
+    "keep_lv_poles": true,
+    "keep_lv_lines_topology": true,
+    "keep_lv_lines_sizes": true,
+    "assign_assemblies": true,
+    "assign_struct_types": true,
+    "assign_earthing": true,
+    "delete_strange_cols": false,
+    "calculate_geometry_properties": true
+  },
+  "gdfs": {
+    "tr": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "id": "tr-fixture",
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              30,
+              -2
+            ]
+          },
+          "properties": {
+            "id": "tr-fixture",
+            "transformer_nature": "new_transformer"
+          }
+        }
+      ]
+    },
+    "lv_lines": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "id": "line-fixture",
+          "properties": {
+            "cable_size": "3 x 17 fixture"
+          },
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [
+                30,
+                -2
+              ],
+              [
+                30,
+                -1.999
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    "lv_poles": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "id": "pole-fixture",
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              30,
+              -1.999
+            ]
+          },
+          "properties": {
+            "id": "pole-fixture"
+          }
+        }
+      ]
+    },
+    "customers": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "id": "cust-fixture-a",
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              30.00009,
+              -1.999
+            ]
+          },
+          "properties": {
+            "id": "cust-fixture-a",
+            "category": "Habitation fixture",
+            "meter_type": "Single Phase"
+          }
+        },
+        {
+          "type": "Feature",
+          "id": "cust-fixture-b",
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              30.00018,
+              -1.999
+            ]
+          },
+          "properties": {
+            "id": "cust-fixture-b",
+            "category": "Collectivité fixture",
+            "meter_type": "Three Phase"
+          }
+        }
+      ]
+    }
+  }
+}

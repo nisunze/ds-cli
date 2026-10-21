@@ -1,0 +1,403 @@
+{
+  "schema": "ds.solar-input-base-vectors/v1",
+  "city": [
+    {
+      "id": "governed-city",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"population\":100}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"population\":100},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "7a7466bf2c33e17bf73ec21dbd3e5e7933a908ed6f28783151e1d420019e5074",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "key-order-unchanged",
+      "base_json": "{\"01_city_inputs\":{\"population\":100},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"population\":100},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "7a7466bf2c33e17bf73ec21dbd3e5e7933a908ed6f28783151e1d420019e5074",
+      "same_as": "governed-city",
+      "different_from": ""
+    },
+    {
+      "id": "city-moved",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"population\":101}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"population\":101},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "285e108b2f3383e66ca47dc401641f9a4a691f990ef84bff071ad422e18a110a",
+      "same_as": "",
+      "different_from": "governed-city"
+    },
+    {
+      "id": "null-added",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"population\":100,\"optional\":null}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"optional\":null,\"population\":100},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "8c28c222c4323a9038c3b853817866571d8d572c8a1a7208f9dfa86c1a36aef1",
+      "same_as": "",
+      "different_from": "governed-city"
+    },
+    {
+      "id": "array-ordered",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"population\":100,\"sequence\":[\"b\",\"a\"]}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"population\":100,\"sequence\":[\"b\",\"a\"]},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "19e0e84b278311c16142ffc93d7152502981b69bce836ef4a5180ddfd0d4af85",
+      "same_as": "",
+      "different_from": "governed-city"
+    },
+    {
+      "id": "only-governed-config-paths",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"},\"ignored_client_hint\":42},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"population\":100}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"population\":100},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "7a7466bf2c33e17bf73ec21dbd3e5e7933a908ed6f28783151e1d420019e5074",
+      "same_as": "governed-city",
+      "different_from": ""
+    },
+    {
+      "id": "numeric-and-non-bmp-keys",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"10\":10,\"2\":2,\"01\":1,\"4294967295\":0,\"😀\":1,\"｡\":2,\"𐀀\":3}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"01\":1,\"10\":10,\"2\":2,\"4294967295\":0,\"｡\":2,\"𐀀\":3,\"😀\":1},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "6138cb184e928ca6fd6bf72dca3001cdae389c0f9271734ab574cdba895a9a5e",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "strings-controls-and-null",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"html\":\"\u003c\u0026\u003e\u2028\u2029\",\"controls\":\"\\u0000\\b\\t\\n\\f\\r\\u001f\\\"\\\\/\",\"nested\":[null,true,false,{\"z\":\"é\",\"a\":\"é\"}]}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"controls\":\"\\u0000\\b\\t\\n\\f\\r\\u001f\\\"\\\\/\",\"html\":\"\\u003c\\u0026\\u003e\\u2028\\u2029\",\"nested\":[null,true,false,{\"a\":\"é\",\"z\":\"é\"}]},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "ac51cccfc2a844e94483d6436e68e53c3fbfb865047561fd57024e0e5caf160f",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "exact-firestore-integers",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"i64min\":-9223372036854775808,\"i64max\":9223372036854775807,\"above-binary64\":9007199254740993}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"above-binary64\":9007199254740993,\"i64max\":9223372036854775807,\"i64min\":-9223372036854775808},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "4d6e71f1e8329e8f326584f09e2a546f2fcfb887f0089c2df1de8c21e2eb0192",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-00",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":-0.0}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":-0},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "869928969afc0dd5973c64befa9dad1124f5612fa31d735110c3e79df62a4abb",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-01",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":0.0}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":0},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "6948956e1c2a4a2e317c36bde73eb2449a596544ef71c7d40e04819d518582af",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-02",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1.0}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "83979b295f0b991f6114453e0d51f2aa8843256a869df2f90f6b63a4d41d588f",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-03",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":0.3}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":0.3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "d230698b3f0a1eccee4136b4cde22237d1f4a3c5d7c96c6a3fa490a812631308",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-04",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":0.30000000000000004}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":0.30000000000000004},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "4e5f9c2ad8be6789644629706d9ec119dfbd6479b1d6681a8a5fcd63b6aeae5a",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-05",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1e-06}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":0.000001},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "ce15fdb998ea80a37354109e47e7abd8c6b057a8a5b50b6568eb7cb2209dd97f",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-06",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1e-07}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1e-7},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "f43009ed401269f451cfb888380e0674b73425b0ead56fadbbbd0c8e10518b66",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-07",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1e+20}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":100000000000000000000},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "a86df01629ea6e4804c87be484319889b61e678497cdbd94655061b254db4ec7",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-08",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1e+21}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1e+21},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "ad01dcfa1c5a7fa1b65926532bf0e0410b77606dacb897b6e7e9e5e6b72a77f4",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-09",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":5e-324}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":5e-324},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "46b168af16413e0b5b53ea444d238aea783202780e827f0dd52b94ce0054ea93",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-10",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":2.2250738585072014e-308}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":2.2250738585072014e-308},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "ff0b84c9c6eb342c525b77e28afe33c685627950572e384eb1aae3216ad49810",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-11",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1.7976931348623157e+308}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1.7976931348623157e+308},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "9ce95f194db46ca43a9d97575661f57200af50c19367bdb9248ea01db29f98dd",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-12",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":333333333.3333333}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":333333333.3333333},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "e9176933db899e614397e15ce86f95d202fef236e096f86a7aa8cee55d3fe5c5",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-13",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1.2345678901234568e+20}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":123456789012345680000},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "28a83544a1e4d8a3b7ddd73cda15a456a9277f5e393d34250da7c99490fe99e7",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-14",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1.2345678901234567}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1.2345678901234567},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "9e460d5ddf0c3fa58ebbd42b47aa491a0db62a8013b5e94b69d21152f8542fe5",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-15",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":29.5678}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":29.5678},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "99e3b3ecbd210520079f39715ea22bbdd3af272209bcd29265e982fc4262a1de",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-16",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":-1.91234}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":-1.91234},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "22070f193e96238dc01734f7a206491511c91894c524fc0d6a9b326893190543",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-17",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1.0000000000000002}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1.0000000000000002},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "0d9570ae9763778400c05ee2ff58f48a2e352e75b5061328317e38a87b8f6996",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-18",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":9.999999999999999e+20}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":999999999999999900000},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "021b8c50a67dba1b4be5a049d18fa469f6ef4ea0d37c2404c19478dd0c8eba65",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "binary64-19",
+      "base_json": "{\"_root\":{\"schema\":3},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":1e-05}}",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "",
+      "canonical": "{\"00_templates\":{\"tariff\":{\"price\":0.3}},\"01_city_inputs\":{\"number\":0.00001},\"_config\":{\"paths\":{\"city\":\"city\",\"templates\":\"templates\"}},\"_root\":{\"schema\":3}}",
+      "fingerprint": "645a0abf2b393861dc87763ac0b7a12288231797180b7c96c1b93f56de91533c",
+      "same_as": "",
+      "different_from": ""
+    }
+  ],
+  "portfolio": [
+    {
+      "id": "ordered-members",
+      "base_json": "",
+      "portfolio_id": "po_fixture",
+      "cities": [
+        "city_a",
+        "city_b"
+      ],
+      "bytes": "",
+      "canonical": "",
+      "fingerprint": "cedd14e46f9fa30168e278e566d2ec183280b82ee5508d77d7a01a13f1b2ff35",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "membership-order-moved",
+      "base_json": "",
+      "portfolio_id": "po_fixture",
+      "cities": [
+        "city_b",
+        "city_a"
+      ],
+      "bytes": "",
+      "canonical": "",
+      "fingerprint": "cff7ec4a765f7595ffb2b06ad5e8bfde662da1273f83a8084a0d9662ba104676",
+      "same_as": "",
+      "different_from": "ordered-members"
+    },
+    {
+      "id": "portfolio-id-moved",
+      "base_json": "",
+      "portfolio_id": "po_other",
+      "cities": [
+        "city_a",
+        "city_b"
+      ],
+      "bytes": "",
+      "canonical": "",
+      "fingerprint": "e5453b24f0a60ae4104c14199e21bf116d0e58363e75364492825942bdbc14a6",
+      "same_as": "",
+      "different_from": "ordered-members"
+    }
+  ],
+  "report": [
+    {
+      "id": "report-calculation-bytes",
+      "base_json": "",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "{\"report\":1,\"value\":0.3}",
+      "canonical": "",
+      "fingerprint": "e9d553245139a02086b07f5c274de4883e44baad5fc57cc311a53150ec53277c",
+      "same_as": "",
+      "different_from": ""
+    },
+    {
+      "id": "report-source-moved",
+      "base_json": "",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "{\"report\":1,\"value\":0.4}",
+      "canonical": "",
+      "fingerprint": "309add91c16ddd69340f8dfd528e827c561bbab9d084c040008d01cfdac2d3ef",
+      "same_as": "",
+      "different_from": "report-calculation-bytes"
+    },
+    {
+      "id": "report-formatting-moved",
+      "base_json": "",
+      "portfolio_id": "",
+      "cities": null,
+      "bytes": "{ \"report\":1,\"value\":0.3}",
+      "canonical": "",
+      "fingerprint": "d8e927aca666d429339aae650eb94d72cc7416e9ba066007d9dc85ca9bb3e1fc",
+      "same_as": "",
+      "different_from": "report-calculation-bytes"
+    }
+  ]
+}

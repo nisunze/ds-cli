@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "3acfd343-e452-49ef-b0f1-d655a0e826c0",
+    "known_version": 2,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Native audit corrected only testing-model `a-w-S190.012` to0/0.5\u00b0 using source SHA `157f2d5c454a15970a970d74e699a4d6530b400b02cc636a29972ca477bc1b26`. Shared `rw-pls-native-truth/2026-10-07-computed-members-v1` remains review_pending. [Report](hard-problems/3acfd343/report.json); [audit](../../ds-network/docs/contracts/structure-capacity-native-evidence-audit-2026-10-03.md).",
+  "remaining_blocker": "Authoritative corrected tables for all affected tangent families, qualified immutable shared-library version/attachment, and target Model2 audit.",
+  "bounded_next_attempt": "Review exact native0\u20130.5\u00b0 suspension tables and seed a new qualified immutable version through DS; run `structure_capacity_tables --only-findings` on the target. Do not widen authored domains in Rust or treat testing-model changes as shared-library proof.",
+  "evidence_files": [
+    {
+      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hardproblems/3acfd343/report.json",
+      "byte_len": 3528,
+      "sha256": "f9ea5451b4f9dbe8b4938fde0c889395f75f1ef84e2ed4a04a3860bda58bd2df"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/docs/contracts/structure-capacity-native-evidence-audit-2026-10-03.md",
+      "byte_len": 14972,
+      "sha256": "f6602ef90529e67f23af9d3da6fb619956c04bdcb29a5578e5fa69b4ee87d187"
+    }
+  ],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences."
+}

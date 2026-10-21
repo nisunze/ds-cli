@@ -1,0 +1,385 @@
+{
+  "schema": "ds.physical-print-source-baselines/v1",
+  "documents": [
+    {
+      "key": {
+        "entity_class": "dsgrid_mv_lines",
+        "source_kind": "project_model",
+        "target": "print",
+        "role": "mv_context"
+      },
+      "style_ref": "print_context/dsgrid_mv_lines_mv_context_print",
+      "document": {
+        "type": "line",
+        "paint": {},
+        "layout": {},
+        "metadata": {
+          "geometry_type": "line",
+          "physical_print_style": {
+            "stroke": "#b0006d",
+            "width_mm": 0.42,
+            "stroke_opacity": 0.94,
+            "fill": "#ffffff",
+            "fill_opacity": 0,
+            "casing": "#ffffff",
+            "casing_mm": 0.32,
+            "dash_mm": [
+              6,
+              1.4,
+              1.2,
+              1.4
+            ],
+            "radius_mm": 0.7,
+            "label_field": "model_label",
+            "label_pt": 6,
+            "color_field": "",
+            "colors": {},
+            "width_field": "",
+            "widths": {}
+          }
+        }
+      }
+    },
+    {
+      "key": {
+        "entity_class": "dsgrid_mv_structures",
+        "source_kind": "project_model",
+        "target": "print",
+        "role": "mv_context"
+      },
+      "style_ref": "print_context/dsgrid_mv_structures_mv_context_print",
+      "document": {
+        "type": "circle",
+        "paint": {},
+        "layout": {},
+        "metadata": {
+          "geometry_type": "point",
+          "physical_print_style": {
+            "stroke": "#7a004c",
+            "width_mm": 0.2,
+            "stroke_opacity": 1,
+            "fill": "#b0006d",
+            "fill_opacity": 0.78,
+            "casing": "#ffffff",
+            "casing_mm": 0.2,
+            "dash_mm": [],
+            "radius_mm": 0.9,
+            "label_field": "label",
+            "label_pt": 5.5,
+            "color_field": "",
+            "colors": {},
+            "width_field": "",
+            "widths": {}
+          }
+        }
+      }
+    },
+    {
+      "key": {
+        "entity_class": "dsgrid_mv_angle_points",
+        "source_kind": "project_model",
+        "target": "print",
+        "role": "mv_context"
+      },
+      "style_ref": "print_context/dsgrid_mv_angle_points_mv_context_print",
+      "document": {
+        "type": "circle",
+        "paint": {},
+        "layout": {},
+        "metadata": {
+          "geometry_type": "point",
+          "physical_print_style": {
+            "stroke": "#7a004c",
+            "width_mm": 0.18,
+            "stroke_opacity": 1,
+            "fill": "#ffffff",
+            "fill_opacity": 1,
+            "casing": "#ffffff",
+            "casing_mm": 0.15,
+            "dash_mm": [],
+            "radius_mm": 0.65,
+            "label_field": "number",
+            "label_pt": 5.5,
+            "color_field": "",
+            "colors": {},
+            "width_field": "",
+            "widths": {}
+          }
+        }
+      }
+    },
+    {
+      "key": {
+        "entity_class": "dsgrid_mv_prohibited_zones",
+        "source_kind": "project_model",
+        "target": "print",
+        "role": "mv_context"
+      },
+      "style_ref": "print_context/dsgrid_mv_prohibited_zones_mv_context_print",
+      "document": {
+        "type": "fill",
+        "paint": {},
+        "layout": {},
+        "metadata": {
+          "geometry_type": "polygon",
+          "physical_print_style": {
+            "stroke": "#8c5b27",
+            "width_mm": 0.24,
+            "stroke_opacity": 0.85,
+            "fill": "#efd6aa",
+            "fill_opacity": 0.18,
+            "casing": "",
+            "casing_mm": 0,
+            "dash_mm": [
+              1.5,
+              0.8
+            ],
+            "radius_mm": 0.5,
+            "label_field": "label",
+            "label_pt": 5.5,
+            "color_field": "category",
+            "colors": {
+              "road": "#dc2626",
+              "wetland": "#0891b2",
+              "river": "#2563eb",
+              "other": "#b45309"
+            },
+            "width_field": "",
+            "widths": {},
+            "hatch": {
+              "color": "#8b8174",
+              "width_mm": 0.08,
+              "spacing_mm": 2.4,
+              "angle_deg": 45,
+              "match_field": "",
+              "match_values": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "key": {
+        "entity_class": "buildings_context",
+        "source_kind": "derived_geojson",
+        "target": "print",
+        "role": "context"
+      },
+      "style_ref": "print_context/buildings_context_derived_print",
+      "document": {
+        "type": "fill",
+        "paint": {},
+        "layout": {},
+        "metadata": {
+          "geometry_type": "polygon",
+          "physical_print_style": {
+            "stroke": "#4b5563",
+            "width_mm": 0.16,
+            "stroke_opacity": 0.72,
+            "fill": "#d6d3d1",
+            "fill_opacity": 0.34,
+            "casing": "",
+            "casing_mm": 0,
+            "dash_mm": [],
+            "radius_mm": 0.8,
+            "label_field": "",
+            "label_pt": 6,
+            "color_field": "",
+            "colors": {},
+            "width_field": "",
+            "widths": {}
+          }
+        }
+      }
+    },
+    {
+      "key": {
+        "entity_class": "contours_intermediate",
+        "source_kind": "derived_geojson",
+        "target": "print",
+        "role": "context"
+      },
+      "style_ref": "print_context/contours_intermediate_derived_print",
+      "document": {
+        "type": "line",
+        "paint": {},
+        "layout": {},
+        "metadata": {
+          "geometry_type": "line",
+          "physical_print_style": {
+            "stroke": "#8b7355",
+            "width_mm": 0.13,
+            "stroke_opacity": 0.48,
+            "fill": "#ffffff",
+            "fill_opacity": 0,
+            "casing": "",
+            "casing_mm": 0,
+            "dash_mm": [],
+            "radius_mm": 0.5,
+            "label_field": "",
+            "label_pt": 6,
+            "color_field": "",
+            "colors": {},
+            "width_field": "",
+            "widths": {}
+          }
+        }
+      }
+    },
+    {
+      "key": {
+        "entity_class": "contours_index",
+        "source_kind": "derived_geojson",
+        "target": "print",
+        "role": "context"
+      },
+      "style_ref": "print_context/contours_index_derived_print",
+      "document": {
+        "type": "line",
+        "paint": {},
+        "layout": {},
+        "metadata": {
+          "geometry_type": "line",
+          "physical_print_style": {
+            "stroke": "#6f5539",
+            "width_mm": 0.28,
+            "stroke_opacity": 0.68,
+            "fill": "#ffffff",
+            "fill_opacity": 0,
+            "casing": "#ffffff",
+            "casing_mm": 0.25,
+            "dash_mm": [],
+            "radius_mm": 0.5,
+            "label_field": "contour_label",
+            "label_pt": 6,
+            "color_field": "",
+            "colors": {},
+            "width_field": "",
+            "widths": {}
+          }
+        }
+      }
+    },
+    {
+      "key": {
+        "entity_class": "print_area",
+        "source_kind": "dataset_geojson",
+        "target": "print",
+        "role": "focused"
+      },
+      "style_ref": "print_context/print_area_print",
+      "document": {
+        "type": "fill",
+        "paint": {},
+        "layout": {},
+        "metadata": {
+          "geometry_type": "polygon",
+          "physical_print_style": {
+            "stroke": "#536B50",
+            "width_mm": 0.45,
+            "stroke_opacity": 1,
+            "fill": "#ffffff",
+            "fill_opacity": 0,
+            "casing": "",
+            "casing_mm": 0,
+            "dash_mm": [],
+            "radius_mm": 1.2,
+            "label_field": "name",
+            "label_pt": 12,
+            "color_field": "",
+            "colors": {},
+            "width_field": "",
+            "widths": {}
+          }
+        }
+      }
+    },
+    {
+      "key": {
+        "entity_class": "dsgrid_mv_corridor",
+        "source_kind": "project_model",
+        "target": "print",
+        "role": "mv_context"
+      },
+      "style_ref": "print_context/dsgrid_mv_corridor_print",
+      "document": {
+        "type": "fill",
+        "paint": {},
+        "layout": {},
+        "metadata": {
+          "geometry_type": "polygon",
+          "physical_print_style": {
+            "stroke": "#957197",
+            "width_mm": 0.15,
+            "stroke_opacity": 0.3,
+            "fill": "#ffffff",
+            "fill_opacity": 0,
+            "casing": "",
+            "casing_mm": 0,
+            "dash_mm": [
+              2,
+              1
+            ],
+            "radius_mm": 1.2,
+            "label_field": "",
+            "label_pt": 8,
+            "color_field": "",
+            "colors": {},
+            "width_field": "",
+            "widths": {}
+          }
+        }
+      }
+    },
+    {
+      "key": {
+        "entity_class": "dsgrid_mv_prohibited_zones",
+        "source_kind": "project_model",
+        "target": "print",
+        "role": "focused"
+      },
+      "style_ref": "print_context/dsgrid_mv_prohibited_zones_focused_print",
+      "document": {
+        "type": "fill",
+        "paint": {},
+        "layout": {},
+        "metadata": {
+          "geometry_type": "polygon",
+          "physical_print_style": {
+            "stroke": "#8c5b27",
+            "width_mm": 0.24,
+            "stroke_opacity": 0.85,
+            "fill": "#efd6aa",
+            "fill_opacity": 0.18,
+            "casing": "",
+            "casing_mm": 0,
+            "dash_mm": [
+              1.5,
+              0.8
+            ],
+            "radius_mm": 0.5,
+            "label_field": "",
+            "label_pt": 5.5,
+            "color_field": "category",
+            "colors": {
+              "road": "#dc2626",
+              "wetland": "#0891b2",
+              "river": "#2563eb",
+              "other": "#b45309"
+            },
+            "width_field": "",
+            "widths": {},
+            "hatch": {
+              "color": "#8b8174",
+              "width_mm": 0.08,
+              "spacing_mm": 2.4,
+              "angle_deg": 45,
+              "match_field": "",
+              "match_values": []
+            }
+          }
+        }
+      }
+    }
+  ]
+}

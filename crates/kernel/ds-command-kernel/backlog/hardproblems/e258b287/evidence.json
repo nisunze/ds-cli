@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "e258b287-63b8-4d40-8142-1c652876ee1d",
+    "known_version": 7,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Filed rev-67c72f3f package SHA `748207e7de0810fcbeb1c30436a04a2a3c67d79eb8419d9d4b1612fe70a45d37`: plan refuses and convert returns `plan_blocked`. Separate compact/undefined-CRI cases and unchanged control pass plan/convert parity on debug network `a5e3c94a`. [Report](hard-problems/e258b287/report.json); [filed refusal](../../ds-network/out/feedback-native-20261013/e258-filed-convert.json); [CRI commands](../../ds-network/out/feedback-native-20261013/cri-replay/commands.json).",
+  "remaining_blocker": "`immutable_structure_unsourced` names 45 native structures without authoritative loads-source definitions; it masks the filed unsupported-edit forecast.",
+  "bounded_next_attempt": "Obtain a re-exportable package retaining the exact filed edits and native PLS-POLE definitions, then replay plan/convert once. Preserve `conversion_planner.rs` CRI admission regressions; synthetic parity alone does not close this report.",
+  "evidence_files": [
+    {
+      "path": "/home/magese/data-solutions/ds-command-kernel/backlog/hardproblems/e258b287/report.json",
+      "byte_len": 2962,
+      "sha256": "bf3b27014e9997e1998a0c26f778e82404a63261ac2daea796befdd1e64fa648"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-native-20261013/e258-filed-convert.json",
+      "byte_len": 1286,
+      "sha256": "7e37463d5f5e3283db9cef68452f51f4ab4b8912310e13af639ff8327aa6d719"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-native-20261013/cri-replay/commands.json",
+      "byte_len": 4924,
+      "sha256": "04d1fbb2a06c7730e10285950a6e05eb09c0270b815697383f41cc529772c7dc"
+    }
+  ],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences.",
+  "prior_active_entries": [
+    {
+      "from": "STABILIZATION.md",
+      "text": "- `e258b287` (blocker): PLS export plan accepts unsupported edited model but convert cannot emit backup. Complete the model-menu `.bak` export vertical in the remaining bounded slices of `outputs/pls-bak-export-plan-20261007/PLS-BAK-EXPORT-PLAN.md`: library admission and unpinned/qualification warnings; truthful CLI failed/partial outcomes; Restore/report gates; composition pin preservation or refusal; pinned-plan UI preview/apply; shared version intents; exact per-pin cloud state. This advances the existing \u00a711, \u00a718, \u00a723 and \u00a725 items without another gap list. Each slice needs owning tests and a real filed-model replay through `ds` before landing; byte verification never implies native Restore or solver approval. The gisagara rev-67c72f3f replay cannot exercise the plan-time edit-class forecast on current `run`: the dev `ds` plan is blocked first by `immutable_structure_unsourced` (45 structure files) and by \"manifest records no snapshot content digest\" (46 of 47 tables), so the cable/cable_curves replay needs a schema-current package."
+    }
+  ]
+}

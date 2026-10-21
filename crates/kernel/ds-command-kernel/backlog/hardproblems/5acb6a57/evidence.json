@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "feedback": {
+    "id": "5acb6a57-a6a1-43c6-86f1-634b6b535f55",
+    "known_version": 5,
+    "version_kind": "known snapshot; refresh only when consuming its next acceptance attempt"
+  },
+  "tried": "Exact Model3 r32 SHA `a61d496c2047e49b06c96b575d61e56f5af1183841b34e9f2d324dc3f4ecb086` unchanged. Disposable basis selects441 retained samples on3 routes; Plan/Profile,69 pole grounds and237 support grounds agree exactly; spikes2\u21920. All177 affected raw observations and2 source rows match. Historical report snapshot was v4. [proof](../../ds-network/out/feedback-native-20261013/terrain-5ac-replay/proof.json); [commands](../../ds-network/out/feedback-native-20261013/terrain-5ac-replay/commands.json).",
+  "remaining_blocker": "Projection caps at10000 of44358 raw rows; mutation receipts lack untruncated row deltas. Installed independent planar/ridge/valley/survey controls and direct spotting-consumer proof remain. Clearance still has219 violations.",
+  "bounded_next_attempt": "Reuse retained sampler hashes/basis and one bounded read per consumer. Obtain untruncated native preservation proof and qualified synthetic controls; no raw resets, source deletion, inferred datum offsets, broad spotting or printing.",
+  "evidence_files": [
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-native-20261013/terrain-5ac-replay/proof.json",
+      "byte_len": 2437,
+      "sha256": "fc8e1ee05c6985700e6e392c379a1622dd463169426472900f35aa4ff1486001"
+    },
+    {
+      "path": "/home/magese/data-solutions/ds-network/out/feedback-native-20261013/terrain-5ac-replay/commands.json",
+      "byte_len": 8726,
+      "sha256": "14f1b6573532644b25e02da3a7698ef7a2aeac14c0ba9d6e1e6b641f17bc6d8e"
+    }
+  ],
+  "stop_rule": "One reproducible witness and one bounded new hypothesis per visit. If the same named blocker persists, update this card and return to small fixes. Preserve acceptance, geometry, electrical behavior and source/revision/digest fences."
+}

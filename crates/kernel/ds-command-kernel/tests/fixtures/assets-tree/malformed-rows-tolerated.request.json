@@ -1,0 +1,10 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "transformers": ["oops", 12, [], null, {"name": 7, "uploads": "not an object", "report_files": {"a": 1}}],
+    "transformer_versions": [{"transformer_id": ["TX-1"], "version_id": "v"}],
+    "solar": [{"city": "Kigali", "head": "not an object", "artifacts": 3}],
+    "pm_tasks": ["not a task"],
+    "pm_records": [42]
+  }
+}

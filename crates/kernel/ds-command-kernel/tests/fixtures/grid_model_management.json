@@ -1,0 +1,162 @@
+[
+  {
+    "name": "routine saved revision remains unversioned",
+    "input": {
+      "action": "project",
+      "project": "p",
+      "model": "m",
+      "head": {
+        "project_id": "p",
+        "model_id": "m",
+        "head_revision_id": "cloud-r2",
+        "head_model_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head_version": 7,
+        "head_version_revision_count": 4,
+        "lifecycle": "promoted"
+      },
+      "named_head": {
+        "project_id": "p",
+        "object": {
+          "kind": "mv_model",
+          "id": "m"
+        },
+        "source_revision": "cloud-r2",
+        "pinned_model_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "published_version": 0
+      }
+    },
+    "expected": {
+      "project": "p",
+      "model_id": "m",
+      "working_head": {
+        "revision_id": "cloud-r2",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision_count": 4
+      },
+      "named_version": {
+        "version": 0,
+        "label": "Unversioned"
+      },
+      "content_version": 7,
+      "mutated": false
+    }
+  },
+  {
+    "name": "foreign canonical marker is refused",
+    "input": {
+      "action": "project",
+      "project": "other",
+      "model": "m",
+      "head": {
+        "project_id": "p",
+        "model_id": "m",
+        "head_revision_id": "cloud-r2",
+        "head_model_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head_version": 7,
+        "head_version_revision_count": 4,
+        "lifecycle": "promoted"
+      },
+      "named_head": {
+        "project_id": "p",
+        "object": {
+          "kind": "mv_model",
+          "id": "m"
+        },
+        "source_revision": "cloud-r2",
+        "pinned_model_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "published_version": 0
+      }
+    },
+    "error": true
+  },
+  {
+    "name": "stale cloud base with checkpoint",
+    "input": {
+      "action": "working_copy",
+      "project_selected": true,
+      "lookup": "ready",
+      "head": {
+        "project_id": "p",
+        "model_id": "m",
+        "head_revision_id": "cloud-r2",
+        "head_model_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head_version": 7,
+        "head_version_revision_count": 4,
+        "lifecycle": "promoted"
+      },
+      "working_copy_persisted": true,
+      "working_copy_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "base_revision": "cloud-r1",
+      "base_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "local_revision": "local-r9"
+    },
+    "expected": {
+      "kind": "conflict",
+      "head": {
+        "project_id": "p",
+        "model_id": "m",
+        "head_revision_id": "cloud-r2",
+        "head_model_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head_version": 7,
+        "head_version_revision_count": 4,
+        "lifecycle": "promoted"
+      },
+      "local_revision": "local-r9",
+      "local_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "base_revision": "cloud-r1",
+      "base_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "cloud_revision": "cloud-r2",
+      "cloud_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "safe_actions": [
+        "open_latest",
+        "keep_local_copy"
+      ],
+      "overwrite_allowed": false
+    }
+  },
+  {
+    "name": "stale cloud base with pending checkpoint",
+    "input": {
+      "action": "working_copy",
+      "project_selected": true,
+      "lookup": "ready",
+      "head": {
+        "project_id": "p",
+        "model_id": "m",
+        "head_revision_id": "cloud-r2",
+        "head_model_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head_version": 7,
+        "head_version_revision_count": 4,
+        "lifecycle": "promoted"
+      },
+      "working_copy_persisted": false,
+      "working_copy_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "base_revision": "cloud-r1",
+      "base_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "local_revision": "local-r9"
+    },
+    "expected": {
+      "kind": "conflict",
+      "head": {
+        "project_id": "p",
+        "model_id": "m",
+        "head_revision_id": "cloud-r2",
+        "head_model_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head_version": 7,
+        "head_version_revision_count": 4,
+        "lifecycle": "promoted"
+      },
+      "local_revision": "local-r9",
+      "local_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "base_revision": "cloud-r1",
+      "base_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "cloud_revision": "cloud-r2",
+      "cloud_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "safe_actions": [
+        "open_latest",
+        "keep_local_copy"
+      ],
+      "overwrite_allowed": false
+    }
+  }
+]

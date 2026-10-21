@@ -1,0 +1,106 @@
+[
+  {
+    "defaultValue": null,
+    "displayInList": true,
+    "helpText": "Name of the transformer",
+    "id": "transformer_name",
+    "key": "transformer_name",
+    "label": "Transformer Name",
+    "options": null,
+    "placeholder": null,
+    "required": true,
+    "type": "text",
+    "validation": null
+  },
+  {
+    "defaultValue": "Existing",
+    "helpText": "A new or existing transformer to be used for fillin",
+    "id": "transformer_type",
+    "key": "transformer_type",
+    "label": "Transformer Type",
+    "options": [
+      "New",
+      "Existing"
+    ],
+    "placeholder": null,
+    "radioLayout": "horizontal",
+    "required": true,
+    "type": "radio",
+    "validation": null
+  },
+  {
+    "defaultValue": null,
+    "displayInList": true,
+    "id": "transformer_size",
+    "key": "transformer_size",
+    "label": "Transformer Size",
+    "options": [
+      "25kVA",
+      "50kVA",
+      "100kVA",
+      "160kVA",
+      "200kVA",
+      "250kVA",
+      "315kVA",
+      "400kVA",
+      "500kVA",
+      "630kVA"
+    ],
+    "placeholder": null,
+    "radioLayout": "horizontal",
+    "required": true,
+    "type": "radio",
+    "validation": null
+  },
+  {
+    "defaultValue": null,
+    "id": "photo",
+    "key": "photo",
+    "label": "Photo",
+    "options": null,
+    "placeholder": null,
+    "required": true,
+    "type": "photo",
+    "validation": null
+  },
+  {
+    "defaultValue": null,
+    "displayInList": true,
+    "id": "comment",
+    "label": "Comment",
+    "options": null,
+    "placeholder": null,
+    "required": true,
+    "type": "textBlock",
+    "uiCardColor": "#AB5E7CF3",
+    "validation": null
+  },
+  {
+    "defaultValue": null,
+    "id": "photos",
+    "key": "photos",
+    "label": "Photos",
+    "maxCount": 5,
+    "minCount": 0,
+    "options": null,
+    "placeholder": null,
+    "required": false,
+    "type": "photos",
+    "validation": null
+  },
+  {
+    "defaultValue": null,
+    "id": "phase_type",
+    "key": "phase_type",
+    "label": "Phase Type",
+    "options": [
+      "Single Phase",
+      "Three Phase"
+    ],
+    "placeholder": null,
+    "radioLayout": "horizontal",
+    "required": true,
+    "type": "radio",
+    "validation": null
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "compounded": [
+      {
+        "filename": "nostem.zip",
+        "gcs_path": "gs://x/nostem.zip"
+      },
+      {}
+    ],
+    "pm_attachments": [
+      {
+        "id": "pa_none",
+        "originalName": "loose.pdf"
+      },
+      {
+        "id": "pa_blank",
+        "linkedEntityType": "",
+        "linkedEntityId": "",
+        "originalName": "blank.pdf"
+      }
+    ],
+    "pm_tasks": [
+      {
+        "id": "t_1"
+      }
+    ]
+  },
+  "folders": [],
+  "assets": [],
+  "query": null,
+  "link": null,
+  "folder": null,
+  "depth": null,
+  "kind": null
+}

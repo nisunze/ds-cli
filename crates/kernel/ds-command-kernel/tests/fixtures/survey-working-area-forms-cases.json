@@ -1,0 +1,1874 @@
+{
+  "schema": "ds.survey-working-area-forms-cases/v1",
+  "purpose": "Which survey forms the working area loads, replayed. Each case carries the request (the schema defaults to the module's) and the answer the kernel must give: the parsed answer, or {\"error\": \"<the exact Err string>\"} when the request itself is refused. ds-web replays the same file through the vendored WASM so the browser's working area cannot load a form the CLI would not.",
+  "note": "Re-record expected with DS_SURVEY_WORKING_AREA_FORMS_CASES_WRITE=1 cargo test --test survey_working_area_forms_cases after a deliberate rule change, and say why in the commit.",
+  "cases": [
+    {
+      "id": "read-never-chosen",
+      "why": "Before the operator chooses on this host the working area loads nothing: the read says so with the remedy, and a count the host already knew rides along without a fetch.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "counts": {
+          "tr": 12
+        },
+        "op": {
+          "kind": "read"
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "read",
+        "chosen": false,
+        "form_count": 3,
+        "selected_count": 0,
+        "loads": [],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": false,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": 12
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": false,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": false,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": "no survey form is selected for the working area on this host, so it loads nothing; select forms with `ds survey working-area select --form <slug> …` or `--all`"
+      }
+    },
+    {
+      "id": "read-chosen-two",
+      "why": "A remembered choice loads exactly those forms, in catalogue order, whatever order the host stored them in.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "selection": [
+          "mv",
+          "tr"
+        ],
+        "op": {
+          "kind": "read"
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "read",
+        "chosen": true,
+        "form_count": 3,
+        "selected_count": 2,
+        "loads": [
+          "tr",
+          "mv"
+        ],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": true,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": false,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": true,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": null
+      }
+    },
+    {
+      "id": "read-chosen-none",
+      "why": "An explicit choice of no form is a choice: chosen is true, nothing loads, the remedy still says how to load something.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "selection": [],
+        "op": {
+          "kind": "read"
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "read",
+        "chosen": true,
+        "form_count": 3,
+        "selected_count": 0,
+        "loads": [],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": false,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": false,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": false,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": "no survey form is selected for the working area on this host, so it loads nothing; select forms with `ds survey working-area select --form <slug> …` or `--all`"
+      }
+    },
+    {
+      "id": "read-stale-slug",
+      "why": "A remembered slug the project no longer has is reported as stale and never loaded; the rest of the choice stands.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "selection": [
+          "tr",
+          "retired_form"
+        ],
+        "op": {
+          "kind": "read"
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "read",
+        "chosen": true,
+        "form_count": 3,
+        "selected_count": 1,
+        "loads": [
+          "tr"
+        ],
+        "stale": [
+          "retired_form"
+        ],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": true,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": false,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": false,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": null
+      }
+    },
+    {
+      "id": "read-duplicate-catalogue-row",
+      "why": "A catalogue that repeats a key yields one row per form, the first occurrence.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "selection": [
+          "tr"
+        ],
+        "op": {
+          "kind": "read"
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "read",
+        "chosen": true,
+        "form_count": 3,
+        "selected_count": 1,
+        "loads": [
+          "tr"
+        ],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": true,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": false,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": false,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": null
+      }
+    },
+    {
+      "id": "select-two",
+      "why": "Selecting replaces the choice with the named forms; duplicates fold and the persisted list follows the catalogue order.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "op": {
+          "kind": "select",
+          "forms": [
+            "mv",
+            "tr",
+            "mv"
+          ]
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "select",
+        "chosen": true,
+        "form_count": 3,
+        "selected_count": 2,
+        "loads": [
+          "tr",
+          "mv"
+        ],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": true,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": false,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": true,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": null,
+        "changed": true,
+        "next_selection": [
+          "tr",
+          "mv"
+        ]
+      }
+    },
+    {
+      "id": "select-same-is-unchanged",
+      "why": "Selecting what is already selected changes nothing, so the host writes nothing.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "selection": [
+          "tr",
+          "mv"
+        ],
+        "op": {
+          "kind": "select",
+          "forms": [
+            "tr",
+            "mv"
+          ]
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "select",
+        "chosen": true,
+        "form_count": 3,
+        "selected_count": 2,
+        "loads": [
+          "tr",
+          "mv"
+        ],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": true,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": false,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": true,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": null,
+        "changed": false,
+        "next_selection": [
+          "tr",
+          "mv"
+        ]
+      }
+    },
+    {
+      "id": "select-unknown-refused-by-name",
+      "why": "A slug that is not a survey form of the project is refused by name; a known slug beside it is not named.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "op": {
+          "kind": "select",
+          "forms": [
+            "tr",
+            "not_a_form"
+          ]
+        }
+      },
+      "expected": {
+        "error": "unknown_form: not survey forms of project p1: not_a_form"
+      }
+    },
+    {
+      "id": "select-empty-refused",
+      "why": "An empty explicit list is ambiguous and refused: name forms, or choose all or none.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "op": {
+          "kind": "select",
+          "forms": []
+        }
+      },
+      "expected": {
+        "error": "no_forms_named: name at least one form to select, or select all or none"
+      }
+    },
+    {
+      "id": "select-drops-stale",
+      "why": "Selecting explicitly replaces the whole choice, so a stale slug the old choice carried is gone.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "selection": [
+          "retired_form"
+        ],
+        "op": {
+          "kind": "select",
+          "forms": [
+            "lv"
+          ]
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "select",
+        "chosen": true,
+        "form_count": 3,
+        "selected_count": 1,
+        "loads": [
+          "lv"
+        ],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": false,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": true,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": false,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": null,
+        "changed": true,
+        "next_selection": [
+          "lv"
+        ]
+      }
+    },
+    {
+      "id": "all",
+      "why": "Choosing all selects every form of the catalogue as it stands now; it is a choice, not the default.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "op": {
+          "kind": "all"
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "all",
+        "chosen": true,
+        "form_count": 3,
+        "selected_count": 3,
+        "loads": [
+          "tr",
+          "lv",
+          "mv"
+        ],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": true,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": true,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": true,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": null,
+        "changed": true,
+        "next_selection": [
+          "tr",
+          "lv",
+          "mv"
+        ]
+      }
+    },
+    {
+      "id": "all-when-already-all",
+      "why": "Choosing all when every form is already chosen changes nothing.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "selection": [
+          "tr",
+          "lv",
+          "mv"
+        ],
+        "op": {
+          "kind": "all"
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "all",
+        "chosen": true,
+        "form_count": 3,
+        "selected_count": 3,
+        "loads": [
+          "tr",
+          "lv",
+          "mv"
+        ],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": true,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": true,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": true,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": null,
+        "changed": false,
+        "next_selection": [
+          "tr",
+          "lv",
+          "mv"
+        ]
+      }
+    },
+    {
+      "id": "none",
+      "why": "Choosing none persists an empty choice: chosen, loads nothing, remedy present.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "selection": [
+          "tr"
+        ],
+        "op": {
+          "kind": "none"
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "none",
+        "chosen": true,
+        "form_count": 3,
+        "selected_count": 0,
+        "loads": [],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": false,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": false,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": false,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": "no survey form is selected for the working area on this host, so it loads nothing; select forms with `ds survey working-area select --form <slug> …` or `--all`",
+        "changed": true,
+        "next_selection": []
+      }
+    },
+    {
+      "id": "clear",
+      "why": "Clearing forgets the choice: the host removes its entry and the read is back to never chosen.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "selection": [
+          "tr"
+        ],
+        "op": {
+          "kind": "clear"
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "clear",
+        "chosen": false,
+        "form_count": 3,
+        "selected_count": 0,
+        "loads": [],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": false,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": false,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": false,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": "no survey form is selected for the working area on this host, so it loads nothing; select forms with `ds survey working-area select --form <slug> …` or `--all`",
+        "changed": true,
+        "next_selection": null
+      }
+    },
+    {
+      "id": "clear-when-unset",
+      "why": "Clearing a host that never chose changes nothing.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "op": {
+          "kind": "clear"
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "clear",
+        "chosen": false,
+        "form_count": 3,
+        "selected_count": 0,
+        "loads": [],
+        "stale": [],
+        "forms": [
+          {
+            "slug": "tr",
+            "label": "Transformers",
+            "selected": false,
+            "layer_ids": [
+              "tr_pts",
+              "tr_pts__label"
+            ],
+            "count": null
+          },
+          {
+            "slug": "lv",
+            "label": "LV poles",
+            "selected": false,
+            "layer_ids": [
+              "lv_pts"
+            ],
+            "count": null
+          },
+          {
+            "slug": "mv",
+            "label": "MV poles",
+            "selected": false,
+            "layer_ids": [
+              "mv_pts"
+            ],
+            "count": null
+          }
+        ],
+        "remedy": "no survey form is selected for the working area on this host, so it loads nothing; select forms with `ds survey working-area select --form <slug> …` or `--all`",
+        "changed": false,
+        "next_selection": null
+      }
+    },
+    {
+      "id": "empty-catalogue-all",
+      "why": "A project with no active survey forms has its own remedy; choosing all there is an empty choice.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1"
+        },
+        "op": {
+          "kind": "all"
+        }
+      },
+      "expected": {
+        "schema": "ds.survey-working-area-forms/v1",
+        "project": "p1",
+        "op": "all",
+        "chosen": true,
+        "form_count": 0,
+        "selected_count": 0,
+        "loads": [],
+        "stale": [],
+        "forms": [],
+        "remedy": "this project has no active survey forms; enable forms with `ds survey project-forms plan/apply` before loading a working area",
+        "changed": true,
+        "next_selection": []
+      }
+    },
+    {
+      "id": "project-mismatch",
+      "why": "A layer document for another project is never applied to the one the caller named.",
+      "request": {
+        "project": "p2",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "op": {
+          "kind": "read"
+        }
+      },
+      "expected": {
+        "error": "project_context_changed: the layer document belongs to p1, not p2"
+      }
+    },
+    {
+      "id": "project-missing",
+      "why": "The question always names its project; an empty name is a malformed request.",
+      "request": {
+        "project": "",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "op": {
+          "kind": "read"
+        }
+      },
+      "expected": {
+        "error": "this question needs the expected project"
+      }
+    },
+    {
+      "id": "unknown-op",
+      "why": "An op the contract does not name is a malformed request, not a silent read.",
+      "request": {
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "op": {
+          "kind": "toggle",
+          "forms": [
+            "tr"
+          ]
+        }
+      },
+      "expected": {
+        "error": "invalid survey working-area forms request: unknown variant `toggle`, expected one of `read`, `select`, `all`, `none`, `clear` at line 1 column 562"
+      }
+    },
+    {
+      "id": "bad-schema",
+      "why": "Another schema is refused before anything is read.",
+      "request": {
+        "schema": "ds.other/v1",
+        "project": "p1",
+        "document": {
+          "project_id": "p1",
+          "survey_layers": [
+            {
+              "key": "tr",
+              "label": "Transformers",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "tr_pts",
+                "tr_pts__label"
+              ],
+              "style_ref": "tr",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "key": "lv",
+              "label": "LV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "lv_pts"
+              ],
+              "style_ref": "lv"
+            },
+            {
+              "key": "mv",
+              "label": "MV poles",
+              "geometry_type": "Point",
+              "layer_ids": [
+                "mv_pts"
+              ],
+              "style_ref": "mv"
+            },
+            {
+              "key": "tr",
+              "label": "Duplicate row",
+              "layer_ids": [
+                "tr_dup"
+              ],
+              "style_ref": "tr"
+            }
+          ],
+          "layers": [],
+          "sources": {},
+          "matrix": {
+            "survey": {}
+          }
+        },
+        "op": {
+          "kind": "read"
+        }
+      },
+      "expected": {
+        "error": "unsupported survey working-area forms schema; expected ds.survey-working-area-forms/v1"
+      }
+    }
+  ]
+}

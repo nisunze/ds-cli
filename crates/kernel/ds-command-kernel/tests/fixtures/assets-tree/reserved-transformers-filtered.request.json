@@ -1,0 +1,19 @@
+{
+  "schema": "ds.assets.request/v1",
+  "sources": {
+    "transformers": [
+      {"name": "TX-1"},
+      {"name": "mv_data", "report_files": ["gs://x/mv_data/rows.csv"]},
+      {"name": "collisions_2"},
+      {"name": "combined_transformer",
+       "report_files": ["gs://reports/combined/lot3-combined.xlsx"]}
+    ],
+    "transformer_versions": [
+      {"transformer_id": "mv_data", "version_id": "v1", "version": 1}
+    ],
+    "design_attachments": [
+      {"attachment_id": "att_x", "object": {"id": "combined_transformer"},
+       "label": "sheet", "file_name": "x.pdf", "latest_revision_id": "r1"}
+    ]
+  }
+}

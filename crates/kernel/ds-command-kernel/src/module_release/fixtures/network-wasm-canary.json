@@ -1,0 +1,104 @@
+{
+  "release": {
+    "schema": "ds.module-release/v1",
+    "component": "network",
+    "runtime": "wasm",
+    "channel": "canary",
+    "product_id": "rw.datasolutions.module.network.canary",
+    "version": "0.1.0-r1",
+    "protocol": "ds.network-wasm/v1",
+    "released_at": "2026-10-14T20:09:29.602422Z",
+    "status": "active",
+    "assets": [
+      {
+        "platform": "browser",
+        "arch": "wasm32",
+        "kind": "module-types",
+        "size_bytes": 143090,
+        "sha256": "cf9698350dca9f9a2ae3420db1a932adaf9c538bbbec1f08b122d7ed59ab8191",
+        "source_sha": "b6963e2d8499b8b10f261d72dcef346823c06605",
+        "built_at": "2026-10-14T16:38:54.767Z",
+        "url": "https://storage.googleapis.com/electrification-rural-desktop-releases/modules/network/canary/wasm/0.1.0-r1/ds_network_wasm.d.ts",
+        "engines": [
+          {
+            "engine": "ds-network",
+            "release": "ds-network@0.1.0+b6963e2d8499b8b10f261d72dcef346823c06605",
+            "manifest_sha256": "533fb4af4e317371249192e1544d10b39a8314b7ea347b45c9975a8713328d6e"
+          }
+        ],
+        "source_revisions": {
+          "ds-command-kernel": "a811264fbe5f8bcbe77dc358ff60790b4039096b",
+          "ds-network": "b6963e2d8499b8b10f261d72dcef346823c06605"
+        },
+        "protocol": "ds.network-wasm/v1"
+      },
+      {
+        "platform": "browser",
+        "arch": "wasm32",
+        "kind": "module-javascript",
+        "size_bytes": 487780,
+        "sha256": "af517652cebc469a427000d4f9d8515d05400023ddb4cd94ae0934ede32a908c",
+        "source_sha": "b6963e2d8499b8b10f261d72dcef346823c06605",
+        "built_at": "2026-10-14T16:38:54.767Z",
+        "url": "https://storage.googleapis.com/electrification-rural-desktop-releases/modules/network/canary/wasm/0.1.0-r1/ds_network_wasm.js",
+        "engines": [
+          {
+            "engine": "ds-network",
+            "release": "ds-network@0.1.0+b6963e2d8499b8b10f261d72dcef346823c06605",
+            "manifest_sha256": "533fb4af4e317371249192e1544d10b39a8314b7ea347b45c9975a8713328d6e"
+          }
+        ],
+        "source_revisions": {
+          "ds-command-kernel": "a811264fbe5f8bcbe77dc358ff60790b4039096b",
+          "ds-network": "b6963e2d8499b8b10f261d72dcef346823c06605"
+        },
+        "protocol": "ds.network-wasm/v1"
+      },
+      {
+        "platform": "browser",
+        "arch": "wasm32",
+        "kind": "module-wasm",
+        "size_bytes": 26126417,
+        "sha256": "67f7bdbd227eba81eeea1b4dc0f00cff69d167b39af751c3343846af8c2462b8",
+        "source_sha": "b6963e2d8499b8b10f261d72dcef346823c06605",
+        "built_at": "2026-10-14T16:38:54.767Z",
+        "url": "https://storage.googleapis.com/electrification-rural-desktop-releases/modules/network/canary/wasm/0.1.0-r1/ds_network_wasm_bg.wasm",
+        "engines": [
+          {
+            "engine": "ds-network",
+            "release": "ds-network@0.1.0+b6963e2d8499b8b10f261d72dcef346823c06605",
+            "manifest_sha256": "533fb4af4e317371249192e1544d10b39a8314b7ea347b45c9975a8713328d6e"
+          }
+        ],
+        "source_revisions": {
+          "ds-command-kernel": "a811264fbe5f8bcbe77dc358ff60790b4039096b",
+          "ds-network": "b6963e2d8499b8b10f261d72dcef346823c06605"
+        },
+        "protocol": "ds.network-wasm/v1"
+      },
+      {
+        "platform": "browser",
+        "arch": "wasm32",
+        "kind": "module-types",
+        "size_bytes": 38050,
+        "sha256": "635d385f3394a30f0e765f340021e3730b5a8f8f1b343adc003e33a4b8e4367a",
+        "source_sha": "b6963e2d8499b8b10f261d72dcef346823c06605",
+        "built_at": "2026-10-14T16:38:54.767Z",
+        "url": "https://storage.googleapis.com/electrification-rural-desktop-releases/modules/network/canary/wasm/0.1.0-r1/ds_network_wasm_bg.wasm.d.ts",
+        "engines": [
+          {
+            "engine": "ds-network",
+            "release": "ds-network@0.1.0+b6963e2d8499b8b10f261d72dcef346823c06605",
+            "manifest_sha256": "533fb4af4e317371249192e1544d10b39a8314b7ea347b45c9975a8713328d6e"
+          }
+        ],
+        "source_revisions": {
+          "ds-command-kernel": "a811264fbe5f8bcbe77dc358ff60790b4039096b",
+          "ds-network": "b6963e2d8499b8b10f261d72dcef346823c06605"
+        },
+        "protocol": "ds.network-wasm/v1"
+      }
+    ]
+  },
+  "success": true
+}

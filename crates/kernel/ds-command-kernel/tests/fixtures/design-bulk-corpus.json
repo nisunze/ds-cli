@@ -1,0 +1,3400 @@
+{
+	"schema": "ds.design-bulk-parity/v1",
+	"purpose": "Campaign slice 14a — bulk admissibility owned by ds-command-kernel::project_control::plan_bulk_action. `expected_ts` is the three $derived folds of StatusTable.svelte (combinedScopeCounts, reportsScopeCounts, combinedAndExportScopeCounts), recorded by running that code once before deleting it; `expected` is the kernel plan. The four verbs below the cases had NO preview in the browser at all, so they carry no `expected_ts`.",
+	"cases": [
+		{
+			"id": "add_to_combined/all-selected/mirror-on",
+			"note": "add_to_combined over all-selected with the combined mirror on.",
+			"request": {
+				"action": "add_to_combined",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"fresh_combined_only",
+					"fresh_report_only",
+					"report_success_no_files",
+					"unsaved_but_fresh",
+					"stale_all",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 4,
+				"stale": 3
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "add_to_combined",
+				"targets": [
+					{
+						"name": "fresh_both",
+						"fresh": true
+					},
+					{
+						"name": "fresh_combined_only",
+						"fresh": true
+					},
+					{
+						"name": "fresh_report_only",
+						"fresh": false
+					},
+					{
+						"name": "report_success_no_files",
+						"fresh": true
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"fresh": false
+					},
+					{
+						"name": "stale_all",
+						"fresh": false
+					},
+					{
+						"name": "mv_data",
+						"fresh": true
+					}
+				],
+				"skipped": [
+					{
+						"name": "combined_transformer",
+						"reason": "not_combinable"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_combinable"
+					}
+				],
+				"fresh": 4,
+				"stale": 3
+			}
+		},
+		{
+			"id": "add_to_combined/all-selected/mirror-off",
+			"note": "add_to_combined over all-selected with the combined mirror off.",
+			"request": {
+				"action": "add_to_combined",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"fresh_combined_only",
+					"fresh_report_only",
+					"report_success_no_files",
+					"unsaved_but_fresh",
+					"stale_all",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": false,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 0,
+				"stale": 0
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "add_to_combined",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "stale_all",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "mv_data",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "collisions",
+						"reason": "combined_mirror_disabled"
+					}
+				],
+				"fresh": 0,
+				"stale": 0,
+				"unavailable": "combined_mirror_disabled"
+			}
+		},
+		{
+			"id": "add_to_combined/partial-selection/mirror-on",
+			"note": "add_to_combined over partial-selection with the combined mirror on.",
+			"request": {
+				"action": "add_to_combined",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"unsaved_but_fresh",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 2,
+				"stale": 1
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "add_to_combined",
+				"targets": [
+					{
+						"name": "fresh_both",
+						"fresh": true
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"fresh": false
+					},
+					{
+						"name": "mv_data",
+						"fresh": true
+					}
+				],
+				"skipped": [
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "not_combinable"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_combinable"
+					}
+				],
+				"fresh": 2,
+				"stale": 1
+			}
+		},
+		{
+			"id": "add_to_combined/partial-selection/mirror-off",
+			"note": "add_to_combined over partial-selection with the combined mirror off.",
+			"request": {
+				"action": "add_to_combined",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"unsaved_but_fresh",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": false,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 0,
+				"stale": 0
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "add_to_combined",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "mv_data",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "collisions",
+						"reason": "combined_mirror_disabled"
+					}
+				],
+				"fresh": 0,
+				"stale": 0,
+				"unavailable": "combined_mirror_disabled"
+			}
+		},
+		{
+			"id": "add_to_combined/none-selected/mirror-on",
+			"note": "add_to_combined over none-selected with the combined mirror on.",
+			"request": {
+				"action": "add_to_combined",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 0,
+				"stale": 0
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "add_to_combined",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "not_selected"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "mv_data",
+						"reason": "not_selected"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "not_selected"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_selected"
+					}
+				],
+				"fresh": 0,
+				"stale": 0
+			}
+		},
+		{
+			"id": "add_to_combined/none-selected/mirror-off",
+			"note": "add_to_combined over none-selected with the combined mirror off.",
+			"request": {
+				"action": "add_to_combined",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": false,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 0,
+				"stale": 0
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "add_to_combined",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "not_selected"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "mv_data",
+						"reason": "not_selected"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "not_selected"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_selected"
+					}
+				],
+				"fresh": 0,
+				"stale": 0,
+				"unavailable": "combined_mirror_disabled"
+			}
+		},
+		{
+			"id": "generate_reports/all-selected/mirror-on",
+			"note": "generate_reports over all-selected with the combined mirror on.",
+			"request": {
+				"action": "generate_reports",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"fresh_combined_only",
+					"fresh_report_only",
+					"report_success_no_files",
+					"unsaved_but_fresh",
+					"stale_all",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 2,
+				"stale": 4
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "generate_reports",
+				"targets": [
+					{
+						"name": "fresh_both",
+						"fresh": true
+					},
+					{
+						"name": "fresh_combined_only",
+						"fresh": false
+					},
+					{
+						"name": "fresh_report_only",
+						"fresh": true
+					},
+					{
+						"name": "report_success_no_files",
+						"fresh": false
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"fresh": false
+					},
+					{
+						"name": "stale_all",
+						"fresh": false
+					}
+				],
+				"skipped": [
+					{
+						"name": "mv_data",
+						"reason": "special_row"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "special_row"
+					},
+					{
+						"name": "collisions",
+						"reason": "special_row"
+					}
+				],
+				"fresh": 2,
+				"stale": 4
+			}
+		},
+		{
+			"id": "generate_reports/all-selected/mirror-off",
+			"note": "generate_reports over all-selected with the combined mirror off.",
+			"request": {
+				"action": "generate_reports",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"fresh_combined_only",
+					"fresh_report_only",
+					"report_success_no_files",
+					"unsaved_but_fresh",
+					"stale_all",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": false,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 2,
+				"stale": 4
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "generate_reports",
+				"targets": [
+					{
+						"name": "fresh_both",
+						"fresh": true
+					},
+					{
+						"name": "fresh_combined_only",
+						"fresh": false
+					},
+					{
+						"name": "fresh_report_only",
+						"fresh": true
+					},
+					{
+						"name": "report_success_no_files",
+						"fresh": false
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"fresh": false
+					},
+					{
+						"name": "stale_all",
+						"fresh": false
+					}
+				],
+				"skipped": [
+					{
+						"name": "mv_data",
+						"reason": "special_row"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "special_row"
+					},
+					{
+						"name": "collisions",
+						"reason": "special_row"
+					}
+				],
+				"fresh": 2,
+				"stale": 4
+			}
+		},
+		{
+			"id": "generate_reports/partial-selection/mirror-on",
+			"note": "generate_reports over partial-selection with the combined mirror on.",
+			"request": {
+				"action": "generate_reports",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"unsaved_but_fresh",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 1,
+				"stale": 1
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "generate_reports",
+				"targets": [
+					{
+						"name": "fresh_both",
+						"fresh": true
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"fresh": false
+					}
+				],
+				"skipped": [
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "mv_data",
+						"reason": "special_row"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "special_row"
+					},
+					{
+						"name": "collisions",
+						"reason": "special_row"
+					}
+				],
+				"fresh": 1,
+				"stale": 1
+			}
+		},
+		{
+			"id": "generate_reports/partial-selection/mirror-off",
+			"note": "generate_reports over partial-selection with the combined mirror off.",
+			"request": {
+				"action": "generate_reports",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"unsaved_but_fresh",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": false,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 1,
+				"stale": 1
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "generate_reports",
+				"targets": [
+					{
+						"name": "fresh_both",
+						"fresh": true
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"fresh": false
+					}
+				],
+				"skipped": [
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "mv_data",
+						"reason": "special_row"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "special_row"
+					},
+					{
+						"name": "collisions",
+						"reason": "special_row"
+					}
+				],
+				"fresh": 1,
+				"stale": 1
+			}
+		},
+		{
+			"id": "generate_reports/none-selected/mirror-on",
+			"note": "generate_reports over none-selected with the combined mirror on.",
+			"request": {
+				"action": "generate_reports",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 0,
+				"stale": 0
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "generate_reports",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "not_selected"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "mv_data",
+						"reason": "not_selected"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "not_selected"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_selected"
+					}
+				],
+				"fresh": 0,
+				"stale": 0
+			}
+		},
+		{
+			"id": "generate_reports/none-selected/mirror-off",
+			"note": "generate_reports over none-selected with the combined mirror off.",
+			"request": {
+				"action": "generate_reports",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": false,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 0,
+				"stale": 0
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "generate_reports",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "not_selected"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "mv_data",
+						"reason": "not_selected"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "not_selected"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_selected"
+					}
+				],
+				"fresh": 0,
+				"stale": 0
+			}
+		},
+		{
+			"id": "combined_and_export/all-selected/mirror-on",
+			"note": "combined_and_export over all-selected with the combined mirror on.",
+			"request": {
+				"action": "combined_and_export",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"fresh_combined_only",
+					"fresh_report_only",
+					"report_success_no_files",
+					"unsaved_but_fresh",
+					"stale_all",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 2,
+				"stale": 5
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "combined_and_export",
+				"targets": [
+					{
+						"name": "fresh_both",
+						"fresh": true
+					},
+					{
+						"name": "fresh_combined_only",
+						"fresh": false
+					},
+					{
+						"name": "fresh_report_only",
+						"fresh": false
+					},
+					{
+						"name": "report_success_no_files",
+						"fresh": false
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"fresh": false
+					},
+					{
+						"name": "stale_all",
+						"fresh": false
+					},
+					{
+						"name": "mv_data",
+						"fresh": true
+					}
+				],
+				"skipped": [
+					{
+						"name": "combined_transformer",
+						"reason": "not_combinable"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_combinable"
+					}
+				],
+				"fresh": 2,
+				"stale": 5
+			}
+		},
+		{
+			"id": "combined_and_export/all-selected/mirror-off",
+			"note": "combined_and_export over all-selected with the combined mirror off.",
+			"request": {
+				"action": "combined_and_export",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"fresh_combined_only",
+					"fresh_report_only",
+					"report_success_no_files",
+					"unsaved_but_fresh",
+					"stale_all",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": false,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 0,
+				"stale": 0
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "combined_and_export",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "stale_all",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "mv_data",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "collisions",
+						"reason": "combined_mirror_disabled"
+					}
+				],
+				"fresh": 0,
+				"stale": 0,
+				"unavailable": "combined_mirror_disabled"
+			}
+		},
+		{
+			"id": "combined_and_export/partial-selection/mirror-on",
+			"note": "combined_and_export over partial-selection with the combined mirror on.",
+			"request": {
+				"action": "combined_and_export",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"unsaved_but_fresh",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 2,
+				"stale": 1
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "combined_and_export",
+				"targets": [
+					{
+						"name": "fresh_both",
+						"fresh": true
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"fresh": false
+					},
+					{
+						"name": "mv_data",
+						"fresh": true
+					}
+				],
+				"skipped": [
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "not_combinable"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_combinable"
+					}
+				],
+				"fresh": 2,
+				"stale": 1
+			}
+		},
+		{
+			"id": "combined_and_export/partial-selection/mirror-off",
+			"note": "combined_and_export over partial-selection with the combined mirror off.",
+			"request": {
+				"action": "combined_and_export",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"unsaved_but_fresh",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": false,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 0,
+				"stale": 0
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "combined_and_export",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "mv_data",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "combined_mirror_disabled"
+					},
+					{
+						"name": "collisions",
+						"reason": "combined_mirror_disabled"
+					}
+				],
+				"fresh": 0,
+				"stale": 0,
+				"unavailable": "combined_mirror_disabled"
+			}
+		},
+		{
+			"id": "combined_and_export/none-selected/mirror-on",
+			"note": "combined_and_export over none-selected with the combined mirror on.",
+			"request": {
+				"action": "combined_and_export",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 0,
+				"stale": 0
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "combined_and_export",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "not_selected"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "mv_data",
+						"reason": "not_selected"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "not_selected"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_selected"
+					}
+				],
+				"fresh": 0,
+				"stale": 0
+			}
+		},
+		{
+			"id": "combined_and_export/none-selected/mirror-off",
+			"note": "combined_and_export over none-selected with the combined mirror off.",
+			"request": {
+				"action": "combined_and_export",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [],
+				"capabilities": [
+					"design.report",
+					"design.download",
+					"reports.export",
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": false,
+				"now_ms": 1800000000000
+			},
+			"expected_ts": {
+				"fresh": 0,
+				"stale": 0
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "combined_and_export",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "not_selected"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "not_selected"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "not_selected"
+					},
+					{
+						"name": "stale_all",
+						"reason": "not_selected"
+					},
+					{
+						"name": "mv_data",
+						"reason": "not_selected"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "not_selected"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_selected"
+					}
+				],
+				"fresh": 0,
+				"stale": 0,
+				"unavailable": "combined_mirror_disabled"
+			}
+		}
+	],
+	"verbs_without_a_predecessor": [
+		{
+			"id": "retry_process/all-selected",
+			"note": "retry_process had no preview at all before this slice.",
+			"request": {
+				"action": "retry_process",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"fresh_combined_only",
+					"fresh_report_only",
+					"report_success_no_files",
+					"unsaved_but_fresh",
+					"stale_all",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "retry_process",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "retry_refused"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "retry_refused"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "retry_refused"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "retry_refused"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "retry_refused"
+					},
+					{
+						"name": "stale_all",
+						"reason": "retry_refused"
+					},
+					{
+						"name": "mv_data",
+						"reason": "retry_refused"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "retry_refused"
+					},
+					{
+						"name": "collisions",
+						"reason": "retry_refused"
+					}
+				],
+				"fresh": 0,
+				"stale": 0
+			}
+		},
+		{
+			"id": "save/all-selected",
+			"note": "save had no preview at all before this slice.",
+			"request": {
+				"action": "save",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"fresh_combined_only",
+					"fresh_report_only",
+					"report_success_no_files",
+					"unsaved_but_fresh",
+					"stale_all",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "save",
+				"targets": [
+					{
+						"name": "unsaved_but_fresh",
+						"fresh": false
+					}
+				],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "already_saved"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "already_saved"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "already_saved"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "already_saved"
+					},
+					{
+						"name": "stale_all",
+						"reason": "already_saved"
+					},
+					{
+						"name": "mv_data",
+						"reason": "special_row"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "special_row"
+					},
+					{
+						"name": "collisions",
+						"reason": "special_row"
+					}
+				],
+				"fresh": 0,
+				"stale": 1
+			}
+		},
+		{
+			"id": "delete/all-selected",
+			"note": "delete had no preview at all before this slice.",
+			"request": {
+				"action": "delete",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"fresh_combined_only",
+					"fresh_report_only",
+					"report_success_no_files",
+					"unsaved_but_fresh",
+					"stale_all",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "delete",
+				"targets": [
+					{
+						"name": "fresh_both",
+						"fresh": false
+					},
+					{
+						"name": "fresh_combined_only",
+						"fresh": false
+					},
+					{
+						"name": "fresh_report_only",
+						"fresh": false
+					},
+					{
+						"name": "report_success_no_files",
+						"fresh": false
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"fresh": false
+					},
+					{
+						"name": "stale_all",
+						"fresh": false
+					}
+				],
+				"skipped": [
+					{
+						"name": "mv_data",
+						"reason": "not_deletable"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "not_deletable"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_deletable"
+					}
+				],
+				"fresh": 0,
+				"stale": 6
+			}
+		},
+		{
+			"id": "version/all-selected",
+			"note": "version had no preview at all before this slice.",
+			"request": {
+				"action": "version",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"fresh_combined_only",
+					"fresh_report_only",
+					"report_success_no_files",
+					"unsaved_but_fresh",
+					"stale_all",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [
+					"design.bulk_retry",
+					"transformer.delete"
+				],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "version",
+				"targets": [
+					{
+						"name": "fresh_both",
+						"fresh": false
+					},
+					{
+						"name": "fresh_combined_only",
+						"fresh": false
+					},
+					{
+						"name": "fresh_report_only",
+						"fresh": false
+					},
+					{
+						"name": "report_success_no_files",
+						"fresh": false
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"fresh": false
+					},
+					{
+						"name": "stale_all",
+						"fresh": false
+					},
+					{
+						"name": "mv_data",
+						"fresh": false
+					}
+				],
+				"skipped": [
+					{
+						"name": "combined_transformer",
+						"reason": "not_versionable"
+					},
+					{
+						"name": "collisions",
+						"reason": "not_versionable"
+					}
+				],
+				"fresh": 0,
+				"stale": 7
+			}
+		},
+		{
+			"id": "generate_reports/no-capability",
+			"note": "Without design.report the verb targets nothing — the register hid the buttons, and `ds` could not learn why.",
+			"request": {
+				"action": "generate_reports",
+				"rows": [
+					{
+						"name": "fresh_both",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "fresh_combined_only",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "fresh_report_only",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "report_success_no_files",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						},
+						"client_dirty": true,
+						"client_server_known": true
+					},
+					{
+						"name": "stale_all",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					},
+					{
+						"name": "mv_data",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "combined_transformer",
+						"computed": {
+							"combined_inclusion_state": "success",
+							"report_state": "success",
+							"report_has_files": true
+						}
+					},
+					{
+						"name": "collisions",
+						"computed": {
+							"combined_inclusion_state": "stale",
+							"report_state": "stale",
+							"report_has_files": false
+						}
+					}
+				],
+				"selection": [
+					"fresh_both",
+					"fresh_combined_only",
+					"fresh_report_only",
+					"report_success_no_files",
+					"unsaved_but_fresh",
+					"stale_all",
+					"mv_data",
+					"combined_transformer",
+					"collisions"
+				],
+				"capabilities": [],
+				"combined_mirror_ui": true,
+				"now_ms": 1800000000000
+			},
+			"expected": {
+				"schema": "ds.project-control.bulk-plan/v1",
+				"action": "generate_reports",
+				"targets": [],
+				"skipped": [
+					{
+						"name": "fresh_both",
+						"reason": "capability_missing"
+					},
+					{
+						"name": "fresh_combined_only",
+						"reason": "capability_missing"
+					},
+					{
+						"name": "fresh_report_only",
+						"reason": "capability_missing"
+					},
+					{
+						"name": "report_success_no_files",
+						"reason": "capability_missing"
+					},
+					{
+						"name": "unsaved_but_fresh",
+						"reason": "capability_missing"
+					},
+					{
+						"name": "stale_all",
+						"reason": "capability_missing"
+					},
+					{
+						"name": "mv_data",
+						"reason": "capability_missing"
+					},
+					{
+						"name": "combined_transformer",
+						"reason": "capability_missing"
+					},
+					{
+						"name": "collisions",
+						"reason": "capability_missing"
+					}
+				],
+				"fresh": 0,
+				"stale": 0,
+				"unavailable": "capability_missing"
+			}
+		}
+	]
+}

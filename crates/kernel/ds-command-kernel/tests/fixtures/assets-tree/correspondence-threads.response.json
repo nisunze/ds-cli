@@ -1,0 +1,754 @@
+{
+  "schema": "ds.assets.tree/v1",
+  "folders": [
+    {
+      "kind": "system",
+      "path": "Correspondence",
+      "name": "Correspondence",
+      "counts": {
+        "assets": 0,
+        "folders": 3
+      },
+      "children": [
+        {
+          "kind": "user",
+          "path": "Correspondence/2026-09",
+          "name": "2026-09",
+          "counts": {
+            "assets": 4,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_doc",
+              "project_id": "p",
+              "folder": "Correspondence/2026-09",
+              "name": "GTP-001.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 10,
+              "digest": "sha256:ab",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "u",
+                "display": null
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [],
+              "document": {
+                "number": "GTP-001",
+                "revision_label": "B",
+                "state": "issued"
+              },
+              "created_by": "u",
+              "updated_at": "2026-09-20T00:00:00Z",
+              "updated_by": "u",
+              "version": 1
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_note",
+              "project_id": "p",
+              "folder": "Correspondence/2026-09",
+              "name": "note.md",
+              "kind": "note",
+              "format": "unknown",
+              "bytes": 10,
+              "digest": "sha256:ab",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "u",
+                "display": null
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [
+                {
+                  "kind": "pm_record",
+                  "id": "R3"
+                }
+              ],
+              "created_by": "u",
+              "updated_at": "2026-09-20T00:00:00Z",
+              "updated_by": "u",
+              "version": 1
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_ref",
+              "project_id": "p",
+              "folder": "Correspondence/2026-09",
+              "name": "package.zip",
+              "kind": "pack",
+              "format": "unknown",
+              "bytes": 10,
+              "digest": "sha256:ab",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "u",
+                "display": null
+              },
+              "source": {
+                "kind": "external_reference",
+                "detail": null
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [
+                {
+                  "kind": "pm_record",
+                  "id": "R2"
+                }
+              ],
+              "external": {
+                "url": "https://drive.google.com/file/d/abc",
+                "provider": "google_drive"
+              },
+              "bytes_held": false,
+              "created_by": "u",
+              "updated_at": "2026-09-20T00:00:00Z",
+              "updated_by": "u",
+              "version": 1
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_mail",
+              "project_id": "p",
+              "folder": "Correspondence/2026-09",
+              "name": "review.eml",
+              "kind": "mail",
+              "format": "eml",
+              "bytes": 10,
+              "digest": "sha256:ab",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "u",
+                "display": null
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [],
+              "mail": {
+                "from": "x@example.com",
+                "to": [
+                  "y@example.com"
+                ],
+                "cc": [],
+                "subject": "Review",
+                "message_id": "<m@example.com>",
+                "parts": [
+                  {
+                    "path": "part-1.txt",
+                    "section": "1",
+                    "content_type": "text/plain",
+                    "disposition": "body",
+                    "bytes": 12,
+                    "kind": "doc",
+                    "format": "txt",
+                    "named": false
+                  },
+                  {
+                    "path": "drawing.pdf",
+                    "section": "2",
+                    "content_type": "application/pdf",
+                    "disposition": "attachment",
+                    "bytes": 3000,
+                    "kind": "doc",
+                    "format": "pdf",
+                    "named": true
+                  }
+                ],
+                "parts_total": 2,
+                "truncated": false
+              },
+              "created_by": "u",
+              "updated_at": "2026-09-20T00:00:00Z",
+              "updated_by": "u",
+              "version": 1
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Correspondence/Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)",
+          "name": "Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)",
+          "counts": {
+            "assets": 3,
+            "folders": 1
+          },
+          "children": [
+            {
+              "kind": "system",
+              "path": "Correspondence/Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)/review.eml",
+              "name": "review.eml",
+              "counts": {
+                "assets": 2,
+                "folders": 0
+              },
+              "children": [],
+              "assets": [
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:mail_part:a_mail:drawing.pdf",
+                  "project_id": "p",
+                  "folder": "",
+                  "name": "drawing.pdf",
+                  "kind": "doc",
+                  "format": "pdf",
+                  "bytes": 3000,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "u",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "container",
+                    "detail": "mail part 2 of review.eml"
+                  },
+                  "classified_by": "kernel",
+                  "container": "a_mail",
+                  "links": [],
+                  "origin": {
+                    "source": "correspondence",
+                    "ref": {
+                      "thread_id": "R1",
+                      "asset_id": "a_mail",
+                      "member": "drawing.pdf",
+                      "section": "2",
+                      "disposition": "attachment",
+                      "content_type": "application/pdf"
+                    }
+                  },
+                  "content_type": "application/pdf"
+                },
+                {
+                  "schema": "ds.assets.asset/v1",
+                  "asset_id": "sys:mail_part:a_mail:part-1.txt",
+                  "project_id": "p",
+                  "folder": "",
+                  "name": "part-1.txt",
+                  "kind": "note",
+                  "format": "txt",
+                  "bytes": 12,
+                  "digest": null,
+                  "status": "fresh",
+                  "sensitivity": "internal",
+                  "dated": {
+                    "document_date": null,
+                    "received_at": null,
+                    "created_at": null,
+                    "source_modified_at": null
+                  },
+                  "owner": {
+                    "kind": "user",
+                    "id": "u",
+                    "display": null
+                  },
+                  "source": {
+                    "kind": "container",
+                    "detail": "mail part 1 of review.eml"
+                  },
+                  "classified_by": "kernel",
+                  "container": "a_mail",
+                  "links": [],
+                  "origin": {
+                    "source": "correspondence",
+                    "ref": {
+                      "thread_id": "R1",
+                      "asset_id": "a_mail",
+                      "member": "part-1.txt",
+                      "section": "1",
+                      "disposition": "body",
+                      "content_type": "text/plain"
+                    }
+                  },
+                  "content_type": "text/plain"
+                }
+              ]
+            }
+          ],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_doc",
+              "project_id": "p",
+              "folder": "Correspondence/Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)",
+              "name": "GTP-001.pdf",
+              "kind": "doc",
+              "format": "pdf",
+              "bytes": 10,
+              "digest": "sha256:ab",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "u",
+                "display": null
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "correspondence",
+                "ref": {
+                  "thread_id": "R1",
+                  "record_id": "R1",
+                  "role": "document",
+                  "asset_id": "a_doc"
+                }
+              },
+              "document": {
+                "number": "GTP-001",
+                "revision_label": "B",
+                "state": "issued"
+              },
+              "created_by": "u",
+              "updated_at": "2026-09-20T00:00:00Z",
+              "updated_by": "u",
+              "version": 1
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_ref",
+              "project_id": "p",
+              "folder": "Correspondence/Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)",
+              "name": "package.zip",
+              "kind": "pack",
+              "format": "unknown",
+              "bytes": 10,
+              "digest": "sha256:ab",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "u",
+                "display": null
+              },
+              "source": {
+                "kind": "external_reference",
+                "detail": null
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [
+                {
+                  "kind": "pm_record",
+                  "id": "R2"
+                }
+              ],
+              "origin": {
+                "source": "correspondence",
+                "ref": {
+                  "thread_id": "R1",
+                  "record_id": "R2",
+                  "role": "attachment",
+                  "asset_id": "a_ref"
+                }
+              },
+              "external": {
+                "url": "https://drive.google.com/file/d/abc",
+                "provider": "google_drive"
+              },
+              "bytes_held": false,
+              "created_by": "u",
+              "updated_at": "2026-09-20T00:00:00Z",
+              "updated_by": "u",
+              "version": 1
+            },
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_mail",
+              "project_id": "p",
+              "folder": "Correspondence/Acme Consultancy + Zed Ltd — Review of the MV design (2026-09-14)",
+              "name": "review.eml",
+              "kind": "mail",
+              "format": "eml",
+              "bytes": 10,
+              "digest": "sha256:ab",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "u",
+                "display": null
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [],
+              "origin": {
+                "source": "correspondence",
+                "ref": {
+                  "thread_id": "R1",
+                  "record_id": "R1",
+                  "role": "source",
+                  "asset_id": "a_mail"
+                }
+              },
+              "mail": {
+                "from": "x@example.com",
+                "to": [
+                  "y@example.com"
+                ],
+                "cc": [],
+                "subject": "Review",
+                "message_id": "<m@example.com>",
+                "parts": [
+                  {
+                    "path": "part-1.txt",
+                    "section": "1",
+                    "content_type": "text/plain",
+                    "disposition": "body",
+                    "bytes": 12,
+                    "kind": "doc",
+                    "format": "txt",
+                    "named": false
+                  },
+                  {
+                    "path": "drawing.pdf",
+                    "section": "2",
+                    "content_type": "application/pdf",
+                    "disposition": "attachment",
+                    "bytes": 3000,
+                    "kind": "doc",
+                    "format": "pdf",
+                    "named": true
+                  }
+                ],
+                "parts_total": 2,
+                "truncated": false
+              },
+              "created_by": "u",
+              "updated_at": "2026-09-20T00:00:00Z",
+              "updated_by": "u",
+              "version": 1
+            }
+          ]
+        },
+        {
+          "kind": "system",
+          "path": "Correspondence/Site note (2026-09-19)",
+          "name": "Site note (2026-09-19)",
+          "counts": {
+            "assets": 1,
+            "folders": 0
+          },
+          "children": [],
+          "assets": [
+            {
+              "schema": "ds.assets.asset/v1",
+              "asset_id": "a_note",
+              "project_id": "p",
+              "folder": "Correspondence/Site note (2026-09-19)",
+              "name": "note.md",
+              "kind": "note",
+              "format": "unknown",
+              "bytes": 10,
+              "digest": "sha256:ab",
+              "status": "fresh",
+              "sensitivity": "internal",
+              "dated": {
+                "document_date": null,
+                "received_at": null,
+                "created_at": null,
+                "source_modified_at": null
+              },
+              "owner": {
+                "kind": "user",
+                "id": "u",
+                "display": null
+              },
+              "source": {
+                "kind": "upload",
+                "detail": null
+              },
+              "classified_by": "user",
+              "container": null,
+              "links": [
+                {
+                  "kind": "pm_record",
+                  "id": "R3"
+                }
+              ],
+              "origin": {
+                "source": "correspondence",
+                "ref": {
+                  "thread_id": "R3",
+                  "record_id": "R3",
+                  "role": "attachment",
+                  "asset_id": "a_note"
+                }
+              },
+              "created_by": "u",
+              "updated_at": "2026-09-20T00:00:00Z",
+              "updated_by": "u",
+              "version": 1
+            }
+          ]
+        }
+      ],
+      "assets": []
+    },
+    {
+      "kind": "system",
+      "path": "Local data",
+      "name": "Local data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "dataset_rooms",
+        "national_datasets",
+        "report_rooms"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "MV models",
+      "name": "MV models",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "grid_exports",
+        "grid_models"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "My data",
+      "name": "My data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "user_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Prints",
+      "name": "Prints",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "local_prints",
+        "print_setups"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project data",
+      "name": "Project data",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "project_data"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Project work",
+      "name": "Project work",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded_sources": [
+        "pm_attachments",
+        "pm_tasks"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Reports",
+      "name": "Reports",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "compounded",
+        "compute_artifacts"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Solar",
+      "name": "Solar",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "solar"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Survey",
+      "name": "Survey",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "survey_media"
+      ]
+    },
+    {
+      "kind": "system",
+      "path": "Transformers",
+      "name": "Transformers",
+      "counts": {
+        "assets": 0,
+        "folders": 0
+      },
+      "children": [],
+      "assets": [],
+      "not_loaded": true,
+      "not_loaded_sources": [
+        "design_attachments",
+        "transformer_versions",
+        "transformers"
+      ]
+    }
+  ],
+  "total_assets": 10,
+  "total_folders": 15,
+  "truncated": false,
+  "not_loaded_sources": [
+    "compounded",
+    "compute_artifacts",
+    "dataset_rooms",
+    "design_attachments",
+    "grid_exports",
+    "grid_models",
+    "local_prints",
+    "national_datasets",
+    "pm_attachments",
+    "pm_tasks",
+    "print_setups",
+    "project_data",
+    "report_rooms",
+    "solar",
+    "survey_media",
+    "transformer_versions",
+    "transformers",
+    "user_data"
+  ]
+}
