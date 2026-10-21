@@ -23,6 +23,7 @@ pub use metadata::{
     read_transformer_status_for_project,
 };
 mod profile;
+mod project_delete;
 mod project_template;
 mod asset_read_bound;
 #[cfg(test)]
@@ -419,7 +420,13 @@ pub static DOMAIN: Domain = Domain {
         &PROJECT_STATUS_COMMAND,
         &PROJECT_CREATE_COMMAND,
         &PROJECT_UPDATE_COMMAND,
+        &project_delete::COMMAND,
     ],
+};
+
+/// The owner-only archive-then-delete of one whole project.
+pub use project_delete::{
+    COMMAND as PROJECT_DELETE_COMMAND, render as render_project_delete, run as run_project_delete,
 };
 
 const LANE: ds_cli_contract::spec::Arg =
@@ -8279,7 +8286,10 @@ mod tests {
                 assert!(command.arg("desktop-descriptor").is_none());
             } else if matches!(
                 command.id,
-                "auth.device.revoke" | "auth.project.create" | "auth.project.update"
+                "auth.device.revoke"
+                    | "auth.project.create"
+                    | "auth.project.update"
+                    | "auth.project.delete"
             ) {
                 // The confirmed global writes: a device revocation, a project
                 // creation and a project edit. Each mutates governed shared

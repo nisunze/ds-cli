@@ -115,6 +115,11 @@ static AUTH_ENTRIES: &[Entry] = &[
         handler: ds_cli_auth::run_project_update,
         render: ds_cli_auth::render_project_properties,
     },
+    Entry {
+        command: &ds_cli_auth::PROJECT_DELETE_COMMAND,
+        handler: ds_cli_auth::run_project_delete,
+        render: ds_cli_auth::render_project_delete,
+    },
 ];
 
 /// Every domain, in root-help order. Static because the table is the

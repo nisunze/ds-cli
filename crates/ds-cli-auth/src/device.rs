@@ -976,6 +976,14 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<ds_client_core::project_properties::Receipt, ClientError> {
         fixed_device_call!(self, project_properties, command)
     }
+    /// The owner-only project delete: server-side, admitted under a device
+    /// credential exactly like a restored user.
+    pub fn project_deletion(
+        &mut self,
+        command: &ds_client_core::project_deletion::Command,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, project_deletion, command)
+    }
     pub fn sre(&mut self, command: &ds_client_core::sre::Command) -> Result<Value, ClientError> {
         fixed_device_call!(self, sre, command)
     }

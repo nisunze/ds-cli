@@ -200,6 +200,24 @@ family: it travels alone (`template_flag_alone` otherwise) as a lifecycle-only
 update, admitted on `project.template.mark` or `project.properties.edit`, and
 reachable on an archived project like every lifecycle-only update.
 
+`auth project delete` removes one whole project, owner-only (`platform.admin`;
+`project.delete` is not enough) and always archive-then-delete
+(ds-brain `docs/contracts/project-delete.md`). `--dry-run` prints the plan: every
+member in Firestore, the messaging database, storage and BigQuery, each
+`archive` (original), `delete_only` (mirror or derived), `retained` (survey
+media, never touched here; every reference names the project whose prefix holds
+it) or `blocked`, with its plan digest. With `--plan-digest` and `--yes` it pages
+the authorized export into local staging (`$XDG_STATE_HOME/ds/project-delete`),
+builds one zip whose first member is `index.json` (gzip NDJSON of native
+Firestore documents per group, archived objects as files, retained media
+listed), uploads it once through the minted resumable session to
+`{pid}/{digest}.zip` in the deleted-projects bucket, re-reads the stored
+generation to verify its sha256, and records the receipt. Only then, unless
+`--archive-only`, does it apply the receipted plan in bounded batches until
+complete. Re-running the same command resumes an interrupted export, upload or
+apply and never writes a second archive; `--archive-out` keeps a local copy and
+never overwrites a different file.
+
 `auth project create --from-template <project-id>` starts a project from a
 template project. `ds_command_kernel::project_template` decides the plan from
 fresh reads of the template (its directory row, printing setups, transformer

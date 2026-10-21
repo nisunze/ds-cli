@@ -45,6 +45,7 @@ pub(crate) struct Scripted {
     /// Scripted answers for `POST /api/v1/projects`; the door records like a
     /// governance door and answers Unreachable when the script is empty.
     pub project_properties: VecDeque<TransportResponse>,
+    pub project_deletion: VecDeque<TransportResponse>,
     /// Scripted answers for the design tag route; Unreachable when empty.
     pub design_tags: VecDeque<TransportResponse>,
     /// Scripted answers for the governed printing read; Unreachable when
@@ -98,6 +99,12 @@ impl FixtureTransport {
     pub(crate) fn push_project_properties(&self, status: u16, body: &[u8]) {
         self.lock()
             .project_properties
+            .push_back(TransportResponse::new(status, body.to_vec()));
+    }
+
+    pub(crate) fn push_project_deletion(&self, status: u16, body: &[u8]) {
+        self.lock()
+            .project_deletion
             .push_back(TransportResponse::new(status, body.to_vec()));
     }
 
@@ -253,6 +260,17 @@ impl Transport for FixtureTransport {
     ) -> Result<TransportResponse, TransportError> {
         let recorded = self.record("project_properties", call.bearer_token(), call.device_id());
         match self.lock().project_properties.pop_front() {
+            Some(response) => Ok(response),
+            None => recorded,
+        }
+    }
+
+    fn project_deletion(
+        &mut self,
+        call: ds_client_core::ProjectDeletionCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let recorded = self.record("project_deletion", call.bearer_token(), call.device_id());
+        match self.lock().project_deletion.pop_front() {
             Some(response) => Ok(response),
             None => recorded,
         }

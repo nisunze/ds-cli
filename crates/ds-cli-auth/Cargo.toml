@@ -23,6 +23,12 @@ ds-edge-authority = { workspace = true }
 ds-sync-runtime = { workspace = true }
 # The kernel owns transfer terminal causes; the shared runtime hosts its IO.
 ds-command-kernel = { workspace = true }
+# The project-delete archive: one zip (index first) of gzip NDJSON groups and
+# stored objects, with the GCS CRC32C the upload declares. All three already
+# build in this workspace.
+crc32c = "0.6"
+flate2 = "1"
+zip = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

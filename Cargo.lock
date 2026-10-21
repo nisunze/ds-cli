@@ -1036,6 +1036,7 @@ name = "ds-cli-auth"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "crc32c",
  "ds-cli-contract",
  "ds-cli-desktop",
  "ds-client-core",
@@ -1048,6 +1049,7 @@ dependencies = [
  "ds-solar-io",
  "ds-sync-runtime",
  "ds-update-runtime",
+ "flate2",
  "libc",
  "serde",
  "serde_json",
@@ -1056,6 +1058,7 @@ dependencies = [
  "url",
  "windows-sys 0.61.2",
  "zeroize",
+ "zip 2.4.2",
 ]
 
 [[package]]
