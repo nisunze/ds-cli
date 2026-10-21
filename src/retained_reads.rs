@@ -12,10 +12,13 @@
 //! key grammar, the byte bound of one value and how many rows one owner keeps;
 //! a write past the row bound evicts that owner's least recently used rows of
 //! the kind. The host binds the identity ([`crate::durable_store`]); a caller
-//! names the kind, the project of a project kind and the key. Every write,
-//! invalidation and removal advances the kind's own generation
+//! names the kind, the project of a project kind and the key. Except for
+//! ProjectConfig, every write, invalidation and removal advances the kind's generation
 //! (`retained_reads.<kind>`), never another kind's; a conditional write names
 //! the generation its flow read and is refused when it moved.
+//! ProjectConfig instead fences configuration changes per owner and project:
+//! retaining a fetched answer does not invalidate another fetch. Explicit
+//! writes, invalidation and removal still fence older answers.
 use crate::durable_store::{generation, Input, Outcome};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -175,6 +178,47 @@ kinds! {
 /// The generation row one kind reads and advances.
 pub fn generation_key(kind: Kind) -> String {
     format!("{STORE}.{}", kind.name())
+}
+
+/// Configuration saves fence only the captured owner/project. Register even
+/// an absent read so an account-wide invalidation also reaches in-flight reads.
+fn config_generation_key(
+    connection: &Connection,
+    owner: &str,
+    operation: &Operation,
+) -> Result<String, String> {
+    let project = match operation {
+        Operation::Read { project, .. }
+        | Operation::List { project, .. }
+        | Operation::Count { project, .. }
+        | Operation::Write { project, .. }
+        | Operation::ReplaceSet { project, .. } => {
+            self::project(Kind::ProjectConfig, project.as_deref(), false)?
+        }
+        Operation::Invalidate { project, key, .. } | Operation::Forget { project, key, .. } => {
+            reach(Kind::ProjectConfig, project.as_deref(), key.as_deref())?.0
+        }
+    };
+    let prefix = format!("{}.{owner}.", generation_key(Kind::ProjectConfig));
+    let Some(project) = project else {
+        // Every in-flight read registered its project before fetching. Advance
+        // all of this owner's scopes in the same transaction as the sweep.
+        connection
+            .execute(
+                "UPDATE durable_store_generations SET generation=generation+1 WHERE substr(store,1,?1)=?2",
+                params![prefix.len() as i64, prefix],
+            )
+            .map_err(sql)?;
+        return Ok(format!("{}.{owner}", generation_key(Kind::ProjectConfig)));
+    };
+    let scoped = format!(
+        "{prefix}{}",
+        crate::durable_store::sha256(project.as_bytes())
+    );
+    if generation(connection, &scoped)? == 0 {
+        crate::durable_store::advance(connection, &scoped)?;
+    }
+    Ok(scoped)
 }
 
 /// One row of a replaced set.
@@ -385,6 +429,13 @@ pub fn execute(
     }
     connection.execute_batch(TABLE).map_err(sql)?;
     let owner = input.identity.owner();
+    let generation_key = if kind == Kind::ProjectConfig {
+        // Ensure the generations table exists before an account-wide sweep.
+        generation(connection, &generation_key(kind))?;
+        config_generation_key(connection, &owner, &operation)?
+    } else {
+        generation_key(kind)
+    };
     let mut answer = Map::new();
     let wrote = match operation {
         Operation::Read {
@@ -483,7 +534,7 @@ pub fn execute(
             let now = time(kind, now)?;
             let text = text(kind, &value)?;
             if let Some(expected) = expect_generation {
-                let current = generation(connection, &generation_key(kind))?;
+                let current = generation(connection, &generation_key)?;
                 if current != expected {
                     return Err(format!(
                         "{STALE}: {}: the retained read changed while this answer was fetched",
@@ -494,7 +545,9 @@ pub fn execute(
             upsert(connection, &owner, kind, &column, &row, &text, now)?;
             evict(connection, &owner, kind, &column, &json!([row]).to_string())?;
             answer.insert("written".into(), 1.into());
-            true
+            // A fetched answer is retention, not a configuration edit. It
+            // must not make another successful concurrent fetch appear stale.
+            kind != Kind::ProjectConfig || expect_generation.is_none()
         }
         Operation::ReplaceSet {
             kind,
@@ -574,7 +627,7 @@ pub fn execute(
     } else {
         Outcome::read(answer)
     };
-    outcome.generation_key = Some(generation_key(kind));
+    outcome.generation_key = Some(generation_key);
     Ok(outcome)
 }
 

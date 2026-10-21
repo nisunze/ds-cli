@@ -63,6 +63,136 @@ fn write(
 }
 const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+fn config_observed(db: &mut Connection, owner: &str, project: &str) -> u64 {
+    call(
+        db,
+        owner,
+        json!({"action":"read", "kind":"project_config", "project":project, "now":1}),
+    )
+    .unwrap()
+    .generation
+    .unwrap()
+}
+fn config_retained(
+    db: &mut Connection,
+    owner: &str,
+    project: &str,
+    observed: u64,
+) -> Result<Answer, String> {
+    call(
+        db,
+        owner,
+        json!({"action":"write", "kind":"project_config", "project":project,
+        "value":{"sheets":{}}, "now":2, "expect_generation":observed}),
+    )
+}
+
+#[test]
+fn configuration_retention_does_not_invalidate_overlapping_fetches() {
+    let mut db = Connection::open_in_memory().unwrap();
+    let first = config_observed(&mut db, "a", "kigali");
+    let second = config_observed(&mut db, "a", "kigali");
+    assert_eq!(first, second);
+    assert_eq!(
+        config_retained(&mut db, "a", "kigali", first)
+            .unwrap()
+            .generation,
+        Some(first)
+    );
+    assert_eq!(
+        config_retained(&mut db, "a", "kigali", second)
+            .unwrap()
+            .generation,
+        Some(second)
+    );
+    assert_eq!(
+        read(&mut db, "a", "project_config", Some("kigali"), "")["value"],
+        json!({"sheets":{}})
+    );
+}
+
+#[test]
+fn configuration_invalidation_is_isolated_by_owner_and_project() {
+    let mut db = Connection::open_in_memory().unwrap();
+    let observed = config_observed(&mut db, "a", "kigali");
+    for (owner, project) in [("a", "musanze"), ("b", "kigali")] {
+        call(
+            &mut db,
+            owner,
+            json!({"action":"forget", "kind":"project_config", "project":project}),
+        )
+        .unwrap();
+    }
+    config_retained(&mut db, "a", "kigali", observed).unwrap();
+}
+
+#[test]
+fn configuration_save_still_fences_an_older_answer_even_without_a_held_row() {
+    for action in ["forget", "invalidate"] {
+        let mut db = Connection::open_in_memory().unwrap();
+        let observed = config_observed(&mut db, "a", "kigali");
+        call(
+            &mut db,
+            "a",
+            json!({"action":action, "kind":"project_config", "project":"kigali"}),
+        )
+        .unwrap();
+        assert!(config_retained(&mut db, "a", "kigali", observed)
+            .unwrap_err()
+            .starts_with(STALE));
+        assert_eq!(
+            read(&mut db, "a", "project_config", Some("kigali"), ""),
+            Value::Null
+        );
+    }
+}
+
+#[test]
+fn explicit_configuration_replacement_fences_only_its_scope() {
+    for replacement in [
+        json!({"action":"write", "value":{"sheets":{}}, "now":2}),
+        json!({"action":"replace_set", "rows":[], "now":2}),
+    ] {
+        let mut db = Connection::open_in_memory().unwrap();
+        let local = config_observed(&mut db, "a", "kigali");
+        let other_project = config_observed(&mut db, "a", "musanze");
+        let other_owner = config_observed(&mut db, "b", "kigali");
+        let mut operation = replacement;
+        operation["kind"] = json!("project_config");
+        operation["project"] = json!("kigali");
+        call(&mut db, "a", operation).unwrap();
+        assert!(config_retained(&mut db, "a", "kigali", local)
+            .unwrap_err()
+            .starts_with(STALE));
+        config_retained(&mut db, "a", "musanze", other_project).unwrap();
+        config_retained(&mut db, "b", "kigali", other_owner).unwrap();
+    }
+}
+
+#[test]
+fn configuration_account_sweep_fences_its_inflight_projects_only() {
+    for action in ["forget", "invalidate"] {
+        let mut db = Connection::open_in_memory().unwrap();
+        let a_first = config_observed(&mut db, "a", "kigali");
+        let a_second = config_observed(&mut db, "a", "musanze");
+        let b_first = config_observed(&mut db, "b", "kigali");
+        call(
+            &mut db,
+            "a",
+            json!({"action":action, "kind":"project_config"}),
+        )
+        .unwrap();
+        for (project, observed) in [("kigali", a_first), ("musanze", a_second)] {
+            assert!(config_retained(&mut db, "a", project, observed)
+                .unwrap_err()
+                .starts_with(STALE));
+            let after_save = config_observed(&mut db, "a", project);
+            config_retained(&mut db, "a", project, after_save).unwrap();
+        }
+        config_retained(&mut db, "b", "kigali", b_first).unwrap();
+    }
+}
+
 #[test]
 fn every_kind_is_named_once_with_a_bounded_rule() {
     let mut names: Vec<_> = Kind::ALL.iter().map(|kind| kind.name()).collect();

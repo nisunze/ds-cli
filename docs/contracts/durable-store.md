@@ -100,6 +100,14 @@ moves another kind's generation and the answer carries the kind's own. A reactiv
 generation without reading rows it does not need; the store never depends on
 that layer.
 
+Project configuration retention uses an invalidation epoch per owner and
+project. A conditional write of a fetched document commits the document without
+advancing this epoch, so overlapping fetches do not invalidate each other.
+Explicit writes, replacement, invalidation and removal advance it. An
+account-wide invalidation/removal advances all of that owner's observed project
+epochs, including reads that found no held document. Epochs remain after
+removal so an older in-flight answer cannot become current again.
+
 ## Effects
 
 `Effect` is a closed vocabulary: `write_file {file, contents}` and
