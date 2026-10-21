@@ -23,31 +23,31 @@
   "targets": {
     "web-local": {
       "features": ["wasm", "platform-web", "lane-canary", "topology-local"],
-      "env": []
+      "env": ["DS_FIREBASE_PROJECT_ID", "DS_FIREBASE_API_KEY"]
     },
     "desktop-local": {
       "features": ["wasm", "platform-desktop", "lane-canary", "topology-local"],
-      "env": []
+      "env": ["DS_FIREBASE_PROJECT_ID", "DS_FIREBASE_API_KEY"]
     },
     "web-canary": {
       "features": ["wasm", "platform-web", "lane-canary"],
-      "env": ["DS_GATEWAY_URL_CANARY", "DS_PLATFORM_API_KEY"]
+      "env": ["DS_GATEWAY_URL_CANARY", "DS_PLATFORM_API_KEY", "DS_FIREBASE_PROJECT_ID", "DS_FIREBASE_API_KEY"]
     },
     "web-production": {
       "features": ["wasm", "platform-web", "lane-production"],
-      "env": ["DS_GATEWAY_URL_PRODUCTION", "DS_PLATFORM_API_KEY"]
+      "env": ["DS_GATEWAY_URL_PRODUCTION", "DS_PLATFORM_API_KEY", "DS_FIREBASE_PROJECT_ID", "DS_FIREBASE_API_KEY"]
     },
     "desktop-dev-canary": {
       "features": ["wasm", "platform-desktop", "lane-canary"],
-      "env": ["DS_GATEWAY_URL_CANARY", "DS_PLATFORM_API_KEY"]
+      "env": ["DS_GATEWAY_URL_CANARY", "DS_PLATFORM_API_KEY", "DS_FIREBASE_PROJECT_ID", "DS_FIREBASE_API_KEY"]
     },
     "desktop-canary": {
       "features": ["wasm", "platform-desktop", "lane-canary"],
-      "env": ["DS_GATEWAY_URL_CANARY", "DS_PLATFORM_API_KEY"]
+      "env": ["DS_GATEWAY_URL_CANARY", "DS_PLATFORM_API_KEY", "DS_FIREBASE_PROJECT_ID", "DS_FIREBASE_API_KEY"]
     },
     "desktop-production": {
       "features": ["wasm", "platform-desktop", "lane-production"],
-      "env": ["DS_GATEWAY_URL_PRODUCTION", "DS_PLATFORM_API_KEY"]
+      "env": ["DS_GATEWAY_URL_PRODUCTION", "DS_PLATFORM_API_KEY", "DS_FIREBASE_PROJECT_ID", "DS_FIREBASE_API_KEY"]
     }
   },
   "releaseTargets": {

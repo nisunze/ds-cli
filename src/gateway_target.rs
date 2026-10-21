@@ -73,6 +73,15 @@ pub fn identity() -> &'static str {
     IDENTITY
 }
 
+/// The audience a store identity and a held row are scoped to: this build's
+/// Firebase project and the gateway its requests reach (`gateway`, the page's
+/// own origin on the local stack), in the shape the Kernel store already
+/// binds, so no held row changes owner.
+pub fn audience(gateway: &str) -> Option<String> {
+    let project = FIREBASE_PROJECT?;
+    Some(serde_json::json!({"firebaseProjectId": project, "gateway": gateway}).to_string())
+}
+
 /// One release channel's deployed gateway, as this build was compiled: what
 /// a native client (Core) needs to speak to it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -113,6 +122,14 @@ mod exports {
     #[wasm_bindgen(js_name = gatewayTarget, unchecked_return_type = "GatewayTarget")]
     pub fn gateway_target() -> Result<JsValue, JsValue> {
         typed(&super::target())
+    }
+
+    /// The audience held rows and the store identity are scoped to.
+    #[wasm_bindgen(js_name = gatewayAudience)]
+    pub fn gateway_audience() -> Result<String, JsValue> {
+        let gateway = crate::gateway_exchange::browser::gateway_origin()?;
+        super::audience(&gateway)
+            .ok_or_else(|| js_sys::Error::new("this Kernel build names no Firebase project").into())
     }
 }
 

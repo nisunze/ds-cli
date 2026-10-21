@@ -16,7 +16,8 @@
 //! routing descriptor (routing/operations.json) it compiled.
 //!
 //! A deployed page lane refuses to build without its gateway origin and the
-//! key; a native build leaves a channel whose gateway was not named unserved.
+//! key, and every page build without its Firebase project and key; a native
+//! build leaves a channel whose gateway was not named unserved.
 
 use sha2::{Digest, Sha256};
 use std::{env, fs, path::Path, path::PathBuf};
@@ -160,6 +161,9 @@ pub fn emit(root: &Path) {
     };
     if lane.is_some() && !local && key.is_none() {
         fail("a deployed lane needs DS_PLATFORM_API_KEY");
+    }
+    if lane.is_some() && (firebase.is_none() || firebase_key.is_none()) {
+        fail("a page build needs DS_FIREBASE_PROJECT_ID and DS_FIREBASE_API_KEY: its audience and its sign-in");
     }
     let key_sha256 = key
         .as_deref()

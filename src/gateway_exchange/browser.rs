@@ -89,7 +89,7 @@ pub struct GatewayCredentials {
 
 /// Where this build's requests go: the deployed gateway it was compiled for,
 /// or, on the local stack, the page's own origin, which proxies it.
-fn gateway_origin() -> Result<String, JsValue> {
+pub(crate) fn gateway_origin() -> Result<String, JsValue> {
     if let Some(origin) = crate::gateway_target::GATEWAY_ORIGIN {
         return Ok(origin.to_owned());
     }
@@ -197,7 +197,7 @@ pub(crate) fn rejection(refusal: &Refusal) -> JsValue {
 
 /// Run `work` until it completes or its deadline passes (`None`). The loser
 /// is dropped, which aborts an unfinished fetch.
-async fn within<T>(work: impl Future<Output = T>, deadline_ms: u64) -> Option<T> {
+pub(crate) async fn within<T>(work: impl Future<Output = T>, deadline_ms: u64) -> Option<T> {
     if deadline_ms == 0 {
         return Some(work.await);
     }

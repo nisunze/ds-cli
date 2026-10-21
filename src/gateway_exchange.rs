@@ -41,6 +41,7 @@ pub mod deadletter;
 pub mod design;
 pub mod design_collab;
 pub mod feedback;
+pub mod firebase_auth;
 pub mod forms;
 pub mod geocode;
 pub mod geodata;

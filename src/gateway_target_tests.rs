@@ -37,3 +37,19 @@ fn a_channel_without_its_gateway_names_the_missing_variable() {
         }
     }
 }
+
+#[test]
+fn the_audience_keeps_the_shape_the_store_already_binds() {
+    match super::FIREBASE_PROJECT {
+        Some(project) => assert_eq!(
+            super::audience("https://gateway.example").as_deref(),
+            Some(
+                format!(
+                    r#"{{"firebaseProjectId":"{project}","gateway":"https://gateway.example"}}"#
+                )
+                .as_str()
+            )
+        ),
+        None => assert_eq!(super::audience("https://gateway.example"), None),
+    }
+}
