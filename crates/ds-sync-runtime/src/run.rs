@@ -115,6 +115,21 @@ pub trait SyncHost {
         let _ = project;
         Vec::new()
     }
+    /// Identities whose newest local publication the store holds as refused
+    /// or conflicted. The plan parks a result that depends on one of them
+    /// (`sync::DEPENDENCY_REFUSED`) instead of letting it wait forever. A host
+    /// without a durable queue holds no settled verdicts.
+    fn settled(&self, project: &str) -> Result<Vec<sync::Identity>, String> {
+        let _ = project;
+        Ok(Vec::new())
+    }
+    /// The plan found this row `in_sync`: the held head carries its exact
+    /// bytes. A host whose store still queues the row settles it as delivered
+    /// and answers the retained receipt; `Ok(None)` when nothing was queued.
+    fn settle_in_sync(&self, project: &str, row: &LocalRow) -> Result<Option<Receipt>, String> {
+        let _ = (project, row);
+        Ok(None)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +190,7 @@ fn plan_once_with_interest(
         local: local.iter().map(kernel_local).collect(),
         remote: remote.iter().map(kernel_remote).collect(),
         download_interest: download_interest.map(<[sync::Identity]>::to_vec),
+        settled: host.settled(project)?,
         published_outputs: remote
             .iter()
             .flat_map(|head| {
@@ -502,6 +518,19 @@ fn run_leased(
                     );
                     let receipt = reclaim(host, project, &local, identity, reason);
                     keep(host, project, &mut receipts, receipt);
+                } else if *reason == "in_sync" {
+                    // Already delivered: a row still queued for these exact
+                    // bytes leaves the queue as published, with a receipt.
+                    let settled = match local
+                        .iter()
+                        .find(|row| &row.identity == identity && !row.client_publish_id.is_empty())
+                    {
+                        Some(row) => host.settle_in_sync(project, row)?,
+                        None => None,
+                    };
+                    receipts.push(settled.unwrap_or_else(|| {
+                        Receipt::new("nothing", *reason).about(identity)
+                    }));
                 } else {
                     receipts.push(Receipt::new("nothing", *reason).about(identity));
                 }
@@ -509,6 +538,14 @@ fn run_leased(
             sync::Action::Refused { identity, reason } => {
                 let mut receipt = Receipt::new("refused", *reason);
                 receipt.identity = identity.clone();
+                if *reason == sync::DEPENDENCY_REFUSED {
+                    // The typed reason is the row's state reason: it parks,
+                    // and the Sync Center says why.
+                    receipt = receipt.detail(format!(
+                        "{}: the result this publication depends on was refused or conflicted; recompute it to publish this one",
+                        sync::DEPENDENCY_REFUSED
+                    ));
+                }
                 keep(
                     host,
                     project,

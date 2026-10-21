@@ -472,6 +472,7 @@ fn download_needed(run: &Run, now: u64) -> Result<bool, String> {
             })
             .collect(),
         download_interest: Some(vec![selected]),
+        settled: Vec::new(),
     };
     let plan = sync::plan(&input)?;
     if plan.summary.refused > 0 || plan.summary.conflicts > 0 {

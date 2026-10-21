@@ -42,6 +42,9 @@ pub mod declaration;
 pub mod engines;
 #[path = "sync/solar_declaration.rs"]
 mod solar_declaration;
+#[cfg(test)]
+#[path = "sync/queue_delivery_tests.rs"]
+mod queue_delivery_tests;
 const INPUT_BOUND: usize = 8 * 1024 * 1024;
 const MAX_ARTIFACTS: usize = 4096;
 const MAX_ID_LEN: usize = 128;
@@ -253,6 +256,12 @@ pub struct Input {
     /// without hiding remote heads from authorization or dependency decisions.
     #[serde(default)]
     pub download_interest: Option<Vec<Identity>>,
+    /// Identities whose newest local publication on this machine is settled
+    /// as refused or conflicted (a newer pending row would be the newest). A
+    /// result that depends on one of them can never be admitted, so it parks
+    /// with [`DEPENDENCY_REFUSED`] instead of waiting forever.
+    #[serde(default)]
+    pub settled: Vec<Identity>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -408,6 +417,34 @@ fn valid_sha256(value: &str) -> bool {
 /// later computation of the same thing. Not an error and not a conflict: the
 /// operator is owed nothing, and the local bytes may be discarded.
 pub const SUPERSEDED_BY_HEAD: &str = "superseded_by_head";
+
+/// A derived result whose prerequisite publication this machine already
+/// settled as refused or conflicted. The prerequisite will not publish, so the
+/// dependant parks with this typed reason instead of holding a queue slot.
+pub const DEPENDENCY_REFUSED: &str = "dependency_refused";
+
+/// Uploads run smallest first: a large batch never holds a small one behind
+/// it. Only the upload slots are reordered; every other action keeps its place.
+fn uploads_small_first(actions: &mut [Action]) {
+    let slots: Vec<usize> = actions
+        .iter()
+        .enumerate()
+        .filter(|(_, action)| matches!(action, Action::Upload { .. }))
+        .map(|(index, _)| index)
+        .collect();
+    let mut uploads: Vec<Action> = slots
+        .iter()
+        .map(|&index| std::mem::replace(&mut actions[index], Action::Offline))
+        .collect();
+    // Stable: equal sizes keep the identity order the plan built.
+    uploads.sort_by_key(|action| match action {
+        Action::Upload { size_bytes, .. } => *size_bytes,
+        _ => 0,
+    });
+    for (slot, action) in slots.into_iter().zip(uploads) {
+        actions[slot] = action;
+    }
+}
 
 /// Which of two disagreeing results of a *derived* artifact is current.
 enum DerivedWinner {
@@ -783,9 +820,16 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
                             })
                             && declarations.next().is_none();
                         if !published {
-                            actions.push(Action::Nothing {
-                                identity: identity.clone(),
-                                reason: "waiting_on_dependency",
+                            actions.push(if input.settled.contains(&prerequisite) {
+                                Action::Refused {
+                                    identity: Some(identity.clone()),
+                                    reason: DEPENDENCY_REFUSED,
+                                }
+                            } else {
+                                Action::Nothing {
+                                    identity: identity.clone(),
+                                    reason: "waiting_on_dependency",
+                                }
                             });
                             continue;
                         }
@@ -896,6 +940,7 @@ pub fn plan(input: &Input) -> Result<Plan, String> {
             _ => true,
         });
     }
+    uploads_small_first(&mut actions);
 
     let uploads_pending = actions
         .iter()
@@ -1044,6 +1089,7 @@ mod tests {
             remote,
             published_outputs: Vec::new(),
             download_interest: None,
+            settled: Vec::new(),
         }
     }
     /// A derived artifact — a report — with its source fingerprint pinned.

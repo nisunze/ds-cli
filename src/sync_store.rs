@@ -21,6 +21,8 @@ use sha2::{Digest, Sha256};
 
 pub mod recovery;
 pub mod report_heads;
+#[cfg(test)]
+mod queue_delivery_tests;
 
 pub const SCHEMA: &str = "ds.sync-store/v1";
 const INPUT_BOUND: usize = 16 * 1024 * 1024;
@@ -568,7 +570,7 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
             // flight. Keep that receipt as evidence without restating B.
             if matches!(
                 receipt.action.as_str(),
-                "upload" | "conflict" | "refused" | "reclaimed"
+                "upload" | "conflict" | "refused" | "reclaimed" | IN_SYNC
             ) {
                 let Some(row) = existing else {
                     t.refuse(
@@ -677,6 +679,27 @@ pub fn apply(request: &Request) -> Result<Transition, String> {
                     // A failed attempt keeps the work held, with the reason
                     // on the row so the next run and the operator see it.
                     restate(ArtifactState::Held, receipt.detail.clone());
+                }
+                (IN_SYNC, _) => {
+                    // The held head already carries exactly these bytes: the
+                    // publication is delivered, whoever delivered it. Only a
+                    // queued row moves, and only on that exact digest.
+                    let delivered = existing.is_some_and(|row| {
+                        matches!(row.state, ArtifactState::Held | ArtifactState::Uploading)
+                            && snapshot.heads.iter().any(|head| {
+                                head.scope == receipt.scope
+                                    && &head.identity == identity
+                                    && head.sha256 == row.sha256
+                            })
+                    });
+                    if delivered {
+                        restate(ArtifactState::Published, None);
+                    } else {
+                        t.refuse(
+                            "publication_not_in_sync",
+                            "only a queued row whose held head carries its exact digest settles as delivered",
+                        );
+                    }
                 }
                 ("download", "committed") => {
                     t.plan_trigger = Some(Trigger::DownloadCompleted);
@@ -808,6 +831,43 @@ pub const MAX_REPORTED_TRANSFORMERS: usize = 20;
 /// How many distinct hold reasons one project's row carries.
 pub const MAX_REPORTED_REASONS: usize = 5;
 
+/// The receipt action that settles a queued row the shared record already
+/// carries byte for byte (`sync::plan` answered `in_sync` for it): it was
+/// delivered, by this machine before its row was re-adopted or by another.
+pub const IN_SYNC: &str = "in_sync";
+
+/// The Sync Center's delivery counts, decided once here so every host shows
+/// the same numbers: `queued` (held), `uploading`, `published` and `failed`
+/// (conflict or refused). Archived history is not counted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryCounts {
+    pub queued: usize,
+    pub uploading: usize,
+    pub published: usize,
+    pub failed: usize,
+}
+
+impl DeliveryCounts {
+    fn count(&mut self, state: ArtifactState) {
+        match state {
+            ArtifactState::Held => self.queued += 1,
+            ArtifactState::Uploading => self.uploading += 1,
+            ArtifactState::Published => self.published += 1,
+            ArtifactState::Conflict | ArtifactState::Refused => self.failed += 1,
+        }
+    }
+
+    fn plus(self, other: Self) -> Self {
+        Self {
+            queued: self.queued + other.queued,
+            uploading: self.uploading + other.uploading,
+            published: self.published + other.published,
+            failed: self.failed + other.failed,
+        }
+    }
+}
+
 /// One project's rows, as the queue itself holds them, split by state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -841,6 +901,8 @@ pub struct QueuedProject {
     /// A credential refusal is a session blocker while this project has
     /// queued rows. Derived from receipts; never persisted on an artifact.
     pub blocked: Option<QueueBlock>,
+    /// This project's rows by delivery state.
+    pub counts: DeliveryCounts,
 }
 
 /// Output-only verdict over a held queue and its latest delivery receipt.
@@ -858,6 +920,8 @@ pub struct QueueBlock {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueStatus {
+    /// Every project's rows by delivery state: the Sync Center's numbers.
+    pub counts: DeliveryCounts,
     /// Only what is QUEUED: `held` or `uploading`.
     pub queued_batches: usize,
     pub queued_bytes: u64,
@@ -952,10 +1016,12 @@ pub fn queue_status(
                     reclaimable_bytes: 0,
                     pumped: live.iter().any(|lease| lease.scope.project() == project_id),
                     blocked: None,
+                    counts: DeliveryCounts::default(),
                 });
                 projects.last_mut().expect("just pushed")
             }
         };
+        entry.counts.count(row.state);
         match row.state {
             ArtifactState::Held | ArtifactState::Uploading => {
                 entry.batches += 1;
@@ -1059,6 +1125,9 @@ pub fn queue_status(
     let blocked = projects.iter().find_map(|project| project.blocked.clone());
     QueueStatus {
         queued_batches,
+        counts: projects
+            .iter()
+            .fold(DeliveryCounts::default(), |total, project| total.plus(project.counts)),
         queued_bytes: projects
             .iter()
             .fold(0_u64, |total, project| total.saturating_add(project.bytes)),
@@ -1112,6 +1181,9 @@ pub fn combine_queue_statuses(statuses: &[QueueStatus]) -> QueueStatus {
         .sum();
     QueueStatus {
         queued_batches,
+        counts: statuses
+            .iter()
+            .fold(DeliveryCounts::default(), |total, status| total.plus(status.counts)),
         queued_bytes: statuses.iter().fold(0_u64, |total, status| {
             total.saturating_add(status.queued_bytes)
         }),

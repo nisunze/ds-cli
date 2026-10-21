@@ -633,6 +633,7 @@ impl SyncHost for StoreHost<'_> {
                 | "reclaimed"
                 | "reclaim_failed"
                 | "adopted"
+                | store::IN_SYNC
         ) {
             return Ok(());
         }
@@ -803,6 +804,54 @@ impl SyncHost for StoreHost<'_> {
             .lock()
             .map(|mut receipts| std::mem::take(&mut *receipts))
             .unwrap_or_default()
+    }
+
+    fn settled(&self, _project: &str) -> Result<Vec<sync::Identity>, String> {
+        // The snapshot holds the newest row per identity, so a refusal that a
+        // newer computation replaced is not settled here.
+        Ok(self
+            .snapshot()?
+            .artifacts
+            .into_iter()
+            .filter(|row| {
+                matches!(
+                    row.state,
+                    store::ArtifactState::Refused | store::ArtifactState::Conflict
+                )
+            })
+            .map(|row| row.identity)
+            .collect())
+    }
+
+    fn settle_in_sync(&self, project: &str, row: &LocalRow) -> Result<Option<Receipt>, String> {
+        let snapshot = self.snapshot()?;
+        let queued = snapshot.artifacts.iter().any(|stored| {
+            stored.replay_key == row.client_publish_id
+                && stored.identity == row.identity
+                && matches!(
+                    stored.state,
+                    store::ArtifactState::Held | store::ArtifactState::Uploading
+                )
+        });
+        let Some(head) = snapshot
+            .heads
+            .iter()
+            .find(|head| head.identity == row.identity && head.sha256 == row.sha256)
+        else {
+            return Ok(None);
+        };
+        if !queued {
+            return Ok(None);
+        }
+        let receipt = Receipt::new(store::IN_SYNC, "published")
+            .about(&row.identity)
+            .for_publication(row)
+            .detail(format!(
+                "the shared record already carries these exact bytes at {}; delivered",
+                head.revision
+            ));
+        self.record_receipt(project, &receipt)?;
+        Ok(Some(receipt))
     }
 }
 
