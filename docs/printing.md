@@ -675,8 +675,7 @@ location or one held page, refuses replacement of dirty drafts through the
 existing session reducer, and returns no acquisition, refresh, render or save
 effect. Same-template reads and page navigation remain usable with dirty work.
 The Desktop door serves only this pure intent under the owner window's existing
-account/project route; the paired `desktop.printing.view` transports the same
-request. PDF navigation consumes all held pages. A one-sheet MV sample remains
+account/project route. PDF navigation consumes all held pages. A one-sheet MV sample remains
 one held page until the renderer declares an exact requested-sheet contract.
 
 Desktop native transformer and MV template previews retain their latest exact result in
@@ -862,10 +861,7 @@ delivery's existing saved JSON companion remains an exact source artifact;
 it is not a second preview path. Existing main publication and retained report
 downloads keep their separate contracts.
 
-The paired CLI consumer is `desktop printing export --intent preview`
-with only `voltage_drop_pdf` selected and optional
-`--preview-retention 24h|7d`. Its result exposes the common `previewArtifact`
-and a native reuse receipt. Server's `report project export
+Server's `report project export
 --preview-voltage-drop` admits its own exact scoped native hold and saved
 analysis before using this same owner. It branches before project/provider,
 tag, survey, freshness or publication reads. The headless response returns
