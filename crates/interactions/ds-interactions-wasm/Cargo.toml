@@ -1,0 +1,33 @@
+[package]
+name = "ds-interactions-wasm"
+description = "Permanent browser adapter for transient UI interaction algorithms"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+js-sys = "0.3"
+wasm-bindgen.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ds-map-interaction.workspace = true
+ds-canvas.workspace = true
+ds-canvas-graph.workspace = true
+ds-geo-lite = { path = "../../../ds-command-kernel/crates/ds-geo-lite", features = ["projection", "geojson"] }
+
+[build-dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+js-sys = "0.3"
