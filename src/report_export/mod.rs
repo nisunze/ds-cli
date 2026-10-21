@@ -2083,7 +2083,9 @@ fn verify_survey_layers(
 /// Engineering Review sheet, and a report that carries one was generated but is
 /// not ready for approval. Every other print warning is cartographic and never
 /// blocks a submission.
-pub const ENGINEERING_REVIEW_CODES: [&str; 3] = [
+pub const ENGINEERING_REVIEW_CODES: [&str; 4] = [
+    "lv_line_cable_recommendation",
+    // What reporters released before 2026-10-20 still send.
     "lv_pole_line_cable_conflict",
     "transformer_protection_mismatch",
     "lv_span_exceeds_max_length",
@@ -2158,14 +2160,15 @@ pub fn valid_print_warning(warning: &PrintWarning, transformer: &str, formats: &
                 && warning.omitted_rows == 0
                 && warning.total_rows == 0
         }
-        // Cable consistency findings (report_consistency::lv_cables):
-        // one row per pole whose saved cable label disagrees with its
-        // LV line, mirrored on the workbook's Engineering Review
-        // sheet. They ride the xlsx output and name no paper; the
-        // transformer is the saved data label, which differs from the
-        // run's name only by case; the element is the saved line
-        // number. No table rows stand behind them.
-        "lv_pole_line_cable_conflict" => {
+        // Cable findings (ds-network `lv_cable`): one row per LV line
+        // whose computed size differs from its approved saved one, which
+        // every print states; a reporter released before 2026-10-20 sends
+        // one row per pole whose saved label disagrees with its line. They
+        // ride the xlsx output and name no paper; the transformer is the
+        // saved data label, which differs from the run's name only by
+        // case; the element is the saved line number. No table rows stand
+        // behind them.
+        "lv_line_cable_recommendation" | "lv_pole_line_cable_conflict" => {
             warning.transformer.eq_ignore_ascii_case(plan_transformer)
                 && warning.output_id == "xlsx"
                 && formats.contains(&warning.output_id)
@@ -4336,6 +4339,10 @@ mod tests {
         }]);
         let verified = verify(&document).unwrap();
         assert_eq!(verified.warnings.len(), 1);
+        let mut recommendation = document.clone();
+        recommendation["warnings"][0]["code"] = json!("lv_line_cable_recommendation");
+        recommendation["warnings"][0]["message"] = json!("LV_Line_01: computed cable '3 x 70 + 54.6mm² ABC' differs from the approved '3 x 35 + 54.6mm² ABC'; pending engineering review. The approved size prints.");
+        assert_eq!(verify(&recommendation).unwrap().warnings.len(), 1);
         assert_eq!(verified.warnings[0].transformer, "TX_A");
         for (key, invalid) in [
             ("transformer", json!("tx_b")),

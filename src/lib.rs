@@ -1628,7 +1628,6 @@ pub fn solar_migration_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValu
     solar_migration::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
 
-pub mod report_consistency;
 
 /// The DS envelope v1, the one answer shape `ds` and the desktop shell give
 /// their external clients. Spoken between processes; no WASM export.
