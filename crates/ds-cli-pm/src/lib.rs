@@ -404,6 +404,9 @@ pub fn correspondence(
 /// domain does not document to `pm_refused` — the contract's vocabulary is
 /// closed here, whatever the server gains tomorrow.
 pub fn classify(failure: Failure) -> Failure {
+    if let Some(moved) = plan_moved(&failure) {
+        return moved;
+    }
     let code = failure.code().to_owned();
     if let Some(known) = CORRESPONDENCE_REFUSALS
         .iter()
@@ -427,6 +430,35 @@ pub fn classify(failure: Failure) -> Failure {
             .remedy(PM_REFUSED.remedy);
     }
     failure
+}
+
+/// What a caller does when the plan was written while the server read it.
+const GRAPH_CHANGED_REMEDY: &str = "retry the same command with the same --command-id; if `ds pm plan` shows a newer revision, review it and issue the command against that revision";
+
+/// A 409 that says the plan moved is a conflict a re-read or a retry
+/// resolves, never invalid input. The shared kind mapping renders every 409
+/// of this route as `auth_input_invalid` (not retryable), which told a caller
+/// of `pm_graph_changed_during_read` — "Retry the request" — not to retry.
+fn plan_moved(failure: &Failure) -> Option<Failure> {
+    let detail = failure.detail_value()?;
+    if detail["http_status"].as_u64() != Some(409) {
+        return None;
+    }
+    let remedy = match detail["service_code"].as_str()? {
+        "pm_revision_conflict" => CONFLICT.remedy,
+        "pm_graph_changed_during_read" => GRAPH_CHANGED_REMEDY,
+        _ => return None,
+    };
+    let message = detail["service_message"]
+        .as_str()
+        .filter(|sentence| !sentence.is_empty())
+        .unwrap_or(CONFLICT.when);
+    Some(
+        Failure::conflict(CONFLICT.code, message)
+            .detail(detail.clone())
+            .remedy(remedy)
+            .next("ds pm plan"),
+    )
 }
 
 /// `--happened-at` / `--since`: a `YYYY-MM-DD` day (midnight UTC) or an
@@ -878,6 +910,9 @@ pub fn data<T: serde::Serialize>(reply: &T) -> Result<Value, Failure> {
         Failure::internal(PLAN_UNREADABLE.code, error.to_string()).remedy(PLAN_UNREADABLE.remedy)
     })
 }
+
+#[cfg(test)]
+mod plan_moved_tests;
 
 #[cfg(test)]
 mod tests {
