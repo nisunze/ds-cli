@@ -235,6 +235,24 @@ impl Hold {
         room_hold::hold_room(&self.root, &self.scope, room)
     }
 
+    /// One more print input kept beside the held rooms, read whole or not at all.
+    pub(super) fn read_file(&self, name: &str) -> Option<Vec<u8>> {
+        std::fs::read(room_hold::room_dir(&self.root, &self.scope).join(name)).ok()
+    }
+
+    /// Keep `bytes` as `name` beside the held rooms, replacing it whole.
+    pub(super) fn keep_file(&self, name: &str, bytes: &[u8]) -> Result<(), String> {
+        use std::io::Write;
+        let dir = room_hold::room_dir(&self.root, &self.scope);
+        let path = dir.join(name);
+        let partial = dir.join(format!("{name}.partial"));
+        std::fs::create_dir_all(&dir)
+            .and_then(|()| std::fs::File::create(&partial))
+            .and_then(|mut file| file.write_all(bytes).and_then(|()| file.sync_all()))
+            .and_then(|()| std::fs::rename(&partial, &path))
+            .map_err(|error| format!("{name} could not be kept: {error}"))
+    }
+
     /// The inputs as last read from the service, or the refusal that names
     /// why neither the service nor this machine can supply them.
     pub(super) fn inputs(&self, unreachable: &str) -> Result<Inputs, Failure> {
@@ -447,6 +465,9 @@ pub(super) enum Heads {
     /// The service refused the read. Nothing says a held room is current, so
     /// every room is read again, as before rooms were held.
     Refused(String),
+    /// A print that publishes nothing read no heads: every held room is
+    /// reused and only an unheld room is read.
+    Held,
 }
 
 /// The rooms one batch prints from: the kernel's plan over what is held and
@@ -477,6 +498,7 @@ impl Rooms {
         let (force, read, heads) = match heads {
             Heads::Read(rows) => (false, "read".to_owned(), rows),
             Heads::Unreachable => (false, "unread".to_owned(), Vec::new()),
+            Heads::Held => (false, "held".to_owned(), Vec::new()),
             Heads::Refused(reason) => (true, format!("refused: {reason}"), Vec::new()),
         };
         let request = serde_json::from_value::<pinned_context::PlanRequest>(json!({

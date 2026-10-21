@@ -46,6 +46,54 @@ pub(super) fn overview(models: &[Model]) -> Result<Value, Failure> {
     }
     Ok(sources.layers())
 }
+/// The MV projections an earlier connected run kept beside this account's
+/// project rooms. A copy whose checksum does not match reads as not held.
+const HELD: &str = "mv-projections.json";
+const HELD_SCHEMA: &str = "ds.report-mv-hold/v1";
+
+pub(super) fn held(hold: &super::hold::Hold) -> Option<Vec<Model>> {
+    let held: Value = serde_json::from_slice(&hold.read_file(HELD)?).ok()?;
+    let models = held["models"].as_array()?;
+    let body = serde_json::to_vec(models).ok()?;
+    if held["schema"] != HELD_SCHEMA || held["sha256"] != report_export::sha256_hex(&body) {
+        return None;
+    }
+    models
+        .iter()
+        .map(|model| {
+            let text = |key: &str| model[key].as_str().map(str::to_string);
+            Some(Model {
+                identity: map::Model {
+                    id: text("id")?,
+                    label: text("label")?,
+                    revision_id: text("revision_id")?,
+                    digest: text("digest")?,
+                },
+                projection: model["projection"].clone(),
+            })
+        })
+        .collect()
+}
+
+/// Keep the projections a connected run read, for the prints after it.
+pub(super) fn hold_models(hold: &super::hold::Hold, models: &[Model]) -> Result<(), String> {
+    let rows: Vec<Value> = models
+        .iter()
+        .map(|model| {
+            json!({
+                "id": model.identity.id, "label": model.identity.label,
+                "revision_id": model.identity.revision_id, "digest": model.identity.digest,
+                "projection": model.projection,
+            })
+        })
+        .collect();
+    let body = serde_json::to_vec(&rows).map_err(|error| error.to_string())?;
+    let document =
+        json!({"schema": HELD_SCHEMA, "sha256": report_export::sha256_hex(&body), "models": rows});
+    let bytes = serde_json::to_vec(&document).map_err(|error| error.to_string())?;
+    hold.keep_file(HELD, &bytes)
+}
+
 pub(super) fn provenance(models: &[Model]) -> Vec<Value> {
     models.iter().map(|model| json!({"model_id":model.identity.id,"revision_id":model.identity.revision_id,"sha256":model.identity.digest,"label":model.identity.label})).collect()
 }
@@ -78,10 +126,14 @@ fn projection_fail(error: &ds_project_data::mv_projection::ProjectionError) -> F
         fail(error)
     }
 }
+/// The project's active MV models at their heads. A model `held` already
+/// projects at the same revision and digest is reused: it is neither
+/// downloaded nor projected again.
 pub(super) fn load(
     lane: &str,
     identity: &ds_cli_auth::ProviderIdentity,
     project: &str,
+    held: &[Model],
 ) -> Result<Vec<Model>, Failure> {
     let mut cursor = None;
     let mut seen = BTreeSet::new();
@@ -137,6 +189,26 @@ pub(super) fn load(
         let id = text("model_id")?;
         let revision = text("head_revision_id")?;
         let digest = text("head_model_digest")?;
+        if let Some(kept) = held.iter().find(|model| {
+            model.identity.id == id
+                && model.identity.revision_id == revision
+                && model.identity.digest == digest
+        }) {
+            features_total += kept.projection["features"].as_array().map_or(0, Vec::len);
+            if features_total > 200_000 {
+                return Err(fail("MV print projections exceed 200,000 features"));
+            }
+            models.push(Model {
+                identity: map::Model {
+                    id,
+                    label: text("display_name")?,
+                    revision_id: revision,
+                    digest,
+                },
+                projection: kept.projection.clone(),
+            });
+            continue;
+        }
         let response = ds_cli_auth::grid_models_for_project(
             lane,
             project,
@@ -306,130 +378,5 @@ fn point_coords(feature: &Value) -> Option<[f64; 2]> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    #[ignore = "requires a built compatible Network engine and immutable package fixture"]
-    fn acceptance_native_mv_projection_local_print_context() {
-        let path = std::env::var("DS_MV_PROJECTION_MODEL").unwrap();
-        let bytes = std::fs::read(&path).unwrap();
-        let digest = report_export::sha256_hex(&bytes);
-        let model = load_local(&path).unwrap();
-        assert_eq!(model.identity.id, format!("local-{}", &digest[..16]));
-        assert_eq!(model.identity.revision_id, format!("local:sha256:{digest}"));
-        assert_eq!(model.identity.digest, digest);
-        let expected: Value = serde_json::from_slice(
-            &std::fs::read(std::env::var("DS_MV_PROJECTION_GOLDEN").unwrap()).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(model.projection, expected);
-        let sources = provenance(std::slice::from_ref(&model));
-        assert_eq!(sources[0]["sha256"], digest);
-        let layers = overview(std::slice::from_ref(&model)).unwrap();
-        assert!(
-            !layers["dsgrid_mv_lines"]["features"]
-                .as_array()
-                .unwrap()
-                .is_empty()
-        );
-        assert_eq!(std::fs::read(path).unwrap(), bytes);
-    }
-    #[test]
-    #[ignore = "requires an explicitly unavailable captured Network engine"]
-    fn acceptance_native_mv_missing_engine_is_unavailable() {
-        let path = std::env::var("DS_MV_PROJECTION_MODEL").unwrap();
-        let error = match load_local(&path) {
-            Err(error) => error,
-            Ok(_) => panic!("missing engine cannot return a projection"),
-        };
-        assert_eq!(
-            error.class(),
-            ds_cli_contract::outcome::ExitClass::Unavailable
-        );
-        assert_eq!(error.code(), "network_engine_missing");
-    }
-    #[test]
-    fn mv_context_uses_metric_crs_and_records_model_identity_without_changing_geometry_source() {
-        let projection = json!({"type":"FeatureCollection","features":[{"type":"Feature","id":"route-1","geometry":{"type":"LineString","coordinates":[[29.999,-2.],[30.001,-2.]]},"properties":{"_layer":"alignments","label":"MV A"}}]});
-        let models = [Model {
-            identity: map::Model {
-                id: "mv-model".into(),
-                label: "Proposed MV".into(),
-                revision_id: "rev-1".into(),
-                digest: "a".repeat(64),
-            },
-            projection: projection.clone(),
-        }];
-        let network = json!({"tr":{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[30.,-2.]},"properties":{"transfo":"tx_a"}}]}});
-        let attached = attach(None, &models, "tx_a", &network, 200.)
-            .unwrap()
-            .unwrap();
-        let document: Value = serde_json::from_slice(&attached.bytes).unwrap();
-        let feature = &document["layers"]["dsgrid_mv_lines"]["features"][0];
-        assert_eq!(feature["properties"]["model_revision_id"], "rev-1");
-        assert_eq!(feature["geometry"], projection["features"][0]["geometry"]);
-        assert_eq!(attached.sha256, report_export::sha256_hex(&attached.bytes));
-        assert_eq!(models[0].projection, projection);
-    }
-
-    #[test]
-    fn individual_sheet_suppresses_only_angle_symbols_at_poles() {
-        let projection = json!({"type":"FeatureCollection","features":[
-            {"type":"Feature","id":"on-lv","geometry":{"type":"Point","coordinates":[30.000004,-2.0]},"properties":{"_layer":"angle_points"}},
-            {"type":"Feature","id":"on-mv","geometry":{"type":"Point","coordinates":[30.002,-2.0]},"properties":{"_layer":"angle_points"}},
-            {"type":"Feature","id":"free","geometry":{"type":"Point","coordinates":[30.004,-2.0]},"properties":{"_layer":"angle_points"}},
-            {"type":"Feature","id":"pole","geometry":{"type":"Point","coordinates":[30.002,-2.0]},"properties":{"_layer":"structures"}}
-        ]});
-        let models = [Model {
-            identity: map::Model {
-                id: "mv-model".into(),
-                label: "MV".into(),
-                revision_id: "rev-1".into(),
-                digest: "a".repeat(64),
-            },
-            projection,
-        }];
-        let network = json!({
-            "tr":{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"transfo":"tx_a"}}]},
-            "lv_poles":{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"pole_number":"P1"}}]}
-        });
-        let individual = attach(None, &models, "tx_a", &network, 600.)
-            .unwrap()
-            .unwrap();
-        let document: Value = serde_json::from_slice(&individual.bytes).unwrap();
-        let angles = document["layers"]["dsgrid_mv_angle_points"]["features"]
-            .as_array()
-            .unwrap();
-        assert_eq!(angles.len(), 1);
-        assert_eq!(angles[0]["id"], "mv-model:\"free\"");
-        assert_eq!(
-            document["layers"]["dsgrid_mv_structures"]["features"]
-                .as_array()
-                .unwrap()
-                .len(),
-            1
-        );
-
-        let mv_overview = overview(&models).unwrap();
-        assert_eq!(
-            mv_overview["dsgrid_mv_angle_points"]["features"]
-                .as_array()
-                .unwrap()
-                .len(),
-            3
-        );
-    }
-
-    #[test]
-    fn individual_sheet_keeps_angle_symbols_without_matching_poles() {
-        let mut mv = BTreeMap::from([(
-            "dsgrid_mv_angle_points".to_string(),
-            vec![json!({"geometry":{"type":"Point","coordinates":[30.0,-2.0]}})],
-        )]);
-        suppress_angle_symbols_at_poles(
-            &mut mv,
-            &json!({"lv_poles":{"type":"FeatureCollection","features":[]}}),
-        );
-        assert_eq!(mv["dsgrid_mv_angle_points"].len(), 1);
-    }
-}
+#[path = "mv_context_tests.rs"]
+mod tests;

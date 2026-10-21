@@ -64,32 +64,17 @@ fn selected_setup(
         .any(|print| print.enabled && setup["id"].as_str() == Some(print.layout_id.as_str()))
 }
 
-/// The point catalogue has already acquired and verified every active room.
-/// Capture the exact same saved versions; the kernel projects print-only data.
+/// The rooms the point catalogue already read and verified, at the exact saved
+/// versions it took each point from; the kernel projects print-only data.
 pub(super) fn networks(
-    markers: &BTreeMap<String, Value>,
-    hold: &Hold,
-    status: Option<&BTreeMap<String, Value>>,
+    rooms: Vec<Room>,
 ) -> Result<Vec<ds_command_kernel::printing::adjacent_networks::Room>, Failure> {
-    markers
-        .keys()
-        .map(|name| {
-            let room = hold
-                .room(name)
-                .map_err(unavailable)?
-                .ok_or_else(|| unavailable(format!("{name} room is no longer held")))?;
-            let version = room
-                .version
-                .filter(|v| *v > 0)
-                .ok_or_else(|| unavailable(format!("{name} has no saved revision")))?;
-            if status.is_some_and(|rows| {
-                rows.get(name).and_then(|row| head_version(row).as_i64()) != Some(version)
-            }) || marker(&room).map_err(unavailable)? != markers[name]
-            {
-                return Err(unavailable(format!(
-                    "{name} changed during adjacent-network acquisition"
-                )));
-            }
+    rooms
+        .into_iter()
+        .map(|room| {
+            let version = room.version.filter(|v| *v > 0).ok_or_else(|| {
+                unavailable(format!("{} has no saved revision", room.transformer))
+            })?;
             Ok(ds_command_kernel::printing::adjacent_networks::Room {
                 transformer: room.transformer,
                 version,
@@ -181,7 +166,8 @@ fn unavailable(message: impl Into<String>) -> Failure {
 
 /// A batch reads each active room at most once when its point is not already
 /// held at the reported head. The checksum-verified project hold is the cache;
-/// a later sheet in this batch and a later export reuse those same rooms.
+/// a later sheet in this batch and a later export reuse those same rooms. With
+/// `keep_rooms` the rooms read come back too, so circuits read none again.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn catalogue(
     lane: &str,
@@ -191,13 +177,15 @@ pub(super) fn catalogue(
     status: Option<&BTreeMap<String, Value>>,
     hold: &Hold,
     link: &mut Link,
-) -> Result<BTreeMap<String, Value>, Failure> {
+    keep_rooms: bool,
+) -> Result<(BTreeMap<String, Value>, Vec<Room>), Failure> {
     if names.len() > ds_cli_auth::PROJECT_REPORT_MAX_TRANSFORMERS {
         return Err(unavailable(
             "the project has more active transformer rooms than the print batch admits",
         ));
     }
     let mut points = BTreeMap::new();
+    let mut rooms = Vec::new();
     let mut fetch = Vec::new();
     for name in names {
         let expected = status
@@ -212,6 +200,9 @@ pub(super) fn catalogue(
             expected.is_none_or(|head| head.is_some_and(|version| room.version == Some(version)))
         }) {
             points.insert(name.clone(), marker(&room).map_err(unavailable)?);
+            if keep_rooms {
+                rooms.push(room);
+            }
         } else {
             fetch.push(name.clone());
         }
@@ -264,12 +255,15 @@ pub(super) fn catalogue(
             let feature = marker(&room).map_err(unavailable)?;
             hold.hold_room(&room).map_err(unavailable)?;
             points.insert(name.clone(), feature);
+            if keep_rooms {
+                rooms.push(room);
+            }
         }
     }
     if points.len() != names.len() {
         return Err(unavailable("project marker catalogue is incomplete"));
     }
-    Ok(points)
+    Ok((points, rooms))
 }
 
 /// One saved room contributes exactly one geographical transformer point.
@@ -394,147 +388,5 @@ pub(super) fn attach(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn room(name: &str, lon: f64) -> Room {
-        Room {
-            transformer: name.into(),
-            version: Some(1),
-            content_digest: None,
-            layers: BTreeMap::from([
-                (
-                    "tr".into(),
-                    json!({"type":"FeatureCollection","features":[{
-                        "type":"Feature","geometry":{"type":"Point","coordinates":[lon,-2.0]},
-                        "properties":{"transfo":name,"tr_size":"100 kVA","private_note":"never print"}
-                    }]}),
-                ),
-                (
-                    "lv_lines".into(),
-                    json!({"features":[{"type":"Feature","geometry":null}]}),
-                ),
-            ]),
-        }
-    }
-
-    #[test]
-    fn neighbor_context_contains_only_other_points_and_public_names() {
-        let markers = BTreeMap::from([
-            ("own".into(), marker(&room("own", 29.7)).unwrap()),
-            ("other".into(), marker(&room("other", 29.701)).unwrap()),
-        ]);
-        let attached = attach("own", &markers, None).unwrap().unwrap();
-        let document: Value = serde_json::from_slice(&attached.bytes).unwrap();
-        assert_eq!(
-            document["layers"][LAYER]["features"]
-                .as_array()
-                .unwrap()
-                .len(),
-            1
-        );
-        assert_eq!(
-            document["layers"][LAYER]["features"][0]["properties"],
-            json!({"transfo":"other"})
-        );
-        assert!(document["layers"]["lv_lines"].is_null());
-        assert!(document["layers"]["lv_poles"].is_null());
-        assert!(document["layers"]["lv_print_info"].is_null());
-        assert!(
-            !String::from_utf8(attached.bytes)
-                .unwrap()
-                .contains("private_note")
-        );
-    }
-
-    #[test]
-    fn governed_layout_accepts_the_neighbor_layer_binding() {
-        use ds_command_kernel::printing::{default_layout, elements};
-
-        let layout = elements::set_layer_style_ref(
-            default_layout(),
-            LAYER,
-            "master/neighbor_transformers_print",
-            &[elements::StyleFacts {
-                style_ref: "master/neighbor_transformers_print".into(),
-                style_target: "print".into(),
-            }],
-        )
-        .unwrap();
-        assert_eq!(
-            layout.style_refs[LAYER],
-            "master/neighbor_transformers_print"
-        );
-        ds_command_kernel::printing::validate(&layout).unwrap();
-    }
-
-    #[test]
-    fn a_solo_project_adds_no_layer_and_malformed_points_refuse() {
-        let own = marker(&room("own", 29.7)).unwrap();
-        assert!(
-            attach("own", &BTreeMap::from([("own".into(), own)]), None)
-                .unwrap()
-                .is_none()
-        );
-        let mut malformed = room("bad", 29.7);
-        malformed.layers.get_mut("tr").unwrap()["features"][0]["geometry"]["type"] =
-            json!("LineString");
-        assert!(marker(&malformed).unwrap_err().contains("point geometry"));
-    }
-
-    #[test]
-    fn current_project_rooms_supply_one_catalogue_without_network_reads() {
-        let temp = tempfile::tempdir().unwrap();
-        let hold = Hold::at(temp.path().into(), "principal", "project-a");
-        hold.hold_room(&room("own", 29.7)).unwrap();
-        hold.hold_room(&room("other", 29.701)).unwrap();
-        let status = BTreeMap::from([
-            ("own".into(), json!({"metadata":{"version":1}})),
-            ("other".into(), json!({"metadata":{"version":1}})),
-        ]);
-        let identity =
-            ds_cli_auth::ProviderIdentity::new("canary", &"a".repeat(64), "principal").unwrap();
-        let points = catalogue(
-            "canary",
-            "project-a",
-            &identity,
-            &["own".into(), "other".into()],
-            Some(&status),
-            &hold,
-            &mut Link::default(),
-        )
-        .unwrap();
-        assert_eq!(points.len(), 2);
-        assert_eq!(points["other"]["properties"], json!({"transfo":"other"}));
-        assert!(hold.room("other").unwrap().is_some());
-    }
-
-    #[test]
-    fn adding_neighbors_keeps_other_context_coverage_and_layers() {
-        let coverage = json!({"type":"Polygon","coordinates":[[[29.69,-2.01],[29.71,-2.01],[29.71,-1.99],[29.69,-1.99],[29.69,-2.01]]]});
-        let sources = json!([{"layer":"roads","kind":"catalog"}]);
-        let layers = BTreeMap::from([(
-            "roads".into(),
-            json!({"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"LineString","coordinates":[[29.69,-2.0],[29.71,-2.0]]},"properties":{}}]}),
-        )]);
-        let bytes =
-            ds_command_kernel::report_export::print_context_document(&coverage, &sources, &layers)
-                .unwrap();
-        let held = PrintContextBytes {
-            sha256: ds_command_kernel::report_export::sha256_hex(&bytes),
-            bytes,
-            layers: vec!["roads".into()],
-            omitted: vec!["rivers".into()],
-        };
-        let markers = BTreeMap::from([
-            ("own".into(), marker(&room("own", 29.7)).unwrap()),
-            ("other".into(), marker(&room("other", 29.701)).unwrap()),
-        ]);
-        let attached = attach("own", &markers, Some(held)).unwrap().unwrap();
-        let document: Value = serde_json::from_slice(&attached.bytes).unwrap();
-        assert_eq!(document["coverage"], coverage);
-        assert_eq!(document["layers"]["roads"], layers["roads"]);
-        assert_eq!(attached.omitted, ["rivers"]);
-        assert!(attached.layers.contains(&LAYER.to_string()));
-    }
-}
+#[path = "neighbor_points_tests.rs"]
+mod tests;

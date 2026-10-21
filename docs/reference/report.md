@@ -1060,6 +1060,19 @@ run refuses `report_inputs_not_held`. `--seed` acquires nothing without a
 link, and the prints carry the context this machine holds. Each result row
 names its `room_source` (`held` or `fetched`).
 
+A run that publishes nothing (`--dry-run`, a print-layout proof) is held
+first: it prints from the held inputs when they answer its output selection,
+the held rooms without reading their heads (`.data.rooms.heads` is `held`),
+the held MV projections (`.data.mv_context_source`) and the held survey forms
+of any age, and reads from the service only what this machine does not hold,
+once. Freshness is checked where the project is opened or selected, never per
+print; the PDF is always rendered fresh. `--refresh` reads everything again,
+as a publication always does. A named transformer that is no active saved
+transformer of the roster refuses `transformer_not_active`, and an output
+directory that already holds a report refuses `report_output_exists`, before
+anything is read. `.data.timing_ms` splits a run into `acquire`, `render` and
+`write`.
+
 When the output policy selects `voltage_drop` JSON or `voltage_drop_pdf`, export also reads the current
 project `transformer_nature` tag projection and passes those assignments to
 the reporter separately from the saved room. The room content digest still

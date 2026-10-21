@@ -518,3 +518,49 @@ fn a_requested_name_the_project_lacks_reads_missing() {
     assert!(states.contains(&("t2", "missing")));
     assert_eq!(select(&rows, &TransformerSet::default()), rows);
 }
+
+/// A print that publishes nothing reads no heads: a held room prints as held,
+/// even one older than its head, and only an unheld room is read, once.
+#[test]
+fn a_held_first_print_reuses_held_rooms_and_reads_only_unheld_ones() {
+    let dir = tempfile::tempdir().unwrap();
+    let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
+    let mut link = quick_link();
+    let mut cold = Rooms::plan(hold(), &names(&["t1"]), Heads::Unreachable).unwrap();
+    cold.room("t1", &mut link, || Ok(room("t1", 3))).unwrap();
+
+    let mut rooms = Rooms::plan(hold(), &names(&["t1", "t2"]), Heads::Held).unwrap();
+    let held = rooms
+        .room("t1", &mut link, || panic!("a held room is not read"))
+        .unwrap();
+    assert_eq!(held.version, Some(3));
+    rooms.room("t2", &mut link, || Ok(room("t2", 5))).unwrap();
+    let receipt = rooms.receipt();
+    assert_eq!(
+        (
+            receipt["heads"].as_str(),
+            receipt["reused"].as_u64(),
+            receipt["rooms_fetched"].as_u64()
+        ),
+        (Some("held"), Some(1), Some(1))
+    );
+}
+
+#[test]
+fn extra_print_inputs_are_kept_whole_beside_the_rooms() {
+    let dir = tempfile::tempdir().unwrap();
+    let hold = Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
+    assert_eq!(hold.read_file("extra.json"), None);
+    hold.keep_file("extra.json", b"{\"a\":1}").unwrap();
+    hold.keep_file("extra.json", b"{\"a\":2}").unwrap();
+    assert_eq!(
+        hold.read_file("extra.json").as_deref(),
+        Some(&b"{\"a\":2}"[..])
+    );
+    let other = Hold::at(dir.path().to_path_buf(), "uid-2", "project-1");
+    assert_eq!(
+        other.read_file("extra.json"),
+        None,
+        "another account holds its own"
+    );
+}
