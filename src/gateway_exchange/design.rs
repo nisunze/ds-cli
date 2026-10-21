@@ -886,9 +886,13 @@ mod exports {
     /// command and gateway exchange. Additive configuration fields survive.
     #[wasm_bindgen(js_name = projectConfigDocumentAdmit, unchecked_return_type = "ProjectConfigurationDocument")]
     pub fn project_config_document_admit(value: JsValue) -> Result<JsValue, JsValue> {
-        let document: ProjectConfigurationDocument =
-            tsify::serde_wasm_bindgen::from_value(value)
-                .map_err(|_| rejection(&super::answer_invalid("project configuration")))?;
+        // Preserve JSON arrays before admitting the DTO. Deserializing a JS
+        // array directly into a Map accepts [] as an empty object, unlike
+        // the native JSON decoder used by the command and gateway exchange.
+        let json: serde_json::Value = tsify::serde_wasm_bindgen::from_value(value)
+            .map_err(|_| rejection(&super::answer_invalid("project configuration")))?;
+        let document: ProjectConfigurationDocument = serde_json::from_value(json)
+            .map_err(|_| rejection(&super::answer_invalid("project configuration")))?;
         typed(&document)
     }
 
