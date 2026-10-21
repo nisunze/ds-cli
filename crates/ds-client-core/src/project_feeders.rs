@@ -481,7 +481,9 @@ pub(crate) fn decode(response: TransportResponse) -> Result<Value, ClientError> 
     if value.get("data").is_some() {
         value = value["data"].take();
     }
-    Ok(value)
+    let document: ds_command_kernel::gateway_exchange::design::ProjectConfigurationDocument =
+        serde_json::from_value(value).map_err(|_| invalid_response())?;
+    serde_json::to_value(document).map_err(|_| invalid_response())
 }
 
 pub(crate) fn rows(doc: &Value) -> Result<&Vec<Value>, ClientError> {

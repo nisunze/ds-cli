@@ -98,6 +98,88 @@ fn a_project_config_fetched_before_a_save_is_never_kept() {
     assert_eq!(block_on(project_config::held(&edge, "p")).unwrap(), None);
 }
 
+struct RefuseConfigStore<'a> {
+    edge: &'a TestEdge,
+    write: bool,
+}
+
+impl crate::gateway_exchange::retained::Edge for RefuseConfigStore<'_> {
+    async fn fetch<C: crate::gateway_exchange::Exchange>(
+        &self,
+        call: C,
+    ) -> Result<C::Output, Refusal> {
+        self.edge.fetch(call).await
+    }
+    async fn store(&self, call: crate::durable_store::Call) -> Result<Value, Refusal> {
+        use crate::{durable_store::Request, retained_reads::Operation};
+        let refused = match &call.request {
+            Request::RetainedReads {
+                operation: Operation::Read { kind, .. },
+            } => !self.write && *kind == project_config::KIND,
+            Request::RetainedReads {
+                operation: Operation::Write { kind, .. },
+            } => self.write && *kind == project_config::KIND,
+            _ => false,
+        };
+        if refused {
+            return Err(Refusal::new(
+                "fixture_sqlite_refused",
+                "The protected configuration store refused this effect.",
+            ));
+        }
+        self.edge.store(call).await
+    }
+    fn now_ms(&self) -> u64 {
+        self.edge.now_ms()
+    }
+    fn online(&self) -> bool {
+        self.edge.online()
+    }
+}
+
+#[test]
+fn project_config_store_read_refusal_prevents_network_acquisition() {
+    let edge = TestEdge::new();
+    edge.json(json!({"sheets":{"revision":1}}));
+    let error = block_on(project_config::refresh(
+        &RefuseConfigStore {
+            edge: &edge,
+            write: false,
+        },
+        "p",
+    ))
+    .unwrap_err();
+    assert_eq!(error.code, "fixture_sqlite_refused");
+    assert!(
+        edge.requests().is_empty(),
+        "an unretained success must not be fetched"
+    );
+    assert_eq!(block_on(project_config::held(&edge, "p")).unwrap(), None);
+}
+
+#[test]
+fn project_config_store_write_refusal_preserves_held_bytes_and_refuses_success() {
+    let edge = TestEdge::new();
+    edge.json(json!({"sheets":{"revision":1}}));
+    let original = block_on(project_config::refresh(&edge, "p")).unwrap();
+    edge.json(json!({"sheets":{"revision":2}}));
+    let before = edge.requests().len();
+    let error = block_on(project_config::refresh(
+        &RefuseConfigStore {
+            edge: &edge,
+            write: true,
+        },
+        "p",
+    ))
+    .unwrap_err();
+    assert_eq!(error.code, "fixture_sqlite_refused");
+    assert_eq!(edge.requests().len() - before, 1);
+    assert_eq!(
+        block_on(project_config::held(&edge, "p")).unwrap(),
+        Some(original)
+    );
+}
+
 #[test]
 fn the_pipeline_status_is_held_per_project() {
     let edge = TestEdge::new();

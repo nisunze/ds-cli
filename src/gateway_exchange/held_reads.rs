@@ -243,12 +243,13 @@ pub mod project_config {
 
     pub async fn refresh(edge: &impl Edge, project: &str) -> Result<Shown, Refusal> {
         project_reference(project)?;
-        let observed = retained::read::<Value>(edge, KIND, Some(project), "")
-            .await
-            .ok();
-        let owner = observed
-            .as_ref()
-            .and_then(|observed| observed.owner.clone());
+        let observed = retained::read::<Value>(edge, KIND, Some(project), "").await?;
+        let owner = observed.owner.ok_or_else(|| {
+            Refusal::new(
+                crate::durable_store::INVALID,
+                "Project configuration retention requires the bound store owner.",
+            )
+        })?;
         let value = match edge
             .fetch(DesignCall::ProjectConfig {
                 project: project.into(),
@@ -257,21 +258,19 @@ pub mod project_config {
         {
             Ok(value) => value,
             Err(refusal) => {
-                return Err(refused(edge, owner, KIND, Some(project), "", refusal).await)
+                return Err(refused(edge, Some(owner), KIND, Some(project), "", refusal).await)
             }
         };
-        if let Some(observed) = observed {
-            retained::write(
-                edge,
-                owner.as_deref(),
-                KIND,
-                Some(project),
-                "",
-                &value,
-                Some(observed.generation),
-            )
-            .await?;
-        }
+        retained::write(
+            edge,
+            Some(&owner),
+            KIND,
+            Some(project),
+            "",
+            &value,
+            Some(observed.generation),
+        )
+        .await?;
         Ok(Shown {
             value,
             saved_at_ms: edge.now_ms(),

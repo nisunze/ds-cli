@@ -162,7 +162,9 @@ impl From<&GatewayFacts> for Facts {
 /// TypeScript interface describes. Maps, including free-form JSON members,
 /// become plain objects too.
 pub(crate) fn typed<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
-    let plain = tsify::serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    let plain = tsify::serde_wasm_bindgen::Serializer::new()
+        .serialize_maps_as_objects(true)
+        .serialize_missing_as_null(true);
     value
         .serialize(&plain)
         .map_err(|error| js_sys::Error::new(&error.to_string()).into())

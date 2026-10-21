@@ -24,6 +24,53 @@ pub const INPUT_INVALID: &str = "design_input_invalid";
 pub const ANSWER_INVALID: &str = "design_answer_invalid";
 pub const SAVE_TOO_LARGE: &str = "design_save_too_large";
 
+/// The complete project configuration shared by native callers and the page
+/// exchange. Sheet names and their values belong to their domain owners;
+/// additive configuration metadata survives independently built consumers.
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema, PartialEq)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+pub struct ProjectConfigurationDocument {
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        tsify(type = "Record<string, unknown>")
+    )]
+    pub sheets: Map<String, Value>,
+    #[serde(flatten)]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        tsify(type = "Record<string, unknown>")
+    )]
+    pub additional: Map<String, Value>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, schemars::JsonSchema, PartialEq, Eq)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectConfigurationRead {
+    Held,
+    Refresh,
+}
+
+impl ProjectConfigurationRead {
+    pub const NAMES: &'static [&'static str] = &["held", "refresh"];
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema, PartialEq, Eq)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+pub struct ProjectConfigurationObservation {
+    pub source: ProjectConfigurationRead,
+    pub saved_at_ms: u64,
+}
+
+/// The same complete document answers native command callers and the UI.
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema, PartialEq)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+pub struct ProjectConfigurationReply {
+    pub project: String,
+    pub document: ProjectConfigurationDocument,
+    pub observation: ProjectConfigurationObservation,
+}
+
 /// The most transformers one read, save or digest check names.
 pub const MAX_BATCH: usize = 100;
 /// The most transformers one delete names.
@@ -768,7 +815,11 @@ impl DesignCall {
                 }
                 Value::Object(answer)
             }
-            Self::ProjectConfig { .. } => Value::Object(object(&body, "project configuration")?),
+            Self::ProjectConfig { .. } => serde_json::to_value(
+                serde_json::from_value::<ProjectConfigurationDocument>(body)
+                    .map_err(|_| answer_invalid("project configuration"))?,
+            )
+            .map_err(|_| answer_invalid("project configuration"))?,
             Self::SaveConfigSheet { .. }
             | Self::PutDraft { .. }
             | Self::GetDraft { .. }
@@ -827,9 +878,19 @@ impl Exchange for DesignCall {
 /// executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::DesignCall;
-    use crate::gateway_exchange::browser::{run, typed, GatewayHost};
+    use super::{DesignCall, ProjectConfigurationDocument};
+    use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};
     use wasm_bindgen::prelude::*;
+
+    /// Admit complete Core output with the same Rust DTO as the native
+    /// command and gateway exchange. Additive configuration fields survive.
+    #[wasm_bindgen(js_name = projectConfigDocumentAdmit, unchecked_return_type = "ProjectConfigurationDocument")]
+    pub fn project_config_document_admit(value: JsValue) -> Result<JsValue, JsValue> {
+        let document: ProjectConfigurationDocument =
+            tsify::serde_wasm_bindgen::from_value(value)
+                .map_err(|_| rejection(&super::answer_invalid("project configuration")))?;
+        typed(&document)
+    }
 
     /// One design action; the answer is its admitted JSON document.
     #[wasm_bindgen(js_name = designCall, unchecked_return_type = "any")]
@@ -846,3 +907,7 @@ mod exports {
 #[cfg(test)]
 #[path = "design_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "design_config_document_tests.rs"]
+mod config_document_tests;

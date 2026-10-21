@@ -224,12 +224,6 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
         _ => None,
     };
     if let Some(mutation) = settings_change {
-        if !document["sheets"].is_object() {
-            return Err(ClientError::new(
-                ErrorKind::UnreadableResponse,
-                "config_document_invalid",
-            ));
-        }
         let mut saved = false;
         if let Some((sheet, value)) = mutation {
             let value = value.map_err(|code| ClientError::new(ErrorKind::InvalidInput, code))?;

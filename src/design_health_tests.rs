@@ -46,6 +46,48 @@ fn a_phase_error_reads_its_message_from_either_place_it_is_written() {
 }
 
 #[test]
+fn installed_network_warning_codes_keep_distinct_labels_and_unknown_additions_remain_usable() {
+    let known = [
+        (
+            "lv_span_exceeds_max_length",
+            "dsh_finding_lv_span_exceeds_max_length",
+        ),
+        (
+            "voltage_drop_limit_exceeded",
+            "dsh_finding_voltage_drop_limit_exceeded",
+        ),
+        (
+            "transformer_protection_mismatch",
+            "dsh_finding_transformer_protection_mismatch",
+        ),
+        (
+            "voltage_drop_not_calculated",
+            "dsh_finding_voltage_drop_not_calculated",
+        ),
+        (
+            "local_customer_source_empty",
+            "dsh_finding_local_customer_source_empty",
+        ),
+        ("future_warning", "dsh_phase_warning"),
+    ];
+    for (code, label) in known {
+        let verdict = health(json!({"name":"tr_1", "process_metadata": {
+            "status":"warning", "warnings":[{
+                "code":code, "severity":"warning", "message":"producer detail", "count":2
+            }]
+        }}));
+        let finding = verdict
+            .findings
+            .iter()
+            .find(|finding| finding.code == code)
+            .unwrap();
+        assert_eq!(finding.label_key, label, "{code}");
+        assert_eq!(finding.message, "producer detail");
+        assert_eq!(finding.count, Some(Number::from(2)));
+    }
+}
+
+#[test]
 fn a_coded_warning_carries_its_label_count_and_where_to_look() {
     let verdict = health(
         json!({"name": "tr_1", "process_metadata": {"status": "warning",
