@@ -19,6 +19,8 @@ ds-client-core = { workspace = true }
 ds-project-data = { path = "../../../ds-command-kernel/crates/ds-project-data" }
 ds-report-host = { path = "../../../ds-command-kernel/crates/ds-report-host" }
 ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
+ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
+ds-compute-runtime = { path = "../../../ds-command-kernel/crates/ds-compute-runtime" }
 ds-edge-authority = { workspace = true }
 ds-sync-runtime = { workspace = true }
 # The kernel owns transfer terminal causes; the shared runtime hosts its IO.
@@ -41,3 +43,6 @@ libc = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

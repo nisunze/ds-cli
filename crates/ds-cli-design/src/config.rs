@@ -1,13 +1,16 @@
 //! Selected-project Settings. The kernel owns model, coercion and mutation;
 //! client-core owns authenticated fetch/write/readback. This is host IO only.
 use ds_cli_contract::{
-    Context, Inputs,
     outcome::Failure,
     spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
+    Context, Inputs,
 };
 use ds_client_core::ProjectConfigurationChange as Change;
 use ds_command_kernel::design_config::{self, Request};
-use serde_json::{Value, json};
+use ds_command_kernel::gateway_exchange::design::{
+    ProjectConfigurationRead, ProjectConfigurationReply,
+};
+use serde_json::{json, Value};
 use std::io::{Read, Write};
 const LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE.summary("Deployment lane.");
 const SHEET: Arg = Arg::value("sheet", "<key>", "Exact sheet key from config sheets.").required();
@@ -21,8 +24,14 @@ const RULE_SET: Arg = Arg::value(
 const OUT: Arg = Arg::value(
     "out",
     "<path>",
-    "Retain the complete sheet at a new local JSON path.",
+    "Retain the complete sheet or --document configuration at a new local JSON path.",
 );
+const DOCUMENT: Arg = Arg::switch(
+    "document",
+    "Read the complete configuration instead of one paged sheet.",
+);
+const READ_MODE: Arg = Arg::value("read", "<held|refresh>", "held reads SQLite only; refresh performs one explicit project configuration read and retains it.")
+    .choices(ProjectConfigurationRead::NAMES).default("refresh");
 const FILE: Arg = Arg::value("file", "<path>", "JSON sheet value, at most 16 MiB.").required();
 const PARAMETER: Arg = Arg::value(
     "parameter",
@@ -75,6 +84,11 @@ const REFUSALS: &[Refusal] = &[
         remedy: "verify the selected account has project configuration permission",
     },
     ds_cli_auth::PROJECT_CONFIGURATION_MISSING_REFUSAL,
+    ds_cli_auth::config_document::NOT_HELD,
+    ds_cli_auth::config_document::CONTEXT_CHANGED,
+    ds_cli_auth::config_document::STORE_REFUSED,
+    ds_cli_auth::config_document::STALE,
+    ds_cli_auth::config_document::ANSWER_INVALID,
     Refusal {
         code: "auth_transient",
         when: "configuration IO is unavailable",
@@ -135,7 +149,10 @@ pub static SHEETS: Command = command(
     Effect::LocalAuthState,
     &[crate::PROJECT_ARG, LANE, LIMIT, OFFSET],
 );
-pub static READ: Command = command(
+pub static READ: Command = Command {
+    purpose: "Read one project configuration sheet, or select --document for its complete shared Rust document. --document --read held uses only Core SQLite under the retained account; --read refresh performs one explicit native configuration GET and retains it for later offline opens. --out writes complete JSON to a new private file. Sheet mode preserves bounded Settings projection and rule-set selection.",
+    output: "Sheet mode: bounded items, total, more, truncated and project. Document mode: project, document and observation {source, saved_at_ms}; with --out the complete document is the output file and data contains project, observation and path.",
+    ..command(
     "design.config.read",
     &["design", "config", "read"],
     "Read project configuration or material seeds as complete JSON.",
@@ -143,13 +160,20 @@ pub static READ: Command = command(
     &[
         crate::PROJECT_ARG,
         LANE,
-        SHEET,
+        Arg::value(
+            "sheet",
+            "<key>",
+            "Exact sheet key; required unless --document is selected.",
+        ),
+        DOCUMENT,
+        READ_MODE,
         RULE_SET,
         LIMIT,
         OFFSET,
         OUT,
     ],
-);
+)
+};
 pub static DIFF: Command = command(
     "design.config.diff",
     &["design", "config", "diff"],
@@ -231,8 +255,38 @@ pub fn sheets(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     Ok(result)
 }
 pub fn read(i: &Inputs, _: &Context) -> Result<Value, Failure> {
+    read_with(i, ds_cli_auth::config_document::read)
+}
+fn read_with(
+    i: &Inputs,
+    document: impl FnOnce(
+        &str,
+        &str,
+        ProjectConfigurationRead,
+    ) -> Result<ProjectConfigurationReply, Failure>,
+) -> Result<Value, Failure> {
     let (offset, limit) = page(i)?;
-    let key = i.require("sheet")?;
+    if i.switch("document")
+        && (i.value("sheet").is_some()
+            || i.value("rule-set").is_some()
+            || offset != 0
+            || limit != 50)
+    {
+        return Err(invalid(
+            "--document cannot select a sheet, rule set or page",
+        ));
+    }
+    let key = if i.switch("document") {
+        None
+    } else {
+        Some(
+            i.value("sheet")
+                .ok_or_else(|| invalid("--sheet is required unless --document is selected"))?,
+        )
+    };
+    if !i.switch("document") && i.value("read") == Some("held") {
+        return Err(invalid("--read held requires --document"));
+    }
     if i.value("out")
         .is_some_and(|p| std::path::Path::new(p).exists())
     {
@@ -241,6 +295,27 @@ pub fn read(i: &Inputs, _: &Context) -> Result<Value, Failure> {
             "output path already exists",
         ));
     }
+    if i.switch("document") {
+        let mode = serde_json::from_value::<ProjectConfigurationRead>(json!(i.require("read")?))
+            .map_err(invalid)?;
+        let answer = document(i.require("lane")?, i.require("project")?, mode)?;
+        if answer.project != i.require("project")? || answer.observation.source != mode {
+            return Err(invalid(
+                "configuration receipt does not answer this project and read mode",
+            ));
+        }
+        if let Some(path) = i.value("out") {
+            write_output(
+                path,
+                &serde_json::to_vec_pretty(&answer.document).map_err(invalid)?,
+            )?;
+            return Ok(
+                json!({"project":answer.project,"observation":answer.observation,"path":path}),
+            );
+        }
+        return serde_json::to_value(answer).map_err(invalid);
+    }
+    let key = key.expect("sheet was admitted before acquisition");
     let current = read_current(i)?;
     let value = sheet(&current.document, key)?;
     let mut result = design_config::apply(Request::Read {
@@ -254,21 +329,30 @@ pub fn read(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     result["project"] = current.summary["project"].clone();
     result["sheet"] = json!(key);
     if let Some(path) = i.value("out") {
-        let mut out = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)
-            .map_err(|_| {
-                Failure::invalid("configuration_output_write_failed", "cannot create output")
-            })?;
-        out.write_all(&serde_json::to_vec_pretty(value).map_err(invalid)?)
-            .and_then(|_| out.sync_all())
-            .map_err(|_| {
-                Failure::invalid("configuration_output_write_failed", "cannot retain sheet")
-            })?;
+        write_output(path, &serde_json::to_vec_pretty(value).map_err(invalid)?)?;
         result["path"] = json!(path)
     }
     Ok(result)
+}
+fn write_output(path: &str, bytes: &[u8]) -> Result<(), Failure> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut out = options.open(path).map_err(|_| {
+        Failure::invalid("configuration_output_write_failed", "cannot create output")
+    })?;
+    out.write_all(bytes)
+        .and_then(|_| out.sync_all())
+        .map_err(|_| {
+            Failure::invalid(
+                "configuration_output_write_failed",
+                "cannot retain configuration",
+            )
+        })
 }
 pub fn diff(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let (offset, limit) = page(i)?;
@@ -346,3 +430,7 @@ mod tests {
         assert_eq!(items[0]["after"], 99);
     }
 }
+
+#[cfg(test)]
+#[path = "config_document_tests.rs"]
+mod document_tests;

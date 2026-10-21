@@ -33,6 +33,8 @@ pub(crate) const DEVICE_ACCESS_TOKEN: &str = "device-access-token";
 /// What the scripted transport will answer, and what it saw.
 #[derive(Default)]
 pub(crate) struct Scripted {
+    pub configurations: VecDeque<TransportResponse>,
+    pub configuration_requests: Vec<(String, String)>,
     pub feedback: VecDeque<TransportResponse>,
     pub refresh_response: Option<TransportResponse>,
     pub project_reports: VecDeque<TransportResponse>,
@@ -138,6 +140,14 @@ impl FixtureTransport {
 }
 
 impl Transport for FixtureTransport {
+    fn project_configuration(
+        &mut self,
+        call: ds_client_core::ProjectConfigurationCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        let mut script = self.lock();
+        script.configuration_requests.push((call.method().into(), call.path()));
+        script.configurations.pop_front().ok_or(TransportError::Unreachable)
+    }
     fn feedback(
         &mut self,
         call: ds_client_core::FeedbackCall<'_>,
