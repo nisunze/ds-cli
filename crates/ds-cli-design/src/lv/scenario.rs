@@ -268,7 +268,43 @@ fn setting(raw: &str) -> Result<(String, Value), Failure> {
             ),
         ));
     }
-    Ok((name.to_string(), setting_value(value)))
+    let value = setting_value(value);
+    check_numeric(name, &value, raw)?;
+    Ok((name.to_string(), value))
+}
+
+/// The numeric `vd_*` settings the method reads, with the closed range each
+/// accepts. The method ignores a value it cannot read as a number, so an
+/// unreadable or out-of-range one is refused here instead of silently running
+/// the default while the scenario records the value.
+const NUMERIC_SETTINGS: &[(&str, f64, f64)] = &[
+    ("vd_limit_pct", 0.1, 50.0),
+    ("vd_nominal_phase_voltage_v", 100.0, 300.0),
+    ("vd_nominal_line_voltage_v", 100.0, 600.0),
+    ("vd_source_voltage_v", 100.0, 300.0),
+    ("vd_resistance_factor", 0.5, 3.0),
+    ("vd_growth_years", 0.0, MAX_YEAR as f64),
+    ("vd_years_to_saturation", 0.0, MAX_YEAR as f64),
+    ("vd_max_new_circuits", 0.0, 20.0),
+    ("vd_max_recommended_abc_mm2", 0.0, 1000.0),
+];
+
+fn check_numeric(name: &str, value: &Value, raw: &str) -> Result<(), Failure> {
+    let Some(&(_, min, max)) = NUMERIC_SETTINGS.iter().find(|(known, ..)| *known == name) else {
+        return Ok(());
+    };
+    if value
+        .as_f64()
+        .is_some_and(|number| (min..=max).contains(&number))
+    {
+        return Ok(());
+    }
+    let given = raw.split_once('=').map_or(raw, |(_, text)| text.trim());
+    Err(invalid(
+        "set",
+        raw,
+        format!("`--set {name}` takes a number from {min} to {max}; `{given}` is not one"),
+    ))
 }
 
 fn setting_value(text: &str) -> Value {
@@ -483,6 +519,10 @@ fn rewrite_customer_loads(gdfs: &mut Map<String, Value>, key: &str, watts: f64) 
     }
     rewritten
 }
+
+#[cfg(test)]
+#[path = "scenario_validation_tests.rs"]
+mod validation_tests;
 
 #[cfg(test)]
 mod tests {

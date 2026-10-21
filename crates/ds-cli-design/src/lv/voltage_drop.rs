@@ -38,7 +38,7 @@ pub const RESULT_SCHEMA: &str = "ds.lv-voltage-drop.result/v1";
 const SCENARIO_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "vd_scenario_invalid",
-        when: "a scenario flag is malformed or outside its bound",
+        when: "a scenario flag is malformed or outside its bound, including a non-numeric or out-of-range numeric --set such as vd_limit_pct=abc",
         remedy: "the refusal names the flag and its accepted form",
     },
     Refusal {
@@ -129,7 +129,7 @@ pub static COMMAND: Command = Command {
         Arg::repeated(
             "set",
             "<vd_name>=<value>",
-            "Another vd_* project setting, e.g. vd_limit_pct=8; up to 32. Default: the project's. Other names are refused.",
+            "Another vd_* project setting, e.g. vd_limit_pct=8; up to 32. Default: the project's. Numeric ones (vd_limit_pct 0.1..50, voltages, factors, years) must be numbers in range. Other names are refused.",
         ),
         Arg::value(
             "print-a4",
@@ -183,6 +183,28 @@ struct Solved {
     outcome: Result<LvProcessOutput, String>,
 }
 
+/// Whether `bytes` are a processed result (what `design lv process` writes)
+/// rather than the request it answered. Probed only after a request refusal.
+fn is_result_document(bytes: &[u8]) -> bool {
+    let Ok(Value::Object(document)) = serde_json::from_slice::<Value>(bytes) else {
+        return false;
+    };
+    document.contains_key("engine_core_version")
+        || document
+            .get("schema")
+            .and_then(Value::as_str)
+            .is_some_and(|schema| schema.contains(".result/"))
+}
+
+fn result_given_for_request() -> Failure {
+    Failure::invalid(
+        "fast_lv_input_invalid",
+        "--input is a processed result document, not a request: give the ds.fast-lv.request/v1 request, not a result.",
+    )
+    .remedy("pass the request file that design lv project-export --project-config wrote (the file you gave design lv process --input), not the result design lv process wrote to --out")
+    .next("ds design lv project-export --help")
+}
+
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let input_path = PathBuf::from(inputs.require("input")?);
     let output_path = PathBuf::from(inputs.require("out")?);
@@ -192,7 +214,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let input = bounded_read(&input_path)?;
     let input_sha256 = sha256(&input);
-    let mut request = decode_native_lv_request(&input).map_err(map_owner_error)?;
+    let mut request = decode_native_lv_request(&input).map_err(|error| {
+        if is_result_document(&input) {
+            return result_given_for_request();
+        }
+        map_owner_error(error)
+    })?;
     drop(input);
     // Every print admission and the Reporter preflight precede calculation.
     let print = super::print_a4::admit(inputs, &input_path, &request.jobs)?;

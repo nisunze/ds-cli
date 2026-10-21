@@ -259,7 +259,7 @@ exits non-zero as `report_compute_partial`, with the whole receipt in
 
 ```bash
 ds report project compute --transformer akagerero --lane canary --yes --output json
-ds design status --project it_rwanda --transformer akagerero --lane canary --output json   # the report the cloud stamped
+ds design status --project example_rwanda --transformer akagerero --lane canary --output json   # the report the cloud stamped
 ```
 
 `compounded` is `artifact_write` and needs `--yes`: it publishes a durable
@@ -1087,8 +1087,12 @@ the native account's retained project inputs, saved room and exact saved
 analysis. It branches before project, tag, survey or map-context reads and
 never calculates, refreshes or publishes an analysis. Missing source refuses
 with `lv_analysis_missing`; revision, content, account, lane, audience or
-settings disagreement refuses with `lv_analysis_stale`. Acquire those inputs
-explicitly through their owning controls before previewing. Without a saved
+settings disagreement refuses with `lv_analysis_stale`. Hold those inputs
+first: `design lv project-run` saves the analysis on the server but not in the
+local hold, so run an ordinary `report project export --project <exact-id>
+--transformer <exact-name> --selection <voltage_drop_pdf selection> --dry-run
+--out-dir <dir>` once (it reads the saved analysis, holds it and publishes
+nothing), then preview. Without a saved
 analysis, `ds design lv voltage-drop --print-a4` prints the same governed A4
 read-only from an exported transformer (see the design reference);
 `ds design lv project-run --print-a4` saves one and prints it.

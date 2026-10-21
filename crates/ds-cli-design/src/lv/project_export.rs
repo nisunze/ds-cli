@@ -59,7 +59,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "project-export"],
     contract: 1,
     summary: "Prepare one project transformer for headless LV processing.",
-    purpose: "Prepare a saved transformer for headless reprocessing. Read one exact signed-in project transformer with server version/digest fences. Use --project-config to include current project sheets, including pole material seeds, under the same identity; otherwise config is empty. Process settings are owner defaults unless --preset (with optional --operator toggles) carries what the LV process dialog would send. design.lv.process accepts bounded parallel batches; design.lv.project-save publishes their verified results.",
+    purpose: "Prepare a saved transformer for headless reprocessing. Read one exact signed-in project transformer with server version/digest fences. Use --project-config to include current project sheets, including pole material seeds, under the same identity; otherwise config is empty, such a request fails every job in design.lv.process, and the result carries a project_config_not_included warning. Process settings are owner defaults unless --preset (with optional --operator toggles) carries what the LV process dialog would send. design.lv.process accepts bounded parallel batches; design.lv.project-save publishes their verified results.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -183,6 +183,11 @@ pub static COMMAND: Command = Command {
             "retry once, then update ds if it persists"
         ),
         refusal!(
+            "project_not_visible",
+            "--project is not an exact id in the signed-in user's project list",
+            "choose an exact id from auth project list"
+        ),
+        refusal!(
             "transformer_not_found",
             "the transformer does not exist in the named project",
             "pass one exact transformer name from that project"
@@ -240,7 +245,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let lane = inputs.require("lane")?;
     let project = inputs.require("project")?;
     let headless =
-        ds_cli_auth::processing_transformer_context_for_project(lane, project, transformer)?;
+        ds_cli_auth::processing_transformer_context_for_project(lane, project, transformer)
+            .map_err(|failure| name_missing_project(lane, project, failure))?;
     let snapshot = headless.snapshot();
     let (Some(version), Some(content_digest)) = (
         snapshot.metadata().version(),
@@ -333,6 +339,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let request_sha256 = sha256(&request);
     write_new(&output_path, &request, &PROJECT_REQUEST)?;
 
+    // Without the project sheets the request holds an empty configuration, which
+    // the engine refuses job by job (outdated network_config template).
+    let warnings: Vec<Value> = if config_sha256.is_some() {
+        Vec::new()
+    } else {
+        vec![json!({
+            "code": "project_config_not_included",
+            "message": "This request carries no project configuration; design lv process and design lv voltage-drop will fail every job with it.",
+            "remedy": "export again with --project-config",
+        })]
+    };
     Ok(json!({
         "out": output_path,
         "request_sha256": request_sha256,
@@ -350,7 +367,34 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "process_settings": process_settings,
         "project_config": if config_sha256.is_some() { "included" } else { "not-included" },
         "project_config_sha256": config_sha256,
+        "warning_count": warnings.len(),
+        "warnings": warnings,
     }))
+}
+
+/// The shared 404 mapping calls every missing project route a missing
+/// transformer. When the project is not in the signed-in directory the project
+/// is the missing thing: say that first, with the code the CLI already uses.
+fn name_missing_project(lane: &str, project: &str, failure: Failure) -> Failure {
+    if failure.code() != "transformer_not_found" {
+        return failure;
+    }
+    let Ok(directory) = ds_cli_auth::project_directory(lane) else {
+        return failure;
+    };
+    let visible = directory
+        .projects()
+        .iter()
+        .any(|row| row["ds_project"].as_str() == Some(project));
+    if visible {
+        return failure;
+    }
+    Failure::invalid(
+        "project_not_visible",
+        format!("project {project} is not visible to the signed-in user on this lane"),
+    )
+    .remedy("choose an exact id from auth project list")
+    .next("ds auth project list --output json")
 }
 
 fn captured_printing_receipt(
@@ -496,13 +540,21 @@ pub fn render(value: &Value) -> String {
         Some(preset) => format!("{preset} preset"),
         None => "owner defaults".to_string(),
     };
-    format!(
+    let mut text = format!(
         "LV request exported for {} ({} layer(s), {settings}).\nRequest: {}\nSHA-256: {}",
         value["transformer"].as_str().unwrap_or(""),
         value["layers"].as_u64().unwrap_or(0),
         value["out"].as_str().unwrap_or(""),
         value["request_sha256"].as_str().unwrap_or(""),
-    )
+    );
+    for warning in value["warnings"].as_array().into_iter().flatten() {
+        text.push_str(&format!(
+            "\nWarning: {} Remedy: {}.",
+            warning["message"].as_str().unwrap_or(""),
+            warning["remedy"].as_str().unwrap_or(""),
+        ));
+    }
+    text
 }
 
 #[cfg(test)]

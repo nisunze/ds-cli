@@ -274,7 +274,7 @@ struct Owners {
 }
 const OWNERS: Owners = Owners {
     export: project_export::run,
-    process: process::run,
+    process: process::run_receipt,
     save: project_save::run_for_project,
     preflight: print_preflight,
     analysis: ds_cli_auth::transformer_analysis_for_project,

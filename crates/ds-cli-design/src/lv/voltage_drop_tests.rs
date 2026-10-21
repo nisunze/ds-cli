@@ -912,3 +912,35 @@ fn native_saved_topology_partial_unreached_and_ambiguous_never_claim_compliance(
         );
     }
 }
+
+#[test]
+fn a_processed_result_is_refused_as_a_result_not_as_an_unknown_field() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("result.json");
+    let out = root.path().join("vd.json");
+    std::fs::write(
+        &source,
+        br#"{"schema":"ds.lv.process.result/v1","engine_core_version":"0.1.0","jobs":[]}"#,
+    )
+    .unwrap();
+    let refused = super::run(&inputs(&source, &out), &context()).unwrap_err();
+    assert_eq!(refused.code(), "fast_lv_input_invalid");
+    assert!(refused.message().contains("not a result"), "{refused}");
+    assert!(
+        refused
+            .remedy_text()
+            .is_some_and(|remedy| remedy.contains("project-export --project-config")),
+        "{refused}"
+    );
+    assert!(!out.exists());
+
+    // A malformed request that is not a result keeps the owner's own sentence.
+    std::fs::write(
+        &source,
+        br#"{"schema":"ds.lv.process.request/v1","oops":1}"#,
+    )
+    .unwrap();
+    let malformed = super::run(&inputs(&source, &out), &context()).unwrap_err();
+    assert_eq!(malformed.code(), "fast_lv_input_invalid");
+    assert!(!malformed.message().contains("not a result"), "{malformed}");
+}

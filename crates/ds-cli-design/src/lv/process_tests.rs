@@ -244,13 +244,53 @@ fn a_page_batch_that_is_malformed_or_names_another_project_refuses_before_any_en
     let source = directory.path().join("batch.json");
     let output = directory.path().join("result.json");
     std::fs::write(&source, br#"{"jobs":"not-a-list"}"#).unwrap();
-    let malformed = execute_page(&source, &output, "it_rwanda").unwrap_err();
+    let malformed = execute_page(&source, &output, "example_rwanda").unwrap_err();
     assert_eq!(malformed.code(), "fast_lv_input_invalid");
-    let crossed = json!({"jobs": [{"ds_project": "it_tchad", "transformer_name": "tx_a",
+    let crossed = json!({"jobs": [{"ds_project": "example_tchad", "transformer_name": "tx_a",
         "gdfs": {}, "settings": {}}]});
     std::fs::write(&source, serde_json::to_vec(&crossed).unwrap()).unwrap();
-    let refused = execute_page(&source, &output, "it_rwanda").unwrap_err();
+    let refused = execute_page(&source, &output, "example_rwanda").unwrap_err();
     assert_eq!(refused.code(), "fast_lv_input_invalid");
     assert!(refused.to_string().contains("--project"), "{refused}");
     assert!(!output.exists());
+}
+
+fn status(name: &str, ok: bool, error: Option<&str>) -> Value {
+    json!({"transformer_name": name, "ok": ok, "error_code": null, "error": error})
+}
+
+#[test]
+fn a_batch_where_every_job_failed_is_a_failure_that_names_the_cause_and_keeps_the_receipt() {
+    let receipt = json!({
+        "out": "r.json", "jobs": 2, "succeeded": 0, "failed": 2, "warning_count": 2,
+        "results": [
+            status("a", false, Some("project_settings.sc_real_length is required; the network_config template is outdated")),
+            status("b", false, Some("other")),
+        ],
+    });
+    let failure = all_jobs_failed(&receipt);
+    assert_eq!(failure.code(), "lv_process_all_jobs_failed");
+    assert!(failure.message().contains("all 2 job(s)"), "{failure}");
+    assert!(
+        failure.remedy_text().unwrap().contains("--project-config"),
+        "{failure}"
+    );
+    assert_eq!(failure.detail_value().unwrap()["out"], "r.json");
+    assert_eq!(
+        failure.detail_value().unwrap()["results"][1]["error"],
+        "other"
+    );
+    assert!(
+        COMMAND
+            .refusals
+            .iter()
+            .any(|refusal| refusal.code == "lv_process_all_jobs_failed")
+    );
+}
+
+#[test]
+fn an_unrelated_failure_gets_the_generic_remedy() {
+    let receipt = json!({"jobs": 1, "results": [status("a", false, Some("boom"))]});
+    let remedy = all_jobs_failed(&receipt).remedy_text().unwrap().to_owned();
+    assert!(remedy.contains("detail.results"), "{remedy}");
 }

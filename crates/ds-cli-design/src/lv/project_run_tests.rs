@@ -723,7 +723,7 @@ fn failed_native_job_never_reaches_save() {
     // successful job, even though process writes a complete batch result.
     let native = Owners {
         export,
-        process: process::run,
+        process: process::run_receipt,
         save,
         ..MOCK
     };

@@ -249,3 +249,29 @@ fn the_render_names_the_preset_a_request_carries() {
     }));
     assert!(text.contains("sketch preset"), "{text}");
 }
+
+#[test]
+fn the_render_warns_when_the_request_carries_no_project_configuration() {
+    let text = render(&json!({
+        "transformer": "T-1", "layers": 2, "out": "r.json", "request_sha256": "abc",
+        "process_settings": "ds-network-owner-defaults",
+        "warnings": [{"code": "project_config_not_included",
+            "message": "This request carries no project configuration.",
+            "remedy": "export again with --project-config"}],
+    }));
+    assert!(
+        text.contains("Warning: This request carries no project configuration."),
+        "{text}"
+    );
+    assert!(text.contains("--project-config"), "{text}");
+}
+
+#[test]
+fn only_a_missing_transformer_answer_is_reconsidered_as_a_missing_project() {
+    // Any other refusal passes through without a project directory read.
+    let other = Failure::unavailable("auth_transient", "retry");
+    assert_eq!(
+        name_missing_project("stable", "p", other).code(),
+        "auth_transient"
+    );
+}

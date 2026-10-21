@@ -94,8 +94,8 @@ pub static COMMAND: Command = Command {
         },
         Refusal {
             code: "fast_lv_input_invalid",
-            when: "the request is malformed, has unknown fields/settings, or a layer is not a FeatureCollection",
-            remedy: "write the exact LV processing request shape shown in the design reference",
+            when: "the request is malformed, has unknown fields/settings, is a processed result document, or a layer is not a FeatureCollection",
+            remedy: "write the exact LV processing request shape shown in the design reference; give the request, never a result file",
         },
         Refusal {
             code: "fast_lv_schema_unsupported",
@@ -127,6 +127,11 @@ pub static COMMAND: Command = Command {
             when: "the owner result cannot be encoded as its v1 document",
             remedy: "keep the input unchanged and report this internal encoding failure",
         },
+        Refusal {
+            code: "lv_process_all_jobs_failed",
+            when: "every job of the batch failed, for example a request exported without --project-config; the result document is still written (not for a --project page batch)",
+            remedy: "read detail.results for each transformer's error; for an outdated configuration, export the request again with design lv project-export --project-config",
+        },
     ],
     reference: Some("docs/reference/design.md"),
     search: &[],
@@ -134,7 +139,21 @@ pub static COMMAND: Command = Command {
     availability: || ds_network_client::available(),
 };
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
+/// The command: the batch receipt, or a failure when no job of a plain batch
+/// succeeded. The page batch (`--project`) answers its host through `--out`
+/// alone, so it keeps the receipt.
+pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    let receipt = run_receipt(inputs, context)?;
+    let jobs = receipt["jobs"].as_u64().unwrap_or(0);
+    if inputs.value("project").is_none() && jobs > 0 && receipt["failed"].as_u64() == Some(jobs) {
+        return Err(all_jobs_failed(&receipt));
+    }
+    Ok(receipt)
+}
+
+/// The batch receipt whatever the job outcomes; `design lv project-run` judges
+/// its single job itself.
+pub(super) fn run_receipt(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let input_path = PathBuf::from(inputs.require("input")?);
     let output_path = PathBuf::from(inputs.require("out")?);
     ensure_absent(&output_path, &RESULT)?;
@@ -191,6 +210,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 "transformer_name": job.transformer_name,
                 "ok": job.ok,
                 "error_code": job.error_code,
+                "error": job.error,
                 "preservation": job.preservation,
             })
         })
@@ -209,7 +229,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let result_sha256 = sha256(&output);
     write_new(&output_path, &output, &RESULT)?;
 
-    Ok(json!({
+    let receipt = json!({
         "out": output_path,
         "input_sha256": input_sha256,
         "result_sha256": result_sha256,
@@ -224,6 +244,48 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "succeeded": succeeded,
         "failed": failed,
         "results": statuses,
+        "warning_count": failed,
+    });
+    Ok(receipt)
+}
+
+/// Every job of the batch failed: the result document was written, but no
+/// transformer was processed, so the command must not exit as a success.
+fn all_jobs_failed(receipt: &Value) -> Failure {
+    let results = receipt["results"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let first = results
+        .iter()
+        .find_map(|row| row["error_code"].as_str().or_else(|| row["error"].as_str()));
+    let outdated = results.iter().any(|row| {
+        row["error"].as_str().is_some_and(|error| {
+            error.contains("project_settings") || error.contains("network_config")
+        })
+    });
+    let remedy = if outdated {
+        "export the request again with design lv project-export --project-config, then process the new file"
+    } else {
+        "read detail.results for each transformer's error and the result document at detail.out, correct the request, and process it again at a new output path"
+    };
+    Failure::failed(
+        "lv_process_all_jobs_failed",
+        format!(
+            "all {} job(s) of the LV batch failed{}; the result document was still written",
+            receipt["jobs"],
+            first
+                .map(|error| format!(" (first error: {error})"))
+                .unwrap_or_default(),
+        ),
+    )
+    .remedy(remedy)
+    .detail(json!({
+        "out": receipt["out"],
+        "result_sha256": receipt["result_sha256"],
+        "jobs": receipt["jobs"],
+        "failed": receipt["failed"],
+        "results": receipt["results"],
     }))
 }
 
