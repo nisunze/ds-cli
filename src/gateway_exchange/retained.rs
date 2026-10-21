@@ -155,6 +155,16 @@ pub async fn list<T: DeserializeOwned>(
     })
 }
 
+/// How many rows of a kind one fence holds; reads no value.
+pub async fn count(edge: &impl Edge, kind: Kind, in_project: Option<&str>) -> Result<u64, Refusal> {
+    let operation = Operation::Count {
+        kind,
+        project: project(in_project),
+    };
+    let answer = call(edge, operation, None).await?;
+    Ok(answer.get("count").and_then(Value::as_u64).unwrap_or(0))
+}
+
 fn json<T: Serialize>(value: &T) -> Result<Value, Refusal> {
     serde_json::to_value(value)
         .map_err(|error| Refusal::new(crate::retained_reads::INVALID, error.to_string()))

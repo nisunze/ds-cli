@@ -1,5 +1,7 @@
 //! Form Factory authoring and project-settings view semantics.
 use serde_json::{json, Map, Value};
+#[path = "factory_children.rs"]
+mod children;
 pub(super) fn evaluate(request: &Value) -> Result<Value, String> {
     match request["mode"].as_str() {
         Some("document") => document(request),
@@ -7,6 +9,7 @@ pub(super) fn evaluate(request: &Value) -> Result<Value, String> {
         Some("draft_admission") => draft_admission(request),
         Some("save_result") => save_result(request),
         Some("public") => public(request),
+        Some("children") => Ok(children::evaluate(request)),
         _ => Err("Unknown form factory operation".into()),
     }
 }
@@ -76,9 +79,8 @@ fn save_result(request: &Value) -> Result<Value, String> {
     }))
 }
 
-/// The durable portion of an authoring session. Browser state (expanded cards,
-/// loading flags, and IDB transport) stays in the host; this is the exact
-/// document whose revision and dirty snapshot are compared and published.
+/// The exact document whose revision and dirty snapshot the Rust editor
+/// compares and publishes. Expanded cards and focus stay in the window.
 fn document(request: &Value) -> Result<Value, String> {
     let fields = request["fields"]
         .as_array()

@@ -29,6 +29,7 @@ use crate::gateway_exchange::{Exchange, Refusal};
 
 pub mod capture;
 pub mod cartography;
+pub mod form_editor;
 pub mod maps;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
@@ -101,6 +102,7 @@ pub struct ClientState<E: Effects> {
     pub maps: maps::Maps,
     pub cartography: cartography::Cartography,
     pub capture: capture::Capture,
+    pub form_editor: form_editor::FormEditor,
 }
 
 impl<E: Effects> ClientState<E> {
@@ -111,6 +113,7 @@ impl<E: Effects> ClientState<E> {
             maps: maps::Maps::new(&scope, &effects),
             cartography: cartography::Cartography::new(&scope, &effects),
             capture: capture::Capture::new(&scope),
+            form_editor: form_editor::FormEditor::new(&scope),
             effects,
             scope,
         }
@@ -120,6 +123,9 @@ impl<E: Effects> ClientState<E> {
     /// active. An unchanged scope notifies nothing.
     pub fn set_scope(&self, scope: Scope) {
         let scope = Scope::new(scope.principal.as_deref(), scope.project.as_deref());
+        if self.scope.get_untracked().principal != scope.principal {
+            self.form_editor.scope_changed();
+        }
         self.scope.maybe_update(|current| {
             let changed = *current != scope;
             if changed {

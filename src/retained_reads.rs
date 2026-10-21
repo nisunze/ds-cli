@@ -161,6 +161,15 @@ kinds! {
     AccountProfile = "account_profile": Account, KeyGrammar::Single, 256 * KIB, 1;
     /// One administrative unit's boundary, keyed by its code.
     AdminBoundary = "admin_boundary": Account, KeyGrammar::Token(64), 4 * MIB, 256;
+    /// A project's `/config` document.
+    ProjectConfig = "project_config": Project, KeyGrammar::Single, 32 * MIB, 32;
+    /// A project's survey sync and publication status.
+    PipelineStatus = "pipeline_status": Project, KeyGrammar::Single, 2 * MIB, 32;
+    /// A transformer's governed version history, keyed by transformer id.
+    TransformerVersions = "transformer_versions": Project, KeyGrammar::Token(256), 2 * MIB, 512;
+    /// A governed transformer version downloaded for playback, keyed by the
+    /// JSON text of `[transformer, version]`.
+    TransformerVersion = "transformer_version": Project, KeyGrammar::Token(600), 8 * MIB, 64;
 }
 
 /// The generation row one kind reads and advances.
@@ -195,6 +204,12 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         project: Option<String>,
         now: u64,
+    },
+    /// How many rows the kind holds in its fence; reads no value.
+    Count {
+        kind: Kind,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project: Option<String>,
     },
     /// Keep one value; refused as stale when `expect_generation` names a
     /// generation the kind has moved past.
@@ -240,6 +255,7 @@ impl Operation {
         match self {
             Operation::Read { kind, .. }
             | Operation::List { kind, .. }
+            | Operation::Count { kind, .. }
             | Operation::Write { kind, .. }
             | Operation::ReplaceSet { kind, .. }
             | Operation::Invalidate { kind, .. }
@@ -440,6 +456,18 @@ pub fn execute(
                 })
                 .collect();
             answer.insert("rows".into(), rows.into());
+            false
+        }
+        Operation::Count { kind, project } => {
+            let column = self::project(kind, project.as_deref(), false)?.unwrap_or_default();
+            let count: i64 = connection
+                .query_row(
+                    "SELECT count(*) FROM retained_reads WHERE owner=?1 AND kind=?2 AND project=?3",
+                    params![owner, kind.name(), column],
+                    |row| row.get(0),
+                )
+                .map_err(sql)?;
+            answer.insert("count".into(), count.into());
             false
         }
         Operation::Write {

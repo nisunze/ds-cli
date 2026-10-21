@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
+#[path = "project_forms_management.rs"]
+mod management;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectFormChange {
@@ -147,7 +150,7 @@ pub fn evaluate(request: &Value) -> Result<Value, String> {
         Some("conflict") => conflict(&request["details"]),
         Some("receipt") => receipt(request),
         Some("cleanup") => cleanup(&request["saved"]),
-        _ => Err("Unknown project forms operation".into()),
+        _ => management::evaluate(request),
     }
 }
 

@@ -219,7 +219,7 @@ fn manifest_id(manifest: &Manifest) -> Result<String, String> {
     content.id.clear();
     Ok(format!("local-{}", digest(&content)?))
 }
-fn layers(snapshot: &Value) -> Result<BTreeMap<String, Value>, String> {
+pub(crate) fn layers(snapshot: &Value) -> Result<BTreeMap<String, Value>, String> {
     if snapshot["schema"] != "ds.transformer-version-snapshot/v1" {
         return Err("unsupported version snapshot schema".into());
     }

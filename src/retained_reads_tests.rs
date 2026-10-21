@@ -527,3 +527,58 @@ fn values_never_travel_as_payload_bytes() {
     .unwrap_err();
     assert!(error.contains("JSON"), "{error}");
 }
+
+#[test]
+fn count_reads_one_fence_and_no_value() {
+    let mut db = Connection::open_in_memory().unwrap();
+    for key in ["[\"t1\",\"v1\"]", "[\"t1\",\"v2\"]"] {
+        write(
+            &mut db,
+            "a",
+            "transformer_version",
+            Some("kigali"),
+            key,
+            json!({"v": key}),
+            1,
+        );
+    }
+    write(
+        &mut db,
+        "a",
+        "transformer_version",
+        Some("musanze"),
+        "[\"t1\",\"v1\"]",
+        json!(1),
+        1,
+    );
+    write(
+        &mut db,
+        "b",
+        "transformer_version",
+        Some("kigali"),
+        "[\"t1\",\"v1\"]",
+        json!(1),
+        1,
+    );
+    let count = |db: &mut Connection, principal: &str, project: &str| {
+        call(
+            db,
+            principal,
+            json!({"action": "count", "kind": "transformer_version", "project": project}),
+        )
+        .unwrap()
+        .value["count"]
+            .clone()
+    };
+    assert_eq!(count(&mut db, "a", "kigali"), 2);
+    assert_eq!(count(&mut db, "a", "musanze"), 1);
+    assert_eq!(count(&mut db, "b", "kigali"), 1);
+    assert_eq!(count(&mut db, "a", "rubavu"), 0);
+    let error = call(
+        &mut db,
+        "a",
+        json!({"action": "count", "kind": "transformer_version"}),
+    )
+    .unwrap_err();
+    assert!(error.starts_with(INVALID), "{error}");
+}

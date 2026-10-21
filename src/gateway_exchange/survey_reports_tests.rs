@@ -50,6 +50,7 @@ fn a_stale_report_is_regenerated_once_and_kept_when_that_fails() {
 }
 
 #[test]
+#[cfg(feature = "durable-store")]
 fn a_report_is_held_per_project_without_its_sync_counts() {
     use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
     let edge = TestEdge::new();
@@ -62,6 +63,7 @@ fn a_report_is_held_per_project_without_its_sync_counts() {
 }
 
 #[test]
+#[cfg(feature = "durable-store")]
 fn a_read_or_a_regeneration_holds_the_report_it_shows() {
     use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
     let edge = TestEdge::new();

@@ -23,6 +23,9 @@ use crate::gateway_exchange::retained::store_refusal;
 use crate::survey_capture::Context;
 use crate::gateway_exchange::{Exchange, Refusal};
 
+#[path = "form_editor_browser.rs"]
+mod form_editor;
+
 /// The page could not perform a request at all (its credentials or facts
 /// failed), as distinct from a refusal of the request.
 pub const HOST_FAILED: &str = "client_state_host_failed";

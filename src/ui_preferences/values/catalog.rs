@@ -31,6 +31,7 @@ pub(in crate::ui_preferences) fn name(key: Key) -> &'static str {
         Key::LayerVisibility => "layer_visibility",
         Key::PopupLayersDisabled => "popup_layers_disabled",
         Key::WorkingArea => "working_area",
+        Key::WorkingAreaForms => "working_area_forms",
         Key::ProcessPreset => "process_preset",
         Key::ActiveLvTransformer => "active_lv_transformer",
         Key::StatusWarningTypes => "status_warning_types",
@@ -48,6 +49,7 @@ pub(in crate::ui_preferences) fn project_scoped(key: Key) -> bool {
         Key::LayerVisibility
         | Key::PopupLayersDisabled
         | Key::WorkingArea
+        | Key::WorkingAreaForms
         | Key::ProcessPreset
         | Key::ProcessSetup
         | Key::ActiveLvTransformer
@@ -86,6 +88,7 @@ pub(in crate::ui_preferences) fn max_bytes(key: Key) -> usize {
         Key::ApplicationSettings => 128 * 1024,
         Key::LocalClassStyles => map::MAX_LOCAL_CLASS_STYLES_BYTES,
         Key::WorkingArea => workbench::MAX_BOUNDARY_BYTES + 64 * 1024,
+        Key::WorkingAreaForms => crate::survey_working_area_forms::MAX_SELECTION_BYTES,
         Key::ProfileOccupancy => workbench::PROFILE_OCCUPANCY_MAX_BYTES,
         _ => DEFAULT_MAX_BYTES,
     }
@@ -110,6 +113,7 @@ pub(in crate::ui_preferences) fn admit(key: Key, value: &Value) -> Option<Value>
         Key::StyleCenterLayout => workbench::style_center_layout(value),
         Key::ApplicationSettings => workbench::application_settings(value),
         Key::WorkingArea => workbench::working_area(value),
+        Key::WorkingAreaForms => crate::survey_working_area_forms::admit_selection(value),
         Key::ProfileOccupancy => workbench::profile_occupancy(value),
         Key::PinnedTransformers => design::pinned_transformers(value),
         Key::PinnedGroupVisible | Key::PropertiesPreferDocked => design::switch(value),

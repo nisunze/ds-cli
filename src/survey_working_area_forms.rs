@@ -45,6 +45,11 @@ pub const SCHEMA: &str = "ds.survey-working-area-forms/v1";
 pub const MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_FORMS: usize = 5_000;
 pub const MAX_SLUG_CHARS: usize = 200;
+pub const MAX_SELECTION_BYTES: usize = MAX_FORMS * (4 * MAX_SLUG_CHARS + 3) + 2;
+
+#[cfg(feature = "durable-store")]
+#[path = "survey_working_area_forms_store.rs"]
+mod store;
 
 /// The sentence a read carries when the working area would load nothing.
 pub const NOTHING_SELECTED_REMEDY: &str = "no survey form is selected for the working area on this host, so it loads nothing; select forms with `ds survey working-area select --form <slug> …` or `--all`";
@@ -134,6 +139,19 @@ fn valid_slug(slug: &str) -> bool {
         && slug.trim() == slug
         && slug.chars().count() <= MAX_SLUG_CHARS
         && !slug.chars().any(char::is_control)
+}
+
+/// Stored choices preserve authored spelling and ordering; catalogue admission
+/// decides which still load. Invalid stored values are not rewritten on read.
+pub(crate) fn admit_selection(value: &Value) -> Option<Value> {
+    let forms = value.as_array().filter(|forms| forms.len() <= MAX_FORMS)?;
+    let mut seen = BTreeSet::new();
+    let mut admitted = Vec::new();
+    for form in forms {
+        let form = form.as_str().filter(|form| valid_slug(form))?;
+        if seen.insert(form) { admitted.push(json!(form)); }
+    }
+    Some(Value::Array(admitted))
 }
 
 /// The operator's choice as the host will persist it, or as it read it.

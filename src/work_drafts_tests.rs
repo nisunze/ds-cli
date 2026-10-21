@@ -46,6 +46,86 @@ fn read(db: &mut Connection, uid: &str, kind: &str, project: Option<&str>, key: 
 }
 
 #[test]
+fn project_form_work_is_keyed_by_project_and_fenced_to_its_account() {
+    let mut db = Connection::open_in_memory().unwrap();
+    put(
+        &mut db,
+        "u1",
+        "project_forms",
+        None,
+        "p1",
+        json!({"pole":{"enabled":false}}),
+    )
+    .unwrap();
+    assert_eq!(
+        read(&mut db, "u1", "project_forms", None, "p1")["value"]["pole"]["enabled"],
+        false
+    );
+    assert!(read(&mut db, "u2", "project_forms", None, "p1").is_null());
+    assert!(read(&mut db, "u1", "project_forms", None, "p2").is_null());
+    assert!(put(&mut db, "u1", "project_forms", Some("p1"), "p1", json!({})).is_err());
+    put(&mut db, "u1", "project_forms", None, "p1", json!({})).unwrap();
+    assert!(read(&mut db, "u1", "project_forms", None, "p1").is_null());
+}
+
+#[test]
+fn submitting_project_forms_atomically_preserves_edits_made_after_the_request() {
+    let mut db = Connection::open_in_memory().unwrap();
+    let submitted =
+        json!({"pole":{"settings":{"x":1},"updatedAt":1},"line":{"enabled":false,"updatedAt":1}});
+    let later =
+        json!({"pole":{"settings":{"x":2},"updatedAt":2},"line":{"enabled":false,"updatedAt":1}});
+    put(&mut db, "u1", "project_forms", None, "p1", later.clone()).unwrap();
+    call(
+        &mut db,
+        Some("u1"),
+        json!({"action":"project_forms_submitted","key":"p1","submitted":submitted,"now":20}),
+    )
+    .unwrap();
+    assert_eq!(
+        read(&mut db, "u1", "project_forms", None, "p1")["value"],
+        json!({"pole":later["pole"]})
+    );
+    call(&mut db, Some("u1"), json!({"action":"project_forms_submitted","key":"p1","submitted":{"pole":later["pole"]},"now":30})).unwrap();
+    assert!(read(&mut db, "u1", "project_forms", None, "p1").is_null());
+}
+
+#[test]
+fn a_project_form_write_or_submission_cannot_cross_the_observed_owner() {
+    let mut db = Connection::open_in_memory().unwrap();
+    let draft = json!({"pole":{"enabled":false,"updatedAt":1}});
+    put(&mut db, "u2", "project_forms", None, "p1", draft.clone()).unwrap();
+    let observed = call(
+        &mut db,
+        Some("u1"),
+        json!({"action":"read","kind":"project_forms","key":"p1"}),
+    )
+    .unwrap();
+    for operation in [
+        json!({"action":"put","kind":"project_forms","key":"p1","value":{},"now":2}),
+        json!({"action":"project_forms_submitted","key":"p1","submitted":draft,"now":2}),
+    ] {
+        let request: Request =
+            serde_json::from_value(json!({"store":STORE,"operation":operation})).unwrap();
+        let refusal = store(
+            &mut db,
+            Some(&identity(Some("u2"))),
+            Call {
+                request,
+                expect_owner: observed.owner.clone(),
+            },
+            None,
+        )
+        .unwrap_err();
+        assert!(refusal.starts_with(crate::durable_store::OWNER_CHANGED));
+        assert_eq!(
+            read(&mut db, "u2", "project_forms", None, "p1")["value"],
+            draft
+        );
+    }
+}
+
+#[test]
 fn a_draft_round_trips_inside_its_account_and_project() {
     let mut db = Connection::open_in_memory().unwrap();
     put(
@@ -114,6 +194,9 @@ fn list_answers_meta_newest_first_and_never_values() {
 #[test]
 fn fences_grammars_and_bounds_refuse() {
     let mut db = Connection::open_in_memory().unwrap();
+    assert!(put(&mut db, "u1", "project_forms", None, "a/b", json!({}))
+        .unwrap_err()
+        .starts_with(INVALID));
     assert!(
         put(&mut db, "u1", "design_comparison", None, "poles", json!({}))
             .unwrap_err()

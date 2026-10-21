@@ -68,6 +68,48 @@ fn invalid(message: String) -> Refusal {
     Refusal::new(INVALID, message)
 }
 
+/// Inspect an exact existing storage object before a replacement. Its signed
+/// source must identify both the original path and observed generation.
+#[derive(Clone, Debug)]
+pub struct Inspect(pub String);
+
+impl Exchange for Inspect {
+    type Output = survey_photo_transport::Inspection;
+    fn plan(&self) -> Result<Plan, Refusal> {
+        let address = survey_media_address::parse(&self.0).map_err(invalid)?;
+        let mut body = survey_media_address::wire(&address);
+        body["action"] = json!("survey_upload_inspect");
+        Ok(Plan {
+            request: Request::post(PATH, body),
+            retries: 0,
+        })
+    }
+    fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
+        survey_photo_transport::inspect(data(&body), &self.0)
+            .map(Admitted::Done)
+            .map_err(invalid)
+    }
+}
+
+fn inspected(
+    answer: Result<survey_photo_transport::Inspection, Refusal>,
+    allow_missing: bool,
+) -> Result<Option<survey_photo_transport::Inspection>, Refusal> {
+    match answer {
+        Err(refusal) if allow_missing && refusal.status == Some(404) => Ok(None),
+        answer => answer.map(Some),
+    }
+}
+
+/// Optional absence is exactly a 404, never an authorization or link refusal.
+pub async fn inspect(
+    edge: &impl Edge,
+    path: String,
+    allow_missing: bool,
+) -> Result<Option<survey_photo_transport::Inspection>, Refusal> {
+    inspected(edge.fetch(Inspect(path)).await, allow_missing)
+}
+
 /// What the gateway answered a start: the object is already stored at a
 /// verified generation, or a resumable session awaits its bytes.
 #[derive(Clone, Debug, PartialEq)]
@@ -90,10 +132,12 @@ impl Exchange for Start {
         let issued = data(&body);
         let bucket = survey_photo_transport::target(issued, &self.0.path).map_err(invalid)?;
         if issued["already_present"] == true {
-            let generation = survey_photo_transport::generation(&issued["generation"]).map_err(invalid)?;
+            let generation =
+                survey_photo_transport::generation(&issued["generation"]).map_err(invalid)?;
             return Ok(Admitted::Done(Started::Present { generation }));
         }
-        let uri = survey_photo_transport::session(&issued["session_uri"], &bucket).map_err(invalid)?;
+        let uri =
+            survey_photo_transport::session(&issued["session_uri"], &bucket).map_err(invalid)?;
         Ok(Admitted::Done(Started::Session { uri }))
     }
 }
@@ -105,7 +149,11 @@ impl Exchange for Complete {
     type Output = String;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(Request::post(PATH, self.0.body("survey_upload_complete").map_err(invalid)?).into())
+        Ok(Request::post(
+            PATH,
+            self.0.body("survey_upload_complete").map_err(invalid)?,
+        )
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -114,7 +162,8 @@ impl Exchange for Complete {
         if verified["already_present"] != true {
             return Err(invalid("Media completion was not verified".into()));
         }
-        let generation = survey_photo_transport::generation(&verified["generation"]).map_err(invalid)?;
+        let generation =
+            survey_photo_transport::generation(&verified["generation"]).map_err(invalid)?;
         Ok(Admitted::Done(generation))
     }
 }
@@ -138,9 +187,14 @@ pub enum Sent {
 /// minted, resumed after interruptions by the shared transfer machine.
 #[allow(async_fn_in_trait)]
 pub trait Transfer {
-    async fn send(&self, session_uri: &str, size: u64, content_type: &str, parts: &impl Parts) -> Sent;
+    async fn send(
+        &self,
+        session_uri: &str,
+        size: u64,
+        content_type: &str,
+        parts: &impl Parts,
+    ) -> Sent;
 }
-
 
 /// One upload the outbox dispatched, as `claim` answers it.
 #[derive(Debug, Deserialize)]
@@ -172,7 +226,11 @@ struct Target {
     sha256: String,
 }
 
-async fn call(store: &impl StorePort, owner: Option<&str>, operation: Operation) -> Result<Reply, Refusal> {
+async fn call(
+    store: &impl StorePort,
+    owner: Option<&str>,
+    operation: Operation,
+) -> Result<Reply, Refusal> {
     let request = crate::durable_store::Request::MediaOutbox {
         operation: Box::new(operation),
     };
@@ -284,9 +342,14 @@ pub(super) async fn carry(
                     generation: &upload.generation,
                     role: target.target,
                 };
-                match transfer.send(&uri, target.size, &target.content_type, &bytes).await {
+                match transfer
+                    .send(&uri, target.size, &target.content_type, &bytes)
+                    .await
+                {
                     Sent::Done => {}
-                    Sent::Reopen | Sent::Failed(Cause::Cancelled) => return TransportOutcome::Cancelled,
+                    Sent::Reopen | Sent::Failed(Cause::Cancelled) => {
+                        return TransportOutcome::Cancelled
+                    }
                     Sent::Failed(cause) => return failed(cause),
                 }
                 match edge.fetch(Complete(call)).await {
@@ -308,10 +371,77 @@ pub(super) async fn carry(
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub(super) mod browser {
     use super::{Parts, Sent, Transfer};
-    use crate::gateway_exchange::browser::{facts, GatewayHost};
+    use crate::gateway_exchange::browser::{attempt, facts, rejection, typed, GatewayHost};
     use crate::transfer::browser::{upload, Link, PartSource, Upload, Uploaded};
     use crate::transfer::Cause;
+    use js_sys::{Function, Promise};
     use std::future::Future;
+    use wasm_bindgen::prelude::*;
+    use wasm_bindgen_futures::JsFuture;
+    use web_sys::AbortSignal;
+
+    struct InspectAbort {
+        signal: AbortSignal,
+        listener: Function,
+        fired: JsFuture,
+    }
+    impl InspectAbort {
+        fn new(signal: AbortSignal) -> Self {
+            let mut listener = None;
+            let fired = Promise::new(&mut |resolve, _| listener = Some(resolve));
+            let listener = listener.expect("a promise invokes its executor immediately");
+            if signal.aborted() {
+                let _ = listener.call0(&JsValue::NULL);
+            } else {
+                let _ = signal.add_event_listener_with_callback("abort", &listener);
+            }
+            Self {
+                signal,
+                listener,
+                fired: JsFuture::from(fired),
+            }
+        }
+    }
+    impl Drop for InspectAbort {
+        fn drop(&mut self) {
+            let _ = self
+                .signal
+                .remove_event_listener_with_callback("abort", &self.listener);
+        }
+    }
+
+    /// Cancelling drops the exchange and aborts its unfinished request.
+    #[wasm_bindgen(js_name = surveyMediaInspect)]
+    pub async fn survey_media_inspect(
+        host: GatewayHost,
+        path: String,
+        allow_missing: bool,
+        signal: Option<AbortSignal>,
+    ) -> Result<JsValue, JsValue> {
+        if signal.as_ref().is_some_and(AbortSignal::aborted) {
+            return Err(rejection(&super::Refusal::new(
+                "survey_media_cancelled",
+                "Media inspection was cancelled.",
+            )));
+        }
+        let running = Box::pin(async {
+            let answer = attempt(&host, super::Inspect(path)).await?;
+            typed(&super::inspected(answer, allow_missing).map_err(|refusal| rejection(&refusal))?)
+        });
+        match signal {
+            None => running.await,
+            Some(signal) => {
+                let mut abort = InspectAbort::new(signal);
+                match futures_util::future::select(running, &mut abort.fired).await {
+                    futures_util::future::Either::Left((answer, _)) => answer,
+                    futures_util::future::Either::Right(_) => Err(rejection(&super::Refusal::new(
+                        "survey_media_cancelled",
+                        "Media inspection was cancelled.",
+                    ))),
+                }
+            }
+        }
+    }
 
     struct Page<'a>(&'a GatewayHost);
 
@@ -324,7 +454,9 @@ pub(super) mod browser {
         }
         fn progress(&self, _committed: u64, _total: u64) {}
         fn principal(&self) -> String {
-            facts(self.0).map(|facts| facts.principal).unwrap_or_default()
+            facts(self.0)
+                .map(|facts| facts.principal)
+                .unwrap_or_default()
         }
     }
 
@@ -340,7 +472,13 @@ pub(super) mod browser {
     pub(in crate::gateway_exchange) struct Storage(pub GatewayHost);
 
     impl Transfer for Storage {
-        async fn send(&self, session_uri: &str, size: u64, content_type: &str, parts: &impl Parts) -> Sent {
+        async fn send(
+            &self,
+            session_uri: &str,
+            size: u64,
+            content_type: &str,
+            parts: &impl Parts,
+        ) -> Sent {
             let request = Upload {
                 session_uri,
                 total_bytes: size,
@@ -356,3 +494,7 @@ pub(super) mod browser {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "survey_media_inspect_tests.rs"]
+mod inspect_tests;

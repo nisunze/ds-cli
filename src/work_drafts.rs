@@ -80,6 +80,9 @@ kinds! {
     /// A survey entry being filled, keyed by form slug: its values without
     /// picked files, its location and connectivity, and the form revision.
     SurveyEntry = "survey_entry": Project, 256, MIB, 512;
+    /// The form settings a person staged for one project in Form
+    /// Management, keyed by the project id.
+    ProjectForms = "project_forms": Account, 256, 4 * MIB, 256;
 }
 
 /// One transaction's work; the host binds the identity.
@@ -111,6 +114,13 @@ pub enum Operation {
         value: Value,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         meta: Option<Value>,
+        now: u64,
+    },
+    /// Remove only submitted project-form snapshots that still equal the held
+    /// edits, atomically. Edits made after submission remain work.
+    ProjectFormsSubmitted {
+        key: String,
+        submitted: Value,
         now: u64,
     },
     /// Forget one draft; an absent one is success.
@@ -147,6 +157,9 @@ fn column(kind: Kind, project: Option<&str>) -> Result<String, String> {
     }
 }
 fn key(kind: Kind, key: &str) -> Result<(), String> {
+    if kind == Kind::ProjectForms && !valid_project(key) {
+        return Err(invalid("project forms name one valid project"));
+    }
     let max = kind.rule().max_key_bytes;
     if !key.is_empty()
         && key.len() <= max
@@ -298,16 +311,64 @@ pub fn execute(
                 return Err(invalid("the time exceeds its bound"));
             }
             let texts = texts(kind, &value, meta.as_ref())?;
-            if !room(connection, &owner, kind, &project, &row)? {
-                return Err(format!(
-                    "{FULL}: this account keeps at most {} {} drafts",
-                    kind.rule().max_rows,
-                    kind.name()
-                ));
+            if kind == Kind::ProjectForms && !value.is_object() {
+                return Err(invalid("project form drafts must be an object"));
             }
-            put(connection, &owner, kind, &project, &row, texts, now)?;
-            answer.insert("written".into(), 1.into());
-            true
+            if kind == Kind::ProjectForms && value.as_object().is_some_and(Map::is_empty) {
+                let removed = connection.execute("DELETE FROM work_drafts WHERE owner=?1 AND kind=?2 AND project=?3 AND key=?4", params![owner, kind.name(), project, row]).map_err(sql)?;
+                answer.insert("removed".into(), removed.into());
+                removed > 0
+            } else {
+                if !room(connection, &owner, kind, &project, &row)? {
+                    return Err(format!(
+                        "{FULL}: this account keeps at most {} {} drafts",
+                        kind.rule().max_rows,
+                        kind.name()
+                    ));
+                }
+                put(connection, &owner, kind, &project, &row, texts, now)?;
+                answer.insert("written".into(), 1.into());
+                true
+            }
+        }
+        Operation::ProjectFormsSubmitted {
+            key: row,
+            submitted,
+            now,
+        } => {
+            account(identity)?;
+            let kind = Kind::ProjectForms;
+            key(kind, &row)?;
+            if now > MAX_SAFE || !submitted.is_object() {
+                return Err(invalid("invalid submitted project form drafts"));
+            }
+            let found: Option<String> = connection.query_row("SELECT value FROM work_drafts WHERE owner=?1 AND kind=?2 AND project='' AND key=?3", params![owner, kind.name(), row], |found| found.get(0)).optional().map_err(sql)?;
+            if let Some(found) = found {
+                let source: Value = serde_json::from_str(&found)
+                    .map_err(|_| invalid("invalid held project form drafts"))?;
+                let next = crate::survey::project_forms::evaluate(
+                    &json!({"mode":"remove_submitted","source":source,"submitted":submitted}),
+                )
+                .map_err(invalid)?;
+                let empty = next.as_object().is_some_and(Map::is_empty);
+                if empty {
+                    connection.execute("DELETE FROM work_drafts WHERE owner=?1 AND kind=?2 AND project='' AND key=?3", params![owner, kind.name(), row]).map_err(sql)?;
+                } else {
+                    put(
+                        connection,
+                        &owner,
+                        kind,
+                        "",
+                        &row,
+                        texts(kind, &next, None)?,
+                        now,
+                    )?;
+                }
+                answer.insert("removed".into(), empty.into());
+                source != next
+            } else {
+                false
+            }
         }
         Operation::Delete {
             kind,
