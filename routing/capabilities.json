@@ -78,6 +78,7 @@
     "auth.login": {"cli": "core", "desktop": "discarded:terminal_only", "web": "discarded:terminal_only", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported"},
     "auth.logout": {"cli": "core", "desktop": "discarded:terminal_only", "web": "discarded:terminal_only", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported"},
     "auth.project.create": {"cli": "core", "desktop": "core", "web": "kernel:projects", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported"},
+    "auth.project.delete": {"cli": "core", "desktop": "core", "web": "discarded:native_host_only", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported"},
     "auth.project.list": {"cli": "core", "desktop": "core", "web": "kernel:projects", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported"},
     "auth.project.status": {"cli": "core", "desktop": "core", "web": "discarded:native_host_only", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported"},
     "auth.project.update": {"cli": "core", "desktop": "core", "web": "kernel:projects", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported"},

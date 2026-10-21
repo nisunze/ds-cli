@@ -1985,6 +1985,30 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         )
     }
 
+    /// One governed whole-project delete action. The project id is an address;
+    /// ds-brain decides by the principal's `platform.admin`. No context lease
+    /// is taken: the command deletes the project it names, never the selected one.
+    pub fn project_deletion(
+        &mut self,
+        command: &crate::project_deletion::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate()?;
+        self.ensure_fresh_session(now)?;
+        let session = self.session.as_ref().ok_or_else(signed_out)?;
+        crate::project_deletion::run(
+            &self.profile,
+            &mut self.transport,
+            crate::authorized::Authority {
+                bearer_token: &session.id_token,
+                uid: &session.stored.uid,
+                email: &session.stored.email,
+                device_id: None,
+            },
+            command,
+        )
+    }
+
     /// One selected account-private note action; no project or note catalogue read.
     pub fn personal_notes(
         &mut self,

@@ -282,11 +282,14 @@ pub mod personal_notes;
 /// Correspondence — parties, records, threads and task blockers — on the
 /// same `POST /api/v1/pm` door, reachable without a window from the start.
 pub mod project_correspondence;
+/// The owner-only, archive-then-delete removal of one whole project.
+pub mod project_deletion;
 pub mod project_management;
 /// Creating a project and editing its properties: server-side, admin-gated,
 /// and reachable without a window for the first time.
 pub mod project_properties;
 pub use transport::GridModelsCall;
+pub use transport::ProjectDeletionCall;
 pub use transport::ProjectPropertiesCall;
 pub use transport::ReportArtifactCall;
 pub use transport::{SreEventsCall, SreOverviewCall};

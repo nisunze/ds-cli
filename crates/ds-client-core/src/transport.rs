@@ -1325,6 +1325,62 @@ impl ProjectPropertiesCall<'_> {
     }
 }
 
+/// `POST /api/v1/projects` — one governed whole-project delete action
+/// (`delete_plan` … `delete_apply`), owner-only at ds-brain. Hard-coded like
+/// [`ProjectPropertiesCall`]; it differs only in its bounds: an export page
+/// and an apply are larger and slower than a properties receipt.
+pub struct ProjectDeletionCall<'a> {
+    pub(crate) profile: &'a ClientProfile,
+    pub(crate) payload: serde_json::Value,
+    pub(crate) authority: CallAuthority<'a>,
+}
+
+impl ProjectDeletionCall<'_> {
+    pub fn gateway_origin(&self) -> &str {
+        self.profile.gateway_origin()
+    }
+    pub fn path(&self) -> String {
+        crate::project_deletion::PATH.into()
+    }
+    pub fn method(&self) -> &'static str {
+        "POST"
+    }
+    pub const fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+    pub const fn response_limit(&self) -> usize {
+        crate::project_deletion::MAX_RESPONSE_BYTES
+    }
+    pub const fn timeout_seconds(&self) -> u64 {
+        crate::project_deletion::TIMEOUT_SECONDS
+    }
+    pub fn gateway_api_key(&self) -> &str {
+        self.profile.gateway_api_key()
+    }
+    pub const fn client_id(&self) -> &'static str {
+        self.profile.client_id()
+    }
+    pub fn bearer_token(&self) -> &str {
+        self.authority.bearer_token
+    }
+    pub fn canonical_email(&self) -> &str {
+        self.authority.canonical_email
+    }
+    pub fn canonical_uid(&self) -> &str {
+        self.authority.canonical_uid
+    }
+    pub fn device_id(&self) -> Option<&str> {
+        self.authority.device_id
+    }
+    /// The action this call sends, for host diagnostics.
+    pub fn action(&self) -> &str {
+        self.payload["action"].as_str().unwrap_or("")
+    }
+    pub fn body(&self) -> SecretRequestBody {
+        SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed project delete request"))
+    }
+}
+
 /// `POST /api/v1/auth/device/approve` — decide one headless device
 /// authorization under a Firebase USER principal.
 ///
@@ -3118,6 +3174,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn project_deletion(
+        &mut self,
+        _call: ProjectDeletionCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn global_tiles(
         &mut self,
         _call: GlobalTilesCall<'_>,
@@ -3503,6 +3565,12 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
+    fn project_deletion(
+        &mut self,
+        _call: ProjectDeletionCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Err(TransportError::Unreachable)
+    }
     fn global_tiles(
         &mut self,
         _call: GlobalTilesCall<'_>,
@@ -3860,6 +3928,12 @@ impl<T: Transport> AuthorizedTransport for T {
         call: ProjectPropertiesCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::project_properties(self, call)
+    }
+    fn project_deletion(
+        &mut self,
+        call: ProjectDeletionCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Transport::project_deletion(self, call)
     }
     fn global_tiles(
         &mut self,

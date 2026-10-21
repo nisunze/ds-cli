@@ -1783,6 +1783,18 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::project_properties::run(self.profile, transport, self.authority(), command)
     }
+    /// One governed whole-project delete action on a device session; ds-brain
+    /// decides by the device principal's `platform.admin` exactly as for a user.
+    pub fn project_deletion<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        command: &crate::project_deletion::Command,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        command.validate()?;
+        self.ensure_active(now)?;
+        crate::project_deletion::run(self.profile, transport, self.authority(), command)
+    }
     pub fn sre<T: AuthorizedTransport>(
         &self,
         transport: &mut T,
