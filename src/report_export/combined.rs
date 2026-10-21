@@ -888,6 +888,9 @@ pub fn run_receipt(facts: &ReceiptFacts<'_>) -> Result<Value, String> {
         "admin_bounds": facts.result.admin_bounds,
         "transformer_natures_sha256": facts.transformer_natures.map(|natures| jcs::sha256(&json!(natures))).transpose()?,
         "media_grant_sha256": facts.media_grant_sha256,
+        // Missing or invalid engineering facts the workbook itemizes on its
+        // Dirty Categories sheet: counted findings of a complete set.
+        "engineering_findings": facts.result.engineering_blockers,
         // The Reporter declares that the cloud-owned optional review layer is
         // not part of a local run; the receipt says so instead of implying it.
         "transformer_reviews": "not_included",

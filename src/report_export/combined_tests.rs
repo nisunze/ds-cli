@@ -263,6 +263,11 @@ fn a_complete_answer_verifies_every_planned_artifact_and_receipt() {
             receipt["input_base_fingerprint"].as_str().unwrap()
         ));
         assert_eq!(receipt["transformer_reviews"], "not_included");
+        assert_eq!(
+            receipt["engineering_findings"], 2,
+            "a complete set counts the findings its workbook itemizes"
+        );
+        assert_eq!(receipt["status"], "completed");
     }
 }
 
