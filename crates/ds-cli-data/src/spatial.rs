@@ -368,7 +368,8 @@ pub fn run_execute(inputs: &Inputs, _context: &Context) -> Result<Value, Failure
                 .remedy(INVALID.remedy),
         );
     }
-    let answer = ds_cli_auth::data_distribution(lane, project, &request)?;
+    let answer = ds_cli_auth::data_distribution(lane, project, &request)
+        .map_err(spatial_service_refusal)?;
     receipt_for_project(&answer, project)?;
     if answer["dataset"]["id"] != plan["resource_id"]
         || answer["dataset"]["version"] != plan["resource_version"]
@@ -422,6 +423,31 @@ pub fn run_execute(inputs: &Inputs, _context: &Context) -> Result<Value, Failure
     )
 }
 
+/// The service's own spatial verdicts under the codes this command declares.
+/// A plan whose hash, query or authority the service no longer recognises
+/// answers HTTP 409 with `spatial_plan_changed` (a hand-edited plan hash lands
+/// here) or `spatial_source_changed`; they are not malformed input.
+pub(crate) fn spatial_service_refusal(failure: Failure) -> Failure {
+    let service_code = failure
+        .detail_value()
+        .and_then(|detail| detail["service_code"].as_str())
+        .map(str::to_owned);
+    let message = failure.message().to_owned();
+    let mapped = match service_code.as_deref() {
+        Some("spatial_plan_changed") => {
+            Failure::invalid(PLAN_CHANGED.code, message).remedy(PLAN_CHANGED.remedy)
+        }
+        Some("spatial_source_changed") => {
+            Failure::invalid(SOURCE_CHANGED.code, message).remedy(SOURCE_CHANGED.remedy)
+        }
+        _ => return failure,
+    };
+    match failure.detail_value() {
+        Some(detail) => mapped.detail(detail.clone()),
+        None => mapped,
+    }
+}
+
 pub fn render_plan(value: &Value) -> String {
     format!(
         "Spatial plan {} · {}\n",
@@ -448,3 +474,7 @@ mod tests {
         assert_eq!(error.code(), "spatial_query_unavailable");
     }
 }
+
+#[cfg(test)]
+#[path = "spatial_refusal_tests.rs"]
+mod spatial_refusal_tests;
