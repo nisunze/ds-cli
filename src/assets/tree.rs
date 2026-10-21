@@ -1229,6 +1229,11 @@ impl<'a> Projector<'a> {
         let Some(id) = present(&attachment.id) else {
             return;
         };
+        // A reservation whose bytes were never verified (uploading, failed) is
+        // not a document. Rows from before the state field are ready.
+        if present(&attachment.state).is_some_and(|state| state != "ready") {
+            return;
+        }
         let metadata: PmMetadataRow = decode(&attachment.metadata);
         let capture: PmCaptureRow = decode(&attachment.capture);
         let linked = present(&attachment.linked_entity_id).unwrap_or_default();
@@ -2168,6 +2173,8 @@ struct PmAttachmentRow {
     checksum: Option<String>,
     #[serde(deserialize_with = "lenient_text")]
     document_state: Option<String>,
+    #[serde(deserialize_with = "lenient_text")]
+    state: Option<String>,
     metadata: Value,
     capture: Value,
 }
