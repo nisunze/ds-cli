@@ -478,11 +478,22 @@ export interface CapabilityFailure {
         super::capability(&value).is_ok()
     }
 
+    /// Narrow a route-checked UI binding to this target's runnable IDs.
+    #[wasm_bindgen(js_name = capabilityIsRunnable, unchecked_return_type = "value is RunnableCapabilityId")]
+    pub fn capability_is_runnable(value: String) -> bool {
+        super::route(&value).is_ok_and(|route| {
+            matches!(route.executor, Some(Executor::Core | Executor::NetworkUnit))
+        })
+    }
+
     /// The Kernel's decision for a Core door. This includes supported
     /// capabilities that use another executor in this build.
     #[wasm_bindgen(js_name = capabilityCoreRefusal, unchecked_return_type = "CapabilityFailure | null")]
     pub fn capability_core_refusal(value: String) -> Result<JsValue, JsValue> {
-        crate::gateway_exchange::browser::typed(&super::command::core_refusal(&value))
+        match super::command::core_refusal(&value) {
+            Some(refusal) => crate::gateway_exchange::browser::typed(&refusal),
+            None => Ok(JsValue::NULL),
+        }
     }
 
     /// The same input admission used by native forwarding, before a form can run.
@@ -497,12 +508,10 @@ export interface CapabilityFailure {
             .map_err(|error| refusal("capability_input_invalid", &error.to_string()))?;
         let args: serde_json::Value = tsify::serde_wasm_bindgen::from_value(args)
             .map_err(|error| refusal("capability_input_invalid", &error.to_string()))?;
-        crate::gateway_exchange::browser::typed(&super::command::admit(
-            &id,
-            &descriptor,
-            &args,
-            &project,
-        ))
+        match super::command::admit(&id, &descriptor, &args, &project) {
+            Some(refusal) => crate::gateway_exchange::browser::typed(&refusal),
+            None => Ok(JsValue::NULL),
+        }
     }
 
     /// Bind a native/JS transport rejection to the shared failure vocabulary.
