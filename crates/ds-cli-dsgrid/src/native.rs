@@ -79,9 +79,15 @@ pub(crate) fn operation_failure(error: NetworkFailure) -> Failure {
     let Some(envelope) = envelope else {
         return map_failure(error);
     };
-    let code = error.owner_code().unwrap_or(error.code()).to_owned();
+    let mut code = error.owner_code().unwrap_or(error.code()).to_owned();
     let message = error.message.clone();
-    let mut failure = match envelope.class {
+    let mut class = envelope.class;
+    if is_package_refusal(&code) {
+        code = "package_decode_failed".to_owned();
+        class = GridOperationRefusalClassV1::Invalid;
+    }
+    let stale = is_stale_conflict(&code);
+    let mut failure = match class {
         GridOperationRefusalClassV1::Invalid => Failure::invalid(code, message),
         GridOperationRefusalClassV1::Failed => Failure::failed(code, message),
         GridOperationRefusalClassV1::Conflict => Failure::conflict(code, message),
@@ -96,6 +102,9 @@ pub(crate) fn operation_failure(error: NetworkFailure) -> Failure {
     }
     if let Some(detail) = envelope.detail {
         failure = failure.detail(detail);
+    }
+    if stale {
+        failure = failure.not_retryable();
     }
     failure
 }
@@ -114,12 +123,13 @@ pub fn map_failure(error: NetworkFailure) -> Failure {
         .unwrap_or_else(|| error.code())
         .to_owned();
     let message = error.to_string();
+    let stale = is_stale_conflict(&code);
     let mut failure = if matches!(code.as_str(), "network_engine_missing" | "module_removed") {
         Failure::unavailable(&code, message)
-    } else if matches!(
-        code.as_str(),
-        "revision_conflict" | "command_replay_conflict"
-    ) {
+    } else if is_package_refusal(&code) {
+        // A corrupt user file is the caller's input, not a failed run.
+        Failure::invalid("package_decode_failed", message)
+    } else if stale {
         Failure::conflict(&code, message)
     } else if error.owner_invalid_input == Some(true) {
         Failure::invalid(&code, message)
@@ -134,7 +144,29 @@ pub fn map_failure(error: NetworkFailure) -> Failure {
     if let Some(detail) = error.owner_detail {
         failure = failure.detail(*detail);
     }
+    if stale {
+        failure = failure.not_retryable();
+    }
     failure
+}
+
+/// The owner's refusal of a package it cannot read. Whatever door raised it,
+/// the caller sees one code and the invalid-input class: the file is the
+/// caller's, so no feedback is warranted.
+fn is_package_refusal(code: &str) -> bool {
+    matches!(code, "package_refused" | "package_decode_failed")
+}
+
+/// A stale pin: the caller's view of the model is out of date. The remedy is
+/// to re-read and decide again, so repeating the call unchanged is never it.
+fn is_stale_conflict(code: &str) -> bool {
+    matches!(
+        code,
+        "revision_conflict"
+            | "command_replay_conflict"
+            | "engineering_input_root_mismatch"
+            | "revision_mismatch"
+    )
 }
 
 pub const REFUSALS: &[Refusal] = &[
@@ -282,11 +314,6 @@ pub const REFUSALS: &[Refusal] = &[
         code: "callee_stdin_failed",
         when: "the child cannot receive its fixed control input",
         remedy: "use an intact compatible component",
-    },
-    Refusal {
-        code: "package_refused",
-        when: "Network cannot admit the opaque model package",
-        remedy: "validate or re-export the source as a matching .dsgrid package",
     },
     Refusal {
         code: "grid_task_bound_refused",

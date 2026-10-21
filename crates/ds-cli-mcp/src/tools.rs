@@ -1053,21 +1053,21 @@ pub fn argv_for_call(tool: &Tool, arguments: &Value) -> Result<Vec<String>, Stri
                 };
                 for item in items {
                     let item =
-                        scalar(&item).ok_or_else(|| format!("`{key}` items must be scalars"))?;
+                        scalar(&item).ok_or_else(|| format!("`{key}` items must be strings"))?;
                     argv.push(format!("--{key}={item}"));
                 }
             }
             "positional" => {
                 if !value.is_null() {
                     positional
-                        .push(scalar(value).ok_or_else(|| format!("`{key}` must be a scalar"))?);
+                        .push(scalar(value).ok_or_else(|| format!("`{key}` must be a string"))?);
                 }
             }
             _ => {
                 if value.is_null() {
                     continue;
                 }
-                let value = scalar(value).ok_or_else(|| format!("`{key}` must be a scalar"))?;
+                let value = scalar(value).ok_or_else(|| format!("`{key}` must be a string"))?;
                 argv.push(format!("--{key}={value}"));
             }
         }
@@ -1084,13 +1084,12 @@ pub fn argv_for_call(tool: &Tool, arguments: &Value) -> Result<Vec<String>, Stri
     Ok(argv)
 }
 
+/// A value, repeated item or operand is declared `string` in the tool's input
+/// schema, so only a string is admitted: a number or boolean the host sends
+/// instead is a wrong type, refused rather than quietly stringified into a
+/// different request (a numeric `model` would otherwise read as a missing file).
 fn scalar(value: &Value) -> Option<String> {
-    match value {
-        Value::String(text) => Some(text.clone()),
-        Value::Number(number) => Some(number.to_string()),
-        Value::Bool(flag) => Some(flag.to_string()),
-        _ => None,
-    }
+    value.as_str().map(str::to_owned)
 }
 
 /// Where the CLI lives: the executable serving MCP is the executable every
@@ -1806,7 +1805,8 @@ mod tests {
                 "json"
             ]
         );
-        assert!(argv_for_call(&tool, &json!({ "confirm": true })).is_ok());
+        // The input is a string, so a boolean is a wrong type, not `--confirm=true`.
+        assert!(argv_for_call(&tool, &json!({ "confirm": true })).is_err());
     }
 
     #[test]

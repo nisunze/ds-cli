@@ -206,9 +206,7 @@ fn run_with_capture(
         schema: NATIVE_GRID_QUERY_SCHEMA_V1.into(),
         source: NativeGridQuerySourcePin {
             package_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            expected_revision: inputs
-                .value("revision")
-                .map(|value| value.trim().to_owned()),
+            expected_revision: package::revision_pin(inputs.value("revision"))?,
             engineering_input_root: None,
         },
         operation_id: "clearance_report".into(),
@@ -326,14 +324,15 @@ fn structure_label(structure: &Value) -> String {
 
 fn query_failure(path: &str, error: NetworkFailure) -> Failure {
     match error.owner_code() {
-        Some("package_refused") => Failure::failed("package_decode_failed",
+        Some("package_refused") => Failure::invalid("package_decode_failed",
             format!("`{path}` did not decode"))
             .remedy("the canonical reader accepts current schema only; retain the original and use `ds dsgrid package migrate --path <source> --expected-source-sha256 <capture> --dry-run`, then open the saved current package")
             .detail(json!({ "detail": error.to_string() })),
         Some("stale_revision") => {
             let mut failure = Failure::conflict("revision_conflict",
                 "the head moved since the revision you observed")
-                .remedy("re-read the head and decide again against it");
+                .remedy("re-read the head and decide again against it")
+                .not_retryable();
             if let Some(detail) = error.owner_detail { failure = failure.detail(*detail); }
             failure
         }

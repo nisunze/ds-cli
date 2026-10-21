@@ -109,5 +109,9 @@ pub static DOMAIN: Domain = Domain {
 };
 
 #[cfg(test)]
+#[path = "error_edges_tests.rs"]
+mod error_edges_tests;
+
+#[cfg(test)]
 #[path = "../tests/support/linked_oracle.rs"]
 mod linked_oracle;

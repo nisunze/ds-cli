@@ -42,6 +42,10 @@ pub mod serve;
 pub mod surface;
 pub mod tools;
 
+#[cfg(test)]
+#[path = "argument_types_tests.rs"]
+mod argument_types_tests;
+
 use ds_cli_contract::spec::{Availability, Domain, Refusal};
 
 pub static DOMAIN: Domain = Domain {

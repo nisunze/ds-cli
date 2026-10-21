@@ -48,6 +48,11 @@ const OWN_REFUSALS: &[Refusal] = &[
         remedy: "a .dsgrid is a zip containing manifest.json; convert other formats first",
     },
     Refusal {
+        code: "package_decode_failed",
+        when: "the container is empty, truncated or damaged and cannot be opened or verified",
+        remedy: "restore the package from its source, or re-export it as a current .dsgrid",
+    },
+    Refusal {
         code: "manifest_unreadable",
         when: "the package manifest does not match this build's schema",
         remedy: "rebuild the package with a matching ds-network release",
@@ -85,7 +90,9 @@ so inconsistent cable mechanics can be reviewed and repaired.",
             .default(package::DEFAULT_LIMIT),
     ],
     output: "\
-`container` and `model`, each with its own verdict. Model issues carry a stable \
+`container` and `model`, each with its own verdict; a container that cannot be \
+opened or verified is refused as package_decode_failed, never reported as a \
+result. Model issues carry a stable \
 code, the table and entity concerned, and a message. `more.truncated` reports \
 any findings withheld by --limit. `model.advisories` carries nonblocking owner \
 diagnostics with stable codes; `advisory_count` counts the complete list. \
@@ -126,15 +133,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .result;
 
     if !result.container.verified {
-        return Ok(json!({
-            "path": raw_path,
+        // A container that cannot be opened or verified is the caller's file:
+        // the same refusal every other door gives it, never a clean answer.
+        return Err(Failure::invalid(
+            "package_decode_failed",
+            format!("`{raw_path}` did not verify as a .dsgrid package"),
+        )
+        .remedy("the package is empty, truncated or damaged; restore it from its source, or re-export it as a current .dsgrid (`ds dsgrid package migrate` for an older one)")
+        .detail(json!({
             "byte_len": bytes.len(),
-            "container": {
-                "verified": false,
-                "detail": result.container.detail.unwrap_or(Value::Null),
-            },
-            "model": Value::Null,
-        }));
+            "container": result.container.detail.unwrap_or(Value::Null),
+        })));
     }
 
     let model = result.model.ok_or_else(|| {
@@ -204,13 +213,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 pub fn render(data: &Value) -> String {
-    if !data["container"]["verified"].as_bool().unwrap_or(false) {
-        return format!(
-            "container  DAMAGED\n  {}\n\nThe model could not be read, so it was not validated.",
-            data["container"]["detail"]["detail"].as_str().unwrap_or(""),
-        );
-    }
-
     let model = &data["model"];
     let mut out = format!(
         "container  verified ({} members)\nmodel      {}  rev {}\n",

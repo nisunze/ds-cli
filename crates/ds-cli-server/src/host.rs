@@ -215,7 +215,7 @@ pub fn typed(failure: &Failure) -> ApiError {
         "error": failure.message(),
         "class": failure.class().token(),
         "code": failure.code(),
-        "retryable": failure.class().retryable(),
+        "retryable": failure.retryable(),
     });
     if let Some(remedy) = failure.remedy_text() {
         body["remedy"] = json!(remedy);

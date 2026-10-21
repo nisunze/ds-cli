@@ -197,7 +197,11 @@ fn default_analysis_cli_returns_native_evidence_with_bounds_and_revision_fences(
         std::fs::write(&params_path, serde_json::to_vec(&params).unwrap()).unwrap();
         let (refused, exit) = common::json(&args("50"));
         assert_ne!(exit, 0);
-        assert_eq!(refused["error"]["code"], "operation_failed");
+        // A stale pin surfaces under the owner's own code, as a conflict whose
+        // remedy is to re-read; the serialized refusal is still carried.
+        assert_eq!(refused["error"]["code"], code);
+        assert_eq!(refused["error"]["class"], "conflict");
+        assert_eq!(refused["error"]["retryable"], false);
         assert_eq!(refused["error"]["detail"]["refusal"]["code"], code);
         assert_eq!(
             refused["error"]["detail"]["refusal"]["detail"]["expected"],

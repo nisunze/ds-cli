@@ -98,6 +98,8 @@ pub struct Refusal {
     /// Bounded structured context, when a code alone is not enough — for
     /// example the accepted values of a rejected choice.
     pub detail: Option<Value>,
+    /// Set when the class default is wrong for this refusal.
+    pub retryable: Option<bool>,
 }
 
 impl Failure {
@@ -109,6 +111,7 @@ impl Failure {
             remedy: None,
             next: Vec::new(),
             detail: None,
+            retryable: None,
         }))
     }
 
@@ -166,8 +169,21 @@ impl Failure {
         self
     }
 
+    /// Mark a refusal whose unchanged retry cannot succeed even though its
+    /// class usually allows one: a conflict whose remedy is to re-read the
+    /// world and decide again, not to repeat the call.
+    pub fn not_retryable(mut self) -> Self {
+        self.0.retryable = Some(false);
+        self
+    }
+
     pub fn class(&self) -> ExitClass {
         self.0.class
+    }
+
+    /// Whether repeating the call unchanged could plausibly succeed.
+    pub fn retryable(&self) -> bool {
+        self.0.retryable.unwrap_or_else(|| self.0.class.retryable())
     }
 
     pub fn code(&self) -> &str {
@@ -261,7 +277,7 @@ pub fn error_envelope<'a>(
             class: failure.class().token(),
             code: failure.code(),
             message: failure.message(),
-            retryable: failure.class().retryable(),
+            retryable: failure.retryable(),
             remedy: failure.remedy_text(),
             next: failure.next_commands(),
             detail: failure.detail_value(),

@@ -103,9 +103,7 @@ fn run_with_capture(
         schema: NATIVE_GRID_QUERY_SCHEMA_V1.into(),
         source: NativeGridQuerySourcePin {
             package_sha256: format!("{:x}", Sha256::digest(&bytes)),
-            expected_revision: inputs
-                .value("revision")
-                .map(|value| value.trim().to_owned()),
+            expected_revision: package::revision_pin(inputs.value("revision"))?,
             engineering_input_root: None,
         },
         operation_id: "feature_code_table_report".into(),
@@ -140,7 +138,7 @@ fn run_with_capture(
 
 fn query_failure(path: &str, error: NetworkFailure) -> Failure {
     match error.owner_code() {
-        Some("package_refused") => Failure::failed(
+        Some("package_refused") => Failure::invalid(
             "package_decode_failed",
             format!("`{path}` did not decode"),
         )
@@ -151,7 +149,8 @@ fn query_failure(path: &str, error: NetworkFailure) -> Failure {
                 "revision_conflict",
                 "the head moved since the revision you observed",
             )
-            .remedy("re-read the head and decide again against it");
+            .remedy("re-read the head and decide again against it")
+            .not_retryable();
             if let Some(detail) = error.owner_detail {
                 failure = failure.detail(*detail);
             }

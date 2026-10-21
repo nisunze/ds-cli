@@ -109,6 +109,11 @@ pub const READ_REFUSALS: &[Refusal] = &[
         remedy: "re-read the head with `ds dsgrid model show` and decide again against it",
     },
     Refusal {
+        code: "revision_invalid",
+        when: "--revision is not a `rev:` token of 64 hex digits",
+        remedy: "pass the token `ds dsgrid inspect --include authored-revision` prints",
+    },
+    Refusal {
         code: "invalid_limit",
         when: "--limit is not a whole number in 1..5000",
         remedy: "pass a limit inside the range, or omit it for the default of 50",

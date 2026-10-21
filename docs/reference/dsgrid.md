@@ -333,14 +333,14 @@ fixed in completely different ways. So they are reported apart:
 
 | Field | Question | Failure means |
 |---|---|---|
-| `container.verified` | does every member match the manifest's byte length, digest, row count and schema fingerprint? | the file is damaged or was written by an incompatible release |
+| `container.verified` | does every member match the manifest's byte length, digest, row count and schema fingerprint? | always `true` in an answer: a file that fails it is refused `package_decode_failed` |
 | `model.valid` | is the authored content sound by `ds-grid-model`'s own rules? | the file is intact and the content is wrong |
 
-A damaged container is reported as a **result**, not a refusal — exit 0 with
-`container.verified: false` and `model: null`. The caller asked whether the
-package is sound; answering "no" is this command working. `model` is null
-rather than absent because the model was not judged unsound either; it was not
-judged at all.
+A container that cannot be opened or verified — empty, truncated, a flipped byte —
+is refused `package_decode_failed` (exit 2, `invalid_input`), the same code and
+class every dsgrid door gives a corrupt package; it is the caller's file, not a
+Core defect. A readable model that has issues still answers exit 0: read
+`model.valid`. `container.verified` is therefore always `true` in an answer.
 
 ## `describe` is the engine describing itself
 
@@ -506,7 +506,7 @@ The first typed mutations over the engine (program contract 01 §2, landed
 |---|---|
 | `--model <local-id>` | one of this machine's working copies (`ds dsgrid model list`); the edit becomes its **next revision in place**, same id, package revision +1, `head_revision` updated on the row |
 | `--package <path> --out <path>` | an immutable `.dsgrid` file; a new file is written, never over the source |
-| `--revision <rev>` | the authored head you observed (`ds dsgrid model show --model <id>` prints it); a moved head refuses `revision_conflict` |
+| `--revision <rev>` | the authored head you observed (`ds dsgrid model show --model <id>` prints it); a moved head refuses `revision_conflict` (not blindly retryable: re-read); a token that is not `rev:` plus 64 hex digits refuses `revision_invalid` |
 | `--dry-run` / `--yes` | exactly one: evaluate against the exact head and write nothing, or write |
 
 The receipt names the engine operation(s) with the SHA-256 of their published

@@ -66,13 +66,23 @@ const COMMAND_REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "params_invalid",
-        when: "the JSON is not an object matching the live descriptor",
+        when: "the JSON is not an object matching the live descriptor, or carries a value the operation cannot take (a non-positive corridor_half_width_m)",
         remedy: "read `ds dsgrid describe --kind operations --id <id>` and supply its exact fields",
     },
     Refusal {
         code: "operation_failed",
         when: "the native engine refuses the typed request against this authored revision",
         remedy: "read detail.refusal when present, then use ids and authored values from this exact package revision",
+    },
+    Refusal {
+        code: "engineering_input_root_mismatch",
+        when: "an operation's expected_engineering_input_root is not this package's current root (a stale pin)",
+        remedy: "re-read the model's current engineering_input_root, e.g. with `--operation project_criteria_workbench`, and rebuild the request against it; do not repeat it unchanged",
+    },
+    Refusal {
+        code: "revision_mismatch",
+        when: "an operation's expected_revision is not this package's current authored revision (a stale pin)",
+        remedy: "re-read the model's current authored revision and rebuild the request against it; do not repeat it unchanged",
     },
     Refusal {
         code: "invalid_limit",

@@ -158,6 +158,11 @@ const OWN_REFUSALS: &[Refusal] = &[
         remedy: "re-read the head with `ds dsgrid model show` and decide again against it",
     },
     Refusal {
+        code: "revision_invalid",
+        when: "--revision is not a `rev:` token of 64 hex digits",
+        remedy: "pass the token `ds dsgrid inspect --include authored-revision` prints",
+    },
+    Refusal {
         code: "model_validation_failed",
         when: "the engine would introduce a canonical model error",
         remedy: "read detail.issues; nothing was written",
@@ -364,7 +369,7 @@ pub fn run(
     let bytes = package::read_bytes(&path)?;
     let call = GridOperationV1::TypedMutation(TypedMutationParamsV1 {
         verb,
-        expected_revision: inputs.value("revision").map(str::to_owned),
+        expected_revision: package::revision_pin(inputs.value("revision"))?,
         write: writing,
     });
     let mut outcome = crate::native::operation(&call, Some(&bytes), staged)
@@ -489,6 +494,7 @@ fn revise_refusal(failure: Failure) -> Failure {
             "the working copy advanced between the read and the write",
         )
         .remedy("re-read the head with `ds dsgrid model show` and decide again against it")
+        .not_retryable()
         .detail(json!({ "store": failure.message() }));
     }
     failure

@@ -128,7 +128,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .result;
     if !result.container.verified {
         return Err(
-            Failure::failed("package_decode_failed", format!("`{path}` did not decode"))
+            Failure::invalid("package_decode_failed", format!("`{path}` did not decode"))
                 .remedy("the canonical reader accepts current schema only; retain the original and use `ds dsgrid package migrate --path <source> --expected-source-sha256 <capture> --dry-run`, then open the saved current package")
                 .detail(result.container.detail.unwrap_or(Value::Null)),
         );

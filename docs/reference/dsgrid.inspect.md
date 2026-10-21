@@ -48,6 +48,12 @@ The response reports which happened:
 So a script that walks a directory of packages to find one model can do so
 without decoding any of them.
 
+The manifest cannot show a damaged table, so the response also says so loudly:
+`"tables_verified": false` and a `help` line pointing at `ds dsgrid validate`
+whenever no table was decoded. Only `--include library`, `extent` or
+`authored-revision` decode, and a package with a flipped table byte is refused
+there with `package_decode_failed`.
+
 ## Output
 
 ### Default
@@ -71,6 +77,8 @@ without decoding any of them.
     "package_members": 60
   },
   "decoded": false,
+  "tables_verified": false,
+  "help": "tables_verified is false: only the manifest was read, so damaged tables would not show here; run `ds dsgrid validate --model <path>` to verify them before relying on this package",
   "more": {
     "available_projections": ["tables", "members", "library", "extent"]
   }

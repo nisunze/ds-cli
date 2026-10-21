@@ -92,7 +92,7 @@ fn termination_of(failure: &Failure) -> Termination {
         class: failure.class().token().to_string(),
         code: failure.code().to_string(),
         message: failure.message().to_string(),
-        retryable: failure.class().retryable(),
+        retryable: failure.retryable(),
     }
 }
 

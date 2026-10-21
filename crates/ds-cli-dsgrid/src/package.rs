@@ -59,7 +59,7 @@ pub(crate) fn authorize_write_bytes(
         .grid_write_admission(&request, bytes, scratch.path(), &|| false)
         .map_err(|error| {
             if error.owner_code() == Some("package_refused") {
-                Failure::failed("package_decode_failed", format!("`{raw_path}` did not decode"))
+                Failure::invalid("package_decode_failed", format!("`{raw_path}` did not decode"))
                     .remedy("the canonical reader accepts current schema only; retain the original and use `ds dsgrid package migrate --path <source> --expected-source-sha256 <capture> --dry-run`, then open the saved current package")
                     .detail(json!({ "detail": error.to_string() }))
             } else {
@@ -180,6 +180,29 @@ pub fn take<T>(mut items: Vec<T>, limit: usize) -> (Vec<T>, usize) {
     let withheld = items.len() - limit;
     items.truncate(limit);
     (items, withheld)
+}
+
+/// The `--revision` pin a caller observed: an authored revision token, `rev:`
+/// and 64 lowercase hex digits, exactly as `ds dsgrid inspect --include
+/// authored-revision` prints it. A malformed token is the caller's input and
+/// is refused here; handed on, it would read as a head that moved.
+pub fn revision_pin(raw: Option<&str>) -> Result<Option<String>, Failure> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let token = raw.trim();
+    let well_formed = token.strip_prefix("rev:").is_some_and(|hex| {
+        hex.len() == 64 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    });
+    if well_formed {
+        return Ok(Some(token.to_owned()));
+    }
+    Err(Failure::invalid(
+        "revision_invalid",
+        "--revision is not an authored revision token",
+    )
+    .remedy("pass the `rev:` token (64 hex digits) from `ds dsgrid inspect --model <path> --include authored-revision`")
+    .detail(json!({ "given": raw })))
 }
 
 pub const MAX_LIMIT: usize = 5_000;

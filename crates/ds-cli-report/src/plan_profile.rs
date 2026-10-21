@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{DS_REPORT, EXPORT_TIMEOUT, capture_engine};
+mod assets;
 mod context;
 mod model_mode;
 use model_mode::RenderTask;
@@ -158,7 +159,7 @@ pub static COMMAND: Command = Command {
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 30 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 31 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             Refusal {
@@ -232,6 +233,11 @@ pub static COMMAND: Command = Command {
                 code: "engine_refused",
                 when: "reporter refuses setup, held assets or geometry pairing",
                 remedy: "Read the reporter keyed detail and correct the named input",
+            },
+            Refusal {
+                code: "mv_print_asset_missing",
+                when: "--publication-assets omits an approved preserved_pdf asset the adopted setup names, or supplies one it does not",
+                remedy: "Map exactly the setup's asset ids to absolute held PDF paths acquired through DS assets",
             },
             Refusal {
                 code: "context_manifest_invalid",
@@ -674,6 +680,11 @@ fn run_project(inputs: &Inputs, model: Option<model_mode::ModelSource>) -> Resul
             .map_err(|e| Failure::invalid("context_manifest_invalid", e.to_string()))
     };
     let mut context_page_files = read_manifest("context-pages", json!([]))?;
+    // The held PDFs the adopted setup names are known now. Refuse a missing or
+    // surplus asset before the minutes-long context acquisition and render,
+    // exactly as the reporter would after them.
+    let publication_assets = read_manifest("publication-assets", json!({}))?;
+    assets::check_publication_assets(&resolved.preserved_pages, &publication_assets)?;
     // A pinned model carries the governed geographic context by default, read
     // from what this machine holds. Explicit captures replace it.
     let context = match (&model, inputs.value("context-pages")) {
@@ -687,7 +698,6 @@ fn run_project(inputs: &Inputs, model: Option<model_mode::ModelSource>) -> Resul
         }
         _ => None,
     };
-    let publication_assets = read_manifest("publication-assets", json!({}))?;
     let sample_pages = inputs
         .value("sample-pages")
         .map(|value| {

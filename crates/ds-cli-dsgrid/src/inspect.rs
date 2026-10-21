@@ -115,7 +115,9 @@ projection is named, bounded by --limit, and reports what it withheld.",
     ],
     output: "\
 A model identity object. Each --include adds one key. `decoded` reports \
-whether the model's tables had to be decoded to answer. `more` lists the \
+whether the model's tables had to be decoded to answer; `tables_verified` is \
+false (with a `help` line) whenever they were not, because the manifest alone \
+cannot show a damaged table. `more` lists the \
 projections not requested and any collection that was truncated.",
     examples: &[
         Example {
@@ -295,6 +297,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
 
     answer.insert("decoded".into(), json!(decoded));
+    // Reading the manifest proves nothing about the tables behind it. Say so
+    // in the answer itself, so a flipped byte is never read as a clean model.
+    answer.insert("tables_verified".into(), json!(decoded));
+    if !decoded {
+        answer.insert(
+            "help".into(),
+            json!(format!(
+                "tables_verified is false: only the manifest was read, so damaged tables would not show here; run `ds dsgrid validate --model {raw_path}` to verify them before relying on this package"
+            )),
+        );
+    }
 
     // The continuation mechanism: say what else exists rather than making the
     // caller re-read help to find out.
@@ -342,6 +355,9 @@ pub fn render(data: &Value) -> String {
         "  {}\n",
         model["fingerprint"].as_str().unwrap_or("")
     ));
+    if data["tables_verified"] == false {
+        out.push_str("  tables NOT verified (manifest only); run `ds dsgrid validate` to verify them\n");
+    }
 
     for key in ["tables", "members"] {
         if let Some(Value::Object(entries)) = data.get(key) {
