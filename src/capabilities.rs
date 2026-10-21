@@ -19,6 +19,9 @@
 
 use serde::Serialize;
 
+#[path = "capability_command.rs"]
+pub mod command;
+
 pub const SCHEMA: &str = "ds.capability-route/v1";
 pub const CODE_PENDING: &str = "capability_pending";
 pub const CODE_DISCARDED: &str = "capability_discarded";
@@ -230,7 +233,7 @@ mod exports {
 /** The page's doors for the capabilities the Kernel routes. The Kernel picks the door; the page only opens it. */
 export interface CapabilityHost {
     /** One Core command through the host's generic Core door, answered by Core's own envelope. */
-    core?(command: string, project: string, args: Record<string, unknown>): Promise<unknown>;
+    core?(command: CoreCapabilityId, project: string, args: Record<string, unknown>): Promise<unknown>;
     /** The page's Network WASM unit. */
     unit?(capability: string, input: unknown): Promise<unknown>;
 }
@@ -238,6 +241,16 @@ export interface CapabilityHost {
 /** How `capabilityRun` rejects. */
 export interface CapabilityRefusal extends Error {
     code: string;
+    remedy: string;
+    retryable: boolean;
+}
+
+export interface CapabilityFailure {
+    class: string;
+    code: string;
+    message: string;
+    remedy: string;
+    retryable: boolean;
 }
 "#;
 
@@ -248,10 +261,34 @@ export interface CapabilityRefusal extends Error {
     }
 
     fn refusal(code: &str, message: &str) -> JsValue {
-        let error = js_sys::Error::new(message);
+        failure(super::command::connection_failure(
+            Some(code),
+            message,
+            None,
+        ))
+    }
+
+    fn failure(failure: super::command::Failure) -> JsValue {
+        let error = js_sys::Error::new(&failure.message);
         error.set_name("CapabilityRefusal");
-        let _ = Reflect::set(&error, &"code".into(), &code.into());
+        let _ = Reflect::set(&error, &"code".into(), &failure.code.into());
+        let _ = Reflect::set(&error, &"remedy".into(), &failure.remedy.into());
+        let _ = Reflect::set(&error, &"retryable".into(), &failure.retryable.into());
         error.into()
+    }
+
+    fn host_failure(error: JsValue) -> JsValue {
+        let code = member(&error, "code").as_string();
+        let message = member(&error, "message")
+            .as_string()
+            .or_else(|| error.as_string())
+            .unwrap_or_else(|| "The engine connection ended before it answered.".into());
+        let remedy = member(&error, "remedy").as_string();
+        failure(super::command::connection_failure(
+            code.as_deref(),
+            &message,
+            remedy.as_deref(),
+        ))
     }
 
     /// The `code: message` refusal the Kernel answered.
@@ -277,8 +314,18 @@ export interface CapabilityRefusal extends Error {
                 )
             })?;
         let [first, second, third] = args;
-        let answer = function.call3(host, &first, &second, &third)?;
-        JsFuture::from(Promise::resolve(&answer)).await
+        let answer = function
+            .call3(host, &first, &second, &third)
+            .map_err(host_failure)?;
+        let answer = JsFuture::from(Promise::resolve(&answer));
+        let deadline = gloo_timers::future::TimeoutFuture::new(610_000);
+        match futures_util::future::select(std::pin::pin!(answer), std::pin::pin!(deadline)).await {
+            futures_util::future::Either::Left((answer, _)) => answer.map_err(host_failure),
+            futures_util::future::Either::Right(_) => Err(refusal(
+                "engine_timed_out",
+                "The engine did not answer within the command deadline.",
+            )),
+        }
     }
 
     fn member(value: &JsValue, key: &str) -> JsValue {
@@ -296,7 +343,13 @@ export interface CapabilityRefusal extends Error {
             let message = member(&error, "message")
                 .as_string()
                 .unwrap_or_else(|| "DS Core refused the command.".into());
-            return Err(refusal(&code, &message));
+            let remedy = member(&error, "remedy").as_string();
+            let mut answer =
+                super::command::connection_failure(Some(&code), &message, remedy.as_deref());
+            if let Some(retryable) = member(&error, "retryable").as_bool() {
+                answer.retryable = retryable;
+            }
+            return Err(failure(answer));
         }
         if let Some(output) = run.and_then(|run| run.output) {
             let file = member(&member(envelope, "files"), output);
@@ -361,7 +414,9 @@ export interface CapabilityRefusal extends Error {
 
     /// This build's answer for `capability`.
     #[wasm_bindgen(js_name = capabilityRoute, unchecked_return_type = "{ schema: string; capability: string; platform: string; status: 'supported' | 'pending' | 'discarded'; executor?: 'core' | 'kernel' | 'network_unit'; exchange?: string; page_lanes?: number; refusal?: { code: 'capability_pending' | 'capability_discarded'; reason: string; message: string } }")]
-    pub fn capability_route(capability: String) -> Result<JsValue, JsValue> {
+    pub fn capability_route(
+        #[wasm_bindgen(unchecked_param_type = "CapabilityId")] capability: String,
+    ) -> Result<JsValue, JsValue> {
         let answer = route(&capability).map_err(|text| refused(&text))?;
         crate::gateway_exchange::browser::typed(&answer)
     }
@@ -373,7 +428,7 @@ export interface CapabilityRefusal extends Error {
     #[wasm_bindgen(js_name = capabilityRun, unchecked_return_type = "any")]
     pub async fn capability_run(
         host: CapabilityHost,
-        capability_id: String,
+        #[wasm_bindgen(unchecked_param_type = "RunnableCapabilityId")] capability_id: String,
         project: String,
         #[wasm_bindgen(unchecked_param_type = "unknown")] input: JsValue,
     ) -> Result<JsValue, JsValue> {
@@ -415,6 +470,57 @@ export interface CapabilityRefusal extends Error {
                 Err(refusal(answer.code, answer.message))
             }
         }
+    }
+
+    /// Narrow a runtime-selected id before consulting this build's routes.
+    #[wasm_bindgen(js_name = capabilityIsKnown, unchecked_return_type = "value is CapabilityId")]
+    pub fn capability_is_known(value: String) -> bool {
+        super::capability(&value).is_ok()
+    }
+
+    /// The Kernel's decision for a Core door. This includes supported
+    /// capabilities that use another executor in this build.
+    #[wasm_bindgen(js_name = capabilityCoreRefusal, unchecked_return_type = "CapabilityFailure | null")]
+    pub fn capability_core_refusal(value: String) -> Result<JsValue, JsValue> {
+        crate::gateway_exchange::browser::typed(&super::command::core_refusal(&value))
+    }
+
+    /// The same input admission used by native forwarding, before a form can run.
+    #[wasm_bindgen(js_name = capabilityCommandAdmission, unchecked_return_type = "CapabilityFailure | null")]
+    pub fn capability_command_admission(
+        id: String,
+        descriptor: JsValue,
+        args: JsValue,
+        project: String,
+    ) -> Result<JsValue, JsValue> {
+        let descriptor: serde_json::Value = tsify::serde_wasm_bindgen::from_value(descriptor)
+            .map_err(|error| refusal("capability_input_invalid", &error.to_string()))?;
+        let args: serde_json::Value = tsify::serde_wasm_bindgen::from_value(args)
+            .map_err(|error| refusal("capability_input_invalid", &error.to_string()))?;
+        crate::gateway_exchange::browser::typed(&super::command::admit(
+            &id,
+            &descriptor,
+            &args,
+            &project,
+        ))
+    }
+
+    /// Bind a native/JS transport rejection to the shared failure vocabulary.
+    #[wasm_bindgen(js_name = capabilityFailure, unchecked_return_type = "CapabilityFailure")]
+    pub fn capability_failure(
+        #[wasm_bindgen(unchecked_param_type = "unknown")] error: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let code = member(&error, "code").as_string();
+        let message = member(&error, "message")
+            .as_string()
+            .or_else(|| error.as_string())
+            .unwrap_or_else(|| "The engine connection ended before it answered.".into());
+        let remedy = member(&error, "remedy").as_string();
+        crate::gateway_exchange::browser::typed(&super::command::connection_failure(
+            code.as_deref(),
+            &message,
+            remedy.as_deref(),
+        ))
     }
 }
 
