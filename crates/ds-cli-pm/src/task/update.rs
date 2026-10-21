@@ -108,10 +108,11 @@ The project, the `taskId`, `applied`, the `committedRevision`, the list of \
             runnable: false,
         },
     ],
-    refusals: &crate::write_refusals::<27>(&[
+    refusals: &crate::write_refusals::<28>(&[
         crate::INVALID_DATE,
         crate::INVALID_NUMBER,
         crate::INVALID_VALUE,
+        crate::TEXT_TOO_LONG,
         Refusal {
             code: "invalid_task_shape",
             when: "a milestone was given different dates, or a summary schedule was cleared",
@@ -198,7 +199,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let lane = inputs.value("lane").unwrap_or("stable");
     let read = crate::graph(lane, inputs.require("project")?)?;
-    let (prepared, kinds) = writes::update_task(&read.graph, &update).map_err(crate::refused)?;
+    let (prepared, kinds) = writes::update_task(&read.graph, &update).map_err(|refusal| {
+        crate::refused_texts(
+            refusal,
+            &[
+                ("title", inputs.value("title")),
+                ("description", inputs.value("description")),
+            ],
+        )
+    })?;
     let result =
         crate::authoring::commit_batch(inputs, lane, inputs.require("project")?, &prepared)?;
     let mut extra = Map::new();

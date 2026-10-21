@@ -65,6 +65,11 @@ const REFUSALS: &[Refusal] = &[
         when: "the complete retained snapshot changed after preview",
         remedy: "preview sanitation again and apply its exact new digest",
     },
+    Refusal {
+        code: "project_not_visible",
+        when: "the signed-in account's project directory does not list the exact project",
+        remedy: "choose an exact id from ds auth project list",
+    },
 ];
 
 pub static STATUS: Command = super::command(
@@ -157,6 +162,11 @@ fn send(inputs: &Inputs, command: recovery::Command) -> Result<Value, Failure> {
             _ => Failure::conflict(super::REFUSED.code, detail.to_owned()),
         };
         return Err(failure.remedy(remedy));
+    }
+    // A project the account cannot see reads as an empty store. Only an empty
+    // answer pays for the account's directory.
+    if result["total"].as_u64() == Some(0) {
+        ds_cli_auth::require_project_visible(inputs.require("lane")?, &control.project)?;
     }
     Ok(result)
 }

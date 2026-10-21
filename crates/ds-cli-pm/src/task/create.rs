@@ -118,9 +118,10 @@ pub const INVALID_TASK_SHAPE: Refusal = Refusal {
     remedy: "use --parent only with --kind child or milestone, and give a milestone one date",
 };
 
-const REFUSALS: [Refusal; 5] = [
+const REFUSALS: [Refusal; 6] = [
     crate::INVALID_DATE,
     crate::INVALID_VALUE,
+    crate::TEXT_TOO_LONG,
     INVALID_TASK_SHAPE,
     super::attach::FILE_INVALID,
     ATTACH_PARTIAL,
@@ -164,7 +165,7 @@ pub static COMMAND: Command = Command {
             runnable: false,
         },
     ],
-    refusals: &crate::write_refusals::<27>(&REFUSALS),
+    refusals: &crate::write_refusals::<28>(&REFUSALS),
     reference: Some("docs/reference/pm.md"),
     search: &[
         "subtask", "sub-task", "deadline", "due", "date", "backlog", "wbs", "schedule",
@@ -236,7 +237,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             links: Vec::new(),
         },
     )
-    .map_err(crate::refused)?;
+    .map_err(|refusal| {
+        crate::refused_texts(
+            refusal,
+            &[
+                ("title", inputs.value("title")),
+                ("description", inputs.value("description")),
+            ],
+        )
+    })?;
     if inputs.switch("dry-run") {
         return Ok(json!({
             "project": read.project_id,

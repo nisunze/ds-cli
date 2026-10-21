@@ -569,10 +569,16 @@ pub const CONFIRMATION_REQUIRED: Refusal = Refusal {
     when: "--yes was not given for a command that changes the project's plan",
     remedy: "re-run with --yes once you intend the change",
 };
+/// A text flag over the bound the engine states for it.
+pub const TEXT_TOO_LONG: Refusal = Refusal {
+    code: "text_too_long",
+    when: "a text flag such as --title or --description is longer than the engine's bound for it",
+    remedy: "shorten the text to at most the bound named in detail.max_characters",
+};
 /// A value the engine's own vocabulary for this project does not hold.
 pub const INVALID_VALUE: Refusal = Refusal {
     code: "invalid_choice",
-    when: "a state, priority, type, placement or scheduling flag is outside the vocabulary `ds pm plan` publishes for this project, or a text flag is empty or over its bound",
+    when: "a state, priority, type, placement or scheduling flag is outside the vocabulary `ds pm plan` publishes for this project, or a required text flag is empty",
     remedy: "read .data.vocabulary from `ds pm plan --output json` and pass one of its values",
 };
 /// The host could not mint an idempotency key for the commit.
@@ -764,6 +770,42 @@ pub fn command_id() -> Result<String, Failure> {
 
 /// The kernel's refusal of a write before it was sent, as the failure
 /// `ds pm` documents for it.
+/// `refused`, except that an over-long text flag is named for what it is.
+///
+/// The engine words an empty and an over-long required text the same way
+/// ("must be a non-empty string no longer than N characters"), so a caller
+/// told `invalid_choice` is pointed at the vocabulary for a sentence that is
+/// only too long. The flag values are known here: when the message names one
+/// of them and that value really exceeds the stated bound, the refusal is
+/// `text_too_long`. Any other refusal is unchanged.
+pub fn refused_texts(refusal: writes::Refusal, texts: &[(&str, Option<&str>)]) -> Failure {
+    if let writes::Refusal::InvalidValue(message) = &refusal {
+        for (flag, value) in texts {
+            let Some(value) = value else { continue };
+            let Some(max) = stated_bound(message, flag) else {
+                continue;
+            };
+            let given = value.chars().count();
+            if given > max {
+                return Failure::invalid(
+                    TEXT_TOO_LONG.code,
+                    format!("`--{flag}` is {given} characters; the limit is {max}"),
+                )
+                .remedy(TEXT_TOO_LONG.remedy)
+                .detail(json!({ "flag": flag, "max_characters": max, "given_characters": given }));
+            }
+        }
+    }
+    refused(refusal)
+}
+
+/// The bound an engine sentence states for one text label, if it is about it.
+fn stated_bound(message: &str, label: &str) -> Option<usize> {
+    let rest = message.strip_prefix(label)?.strip_prefix(" must be ")?;
+    let (_, tail) = rest.split_once("no longer than ")?;
+    tail.split_whitespace().next()?.parse().ok()
+}
+
 pub fn refused(refusal: writes::Refusal) -> Failure {
     let message = refusal.message();
     match refusal {
@@ -1046,3 +1088,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "text_bound_tests.rs"]
+mod text_bound_tests;

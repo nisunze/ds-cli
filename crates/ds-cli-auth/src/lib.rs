@@ -24,6 +24,15 @@ pub use metadata::{
 };
 mod profile;
 mod project_template;
+mod asset_read_bound;
+#[cfg(test)]
+#[path = "asset_read_bound_tests.rs"]
+mod asset_read_bound_tests;
+pub mod project_visible;
+#[cfg(test)]
+#[path = "project_visible_tests.rs"]
+mod project_visible_tests;
+pub use project_visible::require_project_visible;
 pub mod reliability;
 mod saved_a4;
 mod saved_preview_read;
@@ -3362,6 +3371,11 @@ pub fn project_management_for_project(
         |device, project| device.project_management(project, command),
         |client, project| client.project_management(project, command, now()),
     );
+    // A project the service has never heard of answers an empty plan at
+    // revision 0 (or a task-level refusal); the account's directory decides.
+    let result = project_visible::refuse_unseen(lane_value, project, result, |answer| {
+        answer["revision"].as_u64() == Some(0)
+    });
     if let Err(error) = &result {
         pm_graph_source::after_refusal(&binding, error)?;
     }
@@ -3496,14 +3510,18 @@ pub fn project_assets_for_project(
         None
     };
     let reader = std::cell::RefCell::new(reader);
-    let mut captured = headless_named_project(
+    let captured = headless_named_project(
         lane_value,
         project,
         |device, project| device.project_assets(project, command, reader.borrow_mut().take()),
         |client, project| {
             client.project_assets(project, command, reader.borrow_mut().take(), now())
         },
-    )?;
+    );
+    // The catalogue answers an empty index for a project it has never heard of.
+    let mut captured = project_visible::refuse_unseen(lane_value, project, captured, |answer| {
+        answer["assets"].as_array().is_some_and(Vec::is_empty)
+    })?;
     if let Some(fence) = &write_fence {
         match asset_index_source::after_write(lane_value, project, command, &captured, fence) {
             Ok(invalidated) => captured.result["retained_invalidation"] = json!({"status":"verified", "invalidated":invalidated, "acquired":false}),
@@ -3587,9 +3605,10 @@ pub fn read_asset_bytes_for_project(
     project: &str,
     asset_id: &str,
 ) -> Result<HeadlessNamedProject<(Value, Vec<u8>)>, Failure> {
-    headless_named_project(
+    headless_named_project_with(
         lane_value,
         project,
+        |error| asset_read_bound::refusal(&error.to_string()).unwrap_or_else(|| map_client(error)),
         |device, project| device.read_asset_bytes(project, asset_id),
         |client, project| client.read_asset_bytes(project, asset_id, now()),
     )
@@ -4031,9 +4050,12 @@ fn principal_binding_sha256(uid: &str, email: &str) -> String {
 
 fn map_survey_entry_create_service_code(code: SurveyEntryCreateServiceCode) -> Failure {
     match code {
-        SurveyEntryCreateServiceCode::FirebaseSessionRequired => Failure::unavailable(
+        // Not retryable: nothing about a retry changes which credential this
+        // machine holds. The way forward is the Core's offline entry queue.
+        SurveyEntryCreateServiceCode::FirebaseSessionRequired => Failure::unauthorized(
             "survey_create_firebase_session_required", "Direct Survey creation requires an existing native Firebase user session")
-            .remedy("use the same-owner signed-in Desktop entry queue; standalone trusted-device creation is not admitted"),
+            .remedy("use the same-owner signed-in Desktop entry queue; standalone trusted-device creation is not admitted")
+            .next("ds core survey queue --help"),
         SurveyEntryCreateServiceCode::Invalid => Failure::invalid(
             "survey_entry_create_invalid",
             "the fixed service rejected the bounded Survey create request",
@@ -8149,9 +8171,9 @@ mod tests {
             (
                 ServiceCode::FirebaseSessionRequired,
                 "survey_create_firebase_session_required",
-                ExitClass::Unavailable,
+                ExitClass::Unauthorized,
                 "same-owner signed-in Desktop",
-                true,
+                false,
             ),
             (
                 ServiceCode::Invalid,
@@ -9234,3 +9256,7 @@ mod feedback_component_tests {
         assert_eq!(invented.message(), "--component names no live repository");
     }
 }
+
+#[cfg(test)]
+#[path = "survey_create_session_tests.rs"]
+mod survey_create_session_tests;

@@ -257,7 +257,77 @@ pub fn bytes(lane: &str, project: &str, asset_id: &str) -> Result<(Value, Vec<u8
     if is_projected(asset_id) && !asset_id.starts_with("sys:pm_attachment:") {
         return Err(projected_unavailable(asset_id));
     }
-    Ok(ds_cli_auth::read_asset_bytes_for_project(lane, project, asset_id)?.into_result())
+    match ds_cli_auth::read_asset_bytes_for_project(lane, project, asset_id) {
+        Ok(read) => Ok(read.into_result()),
+        Err(failure) if is_read_bound(&failure) => {
+            Err(read_bound_exceeded(lane, project, asset_id, failure))
+        }
+        Err(failure) => Err(failure),
+    }
+}
+
+/// Whether a failure is the whole-asset read bound the native client enforces.
+fn is_read_bound(failure: &Failure) -> bool {
+    failure.code() == "asset_too_large"
+        && failure
+            .detail_value()
+            .is_some_and(|detail| detail.get("read_bound_bytes").is_some())
+}
+
+/// The read-bound refusal with the asset's measured size and the exact
+/// command that streams it. A catalogued asset's size is its row's; a Project
+/// Work attachment has no catalogue row and no streaming read, so its size is
+/// not measured here and its remedy says so.
+fn read_bound_exceeded(lane: &str, project: &str, asset_id: &str, failure: Failure) -> Failure {
+    let bound = failure
+        .detail_value()
+        .and_then(|detail| detail["read_bound_bytes"].as_u64())
+        .unwrap_or(33_554_432);
+    let size = (!is_projected(asset_id))
+        .then(|| {
+            let download = CatalogueCommand::Download {
+                asset_id: asset_id.to_owned(),
+            };
+            catalogue(lane, project, &download).ok()
+        })
+        .flatten()
+        .and_then(|answer| answer["asset"]["bytes"].as_u64());
+    read_bound_failure(project, asset_id, bound, size)
+}
+
+/// The refusal itself, from the measured facts.
+fn read_bound_failure(project: &str, asset_id: &str, bound: u64, size: Option<u64>) -> Failure {
+    let catalogued = !is_projected(asset_id);
+    let message = match size {
+        Some(size) => format!(
+            "the asset is {size} bytes, above the {bound}-byte (32 MiB) bound for reading its bytes into memory"
+        ),
+        None => format!(
+            "the asset is above the {bound}-byte (32 MiB) bound for reading its bytes into memory"
+        ),
+    };
+    let (remedy, next) = if catalogued {
+        (
+            "stream it instead: `ds assets download` returns a short-lived signed URL for a document reader, and no bytes are held in memory",
+            Some(format!("ds assets download --project {project} --asset {asset_id}")),
+        )
+    } else {
+        (
+            "a Project Work attachment has no streaming read; open it from the Project Work surface that holds it",
+            None,
+        )
+    };
+    let failure = Failure::invalid("asset_too_large", message)
+        .remedy(remedy)
+        .detail(json!({
+            "read_bound_bytes": bound,
+            "asset_bytes": size,
+            "asset": asset_id,
+        }));
+    match next {
+        Some(next) => failure.next(next),
+        None => failure,
+    }
 }
 
 /// The declared folder at `path`, from the one folder authority.
@@ -477,7 +547,7 @@ pub fn digest(raw: &str, flag: &str) -> Result<String, Failure> {
 pub const ASSET_TOO_LARGE: Refusal = Refusal {
     code: "asset_too_large",
     when: "the bytes are above the read bound the message names with the number",
-    remedy: "open it from its own surface, which streams instead of holding it in memory",
+    remedy: "stream it instead: `ds assets download` returns a short-lived signed URL for a document reader, so no bytes are held in memory",
 };
 pub const ORIGIN_READ_FAILED: Refusal = Refusal {
     code: "origin_read_failed",
@@ -927,3 +997,7 @@ pub use ds_cli_contract::util::truncate;
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "read_bound_tests.rs"]
+mod read_bound_tests;
