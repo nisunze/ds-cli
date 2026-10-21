@@ -38,7 +38,7 @@ Chrome, Edge, or Chromium once with
 verify it with `ds workstation verify --component chromium`.
 
 - A saved analysis prints as the explicit `voltage_drop_pdf` project output of
-  `report.project.export` (or `desktop.printing.export`); nothing is
+  `report.project.export`; nothing is
   recalculated. `design.lv.project-run` saves an analysis first, and only when
   the user authorizes a project write.
 - Without a saved analysis, or without writing the project, print read-only:

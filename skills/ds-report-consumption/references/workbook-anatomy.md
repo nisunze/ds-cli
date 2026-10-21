@@ -76,8 +76,8 @@ After the new reporter build is installed, configure an existing Chrome, Edge,
 or Chromium once through `ds workstation configure --component chromium
 --target reporter --yes`, verify it with `ds workstation verify --component
 chromium`, and select the explicit
-`voltage_drop_pdf` project output, and export through `ds report project export`
-or `ds desktop printing export`. The local printing engine invokes Chromium
+`voltage_drop_pdf` project output, and export through `ds report project export`.
+The local printing engine invokes Chromium
 automatically and produces `<Display Name> voltage drop.pdf` on A4, with the
 extended report by default;
 the brief variant is selectable. The PDF carries the `ds-lv-vd/1` result,

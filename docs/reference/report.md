@@ -900,9 +900,7 @@ named project (the saved selection is never read) and asks `printing::inventory`
 Reserved aggregate, analysis and project-document identities are excluded even
 when raw status rows omit their kind. The result reports `more.omitted`.
 `cached` and `dirty` are **null**, with `local_rooms_known: false`, because this
-native read does not inspect browser rooms. `ds desktop printing transformers`
-remains the browser-room IO adapter and asks the same kernel with those facts.
-Neither command opens or switches the map.
+native read does not inspect browser rooms. It never opens or switches the map.
 
 `ds report plan --action export --request export.json --output json` evaluates
 an export request without running it. The file contains `project`,
@@ -1084,7 +1082,7 @@ policy selects neither voltage-drop output does not read this tag projection.
 
 `voltage_drop_pdf` is the A4 voltage-drop report. Select it in the project's
 `ds.design-output-selection/v1` document, under `geospatial`, then use
-`ds report project export` or `ds desktop printing export`. The report format
+`ds report project export`. The report format
 field `voltage_drop_report` chooses `extended` (the default) or `brief` for
 both voltage-drop outputs. The A4 PDF is printed through local Chromium on
 Desktop or the headless Server; Web execution omits it. The Web app may preview

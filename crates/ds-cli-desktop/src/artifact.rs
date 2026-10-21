@@ -46,7 +46,7 @@ const TRANSFORMER_ARG: Arg = Arg::value(
 const OUTPUT_ARG: Arg = Arg::value(
     "output-id",
     "<output-id>",
-    "Exact outputId returned by desktop printing export or artifact read.",
+    "Exact outputId of the transformer's report export, or of artifact read.",
 )
 .required();
 const INTENT_ARG: Arg = Arg::value(
@@ -67,12 +67,12 @@ const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "printing_artifact_invalid",
         when: "project, transformer or output identity is malformed",
-        remedy: "copy the exact project, transformer and outputId from the printing export receipt",
+        remedy: "copy the exact project, transformer and outputId from the report export receipt",
     },
     Refusal {
         code: "printing_artifact_unavailable",
         when: "the owner-bound committed output is absent or its receipt/bytes fail verification",
-        remedy: "run desktop printing export for that exact project and transformer, then retry",
+        remedy: "export that transformer's report in the Desktop for that exact project, then retry",
     },
 ];
 
@@ -168,7 +168,7 @@ fn bounded(value: &str, label: &str, max: usize) -> Result<String, Failure> {
     {
         return Err(
             Failure::invalid("printing_artifact_invalid", format!("{label} is invalid"))
-                .remedy("use the exact identity returned by desktop printing export"),
+                .remedy("use the exact identity of the transformer's report export"),
         );
     }
     Ok(value.to_string())
@@ -286,76 +286,5 @@ pub fn render(data: &Value) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bridge_contract_has_only_exact_selector_and_destination() {
-        assert_eq!(
-            READ_OP.arguments,
-            ["project", "transformer", "outputId", "intent"]
-        );
-        assert_eq!(
-            COPY_OP.arguments,
-            [
-                "project",
-                "transformer",
-                "outputId",
-                "destination",
-                "intent"
-            ]
-        );
-    }
-
-    #[test]
-    fn copy_refuses_an_existing_destination_before_pairing() {
-        let temporary = tempfile::NamedTempFile::new().unwrap();
-        let error = absolute_new_destination(temporary.path().to_str().unwrap()).unwrap_err();
-        assert_eq!(error.code(), "printing_artifact_path_exists");
-    }
-
-    fn inputs(command: &Command, intent: Option<&str>) -> Result<Inputs, Failure> {
-        let mut tokens = vec![
-            "--project",
-            "survey_test",
-            "--transformer",
-            "agasharu",
-            "--output-id",
-            "pdf__a3",
-        ];
-        if command.id == COPY_COMMAND.id {
-            tokens.extend(["--out", "./agasharu-preview.pdf"]);
-        }
-        if let Some(intent) = intent {
-            tokens.extend(["--intent", intent]);
-        }
-        ds_cli_contract::args::parse(
-            command,
-            &tokens.into_iter().map(str::to_owned).collect::<Vec<_>>(),
-        )
-    }
-
-    #[test]
-    fn read_and_copy_preserve_main_selectors_and_forward_explicit_preview() {
-        let main = json!({"project":"survey_test","transformer":"agasharu","outputId":"pdf__a3"});
-        for command in [&READ_COMMAND, &COPY_COMMAND] {
-            assert_eq!(selector(&inputs(command, None).unwrap()).unwrap(), main);
-            let mut preview = main.clone();
-            preview["intent"] = json!("preview");
-            assert_eq!(
-                selector(&inputs(command, Some("preview")).unwrap()).unwrap(),
-                preview
-            );
-        }
-    }
-
-    #[test]
-    fn read_and_copy_refuse_unknown_intent_before_pairing() {
-        for command in [&READ_COMMAND, &COPY_COMMAND] {
-            assert_eq!(
-                inputs(command, Some("main")).unwrap_err().code(),
-                "invalid_choice"
-            );
-        }
-    }
-}
+#[path = "artifact_tests.rs"]
+mod tests;

@@ -1,8 +1,8 @@
 # Reproducible cartography through CLI and MCP
 
-Use the deployed `ds` paired to the intended desktop lane. No source checkout or
-GUI style editor is required. Begin with `ds desktop printing settings --project
-<project> --output json`, then read the selected layouts natively with `report layout
+Use the deployed `ds` on the intended lane. No source checkout or GUI style
+editor is required. Begin with `ds report project settings --project <project>
+--output json`, then read the selected layouts natively with `report layout
 get`. `ds map print schema` is the map-authority entry point. Its compact index
 names request, layout, edit and output sections; read just the section needed
 with `--section`. These are the native Rust schemas, including nested style,
@@ -140,9 +140,8 @@ transformer atlas, because a project-wide print does not fit in memory
 package, export each chosen transformer individually and assemble those PDFs
 outside the product, by hand or through the CLI or MCP.
 
-Save a layout and select its output using `desktop printing prepare --request
-setup.json --yes`. Read settings back, export, and copy each artifact using its
-returned exact `outputId` through `desktop printing artifact copy`. Archive the
+Save a layout with `report layout save`, select its output with `report project
+outputs set`, read the settings back and export with `report project export`. Archive the
 layout JSON, style commands, selection and artifact receipts together as the
 reusable recipe. MCP profiles expose the same typed commands and request schema.
 
@@ -228,7 +227,7 @@ Polygon outlines can be styled independently: `style cartography set --ref gt/rw
 
 Automatic fitting accepts `scale_rounding: 100` on a layout to round the actual scale denominator upward to the next hundred without cropping. Explicit camera scales remain exact. Scale bars measure their frame, choose a 1/2/5 ground distance, and draw alternating segments with zero, midpoint and unit-bearing endpoint labels; remove a separate `scale-background` rectangle for a clean unboxed bar.
 
-A template override may supply `field`, `palette` and `size_by_value` to classify a previously flat style. For example `{"field":"type","size":2.8,"palette":{"District road":"#D6D5D1"},"size_by_value":{"National road":4.4,"District road":3.4}}`. Inspect the exact values through `desktop printing seed-context`: its bounded `propertySample` reports up to 16 values per field from the first 1000 features, not a complete domain. Shared pens remain inherited for unspecified categories. Polygon labels search within the visible polygon, keeping their full text box outside holes and furniture.
+A template override may supply `field`, `palette` and `size_by_value` to classify a previously flat style. For example `{"field":"type","size":2.8,"palette":{"District road":"#D6D5D1"},"size_by_value":{"National road":4.4,"District road":3.4}}`. Shared pens remain inherited for unspecified categories. Polygon labels search within the visible polygon, keeping their full text box outside holes and furniture.
 
 For independent draft body transparency, keep the authored halo and add an opacity dimension: `style dimension plan --ref master/lv_poles_print --field drafting_status --channel opacity --value draft=0.5 --other 1 --keep-other-channels`. Review, then use `set --yes`. The same flag works for screen styles. Sprite body opacity is baked independently of the halo, so zero hides the body while retaining the ring. Halo colour can carry alpha when the ring itself should fade. Print and live raster symbols remove the interior from the halo before painting the body, avoiding a black silhouette beneath a translucent sprite.
 

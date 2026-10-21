@@ -1633,12 +1633,7 @@ export const settings = { code: 'metric', label: 'Settings' };
 /// kernel's decision, which the Rust relays above account for. Keep the shape:
 /// a file listed here is a file whose *new* codes would be invisible, so
 /// nothing belongs here that mints a code of its own.
-const APPLICATION_CODE_NOT_A_LITERAL: &[(&str, &str)] = &[(
-    "src/lib/components/printing/PrintingSetup.svelte",
-    "the held print view relays planPrintingView's refusal unchanged; the \
-     kernel printing::view plan owns that code (template unavailable or the \
-     draft guard's refusal), and the file's own codes remain literals",
-)];
+const APPLICATION_CODE_NOT_A_LITERAL: &[(&str, &str)] = &[];
 
 /// Codes the application still mints for a bridge domain `ds` no longer
 /// sends to, with why.

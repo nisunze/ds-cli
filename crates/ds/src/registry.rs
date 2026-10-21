@@ -3073,61 +3073,6 @@ static DESKTOP_ENTRIES: &[Entry] = &[
         render: ds_cli_desktop::project::render_switch,
     },
     Entry {
-        command: &ds_cli_desktop::printing::SETTINGS_COMMAND,
-        handler: ds_cli_desktop::printing::settings,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::printing::TRANSFORMERS_COMMAND,
-        handler: ds_cli_desktop::printing::transformers,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::printing::EXPORT_COMMAND,
-        handler: ds_cli_desktop::printing::export,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::printing::PREVIEW_COMMAND,
-        handler: ds_cli_desktop::printing::preview,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::printing_view::COMMAND,
-        handler: ds_cli_desktop::printing_view::run,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::printing::PREPARE_COMMAND,
-        handler: ds_cli_desktop::printing::run,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::custom_print::AREA_COMMAND,
-        handler: ds_cli_desktop::custom_print::area,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::custom_print::EXPORT_COMMAND,
-        handler: ds_cli_desktop::custom_print::export,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::custom_print::LIST_COMMAND,
-        handler: ds_cli_desktop::custom_print::list,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::custom_print::ATTACH_COMMAND,
-        handler: ds_cli_desktop::custom_print::attach,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
-        command: &ds_cli_desktop::printing::SEED_CONTEXT_COMMAND,
-        handler: ds_cli_desktop::printing::seed_context,
-        render: ds_cli_desktop::printing::render,
-    },
-    Entry {
         command: &ds_cli_desktop::artifact::READ_COMMAND,
         handler: ds_cli_desktop::artifact::read,
         render: ds_cli_desktop::artifact::render,

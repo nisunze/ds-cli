@@ -62,10 +62,9 @@ same door:
   same acquisition for each printed transformer's own cluster before it
   renders, so the first print request seeds and later runs acquire nothing.
   Without `--seed` a print never reaches a provider.
-- *Desktop-only*: `desktop.printing.seed-context` (survey layers, local
-  layers, the project's DS Grid MV models) and `desktop.data.rwanda.install`
-  (the villages DSAB the Rwanda engine stamps with; headless export reads it
-  from the shared root or `--admin-bounds`).
+- *Desktop-only*: `desktop.data.rwanda.install` (the villages DSAB the Rwanda
+  engine stamps with; headless export reads it from the shared root or
+  `--admin-bounds`).
 
 ## 3. Templates: start from the published default, customise for the project
 
@@ -116,11 +115,9 @@ measured furniture in a rendered preview before queuing the whole project.
   kmz/shp/xlsx) · `saved`, `parameter`, placements · it refuses
   `print_setup_not_adopted` for a setup the project does not hold; publish or
   copy the setup first.
-- *Desktop-only*: `desktop.printing.prepare` does layout + selection +
-  per-transformer overrides in one transaction; per-transformer overrides have
-  no dedicated headless save command yet. Pure layout-editor intents can apply
-  an exception to a local draft or patch a settings document, but do not publish
-  it. See [outlier adjustments](../../ds-map-composition/references/outlier-transformers.md).
+- Per-transformer overrides have no dedicated headless save command yet.
+  Pure layout-editor intents can apply an exception to a local draft or patch a
+  settings document, but do not publish it. See [outlier adjustments](../../ds-map-composition/references/outlier-transformers.md).
 
 ## 5. Prove one sheet before the batch
 
@@ -151,21 +148,20 @@ measured furniture in a rendered preview before queuing the whole project.
   (`layout_id`, `layout_sha256`, `output_id`) and `local_print_recipe.preview`
   in the run receipt say it was a preview · a preview is draft state, not an
   artifact: it never seeds, never projects MV, refuses `--seed` and
-  `--context-vectors`, changes no recipe, room or output and cannot publish ·
-  the desktop Printing setup obtains this same page through the same command
-  id via the desktop door.
+  `--context-vectors`, changes no recipe, room or output and cannot publish.
 - The template's pens · `report.layout.pens --layout <l.json> --documents
   <styles.json>` lists what each bound print layer prints with;
   `--action edit --layer <id> --property size|color|opacity|visible|… --value
   <json>` changes one, `--action reset --layer <id>` removes the override ·
   edit, preview, repeat; save the layout once the page reads right.
 
-## 6. District MV and custom-area maps — *desktop-only today*
+## 6. District MV and custom-area maps
 
-- `desktop.printing.custom.area`, `map.print.schema --section request`,
-  `desktop.printing.map.export`, `desktop.printing.map.list`,
-  `desktop.printing.map.attach` · unchanged; the server has no map-export
-  owner yet, say so rather than substituting a transformer sheet.
+- `report.project.map-inputs --area-bounds <w,s,e,n> --layout <l.json>
+  --out-dir <dir>` captures the area's transformers, MV models and context;
+  `report.layout.render --request <capture>` prints it; `assets.map.publish`
+  publishes the PDF. There is no district-by-code shortcut yet: say so rather
+  than substituting a transformer sheet.
 
 ## 7. Produce the batch
 

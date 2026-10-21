@@ -1854,44 +1854,7 @@ fn chapter_routing_refuses_escape_and_confirmation_misuse() {
 }
 
 #[test]
-fn printing_profile_exposes_one_bounded_live_preview_without_export_options() {
-    let (responses, _) = mcp(
-        &["--exposure", "commands", "--profile", "printing"],
-        &[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})],
-    );
-    let tools = response(&responses, 1)["result"]["tools"]
-        .as_array()
-        .unwrap();
-    assert!((2..=29).contains(&tools.len()));
-    let matching = tools
-        .iter()
-        .filter(|tool| tool["name"] == "desktop_printing_preview")
-        .collect::<Vec<_>>();
-    assert_eq!(matching.len(), 1);
-    let tool = matching[0];
-    assert_eq!(tool["title"], "desktop.printing.preview");
-    assert_eq!(
-        tool["inputSchema"]["required"],
-        json!(["project", "transformer"])
-    );
-    assert_eq!(tool["inputSchema"]["additionalProperties"], false);
-    let properties = tool["inputSchema"]["properties"].as_object().unwrap();
-    for admitted in ["layout", "template", "out", "retention"] {
-        assert!(properties.contains_key(admitted), "{admitted}");
-    }
-    assert_eq!(properties["retention"]["enum"], json!(["24h", "7d"]));
-    assert!(
-        tools
-            .iter()
-            .all(|tool| tool["title"] != "data.city-vectors")
-    );
-    for forbidden in ["force", "selection", "intent", "confirm", "yes"] {
-        assert!(!properties.contains_key(forbidden), "{forbidden}");
-    }
-}
-
-#[test]
-fn printing_captured_layout_preview_advertises_the_same_explicit_paired_target() {
+fn printing_captured_layout_preview_is_a_native_preview_without_a_paired_target() {
     let (responses, _) = mcp(
         &["--exposure", "commands", "--profile", "printing"],
         &[json!({"jsonrpc":"2.0","id":1,"method":"tools/list"})],
@@ -1909,8 +1872,11 @@ fn printing_captured_layout_preview_advertises_the_same_explicit_paired_target()
     assert_eq!(schema["additionalProperties"], false);
     assert_eq!(schema["required"], json!(["request"]));
     let properties = schema["properties"].as_object().unwrap();
-    for key in ["preview", "project", "target", "desktop-descriptor"] {
+    for key in ["preview", "project"] {
         assert!(properties.contains_key(key), "{key}");
+    }
+    for key in ["target", "desktop-descriptor"] {
+        assert!(!properties.contains_key(key), "{key}");
     }
     assert_eq!(properties["preview-format"]["enum"], json!(["svg", "pdf"]));
     assert_eq!(
@@ -2093,7 +2059,6 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
         "selected checklist/copy/mail controls must not inflate broad Project"
     );
     assert!(published["printing-maps"].contains("map_print_schema"));
-    assert!(published["printing-maps"].contains("desktop_printing_map_export"));
     assert!(published["printing"].contains("report_layout_edit"));
     assert!(published["printing"].contains("report_transformers"));
     assert!(published["printing"].contains("report_plan"));

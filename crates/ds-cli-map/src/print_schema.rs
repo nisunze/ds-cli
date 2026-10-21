@@ -11,7 +11,7 @@ pub static COMMAND: Command = Command {
     path: &["map", "print", "schema"],
     contract: 1,
     summary: "Discover map-print requests, layouts, table heading keys and styles.",
-    purpose: "Returns a compact section index, then the selected kernel-owned schema. Print styles are independent of live-map styles. Request controls include area grouping, paper and DPI; layout covers furniture, layer styles, labels, content-fit tables with lossless heading keys, optional transformer shade and context acquisition. Author through report.layout.edit and render captured inputs through report.layout.render or use desktop.printing.map.export; the same commands are exposed through MCP.",
+    purpose: "Returns a compact section index, then the selected kernel-owned schema. Print styles are independent of live-map styles. Request controls include area grouping, paper and DPI; layout covers furniture, layer styles, labels, content-fit tables with lossless heading keys, optional transformer shade and context acquisition. Author through report.layout.edit and render captured inputs through report.layout.render; the same commands are exposed through MCP.",
     chapter: Chapter::MapPresentation,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -42,7 +42,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Some("edit") => ds_command_kernel::printing::command_schema(),
         Some("outputs") => ds_command_kernel::report_formats::output_selection_schema(),
         _ => {
-            json!({"sections":["request","choices","layout","edit","outputs"],"next":"ds map print schema --section <section> --output json","author":"report.layout.edit","export":"desktop.printing.map.export","preview":"map.ui.open","assets":"assets.tree"})
+            json!({"sections":["request","choices","layout","edit","outputs"],"next":"ds map print schema --section <section> --output json","author":"report.layout.edit","export":"report.layout.render","preview":"map.ui.open","assets":"assets.tree"})
         }
     })
 }

@@ -105,9 +105,9 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
     // `ds-cli-solar` left on 2026-10-20: the Desktop Solar page became a JSON
     // window over the headless `solar.application`, and the sixteen paired
     // Solar commands were retired with the window executor.
-    // Paired print preview routing (1cd5b34f); revisit after Codex's PDF/print
-    // rework. It declares no window command of its own.
-    ("ds-cli-report", Layer::CorePending, 2),
+    // `ds-cli-report` left on 2026-10-21: the paired captured-layout preview
+    // (`report layout render --target desktop`) went with the Desktop's
+    // TypeScript printing; every report command answers headless.
     // `ds-cli-pm` left on 2026-09-20: every Project Management command is a
     // governed action on `POST /api/v1/pm` under the native credential, and
     // the kernel decides what the graph means and which command a flag
@@ -281,15 +281,12 @@ fn the_target_layers_are_exactly_the_window_and_the_binary() {
 ///
 /// Measured against the 2026-09-22 run tip.
 const WINDOW_COMMANDS: &[(&str, usize)] = &[
-    // The bridge's own domain: pairing, sync, printing, published artifacts.
-    // 25 → 26 literal declarations: `desktop.printing.preview` (0b9a457b) reads the paired
-    // window's held context and draft SVG, while `report.project.export`
-    // owns headless preview computation. It cannot save or publish a layout.
-    // 26 → 27 declarations: printing.view consumes the window's held catalogue and page
-    // camera; pure headless view_plan remains report.layout.edit.
+    // The bridge's own domain: pairing, sync, published artifacts.
     // 27 → 28 on 2026-10-20: the shared constructor of the three local-dev
     // Transformer page controls (57da7815); see WINDOW_BACKLOG.
-    ("ds-cli-desktop", 28),
+    // 28 → 17 on 2026-10-20: the eleven Desktop-paired printing commands
+    // left with the page's TypeScript printing; Core prints headless.
+    ("ds-cli-desktop", 17),
     // The lens crate. Window commands are its purpose; its server commands
     // (the machine-local layer catalogue) are not counted here.
     // Profile view/set/select are display and transient selection controls in
@@ -329,8 +326,8 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // not a window command (see its descriptor comment). `dsgrid.profile.open` is
     // the one declared window command admitted on 2026-09-22.
     ("ds-cli-dsgrid", 1),
-    // Paired print preview routing (1cd5b34f); no window command of its own.
-    ("ds-cli-report", 0),
+    // `ds-cli-report` left this ledger on 2026-10-21 with the paired
+    // captured-layout preview and dropped the bridge dependency.
     // `ds-cli-pm` left this ledger on 2026-09-20: 9 → 8 on 2026-09-19 when
     // `pm plan` took the native headless route, 8 → 0 when the other eight
     // followed it (contract 01 of the dsgrid-authority program) and the
@@ -559,7 +556,9 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     // 28 → 31 on 2026-10-20: desktop.dev.snapshot/select/refresh (57da7815),
     // the local-dev drivers agents use to observe and test the Linux dev
     // desktop from the CLI, since that display cannot be clicked from a shell.
-    ("desktop", 31),
+    // 31 → 20 the same day: the eleven Desktop-paired printing commands left
+    // with the page's TypeScript printing; Core prints headless.
+    ("desktop", 20),
     // `dsgrid.model.prepare-project` is headless; `dsgrid.profile.open` is
     // the one window command admitted on 2026-09-22.
     ("dsgrid", 1),
@@ -604,34 +603,8 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 // 98 → 97 on 2026-10-20: the 3D map and `map.renderer.configure` removed.
 // 97 → 100 on 2026-10-20: the three local-dev desktop.dev.* drivers.
 // 100 → 84 the same day: the sixteen paired Solar commands retired.
-const WINDOW_BACKLOG_TOTAL: u64 = 84;
-
-#[test]
-fn paired_draft_preview_keeps_a_headless_computation_owner() {
-    let describe = |id| {
-        let output = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
-            .args(["capabilities", id, "--output", "json"])
-            .env("NO_COLOR", "1")
-            .output()
-            .expect("ds binary runs");
-        assert!(output.status.success(), "cannot describe {id}");
-        let answer: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        answer["data"]["command"].clone()
-    };
-    let lens = describe("desktop.printing.preview");
-    assert_eq!(lens["requires"], "window");
-    assert_eq!(lens["authority"], "desktop_user");
-    let owner = describe("report.project.export");
-    assert_eq!(owner["requires"], "server");
-    assert!(
-        owner["inputs"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|input| { input["name"] == "preview-layout" }),
-        "draft preview computation must remain reachable without a window"
-    );
-}
+// 84 → 73 the same day: the eleven Desktop-paired printing commands retired.
+const WINDOW_BACKLOG_TOTAL: u64 = 73;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {

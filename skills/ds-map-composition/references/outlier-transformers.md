@@ -5,7 +5,7 @@ Display title casing never changes that key. Read the project default and any
 existing exception first; preserve other transformers, papers, outputs and
 engineering geometry. A crowded outlier does not justify moving every sheet.
 
-Discover the live layout editing schema and project/desktop printing contracts
+Discover the live layout editing schema and project printing contracts
 through `ds capabilities`. CLI and MCP consume those same declarations and Rust
 owners. Do not invent flags or a separate MCP control vocabulary.
 
@@ -51,12 +51,10 @@ through the declared project preview/local-recipe export route. Restrict the
 subject scope to that transformer. Do not save the modified draft as the common
 project template just to make one exception permanent.
 
-For saved per-transformer instructions, discover the provisioned desktop printing
-preparation contract. It carries the explicit project, layout/revision, existing
-output selection and the keyed exception map; removing an exception restores the
-project default. Preserve selection and existing patches. It is currently the
-publication route for these exceptions; the pure editor is not a headless save
-command. Follow any lane/profile refusal without borrowing credentials.
+Saved per-transformer instructions have no headless save command yet: the pure
+editor patches a local draft or settings document and does not publish it. Say
+so rather than borrowing another route; removing an exception restores the
+project default. Follow any lane/profile refusal without borrowing credentials.
 
 ## Check the result
 

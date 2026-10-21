@@ -1006,53 +1006,6 @@ fn printing_lifecycle_writes_are_registered_and_stop_before_native_authority() {
 }
 
 #[test]
-fn printing_context_seeding_is_bound_to_one_visible_desktop_project() {
-    let descriptor = ok(&[
-        "capabilities",
-        "desktop.printing.seed-context",
-        "--output",
-        "json",
-    ]);
-    let command = &descriptor["command"];
-    assert_eq!(command["authority"], "desktop_user");
-    assert_eq!(command["effect"], "local_file_write");
-    let inputs = command["inputs"]
-        .as_array()
-        .expect("inputs")
-        .iter()
-        .map(|input| input["name"].as_str().expect("input name"))
-        .collect::<BTreeSet<_>>();
-    assert_eq!(
-        inputs,
-        BTreeSet::from(["desktop-descriptor", "target", "transformer"])
-    );
-    assert!(
-        !inputs.contains("project"),
-        "printing context seeding must use the paired desktop's visible project"
-    );
-
-    let descriptor_path = temp_root("printing-seed-unreachable")
-        .join("session.json")
-        .display()
-        .to_string();
-    let code = refusal(&[
-        "desktop",
-        "printing",
-        "seed-context",
-        "--transformer",
-        "T-1042",
-        "--desktop-descriptor",
-        &descriptor_path,
-        "--output",
-        "json",
-    ]);
-    assert!(
-        PAIRING_CODES.contains(&code.as_str()),
-        "a valid seed request must reach the paired project's owner, got `{code}`"
-    );
-}
-
-#[test]
 fn printing_artifact_access_is_exact_project_owned_and_copy_only_creates_a_new_file() {
     let read = ok(&[
         "capabilities",
@@ -12229,81 +12182,6 @@ fn retired_survey_workspace_is_not_discoverable_and_never_touches_existing_data(
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
     }
     std::fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn custom_print_area_refuses_bad_selection_before_pairing() {
-    for codes in [vec!["24"], vec!["2401", "2401"]] {
-        let mut args = vec![
-            "desktop",
-            "printing",
-            "custom",
-            "area",
-            "--project",
-            "p1",
-            "--id",
-            "huye",
-            "--output",
-            "json",
-        ];
-        for code in codes {
-            args.extend(["--sector", code]);
-        }
-        assert_eq!(refusal(&args), "custom_print_area_invalid");
-    }
-    let descriptor = ok(&[
-        "capabilities",
-        "desktop.printing.custom.area",
-        "--output",
-        "json",
-    ]);
-    assert_eq!(descriptor["command"]["effect"], "read_only");
-    assert_eq!(descriptor["command"]["authority"], "desktop_user");
-}
-
-#[test]
-fn map_export_and_catalog_contracts_keep_native_render_and_project_attachment_distinct() {
-    let export = ok(&[
-        "capabilities",
-        "desktop.printing.map.export",
-        "--output",
-        "json",
-    ]);
-    assert_eq!(export["command"]["effect"], "artifact_write");
-    assert_eq!(export["command"]["confirmation_required"], true);
-    let list = ok(&[
-        "capabilities",
-        "desktop.printing.map.list",
-        "--output",
-        "json",
-    ]);
-    assert_eq!(list["command"]["effect"], "read_only");
-    assert!(
-        list["command"]["inputs"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|a| a["name"] == "project" && a["required"] == true)
-    );
-}
-
-#[test]
-fn map_attachment_retry_requires_confirmation_and_canonical_filename() {
-    let descriptor = ok(&[
-        "capabilities",
-        "desktop.printing.map.attach",
-        "--output",
-        "json",
-    ]);
-    assert_eq!(descriptor["command"]["effect"], "global_write");
-    assert_eq!(descriptor["command"]["confirmation_required"], true);
-    assert!(
-        descriptor["command"]["inputs"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|a| a["name"] == "filename" && a["required"] == true)
-    );
 }
 
 // ---------------------------------------------------------------------------

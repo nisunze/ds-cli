@@ -37,11 +37,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("data.mv-lv-orphans", "local_file_write", "none"),
     // Exact effect and authority reviewed from the integrated CLI descriptors.
     ("assets.download", "read_only", "headless_project"),
-    (
-        "desktop.printing.preview",
-        "local_file_write",
-        "desktop_user",
-    ),
     ("assets.versions", "read_only", "headless_project"),
     (
         "data.project-cache.query",
@@ -358,34 +353,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("desktop.offline.status", "read_only", "desktop_user"),
     ("desktop.offline.set", "local_file_write", "desktop_user"),
     (
-        "desktop.printing.map.export",
-        "artifact_write",
-        "desktop_user",
-    ),
-    ("desktop.printing.map.list", "read_only", "desktop_user"),
-    (
-        "desktop.printing.map.attach",
-        "global_write",
-        "desktop_user",
-    ),
-    ("desktop.printing.custom.area", "read_only", "desktop_user"),
-    ("desktop.printing.settings", "read_only", "desktop_user"),
-    ("desktop.printing.transformers", "read_only", "desktop_user"),
-    ("desktop.printing.view", "local_ui", "desktop_user"),
-    ("desktop.printing.export", "artifact_write", "desktop_user"),
-    (
         "desktop.printing.artifact.read",
         "read_only",
         "desktop_user",
     ),
     (
         "desktop.printing.artifact.copy",
-        "local_file_write",
-        "desktop_user",
-    ),
-    ("desktop.printing.prepare", "global_write", "desktop_user"),
-    (
-        "desktop.printing.seed-context",
         "local_file_write",
         "desktop_user",
     ),

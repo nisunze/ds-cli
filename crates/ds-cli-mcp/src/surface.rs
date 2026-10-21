@@ -2612,13 +2612,7 @@ const PRINTING_COMMANDS: &[&str] = &[
     "report.project.crs",
     "report.voltage-drop-combined",
     "report.mv-frontmatter",
-    "desktop.printing.prepare",
-    "desktop.printing.transformers",
-    "desktop.printing.export",
-    "desktop.printing.preview",
-    "desktop.printing.view",
     "desktop.printing.artifact.read",
-    "desktop.printing.seed-context",
 ];
 
 // Map sheet composition and publication are a small bounded companion to
@@ -2628,7 +2622,6 @@ const PRINTING_MAP_COMMANDS: &[&str] = &[
     "assets.maps",
     "map.print.schema",
     "map.design.attach-print",
-    "desktop.printing.map.export",
 ];
 
 #[cfg(test)]

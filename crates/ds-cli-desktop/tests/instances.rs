@@ -1037,7 +1037,7 @@ fn navigation_contracts_declare_lane_without_changing_stable_default() {
 }
 
 #[test]
-fn explicit_local_printing_read_uses_captured_native_identity_beside_another_account() {
+fn explicit_local_read_uses_captured_native_identity_beside_another_account() {
     let machine = Machine::new();
     let local = Bridge::start(ALPHA, Some("project-a"), SHARED_NAME);
     local.publish_identity("local", fixtures::UID, fixtures::AUDIENCE);
@@ -1047,13 +1047,13 @@ fn explicit_local_printing_read_uses_captured_native_identity_beside_another_acc
     machine.publish(&other);
     let result = Invocation::signed_in()
         .run(
-            &ds_cli_desktop::custom_print::LIST_COMMAND,
-            ds_cli_desktop::custom_print::list,
-            &["--project", "project-a", "--target", &target(ALPHA)],
+            &ds_cli_desktop::project::LIST_COMMAND,
+            ds_cli_desktop::project::list,
+            &["--target", &target(ALPHA)],
         )
-        .expect("the real printing-map read handler reaches the exact Local window");
+        .expect("the read reaches the exact Local window");
     assert_eq!(result["servedBy"], ALPHA);
-    assert_eq!(local.invoked(), vec!["printing.map.list"]);
+    assert_eq!(local.invoked(), vec!["project.list"]);
     assert_eq!(local.fence(0)["lane"], "local");
     assert_eq!(local.fence(0)["uid"], fixtures::UID);
     assert_eq!(local.fence(0)["project"], "project-a");
