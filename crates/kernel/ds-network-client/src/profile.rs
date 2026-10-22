@@ -454,7 +454,15 @@ impl ProfileSession {
         timeout: Duration,
         cancel: &dyn Fn() -> bool,
     ) -> Result<ProfileOutcome, NetworkFailure> {
-        self.view_intent_at(input, cached, false, expected_history, timeout, cancel)
+        self.view_intent_at(
+            input,
+            cached,
+            false,
+            None,
+            expected_history,
+            timeout,
+            cancel,
+        )
     }
     pub fn observe_view_at(
         &mut self,
@@ -463,7 +471,28 @@ impl ProfileSession {
         timeout: Duration,
         cancel: &dyn Fn() -> bool,
     ) -> Result<ProfileOutcome, NetworkFailure> {
-        self.view_intent_at(input, true, true, expected_history, timeout, cancel)
+        self.view_intent_at(input, true, true, None, expected_history, timeout, cancel)
+    }
+    /// Explicit model analysis; cached result reads never enter this path.
+    #[allow(clippy::too_many_arguments)]
+    pub fn analyze_view_at(
+        &mut self,
+        input: &NativeProfileViewInputV1,
+        scope: String,
+        expected_engineering_input_root: String,
+        expected_history: Value,
+        timeout: Duration,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<ProfileOutcome, NetworkFailure> {
+        self.view_intent_at(
+            input,
+            false,
+            false,
+            Some((scope, expected_engineering_input_root)),
+            expected_history,
+            timeout,
+            cancel,
+        )
     }
     #[allow(clippy::too_many_arguments)]
     fn view_intent_at(
@@ -471,10 +500,23 @@ impl ProfileSession {
         input: &NativeProfileViewInputV1,
         cached: bool,
         observe: bool,
+        analysis: Option<(String, String)>,
         expected_history: Value,
         timeout: Duration,
         cancel: &dyn Fn() -> bool,
     ) -> Result<ProfileOutcome, NetworkFailure> {
+        if analysis.is_some()
+            && !self
+                .pin
+                .identity
+                .capabilities
+                .contains(&NetworkCapability::ProfileResultsV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "Captured Network has no profile_results_v1 capability",
+            ));
+        }
         if observe
             && !self
                 .pin
@@ -539,7 +581,13 @@ impl ProfileSession {
                     sha256: digest_bytes(&bytes),
                     schema: PROFILE_VIEW_INPUT_SCHEMA.into(),
                 };
-                if observe {
+                if let Some((scope, expected_engineering_input_root)) = analysis {
+                    NativeProfileOperationV1::AnalyzeView {
+                        input,
+                        scope,
+                        expected_engineering_input_root,
+                    }
+                } else if observe {
                     NativeProfileOperationV1::ObserveView { input }
                 } else {
                     NativeProfileOperationV1::View { input, cached }
@@ -582,6 +630,17 @@ impl ProfileSession {
         let NativeProfileOperationV1::Control { operation: control } = operation else {
             return Ok(None);
         };
+        if let Some(required) = controls::required_capability(control)? {
+            if !self.pin.identity.capabilities.contains(&required) {
+                let message = "Update Network to use this retained Profile control.";
+                let mut failure = NetworkFailure::new("network_engine_incompatible", message);
+                failure.owner_detail = Some(Box::new(serde_json::json!({
+                    "component": "network", "required_capability": required,
+                })));
+                failure.owner_remedy = Some(message.into());
+                return Err(failure);
+            }
+        }
         let request = NativeProfileRequestV1 {
             schema: PROFILE_REQUEST_SCHEMA.into(),
             sequence: self.sequence + 1,
@@ -676,6 +735,33 @@ impl ProfileSession {
         timeout: Duration,
         cancel: &dyn Fn() -> bool,
     ) -> Result<ProfileOutcome, NetworkFailure> {
+        if matches!(
+            operation,
+            NativeProfileOperationV1::QueryResults { .. }
+                | NativeProfileOperationV1::AnalyzeView { .. }
+        ) && !self
+            .pin
+            .identity
+            .capabilities
+            .contains(&NetworkCapability::ProfileResultsV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "Captured Network has no profile_results_v1 capability",
+            ));
+        }
+        if matches!(operation, NativeProfileOperationV1::ModelLibrary {})
+            && !self
+                .pin
+                .identity
+                .capabilities
+                .contains(&NetworkCapability::ProfileRetypeV1)
+        {
+            return Err(NetworkFailure::new(
+                "network_engine_incompatible",
+                "captured Network has no retained Profile retype capability",
+            ));
+        }
         if self.closed {
             return Err(NetworkFailure::new(
                 "profile_session_closed",
@@ -729,7 +815,9 @@ impl ProfileSession {
         }
         if matches!(
             operation,
-            NativeProfileOperationV1::View { .. } | NativeProfileOperationV1::ObserveView { .. }
+            NativeProfileOperationV1::View { .. }
+                | NativeProfileOperationV1::ObserveView { .. }
+                | NativeProfileOperationV1::AnalyzeView { .. }
         ) && !self
             .pin
             .identity
@@ -801,7 +889,8 @@ impl ProfileSession {
                 "profile_control_input_invalid",
             )),
             NativeProfileOperationV1::View { input, .. }
-            | NativeProfileOperationV1::ObserveView { input } => Some((
+            | NativeProfileOperationV1::ObserveView { input }
+            | NativeProfileOperationV1::AnalyzeView { input, .. } => Some((
                 input,
                 PROFILE_VIEW_INPUT_SCHEMA,
                 MAX_PROFILE_VIEW_INPUT_BYTES,
@@ -1021,6 +1110,7 @@ impl ProfileSession {
                 &request.operation,
                 NativeProfileOperationV1::View { .. }
                     | NativeProfileOperationV1::ObserveView { .. }
+                    | NativeProfileOperationV1::AnalyzeView { .. }
             ) {
                 let view: Value =
                     serde_json::from_slice(&bytes).map_err(|e| invalid(e.to_string()))?;
@@ -1033,13 +1123,28 @@ impl ProfileSession {
                         "Profile view differs from its retained model, history or complete result",
                     ));
                 }
+                if let NativeProfileOperationV1::AnalyzeView {
+                    expected_engineering_input_root,
+                    ..
+                } = &request.operation
+                {
+                    if view["ran"] != true
+                        || view["analysis"]["model_revision"] != reply.history["model_revision"]
+                        || view["analysis"]["engineering_input_root"]
+                            != *expected_engineering_input_root
+                    {
+                        return Err(invalid("Profile analysis differs from its explicit input root or complete result"));
+                    }
+                }
             }
-            if self
-                .pin
-                .identity
-                .capabilities
-                .contains(&NetworkCapability::ProfileEditControlsV1)
-            {
+            if self.pin.identity.capabilities.iter().any(|capability| {
+                matches!(
+                    capability,
+                    NetworkCapability::ProfileEditControlsV1
+                        | NetworkCapability::ProfileResultsV1
+                        | NetworkCapability::ProfileRetypeV1
+                )
+            }) {
                 controls::validate_reply(
                     &request.operation,
                     &bytes,
@@ -1177,7 +1282,7 @@ fn decode_reply(
 fn invalid(message: impl Into<String>) -> NetworkFailure {
     NetworkFailure::new("network_profile_reply_invalid", message)
 }
-fn supervision(failure: ds_cli_contract::outcome::Failure) -> NetworkFailure {
+fn supervision(failure: ds_core_contracts::Failure) -> NetworkFailure {
     let code = match failure.code() {
         "callee_session_closed" => "profile_session_closed",
         "callee_output_bounded" => "network_receipt_bounded",

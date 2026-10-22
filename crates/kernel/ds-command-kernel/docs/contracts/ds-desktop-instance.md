@@ -4,7 +4,7 @@
 `fable/desktop-instances`, 2026-09-12; the ds-web shell, the browser and the CLI
 that consume it are the rest of the slice, and nothing below is a claim that the
 installed Desktop already behaves this way. Parent:
-[project and instance isolation](../../../ds-web/docs/project-and-instance-isolation-contract.md)
+[project and instance isolation](../../../../../../ds-web/docs/project-and-instance-isolation-contract.md)
 §"Desktop instances and CLI targeting" and acceptance items 1 and 4. Sibling:
 [the execution context](ds-execution-context.md), whose vocabulary and bounds
 this reuses. Consumer: [`project_context`](#7-what-project_context-decides-now).

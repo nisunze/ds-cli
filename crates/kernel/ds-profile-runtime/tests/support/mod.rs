@@ -24,7 +24,7 @@ pub fn initialize(
         restore_state: None,
         options: Default::default(),
         style_document: serde_json::from_str(include_str!(
-            "../../../../tests/fixtures/profile-display-style.json"
+            "../../../ds-command-kernel/tests/fixtures/profile-display-style.json"
         ))
         .unwrap(),
         patch: Default::default(),

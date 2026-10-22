@@ -919,7 +919,7 @@ mod publication_tests {
         for (path, source) in [
             ("run.rs", include_str!("run.rs")),
             ("host.rs", include_str!("host.rs")),
-            ("sync.rs", include_str!("../../../src/sync.rs")),
+            ("sync.rs", include_str!("../../ds-command-kernel/src/sync.rs")),
         ] {
             let production = source.split("#[cfg(test)]").next().unwrap();
             for engine in sync::engines::ENGINES {

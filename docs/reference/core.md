@@ -173,6 +173,21 @@ and never advances activation.
 
 ## UI component installation before sign-in
 
+Local source iteration uses the independent `core.component.stage-local`
+operation, with `--component command-kernel|interactions --channel canary`,
+`--directory <absolute-built-four-file-directory>`,
+`--identity-file <absolute-actual-uiEngineBuildIdentity-json>`,
+`--source-sha <captured-git-snapshot>` and
+`--wasm-sha256 <tested-wasm-sha256> --yes`. It performs no build, publication,
+gateway read or JavaScript/WASM evaluation. The ready receipt pins the same
+captured producer bytes. Activate its `receiptId` and `expectedGeneration`
+through `core component activate --runtime wasm --scope local-dev`; capture and
+member reads also require explicit `--scope local-dev`. This Linux canary store
+is separate from release selections. Stable local staging and cross-scope
+activation refuse. The default scope remains `release` for existing callers.
+The local-build receipt requires native loader support for its explicit
+provenance variant; older loaders refuse it without a vendor fallback.
+
 `core.module-release`, `core.module-stage`, `core.component.selection`,
 `core.component.activate`, `core.component.remove` and `core.component.rollback`
 use contract **2**. The added `--runtime native|wasm` defaults to `native`.

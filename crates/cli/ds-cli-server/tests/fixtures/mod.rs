@@ -917,7 +917,7 @@ pub fn ds_binary() -> PathBuf {
                 .to_path_buf();
             let binary = profile.join(if cfg!(windows) { "ds.exe" } else { "ds" });
             let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../..")
+                .join("../../..")
                 .canonicalize()
                 .expect("the ds-cli workspace root");
             let target = profile.parent().expect("<target>");

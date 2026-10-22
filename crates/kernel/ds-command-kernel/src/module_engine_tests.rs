@@ -508,8 +508,30 @@ fn ui_units_refuse_unknown_fields_compilers_and_targets() {
             "{key}: {error}"
         );
     }
-    let mut contract = ui_identity();
-    contract["ui_contract"] = json!(2);
-    let identity = parse_ui_identity(&contract).unwrap();
-    assert!(admit_ui_identity(UiComponent::Interactions, &identity, None).is_err());
+}
+
+#[test]
+fn different_contract_metadata_admits_the_same_working_typed_exchange() {
+    use crate::table_edit::{decode_request, decode_response, execute, TableEditRequest};
+    // Owner ruling and module-releases.md: metadata equality is not the
+    // compatibility criterion. Preserve all producer-integrity checks above.
+    for version in [1, 2] {
+        let mut value = ui_identity();
+        value["component"] = serde_json::to_value(UiComponent::CommandKernel).unwrap();
+        value["ui_contract"] = json!(version);
+        let identity = parse_ui_identity(&value).unwrap();
+        admit_ui_identity(UiComponent::CommandKernel, &identity, None).unwrap();
+        let request: TableEditRequest = serde_json::from_value(json!({
+            "operation":"add_column",
+            "input":{"rows":[{}],"column":"n","data_type":"int","default_value":"3.5"}
+        }))
+        .unwrap();
+        let request = decode_request(&serde_json::to_vec(&request).unwrap()).unwrap();
+        let reply = execute(&request).unwrap();
+        let decoded = decode_response(&request, &serde_json::to_vec(&reply).unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_value(decoded).unwrap()["result"]["default_value"],
+            4
+        );
+    }
 }

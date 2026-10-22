@@ -10,7 +10,7 @@ use std::fs;
 use std::path::PathBuf;
 
 fn skills_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../skills")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../skills")
 }
 
 #[test]

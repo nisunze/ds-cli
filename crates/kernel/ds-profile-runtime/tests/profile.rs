@@ -2,7 +2,7 @@ use ds_command_kernel::profile_display::{DisplayOption, DisplayPatch};
 use ds_grid_engine::GridSession;
 use ds_profile_runtime::{InitializeRequest as Request, Runtime};
 mod support;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 fn request() -> Request {
     let session = GridSession::open(Default::default());
     support::initialize(&session, "profile-test", "one", Default::default(), &[])
@@ -189,7 +189,7 @@ fn cached_weather_is_display_only_and_revision_fenced() {
 #[test]
 fn governed_profile_document_admits_every_native_display_option() {
     let backend: Value = serde_json::from_str(include_str!(
-        "../../../tests/fixtures/profile-display-style.json"
+        "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
     ))
     .unwrap();
     assert_eq!(
@@ -269,7 +269,7 @@ fn refused_updates_preserve_the_prior_checkpoint_weather_sequence_and_cached_cas
 fn native_structure_labels_keep_the_vertical_profile_position() {
     let bytes = std::fs::read(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid"
+        "/../../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid"
     ))
     .unwrap();
     let (package, _) = ds_grid_exchange::dsgrid::ingest(&bytes).unwrap();
@@ -334,7 +334,7 @@ fn native_structure_labels_keep_the_vertical_profile_position() {
 fn cli_and_renderer_share_native_controls_and_colour_state() {
     // Reset availability is native metadata, not a host decision.
     let styles = serde_json::from_str(include_str!(
-        "../../../tests/fixtures/profile-display-style.json"
+        "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
     ))
     .unwrap();
     let state = ds_command_kernel::profile_display::DisplayState::default();

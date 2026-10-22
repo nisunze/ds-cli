@@ -1,7 +1,7 @@
 # Template test support
 
 Dev dependencies only. Fixture engineering values are authored test data, not
-production defaults. The test mechanics and vocabulary snapshot come from the reviewed, read-only ds-network slice/template-invariance. Kernel owns this test-only copy so its portable production graph remains independent of ds-network. See [the printing contract](../../docs/printing.md) and [authored catalogue data](../../data/README.md).
+production defaults. The test mechanics and vocabulary snapshot come from the reviewed, read-only ds-network slice/template-invariance. Kernel owns this test-only copy so its portable production graph remains independent of ds-network. See [the printing contract](../ds-command-kernel/docs/printing.md) and [authored catalogue data](../ds-command-kernel/data/README.md).
 
 - `fixture_config()` / `fixture_job()`: complete template and local LV request.
 - `fixture_unit_wire_catalogue()`: migrated unit identities with numeric areas

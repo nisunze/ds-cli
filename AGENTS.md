@@ -1,76 +1,87 @@
-# ds-cli agent guide
+# DS application workspace agent guide
 
-Follow the workspace AGENTS.md and any nearer scoped guide. Use the task table
-below to open only the relevant section. For cross-repository, release or
-delegated work, use the [shared working agreement](../ds-command-kernel/docs/agent-guidance/collaboration.md)
-and [context guide](../ds-command-kernel/docs/agent-guidance/context-management.md).
+Follow the workspace AGENTS.md. For delegated, cross-repository or release work,
+use [collaboration](crates/kernel/ds-command-kernel/docs/agent-guidance/collaboration.md)
+and [context management](crates/kernel/ds-command-kernel/docs/agent-guidance/context-management.md).
+Read the applicable task contract; do not preload all guides.
 
-## Owns
+## Owners and dependency boundaries
 
-The ds executable, its CLI/MCP projection and canonical native Agent Skills under
-skills/. This repository adapts owning Rust operations; it does not own engineering,
-geometry, electrical, Solar, routing, reporting or conversion algorithms.
+- `crates/kernel`: deterministic commands, application state, contracts, storage,
+  sync and named native effect owners. Engineering, Solar and reporting algorithms
+  stay in their independently released engine repositories.
+- `crates/cli`: the ds executable, terminal/MCP adapters and native Agent Skills
+  under skills/. Adapters consume Kernel operations and never Interactions.
+- `crates/interactions`: transient hit testing, snapping, pointer/selection,
+  camera, Canvas and Profile rendering/intents. No durable state, engineering,
+  credentials, project acquisition, filesystem or network effects.
+- `crates/shared/ds-geo-lite`: neutral portable geometry used by all groups and
+  engines. It depends on none of the three groups.
+- Kernel and Interactions are independent in both directions. Neither imports
+  CLI. ds-web consumes Kernel and Interactions, never CLI. A gesture ends in a
+  Kernel command; it never performs a durable write.
 
 ## Invariants
 
-- Reveal the surface progressively: root help lists domains, domain help lists
-  commands and one command descriptor carries its complete contract.
-- Declare summary, purpose, effects, authority, inputs, output, examples and
-  refusals once in the Command value. Bound default output and report truncation.
-- Call an owning crate, a reviewed typed process contract, or the protected native
-  user client. Never expose caller-supplied argv, shell, SQL, code execution,
-  ambient credentials or an unregistered owner operation.
-- Keep project and principal context explicit and audience-fenced. A project ID or
-  saved selection is an address to authorize, never proof of authority.
-- MCP is a projection of live ds capabilities, not a second schema or transport.
-  Skills teach discovery and workflows; they do not copy commands or implement them.
-- Prove a delivery gap through the installed CLI/MCP before a broad refactor.
-  Repair the smallest owning slice, prove it headlessly, then bind the UI.
-- Server owners must not compile ds-web or Tauri. Shared native behavior belongs
-  with its Rust owner and is consumed by both CLI and Desktop.
+- One operation/refusal vocabulary across native and WASM. Typed Rust owners,
+  explicit principal/project/object/revision context, stable IDs, units and
+  digest admission; preserve dirty held data and atomic revision checks.
+- Hosts execute declared effects; Svelte/TypeScript only bind and render. No
+  mutable TypeScript fallback, alternate route catalogue or Tauri dependency
+  in shared policy. Server builds must not depend on ds-web or Tauri.
+- Reads are demand-driven, bounded and offline first. Held SQLite inputs remain
+  useful without incidental network/freshness reads. Reuse captured inputs,
+  coalesce consumers, retain invalidation until consumed, and prove read counts.
+- Reveal CLI progressively: root domains, domain commands, then one complete
+  Command descriptor with summary, purpose, effects, authority, inputs, outputs,
+  examples and refusals. Bound output and state truncation.
+- Call owning Rust operations, fixed typed process contracts or the protected
+  native user client. Never expose caller-supplied argv, shell, SQL, code,
+  ambient credentials or unregistered operations. MCP projects the live catalog.
+- Small neutral geometry is allowed in Interactions; authored model commits,
+  authorization, persistence and compute stay with their owners. Preserve numeric
+  behavior, units, identity, ordering, admission bounds and refusals when moving.
+- Skills teach discovery/workflows; keep descriptions short and load SKILL.md on
+  demand. They do not copy commands, implement transport or create private tools.
+- Prove actual installed CLI/MCP behavior first for a delivery gap; fix its Rust
+  owner, test the exchange/refusal, then bind the UI and verify its user path.
+- Independent units retain their package/unit IDs and releases. Actual typed
+  contracts and capabilities decide compatibility, not source/version equality.
 
-## Route the task
+## Task routing
 
-| Task | Read |
+| Task | Contract |
 | --- | --- |
-| Add or change a command | [CLI workflow: before adding a command](docs/development/cli-agent-workflow.md#before-you-add-a-command) |
-| Owner/process selection | [CLI workflow: reaching an owner](docs/development/cli-agent-workflow.md#reaching-an-owner), [process boundary](docs/contracts/process-boundary-contract.md) |
-| Authentication and project context | [CLI workflow: authority](docs/development/cli-agent-workflow.md#authority), [headless runtime](../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md) |
-| Delivery or refactor | [Evidence before refactoring](docs/development/cli-agent-workflow.md#evidence-before-refactoring) |
-| Blind workflow acceptance | [Blind CLI/MCP validation](docs/development/cli-agent-workflow.md#blind-climcp-workflow-validation) |
-| MCP surface | [MCP reference](docs/reference/mcp.md), [protocol boundary](docs/contracts/protocol-boundary-contract.md) |
-| Multi-repository layout | [Workspace layout](docs/development/workspace-layout.md) |
-| Agent skill change | This guide, the affected SKILL.md and scripts/check.py |
+| CLI command/owner selection, auth, blind acceptance | [CLI workflow](docs/development/cli-agent-workflow.md), [process boundary](docs/contracts/process-boundary-contract.md) |
+| MCP | [reference](docs/reference/mcp.md), [protocol boundary](docs/contracts/protocol-boundary-contract.md) |
+| Kernel/application authority | [application Kernel](crates/kernel/ds-command-kernel/docs/contracts/ds-application-kernel.md) |
+| Native effects, authorization, demand reads | [headless runtime](crates/kernel/ds-command-kernel/docs/contracts/ds-headless-application-runtime.md) |
+| Network boundary | [Kernel/Network](crates/kernel/ds-command-kernel/docs/contracts/ds-kernel-network-boundary.md) |
+| Transport and held models | [transport](crates/kernel/ds-command-kernel/docs/contracts/ds-transport-authority.md), [held models](crates/kernel/ds-command-kernel/docs/contracts/desktop-held-models.md) |
+| Transient interactions | [interaction boundary](crates/interactions/docs/interaction-boundary.md) |
+| Portable geometry | [geometry](crates/kernel/ds-command-kernel/docs/contracts/ds-portable-geometry.md) |
+| Cross-component acceptance | [Architecture queue](../ds-architecture/backlog/DECOUPLING.md) |
+| Unfinished code/decisions/seeding | [principles](crates/kernel/ds-command-kernel/backlog/PRINCIPLES.md), OPEN.md / OPEN-X.md / SEEDING.md beside it |
 
-## Skills and discovery
+## Proof and landing
 
-Skill descriptions stay short and selective. Full SKILL.md content loads only
-after selection. Keep flags, schemas, enums, outputs and refusals in the live
-Command declaration and discover them with ds capabilities. Reject a skill-local
-executable, copied command contract, direct API route or separate gap ledger.
+Work on canonical run, preserve concurrent files/indexes/processes/caches, stage
+only owned paths, and land after focused proof. No speculative framework or
+duplicate algorithm. Coding findings are fixed or recorded in owning backlogs,
+never product feedback or private instruction/handover files.
 
-Coding findings are fixed or recorded in the owning shared backlog; coding
-sessions do not submit product feedback. Product-use sightings outside coding
-use the governed feedback surface.
+Use installed ~/.cargo/bin when PATH omits Cargo. This repository has one root
+workspace/lockfile; select the affected package and target. Run its real consumer
+test and meaningful refusal first. Metadata/dependency checks do not compile:
 
-## Checks
+- `node scripts/check-workspace-boundaries.test.mjs`
+- `node scripts/check-workspace-boundaries.mjs`
+- `cargo test --locked -p <affected-owner> <test-filter>`
+- `cargo fmt --all --check`; affected strict Clippy and portable wasm32 checks.
 
-Run the affected crate/unit/integration test and a meaningful refusal first.
-Use the full checks only when the changed boundary warrants them:
-
-- cargo fmt --all --check
-- cargo clippy --workspace --all-targets --all-features -- -D warnings
-- cargo test --workspace --all-features
-- python3 scripts/check.py
-- bash scripts/test-install-skills.sh
-
-Process contracts require their real engine. Bridge parity requires the ds-web
-checkout. Missing dependencies or inapplicable checks must refuse or report a
-named skip; they do not silently pass.
-
-For map/report workflow changes, run one blind installed CLI/MCP trial after the
-implementation is ready. The trial gets the user's job, allowed project/output
-and mutation bounds, but no source, copied syntax or implementation hints.
-
-Documentation-only work reviews links, authority and the diff. It does not run
-product builds or deployment.
+Native/process boundaries require real host tests; UI changes require actual
+WASM execution/rendered interactions. Missing dependencies and inapplicable
+checks report a named refusal/skip. A helper pass is not installed acceptance.
+For an affected map/report delivery, run one bounded blind installed CLI/MCP
+trial after implementation, with the job/output/mutation bounds and no source
+or syntax hints. Documentation-only work checks links/diff without builds.

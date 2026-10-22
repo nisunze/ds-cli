@@ -406,7 +406,7 @@ mod tests {
     }
     #[test]
     fn maintained_reference_examples_are_valid_closed_native_requests() {
-        let section = include_str!("../../../docs/reference/pm.md")
+        let section = include_str!("../../../../docs/reference/pm.md")
             .split("## Shared Project Notes")
             .nth(1)
             .unwrap();

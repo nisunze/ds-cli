@@ -3,7 +3,7 @@
 //! capture current engineering inputs or wake the publication queue.
 use crate::{Gateway, GatewayError, Reads, SyncRoute};
 use ds_command_kernel::{compute_artifact_inventory as inventory, printing::retained_preview};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::Path;
 
 /// Keep host scope refusals and authority verdicts intact for the caller.
@@ -259,9 +259,7 @@ mod tests {
         assert_eq!(host.read("project_a").unwrap(), head);
         assert_eq!(
             *host.events.borrow(),
-            [
-                "guard", "read", "guard", "download", "guard", "bytes", "guard"
-            ]
+            ["guard", "read", "guard", "download", "guard", "bytes", "guard"]
         );
     }
 
@@ -294,13 +292,12 @@ mod tests {
             let host = Host::new(&head, ticket(&head));
             let mut foreign = json!(head);
             if change == 0 {
-                foreign["input_base_fingerprint"] = json!(
-                    head.printing_preview
-                        .as_ref()
-                        .unwrap()
-                        .input_base_fingerprint("project_b", "transformer_a")
-                        .unwrap()
-                );
+                foreign["input_base_fingerprint"] = json!(head
+                    .printing_preview
+                    .as_ref()
+                    .unwrap()
+                    .input_base_fingerprint("project_b", "transformer_a")
+                    .unwrap());
             } else {
                 foreign["outputs"] = json!([]);
             }

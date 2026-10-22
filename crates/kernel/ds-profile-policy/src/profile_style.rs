@@ -135,7 +135,7 @@ mod tests {
             .patched(&serde_json::from_value(json!({"styles":styles})).unwrap())
             .unwrap();
         let document = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/profile-display-style.json"
+            "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
         ))
         .unwrap();
         let rows = crate::profile_encoding::resolve(&state, &document).unwrap();

@@ -2,13 +2,6 @@
 use crate::{ClientError, ErrorKind, TransportResponse};
 use serde_json::{json, Value};
 
-pub(crate) fn read_path(project: &str) -> String {
-    format!(
-        "/config/{}",
-        url::form_urlencoded::byte_serialize(project.as_bytes()).collect::<String>()
-    )
-}
-
 pub const MINIMUM: &str = "minimum_feeder_cable_size";
 pub const MAXIMUM: &str = "max_feeder_cable_size";
 
@@ -423,6 +416,35 @@ pub struct FeederConfiguration {
 }
 
 pub(crate) fn decode(response: TransportResponse) -> Result<Value, ClientError> {
+    let value = response_body(response)?;
+    let document: ds_command_kernel::gateway_exchange::design::ProjectConfigurationDocument =
+        serde_json::from_value(value).map_err(|_| invalid_response())?;
+    serde_json::to_value(document).map_err(|_| invalid_response())
+}
+
+pub(crate) fn decode_save(
+    response: TransportResponse,
+) -> Result<
+    ds_command_kernel::gateway_exchange::design::ProjectConfigurationSaveAcknowledgement,
+    ClientError,
+> {
+    let body = response_body(response).map_err(|error| {
+        if error.kind() == ErrorKind::UnreadableResponse {
+            invalid_save_response()
+        } else {
+            error
+        }
+    })?;
+    ds_command_kernel::gateway_exchange::design::admit_project_configuration_save(&body)
+        .map_err(|_| invalid_save_response())
+}
+
+fn invalid_save_response() -> ClientError {
+    ClientError::new(ErrorKind::UnreadableResponse,
+        "configuration_save_ack_invalid: The save reply could not be read. Reload project settings to verify whether the change was saved.")
+}
+
+fn response_body(response: TransportResponse) -> Result<Value, ClientError> {
     use ds_command_kernel::project_config::{admit, Facts, ResponseStatus, Verdict};
     let decision = admit(&Facts {
         cache_present: false,
@@ -481,9 +503,7 @@ pub(crate) fn decode(response: TransportResponse) -> Result<Value, ClientError> 
     if value.get("data").is_some() {
         value = value["data"].take();
     }
-    let document: ds_command_kernel::gateway_exchange::design::ProjectConfigurationDocument =
-        serde_json::from_value(value).map_err(|_| invalid_response())?;
-    serde_json::to_value(document).map_err(|_| invalid_response())
+    Ok(value)
 }
 
 pub(crate) fn rows(doc: &Value) -> Result<&Vec<Value>, ClientError> {
@@ -640,17 +660,23 @@ mod tests {
 
     /// The request a native settings save sends is the browser's request. The
     /// field names are the claim: `action`, `eds_project_id`, `sheet_name`,
-    /// `data` and nothing else — `ds-web/src/lib/api/design.ts:2119-2125`.
+    /// `data` and nothing else, constructed by the shared Kernel DesignCall.
     #[test]
     fn a_native_settings_save_sends_the_browsers_request() {
         let rows = vec![json!({"parameter":"design_export_format",
             "value":{"schema":"ds.design-output-selection/v1","geospatial":["gpkg"]}})];
-        let body: Value = serde_json::from_slice(&crate::transport::save_config_body(
-            "aderm_loc7",
-            "project_settings",
-            &rows,
-        ))
-        .expect("the save body is JSON");
+        use ds_command_kernel::gateway_exchange::{design::DesignCall, Exchange};
+        let body = DesignCall::SaveConfigSheet {
+            project: "aderm_loc7".into(),
+            sheet: "project_settings".into(),
+            rows: json!(rows),
+            expected: None,
+        }
+        .plan()
+        .unwrap()
+        .request
+        .body
+        .unwrap();
         assert_eq!(
             body,
             json!({"action":"save_config","eds_project_id":"aderm_loc7",

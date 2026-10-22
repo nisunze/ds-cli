@@ -1,28 +1,10 @@
-//! The named proof that `vendor/ds-geo-lite/` is still the ds-network source it
-//! claims to be.
+//! Snapshot integrity and source-workspace ownership fences.
 //!
-//! The kernel must build with `ds-network` absent from the filesystem
-//! (`docs/contracts/ds-kernel-network-boundary.md`), and the portable geometry
-//! it needs is still MAINTAINED in ds-network. So the kernel compiles a
-//! digest-pinned SNAPSHOT of those files instead of linking the engine
-//! (`docs/contracts/ds-portable-geometry.md`). Parity is by construction —
-//! the bytes are the same bytes — and this test is what keeps that true:
-//!
-//! 1. **Always.** Every vendored file hashes to the `sha256` recorded in
-//!    `MANIFEST.json`, and the vendor tree holds exactly the manifest's files
-//!    — no stray copy, no quiet local edit, no forgotten deletion. This half
-//!    runs on a machine that has never heard of ds-network.
-//! 2. **When `../ds-network` is on disk.** Every source the manifest names
-//!    still hashes to its recorded `sha256`, and every whole-file entry is
-//!    byte-identical to the live source. Upstream moving is not a failure of
-//!    the snapshot, but it IS drift, and it is named with the exact path so a
-//!    human runs `scripts/sync-geo-lite.sh` rather than discovering the
-//!    divergence months later in a field build.
-//!
-//! Primitive geometry now has one canonical implementation in ds-geo-lite,
-//! shared by Network. The former partial haversine snapshot is removed; these
-//! checks retain identity/comparison snapshots and kernel severance fences.
-//! UI Canvas snapshots are retired into the independent Interactions owner.
+//! Neutral geometry owns its identity/comparison snapshots in ds-geo-lite;
+//! Kernel owns the processor-preset snapshot it consumes. Their original bytes,
+//! digests and Network provenance remain pinned independently of this move.
+//! These checks also keep every source crate in the one workspace and prevent
+//! portable geometry from reaching back into an application or UI owner.
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -33,12 +15,26 @@ fn kernel_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-fn vendor_root() -> PathBuf {
-    kernel_root().join("vendor/ds-geo-lite")
+fn workspace_root() -> PathBuf {
+    kernel_root()
+        .join("../../..")
+        .canonicalize()
+        .expect("the source workspace root resolves")
 }
 
-fn manifest() -> Value {
-    let path = vendor_root().join("MANIFEST.json");
+fn geometry_root() -> PathBuf {
+    workspace_root().join("crates/shared/ds-geo-lite")
+}
+
+fn vendor_roots() -> [PathBuf; 2] {
+    [
+        kernel_root().join("vendor/ds-geo-lite"),
+        geometry_root().join("vendor"),
+    ]
+}
+
+fn manifest(root: &Path) -> Value {
+    let path = root.join("MANIFEST.json");
     let bytes = std::fs::read(&path)
         .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
     serde_json::from_slice(&bytes)
@@ -65,316 +61,426 @@ fn field<'a>(entry: &'a Value, key: &str) -> &'a str {
         .unwrap_or_else(|| panic!("manifest entry is missing `{key}`: {entry}"))
 }
 
-/// Every `crates/<name>` that carries its own `[workspace]` table, and is
-/// therefore NOT part of the kernel's build. One exists — `ds-design-workspace`
-/// — and the reason is in `docs/contracts/ds-portable-geometry.md` §4.
-fn detached_crate_dirs() -> Vec<PathBuf> {
-    let crates = kernel_root().join("crates");
-    let mut detached = Vec::new();
-    for entry in std::fs::read_dir(&crates).expect("crates/ is readable") {
-        let dir = entry.expect("unreadable crates/ entry").path();
-        let manifest = dir.join("Cargo.toml");
-        if !manifest.is_file() {
-            continue;
-        }
-        let text = std::fs::read_to_string(&manifest).expect("manifest is UTF-8");
-        if text.lines().any(|line| line.trim() == "[workspace]") {
-            detached.push(dir);
+fn files_under(root: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(root)
+        .unwrap_or_else(|error| panic!("cannot read {}: {error}", root.display()))
+    {
+        let path = entry.expect("readable source entry").path();
+        if path.is_dir() {
+            found.extend(files_under(&path));
+        } else {
+            found.push(path);
         }
     }
-    detached.sort();
-    detached
-}
-
-/// Every file listed on disk under the vendor root, relative, `/`-joined.
-fn vendored_files_on_disk() -> BTreeSet<String> {
-    fn walk(dir: &Path, root: &Path, found: &mut BTreeSet<String>) {
-        for entry in std::fs::read_dir(dir).expect("vendor/ds-geo-lite is not readable") {
-            let path = entry.expect("unreadable vendor entry").path();
-            if path.is_dir() {
-                walk(&path, root, found);
-            } else {
-                let relative = path
-                    .strip_prefix(root)
-                    .expect("vendor walk left its root")
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                if relative != "MANIFEST.json" {
-                    found.insert(relative);
-                }
-            }
-        }
-    }
-    let root = vendor_root();
-    let mut found = BTreeSet::new();
-    walk(&root, &root, &mut found);
+    found.sort();
     found
 }
 
 #[test]
 fn vendored_bytes_match_the_manifest_digests() {
-    let manifest = manifest();
-    let entries = entries(&manifest);
-    assert!(
-        !entries.is_empty(),
-        "MANIFEST.json lists no files — the snapshot cannot be empty"
-    );
-
-    for entry in entries {
-        let vendored = field(entry, "vendored");
-        let recorded = field(entry, "sha256");
-        let path = vendor_root().join(vendored);
-        assert!(
-            path.is_file(),
-            "MANIFEST.json lists vendor/ds-geo-lite/{vendored}, which is not on disk"
-        );
-        let actual = digest(&path);
-        assert_eq!(
-            actual, recorded,
-            "vendor/ds-geo-lite/{vendored} was edited in place. \
-             The snapshot is not a place to fix code: change it in ds-network, \
-             then run scripts/sync-geo-lite.sh"
-        );
+    for root in vendor_roots() {
+        let manifest = manifest(&root);
+        let entries = entries(&manifest);
+        assert!(!entries.is_empty(), "{} lists no snapshots", root.display());
+        for entry in entries {
+            let vendored = field(entry, "vendored");
+            let path = root.join(vendored);
+            assert_eq!(
+                digest(&path),
+                field(entry, "sha256"),
+                "{} was edited in place; change Network and run the snapshot sync script",
+                path.display()
+            );
+        }
     }
 }
 
 #[test]
-fn the_vendor_tree_holds_exactly_the_manifest_files() {
-    let manifest = manifest();
-    let listed: BTreeSet<String> = entries(&manifest)
-        .iter()
-        .map(|entry| field(entry, "vendored").to_string())
-        .collect();
-    let on_disk = vendored_files_on_disk();
-
-    let unlisted: Vec<&String> = on_disk.difference(&listed).collect();
-    assert!(
-        unlisted.is_empty(),
-        "vendor/ds-geo-lite holds files MANIFEST.json does not pin: {unlisted:?}. \
-         Add them to scripts/sync-geo-lite.sh or delete them"
-    );
-    let missing: Vec<&String> = listed.difference(&on_disk).collect();
-    assert!(
-        missing.is_empty(),
-        "MANIFEST.json pins files that are gone: {missing:?}"
-    );
+fn the_vendor_trees_hold_exactly_the_manifest_files() {
+    for root in vendor_roots() {
+        let manifest = manifest(&root);
+        let listed: BTreeSet<String> = entries(&manifest)
+            .iter()
+            .map(|entry| field(entry, "vendored").to_owned())
+            .collect();
+        let on_disk: BTreeSet<String> = files_under(&root)
+            .iter()
+            .map(|path| {
+                path.strip_prefix(&root)
+                    .expect("snapshot stays within its owner")
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .filter(|relative| relative != "MANIFEST.json")
+            .collect();
+        assert_eq!(
+            on_disk,
+            listed,
+            "{} snapshot inventory drifted",
+            root.display()
+        );
+    }
 }
 
 #[test]
 fn every_entry_names_its_ds_network_origin() {
-    let manifest = manifest();
-    assert_eq!(
-        manifest["ds_network"]["repo"].as_str(),
-        Some("ds-network"),
-        "MANIFEST.json must name the repository the snapshot came from"
-    );
-    let commit = manifest["ds_network"]["commit"]
-        .as_str()
-        .expect("MANIFEST.json must name the ds-network commit");
-    assert_eq!(commit.len(), 40, "ds-network commit must be a full SHA");
-
-    for entry in entries(&manifest) {
-        let vendored = field(entry, "vendored");
-        assert_eq!(
-            field(entry, "source_commit").len(),
-            40,
-            "{vendored} must name the full ds-network commit it was taken from"
-        );
-        let sources = entry["sources"]
-            .as_array()
-            .unwrap_or_else(|| panic!("{vendored} names no ds-network source"));
-        assert!(!sources.is_empty(), "{vendored} names no ds-network source");
-        let partial = entry["partial"]
-            .as_bool()
-            .unwrap_or_else(|| panic!("{vendored} does not say whether it is partial"));
-        if partial {
-            assert!(
-                entry["items"].as_array().is_some_and(|i| !i.is_empty()),
-                "{vendored} is partial and must list the items it carries"
-            );
-            assert!(
-                entry["why"].as_str().is_some_and(|w| !w.is_empty()),
-                "{vendored} is partial and must say why the cut is at item level"
-            );
-        } else {
-            assert_eq!(
-                sources.len(),
-                1,
-                "{vendored} is a whole-file copy of exactly one source"
-            );
+    for root in vendor_roots() {
+        let manifest = manifest(&root);
+        assert_eq!(manifest["ds_network"]["repo"].as_str(), Some("ds-network"));
+        let commit = manifest["ds_network"]["commit"]
+            .as_str()
+            .expect("snapshot names its Network commit");
+        assert_eq!(commit.len(), 40, "Network commit must be a full SHA");
+        for entry in entries(&manifest) {
+            let vendored = field(entry, "vendored");
+            assert_eq!(field(entry, "source_commit").len(), 40);
+            let sources = entry["sources"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{vendored} names no Network source"));
+            assert!(!sources.is_empty(), "{vendored} names no Network source");
+            let partial = entry["partial"]
+                .as_bool()
+                .unwrap_or_else(|| panic!("{vendored} must declare whether it is partial"));
+            if partial {
+                assert!(entry["items"]
+                    .as_array()
+                    .is_some_and(|items| !items.is_empty()));
+                assert!(entry["why"].as_str().is_some_and(|why| !why.is_empty()));
+            } else {
+                assert_eq!(sources.len(), 1, "{vendored} copies exactly one whole file");
+            }
         }
     }
 }
 
-/// The half that can only run where ds-network is checked out. Absence is not a
-/// failure — that is the whole point of the severance — so this test reports
-/// the skip and passes.
+#[test]
+fn geometry_and_processor_snapshots_have_their_consuming_owners() {
+    let [kernel, geometry] = vendor_roots().map(|root| manifest(&root));
+    let pinned = |manifest: &Value| -> BTreeSet<String> {
+        entries(manifest)
+            .iter()
+            .map(|entry| field(entry, "vendored").to_owned())
+            .collect()
+    };
+    assert_eq!(
+        pinned(&kernel),
+        BTreeSet::from(["network/processor_presets.json".to_owned()])
+    );
+    assert_eq!(
+        pinned(&geometry),
+        BTreeSet::from(["geo/identity.rs".to_owned()])
+    );
+    assert!(!kernel_root().join("vendor/ds-geo-lite/geo").exists());
+}
+
+/// The optional live comparison retains the same external-checkout contract.
 #[test]
 fn vendored_bytes_match_live_ds_network() {
-    let network_root = kernel_root().join("../ds-network");
+    let network_root = workspace_root().join("../ds-network");
     if !network_root.join("crates/ds-geo").is_dir() {
         eprintln!(
-            "ds-network is not on disk at {} — digest half only. \
-             This is the severance working as designed.",
+            "ds-network absent at {}; checking pinned snapshots only",
             network_root.display()
         );
         return;
     }
-
-    let manifest = manifest();
-    for entry in entries(&manifest) {
-        let vendored = field(entry, "vendored");
-        let partial = entry["partial"].as_bool().unwrap_or(false);
-        let sources = entry["sources"].as_array().expect("sources");
-
-        for source in sources {
-            let relative = field(source, "path");
-            let recorded = field(source, "sha256");
-            let live = network_root.join(relative);
-            assert!(
-                live.is_file(),
-                "ds-network no longer has {relative}, which vendor/ds-geo-lite/{vendored} \
-                 was taken from. Re-cut the snapshot with scripts/sync-geo-lite.sh"
-            );
-            assert_eq!(
-                digest(&live),
-                recorded,
-                "ds-network/{relative} has moved since vendor/ds-geo-lite/{vendored} was \
-                 taken from it. Run scripts/sync-geo-lite.sh{}",
-                if partial {
-                    " and re-derive the partial entry by hand"
-                } else {
-                    ""
-                }
-            );
-        }
-
-        if !partial {
-            let relative = field(&sources[0], "path");
-            let live = std::fs::read(network_root.join(relative)).expect("live source");
-            let snapshot = std::fs::read(vendor_root().join(vendored)).expect("snapshot");
-            assert!(
-                live == snapshot,
-                "vendor/ds-geo-lite/{vendored} is not byte-identical to ds-network/{relative}"
-            );
+    for root in vendor_roots() {
+        let manifest = manifest(&root);
+        for entry in entries(&manifest) {
+            let vendored = field(entry, "vendored");
+            let sources = entry["sources"].as_array().expect("sources");
+            for source in sources {
+                let relative = field(source, "path");
+                assert_eq!(
+                    digest(&network_root.join(relative)),
+                    field(source, "sha256"),
+                    "Network/{relative} drifted from {}; run the snapshot sync script",
+                    root.join(vendored).display()
+                );
+            }
+            if !entry["partial"].as_bool().expect("partial flag") {
+                assert_eq!(
+                    std::fs::read(network_root.join(field(&sources[0], "path"))).unwrap(),
+                    std::fs::read(root.join(vendored)).unwrap(),
+                    "{} is not byte-identical to its Network origin",
+                    root.join(vendored).display()
+                );
+            }
         }
     }
 }
 
-/// The snapshot exists so the kernel has no Cargo edge to ds-network. Guard the
-/// manifests directly: a path dependency that reaches `../ds-network` is the
-/// defect this whole lane removed, and it is one line to reintroduce.
-#[test]
-fn no_kernel_manifest_reaches_ds_network() {
-    for relative in ["Cargo.toml", "crates/ds-geo-lite/Cargo.toml"] {
-        let path = kernel_root().join(relative);
-        let text = std::fs::read_to_string(&path)
-            .unwrap_or_else(|error| panic!("cannot read {relative}: {error}"));
-        for line in text.lines() {
-            // Comments — and the `description` prose, which says out loud that
-            // these are snapshots of ds-network source — may name ds-network.
-            // A dependency on it may not.
-            let code = line.split('#').next().unwrap_or("").trim();
-            let names_it = code.contains("ds-network");
-            let reaches = names_it
-                && (code.contains("path")
-                    || code.contains("git")
-                    || code.starts_with("ds-network ")
-                    || code.starts_with("ds-network="));
-            assert!(!reaches, "{relative} reaches ds-network: {}", line.trim());
-        }
-    }
+fn dependency_reaches(text: &str, forbidden: &[&str]) -> Vec<String> {
+    text.lines()
+        .map(|line| line.split('#').next().unwrap_or("").trim())
+        .filter(|code| {
+            (code.contains('=') || code.starts_with('[')) && !code.starts_with("description")
+        })
+        .filter(|code| forbidden.iter().any(|owner| code.contains(owner)))
+        .map(str::to_owned)
+        .collect()
 }
 
-/// A Cargo edge is not the only way to need ds-network on disk. `include_str!`,
-/// `include_bytes!` and `#[path]` reach across the repository line just as
-/// hard, and they fail LATER — the library still compiles, and only
-/// `cargo test` on a machine without ds-network discovers it. One did:
-/// `process_settings`'s catalogue. It is snapshotted like everything else now,
-/// and this is what keeps the next one from being written.
+/// Product dependencies are package edges, never repository path substrings.
+fn network_reachable(metadata: &Value) -> bool {
+    let packages = metadata["packages"].as_array().expect("metadata packages");
+    let roots: Vec<_> = packages
+        .iter()
+        .filter(|package| {
+            matches!(
+                package["name"].as_str(),
+                Some("ds-command-kernel" | "ds-geo-lite")
+            )
+        })
+        .map(|package| package["id"].as_str().expect("package id").to_owned())
+        .collect();
+    assert_eq!(roots.len(), 2, "both product roots must be present");
+    let nodes = metadata["resolve"]["nodes"]
+        .as_array()
+        .expect("resolved package graph");
+    let mut pending = roots;
+    let mut visited = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if !visited.insert(id.clone()) {
+            continue;
+        }
+        let package = packages
+            .iter()
+            .find(|package| package["id"].as_str() == Some(&id))
+            .expect("resolved package");
+        if package["name"] == "ds-network" {
+            return true;
+        }
+        let node = nodes
+            .iter()
+            .find(|node| node["id"].as_str() == Some(&id))
+            .expect("resolved node");
+        for dependency in node["deps"].as_array().expect("resolved dependencies") {
+            if dependency["dep_kinds"]
+                .as_array()
+                .expect("dependency kinds")
+                .iter()
+                .any(|kind| kind["kind"] != "dev")
+            {
+                pending.push(
+                    dependency["pkg"]
+                        .as_str()
+                        .expect("dependency package")
+                        .to_owned(),
+                );
+            }
+        }
+    }
+    false
+}
+
 #[test]
-fn no_kernel_source_reaches_ds_network() {
-    fn walk(dir: &Path, skip: &[PathBuf], offenders: &mut Vec<String>) {
-        for entry in std::fs::read_dir(dir).expect("source tree is readable") {
-            let path = entry.expect("unreadable source entry").path();
-            if path.is_dir() {
-                if skip.contains(&path) {
+fn no_kernel_or_geometry_manifest_reaches_ds_network() {
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let output = std::process::Command::new(cargo)
+        .args([
+            "metadata",
+            "--locked",
+            "--offline",
+            "--format-version",
+            "1",
+            "--all-features",
+        ])
+        .current_dir(workspace_root())
+        .output()
+        .expect("read the actual resolved dependency graph");
+    assert!(
+        output.status.success(),
+        "metadata refused: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let metadata: Value = serde_json::from_slice(&output.stdout).expect("complete Cargo metadata");
+    assert!(
+        !network_reachable(&metadata),
+        "portable product graph reaches Network compute"
+    );
+}
+
+#[test]
+fn network_dependency_fence_rejects_renamed_transitive_and_build_edges() {
+    use serde_json::json;
+    let fixture = |kind: Value, engine: bool| {
+        json!({
+        "packages": [{"id":"kernel","name":"ds-command-kernel"},{"id":"geometry","name":"ds-geo-lite"},
+            {"id":"contract","name":"ds-network-contracts","manifest_path":"/repo/ds-network/crates/contracts/Cargo.toml"},
+            {"id":"engine","name": if engine { "ds-network" } else { "other-facts" }}],
+        "resolve":{"nodes":[{"id":"kernel","deps":[{"name":"facts","pkg":"contract","dep_kinds":[{"kind":null}]}]},
+            {"id":"geometry","deps":[]},{"id":"contract","deps":[{"name":"renamed_optional_engine","pkg":"engine","dep_kinds":[{"kind":kind}]}]},
+            {"id":"engine","deps":[]}]}})
+    };
+    assert!(network_reachable(&fixture(Value::Null, true)));
+    assert!(network_reachable(&fixture(json!("build"), true)));
+    assert!(!network_reachable(&fixture(Value::Null, false)));
+    assert!(!network_reachable(&fixture(json!("dev"), true)));
+}
+
+/// Source includes are dependencies even when Cargo cannot see them.
+#[test]
+fn no_kernel_or_geometry_source_reaches_ds_network() {
+    let mut offenders = Vec::new();
+    for root in [kernel_root(), geometry_root()] {
+        for subtree in ["src", "tests", "vendor"] {
+            for path in files_under(&root.join(subtree)) {
+                if path.extension().and_then(|ext| ext.to_str()) != Some("rs")
+                    || path.file_name().and_then(|name| name.to_str()) == Some("geo_lite_drift.rs")
+                {
                     continue;
                 }
-                walk(&path, skip, offenders);
-                continue;
-            }
-            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-                continue;
-            }
-            // This file is the one place allowed to name the path: its live
-            // half looks for ds-network precisely to report that it is absent.
-            if path.file_name().and_then(|n| n.to_str()) == Some("geo_lite_drift.rs") {
-                continue;
-            }
-            let text = std::fs::read_to_string(&path).expect("source is UTF-8");
-            for (number, line) in text.lines().enumerate() {
-                if line.contains("ds-network/") {
-                    offenders.push(format!(
-                        "{}:{}: {}",
-                        path.display(),
-                        number + 1,
-                        line.trim()
-                    ));
+                for (number, line) in std::fs::read_to_string(&path).unwrap().lines().enumerate() {
+                    if line.contains("ds-network/") {
+                        offenders.push(format!(
+                            "{}:{}: {}",
+                            path.display(),
+                            number + 1,
+                            line.trim()
+                        ));
+                    }
                 }
             }
         }
     }
-
-    let mut offenders = Vec::new();
-    walk(&kernel_root().join("src"), &[], &mut offenders);
-    walk(&kernel_root().join("tests"), &[], &mut offenders);
-    // `crates/` too. The `#[path]` mounts that turn the snapshot into a crate
-    // live there, so a reach across the line is likelier there than in `src/`.
-    // A DETACHED crate is skipped: it carries its own `[workspace]` precisely
-    // because it is allowed to need ds-network, and it is not in the build the
-    // absent-ds-network acceptance runs (ds-portable-geometry.md §4).
-    walk(
-        &kernel_root().join("crates"),
-        &detached_crate_dirs(),
-        &mut offenders,
-    );
     assert!(
         offenders.is_empty(),
-        "these read ds-network off the filesystem, so the kernel cannot build or \
-         test without it. Snapshot what they need with scripts/sync-geo-lite.sh:\n{}",
+        "source reaches Network:\n{}",
         offenders.join("\n")
     );
 }
 
-/// A detached crate is invisible to `cargo test --workspace`: it is not a
-/// member here, and it is not a member of ds-cli's workspace either (it lives
-/// outside that directory and declares its own `[workspace]`). Detaching
-/// `ds-design-workspace` was necessary — cargo resolves every member's
-/// manifest, so while it was a member the kernel could not build with
-/// ds-network absent — but it silently took that crate's tests out of every
-/// gate. `scripts/test-detached-workspaces.sh` is where they run now, and this
-/// is what stops the next detached crate from going uncovered.
 #[test]
-fn every_detached_workspace_is_covered_by_the_gate_script() {
-    let script_path = kernel_root().join("scripts/test-detached-workspaces.sh");
-    let script = std::fs::read_to_string(&script_path).unwrap_or_else(|error| {
-        panic!(
-            "cannot read scripts/test-detached-workspaces.sh: {error}. \
-             A detached crate's tests run nowhere without it"
-        )
-    });
+fn every_source_crate_belongs_to_the_single_workspace() {
+    let root = workspace_root();
+    let text = std::fs::read_to_string(root.join("Cargo.toml")).expect("workspace manifest");
+    assert!(text.lines().any(|line| line.trim() == "[workspace]"));
+    assert!(
+        !text.lines().any(|line| line.trim() == "[package]"),
+        "root must stay a virtual workspace"
+    );
+    let members = text
+        .split("members = [")
+        .nth(1)
+        .expect("explicit workspace members");
+    let declared: BTreeSet<String> = members
+        .split(']')
+        .next()
+        .expect("closed members array")
+        .lines()
+        .map(str::trim)
+        .filter_map(|line| line.strip_prefix('\"'))
+        .map(|line| line.split('\"').next().expect("member path").to_owned())
+        .collect();
+    let mut found = BTreeSet::new();
+    for group in ["cli", "kernel", "interactions", "shared"] {
+        for entry in std::fs::read_dir(root.join("crates").join(group)).expect("owner group") {
+            let dir = entry.expect("crate directory").path();
+            let manifest = dir.join("Cargo.toml");
+            if !manifest.is_file() {
+                continue;
+            }
+            let text = std::fs::read_to_string(&manifest).expect("crate manifest");
+            assert!(
+                !text.lines().any(|line| line.trim() == "[workspace]"),
+                "{} declares a detached workspace",
+                manifest.display()
+            );
+            assert!(
+                !dir.join("Cargo.lock").exists(),
+                "{} has a private lockfile",
+                dir.display()
+            );
+            found.insert(
+                dir.strip_prefix(&root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+    assert_eq!(
+        declared, found,
+        "every source crate must be reached by workspace checks"
+    );
+    assert!(
+        root.join("Cargo.lock").is_file(),
+        "the one workspace lockfile is required"
+    );
+}
 
-    for dir in detached_crate_dirs() {
-        let name = dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .expect("crate directory has a name");
-        assert!(
-            script.contains(&format!("crates/{name}/Cargo.toml")),
-            "crates/{name} carries its own [workspace], so `cargo test --workspace` \
-             never reaches it. Add it to scripts/test-detached-workspaces.sh"
-        );
+fn source_paths(text: &str) -> Vec<&str> {
+    let pattern = regex::Regex::new(
+        r#"(?s)(?:#\s*\[\s*path\s*=\s*|include_(?:str|bytes)!\s*\(\s*)"([^"\n]+)""#,
+    )
+    .expect("source include pattern");
+    pattern
+        .captures_iter(text)
+        .map(|capture| capture.get(1).unwrap().as_str())
+        .collect()
+}
+
+#[test]
+fn source_path_inventory_captures_multiline_includes() {
+    assert_eq!(
+        source_paths("#[path = \"../owner.rs\"]\ninclude_str!(\n \"../../kernel/secret.json\"\n);"),
+        ["../owner.rs", "../../kernel/secret.json"]
+    );
+}
+
+#[test]
+fn neutral_geometry_has_no_application_or_ui_source_edge() {
+    let root = geometry_root().canonicalize().unwrap();
+    let text = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
+    assert!(dependency_reaches(
+        &text,
+        &[
+            "ds-command-kernel",
+            "ds-cli",
+            "ds-interactions",
+            "ds-canvas",
+            "ds-map-interaction",
+            "ds-profile-view"
+        ]
+    )
+    .is_empty());
+    for subtree in ["src", "tests", "vendor"] {
+        for path in files_under(&root.join(subtree)) {
+            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            let includes = source_paths(&text);
+            assert_eq!(
+                includes.len(),
+                text.matches("#[path").count()
+                    + text.matches("include_str!").count()
+                    + text.matches("include_bytes!").count(),
+                "{} has an unclassified source include; keep neutral source paths explicit",
+                path.display()
+            );
+            for relative in includes {
+                let target = path
+                    .parent()
+                    .unwrap()
+                    .join(relative)
+                    .canonicalize()
+                    .unwrap_or_else(|error| {
+                        panic!(
+                            "{} has an unresolved source include {relative}: {error}",
+                            path.display()
+                        )
+                    });
+                assert!(
+                    target.starts_with(&root),
+                    "{} reaches outside neutral geometry: {}",
+                    path.display(),
+                    target.display()
+                );
+            }
+        }
     }
 }
 
@@ -450,25 +556,27 @@ fn canonical_haversine_matches_an_independent_yardstick() {
     }
 }
 
-/// Transient UI implementation belongs to Interactions, never this build.
+/// Transient UI implementation belongs to Interactions, never the Kernel build.
 #[test]
 fn kernel_has_no_ui_interaction_dependency_or_snapshot() {
-    for relative in ["Cargo.toml", "crates/ds-geo-lite/Cargo.toml"] {
-        let text = std::fs::read_to_string(kernel_root().join(relative)).unwrap();
-        for line in text.lines() {
-            let code = line.split('#').next().unwrap_or("").trim();
-            if !code.contains('=') || code.starts_with("description") {
-                continue;
-            }
-            for owner in ["ds-interactions", "ds-map-interaction", "ds-canvas"] {
-                assert!(
-                    !code.contains(owner),
-                    "{relative} imports UI implementation: {code}"
-                );
-            }
-        }
+    for root in [kernel_root(), geometry_root()] {
+        let text = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
+        assert!(dependency_reaches(
+            &text,
+            &[
+                "ds-interactions",
+                "ds-map-interaction",
+                "ds-canvas",
+                "ds-profile-view"
+            ]
+        )
+        .is_empty());
     }
-    assert!(!kernel_root().join("crates/ds-canvas-lite").exists());
-    assert!(!vendor_root().join("canvas").exists());
+    assert!(!workspace_root()
+        .join("crates/kernel/ds-canvas-lite")
+        .exists());
+    for root in vendor_roots() {
+        assert!(!root.join("canvas").exists());
+    }
     assert!(!kernel_root().join("src/canvas.rs").exists());
 }

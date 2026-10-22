@@ -2,7 +2,7 @@
 use std::{path::Path, process::Command};
 #[test]
 fn server_dependency_graph_contains_no_web_or_tauri_sources() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let output = Command::new(env!("CARGO"))
         .args(["metadata", "--format-version", "1", "--locked", "--offline"])
         .current_dir(&root)
@@ -29,7 +29,7 @@ fn server_dependency_graph_contains_no_web_or_tauri_sources() {
             "server depends on desktop shell: {name}"
         );
     }
-    let build = std::fs::read_to_string(root.join("crates/ds-cli-auth/build.rs")).unwrap();
+    let build = std::fs::read_to_string(root.join("crates/cli/ds-cli-auth/build.rs")).unwrap();
     assert!(
         !build.contains("ds-web"),
         "server build script reads desktop-owned inputs"

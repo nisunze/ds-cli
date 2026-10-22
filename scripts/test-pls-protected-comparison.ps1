@@ -1,5 +1,5 @@
 param(
-    [string] $LibraryPath = (Join-Path $PSScriptRoot '../crates/ds-cli-pls/desktop/adapters/pls-cadd/pls-backup-restore-lib.psm1'),
+    [string] $LibraryPath = (Join-Path $PSScriptRoot '../crates/cli/ds-cli-pls/desktop/adapters/pls-cadd/pls-backup-restore-lib.psm1'),
     [string] $ScratchRoot = (Join-Path $PSScriptRoot '../out/protected-comparison-tests')
 )
 $ErrorActionPreference = 'Stop'

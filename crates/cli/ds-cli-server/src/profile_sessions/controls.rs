@@ -319,10 +319,9 @@ pub(super) fn execute(
     result
 }
 
-/// Restore only exact owner-validated recovery through the original capture.
-/// The single exception is an opaque draft kept by a Network without authored
-/// recovery: when the current same-lane Network keeps authored recovery, it
-/// must reproduce that exact head and replaces the draft with its journal.
+/// Restore exact owner-validated recovery through the selected same-lane
+/// Network. The real replay must reproduce the retained original and head
+/// before SQLite may replace any engine provenance.
 pub(super) fn restore(
     scope: Scope,
     scratch: &Path,
@@ -340,45 +339,28 @@ pub(super) fn restore(
             "Profile recovery belongs to another captured owner",
         ));
     }
-    if matches!(draft, ProfileDraft::Checkpoint { .. })
-        && !upgrade::pinned_authored(&recovery.source)?
-        && let Some(client) = upgrade::current_authored_engine(&scope, required.as_ref())
-    {
-        authorized()?;
-        return upgrade::checkpoint(scope, scratch, database, recovery, &client, authorized);
-    }
-    let pin: ds_network_client::NetworkEnginePin =
-        serde_json::from_value(recovery.source.engine.clone()).map_err(invalid)?;
-    let client = CapturedNetworkClient::from_pin(&pin, &|| false).map_err(native)?;
+    let client = upgrade::selected_engine(&scope, required.as_ref())?;
     authorized()?;
     require_read_capability(
         &client.identity().capabilities,
         NetworkCapability::ProfileEditControlsV1,
     )?;
-    if let Some(required) = required {
-        require_read_capability(&client.identity().capabilities, required)?;
-    }
-    let (session, retained_journal) = match draft {
-        ProfileDraft::Checkpoint { bytes, .. } => (
-            client
-                .open_profile_session_with_timeout(bytes, scratch, DEADLINE, &|| false)
-                .map_err(native)?,
-            None,
-        ),
-        ProfileDraft::Journal(journal) => {
-            let (session, retained) =
-                restore_journal(&client, scratch, recovery, journal, authorized)?;
-            (session, Some(retained))
+    match draft {
+        ProfileDraft::Checkpoint { .. }
+            if !client
+                .identity()
+                .capabilities
+                .contains(&NetworkCapability::ProfileAuthoredCheckpointV1) =>
+        {
+            upgrade::opaque(scope, scratch, database, recovery, &client, authorized)
         }
-    };
-    held_from(
-        scope,
-        session,
-        recovery.source.clone(),
-        draft.history().clone(),
-        retained_journal,
-        authorized,
-    )
+        ProfileDraft::Checkpoint { .. } => {
+            upgrade::checkpoint(scope, scratch, database, recovery, &client, authorized)
+        }
+        ProfileDraft::Journal(journal) => upgrade::journal(
+            scope, scratch, database, recovery, journal, &client, authorized,
+        ),
+    }
 }
 
 /// Adopt a restored worker only at its exact retained model/history.
@@ -424,7 +406,7 @@ fn held_from(
     ))
 }
 
-/// Reopen the exact original through the same pinned engine, then replay the
+/// Reopen the exact original through the selected engine, then replay the
 /// retained authored rows through Network. Core verifies their chain against
 /// the retained header; Network re-verifies chain, replay, bindings and lineage.
 fn restore_journal(

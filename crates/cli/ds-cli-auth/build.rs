@@ -12,7 +12,7 @@ fn main() {
     let manifest_dir = std::path::PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR").expect("Cargo manifest directory"),
     );
-    let desktop_manifest = manifest_dir.join("../../../ds-command-kernel/native-app-version.txt");
+    let desktop_manifest = manifest_dir.join("../../kernel/ds-command-kernel/native-app-version.txt");
     println!("cargo:rerun-if-changed={}", desktop_manifest.display());
     let source = std::fs::read_to_string(&desktop_manifest)
         .expect("native Server build requires the kernel-owned application version");

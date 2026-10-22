@@ -3,4 +3,4 @@
 # This repository builds the component; release coordination and packaging are ds-architecture's.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$ROOT/../ds-architecture/scripts/release/deploy-component.sh" kernel windows "$@"
+exec "$ROOT/../../../../ds-architecture/scripts/release/deploy-component.sh" kernel windows "$@"

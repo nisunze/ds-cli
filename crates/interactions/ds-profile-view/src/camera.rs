@@ -1,6 +1,6 @@
 //! Adapt the permanent Canvas primitives without introducing another camera.
 use crate::model::{Bounds, Point, Screen, Viewport};
-use ds_canvas::{viewport as core, Point as CanvasPoint};
+use ds_canvas::{Point as CanvasPoint, viewport as core};
 pub struct Camera {
     pub bounds: Bounds,
     pub width: f64,

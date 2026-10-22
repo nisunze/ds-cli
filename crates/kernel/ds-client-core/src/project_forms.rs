@@ -170,22 +170,23 @@ pub(crate) fn decode_project_forms(
     if response.body.len() > response_limit {
         return Err(unreadable());
     }
-    let payload: ActivationEnvelope =
-        serde_json::from_slice(&response.body).map_err(|_| unreadable())?;
-    if payload.status != "success"
-        || payload.project_id != ds_project
-        || payload.user.email != canonical_email
-        || payload.forms.len() > MAX_FORMS
-        || payload.orphaned_project_forms.len() > MAX_ORPHANS
-        || !payload.resolved_at.is_number()
-        || !payload.field_types.is_array()
-        || !payload.condition_operators.is_array()
-        || !payload.type_aliases.is_object()
-        || (!payload.settings_registry.is_null() && !payload.settings_registry.is_array())
-        || (!payload.settings_editors.is_null() && !payload.settings_editors.is_object())
-        || payload.user.roles.iter().any(|role| !bounded(role, 120))
-    {
-        return Err(unreadable());
+    let payload: ActivationEnvelope = serde_json::from_slice(&response.body)
+        .map_err(|_| unreadable_message(schema_diagnostic(&response.body)))?;
+    for (valid, message) in [
+        (payload.status == "success", "the project-forms activation contract refused status: expected success"),
+        (payload.project_id == ds_project, "the project-forms activation contract refused project_id: scope mismatch"),
+        (payload.user.email == canonical_email, "the project-forms activation contract refused user.email: identity mismatch"),
+        (payload.forms.len() <= MAX_FORMS, "the project-forms activation contract refused forms: count exceeds bound"),
+        (payload.orphaned_project_forms.len() <= MAX_ORPHANS, "the project-forms activation contract refused orphaned_project_forms: count exceeds bound"),
+        (payload.resolved_at.is_number(), "the project-forms activation contract refused resolved_at: expected number"),
+        (payload.field_types.is_array(), "the project-forms activation contract refused field_types: expected array"),
+        (payload.condition_operators.is_array(), "the project-forms activation contract refused condition_operators: expected array"),
+        (payload.type_aliases.is_object(), "the project-forms activation contract refused type_aliases: expected object"),
+        (payload.settings_registry.is_null() || payload.settings_registry.is_array(), "the project-forms activation contract refused settings_registry: expected array or null"),
+        (payload.settings_editors.is_null() || payload.settings_editors.is_object(), "the project-forms activation contract refused settings_editors: expected object or null"),
+        (payload.user.roles.iter().all(|role| bounded(role, 120)), "the project-forms activation contract refused user.roles: invalid bounded role"),
+    ] {
+        if !valid { return Err(unreadable_message(message)); }
     }
     let _ = (payload.user.is_owner, payload.user.is_admin);
 
@@ -193,11 +194,18 @@ pub(crate) fn decode_project_forms(
     let mut lineage = BTreeMap::new();
     let mut forms = Vec::with_capacity(payload.forms.len());
     for form in payload.forms {
-        if !bounded(&form.slug, MAX_FORM_SLUG_CHARS)
-            || !bounded(&form.display_name, MAX_DISPLAY_NAME_CHARS)
-            || !seen.insert(form.slug.clone())
-        {
-            return Err(unreadable());
+        if !bounded(&form.slug, MAX_FORM_SLUG_CHARS) {
+            return Err(unreadable_message(
+                "the project-forms activation contract refused forms[].slug: invalid bounded text",
+            ));
+        }
+        if !bounded(&form.display_name, MAX_DISPLAY_NAME_CHARS) {
+            return Err(unreadable_message("the project-forms activation contract refused forms[].display_name: invalid bounded text"));
+        }
+        if !seen.insert(form.slug.clone()) {
+            return Err(unreadable_message(
+                "the project-forms activation contract refused forms[].slug: duplicate",
+            ));
         }
         let master_availability = form
             .master_availability
@@ -207,16 +215,17 @@ pub(crate) fn decode_project_forms(
             master_availability,
             "master_available" | "master_archived" | "master_missing"
         ) {
-            return Err(unreadable());
+            return Err(unreadable_message("the project-forms activation contract refused forms[].master_availability: unknown state"));
         }
         let geometry_type = form
             .geometry_type
-            .or(form.drawing_settings.unwrap_or_default().geometry_type);
+            .or(form.drawing_settings.unwrap_or_default().geometry_type)
+            .filter(|value| !value.is_empty());
         if geometry_type
             .as_deref()
             .is_some_and(|value| !bounded(value, MAX_GEOMETRY_TYPE_CHARS))
         {
-            return Err(unreadable());
+            return Err(unreadable_message("the project-forms activation contract refused forms[].geometry_type: invalid bounded text"));
         }
         lineage.insert(
             form.slug.clone(),
@@ -247,7 +256,7 @@ pub(crate) fn decode_project_forms(
             || !bounded(&orphan.reason, MAX_ORPHAN_REASON_CHARS)
             || !orphan_slugs.insert(orphan.form_slug.clone())
         {
-            return Err(unreadable());
+            return Err(unreadable_message("the project-forms activation contract refused orphaned_project_forms[]: invalid scope, reason or duplicate"));
         }
         // The server also returns renderable archived and missing-master forms
         // in `forms`. Their audit row is a second view of the same binding.
@@ -256,7 +265,7 @@ pub(crate) fn decode_project_forms(
                 || *enabled != orphan.enabled
                 || *revision != orphan.settings_revision
             {
-                return Err(unreadable());
+                return Err(unreadable_message("the project-forms activation contract refused orphaned_project_forms[]: lineage disagreement"));
             }
         }
         orphaned_project_forms.push(ProjectFormOrphan {
@@ -287,4 +296,229 @@ fn unreadable() -> ClientError {
         ErrorKind::UnreadableResponse,
         "the response is outside the closed project-forms activation contract",
     )
+}
+
+// This refusal-only pass names known schema fields and type classes. It never
+// admits a response, emits response values/unknown keys, or changes authority.
+fn schema_diagnostic(body: &[u8]) -> &'static str {
+    use serde_json::Value;
+    let Ok(value) = serde_json::from_slice::<Value>(body) else {
+        return "the project-forms activation contract refused response: invalid JSON";
+    };
+    let Some(root) = value.as_object() else {
+        return "the project-forms activation contract refused response: expected object";
+    };
+    if root.keys().any(|key| {
+        !matches!(
+            key.as_str(),
+            "status"
+                | "project_id"
+                | "resolved_at"
+                | "user"
+                | "forms"
+                | "orphaned_project_forms"
+                | "field_types"
+                | "condition_operators"
+                | "type_aliases"
+                | "settings_registry"
+                | "settings_editors"
+        )
+    }) {
+        return "the project-forms activation contract refused response: unknown field";
+    }
+    for (valid, message) in [
+        (
+            value["status"].is_string(),
+            "the project-forms activation contract refused status: expected string",
+        ),
+        (
+            value["project_id"].is_string(),
+            "the project-forms activation contract refused project_id: expected string",
+        ),
+        (
+            root.contains_key("resolved_at"),
+            "the project-forms activation contract refused resolved_at: missing field",
+        ),
+        (
+            value["user"].is_object(),
+            "the project-forms activation contract refused user: expected object",
+        ),
+        (
+            value["forms"].is_array(),
+            "the project-forms activation contract refused forms: expected array",
+        ),
+    ] {
+        if !valid {
+            return message;
+        }
+    }
+    let user = value["user"].as_object().expect("checked object");
+    if user
+        .keys()
+        .any(|key| !matches!(key.as_str(), "email" | "roles" | "is_owner" | "is_admin"))
+    {
+        return "the project-forms activation contract refused user: unknown field";
+    }
+    for (valid, message) in [
+        (
+            value["user"]["email"].is_string(),
+            "the project-forms activation contract refused user.email: expected string",
+        ),
+        (
+            value["user"]["roles"].is_array(),
+            "the project-forms activation contract refused user.roles: expected array",
+        ),
+        (
+            value["user"]["is_owner"].is_boolean(),
+            "the project-forms activation contract refused user.is_owner: expected boolean",
+        ),
+        (
+            value["user"]["is_admin"].is_boolean(),
+            "the project-forms activation contract refused user.is_admin: expected boolean",
+        ),
+    ] {
+        if !valid {
+            return message;
+        }
+    }
+    if value["user"]["roles"]
+        .as_array()
+        .expect("checked array")
+        .iter()
+        .any(|role| !role.is_string())
+    {
+        return "the project-forms activation contract refused user.roles[]: expected string";
+    }
+    for form in value["forms"].as_array().expect("checked array") {
+        for (valid,message) in [
+            (form.is_object(), "the project-forms activation contract refused forms[]: expected object"),
+            (form["slug"].is_string(), "the project-forms activation contract refused forms[].slug: expected string"),
+            (form["display_name"].is_string(), "the project-forms activation contract refused forms[].display_name: expected string"),
+            (form["enabled"].is_boolean(), "the project-forms activation contract refused forms[].enabled: expected boolean"),
+        ] { if !valid { return message; } }
+        if form
+            .get("settings_revision")
+            .is_some_and(|v| v.as_u64().is_none())
+        {
+            return "the project-forms activation contract refused forms[].settings_revision: expected unsigned integer";
+        }
+        if form
+            .get("geometry_type")
+            .is_some_and(|v| !v.is_null() && !v.is_string())
+        {
+            return "the project-forms activation contract refused forms[].geometry_type: expected string or null";
+        }
+        if form
+            .get("master_availability")
+            .is_some_and(|v| !v.is_null() && !v.is_string())
+        {
+            return "the project-forms activation contract refused forms[].master_availability: expected string or null";
+        }
+        if form
+            .get("drawing_settings")
+            .is_some_and(|v| !v.is_null() && !v.is_object())
+        {
+            return "the project-forms activation contract refused forms[].drawing_settings: expected object or null";
+        }
+        if form
+            .get("drawing_settings")
+            .and_then(|v| v.get("geometry_type"))
+            .is_some_and(|v| !v.is_null() && !v.is_string())
+        {
+            return "the project-forms activation contract refused forms[].drawing_settings.geometry_type: expected string or null";
+        }
+        if form
+            .get("metadata")
+            .is_some_and(|v| !v.is_null() && !v.is_object())
+        {
+            return "the project-forms activation contract refused forms[].metadata: expected object or null";
+        }
+        if form
+            .get("metadata")
+            .and_then(|v| v.get("unavailable"))
+            .is_some_and(|v| !v.is_boolean())
+        {
+            return "the project-forms activation contract refused forms[].metadata.unavailable: expected boolean";
+        }
+    }
+    if root
+        .get("orphaned_project_forms")
+        .is_some_and(|v| !v.is_array())
+    {
+        return "the project-forms activation contract refused orphaned_project_forms: expected array";
+    }
+    "the project-forms activation contract refused response: closed schema mismatch"
+}
+
+fn unreadable_message(message: &'static str) -> ClientError {
+    ClientError::new(ErrorKind::UnreadableResponse, message)
+}
+
+#[cfg(test)]
+mod geometry_absence_tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    fn decode(
+        primary: Option<Value>,
+        nested: Option<Value>,
+    ) -> Result<ProjectFormsSnapshot, ClientError> {
+        let mut form = json!({"slug":"example","display_name":"Example","enabled":true});
+        if let Some(value) = primary {
+            form["geometry_type"] = value;
+        }
+        if let Some(value) = nested {
+            form["drawing_settings"] = json!({"geometry_type":value});
+        }
+        let body = json!({"status":"success","project_id":"project","resolved_at":1,"user":{"email":"user@example.com","roles":[],"is_owner":false,"is_admin":false},"forms":[form],"field_types":[],"condition_operators":[],"type_aliases":{}});
+        decode_project_forms(
+            TransportResponse::new(200, serde_json::to_vec(&body).unwrap()),
+            65536,
+            "project",
+            "user@example.com",
+        )
+    }
+
+    #[test]
+    fn geometry_empty_selected_value_is_absent_without_fallback() {
+        for (primary, nested) in [
+            (None, None),
+            (Some(json!("")), None),
+            (None, Some(json!(""))),
+            (Some(json!("")), Some(json!("Point"))),
+            (Some(json!(null)), Some(json!(""))),
+        ] {
+            assert_eq!(
+                decode(primary, nested).unwrap().forms()[0].geometry_type(),
+                None
+            );
+        }
+        assert_eq!(
+            decode(None, Some(json!("Point"))).unwrap().forms()[0].geometry_type(),
+            Some("Point")
+        );
+        assert_eq!(
+            decode(Some(json!("Point")), Some(json!("LineString")))
+                .unwrap()
+                .forms()[0]
+                .geometry_type(),
+            Some("Point")
+        );
+    }
+
+    #[test]
+    fn geometry_nonempty_malformed_values_still_refuse() {
+        for value in [
+            json!(" "),
+            json!(" Point"),
+            json!("Point "),
+            json!("Point\n"),
+            json!("x".repeat(81)),
+            json!(1),
+        ] {
+            assert!(decode(Some(value.clone()), None).is_err());
+            assert!(decode(None, Some(value)).is_err());
+        }
+        assert!(decode(Some(json!("x".repeat(80))), None).is_ok());
+    }
 }

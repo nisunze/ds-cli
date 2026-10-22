@@ -34,10 +34,9 @@ fn declared(line: &str) -> Option<&str> {
 #[test]
 fn the_native_transport_sends_every_call_the_shared_client_defines() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let kernel = std::fs::read_to_string(
-        manifest.join("../../../ds-command-kernel/crates/ds-client-core/src/transport.rs"),
-    )
-    .expect("the pinned sibling kernel is checked out beside ds-cli");
+    let kernel =
+        std::fs::read_to_string(manifest.join("../../kernel/ds-client-core/src/transport.rs"))
+            .expect("the shared client transport is in this workspace");
     let native = std::fs::read_to_string(manifest.join("src/transport.rs"))
         .expect("the native transport source");
 

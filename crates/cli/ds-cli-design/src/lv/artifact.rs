@@ -99,10 +99,14 @@ pub(super) fn write_new(
         NEXT_STAGE.fetch_add(1, Ordering::Relaxed)
     ));
     let write_result = (|| -> std::io::Result<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&stage)?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&stage)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         std::fs::hard_link(&stage, path)?;
@@ -136,3 +140,7 @@ pub(super) fn write_new(
 pub(super) fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
+
+#[cfg(test)]
+#[path = "artifact_tests.rs"]
+mod tests;

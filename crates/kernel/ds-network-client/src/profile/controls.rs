@@ -1,7 +1,21 @@
 //! Edit receipt transport fences. Network owns commands and history transitions;
 //! the client rejects crossed or incomplete acknowledgments.
 use super::*;
-use ds_network_contracts::profile_control::ProfileControlOperation;
+use ds_network_contracts::profile_control::NativeProfileSessionControlOperationV1 as ProfileControlOperation;
+
+pub(super) fn required_capability(
+    control: &Value,
+) -> Result<Option<NetworkCapability>, NetworkFailure> {
+    let control: ProfileControlOperation =
+        serde_json::from_value(control.clone()).map_err(|error| invalid(error.to_string()))?;
+    Ok(if control.requires_station_move() {
+        Some(NetworkCapability::ProfileStationMoveV1)
+    } else if control.requires_retype() {
+        Some(NetworkCapability::ProfileRetypeV1)
+    } else {
+        None
+    })
+}
 
 pub(super) fn validate_reply(
     operation: &NativeProfileOperationV1,
@@ -10,6 +24,42 @@ pub(super) fn validate_reply(
     previous: &Value,
     history: &Value,
 ) -> Result<(), NetworkFailure> {
+    if let NativeProfileOperationV1::QueryResults {
+        scope,
+        expected_engineering_input_root,
+        query,
+    } = operation
+    {
+        let value: Value =
+            serde_json::from_slice(bytes).map_err(|error| invalid(error.to_string()))?;
+        if previous != history
+            || value["scope"] != *scope
+            || value["model_id"] != model
+            || value["history"] != *history
+            || value["model_revision"] != history["model_revision"]
+            || value["engineering_input_root"] != *expected_engineering_input_root
+            || value["kind"]
+                != serde_json::to_value(query.kind).map_err(|error| invalid(error.to_string()))?
+            || value["source"]
+                != serde_json::to_value(query.source).map_err(|error| invalid(error.to_string()))?
+        {
+            return Err(invalid(
+                "Profile query result crossed its captured history, root, source or selector",
+            ));
+        }
+        return Ok(());
+    }
+    if matches!(operation, NativeProfileOperationV1::ModelLibrary {}) {
+        let projection: Value =
+            serde_json::from_slice(bytes).map_err(|error| invalid(error.to_string()))?;
+        return if previous == history && projection["model_revision"] == history["model_revision"] {
+            Ok(())
+        } else {
+            Err(invalid(
+                "Profile model-library read changed authored history or revision",
+            ))
+        };
+    }
     let presentation = match operation {
         NativeProfileOperationV1::EditMode { .. }
         | NativeProfileOperationV1::SaveControl { .. } => false,
@@ -35,13 +85,20 @@ pub(super) fn validate_reply(
     }
     match operation {
         NativeProfileOperationV1::Control { operation } => {
-            let operation: ProfileControlOperation =
+            let control: ProfileControlOperation =
                 serde_json::from_value(operation.clone()).map_err(|e| invalid(e.to_string()))?;
-            if value["applied"] != operation.is_mutating()
-                || (!operation.is_mutating() && history != previous)
+            if value["applied"] != control.is_mutating()
+                || (!control.is_mutating() && history != previous)
             {
                 return Err(invalid(
                     "Profile preview/control changed its admitted mutation contract",
+                ));
+            }
+            if (control.requires_station_move() || control.requires_retype())
+                && value["result"]["action"] != operation["action"]
+            {
+                return Err(invalid(
+                    "Profile gesture receipt changed its declared action",
                 ));
             }
         }
@@ -173,5 +230,122 @@ mod tests {
         };
         assert!(!accept(preview(), value.clone(), old, history.clone()));
         assert!(accept(preview(), value, history.clone(), history));
+    }
+
+    #[test]
+    fn gesture_capabilities_are_closed_and_owner_specific() {
+        let station = json!({"action":"preview_structure_station_move", "request":{
+            "expected_revision":"rev:one", "structure_id":"one", "station_m":12.0},
+            "options":{}, "held_axis_pin":"one"});
+        assert_eq!(
+            required_capability(&station).unwrap(),
+            Some(NetworkCapability::ProfileStationMoveV1)
+        );
+        let retype = json!({"action":"apply_structure_retype", "request":{
+            "expected_revision":"rev:one", "structure_ids":["one"], "structure_type_id":"new"}});
+        assert_eq!(
+            required_capability(&retype).unwrap(),
+            Some(NetworkCapability::ProfileRetypeV1)
+        );
+        assert_eq!(
+            required_capability(&json!({"action":"undo"})).unwrap(),
+            None
+        );
+        let mut extra = station;
+        extra["request"]["x_m"] = json!(42);
+        assert!(required_capability(&extra).is_err());
+        assert!(required_capability(&json!({"action":"arbitrary_method"})).is_err());
+    }
+
+    #[test]
+    fn gesture_preview_keeps_exact_action_and_history() {
+        let history = history();
+        let operation = || NativeProfileOperationV1::Control {
+            operation: json!({"action":"preview_structure_retype", "request":{
+                "expected_revision":"rev:one", "structure_ids":["one"], "structure_type_id":"new"}}),
+        };
+        let mut value = json!({"history":history,"applied":false,
+            "result":{"action":"preview_structure_retype","preview":{}},
+            "presentation":{"model_id":"one","history":history,
+                "revision":{"revision_id":"rev:one"},"validation":{},"table_counts":{}}});
+        assert!(accept(
+            operation(),
+            value.clone(),
+            history.clone(),
+            history.clone()
+        ));
+        value["result"]["action"] = json!("preview_structure_station_move");
+        assert!(!accept(
+            operation(),
+            value.clone(),
+            history.clone(),
+            history.clone()
+        ));
+        value["result"]["action"] = json!("preview_structure_retype");
+        let mut previous = history.clone();
+        previous["undo_depth"] = json!(0);
+        assert!(!accept(operation(), value, previous, history));
+    }
+
+    #[test]
+    fn model_library_read_is_exact_and_never_adopts_history() {
+        let history = history();
+        let op = || NativeProfileOperationV1::ModelLibrary {};
+        let mut value = json!({"schema_version":1,"model_revision":"rev:one",
+            "engineering_input_root":"root","areas":[]});
+        assert!(accept(
+            op(),
+            value.clone(),
+            history.clone(),
+            history.clone()
+        ));
+        value["model_revision"] = json!("rev:other");
+        assert!(!accept(
+            op(),
+            value.clone(),
+            history.clone(),
+            history.clone()
+        ));
+        value["model_revision"] = json!("rev:one");
+        let mut previous = history.clone();
+        previous["history_pin"] = json!("other");
+        assert!(!accept(op(), value, previous, history));
+    }
+
+    #[test]
+    fn engineering_query_receipt_cannot_cross_source_root_or_history() {
+        let history = history();
+        let operation = || NativeProfileOperationV1::QueryResults {
+            scope: "profile-a".into(),
+            expected_engineering_input_root: "root-a".into(),
+            query: serde_json::from_value(json!({"kind":"findings","source":"model_analysis"}))
+                .unwrap(),
+        };
+        let value = json!({"scope":"profile-a","model_id":"one","history":history,
+            "model_revision":"rev:one","engineering_input_root":"root-a",
+            "kind":"findings","source":"model_analysis"});
+        assert!(accept(
+            operation(),
+            value.clone(),
+            history.clone(),
+            history.clone()
+        ));
+        for (field, crossed) in [
+            ("scope", "profile-b"),
+            ("engineering_input_root", "root-b"),
+            ("source", "profile"),
+            ("kind", "usage"),
+            ("model_revision", "rev:two"),
+        ] {
+            let mut changed = value.clone();
+            changed[field] = json!(crossed);
+            assert!(
+                !accept(operation(), changed, history.clone(), history.clone()),
+                "{field}"
+            );
+        }
+        let mut previous = history.clone();
+        previous["history_pin"] = json!("other");
+        assert!(!accept(operation(), value, previous, history));
     }
 }

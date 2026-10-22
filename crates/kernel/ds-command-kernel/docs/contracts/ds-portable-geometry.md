@@ -22,7 +22,7 @@ The former partial haversine snapshot is removed.
 The default feature set has no dependencies. `editing` and `sampling`
 add portable operations without dependencies; `tin` adds pinned Spade 2.15.1
 through its public APIs, and `profile` adds the `index` feature (`rstar`). `geojson` adds serde/JSON and region/measurement/extent
-modules; `revision` adds the retained identity/comparison snapshots; `overlay` adds the one `geo` predicate/boolean engine. The application
+modules; `revision` adds canonical comparison and the retained identity snapshot; `overlay` adds the one `geo` predicate/boolean engine. The application
 kernel explicitly requests `overlay` and `revision`. Consumers select capabilities instead
 of inheriting the polygon engine for scalar distance or LV line splitting.
 Cartesian primitives preserve admitted coordinate space, arithmetic, first-hit
@@ -58,7 +58,7 @@ The following remaining snapshots retain their existing Network authority:
 | | |
 |---|---|
 | `vendor/ds-geo-lite/` | the snapshot — ds-network bytes, plus `MANIFEST.json` |
-| `crates/ds-geo-lite` | owns portable primitives; mounts legacy identity/comparison snapshots |
+| `crates/ds-geo-lite` | owns portable primitives; owns canonical comparison; mounts the legacy identity snapshot |
 | `tests/geo_lite_drift.rs` | the proof that the snapshot is still the source |
 | `scripts/sync-geo-lite.sh` | the only sanctioned way to move bytes across the line |
 
@@ -103,9 +103,9 @@ admission live in `ds-geo-lite::window`. CLI admits Profile's rectangle intent
 and forwards it to the paired UI; it does not calculate the camera. Projection
 values and scalar transforms also have one neutral implementation, separate from
 Network's model CRS admission and engineering calculations. See the
-[interaction boundary](../../../ds-interactions/docs/interaction-boundary.md).
+[interaction boundary](../../../../interactions/docs/interaction-boundary.md).
 
-The remaining identity/comparison snapshots still compile in edition 2024,
+The remaining identity snapshot still compile in edition 2024,
 matching Network's source; their manifest and drift checks are preserved.
 
 ### Primitive and processing semantics
@@ -182,12 +182,11 @@ topology, with no whole-mesh rebuild on a local edit.
 
 ## 2. What is snapshotted
 
-3 remaining files, pinned per file by `vendor/ds-geo-lite/MANIFEST.json`:
+2 remaining files, pinned per file by `vendor/ds-geo-lite/MANIFEST.json`:
 
 | Vendored | ds-network source | Whole |
 |---|---|---|
 | `geo/identity.rs` | `crates/ds-geo/src/identity.rs` | yes |
-| `geo/comparison.rs` | `crates/ds-geo/src/comparison.rs` | yes |
 | `network/processor_presets.json` | `crates/ds-network-contracts/src/processor_presets.json` | yes |
 
 The last one is not geometry — it is the processor catalogue
@@ -204,35 +203,28 @@ ds-network, so it ships its own corpus: `crates/ds-geo-lite/src/admission_corpus
 `ST_GEOGFROMGEOJSON`'s answer for every case, and the tests inside the file
 assert each one here too.
 
-## 3. Judgement: `compare_geojson_layers` is not heavy
+## 3. Canonical comparison owner
 
-The ruling asked for a decision rather than an assumption. The decision is that
-it moves with the rest, on this evidence:
+`ds-geo-lite::comparison` owns the data-only comparison algorithm, request,
+response, refusal and response interpretation. Both native Design operations
+and Kernel's typed WASM entry consume it directly. Network's `ds-geo` module
+re-exports that owner; it holds no copied comparison algorithm or contract.
+The former vendored comparison source and its sync entry are removed. The
+remaining identity snapshot retains its exact source/digest fence.
 
-- **It performs no geometric computation at all.** Geometry equality is exact
-  JSON value comparison — `ds-geo/src/comparison.rs:447-448` reads
-  `local_feature.get("geometry") != cloud_feature.get("geometry")`. There is no
-  predicate, no projection, no tolerance, no intersection.
-- **It imports nothing heavy.** `comparison.rs:7-10` imports `crate::identity`,
-  `serde`, `serde_json` and `std::collections`. No `geo`, no `rstar`, no
-  `geographiclib-rs`. Its one internal dependency, `identity.rs`, is 88 lines
-  over `serde_json` and `HashSet`.
-- **Its algorithm is a diff, not a solve.** Identity matching is union-find over
-  alias strings (`comparison.rs:374-405`, `UnionFind` at `:919`); the rest is
-  counting and a coordinate walk for change bounds (`BoundsAccumulator`, `:860`)
-  that is the same shape as `geojson_bounds`.
-- **The litmus test answers yes.** Comparing two revisions of a design is
-  synchronization semantics — explicitly the kernel's column in the ruling's
-  ownership table. A surveyor offline in the field must be able to see what
-  changed between the revision they hold and the one they were sent. That is
-  the case *for* portability, not against it.
+Comparison performs exact JSON property/geometry comparison, alias matching,
+counts and a coordinate walk for change bounds. It uses serde and ordinary
+collections, and runs offline without the Network engine. Input GeoJSON remains
+runtime-admitted data, with named refusals for invalid collections/features.
+Reply decoding checks layer/input scope, count reconciliation, feature indices,
+bounds and detail budgets before a caller renders the result. Optional/additive
+fields remain compatible; operation semantics do not depend on release equality.
 
-It is a large function — 1,440 lines with tests, 954 without — but size is not
-the criterion. The criterion is whether the operation is inherently heavyweight
-engineering computation. It is not; it is a bounded data diff.
-
-The two kernel call sites (`src/design_versions.rs:509` and `:527`) therefore
-stand as written and need no re-examination.
+The frontend constructs the owning typed request and dispatches it to Kernel's
+selected worker unit. No raw Network export name or TypeScript comparison DTO
+participates. Native CLI and frontend fixture exchanges must produce the same
+domain result, including JSON-null bounds when nothing changed. Provenance and
+integrity remain artifact properties, independent of data compatibility.
 
 ## 4. `ds-design-workspace` has its own workspace
 

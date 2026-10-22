@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_client_core::survey_photo::{self, Manifest, Receipt};
-use ds_command_kernel::survey_moments::{self, MediaRecord, RotationSource, SyncState};
+use ds_command_kernel::survey_moments::{self, MediaRecord, SyncState};
 use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
@@ -54,7 +54,7 @@ pub static ROTATE_COMMAND: Command = Command {
     path: &["survey", "photo", "rotate"],
     contract: 1,
     summary: "Rotate a survey photo: held locally first, published after.",
-    purpose: "The one rotation, with the properties panel's semantics: only a stored original of the project, never a thumbnail; a net clockwise quarter-turn applied once to the generation-pinned source through the shared Rust image engine, which regenerates the JPEG thumbnail. Without --out the result is held in this machine's survey-media store (survey moments list shows it `waiting`; a further turn of a waiting photo turns the held bytes and supersedes them; a full circle discards the wait) and is published by survey photo publish --path. With --out it is a private bundle for survey photo publish --bundle. Nothing reaches the bucket here.",
+    purpose: "The one rotation, with the properties panel's semantics: only a stored original of the project, never a thumbnail; a net clockwise quarter-turn stored as entry metadata against the generation-pinned source; the shared Rust image engine regenerates only the JPEG thumbnail. Without --out the result is held in this machine's survey-media store (survey moments list shows it `waiting`; a further turn adds to held metadata using the same unchanged original; a full circle clears the wait) and is published by survey photo publish --path. With --out it is a private bundle for survey photo publish --bundle. Nothing reaches the bucket here.",
     chapter: Chapter::Survey,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessUser,
@@ -70,7 +70,7 @@ pub static ROTATE_COMMAND: Command = Command {
         Arg::value(
             "degrees",
             "<90|180|270>",
-            "Clockwise rotation relative to the pinned source.",
+            "Clockwise turn added to the displayed or locally pending rotation.",
         )
         .required()
         .choices(&["90", "180", "270"]),
@@ -116,8 +116,8 @@ pub static PUBLISH_COMMAND: Command = Command {
     id: "survey.photo.publish",
     path: &["survey", "photo", "publish"],
     contract: 1,
-    summary: "Publish a held or bundled rotation: the exact bytes, once.",
-    purpose: "Verifies digests, project, authenticated account and deployment audience, uploads the exact saved bytes under storage-generation preconditions, then verifies the thumbnail against the published original generation. --path publishes the rotation this machine holds waiting and marks it synced; --bundle publishes a private bundle. Retry after an interrupted transfer; it never applies another rotation. Concurrent unrelated edits are refused.",
+    summary: "Publish rotation metadata and its thumbnail.",
+    purpose: "Verifies digests, project, authenticated account and deployment audience, updates only the entry rotation metadata under its version fence, uploads the derived thumbnail under storage-generation preconditions, and leaves the camera original unchanged. --path publishes the rotation this machine holds waiting and marks it synced; --bundle publishes a private bundle. Retry after an interrupted transfer; it never applies another rotation. Concurrent unrelated edits are refused.",
     chapter: Chapter::Survey,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
@@ -137,7 +137,7 @@ pub static PUBLISH_COMMAND: Command = Command {
         moments::SERVER_STATE_DIR_ARG,
         crate::LANE,
     ],
-    output: "Verified publication receipt with project, object paths, both storage generations and digests. A failure keeps the held bytes for retry.",
+    output: "Publication receipt with entry version, source generation and thumbnail result. A partial publication keeps the metadata receipt and held bytes for explicit retry.",
     examples: &[
         Example {
             command: "ds survey photo publish --project <project-id> --path <object-path> --lane canary --yes --output json",
@@ -274,6 +274,17 @@ fn held_manifest(root: &Path) -> Result<Manifest, Failure> {
         .map_err(|_| invalid("Invalid rotation manifest"))
 }
 
+/// Persist the metadata commit receipt before an explicit thumbnail retry.
+fn replace_manifest(root: &Path, manifest: &Manifest) -> Result<(), Failure> {
+    let name = format!("manifest.next-{}-{}", std::process::id(), now_ms());
+    let bytes = serde_json::to_vec_pretty(manifest)
+        .map_err(|_| invalid("Cannot encode rotation manifest"))?;
+    write_new(root, &name, &bytes)?;
+    fs::rename(root.join(&name), root.join("manifest.json"))
+        .map_err(|_| invalid("Cannot retain the committed rotation receipt"))?;
+    Ok(())
+}
+
 fn record_of(
     prepared: &survey_photo::Prepared,
     previous: Option<&MediaRecord>,
@@ -290,13 +301,13 @@ fn record_of(
         sha256: m.original_sha256.clone(),
         thumbnail_size: m.thumbnail_size as u64,
         thumbnail_sha256: m.thumbnail_sha256.clone(),
-        width: m.original_width,
-        height: m.original_height,
+        width: m.width,
+        height: m.height,
         cached_at_ms: previous.map_or(now, |p| p.cached_at_ms),
         updated_at_ms: now,
         state: SyncState::Waiting,
-        degrees: m.degrees,
-        source_generation: m.expected_generation.clone(),
+        degrees: u16::from(m.quarter_turns) * 90,
+        source_generation: m.generation.clone(),
         published_generation: None,
         published_thumbnail_generation: None,
         account: m.account_id.clone(),
@@ -327,60 +338,56 @@ pub fn rotate(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     } else {
         None
     };
-    let waiting = match &state {
-        Some(state) => {
-            moments::record(state, project, path)?.filter(|r| r.state == SyncState::Waiting)
-        }
+    let actor = ds_cli_auth::headless_identity_for_named_project(lane)?;
+    let held = match &state {
+        Some(state) => moments::record(state, project, path)?,
         None => None,
     };
-    let rotation = survey_moments::rotation(project, path, degrees, waiting.is_some())
-        .map_err(not_rotatable)?;
-
-    let prepared: Box<survey_photo::Prepared> = match (rotation.source, &waiting, &state) {
-        (RotationSource::Waiting, Some(record), Some(state)) => {
-            // The properties panel's second case: turn the waiting bytes and
-            // supersede them; the bucket is not re-read and the precondition
-            // the publication replaces stays the one the first turn pinned.
+    let rotation = survey_moments::rotation(
+        project,
+        path,
+        degrees,
+        held.as_ref()
+            .filter(|record| record.state == SyncState::Waiting)
+            .map_or(0, |record| record.degrees),
+    )
+    .map_err(not_rotatable)?;
+    let mut prepared = match (&held, &state) {
+        (Some(record), Some(state)) => {
             let root = moments::media_dir(state, project, path);
-            let manifest = held_manifest(&root)?;
-            let held = read(&root, "original.bin", 50 * 1024 * 1024)?;
-            if hash(&held) != record.sha256 || manifest.original_sha256 != record.sha256 {
+            let prior = survey_photo::Prepared {
+                manifest: held_manifest(&root)?,
+                original: read(
+                    &root,
+                    "original.bin",
+                    ds_command_kernel::survey_photo_media::MAX_INPUT_BYTES,
+                )?,
+                thumbnail: read(
+                    &root,
+                    "thumbnail.jpeg",
+                    ds_command_kernel::survey_photo_media::MAX_INPUT_BYTES,
+                )?,
+            };
+            if prior.manifest.original_sha256 != record.sha256
+                || prior.manifest.generation != record.source_generation
+            {
                 return Err(moments::unreadable(
-                    "Held rotation bytes differ from their record",
+                    "Held original or source generation differs from its record",
                 ));
             }
-            let net = (manifest.degrees + rotation.degrees) % 360;
-            if net == 0 {
-                // A full circle is back to the published image: nothing to wait for.
-                let mut store = ds_sync_store::Store::open(&state.join("store.sqlite"))
-                    .map_err(moments::unreadable)?;
-                store
-                    .survey_media_remove(project, &[path.to_string()])
-                    .map_err(moments::unreadable)?;
-                let _ = fs::remove_dir_all(&root);
-                return Ok(
-                    json!({"publication": "discarded", "project": project, "path": path,
-                    "reason": "the net turn is a full circle; the published image stands"}),
-                );
-            }
-            let bundle = survey_photo::rotate_local(&held, rotation.degrees)
-                .map_err(|_| invalid("Held image is malformed or unsupported"))?;
-            let mut manifest = manifest;
-            manifest.degrees = net;
-            manifest.media_type = bundle.media_type.into();
-            manifest.original_size = bundle.original_bytes.len();
-            manifest.thumbnail_size = bundle.thumbnail_bytes.len();
-            manifest.original_sha256 = hash(&bundle.original_bytes);
-            manifest.thumbnail_sha256 = hash(&bundle.thumbnail_bytes);
-            manifest.original_width = bundle.original_width;
-            manifest.original_height = bundle.original_height;
-            manifest.thumbnail_width = bundle.thumbnail_width;
-            manifest.thumbnail_height = bundle.thumbnail_height;
-            Box::new(survey_photo::Prepared {
-                manifest,
-                original: bundle.original_bytes,
-                thumbnail: bundle.thumbnail_bytes,
-            })
+            Box::new(
+                survey_photo::turn_pending(
+                    project,
+                    actor.uid(),
+                    actor.credential_audience_sha256(),
+                    &prior,
+                    degrees,
+                    inputs.value("expected-generation"),
+                )
+                .map_err(|_| {
+                    invalid("Held rotation, owner, original, or source generation changed")
+                })?,
+            )
         }
         _ => {
             let receipt = ds_cli_auth::survey_photo(
@@ -388,8 +395,9 @@ pub fn rotate(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 project,
                 survey_photo::Command::Prepare {
                     object_path: &rotation.path,
-                    degrees: rotation.degrees,
+                    degrees,
                     expected_generation: inputs.value("expected-generation"),
+                    pending: None,
                 },
             )?;
             let Receipt::Prepared(prepared) = receipt else {
@@ -398,6 +406,24 @@ pub fn rotate(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             prepared
         }
     };
+    let after = ds_cli_auth::headless_identity_for_named_project(lane)?;
+    if actor != after
+        || prepared.manifest.account_id != actor.uid()
+        || prepared.manifest.credential_audience_sha256 != actor.credential_audience_sha256()
+    {
+        return Err(Failure::conflict(
+            "auth_context_mismatch",
+            "Photo owner changed before local retention",
+        ));
+    }
+    let discarded = held
+        .as_ref()
+        .is_some_and(|record| record.state == SyncState::Waiting)
+        && prepared.manifest.quarter_turns == prepared.manifest.previous_quarter_turns;
+    if discarded {
+        // Retain the unchanged source as a cache hit, with no outgoing mutation.
+        prepared.manifest.entry_committed_version = Some(prepared.manifest.expected_version);
+    }
 
     match (out, state) {
         (Some(root), _) => {
@@ -406,17 +432,26 @@ pub fn rotate(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }
         (None, Some(state)) => {
             let fence = moments::fence(lane)?;
+            if fence.account != actor.uid() {
+                return Err(Failure::conflict(
+                    "auth_context_mismatch",
+                    "Photo owner changed before local retention",
+                ));
+            }
             let root = moments::media_dir(&state, project, path);
             replace_bundle(&root, &prepared)?;
-            let record = record_of(&prepared, waiting.as_ref(), now_ms());
+            let mut record = record_of(&prepared, held.as_ref(), now_ms());
+            if discarded {
+                record.state = SyncState::Synced;
+            }
             let mut store = ds_sync_store::Store::open(&state.join("store.sqlite"))
                 .map_err(moments::unreadable)?;
             store
                 .survey_media_put(&fence, &record)
                 .map_err(moments::unreadable)?;
             Ok(
-                json!({"publication":"held", "state": "waiting", "bundle": root, "manifest": prepared.manifest,
-                "next": format!("ds survey photo publish --project {project} --path {path} --lane {lane} --yes")}),
+                json!({"publication":if discarded { "discarded" } else { "held" }, "state":record.state.as_str(), "bundle": root, "manifest": prepared.manifest,
+                "next": if discarded { None } else { Some(format!("ds survey photo publish --project {project} --path {path} --lane {lane} --yes")) }}),
             )
         }
         (None, None) => unreachable!("the store mode resolved its state root"),
@@ -455,23 +490,23 @@ pub fn publish(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if !meta.is_dir() {
         return Err(invalid("Rotation bundle must be a regular directory"));
     }
-    let manifest = held_manifest(&root)?;
-    let original = read(&root, "original.bin", 50 * 1024 * 1024)?;
+    let mut manifest = held_manifest(&root)?;
+    let original = read(
+        &root,
+        "original.bin",
+        ds_command_kernel::survey_photo_media::MAX_INPUT_BYTES,
+    )?;
     let thumbnail = read(&root, "thumbnail.jpeg", 50 * 1024 * 1024)?;
-    survey_photo::validate_manifest(
-        project,
-        &manifest.account_id,
-        &manifest,
-        &original,
-        &thumbnail,
-    )
-    .map_err(|_| invalid("Rotation bundle bytes or project differ from the manifest"))?;
+    survey_photo::validate_manifest(project, &manifest.account_id, &manifest, &thumbnail)
+        .map_err(|_| invalid("Rotation bundle bytes or project differ from the manifest"))?;
+    if original.len() != manifest.original_size || hash(&original) != manifest.original_sha256 {
+        return Err(invalid("The retained camera original changed"));
+    }
     let value = match ds_cli_auth::survey_photo(
         lane,
         project,
         survey_photo::Command::Publish {
             manifest: &manifest,
-            original: &original,
             thumbnail: &thumbnail,
         },
     )? {
@@ -480,10 +515,26 @@ pub fn publish(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             return Err(invalid("Native photo owner returned an unexpected receipt"));
         }
     };
+    let complete = value["publication"] == "published";
+    if !complete && value["publication"] != "entry_committed" {
+        return Err(invalid(
+            "Native photo owner returned an unverified publication state",
+        ));
+    }
+    manifest.entry_committed_version = Some(
+        value["entry"]["client_version"]
+            .as_u64()
+            .ok_or_else(|| invalid("Native photo owner omitted the committed entry version"))?,
+    );
+    replace_manifest(&root, &manifest)?;
     if let Some((state, mut record)) = held {
         // The held bytes now ARE the head: the record settles to synced and
         // the bytes stay as this machine's copy (cleanable, not retained).
-        record.state = SyncState::Synced;
+        record.state = if complete {
+            SyncState::Synced
+        } else {
+            SyncState::Waiting
+        };
         record.published_generation = value["generation"].as_str().map(str::to_string);
         record.published_thumbnail_generation =
             value["thumbnail_generation"].as_str().map(str::to_string);
@@ -578,15 +629,19 @@ pub fn rotate_local(inputs: &Inputs, _context: &Context) -> Result<Value, Failur
     builder
         .create(root)
         .map_err(|_| invalid("Cannot create image output directory"))?;
-    let filename = if image.media_type == "image/png" {
+    let filename = if image.image.media_type == "image/png" {
         "rotated.png"
     } else {
         "rotated.jpeg"
     };
-    write_new(root, filename, &image.original_bytes)?;
-    write_new(root, "thumbnail.jpeg", &image.thumbnail_bytes)?;
+    write_new(root, filename, &image.image.bytes)?;
+    write_new(root, "thumbnail.jpeg", &image.thumbnail.bytes)?;
     Ok(
-        json!({"publication":"local_only", "image":root.join(filename), "thumbnail":root.join("thumbnail.jpeg"), "media_type":image.media_type,
-        "width":image.original_width,"height":image.original_height,"thumbnail_width":image.thumbnail_width,"thumbnail_height":image.thumbnail_height,"degrees":degrees}),
+        json!({"publication":"local_only", "image":root.join(filename), "thumbnail":root.join("thumbnail.jpeg"), "media_type":image.image.media_type,
+        "width":image.image.width,"height":image.image.height,"thumbnail_width":image.thumbnail.width,"thumbnail_height":image.thumbnail.height,"degrees":degrees}),
     )
 }
+
+#[cfg(test)]
+#[path = "photo_tests.rs"]
+mod tests;

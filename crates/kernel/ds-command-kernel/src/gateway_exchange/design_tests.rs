@@ -66,13 +66,17 @@ fn the_project_configuration_is_one_encoded_get() {
 
 #[test]
 fn a_configuration_sheet_save_is_fenced_by_the_rows_it_was_edited_from() {
-    let request = request(json!({"action": "save_config_sheet", "project": "it_rwanda",
-        "sheet": "lv_poles", "rows": [{"a": 1}], "expected": [{"a": 0}]}));
+    let request = request(
+        json!({"action": "save_config_sheet", "project": "it_rwanda",
+        "sheet": "lv_poles", "rows": [{"a": 1}], "expected": [{"a": 0}]}),
+    );
     assert_eq!(request.path, "/report");
     assert_eq!(
         request.body,
-        Some(json!({"action": "save_config", "eds_project_id": "it_rwanda", "sheet_name": "lv_poles",
-            "data": [{"a": 1}], "expected_data": [{"a": 0}]}))
+        Some(
+            json!({"action": "save_config", "eds_project_id": "it_rwanda", "sheet_name": "lv_poles",
+            "data": [{"a": 1}], "expected_data": [{"a": 0}]})
+        )
     );
     let conflict = answered(
         json!({"action": "save_config_sheet", "project": "it_rwanda", "sheet": "lv_poles", "rows": []}),
@@ -86,13 +90,17 @@ fn a_configuration_sheet_save_is_fenced_by_the_rows_it_was_edited_from() {
 
 #[test]
 fn transformer_reads_name_their_batch_and_admit_each_document() {
-    let request = request(json!({"action": "read_transformers", "project": "it_rwanda",
-        "transformers": [" tr_1 ", "tr_2"], "fields": "context"}));
+    let request = request(
+        json!({"action": "read_transformers", "project": "it_rwanda",
+        "transformers": [" tr_1 ", "tr_2"], "fields": "context"}),
+    );
     assert_eq!(request.path, "/api/v1/data");
     assert_eq!(
         request.body,
-        Some(json!({"action": "get_transformers_data", "eds_project_id": "it_rwanda",
-            "transformers": ["tr_1", "tr_2"], "fields": "context"}))
+        Some(
+            json!({"action": "get_transformers_data", "eds_project_id": "it_rwanda",
+            "transformers": ["tr_1", "tr_2"], "fields": "context"})
+        )
     );
     let read = json!({"action": "read_transformers", "project": "it_rwanda", "transformers": ["tr_1", "tr_2"]});
     let answer = answered(read.clone(), 200, json!({"success": true, "data": {"total": 2, "found_count": 1,
@@ -103,18 +111,24 @@ fn transformer_reads_name_their_batch_and_admit_each_document() {
     .unwrap();
     assert_eq!(answer["results"][0]["data"]["metadata"]["version"], 4);
     assert_eq!(answer["results"][1]["error_code"], "NOT_FOUND");
-    let broken = answered(read, 200, json!({"success": true, "data": {"results": [
-        {"transformer_name": "tr_1", "ok": true, "data": {}}]}}));
+    let broken = answered(
+        read,
+        200,
+        json!({"success": true, "data": {"results": [
+        {"transformer_name": "tr_1", "ok": true, "data": {}}]}}),
+    );
     assert_eq!(broken.unwrap_err().code, ANSWER_INVALID);
 }
 
 #[test]
 fn a_save_carries_each_edit_with_its_fence_and_never_an_empty_document() {
-    let request = request(json!({"action": "save_transformers", "project": "it_rwanda", "saves": [
-        {"transformer": "tr_1", "layers": {"poles": layer()}, "base_version": 3,
-            "process_metadata": {"lv_process": {}}, "operation_id": "op-1"},
-        {"transformer": "tr_2", "layers": {"poles": layer()}, "overwrite_reviewed_version": 7}
-    ]}));
+    let request = request(
+        json!({"action": "save_transformers", "project": "it_rwanda", "saves": [
+            {"transformer": "tr_1", "layers": {"poles": layer()}, "base_version": 3,
+                "process_metadata": {"lv_process": {}}, "operation_id": "op-1"},
+            {"transformer": "tr_2", "layers": {"poles": layer()}, "overwrite_reviewed_version": 7}
+        ]}),
+    );
     assert_eq!(request.timeout_ms, 180_000);
     let body = request.body.unwrap();
     assert_eq!(body["action"], "save_transformers_data");
@@ -140,8 +154,10 @@ fn a_save_carries_each_edit_with_its_fence_and_never_an_empty_document() {
 #[test]
 fn a_save_above_the_gateway_body_bound_never_leaves() {
     let big = "x".repeat(MAX_BODY_BYTES);
-    let refusal = refused(json!({"action": "save_transformers", "project": "it_rwanda", "saves": [
-        {"transformer": "tr_1", "layers": {"poles": {"type": "FeatureCollection", "features": [], "pad": big}}}]}));
+    let refusal = refused(
+        json!({"action": "save_transformers", "project": "it_rwanda", "saves": [
+        {"transformer": "tr_1", "layers": {"poles": {"type": "FeatureCollection", "features": [], "pad": big}}}]}),
+    );
     assert_eq!(refusal.code, SAVE_TOO_LARGE);
 }
 
@@ -156,7 +172,10 @@ fn a_version_conflict_keeps_the_backend_code_and_versions() {
     )
     .unwrap_err();
     assert_eq!(refusal.code, "TRANSFORMER_VERSION_MISMATCH");
-    assert_eq!(refusal.details, Some(json!({"current_version": 5, "base_version": 3})));
+    assert_eq!(
+        refusal.details,
+        Some(json!({"current_version": 5, "base_version": 3}))
+    );
 }
 
 #[test]
@@ -166,16 +185,26 @@ fn the_edit_lease_carries_unsaved_work_evidence_and_admits_its_state() {
         "local_digest": "abc", "feature_counts": {"poles": 3}}});
     assert_eq!(
         request(lease.clone()).body,
-        Some(json!({"action": "lock_transformer", "eds_project_id": "it_rwanda", "transfo": "tr_1",
+        Some(
+            json!({"action": "lock_transformer", "eds_project_id": "it_rwanda", "transfo": "tr_1",
             "lock_op": "heartbeat", "session_id": "tab-1", "edit_mode": "fast", "lock_hold": true,
-            "unsaved_since": "2026-10-20T08:00:00Z", "local_digest": "abc", "feature_counts": {"poles": 3}}))
+            "unsaved_since": "2026-10-20T08:00:00Z", "local_digest": "abc", "feature_counts": {"poles": 3}})
+        )
     );
-    let held = answered(lease.clone(), 200, json!({"locked": true, "locked_by": "a@example.com",
-        "locked_at": "2026-10-20T08:00:00Z", "expires_at": "2026-10-20T08:05:00Z", "hold": true}))
+    let held = answered(
+        lease.clone(),
+        200,
+        json!({"locked": true, "locked_by": "a@example.com",
+        "locked_at": "2026-10-20T08:00:00Z", "expires_at": "2026-10-20T08:05:00Z", "hold": true}),
+    )
     .unwrap();
     assert_eq!(held["hold"], true);
-    let taken = answered(lease, 423, json!({"error_code": "TRANSFORMER_EDIT_LOCKED",
-        "detail": "Transformer is locked by b@example.com.", "locked_by": "b@example.com"}))
+    let taken = answered(
+        lease,
+        423,
+        json!({"error_code": "TRANSFORMER_EDIT_LOCKED",
+        "detail": "Transformer is locked by b@example.com.", "locked_by": "b@example.com"}),
+    )
     .unwrap_err();
     assert_eq!(taken.code, "TRANSFORMER_EDIT_LOCKED");
     let released = answered(
@@ -191,22 +220,37 @@ fn the_edit_lease_carries_unsaved_work_evidence_and_admits_its_state() {
 #[test]
 fn drafts_digests_and_copies_name_their_rows() {
     assert_eq!(
-        request(json!({"action": "get_draft", "project": "it_rwanda", "transformer": "tr_1",
-            "user": "b@example.com"})).body,
-        Some(json!({"action": "get_transformer_draft", "eds_project_id": "it_rwanda",
-            "transformer_name": "tr_1", "draft_user": "b@example.com"}))
+        request(
+            json!({"action": "get_draft", "project": "it_rwanda", "transformer": "tr_1",
+            "user": "b@example.com"})
+        )
+        .body,
+        Some(
+            json!({"action": "get_transformer_draft", "eds_project_id": "it_rwanda",
+            "transformer_name": "tr_1", "draft_user": "b@example.com"})
+        )
     );
     assert_eq!(
-        request(json!({"action": "put_draft", "project": "it_rwanda", "transformer": "tr_1",
-            "layers": {"poles": layer()}, "local_digest": "abc", "base_version": 2})).body,
-        Some(json!({"action": "put_transformer_draft", "eds_project_id": "it_rwanda",
-            "transformer_name": "tr_1", "gdfs": {"poles": layer()}, "local_digest": "abc", "base_version": 2}))
+        request(
+            json!({"action": "put_draft", "project": "it_rwanda", "transformer": "tr_1",
+            "layers": {"poles": layer()}, "local_digest": "abc", "base_version": 2})
+        )
+        .body,
+        Some(
+            json!({"action": "put_transformer_draft", "eds_project_id": "it_rwanda",
+            "transformer_name": "tr_1", "gdfs": {"poles": layer()}, "local_digest": "abc", "base_version": 2})
+        )
     );
     assert_eq!(
-        request(json!({"action": "digest_status", "project": "it_rwanda", "digests": [
-            {"transformer": "tr_1", "content_digest": "abc", "base_version": 2}]})).body,
-        Some(json!({"action": "transformer_digest_status", "eds_project_id": "it_rwanda",
-            "transformer_digests": [{"transformer_name": "tr_1", "content_digest": "abc", "base_version": 2}]}))
+        request(
+            json!({"action": "digest_status", "project": "it_rwanda", "digests": [
+            {"transformer": "tr_1", "content_digest": "abc", "base_version": 2}]})
+        )
+        .body,
+        Some(
+            json!({"action": "transformer_digest_status", "eds_project_id": "it_rwanda",
+            "transformer_digests": [{"transformer_name": "tr_1", "content_digest": "abc", "base_version": 2}]})
+        )
     );
     assert_eq!(
         request(json!({"action": "copy_transformers", "project": "it_rwanda", "target_project": "it_tchad",
@@ -225,12 +269,16 @@ fn drafts_digests_and_copies_name_their_rows() {
 
 #[test]
 fn rename_delete_and_cleanup_carry_their_governance() {
-    let rename = request(json!({"action": "rename", "project": "it_rwanda", "transformer": "tr_1", "to": "tr_9"}));
+    let rename = request(
+        json!({"action": "rename", "project": "it_rwanda", "transformer": "tr_1", "to": "tr_9"}),
+    );
     assert_eq!(
         rename.body,
-        Some(json!({"action": "rename_transformer", "eds_project_id": "it_rwanda", "transfo": "tr_1",
+        Some(
+            json!({"action": "rename_transformer", "eds_project_id": "it_rwanda", "transfo": "tr_1",
             "new_transformer_name": "tr_9", "governance_reason": "Rename transformer tr_1 to tr_9",
-            "governance_acknowledged": true, "governance_confirm_phrase": "RENAME TRANSFORMER"}))
+            "governance_acknowledged": true, "governance_confirm_phrase": "RENAME TRANSFORMER"})
+        )
     );
     let renamed = answered(
         json!({"action": "rename", "project": "it_rwanda", "transformer": "tr_1", "to": "tr_9"}),
@@ -247,9 +295,11 @@ fn rename_delete_and_cleanup_carry_their_governance() {
     )
     .unwrap();
     assert_eq!(deleted["results"][1]["error"], "not yours");
-    let cleanup = request(json!({"action": "cleanup_collision", "project": "it_rwanda", "collision": "c-1",
+    let cleanup = request(
+        json!({"action": "cleanup_collision", "project": "it_rwanda", "collision": "c-1",
         "sources": ["tr_1", "tr_2"], "delete": ["tr_2"], "target": "tr_1", "overlap": "duplicated",
-        "coverage_pct": 99.6, "confirm_phrase": "DELETE DUPLICATES"}));
+        "coverage_pct": 99.6, "confirm_phrase": "DELETE DUPLICATES"}),
+    );
     let body = cleanup.body.unwrap();
     assert_eq!(body["coverage_pct"], 100);
     assert_eq!(body["governance_reason"], "Collision cleanup c-1");
@@ -291,16 +341,23 @@ fn status_reads_the_shared_status_request_and_admission() {
 
 #[test]
 fn input_outside_the_contract_is_refused_before_a_request() {
-    assert!(serde_json::from_value::<DesignCall>(json!({"action": "add_transfo_to_combined",
-        "project": "it_rwanda"})).is_err());
-    assert!(serde_json::from_value::<DesignCall>(json!({"action": "rename", "project": "it_rwanda",
-        "transformer": "a", "to": "b", "extra": 1})).is_err());
+    assert!(
+        serde_json::from_value::<DesignCall>(json!({"action": "add_transfo_to_combined",
+        "project": "it_rwanda"}))
+        .is_err()
+    );
+    assert!(serde_json::from_value::<DesignCall>(
+        json!({"action": "rename", "project": "it_rwanda",
+        "transformer": "a", "to": "b", "extra": 1})
+    )
+    .is_err());
     assert_eq!(
         refused(json!({"action": "read_transformers", "project": "", "transformers": ["a"]})).code,
         PROJECT_INVALID
     );
     assert_eq!(
-        refused(json!({"action": "read_transformers", "project": "p", "transformers": ["a\u{7}"]})).code,
+        refused(json!({"action": "read_transformers", "project": "p", "transformers": ["a\u{7}"]}))
+            .code,
         INPUT_INVALID
     );
     let many: Vec<String> = (0..=MAX_BATCH).map(|n| format!("tr_{n}")).collect();

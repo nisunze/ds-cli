@@ -541,7 +541,7 @@ mod tests {
 
     fn real_snapshot_bytes() -> Vec<u8> {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../ds-solar/fixtures/city/aderm_bere.snapshot.json");
+            .join("../../../../ds-solar/fixtures/city/aderm_bere.snapshot.json");
         let mut snapshot: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
         snapshot["_config"] =
             json!({"paths": {"root": "eds_project/project-1/eds_solar/aderm_bere"}});

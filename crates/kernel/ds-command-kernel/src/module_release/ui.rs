@@ -5,8 +5,8 @@
 use super::*;
 // The UI component catalog and identity rule are shared with release
 // packaging (module_engine); these paths remain the public names.
-use crate::module_engine::{admit_ui_identity, parse_ui_identity};
 pub use crate::module_engine::{UiComponent, UiEngineIdentity};
+use crate::module_engine::{admit_ui_identity, parse_ui_identity};
 use crate::module_install::ActivationGuard;
 use sha2::{Digest, Sha256};
 
@@ -62,14 +62,141 @@ pub struct UiRelease {
     pub notes: String,
     pub assets: Vec<ModuleReleaseAsset>,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+#[serde(rename_all = "kebab-case")]
+pub enum UiScope {
+    #[default]
+    Release,
+    LocalDev,
+}
+impl UiScope {
+    pub fn parse(value: &str) -> Result<Self, ModuleReleaseError> {
+        match value {
+            "release" => Ok(Self::Release),
+            "local-dev" => Ok(Self::LocalDev),
+            _ => fail(
+                "module_scope_invalid",
+                "Select release or local-dev UI scope",
+            ),
+        }
+    }
+}
+pub use super::browser::{BrowserAuthority as PublishedUiAuthority, VerifiedFile};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct UiUnit {
-    pub release: UiRelease,
-    pub unit_sha256: String,
-    pub total_bytes: i64,
+pub struct LocalUiBuild {
+    pub schema: String,
+    pub scope: UiScope,
+    pub component: UiComponent,
+    pub channel: String,
+    pub identity: UiEngineIdentity,
+    pub files: Vec<VerifiedFile>,
 }
-pub use super::browser::{BrowserAuthority as UiAuthority, VerifiedFile};
+/// Published JSON retains its original shape. A local build has no release,
+/// publication URL, governance status or gateway acquisition assertion.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum UiUnit {
+    Published {
+        release: UiRelease,
+        unit_sha256: String,
+        total_bytes: i64,
+    },
+    LocalBuild {
+        local_build: LocalUiBuild,
+        unit_sha256: String,
+        total_bytes: i64,
+    },
+}
+impl UiUnit {
+    pub fn published(&self) -> Option<&UiRelease> {
+        match self {
+            Self::Published { release, .. } => Some(release),
+            _ => None,
+        }
+    }
+    pub fn component(&self) -> UiComponent {
+        match self {
+            Self::Published { release, .. } => release.component,
+            Self::LocalBuild { local_build, .. } => local_build.component,
+        }
+    }
+    pub fn channel(&self) -> &str {
+        match self {
+            Self::Published { release, .. } => &release.channel,
+            Self::LocalBuild { local_build, .. } => &local_build.channel,
+        }
+    }
+    pub fn scope(&self) -> UiScope {
+        match self {
+            Self::Published { .. } => UiScope::Release,
+            Self::LocalBuild { .. } => UiScope::LocalDev,
+        }
+    }
+    pub fn identity(&self) -> &UiEngineIdentity {
+        match self {
+            Self::Published { release, .. } => &release.build_manifest,
+            Self::LocalBuild { local_build, .. } => &local_build.identity,
+        }
+    }
+    pub fn unit_sha256(&self) -> &str {
+        match self {
+            Self::Published { unit_sha256, .. } | Self::LocalBuild { unit_sha256, .. } => {
+                unit_sha256
+            }
+        }
+    }
+    pub fn total_bytes(&self) -> i64 {
+        match self {
+            Self::Published { total_bytes, .. } | Self::LocalBuild { total_bytes, .. } => {
+                *total_bytes
+            }
+        }
+    }
+    pub fn version(&self) -> String {
+        match self {
+            Self::Published { release, .. } => release.version.clone(),
+            Self::LocalBuild { local_build, .. } => {
+                format!("local-{}", local_build.identity.source_sha)
+            }
+        }
+    }
+    pub fn files(&self) -> Vec<VerifiedFile> {
+        match self {
+            Self::Published { release, .. } => release
+                .assets
+                .iter()
+                .map(|asset| VerifiedFile {
+                    filename: asset.url.rsplit('/').next().unwrap_or_default().into(),
+                    sha256: asset.sha256.clone(),
+                    size_bytes: asset.size_bytes,
+                })
+                .collect(),
+            Self::LocalBuild { local_build, .. } => local_build.files.clone(),
+        }
+    }
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocalUiProvenance {
+    pub scope: UiScope,
+    pub source_sha: String,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum UiAuthority {
+    Published(PublishedUiAuthority),
+    LocalBuild { local_build: LocalUiProvenance },
+}
+impl UiAuthority {
+    pub fn gateway_origin(&self) -> &str {
+        match self {
+            Self::Published(authority) => &authority.gateway_origin,
+            Self::LocalBuild { .. } => "",
+        }
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InstalledUiModule {
@@ -108,6 +235,42 @@ pub struct UiCapture {
     pub receipt: InstalledUiModule,
 }
 
+pub const CAPTURE_BYTES_SCHEMA: &str = "ds.ui-capture-bytes/v1";
+
+/// Bootstrap projection of an admitted Core capture. Receipt provenance stays
+/// opaque; this descriptor never grants installation or execution authority.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+#[serde(deny_unknown_fields)]
+pub struct UiCaptureByteDescriptor {
+    #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(type = "'ds.ui-capture-bytes/v1'"))]
+    pub schema: String,
+    pub component: UiComponent,
+    pub channel: String,
+    pub scope: UiScope,
+    pub unit_sha256: String,
+    pub generation: u64,
+    pub files: Vec<VerifiedFile>,
+}
+
+/// Core has already verified its retained bytes. Re-admit the complete capture
+/// before projecting its bounded facts for a loader that has not loaded Kernel.
+pub fn capture_byte_descriptor(
+    captured: &UiCapture,
+) -> Result<UiCaptureByteDescriptor, ModuleReleaseError> {
+    validate_capture(captured)?;
+    let unit = &captured.receipt.unit;
+    Ok(UiCaptureByteDescriptor {
+        schema: CAPTURE_BYTES_SCHEMA.into(),
+        component: unit.component(),
+        channel: unit.channel().into(),
+        scope: unit.scope(),
+        unit_sha256: unit.unit_sha256().into(),
+        generation: captured.generation,
+        files: unit.files(),
+    })
+}
+
 pub fn capture(
     current: Option<&UiSelection>,
     component: UiComponent,
@@ -142,10 +305,7 @@ pub fn admit_loaded(
     verified: &[VerifiedFile],
     identity: &Value,
 ) -> Result<(), ModuleReleaseError> {
-    if captured.generation == 0 || captured.generation > MAX_GENERATION {
-        return fail("module_receipt_invalid", "Invalid captured UI generation");
-    }
-    validate_installation(&captured.receipt, &captured.receipt.unit.release.channel)?;
+    validate_capture(captured)?;
     verify_files(&captured.receipt.unit, verified)?;
     if parse_identity(identity)? != captured.receipt.engine_identity {
         return fail(
@@ -154,6 +314,13 @@ pub fn admit_loaded(
         );
     }
     Ok(())
+}
+
+fn validate_capture(captured: &UiCapture) -> Result<(), ModuleReleaseError> {
+    if captured.generation == 0 || captured.generation > MAX_GENERATION {
+        return fail("module_receipt_invalid", "Invalid captured UI generation");
+    }
+    validate_installation(&captured.receipt, captured.receipt.unit.channel())
 }
 
 fn refuse(code: &'static str, message: &str) -> ModuleReleaseError {
@@ -222,24 +389,118 @@ pub fn validate_identity(
     unit: &UiUnit,
     identity: &UiEngineIdentity,
 ) -> Result<(), ModuleReleaseError> {
-    let expected = inspect(
-        unit.release.component.as_str(),
-        &unit.release.channel,
-        &serde_json::to_value(&unit.release).expect("typed UI release"),
-    )?;
+    validate_unit(unit)?;
+    if identity != unit.identity() {
+        return fail(
+            "module_engine_incompatible",
+            "Loaded UI identity differs from its producer manifest",
+        );
+    }
+    if let Some(release) = unit.published() {
+        validate_build_manifest(release, identity)?;
+    }
+    Ok(())
+}
+
+/// Construct a local unit from acquired producer facts. No publication or
+/// gateway authority is inferred; only the canary local-dev namespace admits it.
+pub fn local_unit(
+    component: UiComponent,
+    lane: &str,
+    source_sha: &str,
+    identity: &Value,
+    files: &[VerifiedFile],
+) -> Result<UiUnit, ModuleReleaseError> {
+    if lane != "canary" || !hex(source_sha, 40) {
+        return fail(
+            "module_scope_invalid",
+            "Local UI builds require canary local-dev scope and an exact source snapshot",
+        );
+    }
+    let identity = parse_identity(identity)?;
+    admit_ui_identity(component, &identity, Some(source_sha))
+        .map_err(|error| refuse("module_engine_incompatible", &error))?;
+    if files.len() != 4 {
+        return fail(
+            "module_artifact_invalid",
+            "Local UI build requires all four fixed members",
+        );
+    }
+    let mut total = 0_i64;
+    for (name, _) in component.files() {
+        let matches: Vec<_> = files.iter().filter(|file| file.filename == name).collect();
+        let [file] = matches.as_slice() else {
+            return fail(
+                "module_artifact_invalid",
+                "Local UI members are missing, repeated or foreign",
+            );
+        };
+        if !hex(&file.sha256, 64) || file.size_bytes <= 0 || file.size_bytes > MAX_UNIT_BYTES {
+            return fail(
+                "module_artifact_invalid",
+                "Local UI member size or digest is invalid",
+            );
+        }
+        total = total
+            .checked_add(file.size_bytes)
+            .ok_or_else(|| refuse("module_artifact_invalid", "Local UI size overflow"))?;
+    }
+    if total > MAX_UNIT_BYTES {
+        return fail("module_artifact_invalid", "Local UI unit exceeds 128 MiB");
+    }
+    let mut files = files.to_vec();
+    files.sort_by(|a, b| a.filename.cmp(&b.filename));
+    let local_build = LocalUiBuild {
+        schema: "ds.ui-local-build/v1".into(),
+        scope: UiScope::LocalDev,
+        component,
+        channel: lane.into(),
+        identity,
+        files,
+    };
+    let unit_sha256 = format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&local_build).expect("typed local UI build"))
+    );
+    Ok(UiUnit::LocalBuild {
+        local_build,
+        unit_sha256,
+        total_bytes: total,
+    })
+}
+
+fn validate_unit(unit: &UiUnit) -> Result<(), ModuleReleaseError> {
+    let expected = match unit {
+        UiUnit::Published { release, .. } => inspect(
+            release.component.as_str(),
+            &release.channel,
+            &serde_json::to_value(release).expect("typed release"),
+        )?,
+        UiUnit::LocalBuild { local_build, .. } => {
+            if local_build.schema != "ds.ui-local-build/v1"
+                || local_build.scope != UiScope::LocalDev
+            {
+                return fail(
+                    "module_receipt_invalid",
+                    "Local UI build provenance is invalid",
+                );
+            }
+            local_unit(
+                local_build.component,
+                &local_build.channel,
+                &local_build.identity.source_sha,
+                &serde_json::to_value(&local_build.identity).expect("typed identity"),
+                &local_build.files,
+            )?
+        }
+    };
     if unit != &expected {
         return fail(
             "module_receipt_invalid",
-            "UI identity requires its exact complete catalog unit",
+            "UI unit differs from its complete producer facts",
         );
     }
-    if identity != &unit.release.build_manifest {
-        return fail(
-            "module_engine_incompatible",
-            "Loaded UI identity differs from its trusted build manifest",
-        );
-    }
-    validate_build_manifest(&unit.release, identity)
+    Ok(())
 }
 
 fn validate_build_manifest(
@@ -455,7 +716,7 @@ pub fn inspect(
         return fail("module_release_asset_invalid", "UI unit exceeds 128 MiB");
     }
     validate_build_manifest(&release, &release.build_manifest)?;
-    Ok(UiUnit {
+    Ok(UiUnit::Published {
         unit_sha256: unit_digest(&release),
         release,
         total_bytes: total,
@@ -466,35 +727,48 @@ fn validate_installation(
     receipt: &InstalledUiModule,
     lane: &str,
 ) -> Result<(), ModuleReleaseError> {
-    let expected = inspect(
-        receipt.unit.release.component.as_str(),
-        lane,
-        &serde_json::to_value(&receipt.unit.release).expect("typed release"),
-    )?;
-    if receipt.schema != INSTALLATION_SCHEMA
-        || receipt.unit != expected
-        || receipt.unit.release.status != "active"
-    {
+    validate_unit(&receipt.unit)?;
+    if receipt.schema != INSTALLATION_SCHEMA || receipt.unit.channel() != lane {
         return fail(
             "module_receipt_invalid",
             "UI installation crosses its complete unit",
         );
     }
-    let origin = Url::parse(&receipt.authority.gateway_origin)
-        .map_err(|_| refuse("module_receipt_invalid", "Invalid UI release authority"))?;
-    if origin.scheme() != "https"
-        || origin.host_str().is_none()
-        || origin.path() != "/"
-        || !origin.username().is_empty()
-        || origin.password().is_some()
-        || origin.query().is_some()
-        || origin.fragment().is_some()
-        || !hex(&receipt.authority.route_manifest_sha256, 64)
-    {
-        return fail(
-            "module_receipt_invalid",
-            "Invalid captured UI release authority",
-        );
+    match (&receipt.unit, &receipt.authority) {
+        (UiUnit::Published { release, .. }, UiAuthority::Published(authority)) => {
+            if release.status != "active" {
+                return fail("module_receipt_invalid", "UI release is not active");
+            }
+            let origin = Url::parse(&authority.gateway_origin)
+                .map_err(|_| refuse("module_receipt_invalid", "Invalid UI release authority"))?;
+            if origin.scheme() != "https"
+                || origin.host_str().is_none()
+                || origin.path() != "/"
+                || !origin.username().is_empty()
+                || origin.password().is_some()
+                || origin.query().is_some()
+                || origin.fragment().is_some()
+                || !hex(&authority.route_manifest_sha256, 64)
+            {
+                return fail(
+                    "module_receipt_invalid",
+                    "Invalid captured UI release authority",
+                );
+            }
+        }
+        (
+            UiUnit::LocalBuild { local_build, .. },
+            UiAuthority::LocalBuild {
+                local_build: authority,
+            },
+        ) if authority.scope == UiScope::LocalDev
+            && authority.source_sha == local_build.identity.source_sha => {}
+        _ => {
+            return fail(
+                "module_receipt_invalid",
+                "UI installation crosses publication and local-build provenance",
+            );
+        }
     }
     validate_identity(&receipt.unit, &receipt.engine_identity)?;
     Ok(())
@@ -508,7 +782,8 @@ pub fn admit_retained(
     gateway_origin: &str,
 ) -> Result<InstalledUiModule, ModuleReleaseError> {
     validate_installation(receipt, channel)?;
-    if receipt.authority.gateway_origin != gateway_origin {
+    if matches!(&receipt.authority, UiAuthority::Published(authority) if authority.gateway_origin != gateway_origin)
+    {
         return fail(
             "module_receipt_invalid",
             "Retained UI authority differs from this host",
@@ -520,37 +795,18 @@ pub fn admit_retained(
 /// Verify every member before executing even the JavaScript identity adapter.
 /// Hosts supply hashes and sizes computed from acquired bytes, never catalog facts.
 pub fn verify_files(unit: &UiUnit, verified: &[VerifiedFile]) -> Result<(), ModuleReleaseError> {
-    let expected = inspect(
-        unit.release.component.as_str(),
-        &unit.release.channel,
-        &serde_json::to_value(&unit.release).expect("typed release"),
-    )?;
-    if *unit != expected {
-        return fail(
-            "module_receipt_invalid",
-            "UI unit differs from its captured catalog",
-        );
-    }
+    validate_unit(unit)?;
     if verified.len() != 4 {
         return fail(
             "module_artifact_invalid",
             "Verify all four members before staging",
         );
     }
-    for asset in &unit.release.assets {
-        let name = filename(asset)?;
-        let matches = verified
-            .iter()
-            .filter(|file| {
-                file.filename == name
-                    && file.sha256 == asset.sha256
-                    && file.size_bytes == asset.size_bytes
-            })
-            .count();
-        if matches != 1 {
+    for file in unit.files() {
+        if verified.iter().filter(|actual| **actual == file).count() != 1 {
             return fail(
                 "module_artifact_invalid",
-                "UI member bytes differ from the captured catalog",
+                "UI member bytes differ from the captured unit",
             );
         }
     }
@@ -569,15 +825,65 @@ pub fn prepare(
             "Deliberate consent is required before UI component acquisition",
         );
     }
-    if unit.release.status != "active" {
+    let Some(release) = unit.published() else {
+        return fail(
+            "module_scope_invalid",
+            "Published staging cannot install a local UI build",
+        );
+    };
+    if release.status != "active" {
         return fail(
             "module_release_withdrawn",
             "Only an active UI release may be staged",
         );
     }
+    if !matches!(authority, UiAuthority::Published(_)) {
+        return fail(
+            "module_receipt_invalid",
+            "Published staging requires its captured release authority",
+        );
+    }
+    prepare_receipt(unit, authority, verified)
+}
+
+pub fn prepare_local(
+    unit: UiUnit,
+    source_sha: &str,
+    verified: &[VerifiedFile],
+    consent: bool,
+) -> Result<InstalledUiModule, ModuleReleaseError> {
+    if !consent {
+        return fail(
+            "module_consent_required",
+            "Confirm local UI component staging",
+        );
+    }
+    if unit.scope() != UiScope::LocalDev || unit.identity().source_sha != source_sha {
+        return fail(
+            "module_scope_invalid",
+            "Local UI staging requires its exact producer source snapshot",
+        );
+    }
+    prepare_receipt(
+        unit,
+        UiAuthority::LocalBuild {
+            local_build: LocalUiProvenance {
+                scope: UiScope::LocalDev,
+                source_sha: source_sha.into(),
+            },
+        },
+        verified,
+    )
+}
+
+fn prepare_receipt(
+    unit: UiUnit,
+    authority: UiAuthority,
+    verified: &[VerifiedFile],
+) -> Result<InstalledUiModule, ModuleReleaseError> {
     verify_files(&unit, verified)?;
-    let lane = unit.release.channel.clone();
-    let engine_identity = unit.release.build_manifest.clone();
+    let lane = unit.channel().to_owned();
+    let engine_identity = unit.identity().clone();
     let receipt = InstalledUiModule {
         schema: INSTALLATION_SCHEMA.into(),
         unit,
@@ -604,21 +910,27 @@ pub fn acquisition_plan(
         );
     }
     channel(host_channel)?;
+    let Some(release) = unit.published() else {
+        return fail(
+            "module_scope_invalid",
+            "Local UI builds cannot acquire published release authority",
+        );
+    };
     let expected = inspect(
-        unit.release.component.as_str(),
+        release.component.as_str(),
         host_channel,
-        &serde_json::to_value(&unit.release).expect("typed release"),
+        &serde_json::to_value(release).expect("typed release"),
     )?;
-    if unit != &expected || unit.unit_sha256 != expected_sha256 {
+    if unit != &expected || unit.unit_sha256() != expected_sha256 {
         return fail(
             "module_selection_changed",
             "The UI release differs from the confirmed unit",
         );
     }
-    if unit.release.status != "active" {
+    if release.status != "active" {
         return fail("module_release_withdrawn", "The UI release is not active");
     }
-    Ok(unit.release.assets.clone())
+    Ok(release.assets.clone())
 }
 
 pub fn validate_selection(
@@ -644,13 +956,13 @@ pub fn validate_selection(
     };
     if let Some(active) = active {
         validate_installation(active, lane)?;
-        if active.unit.release.component != component {
+        if active.unit.component() != component {
             return fail("module_receipt_invalid", "Selection crosses UI component");
         }
     }
     if let Some(previous) = previous {
         validate_installation(previous, lane)?;
-        if previous.unit.release.component != component {
+        if previous.unit.component() != component {
             return fail(
                 "module_receipt_invalid",
                 "Retained selection crosses UI component",
@@ -693,11 +1005,27 @@ pub fn activate(
             "Retain held work before changing the UI selection",
         )
     })?;
-    let component = staged.unit.release.component;
-    let lane = staged.unit.release.channel.clone();
+    let component = staged.unit.component();
+    let lane = staged.unit.channel().to_owned();
     validate_installation(&staged, &lane)?;
+    if current.is_some_and(|selection| match &selection.selection {
+        UiSelectionState::Installed { active, previous } => {
+            active.unit.scope() != staged.unit.scope()
+                || previous
+                    .as_ref()
+                    .is_some_and(|previous| previous.unit.scope() != staged.unit.scope())
+        }
+        UiSelectionState::Removed { previous } => previous
+            .as_ref()
+            .is_some_and(|previous| previous.unit.scope() != staged.unit.scope()),
+    }) {
+        return fail(
+            "module_scope_invalid",
+            "UI activation cannot cross release and local-dev selections",
+        );
+    }
     let generation = next_generation(current, component, &lane, expected)?;
-    if let Some(current) = current.filter(|current| matches!(&current.selection, UiSelectionState::Installed { active, .. } if active.unit.unit_sha256 == staged.unit.unit_sha256)) {
+    if let Some(current) = current.filter(|current| matches!(&current.selection, UiSelectionState::Installed { active, .. } if active.unit.unit_sha256() == staged.unit.unit_sha256())) {
         return Ok(current.clone());
     }
     let previous = current.and_then(|selection| match &selection.selection {
@@ -727,7 +1055,7 @@ pub fn remove(
     let previous = match &current.selection {
         UiSelectionState::Installed { active, .. } => Some(active.clone()),
         UiSelectionState::Removed { .. } => {
-            return fail("module_removed", "This UI component is already removed")
+            return fail("module_removed", "This UI component is already removed");
         }
     };
     Ok(UiSelection {
@@ -767,7 +1095,7 @@ pub fn rollback(
             return fail(
                 "module_rollback_unavailable",
                 "No retained UI installation is available",
-            )
+            );
         }
     };
     Ok(UiSelection {

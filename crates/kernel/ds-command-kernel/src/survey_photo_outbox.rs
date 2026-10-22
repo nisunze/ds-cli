@@ -78,6 +78,21 @@ pub struct Row {
     pub revision: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub supersedes: Vec<String>,
+    /// A thumbnail REFRESH: this row's bytes are the regenerated
+    /// `_thunder.jpeg` of an original already stored at `source.generation`,
+    /// showing `source.quarter_turns`. The original is never re-sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<Source>,
+}
+
+/// The stored original a refreshed thumbnail depicts, and its turns.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Source {
+    pub object_path: String,
+    pub generation: String,
+    #[serde(default)]
+    pub quarter_turns: u8,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -88,6 +103,13 @@ pub struct Companion {
     pub size: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_generation: Option<String>,
+    /// The clockwise quarter-turns this capture thumbnail shows.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub quarter_turns: u8,
+}
+
+fn is_zero(value: &u8) -> bool {
+    *value == 0
 }
 
 /// One ordered host IO target. The host must PUT and verify every target in
@@ -104,6 +126,12 @@ pub struct UploadTarget {
     pub revision: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub supersedes: Vec<String>,
+    /// A refresh target's stored original.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<Source>,
+    /// The quarter-turns a companion target shows.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub quarter_turns: u8,
 }
 
 /// The canonical server-compatible thumbnail object name for an original
@@ -130,14 +158,46 @@ pub fn thumbnail_path_for(path: &str) -> Result<String, String> {
     })
 }
 
-/// Produce the single ordered upload plan. The original is always first so a
-/// thumbnail cannot become visible for a failed original replacement.
+/// The refusal for any queued replacement of a survey original.
+pub const IMMUTABLE_ORIGINAL: &str = "Survey originals are immutable; a rotation is entry metadata and refreshes only the thumbnail.";
+
+/// Produce the single ordered upload plan. A capture uploads its original
+/// first, so a thumbnail cannot become visible for a failed original; a
+/// thumbnail refresh uploads only the regenerated companion of an original
+/// already stored. No plan ever replaces an original.
 pub fn upload_plan(row: &Row) -> Result<Vec<UploadTarget>, String> {
+    if let Some(source) = &row.source {
+        if row.companion.is_some()
+            || source.object_path == row.path
+            || thumbnail_path_for(&source.object_path)? != row.path
+            || row.content_type != "image/jpeg"
+            || source.quarter_turns > 3
+            || source.generation.is_empty()
+            || !valid_expected_generation(Some(&source.generation))
+            || !valid_expected_generation(row.expected_generation.as_deref())
+        {
+            return Err("Survey-photo thumbnail refresh is not a canonical JPEG companion of a stored original.".into());
+        }
+        return Ok(vec![UploadTarget {
+            path: row.path.clone(),
+            content_type: row.content_type.clone(),
+            size: row.size,
+            expected_generation: row.expected_generation.clone(),
+            revision: row.revision.clone(),
+            supersedes: row.supersedes.clone(),
+            source: Some(source.clone()),
+            quarter_turns: source.quarter_turns,
+        }]);
+    }
+    if row.expected_generation.is_some() {
+        return Err(IMMUTABLE_ORIGINAL.into());
+    }
     if let Some(companion) = &row.companion {
         if companion.path == row.path
             || companion.path != thumbnail_path_for(&row.path)?
             || companion.content_type != "image/jpeg"
             || companion.size == 0
+            || companion.quarter_turns > 3
             || !valid_expected_generation(companion.expected_generation.as_deref())
         {
             return Err("Survey-photo thumbnail companion is not a canonical JPEG target.".into());
@@ -147,9 +207,11 @@ pub fn upload_plan(row: &Row) -> Result<Vec<UploadTarget>, String> {
         path: row.path.clone(),
         content_type: row.content_type.clone(),
         size: row.size,
-        expected_generation: row.expected_generation.clone(),
+        expected_generation: None,
         revision: row.revision.clone(),
         supersedes: row.supersedes.clone(),
+        source: None,
+        quarter_turns: 0,
     }];
     if let Some(companion) = &row.companion {
         targets.push(UploadTarget {
@@ -159,6 +221,8 @@ pub fn upload_plan(row: &Row) -> Result<Vec<UploadTarget>, String> {
             expected_generation: companion.expected_generation.clone(),
             revision: row.revision.clone(),
             supersedes: row.supersedes.clone(),
+            source: None,
+            quarter_turns: companion.quarter_turns,
         });
     }
     Ok(targets)
@@ -195,9 +259,7 @@ pub enum TransportOutcome {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Event {
     /// The store has persisted the bytes and constructed this row.
-    Admit {
-        scope: Scope,
-    },
+    Admit { scope: Scope },
     /// Process-restart recovery.  It never spends an attempt because no
     /// outcome for the abandoned request was observed.
     Recover,
@@ -216,9 +278,7 @@ pub enum Event {
         outcome: TransportOutcome,
     },
     /// Retry after a surfaced failure without silently changing ownership.
-    ManualRetry {
-        scope: Scope,
-    },
+    ManualRetry { scope: Scope },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -397,6 +457,7 @@ pub fn apply(now: u64, row: Option<Row>, event: Event) -> Result<Reply, String> 
             if row.generation.trim().is_empty() {
                 return Err("Survey-photo generation is incomplete.".into());
             }
+            upload_plan(&row)?;
             row.scope = Some(scope);
             row.status = Status::Pending;
             row.attempts = 0;
@@ -431,6 +492,11 @@ pub fn apply(now: u64, row: Option<Row>, event: Event) -> Result<Reply, String> 
                 block(&mut row, LEGACY_SCOPE, now);
             } else if !same_scope(&row, &scope) {
                 block(&mut row, SCOPE_MISMATCH, now);
+            } else if let Err(reason) = upload_plan(&row) {
+                // A row queued before originals became immutable (a retired
+                // in-place rotation) can never be planned: it stays visible
+                // as blocked with the reason, and the drain carries on.
+                block(&mut row, &reason, now);
             } else if !bytes_present {
                 row.status = Status::Failed;
                 row.next_attempt_at = 0;

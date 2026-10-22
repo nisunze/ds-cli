@@ -403,8 +403,8 @@ Ordinary close preserves a noninitial authored draft. Runtime Save leases remain
 transient exclusion, separate from retained checkpoint durability. This recovery
 path does not establish project Save, export or publication durability.
 
-The [Store owner](../../crates/ds-sync-store/src/profile_sources/drafts.rs) and
-[focused tests](../../crates/ds-sync-store/src/profile_sources/drafts/tests.rs)
+The [Store owner](../../../ds-sync-store/src/profile_sources/drafts.rs) and
+[focused tests](../../../ds-sync-store/src/profile_sources/drafts/tests.rs)
 cover byte/header/pin tampering, exact-history CAS, protected reopen, rollback,
 capacity and scoped package discovery. Core consumer tests additionally exercise
 real native editing, recovery, Save exclusion and late authority. Older schema-2

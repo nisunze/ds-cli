@@ -7,8 +7,9 @@ name: ci
 # own source in `ds-web`, and `tests/engine_parity.rs` checks every field name
 # `ds report` and `ds solar` hand-copy against the engines those flags are
 # copied from. The native client core also links the exact shared command
-# kernel used by browser WASM. So CI checks out all six repositories side by side, in the
-# same layout an operator has locally, and builds the two engines it calls
+# kernel used by browser WASM from this workspace. The Brain wire fixtures are
+# read from their owning checkout. CI uses the same sibling engine/Web/Brain
+# layout an operator has locally, and builds the two engines it calls
 # over a process contract: that suite skips — and reports green — without them.
 on:
   push:
@@ -40,26 +41,8 @@ jobs:
           token: ${{ secrets.WORKSPACE_TOKEN }}
           persist-credentials: false
 
-      - name: Read native client core authority pin
-        id: native-client-core
-        working-directory: data-solutions/ds-cli
-        shell: bash
-        run: |
-          sha="$(tr -d '\r\n' < pins/ds-client-core.rev)"
-          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Read command kernel authority pin
-        id: command-kernel
-        working-directory: data-solutions/ds-cli
-        shell: bash
-        run: |
-          sha="$(tr -d '\r\n' < pins/ds-command-kernel.rev)"
-          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      # `tests/bridge_parity.rs` reads the current web bridge. The native
-      # client core is owned by ds-command-kernel and verified below.
+      # Shared Kernel/client code is part of this source checkout. The bridge
+      # parity tests still consume the independently owned Web checkout.
       - name: Check out ds-web
         uses: actions/checkout@v4
         with:
@@ -69,33 +52,24 @@ jobs:
           token: ${{ secrets.WORKSPACE_TOKEN }}
           persist-credentials: false
 
-      - name: Check out ds-command-kernel
+      - name: Check out ds-brain wire fixtures
         uses: actions/checkout@v4
         with:
-          repository: nisunze/ds-command-kernel
-          ref: ${{ steps.command-kernel.outputs.sha }}
-          path: data-solutions/ds-command-kernel
+          repository: nisunze/ds-brain
+          ref: run
+          path: data-solutions/ds-brain
           token: ${{ secrets.WORKSPACE_TOKEN }}
           persist-credentials: false
 
-      - name: Verify command kernel authority pin
-        working-directory: data-solutions/ds-command-kernel
-        env:
-          EXPECTED_KERNEL_SHA: ${{ steps.command-kernel.outputs.sha }}
+      - name: Verify consolidated source layout
+        working-directory: data-solutions/ds-cli
         run: |
-          test "$(git rev-parse HEAD)" = "$EXPECTED_KERNEL_SHA"
-          test -f Cargo.toml
-
-      - name: Verify native client core authority pin
-        working-directory: data-solutions/ds-command-kernel
-        env:
-          EXPECTED_CORE_SHA: ${{ steps.native-client-core.outputs.sha }}
-        run: |
-          git cat-file -e "$EXPECTED_CORE_SHA^{commit}"
-          test -f crates/ds-client-core/Cargo.toml
-          for crate in ds-client-core ds-report-host ds-sync-runtime ds-layer-store ds-project-data ds-edge-authority; do
-            test "$(git rev-parse "$EXPECTED_CORE_SHA:crates/$crate")" = "$(git rev-parse "HEAD:crates/$crate")"
-          done
+          test -f crates/cli/ds/Cargo.toml
+          test -f crates/kernel/ds-command-kernel/Cargo.toml
+          test -f crates/kernel/ds-client-core/Cargo.toml
+          test -f crates/interactions/ds-profile-view/Cargo.toml
+          test -f crates/shared/ds-geo-lite/Cargo.toml
+          test -f Cargo.lock
 
       # The two engines `ds` reaches over a typed process contract. Unlike
       # ds-web these are needed as *binaries*: `tests/engine_parity.rs` asks

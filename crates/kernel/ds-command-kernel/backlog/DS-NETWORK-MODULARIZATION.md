@@ -1,6 +1,6 @@
 # DS Network modularization: shared Rust core, native executable and browser WASM
 
-The maintained guide moved to [ds-architecture](../../ds-architecture/backlog/DS-NETWORK-MODULARIZATION.md). Use its [canonical decoupling queue](../../ds-architecture/backlog/DECOUPLING.md) for new work and acceptance. This one-release pointer retains the old anchors; evidence and unrelated Kernel backlogs remain in place. Remove it after the first qualified release using the new routing and an inbound-link check.
+The maintained guide moved to [ds-architecture](../../../../../ds-architecture/backlog/DS-NETWORK-MODULARIZATION.md). Use its [canonical decoupling queue](../../../../../ds-architecture/backlog/DECOUPLING.md) for new work and acceptance. This one-release pointer retains the old anchors; evidence and unrelated Kernel backlogs remain in place. Remove it after the first qualified release using the new routing and an inbound-link check.
 
 <a id="1-what-counts-as-uncoupled"></a>
 <a id="2-source-evidence-and-lessons-to-retain"></a>

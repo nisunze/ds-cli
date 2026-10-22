@@ -299,7 +299,10 @@ mod tests {
             .remedy("verify the account and lane");
         let retained = classify_open_failure(identity_race);
         assert_eq!(retained.code(), "auth_context_mismatch");
-        assert_eq!(retained.to_string(), "auth_context_mismatch: identity changed");
+        assert_eq!(
+            retained.to_string(),
+            "auth_context_mismatch: identity changed"
+        );
         assert_eq!(retained.remedy_text(), Some("verify the account and lane"));
     }
 }

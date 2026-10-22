@@ -18,7 +18,9 @@ serde_json.workspace = true
 ds-map-interaction.workspace = true
 ds-canvas.workspace = true
 ds-canvas-graph.workspace = true
-ds-geo-lite = { path = "../../../ds-command-kernel/crates/ds-geo-lite", features = ["projection", "geojson"] }
+ds-profile-view = { path = "../ds-profile-view" }
+web-sys = { version = "0.3", features = ["HtmlElement"] }
+ds-geo-lite = { path = "../../shared/ds-geo-lite", features = ["projection", "geojson"] }
 
 [build-dependencies]
 serde.workspace = true

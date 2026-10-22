@@ -22,10 +22,11 @@ fn row() -> Row {
         scope: Some(scope()),
         lease: 0,
         generation: "stash-a".into(),
-        expected_generation: Some("123456".into()),
+        expected_generation: None,
         companion: None,
         revision: None,
         supersedes: Vec::new(),
+        source: None,
     }
 }
 fn drive(row: Row, now: u64) -> Reply {
@@ -53,15 +54,17 @@ fn dispatch_is_bounded_and_leased() {
             path: "survey/a.jpg".into(),
             content_type: "image/jpeg".into(),
             generation: "stash-a".into(),
-            expected_generation: Some("123456".into()),
+            expected_generation: None,
             lease: 1,
             targets: vec![UploadTarget {
                 path: "survey/a.jpg".into(),
                 content_type: "image/jpeg".into(),
                 size: 4,
-                expected_generation: Some("123456".into()),
+                expected_generation: None,
                 revision: None,
                 supersedes: Vec::new(),
+                source: None,
+                quarter_turns: 0,
             }],
         }]
     );
@@ -87,6 +90,7 @@ fn companion_has_one_canonical_ordered_plan_and_cleanup_unpins_both_bytes() {
         content_type: "image/jpeg".into(),
         size: 3,
         expected_generation: None,
+        quarter_turns: 0,
     });
     let started = drive(state, 10);
     let Action::Dispatch { targets, .. } = &started.actions[0] else {
@@ -129,6 +133,7 @@ fn invalid_companion_cannot_admit_or_create_an_upload_plan() {
         content_type: "image/png".into(),
         size: 0,
         expected_generation: None,
+        quarter_turns: 0,
     });
     assert!(apply(1, Some(state.clone()), Event::Recover).is_err());
     assert!(upload_plan(&state).is_err());
@@ -146,6 +151,7 @@ fn invalid_companion_cannot_admit_or_create_an_upload_plan() {
         content_type: "image/jpeg".into(),
         size: 3,
         expected_generation: None,
+        quarter_turns: 0,
     });
     assert!(apply(1, Some(same_path), Event::Recover).is_err());
 }
@@ -449,7 +455,6 @@ fn late_completion_cannot_settle_a_new_lease() {
     assert!(reply.row.is_some());
     assert!(reply.actions.is_empty());
 }
-
 
 #[test]
 fn unscoped_row_is_blocked_and_the_current_account_cannot_claim_it() {

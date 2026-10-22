@@ -4,6 +4,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Request {
+    RetypeSummary {
+        outcome: crate::retype::Outcome,
+        #[serde(default)]
+        translations: std::collections::BTreeMap<String, String>,
+    },
     Station {
         expected_revision: String,
         structure_id: String,
@@ -70,6 +75,7 @@ pub struct PropertyEditor {
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum Payload {
+    RetypeSummary(crate::retype::Summary),
     Station {
         expected_revision: String,
         structure_id: String,
@@ -130,6 +136,13 @@ pub fn project(request: Request) -> Result<Payload, String> {
             .to_string()
     };
     match request {
+        Request::RetypeSummary {
+            outcome,
+            translations,
+        } => Ok(Payload::RetypeSummary(crate::retype::summary(
+            &outcome,
+            &translations,
+        ))),
         Request::Station {
             expected_revision,
             structure_id,

@@ -1,5 +1,5 @@
 //! Adversarial artifact transport only: this fixture performs no Grid computation.
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{env, fs, io::Write, path::Path};
 fn sha(bytes: &[u8]) -> String {

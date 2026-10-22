@@ -523,7 +523,7 @@ fn real_large_model_edits_retain_authored_rows_without_results() {
         serde_json::from_str(opened["payload"]["snapshot_json"].as_str().unwrap()).unwrap();
     // The Desktop draws through the complete view with an authored style.
     let style: Value = serde_json::from_str(include_str!(
-        "../../../../ds-command-kernel/tests/fixtures/profile-display-style.json"
+        "../../../kernel/ds-command-kernel/tests/fixtures/profile-display-style.json"
     ))
     .unwrap();
     let draw = |receipt: &Value, cached: bool| {

@@ -13,8 +13,8 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::design_health::{TransformerHealth, summarize, transformer_health};
+use ds_command_kernel::transformer_status_store::{StatusFileReceipt, TransformerStatusRead};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{io::Write, path::Path};
 
 use super::{LANE_ARG, PROJECT_ARG, TRANSFORMER_ARG};
@@ -121,7 +121,7 @@ them, each with the shared kernel's verdict (health) and truth (view, phase \
 ownership, latest action, governance, retry, kind, allows). With --search, \
 --sort or --filter the rows are the register's own selection, in its order, \
 decided by the same kernel the application reads. Nothing falls back to a \
-browser. Default preserves the existing authenticated read. --read held reads only retained SQLite; --read refresh explicitly replaces the whole-project observation. A failed refresh retains and labels held data. --out writes the full projection to a private file with a bounded receipt.",
+browser. Default preserves the existing authenticated read. --read held reads only retained SQLite; --read acquire uses retained data and acquires only missing or invalidated status; --read refresh explicitly replaces the whole-project observation. A failed acquisition retains and labels held data. --out writes the full projection to a private file with a bounded receipt.",
     chapter: Chapter::Design,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
@@ -135,7 +135,7 @@ browser. Default preserves the existing authenticated read. --read held reads on
         SORT_ARG,
         DESC_ARG,
         FILTER_ARG,
-        Arg::value("read", "<mode>", "Explicit held-only read or authenticated full refresh; omitted preserves existing acquisition.").choices(&["held","refresh"]),
+        Arg::value("read", "<mode>", "Held-only, held-first acquire, or explicit full refresh; omitted preserves existing acquisition.").choices(TransformerStatusRead::NAMES),
         Arg::value("out", "<absolute-path>", "Write full status to a fresh private JSON file in an existing private directory."),
     ],
     output: "\
@@ -175,19 +175,17 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         validate_output(path)?;
     }
     let (headless, observation) = match inputs.value("read") {
-        Some(mode @ ("held" | "refresh")) => {
-            let (snapshot, observation) = ds_cli_auth::read_transformer_status_for_project(
-                lane,
-                &project,
-                mode == "refresh",
-            )?;
+        Some(mode) => {
+            let mode =
+                serde_json::from_value::<TransformerStatusRead>(json!(mode)).map_err(|_| {
+                    Failure::invalid(
+                        QUERY_INVALID.code,
+                        "--read must be held, acquire or refresh",
+                    )
+                })?;
+            let (snapshot, observation) =
+                ds_cli_auth::read_transformer_status_for_project(lane, &project, mode)?;
             (snapshot, Some(observation))
-        }
-        Some(_) => {
-            return Err(Failure::invalid(
-                QUERY_INVALID.code,
-                "--read must be held or refresh",
-            ));
         }
         None => (
             ds_cli_auth::transformer_status_for_project(lane, &project, &requested)?,
@@ -221,7 +219,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .expect("receipt is an object")
         .extend(rows.as_object().expect("rows are an object").clone());
     if let Some(observation) = observation {
-        output["observation"] = observation;
+        output["observation"] = serde_json::to_value(observation).map_err(output_error)?;
     }
     if let Some(path) = out {
         return deliver_output(path, &output, lane, &project, headless.identity());
@@ -252,9 +250,9 @@ fn deliver_output(
     identity: &ds_cli_auth::ProviderIdentity,
 ) -> Result<Value, Failure> {
     let bytes = serde_json::to_vec(output).map_err(output_error)?;
-    if bytes.len() > 64 * 1024 * 1024 {
-        return Err(output_error("Status projection exceeds 64 MiB"));
-    }
+    let receipt =
+        StatusFileReceipt::from_projection_bytes(path, lane, project, identity.uid(), &bytes)
+            .map_err(output_error)?;
     #[cfg(windows)]
     let mut file =
         ds_cli_auth::windows_host::create_private_output_file(path).map_err(output_error)?;
@@ -278,11 +276,7 @@ fn deliver_output(
         let _ = std::fs::remove_file(path);
         return Err(error);
     }
-    Ok(
-        json!({"schema":"ds.design-status-file/v1","lane":lane,"project":project,
-        "principal":identity.uid(),"path":path,"sha256":format!("{:x}",Sha256::digest(&bytes)),
-        "size_bytes":bytes.len(),"count":output["count"],"observation":output["observation"]}),
-    )
+    serde_json::to_value(receipt).map_err(output_error)
 }
 
 /// The register's selector, spelled as `ds` arguments. `None` when no

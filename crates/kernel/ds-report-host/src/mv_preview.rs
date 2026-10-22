@@ -281,7 +281,7 @@ mod tests {
 
     fn layout() -> printing::Layout {
         serde_json::from_str(include_str!(
-            "../../../tests/fixtures/mv-global-canonical.json"
+            "../../ds-command-kernel/tests/fixtures/mv-global-canonical.json"
         ))
         .unwrap()
     }
@@ -303,7 +303,7 @@ mod tests {
             document,
         };
         let defaults: Value = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/governed-renderer-defaults.json"
+            "../../ds-command-kernel/tests/fixtures/governed-renderer-defaults.json"
         ))
         .unwrap();
         serde_json::from_value(json!({"schema": style_resolution::SCHEMA, "project_id": "template_project",

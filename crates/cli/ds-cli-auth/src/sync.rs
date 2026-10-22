@@ -28,7 +28,7 @@ use crate::{
 
 /// The exact same reviewed trust input `src-tauri/build.rs` seals into a
 /// desktop release. The native Server does not invent a signer project.
-const RELEASE_TRUST: &str = include_str!("../../../../ds-command-kernel/edge-authority-trust.json");
+const RELEASE_TRUST: &str = include_str!("../../../kernel/ds-command-kernel/edge-authority-trust.json");
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

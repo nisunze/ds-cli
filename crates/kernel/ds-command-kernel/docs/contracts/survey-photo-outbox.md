@@ -33,10 +33,13 @@ thumbnail is therefore never independently retried or allowed to survive a
 failed original.
 
 `survey_photo_media` is the separate byte API for capture/import. It admits
-JPEG and PNG source bytes up to 50 MiB and 50 MP, applies available JPEG EXIF
-orientation plus one net clockwise turn, caps the normalized original at 2048
-px, and creates a white-composited JPEG-quality-85 thumbnail at 320 px. The
-WASM API accepts and returns typed byte arrays, never JSON/base64 photo data.
+JPEG and PNG source bytes up to 50 MiB and 50 MP and keeps the original bytes
+unchanged, including resolution and EXIF. Derived images apply the available
+JPEG EXIF orientation followed by the net clockwise turn: `thumbnail` makes a
+white-composited JPEG-quality-85 image at 320 px; `render` makes a display copy
+capped at 2048 px. Neither rewrites the source. Header and allocation bounds
+are checked before decoding. The WASM API accepts and returns typed byte
+arrays, never JSON/base64 photo data.
 `surveyPhotoMediaPlan` decides processing versus exact-byte preservation and
 refuses rotations of unsupported images/attachments. Browser workers execute
 that decision. `surveyPhotoNormalizeRotation` and `surveyPhotoAccumulateRotation`
@@ -44,17 +47,33 @@ own draft quarter-turn arithmetic; `surveyPhotoThumbnailPath` owns companion
 names in display bindings as well as durable uploads. There is no TypeScript
 format/rotation/naming fallback.
 
-The optional `expected_generation` is an opaque positive decimal storage
-precondition preserved with a queued replacement. Its authorization and storage
-comparison remain in ds-brain. Photo rotation uses the Rust byte API in a browser worker: encode the whole net turn once, then persist those
-exact bytes and the inspected generation. Retry resends the same encoded image.
+Photo rotation is entry metadata. `survey_media_rotation` owns
+`data.ds_media_rotation`: original path to `{quarter_turns, generation}`. A
+reader applies a record only to that original generation. Turns add to held
+metadata; four quarter-turns remove the record. Original replacement as a
+rotation is refused. A thumbnail refresh carries `source_file_name`,
+`source_generation` and `source_quarter_turns`, and can update only the
+canonical companion for that source. Storage authorization and generation
+comparison remain in ds-brain; Brain performs no image processing.
+
+The native `survey_photo` owner prepares a v2 bundle against the entry's
+`client_version` and the source generation. It retains the unchanged camera
+original and one derived thumbnail. A later held turn uses those bytes and
+metadata without transport, including after an app restart. Publication
+checks the original generation and entry version, commits only the rotation
+map through the ordinary version-fenced entry update, then uploads only the
+thumbnail. No entry-create semantics change. A committed metadata receipt is
+retained if the thumbnail fails; an explicit retry verifies that commit and
+resumes the thumbnail without applying another turn. Conflicting source,
+entry, account, deployment audience or altered held bytes are refused.
 
 A gateway inspection advertising `revision_protocol: 1` gives the queued row an
 immutable `revision` (its `generation`) and holds it 500 ms before the first
 attempt. A row may carry a bounded `supersedes` chain of at most 32 prior
 revisions (rows imported from the retired browser outbox do), which the gateway
-may rebase over. A photo still waiting to upload refuses another rotation at
-`media_outbox` admission until it settles.
+may rebase over. A pending thumbnail refresh can be replaced by the net turn
+for the same source while waiting; it cannot retarget the source or replace a
+leased transfer.
 
 A cancelled transfer can already have committed. The gateway may rebase only
 over a named predecessor belonging to the same authenticated account, object,

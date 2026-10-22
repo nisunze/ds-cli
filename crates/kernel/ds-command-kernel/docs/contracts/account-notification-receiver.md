@@ -25,7 +25,7 @@ permission to download unused project data. Account changes fence pending reads
 and preserve local drafts and durable outbox recovery.
 
 Desktop residency and visible popout behavior remain owned by
-[Desktop lifecycle](../../../ds-web/docs/desktop-background-lifecycle.md).
+[Desktop lifecycle](../../../../../../ds-web/docs/desktop-background-lifecycle.md).
 Residency does not keep a Brain request open. Existing Firebase push runs only
 where its supported runtime and permissions are available. Installed platform
 delivery and removal of old-client stream traffic require matching deployment

@@ -229,8 +229,8 @@ pub fn release(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         // The release's version, build number and date as a person reads them.
         answer["displayIdentity"] = serde_json::to_value(
             ds_command_kernel::desktop_update::release_identity(
-                Some(&unit.release.version),
-                Some(&unit.release.released_at),
+                Some(&unit.published().expect("published inspection").version),
+                Some(&unit.published().expect("published inspection").released_at),
             ),
         )
         .map_err(|e| invalid(e.to_string()))?;

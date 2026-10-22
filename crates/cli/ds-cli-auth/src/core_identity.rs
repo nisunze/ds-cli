@@ -2,13 +2,12 @@
 use crate::{context::ProviderIdentity, profile::Lane, state::NativeRefreshStore};
 use ds_cli_contract::spec::{Authority, Chapter, Command, Effect, Execution, Refusal, Requires};
 use ds_cli_contract::{Context, Failure, Inputs};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const INSTALL: Refusal = Refusal {
     code: "headless_install_unavailable",
     when: "Core has no valid retained installation identity in the selected lane",
-    remedy:
-        "authenticate and start Core in this lane once; the shell never creates its own identity",
+    remedy: "authenticate and start Core in this lane once; the shell never creates its own identity",
 };
 const READ_REFUSALS: &[Refusal] = &[
     crate::PROFILE_REFUSAL,
@@ -25,27 +24,41 @@ const READ_REFUSALS: &[Refusal] = &[
 ];
 
 pub static IDENTITY: Command = Command {
-    id: "core.identity", path: &["core", "identity"], contract: 1,
+    id: "core.identity",
+    path: &["core", "identity"],
+    contract: 1,
     chapter: Chapter::Project,
     summary: "Read this lane's existing Core installation identity offline.",
     purpose: "Read Core's protected installation UUID and this executable's runtime declaration. Does not create an identity, restore credentials, refresh, acquire a lock, contact a gateway or read a Desktop store. A missing or malformed identity refuses; Desktop must never replace it with its own UUID. Core appVersion is distinct from the optional shell version.",
-    effect: Effect::ReadOnly, authority: Authority::None, execution: Execution::Sync,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
     args: &[crate::LANE],
     output: "installId, device, arch, appVersion, channel and osVersion; no private paths or credentials.",
-    examples: &[], refusals: READ_REFUSALS, reference: Some("docs/reference/core.md"),
-    search: &[], requires: Requires::Server,
+    examples: &[],
+    refusals: READ_REFUSALS,
+    reference: Some("docs/reference/core.md"),
+    search: &[],
+    requires: Requires::Server,
     availability: crate::state::availability,
 };
 pub static AUTH_STATUS: Command = Command {
-    id: "core.auth.status", path: &["core", "auth", "status"], contract: 1,
+    id: "core.auth.status",
+    path: &["core", "auth", "status"],
+    contract: 1,
     chapter: Chapter::Project,
     summary: "Observe Core's retained authentication identity without refresh.",
     purpose: "Inspect the selected lane's protected Firebase and device providers without refreshing credentials, writing state, selecting a project or contacting the network. Providers must agree on UID, lane and credential audience. Signed-out returns signedIn false. Project is null because this read carries no project context; individual operations still require their explicit governed project.",
-    effect: Effect::ReadOnly, authority: Authority::None, execution: Execution::Sync,
+    effect: Effect::ReadOnly,
+    authority: Authority::None,
+    execution: Execution::Sync,
     args: &[crate::LANE],
     output: "signedIn, uid, lane, audienceSha256 and null project; never tokens, keys or credential-instance identifiers.",
-    examples: &[], refusals: READ_REFUSALS, reference: Some("docs/reference/core.md"),
-    search: &["offline"], requires: Requires::Server,
+    examples: &[],
+    refusals: READ_REFUSALS,
+    reference: Some("docs/reference/core.md"),
+    search: &["offline"],
+    requires: Requires::Server,
     availability: crate::native_availability,
 };
 
@@ -98,7 +111,7 @@ fn auth_projection(
                 crate::AUTH_CONTEXT_MISMATCH_REFUSAL.code,
                 "Core's retained providers disagree on principal, lane or audience",
             )
-            .remedy(crate::AUTH_CONTEXT_MISMATCH_REFUSAL.remedy))
+            .remedy(crate::AUTH_CONTEXT_MISMATCH_REFUSAL.remedy));
         }
     };
     if identity

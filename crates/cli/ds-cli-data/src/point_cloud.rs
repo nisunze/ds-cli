@@ -1,4 +1,4 @@
-//! `ds data elevation plan` / `ds data elevation extract` — Desktop elevation
+//! `ds data elevation plan` / `ds data elevation extract` — native elevation
 //! point-cloud extraction from an area.
 //!
 //! A DIFFERENT operation from `ds data elevation attach`, which enriches a
@@ -16,21 +16,15 @@
 //! generates, samples locally, and writes GeoJSON plus CSV. Splitting them is
 //! the whole point: a caller learns the size before paying for it.
 
-use std::path::Path;
-use std::time::Duration;
-
 use crate::elevation::FALLBACK_ARG;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, REFUSED, TARGET_ARG,
-    UNREACHABLE, UNREADABLE as DESKTOP_UNREADABLE, UNSUPPORTED as DESKTOP_UNSUPPORTED, invoke,
-    paired, paired_availability,
-};
-use serde_json::{Map, Value, json};
+use ds_cli_desktop::ops::BridgeOp;
+use ds_native_data::{bridge, RequestContext};
+use serde_json::{json, Map, Value};
 
 pub const PLAN_OPERATION: BridgeOp = BridgeOp {
     operation: "data.elevation.plan",
@@ -131,7 +125,8 @@ const FULL_LOCAL_DEM_REQUIRED: Refusal = Refusal {
 const POINT_BUDGET_EXCEEDED: Refusal = Refusal {
     code: "point_budget_exceeded",
     when: "the area and sampling choice generate more points than one extraction materializes",
-    remedy: "widen --spacing-m, lower --density-per-km2, or split the area into smaller extractions",
+    remedy:
+        "widen --spacing-m, lower --density-per-km2, or split the area into smaller extractions",
 };
 const AREA_TOO_LARGE: Refusal = Refusal {
     code: "area_too_large_to_plan",
@@ -147,12 +142,12 @@ const CANCELLED: Refusal = Refusal {
 pub static PLAN_COMMAND: Command = Command {
     id: "data.elevation.plan",
     path: &["data", "elevation", "plan"],
-    contract: 1,
+    contract: 2,
     summary: "Count the elevation points an area and sampling choice would produce.",
     purpose: "Answers exactly how many points an extraction generates, per area and in total, and where a job of that size runs. Reads no elevation data and writes nothing, so a job's size is known before it is paid for. The area is a local file or a bounding box, so no map need be open. This is the preview half of `ds data elevation extract`.",
     chapter: Chapter::Data,
     effect: Effect::ReadOnly,
-    authority: Authority::DesktopPairing,
+    authority: Authority::None,
     execution: Execution::Sync,
     args: &[
         AREA_ARG,
@@ -162,8 +157,6 @@ pub static PLAN_COMMAND: Command = Command {
         SEED_ARG,
         COUNT_ARG,
         DENSITY_ARG,
-        TARGET_ARG,
-        DESCRIPTOR_ARG,
     ],
     output: "Exact total and per-area point counts, each area's surface in km², whether the count is admissible in the cloud lane, and whether the full local Rwanda DEM is required.",
     examples: &[
@@ -179,34 +172,29 @@ pub static PLAN_COMMAND: Command = Command {
         },
     ],
     refusals: &[
+        crate::NATIVE_DATA_REFUSED,
+        crate::NATIVE_DATA_FAILED,
         AREA_REQUIRED,
         SAMPLING_INCOMPLETE,
         ABSOLUTE_PATH_REQUIRED,
         POINT_BUDGET_EXCEEDED,
         AREA_TOO_LARGE,
-        NOT_PAIRED,
-        AMBIGUOUS,
-        UNREACHABLE,
-        PAIRING_REJECTED,
-        REFUSED,
-        DESKTOP_UNREADABLE,
-        DESKTOP_UNSUPPORTED,
     ],
     reference: Some("docs/reference/data.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: paired_availability,
+    requires: Requires::Server,
+    availability: crate::available,
 };
 
 pub static EXTRACT_COMMAND: Command = Command {
     id: "data.elevation.extract",
     path: &["data", "elevation", "extract"],
-    contract: 2,
-    summary: "Extract an elevation point cloud from an area on Desktop.",
+    contract: 3,
+    summary: "Extract an elevation point cloud from an area locally.",
     purpose: "Generates points across an area, attaches only Rwanda DEM elevation, and writes a GeoJSON with a CSV beside it. Rwanda coverage holes stay explicit; another provider is never substituted. Unlike `ds data elevation attach`, which enriches points the caller already has, this produces them. Generation is deterministic and keeps all source area attributes. Jobs over 4,000 points install or verify the full local DEM once, then retry. Nothing reaches DS Cloud Run; no map need be open.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
-    authority: Authority::DesktopPairing,
+    authority: Authority::None,
     execution: Execution::Sync,
     args: &[
         AREA_ARG,
@@ -218,8 +206,6 @@ pub static EXTRACT_COMMAND: Command = Command {
         COUNT_ARG,
         DENSITY_ARG,
         FALLBACK_ARG,
-        TARGET_ARG,
-        DESCRIPTOR_ARG,
     ],
     output: "A native receipt: both written paths and digests, point and coverage counts, DEM access mode, per-area statistics, and any displaced source attribute.",
     examples: &[
@@ -235,6 +221,8 @@ pub static EXTRACT_COMMAND: Command = Command {
         },
     ],
     refusals: &[
+        crate::NATIVE_DATA_REFUSED,
+        crate::NATIVE_DATA_FAILED,
         AREA_REQUIRED,
         SAMPLING_INCOMPLETE,
         ABSOLUTE_PATH_REQUIRED,
@@ -242,156 +230,47 @@ pub static EXTRACT_COMMAND: Command = Command {
         POINT_BUDGET_EXCEEDED,
         AREA_TOO_LARGE,
         CANCELLED,
-        NOT_PAIRED,
-        AMBIGUOUS,
-        UNREACHABLE,
-        PAIRING_REJECTED,
-        REFUSED,
-        DESKTOP_UNREADABLE,
-        DESKTOP_UNSUPPORTED,
     ],
     reference: Some("docs/reference/data.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: paired_availability,
+    requires: Requires::Server,
+    availability: crate::available,
 };
 
-fn absolute(inputs: &Inputs, name: &str) -> Result<Option<String>, Failure> {
-    let Some(raw) = inputs.value(name) else {
-        return Ok(None);
-    };
-    if !Path::new(raw).is_absolute() {
-        return Err(Failure::invalid(
-            "absolute_path_required",
-            format!("--{name} must be an absolute path on the paired Desktop machine."),
-        )
-        .remedy(ABSOLUTE_PATH_REQUIRED.remedy));
-    }
-    Ok(Some(raw.to_string()))
-}
-
-fn incomplete(message: impl Into<String>) -> Failure {
-    Failure::invalid("sampling_incomplete", message).remedy(SAMPLING_INCOMPLETE.remedy)
-}
-
-/// Collect the arguments both operations share.
-///
-/// Nothing is defaulted here. A missing spacing or seed is a refusal, because
-/// a sampling choice this command invented is a result the caller never asked
-/// for and has no way to notice.
+/// Serialize explicit terminal inputs; decoding and sampling admission belong
+/// to the shared application operation used by native UI callers as well.
 fn common_arguments(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
     let mut arguments = Map::new();
-    let area = absolute(inputs, "area")?;
-    let bbox = inputs.value("bbox").map(str::to_string);
-    if area.is_none() && bbox.is_none() {
-        return Err(Failure::invalid(
-            "area_required",
-            "An elevation point cloud needs an area: pass --area or --bbox.",
-        )
-        .remedy(AREA_REQUIRED.remedy));
-    }
-    if let Some(area) = area {
-        arguments.insert("area".into(), json!(area));
-    }
-    if let Some(bbox) = bbox {
-        arguments.insert("bbox".into(), json!(bbox));
-    }
-
-    let mode = inputs.require("mode")?;
-    arguments.insert("mode".into(), json!(mode));
-    match mode {
-        "grid" => {
-            let spacing = inputs.value("spacing-m").ok_or_else(|| {
-                incomplete("Grid sampling requires --spacing-m; it is never inferred.")
-            })?;
-            arguments.insert("spacing_m".into(), json!(spacing));
-        }
-        "seeded_random" => {
-            let seed = inputs.value("seed").ok_or_else(|| {
-                incomplete(
-                    "Seeded-random sampling requires --seed so the result can be reproduced.",
-                )
-            })?;
-            arguments.insert("seed".into(), json!(seed));
-            match (inputs.value("count"), inputs.value("density-per-km2")) {
-                (Some(_), Some(_)) => {
-                    return Err(incomplete(
-                        "Give --count or --density-per-km2, not both; they mean different things.",
-                    ));
-                }
-                (Some(count), None) => {
-                    arguments.insert("count".into(), json!(count));
-                }
-                (None, Some(density)) => {
-                    arguments.insert("density_per_km2".into(), json!(density));
-                }
-                (None, None) => {
-                    return Err(incomplete(
-                        "Seeded-random sampling requires --count or --density-per-km2.",
-                    ));
-                }
-            }
-        }
-        other => {
-            return Err(incomplete(format!(
-                "--mode must be grid or seeded_random, got '{other}'."
-            )));
+    for (flag, key) in [
+        ("area", "area"),
+        ("bbox", "bbox"),
+        ("mode", "mode"),
+        ("spacing-m", "spacing_m"),
+        ("seed", "seed"),
+        ("count", "count"),
+        ("density-per-km2", "density_per_km2"),
+    ] {
+        if let Some(value) = inputs.value(flag) {
+            arguments.insert(key.into(), json!(value));
         }
     }
     Ok(arguments)
 }
 
-/// Re-raise the application's refusal under its own code, so a script branches
-/// on what actually happened rather than on a generic failure.
-fn refusal(result: &Value) -> Result<Value, Failure> {
-    let refusal = &result["refusal"];
-    let code = refusal["code"].as_str().unwrap_or("desktop_refused");
-    let message = refusal["message"]
-        .as_str()
-        .unwrap_or("Desktop refused the elevation extraction without a valid explanation.");
-    let remedy = refusal["remedy"]
-        .as_str()
-        .unwrap_or("Update DS GridDesign and retry with the documented command contract.");
-    let detail = json!({
-        "point_count": refusal.get("point_count").cloned().unwrap_or(Value::Null),
-        "point_limit": refusal.get("point_limit").cloned().unwrap_or(Value::Null),
-    });
-    let failure = match code {
-        "full_local_dem_required" => Failure::unavailable("full_local_dem_required", message),
-        "point_budget_exceeded" => Failure::invalid("point_budget_exceeded", message),
-        "area_too_large_to_plan" => Failure::invalid("area_too_large_to_plan", message),
-        "cancelled" => Failure::failed("extraction_cancelled", message),
-        _ => Failure::failed("desktop_refused", message),
-    };
-    Err(failure.remedy(remedy).detail(detail))
-}
-
 pub fn run_plan(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = common_arguments(inputs)?;
-    let descriptor = paired(inputs.value("desktop-descriptor"))?;
-    let result = invoke(
-        &descriptor,
-        &PLAN_OPERATION,
-        Value::Object(arguments),
-        Duration::from_secs(10 * 60),
-    )?;
-    match result["status"].as_str() {
-        Some("planned") if result["receipt"].is_object() => Ok(result["receipt"].clone()),
-        Some("refused") => refusal(&result),
-        _ => Err(Failure::failed(
-            "desktop_refused",
-            "Desktop returned an invalid elevation point-cloud plan outcome.",
-        )
-        .remedy("Update DS GridDesign and retry with the same explicit area and sampling choice.")),
-    }
+    let context = RequestContext::local_files(
+        ds_native_data::ExecutionHost::Headless,
+        ds_native_data::online,
+    );
+    bridge::plan(&context, Value::Object(arguments))
+        .and_then(bridge::CommandOutcome::into_receipt)
+        .map_err(crate::native_data_failure)
 }
 
 fn extract_arguments(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
     let mut arguments = common_arguments(inputs)?;
-    let out = absolute(inputs, "out")?.ok_or_else(|| {
-        Failure::invalid("absolute_path_required", "--out is required.")
-            .remedy(ABSOLUTE_PATH_REQUIRED.remedy)
-    })?;
+    let out = inputs.require("out")?;
     arguments.insert("out".into(), json!(out));
     arguments.insert("fallback".into(), json!(inputs.require("fallback")?));
     Ok(arguments)
@@ -399,22 +278,17 @@ fn extract_arguments(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
 
 pub fn run_extract(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = extract_arguments(inputs)?;
-    let descriptor = paired(inputs.value("desktop-descriptor"))?;
-    let result = invoke(
-        &descriptor,
-        &EXTRACT_OPERATION,
+    let context = RequestContext::local_files(
+        ds_native_data::ExecutionHost::Headless,
+        ds_native_data::online,
+    );
+    bridge::extract(
+        &context,
+        &ds_native_data::point_cloud::NativePointCloudState::default(),
         Value::Object(arguments),
-        Duration::from_secs(10 * 60 * 60),
-    )?;
-    match result["status"].as_str() {
-        Some("completed") if result["receipt"].is_object() => Ok(result["receipt"].clone()),
-        Some("refused") => refusal(&result),
-        _ => Err(Failure::failed(
-            "desktop_refused",
-            "Desktop returned an invalid elevation point-cloud outcome.",
-        )
-        .remedy("Update DS GridDesign and retry with the same explicit area and output.")),
-    }
+    )
+    .and_then(bridge::CommandOutcome::into_receipt)
+    .map_err(crate::native_data_failure)
 }
 
 pub fn render_plan(data: &Value) -> String {
@@ -529,8 +403,8 @@ mod tests {
     fn planning_reads_and_extraction_writes() {
         assert_eq!(PLAN_COMMAND.effect, Effect::ReadOnly);
         assert_eq!(EXTRACT_COMMAND.effect, Effect::LocalFileWrite);
-        assert_eq!(PLAN_COMMAND.authority, Authority::DesktopPairing);
-        assert_eq!(EXTRACT_COMMAND.authority, Authority::DesktopPairing);
+        assert_eq!(PLAN_COMMAND.authority, Authority::None);
+        assert_eq!(EXTRACT_COMMAND.authority, Authority::None);
     }
 
     #[test]

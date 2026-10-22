@@ -112,7 +112,7 @@ pub struct LvOutcome {
     pub development_override: bool,
 }
 /// Discovery reads metadata only. Execution separately admits the candidate.
-pub fn available() -> ds_cli_contract::spec::Availability {
+pub fn available() -> ds_core_contracts::Availability {
     NETWORK.availability()
 }
 /// Original standalone sorted-map wire profile.

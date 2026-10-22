@@ -2,6 +2,120 @@ use super::*;
 use crate::module_engine::valid_compiler_identity;
 use serde_json::json;
 
+#[test]
+fn capture_byte_descriptor_projects_both_provenances_through_one_serde_contract() {
+    let (published, verified, identity) = ready();
+    let source = identity["source_sha"].as_str().unwrap();
+    let local = prepare_local(
+        local_unit(UiComponent::Interactions, "canary", source, &identity, &verified).unwrap(),
+        source, &verified, true,
+    ).unwrap();
+    for receipt in [published, local] {
+        let selected = activate(None, receipt, 0, true, guard()).unwrap();
+        let captured = capture(Some(&selected), UiComponent::Interactions, "canary", "https://gateway.example").unwrap();
+        let descriptor = capture_byte_descriptor(&captured).unwrap();
+        assert_eq!(descriptor.schema, CAPTURE_BYTES_SCHEMA);
+        assert_eq!(descriptor.component, UiComponent::Interactions);
+        assert_eq!(descriptor.channel, "canary");
+        assert_eq!(descriptor.scope, captured.receipt.unit.scope());
+        assert_eq!(descriptor.unit_sha256, captured.receipt.unit.unit_sha256());
+        assert_eq!(descriptor.generation, 1);
+        let mut actual = descriptor.files.clone();
+        actual.sort_by(|a, b| a.filename.cmp(&b.filename));
+        let mut expected = verified.clone();
+        expected.sort_by(|a, b| a.filename.cmp(&b.filename));
+        assert_eq!(actual, expected);
+        let wire = serde_json::to_value(&descriptor).unwrap();
+        assert!(wire.get("receipt").is_none() && wire.get("release").is_none());
+        assert_eq!(wire.as_object().unwrap().len(), 7);
+        assert_eq!(serde_json::from_value::<UiCaptureByteDescriptor>(wire).unwrap(), descriptor);
+    }
+}
+
+#[test]
+fn capture_byte_descriptor_refuses_invalid_generation_unit_and_identity() {
+    let (receipt, _, _) = ready();
+    let captured = UiCapture { generation: 1, receipt };
+    for generation in [0, MAX_GENERATION + 1] {
+        let mut invalid = captured.clone();
+        invalid.generation = generation;
+        assert_eq!(capture_byte_descriptor(&invalid).unwrap_err().code, "module_receipt_invalid");
+    }
+    let mut invalid = captured.clone();
+    if let UiUnit::Published { unit_sha256, .. } = &mut invalid.receipt.unit {
+        *unit_sha256 = "f".repeat(64);
+    }
+    assert!(capture_byte_descriptor(&invalid).is_err());
+    let mut invalid = captured;
+    invalid.receipt.engine_identity.source_sha = "f".repeat(40);
+    assert!(capture_byte_descriptor(&invalid).is_err());
+}
+
+#[test]
+fn published_wire_is_unchanged_and_matching_numeric_contract_additions_are_compatible() {
+    let (catalog, _) = fixture(UiComponent::CommandKernel);
+    let original = inspect("command-kernel", "canary", &catalog).unwrap();
+    let wire = serde_json::to_value(&original).unwrap();
+    assert_eq!(
+        wire,
+        json!({"release":catalog,"unit_sha256":original.unit_sha256(),"total_bytes":original.total_bytes()})
+    );
+    let mut compatible = catalog.clone();
+    compatible["build_manifest"]["ui_contract"] = json!(2);
+    // Numeric metadata can change, but the producer digest must still bind it.
+    assert!(inspect("command-kernel", "canary", &compatible).is_err());
+    let manifest = parse_identity(&compatible["build_manifest"]).unwrap();
+    for asset in compatible["assets"].as_array_mut().unwrap() {
+        asset["engines"][0]["manifest_sha256"] = json!(manifest.manifest_sha256());
+    }
+    let admitted = inspect("command-kernel", "canary", &compatible).unwrap();
+    validate_identity(&admitted, &manifest).unwrap();
+    assert_ne!(admitted.unit_sha256(), original.unit_sha256());
+}
+
+#[test]
+fn local_build_roundtrip_has_truthful_provenance_and_cannot_enter_release_staging() {
+    for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
+        let (catalog, mut identity) = fixture(component);
+        identity["ui_contract"] = json!(2);
+        let source = identity["source_sha"].as_str().unwrap();
+        let published = inspect(component.as_str(), "canary", &catalog).unwrap();
+        let verified = files(&published);
+        let unit = local_unit(component, "canary", source, &identity, &verified).unwrap();
+        let receipt = prepare_local(unit.clone(), source, &verified, true).unwrap();
+        let wire = serde_json::to_value(&receipt).unwrap();
+        assert!(wire["unit"].get("release").is_none());
+        assert!(wire["authority"].get("gateway_origin").is_none());
+        assert_eq!(wire["unit"]["local_build"]["scope"], "local-dev");
+        let decoded: InstalledUiModule = serde_json::from_value(wire).unwrap();
+        assert_eq!(decoded, receipt);
+        let selected = activate(None, decoded, 0, true, guard()).unwrap();
+        let captured = capture(Some(&selected), component, "canary", "").unwrap();
+        admit_loaded(&captured, &verified, &identity).unwrap();
+        assert!(acquisition_plan(&unit, "canary", unit.unit_sha256(), true).is_err());
+        assert!(prepare(unit.clone(), receipt.authority.clone(), &verified, true).is_err());
+        assert!(prepare_local(published, source, &verified, true).is_err());
+        assert!(prepare_local(unit.clone(), source, &verified, false).is_err());
+        assert!(local_unit(component, "stable", source, &identity, &verified).is_err());
+        assert!(local_unit(component, "canary", &"f".repeat(40), &identity, &verified).is_err());
+        let mut corrupt = verified.clone();
+        corrupt[0].sha256 = "f".repeat(64);
+        assert!(admit_loaded(&captured, &corrupt, &identity).is_err());
+        let mut wrong_identity = identity.clone();
+        wrong_identity["source_sha"] = json!("f".repeat(40));
+        assert!(admit_loaded(&captured, &verified, &wrong_identity).is_err());
+        let mut duplicate = verified.clone();
+        duplicate[3] = duplicate[0].clone();
+        assert!(local_unit(component, "canary", source, &identity, &duplicate).is_err());
+        let mut forged = receipt.clone();
+        forged.authority = UiAuthority::Published(PublishedUiAuthority {
+            gateway_origin: "https://gateway.example".into(),
+            route_manifest_sha256: "e".repeat(64),
+        });
+        assert!(admit_retained(&forged, "canary", "https://gateway.example").is_err());
+    }
+}
+
 fn fixture(component: UiComponent) -> (Value, Value) {
     let (release, identity) = match component {
         UiComponent::Interactions => (
@@ -19,7 +133,7 @@ fn fixture(component: UiComponent) -> (Value, Value) {
     )
 }
 fn files(unit: &UiUnit) -> Vec<VerifiedFile> {
-    unit.release
+    unit.published().unwrap()
         .assets
         .iter()
         .map(|asset| {
@@ -39,10 +153,10 @@ fn ready() -> (InstalledUiModule, Vec<VerifiedFile>, Value) {
     let verified = files(&unit);
     let receipt = prepare(
         unit,
-        UiAuthority {
+        UiAuthority::Published(PublishedUiAuthority {
             gateway_origin: "https://gateway.example".into(),
             route_manifest_sha256: "e".repeat(64),
-        },
+        }),
         &verified,
         true,
     )
@@ -62,21 +176,21 @@ fn both_fixed_ui_units_preserve_exact_receipts_and_canonical_identity() {
     for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
         let (release, identity) = fixture(component);
         let unit = inspect(component.as_str(), "canary", &release).unwrap();
-        assert_eq!(serde_json::to_value(&unit.release).unwrap(), release);
+        assert_eq!(serde_json::to_value(&unit.published().unwrap()).unwrap(), release);
         verify_files(&unit, &files(&unit)).unwrap();
         let identity = parse_identity(&identity).unwrap();
         validate_identity(&unit, &identity).unwrap();
         assert_eq!(
             identity.manifest_sha256(),
-            unit.release.assets[0].engines[0].manifest_sha256
+            unit.published().unwrap().assets[0].engines[0].manifest_sha256
         );
         let mut reordered = release.clone();
         reordered["assets"].as_array_mut().unwrap().reverse();
         assert_eq!(
             inspect(component.as_str(), "canary", &reordered)
                 .unwrap()
-                .unit_sha256,
-            unit.unit_sha256
+                .unit_sha256(),
+            unit.unit_sha256()
         );
     }
     assert!(super::super::ModuleComponent::parse("interactions").is_err());
@@ -200,7 +314,7 @@ fn trusted_catalog_manifest_is_required_before_transfer_or_adapter_evaluation() 
     }
     let unit = inspect("interactions", "canary", &catalog).unwrap();
     let (prepared, _, _) = ready();
-    assert_eq!(prepared.engine_identity, unit.release.build_manifest);
+    assert_eq!(prepared.engine_identity, unit.published().unwrap().build_manifest);
     assert_eq!(
         serde_json::to_value(&prepared.engine_identity).unwrap(),
         identity
@@ -232,7 +346,7 @@ fn bytes_precede_loaded_identity_and_bind_all_four_members() {
     duplicate[3] = duplicate[0].clone();
     assert!(verify_files(&receipt.unit, &duplicate).is_err());
     let mut tampered = receipt.unit.clone();
-    tampered.total_bytes += 1;
+    if let UiUnit::Published { total_bytes, .. } = &mut tampered { *total_bytes += 1; }
     assert!(verify_files(&tampered, &verified).is_err());
     assert!(admit_loaded(&captured, &verified, &json!({})).is_err());
 }
@@ -267,7 +381,7 @@ fn held_generation_lane_authority_and_guard_fence_offline_transitions() {
     )
     .is_err());
     // A second complete immutable version retains the former active unit.
-    let mut next_catalog = serde_json::to_value(&receipt.unit.release).unwrap();
+    let mut next_catalog = serde_json::to_value(&receipt.unit.published().unwrap()).unwrap();
     next_catalog["version"] = json!("0.1.0-r2");
     for asset in next_catalog["assets"].as_array_mut().unwrap() {
         let url = asset["url"]
@@ -335,19 +449,19 @@ fn acquisition_plan_is_bounded_and_withdrawn_catalogs_stay_visible() {
     let (receipt, _, _) = ready();
     let unit = &receipt.unit;
     assert_eq!(
-        acquisition_plan(unit, "canary", &unit.unit_sha256, true)
+        acquisition_plan(unit, "canary", unit.unit_sha256(), true)
             .unwrap()
             .len(),
         4
     );
-    assert!(acquisition_plan(unit, "canary", &unit.unit_sha256, false).is_err());
-    assert!(acquisition_plan(unit, "stable", &unit.unit_sha256, true).is_err());
+    assert!(acquisition_plan(unit, "canary", unit.unit_sha256(), false).is_err());
+    assert!(acquisition_plan(unit, "stable", unit.unit_sha256(), true).is_err());
     assert!(acquisition_plan(unit, "canary", &"f".repeat(64), true).is_err());
     for status in ["blocked", "stopped", "rolled_back"] {
-        let mut release = serde_json::to_value(&unit.release).unwrap();
+        let mut release = serde_json::to_value(&unit.published().unwrap()).unwrap();
         release["status"] = json!(status);
         let withdrawn = inspect("interactions", "canary", &release).unwrap();
-        assert_eq!(withdrawn.release.status, status);
-        assert!(acquisition_plan(&withdrawn, "canary", &withdrawn.unit_sha256, true).is_err());
+        assert_eq!(withdrawn.published().unwrap().status, status);
+        assert!(acquisition_plan(&withdrawn, "canary", withdrawn.unit_sha256(), true).is_err());
     }
 }

@@ -5,7 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-ds-canvas = { path = "../../../ds-interactions/crates/ds-canvas" }
+ds-canvas = { path = "../ds-canvas" }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 

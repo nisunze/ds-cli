@@ -7,7 +7,8 @@
   "private": true,
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/nisunze/ds-command-kernel.git"
+    "url": "git+ssh://git@github.com/nisunze/ds-cli.git",
+    "directory": "crates/kernel/ds-command-kernel"
   },
   "main": "dist/ds_command_kernel.js",
   "types": "dist/ds_command_kernel.d.ts",
@@ -19,6 +20,6 @@
   ],
   "scripts": {
     "build": "./build.sh",
-    "test": "cargo test && wasm-pack test --node --features wasm"
+    "test": "cargo test --locked -p ds-command-kernel && wasm-pack test --node --features wasm"
   }
 }

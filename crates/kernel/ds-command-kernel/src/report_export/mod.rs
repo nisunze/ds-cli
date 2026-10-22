@@ -3343,12 +3343,22 @@ mod tests {
         );
         let verified = verify(&document).unwrap();
         let receipt = run_receipt(&RunReceiptFacts {
-            plan: &plan, client_run_id: &format!("report-{}", "0".repeat(32)),
-            engine: &engine(), result: &verified, artifact_dir: "tx_a", now_ms: 1,
-            expected_content_digest: Some(&plan.content_digest), print_context_sha256: None,
-            print_context_layers: &[], print_context_omitted: &[],
-        }).unwrap();
-        assert_eq!(receipt["quantity_media_omitted"], document["quantity_media_omitted"]);
+            plan: &plan,
+            client_run_id: &format!("report-{}", "0".repeat(32)),
+            engine: &engine(),
+            result: &verified,
+            artifact_dir: "tx_a",
+            now_ms: 1,
+            expected_content_digest: Some(&plan.content_digest),
+            print_context_sha256: None,
+            print_context_layers: &[],
+            print_context_omitted: &[],
+        })
+        .unwrap();
+        assert_eq!(
+            receipt["quantity_media_omitted"],
+            document["quantity_media_omitted"]
+        );
         for invalid in [
             json!({"code":"allowed","reference_count":1,"reason":"media_not_required_for_quantity"}),
             json!({"code":"quantity_media_omitted","reference_count":0,"reason":"media_not_required_for_quantity"}),
@@ -4661,11 +4671,9 @@ mod project_printing_label_tests {
             json!("bad\ncaption"),
             json!("a".repeat(201)),
         ] {
-            assert!(
-                receipt("project", label)
-                    .printing_context_for_project("project")
-                    .is_err()
-            );
+            assert!(receipt("project", label)
+                .printing_context_for_project("project")
+                .is_err());
         }
         for change in 0..4 {
             let mut altered = source.clone();

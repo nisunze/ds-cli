@@ -491,7 +491,7 @@ mod tests {
             credential_audience_sha256: "b".repeat(64),
         };
         let defaults: Value = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/governed-renderer-defaults.json"
+            "../../ds-command-kernel/tests/fixtures/governed-renderer-defaults.json"
         ))
         .unwrap();
         let document = json!({"type":"line","paint":{},"layout":{},"metadata":{"print_renderer_defaults":defaults}});

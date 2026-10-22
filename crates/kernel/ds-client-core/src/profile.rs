@@ -41,7 +41,8 @@ pub const SURVEY_ENTRIES_SELECT_PATH: &str = "/api/v1/survey/entries/select";
 pub const SURVEY_ENTRIES_CHANGES_METHOD: &str = "POST";
 pub const SURVEY_ENTRIES_CHANGES_PATH: &str = "/api/v1/survey/entries/changes";
 pub const SURVEY_ENTRY_CREATE_METHOD: &str = "POST";
-pub const SURVEY_ENTRY_CREATE_PATH: &str = "/v1/projects/{firebase_project}/databases/(default)/documents:commit";
+pub const SURVEY_ENTRY_CREATE_PATH: &str =
+    "/v1/projects/{firebase_project}/databases/(default)/documents:commit";
 pub const SURVEY_ENTRY_CREATE_OPERATION: &str = "create";
 pub const PROJECT_DATA_METHOD: &str = "POST";
 pub const PROJECT_DATA_PATH: &str = "/api/v1/project_data";

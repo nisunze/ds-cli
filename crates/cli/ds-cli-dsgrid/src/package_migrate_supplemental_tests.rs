@@ -41,7 +41,9 @@ fn successor_flags_are_complete_and_opt_in_before_file_reads() {
 fn controls_dir() -> std::path::PathBuf {
     let scratch = std::env::var_os("TMPDIR")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../out"));
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../out")
+        });
     std::fs::create_dir_all(&scratch).expect("create disk scratch parent");
     let scratch = std::fs::canonicalize(scratch).expect("existing disk scratch parent");
     assert!(

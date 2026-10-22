@@ -1,7 +1,5 @@
 {
   "schema": "ds.ui-wasm-source/v1",
   "component": "interactions",
-  "source_revisions": {
-    "ds-command-kernel": "5d25ee875c0f59c34c745ec3005869569ce05fe2"
-  }
+  "source_revisions": {}
 }

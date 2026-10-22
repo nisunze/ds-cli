@@ -17,13 +17,13 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_client_core::survey_entries_read::{entry_media, SURVEY_ENTRIES_READ_MAX_LIMIT};
+use ds_client_core::survey_entries_read::{SURVEY_ENTRIES_READ_MAX_LIMIT, entry_media};
 use ds_client_core::{SurveyEntriesRead, SurveyEntriesReadRequest, SurveyEntry};
 use ds_command_kernel::project_dataset_cache::Scope;
 use ds_command_kernel::survey::hold::{self, AdminBoundary, Filter, Manifest, Refresh, View};
 use ds_command_kernel::time::OffsetDateTime;
 use ds_project_data::survey_hold::{self as store, HoldError};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[path = "read/complete_file.rs"]
 mod complete_file;
@@ -79,7 +79,10 @@ const OUT: Arg = Arg::value(
     "<file.geojson>",
     "Write the entries as a new GeoJSON file; never overwritten.",
 );
-const COMPLETE_FILE: Arg = Arg::switch("complete-file", "Write the complete admitted held view to --out with original features and a SHA-256/size/count receipt; stdout remains bounded metadata. The source-format byte bound is the existing survey response limit; --limit does not truncate this file.");
+const COMPLETE_FILE: Arg = Arg::switch(
+    "complete-file",
+    "Write the complete admitted held view to --out with original features and a SHA-256/size/count receipt; stdout remains bounded metadata. The source-format byte bound is the existing survey response limit; --limit does not truncate this file.",
+);
 const LANE: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
 

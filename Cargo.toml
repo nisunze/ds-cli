@@ -1,38 +1,80 @@
-# The `ds` command line: one Rust executable that is the supported door into
-# the Data Solutions stack for a person in a terminal and for a coding agent.
-#
-# Workspace shape follows real dependency boundaries, not tidiness. `ls
-# crates/` is the inventory and each crate's own header states its boundary;
-# a list kept here would be a second inventory that nothing checks, and it
-# would be wrong from the next crate onwards. Four boundaries the naming does
-# not give away:
-#
-#   ds-cli-contract  the CLI's own contract — command metadata, output
-#                    envelope, error classes, exit codes, help rendering,
-#                    argument parsing. Depends on no domain crate, so the
-#                    contract can be tested without building an engine.
-#   ds-cli-desktop   the paired-desktop authority surface. Separate because
-#                    every domain that needs a signed-in principal routes
-#                    through it, and because nothing in it may be reachable
-#                    from a domain that does not ask for it.
-#   ds-cli-exec      the typed process boundary: locating a sibling DS
-#                    executable and calling one named subcommand under
-#                    bounds. Separate so the files from which a process can
-#                    be created stay few and auditable; that set is pinned by
-#                    crates/ds/tests/process_boundary.rs and explained in
-#                    docs/contracts/process-boundary-contract.md.
-#   ds               the binary. Registers domains, dispatches, renders.
-#
-# Every other crate is one domain, named for it. It owns no engineering logic
-# and reaches its owner exactly one of three ways: linking a pure library,
-# calling a typed process contract, or asking the paired application. Domains
-# are separate crates so "domain discovery must not initialize or probe
-# unrelated engines" is a structural property rather than a promise.
+# One source workspace, independently built and released units.
+# Kernel owns application state; CLI adapts commands; Interactions owns transient UI.
+# Shared contains neutral geometry only. scripts/check-workspace-boundaries.mjs
+# checks direct, optional and transitive dependencies across these groups.
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = [
+    "crates/kernel/ds-solar-project",
+    "crates/cli/ds-solar-cli",
+    "crates/kernel/ds-design-session",
+    "crates/kernel/ds-solar-native",
+    "crates/kernel/ds-solar-reference-host",
+    "crates/kernel/ds-terrain-host",
+    "crates/kernel/ds-elevation-host",
+    "crates/kernel/ds-native-data",
+    "crates/cli/ds",
+    "crates/cli/ds-cli-assets",
+    "crates/cli/ds-cli-auth",
+    "crates/cli/ds-cli-contract",
+    "crates/cli/ds-cli-data",
+    "crates/cli/ds-cli-design",
+    "crates/cli/ds-cli-desktop",
+    "crates/cli/ds-cli-dsgrid",
+    "crates/cli/ds-cli-dsgrid-exchange",
+    "crates/cli/ds-cli-feedback",
+    "crates/cli/ds-cli-installs",
+    "crates/cli/ds-cli-library",
+    "crates/cli/ds-cli-map",
+    "crates/cli/ds-cli-mcp",
+    "crates/cli/ds-cli-messaging",
+    "crates/cli/ds-cli-pls",
+    "crates/cli/ds-cli-pm",
+    "crates/cli/ds-cli-report",
+    "crates/cli/ds-cli-server",
+    "crates/cli/ds-cli-shell",
+    "crates/cli/ds-cli-skills",
+    "crates/cli/ds-cli-solar",
+    "crates/cli/ds-cli-sre",
+    "crates/cli/ds-cli-style",
+    "crates/cli/ds-cli-survey",
+    "crates/cli/ds-cli-tile",
+    "crates/cli/ds-cli-workstation",
+    "crates/cli/ds-layer-ops",
+    "crates/interactions/ds-canvas",
+    "crates/interactions/ds-canvas-graph",
+    "crates/interactions/ds-interactions-wasm",
+    "crates/interactions/ds-map-interaction",
+    "crates/interactions/ds-profile-view",
+    "crates/kernel/ds-assets-pdf-host",
+    "crates/kernel/ds-cli-exec",
+    "crates/kernel/ds-client-core",
+    "crates/kernel/ds-command-kernel",
+    "crates/kernel/ds-compute-runtime",
+    "crates/kernel/ds-core-contracts",
+    "crates/kernel/ds-design-workspace",
+    "crates/kernel/ds-edge-authority",
+    "crates/kernel/ds-kml",
+    "crates/kernel/ds-layer-store",
+    "crates/kernel/ds-module-admission",
+    "crates/kernel/ds-native-host",
+    "crates/kernel/ds-network-client",
+    "crates/kernel/ds-profile-grid",
+    "crates/kernel/ds-profile-policy",
+    "crates/kernel/ds-profile-runtime",
+    "crates/kernel/ds-project-data",
+    "crates/kernel/ds-report-artifacts",
+    "crates/kernel/ds-report-host",
+    "crates/kernel/ds-sync-runtime",
+    "crates/kernel/ds-sync-store",
+    "crates/kernel/ds-template-test-support",
+    "crates/kernel/ds-tile-runtime",
+    "crates/kernel/ds-update-runtime",
+    "crates/shared/ds-geo-lite",
+]
 
 [workspace.package]
+rust-version = "1.90"
 version = "0.1.0"
 edition = "2024"
 license = "Proprietary"
@@ -41,6 +83,19 @@ authors = ["Data Solutions Engineering"]
 publish = false
 
 [workspace.dependencies]
+anyhow = "1"
+ds-solar-native = { path = "crates/kernel/ds-solar-native" }
+ds-solar-reference-host = { path = "crates/kernel/ds-solar-reference-host" }
+ds-terrain-host = { path = "crates/kernel/ds-terrain-host" }
+ds-elevation-host = { path = "crates/kernel/ds-elevation-host" }
+ds-native-data = { path = "crates/kernel/ds-native-data" }
+thiserror = "2"
+wasm-bindgen = "0.2"
+ds-core-contracts = { path = "crates/kernel/ds-core-contracts" }
+ds-native-host = { path = "crates/kernel/ds-native-host" }
+ds-canvas = { path = "crates/interactions/ds-canvas" }
+ds-canvas-graph = { path = "crates/interactions/ds-canvas-graph" }
+ds-map-interaction = { path = "crates/interactions/ds-map-interaction" }
 base64 = "0.22.1"
 # The whole third-party surface. Every entry is already load-bearing in a
 # sibling workspace, so this repository introduces no new dependency class.
@@ -89,42 +144,42 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
-ds-cli-contract = { path = "crates/ds-cli-contract" }
-ds-cli-auth = { path = "crates/ds-cli-auth" }
-ds-cli-server = { path = "crates/ds-cli-server" }
-ds-client-core = { path = "../ds-command-kernel/crates/ds-client-core" }
-ds-edge-authority = { path = "../ds-command-kernel/crates/ds-edge-authority" }
-ds-sync-runtime = { path = "../ds-command-kernel/crates/ds-sync-runtime" }
-ds-geo-lite = { path = "../ds-command-kernel/crates/ds-geo-lite" }
+ds-cli-contract = { path = "crates/cli/ds-cli-contract" }
+ds-cli-auth = { path = "crates/cli/ds-cli-auth" }
+ds-cli-server = { path = "crates/cli/ds-cli-server" }
+ds-client-core = { path = "crates/kernel/ds-client-core" }
+ds-edge-authority = { path = "crates/kernel/ds-edge-authority" }
+ds-sync-runtime = { path = "crates/kernel/ds-sync-runtime" }
+ds-geo-lite = { path = "crates/shared/ds-geo-lite" }
 ds-geo = { path = "../ds-network/crates/ds-geo", features = ["arrow_ipc"] }
-ds-cli-desktop = { path = "crates/ds-cli-desktop" }
-ds-cli-design = { path = "crates/ds-cli-design" }
-ds-cli-exec = { path = "crates/ds-cli-exec" }
-ds-cli-map = { path = "crates/ds-cli-map" }
-ds-layer-ops = { path = "crates/ds-layer-ops" }
-ds-cli-dsgrid = { path = "crates/ds-cli-dsgrid" }
-ds-cli-dsgrid-exchange = { path = "crates/ds-cli-dsgrid-exchange" }
-ds-cli-library = { path = "crates/ds-cli-library" }
+ds-cli-desktop = { path = "crates/cli/ds-cli-desktop" }
+ds-cli-design = { path = "crates/cli/ds-cli-design" }
+ds-cli-exec = { path = "crates/kernel/ds-cli-exec" }
+ds-cli-map = { path = "crates/cli/ds-cli-map" }
+ds-layer-ops = { path = "crates/cli/ds-layer-ops" }
+ds-cli-dsgrid = { path = "crates/cli/ds-cli-dsgrid" }
+ds-cli-dsgrid-exchange = { path = "crates/cli/ds-cli-dsgrid-exchange" }
+ds-cli-library = { path = "crates/cli/ds-cli-library" }
 # `ds` turns the third-party desktop adapters on through its own feature.
-ds-cli-pls = { path = "crates/ds-cli-pls", default-features = false }
-ds-cli-report = { path = "crates/ds-cli-report" }
-ds-cli-solar = { path = "crates/ds-cli-solar" }
-ds-cli-messaging = { path = "crates/ds-cli-messaging" }
-ds-cli-pm = { path = "crates/ds-cli-pm" }
-ds-cli-assets = { path = "crates/ds-cli-assets" }
-ds-cli-installs = { path = "crates/ds-cli-installs" }
-ds-cli-sre = { path = "crates/ds-cli-sre" }
-ds-cli-survey = { path = "crates/ds-cli-survey" }
-ds-cli-style = { path = "crates/ds-cli-style" }
-ds-cli-tile = { path = "crates/ds-cli-tile" }
-ds-cli-data = { path = "crates/ds-cli-data" }
-ds-cli-feedback = { path = "crates/ds-cli-feedback" }
-ds-cli-shell = { path = "crates/ds-cli-shell" }
-ds-cli-workstation = { path = "crates/ds-cli-workstation" }
-ds-cli-mcp = { path = "crates/ds-cli-mcp" }
-ds-cli-skills = { path = "crates/ds-cli-skills" }
-ds-command-kernel = { path = "../ds-command-kernel" }
-ds-design-workspace = { path = "../ds-command-kernel/crates/ds-design-workspace" }
+ds-cli-pls = { path = "crates/cli/ds-cli-pls", default-features = false }
+ds-cli-report = { path = "crates/cli/ds-cli-report" }
+ds-cli-solar = { path = "crates/cli/ds-cli-solar" }
+ds-cli-messaging = { path = "crates/cli/ds-cli-messaging" }
+ds-cli-pm = { path = "crates/cli/ds-cli-pm" }
+ds-cli-assets = { path = "crates/cli/ds-cli-assets" }
+ds-cli-installs = { path = "crates/cli/ds-cli-installs" }
+ds-cli-sre = { path = "crates/cli/ds-cli-sre" }
+ds-cli-survey = { path = "crates/cli/ds-cli-survey" }
+ds-cli-style = { path = "crates/cli/ds-cli-style" }
+ds-cli-tile = { path = "crates/cli/ds-cli-tile" }
+ds-cli-data = { path = "crates/cli/ds-cli-data" }
+ds-cli-feedback = { path = "crates/cli/ds-cli-feedback" }
+ds-cli-shell = { path = "crates/cli/ds-cli-shell" }
+ds-cli-workstation = { path = "crates/cli/ds-cli-workstation" }
+ds-cli-mcp = { path = "crates/cli/ds-cli-mcp" }
+ds-cli-skills = { path = "crates/cli/ds-cli-skills" }
+ds-command-kernel = { path = "crates/kernel/ds-command-kernel" }
+ds-design-workspace = { path = "crates/kernel/ds-design-workspace" }
 ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts" }
 
 # The authoritative engine crates, by path, exactly as ds-web/src-tauri
@@ -138,7 +193,7 @@ ds-grid-tasks = { path = "../ds-network/crates/ds-grid-tasks" }
 ds-io = { path = "../ds-network/crates/ds-io" }
 ds-network = { path = "../ds-network/crates/ds-network", features = ["arrow_ipc"] }
 ds-network-contracts = { path = "../ds-network/crates/ds-network-contracts" }
-ds-network-client = { path = "../ds-command-kernel/crates/ds-network-client" }
+ds-network-client = { path = "crates/kernel/ds-network-client" }
 
 [profile.release]
 opt-level = "s"

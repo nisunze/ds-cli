@@ -935,7 +935,7 @@ fn every_declared_profile_token_round_trips() {
 
 #[test]
 fn bundled_skills_name_only_known_chapters_and_compatible_profiles() {
-    let skills = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../skills");
+    let skills = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../skills");
     let mut declared = 0usize;
     for entry in std::fs::read_dir(skills).expect("skills directory") {
         let path = entry.expect("skill entry").path().join("SKILL.md");

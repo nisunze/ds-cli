@@ -27,6 +27,7 @@ fn sources(dir: &Path, paths: &mut Vec<std::path::PathBuf>) {
 
 fn main() {
     let root = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let workspace = root.ancestors().nth(3).expect("application workspace");
     let mut paths = vec![
         root.join("Cargo.toml"),
         root.join("build.rs"),
@@ -35,16 +36,21 @@ fn main() {
         root.join("build_capabilities.rs"),
         root.join("routing/capabilities.json"),
     ];
-    for dir in ["src", "crates"] {
-        println!("cargo:rerun-if-changed={dir}");
-        sources(&root.join(dir), &mut paths);
+    for dir in [
+        root.join("src"),
+        root.join("../ds-kml"),
+        root.join("../ds-profile-policy"),
+        root.join("../../shared/ds-geo-lite"),
+    ] {
+        println!("cargo:rerun-if-changed={}", dir.display());
+        sources(&dir, &mut paths);
     }
     paths.sort();
     let mut hash = Sha256::new();
     for path in paths {
         println!("cargo:rerun-if-changed={}", path.display());
         let name = path
-            .strip_prefix(&root)
+            .strip_prefix(workspace)
             .unwrap()
             .to_str()
             .unwrap()
@@ -59,7 +65,7 @@ fn main() {
         "cargo:rustc-env=DS_KERNEL_SOURCE_SHA256={:x}",
         hash.finalize()
     );
-    build_ui::emit(&root);
+    build_ui::emit(workspace);
     build_capabilities::emit(&root);
     build_gateway::emit(&root);
 }

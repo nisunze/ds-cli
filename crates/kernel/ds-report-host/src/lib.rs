@@ -2526,7 +2526,7 @@ mod style_context_capture_tests {
     fn additive_style_binding_preserves_sources_and_refuses_scope_or_byte_changes() {
         use ds_command_kernel::{printing, style_resolution};
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/printing-source-bindings.json"
+            "../../ds-command-kernel/tests/fixtures/printing-source-bindings.json"
         ))
         .unwrap();
         let snapshot = style_resolution::Snapshot {

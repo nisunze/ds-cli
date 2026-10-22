@@ -9,7 +9,7 @@ use ds_network_contracts::profile::{
     NativeProfileEngineeringTableV1, NativeProfileOperationV1, NativeProfilePickRequestV1,
     NativeProfileSelectionRangeRequestV1, NativeProfileViewInputV1, PROFILE_VIEW_INPUT_SCHEMA,
 };
-use ds_network_contracts::profile_control::ProfileControlOperation;
+use ds_network_contracts::profile_control::NativeProfileSessionControlOperationV1 as ProfileControlOperation;
 use ds_sync_store::{ProfileSourceHeader, ProfileSourceScope, Store};
 mod controls;
 use serde::{Deserialize, Serialize};
@@ -113,6 +113,29 @@ pub enum Operation {
         model_id: String,
         expected_history: Value,
     },
+    ModelLibrary {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+    },
+    QueryResults {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        scope: String,
+        expected_engineering_input_root: String,
+        request: ds_command_kernel::profile_inputs::QueryArguments<Value>,
+    },
+    AnalyzeResults {
+        session_id: String,
+        model_id: String,
+        expected_history: Value,
+        scope: String,
+        expected_engineering_input_root: String,
+        options: Value,
+        patch: Value,
+        style_document: Value,
+    },
     Pick {
         session_id: String,
         model_id: String,
@@ -163,6 +186,43 @@ pub enum Operation {
         model_id: String,
         expected_history: Value,
     },
+}
+impl Operation {
+    /// Exact closed request action, also used when reporting a completed action
+    /// whose optional output file could not be written.
+    pub(crate) fn action(&self) -> &'static str {
+        match self {
+            Self::Open { .. } => "open",
+            Self::PackageCheckpoint { .. } => "package_checkpoint",
+            Self::EditMode { .. } => "edit_mode",
+            Self::Control { .. } => "control",
+            Self::SaveControl { .. } => "save_control",
+            Self::Discard { .. } => "discard",
+            Self::Snapshot { .. } => "snapshot",
+            Self::State { .. } => "state",
+            Self::Checkpoint { .. } => "checkpoint",
+            Self::Close { .. } => "close",
+            Self::DiscardRecovery { .. } => "discard_recovery",
+            Self::View { .. } => "view",
+            Self::Scene { .. } => "scene",
+            Self::GisProjection { .. } => "gis_projection",
+            Self::FeatureCodes { .. } => "feature_codes",
+            Self::Properties { .. } => "properties",
+            Self::Pick { .. } => "pick",
+            Self::SelectionRange { .. } => "selection_range",
+            Self::EngineeringAttributes { .. } => "engineering_attributes",
+            Self::ModelLibrary { .. } => "model_library",
+            Self::QueryResults { .. } => "query_results",
+            Self::AnalyzeResults { .. } => "analyze_results",
+        }
+    }
+
+    /// Both view paths resolve a null document through the authenticated style
+    /// owner and need the same immediate Core-connection fence.
+    pub(crate) fn demands_style(&self) -> bool {
+        matches!(self, Self::View { style_document, .. }
+            | Self::AnalyzeResults { style_document, .. } if style_document.is_null())
+    }
 }
 impl Request {
     pub fn parse(bytes: &[u8]) -> Result<Self, Failure> {
@@ -333,6 +393,23 @@ fn operation_owner(operation: &Operation) -> Option<(&str, &str, &Value)> {
             session_id,
             model_id,
             expected_history,
+        }
+        | Operation::ModelLibrary {
+            session_id,
+            model_id,
+            expected_history,
+        }
+        | Operation::QueryResults {
+            session_id,
+            model_id,
+            expected_history,
+            ..
+        }
+        | Operation::AnalyzeResults {
+            session_id,
+            model_id,
+            expected_history,
+            ..
         }
         | Operation::Pick {
             session_id,
@@ -663,20 +740,6 @@ impl Sessions {
                         authorized()?;
                         return Ok(closed_source_receipt(&scope, &header));
                     }
-                    let pin: ds_network_client::NetworkEnginePin =
-                        serde_json::from_value(header.engine.clone()).map_err(invalid)?;
-                    require_read_capability(
-                        &pin.identity.capabilities,
-                        NetworkCapability::ProfilePackageOpenV1,
-                    )?;
-                    if let Some(required) = required_capability.clone() {
-                        // Source identity is admitted before staging/recreating any
-                        // worker. Only a verified move off a Network without
-                        // authored recovery may substitute the current executable.
-                        if controls::upgrade::pinned_authored(&header)? {
-                            require_read_capability(&pin.identity.capabilities, required)?;
-                        }
-                    }
                     if held.len() >= MAX_SESSIONS {
                         return Err(Failure::unavailable(
                             "core_profile_capacity",
@@ -693,34 +756,15 @@ impl Sessions {
                             authorized,
                             required_capability.clone(),
                         )?
-                    } else if let Some(upgraded) = controls::upgrade::original(
-                        scope.clone(),
-                        scratch,
-                        database,
-                        &recovery,
-                        authorized,
-                        required_capability.clone(),
-                    )? {
-                        upgraded
                     } else {
-                        let pinned =
-                            CapturedNetworkClient::from_pin(&pin, &|| false).map_err(native)?;
-                        let opened = open_original(
+                        controls::upgrade::original(
                             scope.clone(),
                             scratch,
-                            &recovery.source_bytes,
-                            id,
+                            database,
+                            &recovery,
                             authorized,
                             required_capability.clone(),
-                            Some(pinned),
-                        )?;
-                        if opened.0.source != header {
-                            return Err(Failure::conflict(
-                                "core_profile_source_changed",
-                                "Exact original model/history/CRS/managed engine changed during rebind",
-                            ));
-                        }
-                        opened
+                        )?
                     };
                     authorized()?;
                     if recovery.draft.is_none() {
@@ -813,6 +857,8 @@ impl Sessions {
                 Ok(receipt)
             }
             operation @ (Operation::FeatureCodes { .. }
+            | Operation::ModelLibrary { .. }
+            | Operation::QueryResults { .. }
             | Operation::EngineeringAttributes { .. }
             | Operation::GisProjection { .. }
             | Operation::Properties { .. }
@@ -863,21 +909,71 @@ impl Sessions {
                 session.touched = Instant::now();
                 receipt(id, session, &result.bytes, false)
             }
-            Operation::View {
-                session_id,
-                model_id,
-                expected_history,
-                options,
-                patch,
-                style_document,
-                cached,
-                observe,
-            } => {
+            operation @ (Operation::View { .. } | Operation::AnalyzeResults { .. }) => {
+                let (
+                    session_id,
+                    model_id,
+                    expected_history,
+                    options,
+                    patch,
+                    style_document,
+                    cached,
+                    observe,
+                    analysis,
+                ) = match operation {
+                    Operation::View {
+                        session_id,
+                        model_id,
+                        expected_history,
+                        options,
+                        patch,
+                        style_document,
+                        cached,
+                        observe,
+                    } => (
+                        session_id,
+                        model_id,
+                        expected_history,
+                        options,
+                        patch,
+                        style_document,
+                        cached,
+                        observe,
+                        None,
+                    ),
+                    Operation::AnalyzeResults {
+                        session_id,
+                        model_id,
+                        expected_history,
+                        scope,
+                        expected_engineering_input_root,
+                        options,
+                        patch,
+                        style_document,
+                    } => (
+                        session_id,
+                        model_id,
+                        expected_history,
+                        options,
+                        patch,
+                        style_document,
+                        false,
+                        false,
+                        Some((scope, expected_engineering_input_root)),
+                    ),
+                    _ => unreachable!(),
+                };
                 let value = owned(&mut held, &scope, &session_id, &model_id, &expected_history)?;
                 require_read_capability(
                     &value.session.pin().identity.capabilities,
                     NetworkCapability::ProfileViewV1,
                 )?;
+                if analysis.is_some() {
+                    require_read_capability(
+                        &value.session.pin().identity.capabilities,
+                        NetworkCapability::ProfileResultsV1,
+                    )?;
+                }
                 if observe {
                     require_read_capability(
                         &value.session.pin().identity.capabilities,
@@ -921,7 +1017,16 @@ impl Sessions {
                     patch: serde_json::to_value(patch).map_err(invalid)?,
                     style_document,
                 };
-                let result = if observe {
+                let result = if let Some((query_scope, root)) = analysis {
+                    value.session.analyze_view_at(
+                        &input,
+                        query_scope,
+                        root,
+                        expected_history.clone(),
+                        DEADLINE,
+                        &|| false,
+                    )
+                } else if observe {
                     value.session.observe_view_at(
                         &input,
                         expected_history.clone(),
@@ -1019,7 +1124,10 @@ impl Sessions {
                     ),
                     Operation::Open { .. }
                     | Operation::View { .. }
+                    | Operation::AnalyzeResults { .. }
                     | Operation::FeatureCodes { .. }
+                    | Operation::ModelLibrary { .. }
+                    | Operation::QueryResults { .. }
                     | Operation::EngineeringAttributes { .. }
                     | Operation::GisProjection { .. }
                     | Operation::Properties { .. }
@@ -1135,6 +1243,10 @@ fn read_capability(operation: &Operation) -> Option<NetworkCapability> {
         Operation::View { observe: true, .. } => Some(NetworkCapability::ProfileObserveV1),
         Operation::View { .. } => Some(NetworkCapability::ProfileViewV1),
         Operation::Properties { .. } => Some(NetworkCapability::ProfilePropertiesV1),
+        Operation::ModelLibrary { .. } => Some(NetworkCapability::ProfileRetypeV1),
+        Operation::QueryResults { .. } | Operation::AnalyzeResults { .. } => {
+            Some(NetworkCapability::ProfileResultsV1)
+        }
         Operation::Pick { .. } | Operation::SelectionRange { .. } => {
             Some(NetworkCapability::ProfileSelectionV1)
         }
@@ -1265,6 +1377,13 @@ fn read_projection_operation(
     }
     Ok(match operation {
         Operation::FeatureCodes { .. } => Some(NativeProfileOperationV1::FeatureCodes {}),
+        Operation::ModelLibrary { .. } => Some(NativeProfileOperationV1::ModelLibrary {}),
+        Operation::QueryResults { scope, expected_engineering_input_root, request, .. } =>
+            Some(NativeProfileOperationV1::QueryResults {
+                scope: scope.clone(),
+                expected_engineering_input_root: expected_engineering_input_root.clone(),
+                query: serde_json::from_value(serde_json::to_value(request).map_err(invalid)?).map_err(invalid)?,
+            }),
         Operation::Pick { request,.. } => Some(NativeProfileOperationV1::Pick{request:request.clone()}),
         Operation::SelectionRange { request,.. } => Some(NativeProfileOperationV1::SelectionRange{request:request.clone()}),
         Operation::Properties { entity_id, .. } => Some(
@@ -1362,3 +1481,7 @@ mod package_tests;
 #[cfg(test)]
 #[path = "profile_sessions_upgrade_tests.rs"]
 mod upgrade_tests;
+
+#[cfg(test)]
+#[path = "profile_sessions_gesture_tests.rs"]
+mod gesture_tests;

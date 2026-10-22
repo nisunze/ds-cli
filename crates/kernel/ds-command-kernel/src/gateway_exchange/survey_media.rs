@@ -12,10 +12,10 @@
 //! appears for an original that failed.
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use super::retained::{store_refusal, Edge};
-use super::{data, Admitted, Exchange, Plan, Refusal, Request, NETWORK_OFFLINE, REQUEST_TIMEOUT};
+use super::retained::{Edge, store_refusal};
+use super::{Admitted, Exchange, NETWORK_OFFLINE, Plan, REQUEST_TIMEOUT, Refusal, Request, data};
 use crate::byte_parts::PART_BYTES;
 use crate::durable_store::port::{Reply, StorePort};
 use crate::media_outbox::{Operation, Target as Role};
@@ -37,8 +37,9 @@ pub struct Upload {
     pub expected_generation: Option<String>,
     pub revision: Option<String>,
     pub supersedes: Vec<String>,
-    /// A thumbnail's original: its stored file name and verified generation.
-    pub source: Option<(String, String)>,
+    /// A thumbnail's original: its stored file name, verified generation and
+    /// the clockwise quarter-turns the thumbnail shows.
+    pub source: Option<(String, String, u8)>,
 }
 
 impl Upload {
@@ -56,9 +57,10 @@ impl Upload {
             body["revision"] = json!(revision);
             body["supersedes"] = json!(self.supersedes);
         }
-        if let Some((file, generation)) = &self.source {
+        if let Some((file, generation, quarter_turns)) = &self.source {
             body["source_file_name"] = json!(file);
             body["source_generation"] = json!(generation);
+            body["source_quarter_turns"] = json!(quarter_turns);
         }
         Ok(body)
     }
@@ -222,6 +224,10 @@ struct Target {
     revision: Option<String>,
     #[serde(default)]
     supersedes: Vec<String>,
+    #[serde(default)]
+    source: Option<crate::survey_photo_outbox::Source>,
+    #[serde(default)]
+    quarter_turns: u8,
     target: Role,
     sha256: String,
 }
@@ -326,8 +332,14 @@ pub(super) async fn carry(
             revision: target.revision.clone(),
             supersedes: target.supersedes.clone(),
             source: match target.target {
-                Role::Original => None,
-                Role::Companion => original.clone(),
+                // A thumbnail refresh names its stored original itself.
+                Role::Original => target.source.as_ref().and_then(|source| {
+                    let file = survey_media_address::parse(&source.object_path).ok()?.file;
+                    Some((file, source.generation.clone(), source.quarter_turns))
+                }),
+                Role::Companion => original
+                    .clone()
+                    .map(|(file, generation)| (file, generation, target.quarter_turns)),
             },
         };
         let generation = match edge.fetch(Start(call.clone())).await {
@@ -348,7 +360,7 @@ pub(super) async fn carry(
                 {
                     Sent::Done => {}
                     Sent::Reopen | Sent::Failed(Cause::Cancelled) => {
-                        return TransportOutcome::Cancelled
+                        return TransportOutcome::Cancelled;
                     }
                     Sent::Failed(cause) => return failed(cause),
                 }
@@ -371,9 +383,9 @@ pub(super) async fn carry(
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub(super) mod browser {
     use super::{Parts, Sent, Transfer};
-    use crate::gateway_exchange::browser::{attempt, facts, rejection, typed, GatewayHost};
-    use crate::transfer::browser::{upload, Link, PartSource, Upload, Uploaded};
+    use crate::gateway_exchange::browser::{GatewayHost, attempt, facts, rejection, typed};
     use crate::transfer::Cause;
+    use crate::transfer::browser::{Link, PartSource, Upload, Uploaded, upload};
     use js_sys::{Function, Promise};
     use std::future::Future;
     use wasm_bindgen::prelude::*;

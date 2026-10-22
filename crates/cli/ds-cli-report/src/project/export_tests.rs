@@ -80,7 +80,7 @@ fn saved_analysis_is_retained_for_matching_offline_room_and_revoked_by_service_a
 fn explicit_local_proof_capture_keeps_original_server_receipt_and_admits_only_its_draft() {
     use ds_command_kernel::{printing, report_export, style_resolution};
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../../../ds-command-kernel/tests/fixtures/printing-source-bindings.json"
+        "../../../../kernel/ds-command-kernel/tests/fixtures/printing-source-bindings.json"
     ))
     .unwrap();
     let snapshot = style_resolution::Snapshot {

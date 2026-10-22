@@ -1,4 +1,4 @@
-#[path = "../../crates/ds-cli-server/src/profile_sessions.rs"]
+#[path = "../../crates/cli/ds-cli-server/src/profile_sessions.rs"]
 mod profile_sessions;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use profile_sessions::*;
@@ -184,7 +184,7 @@ fn main() {
             options: serde_json::to_value(ds_grid_engine::ProfileAtlasOptions::default()).unwrap(),
             patch: json!({}),
             style_document: serde_json::from_str(include_str!(
-                "../../../ds-command-kernel/tests/fixtures/profile-display-style.json"
+                "../../crates/kernel/ds-command-kernel/tests/fixtures/profile-display-style.json"
             ))
             .unwrap(),
             cached,

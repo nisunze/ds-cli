@@ -102,7 +102,7 @@ fn create_reuses_one_capture_and_ordinary_historical_metadata_stays_offline() {
         ["build-info", "grid-create", "grid-write-admission"]
     );
 
-    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-network/crates/ds-grid-exchange/tests/fixtures/ground-basis-schema4/schema4.dsgrid");
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-network/crates/ds-grid-exchange/tests/fixtures/ground-basis-schema4/schema4.dsgrid");
     let historical = fs::read(source).unwrap();
     assert_eq!(
         format!("{:x}", Sha256::digest(&historical)),

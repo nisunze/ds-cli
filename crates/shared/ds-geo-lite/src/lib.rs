@@ -14,19 +14,18 @@
 //! and neither this crate nor the command kernel depends on Network.
 //!
 //! Admission, spatial predicates, region algebra, measurement and extents are
-//! maintained here. Identity/comparison remain byte-pinned snapshots
-//! from `vendor/ds-geo-lite/`, fenced by `tests/geo_lite_drift.rs` and
+//! maintained here, together with canonical revision comparison. Identity remains a byte-pinned snapshot
+//! from this crate's `vendor/`, fenced by Kernel's `tests/geo_lite_drift.rs` and
 //! `scripts/sync-geo-lite.sh`.
 
 #[cfg(feature = "overlay")]
 pub mod admission;
 #[cfg(feature = "revision")]
-#[path = "../../../vendor/ds-geo-lite/geo/comparison.rs"]
 pub mod comparison;
 #[cfg(feature = "geojson")]
 pub mod geojson;
 #[cfg(feature = "revision")]
-#[path = "../../../vendor/ds-geo-lite/geo/identity.rs"]
+#[path = "../vendor/geo/identity.rs"]
 pub mod identity;
 #[cfg(feature = "overlay")]
 pub mod overlay;
@@ -43,6 +42,8 @@ pub mod operations;
 pub mod primitives;
 #[cfg(feature = "tin")]
 pub mod projected_tin;
+#[cfg(feature = "projection")]
+pub mod model_crs;
 #[cfg(feature = "projection")]
 pub mod projection;
 pub mod types;

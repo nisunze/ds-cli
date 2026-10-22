@@ -1,5 +1,5 @@
 //! Neutral parameterized geographic projection mathematics.
-//! Model CRS vocabulary and admission remain with Network.
+//! Exact projected model CRS vocabulary and admission live in sibling `model_crs`.
 
 use serde::{Deserialize, Serialize};
 

@@ -58,26 +58,34 @@ pub static DOMAIN: Domain = Domain {
     ],
 };
 
-/// The paired operations left in this otherwise local domain.
-///
-/// The project-cache commands left this list on 2026-09-12, when they gained
-/// their headless holdings through `ds-project-data`. The two boundary reads
-/// left it on 2026-09-18: national reference data has no project and nothing
-/// to render, so they call the gateway directly as the native user.
-///
-/// What remains is paired for one reason, stated per command: the native
-/// elevation engine and the Rwanda DEM component manager live in the desktop
-/// shell (`ds-web/src-tauri/src/native_elevation.rs`,
-/// `native_point_cloud.rs`, `rwanda_dem_resource.rs`), and admin attachment
-/// needs the ACTIVE PROJECT's digest-pinned reference asset that the same
-/// component manager installs. Each is local file compute, not presentation —
-/// so each is core work awaiting an extracted owner, not a lens command.
-pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] = &[
-    &elevation::OPERATION,
-    &point_cloud::PLAN_OPERATION,
-    &point_cloud::EXTRACT_OPERATION,
-    &admin_bounds::OPERATION,
-];
+/// Admin attachment still needs the project's governed installed reference.
+/// Elevation commands execute the shared native data application headlessly.
+pub const BRIDGE_OPS: &[&ds_cli_desktop::ops::BridgeOp] = &[&admin_bounds::OPERATION];
+
+pub(crate) const NATIVE_DATA_REFUSED: Refusal = Refusal {
+    code: ds_native_data::bridge::REFUSED_CODE,
+    when: "the native application refuses malformed or undeclared local data arguments",
+    remedy: "retry with the documented local source, output and sampling contract",
+};
+pub(crate) const NATIVE_DATA_FAILED: Refusal = Refusal {
+    code: ds_native_data::bridge::FAILED_CODE,
+    when:
+        "the shared native operation cannot read, acquire, verify or write its named local resource",
+    remedy: "resolve the named resource or file failure, then retry the same explicit request",
+};
+
+/// Terminal mechanics preserve the application's typed code, class and facts.
+fn native_data_failure(error: ds_native_data::bridge::CommandFailure) -> ds_cli_contract::Failure {
+    use ds_native_data::bridge::FailureClass;
+    let failure = match error.class {
+        FailureClass::InvalidInput => ds_cli_contract::Failure::invalid(error.code, error.message),
+        FailureClass::Unavailable => {
+            ds_cli_contract::Failure::unavailable(error.code, error.message)
+        }
+        FailureClass::Failed => ds_cli_contract::Failure::failed(error.code, error.message),
+    };
+    failure.remedy(error.remedy).detail(error.detail)
+}
 
 pub const SOURCE_ARG: Arg = Arg {
     name: "source",
@@ -86,7 +94,8 @@ pub const SOURCE_ARG: Arg = Arg {
     required: true,
     default: None,
     choices: &[],
-    summary: "Path to the local file to read. CSV, TSV, XLSX, GeoJSON, KML/KMZ, or a zipped Shapefile.",
+    summary:
+        "Path to the local file to read. CSV, TSV, XLSX, GeoJSON, KML/KMZ, or a zipped Shapefile.",
 };
 
 pub const SEPARATOR_ARG: Arg = Arg::value(
@@ -110,7 +119,8 @@ pub const UNREADABLE: Refusal = Refusal {
 };
 pub const UNSUPPORTED: Refusal = Refusal {
     code: "source_unsupported",
-    when: "The file is not a format this reader recognises, or its delimiter could not be detected.",
+    when:
+        "The file is not a format this reader recognises, or its delimiter could not be detected.",
     remedy: "Pass --separator for a delimited file, or convert the source to CSV/GeoJSON first.",
 };
 pub const NO_SHEET: Refusal = Refusal {

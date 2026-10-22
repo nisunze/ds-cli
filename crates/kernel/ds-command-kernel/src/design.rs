@@ -192,7 +192,8 @@ pub fn compare_snapshots(left: &Snapshot, right: &Snapshot, limit: usize) -> Res
             max_detail_features: limit,
             detail_change_classes: vec![],
         },
-    )?;
+    )
+    .map_err(|error| error.to_string())?;
     let left_value = serde_json::to_value(left).map_err(|e| e.to_string())?;
     let right_value = serde_json::to_value(right).map_err(|e| e.to_string())?;
     let input_changes: Vec<&str> = [

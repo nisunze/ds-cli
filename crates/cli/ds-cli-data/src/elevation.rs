@@ -1,19 +1,13 @@
-//! `ds data elevation attach` — native Desktop Rwanda DEM interpolation.
-
-use std::path::Path;
-use std::time::Duration;
+//! `ds data elevation attach` — shared native Rwanda DEM interpolation.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_cli_desktop::ops::{
-    AMBIGUOUS, BridgeOp, DESCRIPTOR_ARG, NOT_PAIRED, PAIRING_REJECTED, REFUSED, TARGET_ARG,
-    UNREACHABLE, UNREADABLE as DESKTOP_UNREADABLE, UNSUPPORTED as DESKTOP_UNSUPPORTED, invoke,
-    paired, paired_availability,
-};
-use serde_json::{Map, Value, json};
+use ds_cli_desktop::ops::BridgeOp;
+use ds_native_data::{bridge, RequestContext};
+use serde_json::{json, Map, Value};
 
 pub const OPERATION: BridgeOp = BridgeOp {
     operation: "data.elevation.attach",
@@ -101,7 +95,8 @@ const ABSOLUTE_PATH_REQUIRED: Refusal = Refusal {
 };
 const FULL_LOCAL_DEM_REQUIRED: Refusal = Refusal {
     code: "full_local_dem_required",
-    when: "more than 4,000 parsed points are requested without the verified full Rwanda DEM component",
+    when:
+        "more than 4,000 parsed points are requested without the verified full Rwanda DEM component",
     remedy: "install and verify the full Rwanda DEM Desktop component, then retry unchanged",
 };
 const MATERIALIZED_FORMAT_BOUND: Refusal = Refusal {
@@ -118,12 +113,12 @@ const STREAM_GROUP_BOUND: Refusal = Refusal {
 pub static COMMAND: Command = Command {
     id: "data.elevation.attach",
     path: &["data", "elevation", "attach"],
-    contract: 2,
-    summary: "Attach Rwanda DEM elevation to a local point source on Desktop.",
-    purpose: "Asks the paired Desktop's native ds-network engine to interpolate only the governed Rwanda DEM into a new local GeoJSON. Rwanda coverage holes remain explicit; Terrarium is never substituted. Small jobs may use exact public byte ranges; jobs above 4,000 parsed points make the Desktop component manager install or verify the full local DEM once before retrying. Source/result bytes never enter DS Cloud Run, and no map needs to be open.",
+    contract: 3,
+    summary: "Attach Rwanda DEM elevation to a local point source locally.",
+    purpose: "Uses the shared native application operation and offline ds-network engine to interpolate only the governed Rwanda DEM into a new local GeoJSON. Rwanda coverage holes remain explicit; Terrarium is never substituted. Small jobs may use exact public byte ranges; jobs above 4,000 parsed points make the Desktop component manager install or verify the full local DEM once before retrying. Source/result bytes never enter DS Cloud Run, and no map needs to be open.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
-    authority: Authority::DesktopPairing,
+    authority: Authority::None,
     execution: Execution::Sync,
     args: &[
         SOURCE_ARG,
@@ -134,8 +129,6 @@ pub static COMMAND: Command = Command {
         SEPARATOR_ARG,
         COMMON_COLUMN_ARG,
         FALLBACK_ARG,
-        TARGET_ARG,
-        DESCRIPTOR_ARG,
     ],
     output: "A native receipt with source/output paths and digest, point and sole-Rwanda coverage counts, DEM access mode, zero fallback evidence, and per-layer statistics.",
     examples: &[
@@ -151,63 +144,22 @@ pub static COMMAND: Command = Command {
         },
     ],
     refusals: &[
+        crate::NATIVE_DATA_REFUSED,
+        crate::NATIVE_DATA_FAILED,
         ABSOLUTE_PATH_REQUIRED,
         FULL_LOCAL_DEM_REQUIRED,
         MATERIALIZED_FORMAT_BOUND,
         STREAM_GROUP_BOUND,
-        NOT_PAIRED,
-        AMBIGUOUS,
-        UNREACHABLE,
-        PAIRING_REJECTED,
-        REFUSED,
-        DESKTOP_UNREADABLE,
-        DESKTOP_UNSUPPORTED,
     ],
     reference: Some("docs/reference/data.md"),
     search: &[],
-    requires: Requires::Window,
-    availability: paired_availability,
+    requires: Requires::Server,
+    availability: crate::available,
 };
 
-fn absolute_path(inputs: &Inputs, name: &str) -> Result<String, Failure> {
-    let raw = inputs.require(name)?;
-    if !Path::new(raw).is_absolute() {
-        return Err(Failure::invalid(
-            "absolute_path_required",
-            format!("--{name} must be an absolute path on the paired Desktop machine."),
-        )
-        .remedy(ABSOLUTE_PATH_REQUIRED.remedy));
-    }
-    Ok(raw.to_string())
-}
-
-fn refusal(result: &Value) -> Result<Value, Failure> {
-    let refusal = &result["refusal"];
-    let code = refusal["code"].as_str().unwrap_or("desktop_refused");
-    let message = refusal["message"]
-        .as_str()
-        .unwrap_or("Desktop refused native elevation without a valid explanation.");
-    let remedy = refusal["remedy"]
-        .as_str()
-        .unwrap_or("Update DS GridDesign and retry with the documented command contract.");
-    let detail = json!({
-        "point_count": refusal.get("point_count").cloned().unwrap_or(Value::Null),
-        "point_limit": refusal.get("point_limit").cloned().unwrap_or(Value::Null),
-        "source_bytes": refusal.get("source_bytes").cloned().unwrap_or(Value::Null),
-        "source_byte_limit": refusal.get("source_byte_limit").cloned().unwrap_or(Value::Null),
-    });
-    let failure = match code {
-        "full_local_dem_required" => Failure::unavailable("full_local_dem_required", message),
-        "materialized_format_bound" => Failure::invalid("materialized_format_bound", message),
-        "stream_group_bound" => Failure::invalid("stream_group_bound", message),
-        _ => Failure::failed("desktop_refused", message),
-    };
-    Err(failure.remedy(remedy).detail(detail))
-}
-
 fn arguments(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
-    let source = absolute_path(inputs, "source")?;
-    let out = absolute_path(inputs, "out")?;
+    let source = inputs.require("source")?;
+    let out = inputs.require("out")?;
     let mut arguments = Map::new();
     arguments.insert("source".into(), json!(source));
     arguments.insert("out".into(), json!(out));
@@ -226,22 +178,13 @@ fn arguments(inputs: &Inputs) -> Result<Map<String, Value>, Failure> {
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let arguments = arguments(inputs)?;
-    let descriptor = paired(inputs.value("desktop-descriptor"))?;
-    let result = invoke(
-        &descriptor,
-        &OPERATION,
-        Value::Object(arguments),
-        Duration::from_secs(10 * 60 * 60),
-    )?;
-    match result["status"].as_str() {
-        Some("completed") if result["receipt"].is_object() => Ok(result["receipt"].clone()),
-        Some("refused") => refusal(&result),
-        _ => Err(Failure::failed(
-            "desktop_refused",
-            "Desktop returned an invalid native elevation outcome.",
-        )
-        .remedy("Update DS GridDesign and retry with the same explicit source and output.")),
-    }
+    let context = RequestContext::local_files(
+        ds_native_data::ExecutionHost::Headless,
+        ds_native_data::online,
+    );
+    bridge::attach(&context, Value::Object(arguments))
+        .and_then(bridge::CommandOutcome::into_receipt)
+        .map_err(crate::native_data_failure)
 }
 
 pub fn render(data: &Value) -> String {
@@ -293,7 +236,7 @@ mod tests {
     fn bridge_contract_is_closed_and_mapless() {
         assert_eq!(OPERATION.operation, "data.elevation.attach");
         assert_eq!(OPERATION.arguments.len(), 8);
-        assert_eq!(COMMAND.authority, Authority::DesktopPairing);
+        assert_eq!(COMMAND.authority, Authority::None);
         assert_eq!(COMMAND.effect, Effect::LocalFileWrite);
     }
 

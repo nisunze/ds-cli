@@ -8,7 +8,7 @@ not a second source of product authority.
 ## Mandatory agent instructions
 
 Every agent must follow the authoritative
-[shared coding discipline](../../../ds-architecture/architecture/coding-discipline.md):
+[shared coding discipline](../../../../../../ds-architecture/architecture/coding-discipline.md):
 read applicable `AGENTS.md` entrypoints, keep touched guidance accurate, use no
 competing instruction files, isolate platform mechanics and preserve independent
 component releases. The implementation and evidence rules below remain here.
@@ -105,7 +105,7 @@ instruction filename, private memory index or handover alongside code.
 
 These remain in ds-command-kernel for unrelated work. New and migrated
 component-decoupling code, decisions and operational acceptance use
-[ds-architecture/backlog/DECOUPLING.md](../../../ds-architecture/backlog/DECOUPLING.md).
+[ds-architecture/backlog/DECOUPLING.md](../../../../../../ds-architecture/backlog/DECOUPLING.md).
 Only its named entries have moved; do not relocate other hard problems, feedback
 or evidence. Split mixed obligations and continue independent
 work. Routine implementation, a difficult test or an admitted control is not an

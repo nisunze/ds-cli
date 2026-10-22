@@ -3264,6 +3264,11 @@ static SERVER_ENTRIES: &[Entry] = &[
         render: ds_cli_server::render,
     },
     Entry {
+        command: &ds_cli_server::ui_components::STAGE_LOCAL,
+        handler: ds_cli_server::ui_components::stage_local,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::ui_components::CAPTURE,
         handler: ds_cli_server::ui_components::capture,
         render: ds_cli_server::render,
@@ -4363,8 +4368,19 @@ mod report_touch_tests {
 
     #[test]
     fn held_export_seals_only_its_selected_run_without_an_unrelated_touch() {
-        let held = inputs(&ds_cli_report::project::export::COMMAND,
-            &["--project", "p", "--lane", "canary", "--held-export", "/held.json", "--out-dir", "/held-out"]);
+        let held = inputs(
+            &ds_cli_report::project::export::COMMAND,
+            &[
+                "--project",
+                "p",
+                "--lane",
+                "canary",
+                "--held-export",
+                "/held.json",
+                "--out-dir",
+                "/held-out",
+            ],
+        );
         assert!(!report_project_touch("report.project.export", &held));
         assert!(!report_held_read("report.project.export"));
     }
@@ -4442,8 +4458,15 @@ mod report_touch_tests {
             &["--project", "p", "--transformer", "tx_1"],
         );
         assert!(!report_project_touch("report.outbox.inventory", &inventory));
-        for id in ["report.inventory", "report.inventory.copy", "report.publication.download"] {
-            assert!(!report_project_touch(id, &inventory), "{id} must not acquire a second Sync pass");
+        for id in [
+            "report.inventory",
+            "report.inventory.copy",
+            "report.publication.download",
+        ] {
+            assert!(
+                !report_project_touch(id, &inventory),
+                "{id} must not acquire a second Sync pass"
+            );
         }
         assert!(!report_held_read("report.outbox.inventory"));
     }

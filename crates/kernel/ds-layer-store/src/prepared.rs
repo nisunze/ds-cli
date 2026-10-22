@@ -751,7 +751,7 @@ mod tests {
     /// browser replays. The store replays it through the one function it asks
     /// the kernel with, so a rule cannot be true in the browser and false here.
     const CASES: &str =
-        include_str!("../../../../ds-command-kernel/tests/fixtures/local-layers-cases.json");
+        include_str!("../../ds-command-kernel/tests/fixtures/local-layers-cases.json");
 
     const CLOCK: i64 = 1_758_000_000_000;
 

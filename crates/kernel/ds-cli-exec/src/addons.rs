@@ -92,9 +92,9 @@ pub fn inventory_for(
 pub fn inventory_for_lane(
     component: Option<ds_command_kernel::module_release::ModuleComponent>,
     lane: &str,
-) -> Result<Value, ds_cli_contract::Failure> {
+) -> Result<Value, ds_core_contracts::Failure> {
     if !matches!(lane, "stable" | "canary") {
-        return Err(ds_cli_contract::Failure::invalid(
+        return Err(ds_core_contracts::Failure::invalid(
             "module_lane_invalid",
             "inspect exactly stable or canary",
         ));
@@ -163,7 +163,7 @@ pub static NETWORK: External = External {
 };
 
 /// Shared native installer/resolver base; lane selection stays explicit.
-pub fn managed_module_base() -> Result<std::path::PathBuf, ds_cli_contract::Failure> {
+pub fn managed_module_base() -> Result<std::path::PathBuf, ds_core_contracts::Failure> {
     crate::managed_modules::module_base()
 }
 

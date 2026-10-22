@@ -92,7 +92,7 @@ transforms, Canvas2D layout and UI interaction indexes. These implementations
 belong in neither CLI nor Server, and depend on neither the application kernel
 nor Network engineering. Small shared geometry/value primitives can remain
 neutral dependencies with neither dependency of their own. See the
-[Interactions contract](../../../ds-interactions/docs/interaction-boundary.md).
+[Interactions contract](../../../../interactions/docs/interaction-boundary.md).
 
 Interaction produces transient intent; applying that intent to authored data
 still passes through the existing Kernel or Network admission boundary. Network
@@ -173,7 +173,7 @@ Route data, host rules and bounds stay here.
 In-page Network operations enter through the Kernel and go to the governed
 Network unit on both hosts once the unit is admitted there. Until the Desktop
 admits it, the Desktop routes them to Core
-([DECOUPLING-008](../../../ds-architecture/backlog/DECOUPLING.md#decoupling-008--network-in-page-operations-on-the-desktop-and-hosted-web)).
+([DECOUPLING-008](../../../../../../ds-architecture/backlog/DECOUPLING.md#decoupling-008--network-in-page-operations-on-the-desktop-and-hosted-web)).
 
 ### Named refusals
 

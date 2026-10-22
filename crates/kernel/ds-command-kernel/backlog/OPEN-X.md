@@ -146,7 +146,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A (owner decision
   **Input needed only if optional retirement is reactivated:** explicit authority
   naming that identity and managed record. **Boundary:** IAM deletion or an apply
   that forgets its state, including the unapplied source retirement plan. See the
-  owning [retirement report](../../ds-apis-tf/docs/cloud-run-retirement-report.md).
+  owning [retirement report](../../../../../ds-apis-tf/docs/cloud-run-retirement-report.md).
 
 ## Parked: outside stabilization
 

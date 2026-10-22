@@ -410,7 +410,7 @@ mod tests {
         let cache = directory.path().join("cache");
         let request_file = directory.path().join("reference-request.json");
         let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../ds-solar/fixtures/city/aderm_bere.snapshot.json");
+            .join("../../../../ds-solar/fixtures/city/aderm_bere.snapshot.json");
         assert_eq!(availability(), Availability::Available);
         invoke(json!({"operation":"initialize","workspace":workspace,
             "identity":{"project_id":"p","root":"eds_project/p/eds_solar"}}))
@@ -444,7 +444,7 @@ mod tests {
             "project refusal precedes bundle reads/cache writes"
         );
         let bundle = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../ds-solar/fixtures/reference/aderm_bere");
+            .join("../../../../ds-solar/fixtures/reference/aderm_bere");
         let import_request = json!({"operation":"reference_import_files","workspace":workspace,
             "project":"p","city":"aderm_bere","cache":cache,
             "expected":planned["input_digest"],"bundle":bundle});

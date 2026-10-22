@@ -17,7 +17,7 @@ use ds_cli_desktop::ops::BridgeOp;
 fn ds_web() -> PathBuf {
     let root = match std::env::var_os("DS_WEB_DIR") {
         Some(explicit) => PathBuf::from(explicit),
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-web"),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-web"),
     };
     assert!(
         root.is_dir(),

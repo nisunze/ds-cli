@@ -22,6 +22,7 @@ fn core_serve_and_components_are_registered_without_server_aliases() {
         "core.component.selection",
         "core.component.remove",
         "core.component.activate",
+        "core.component.stage-local",
         "core.component.rollback",
     ] {
         let output = ds(&["capabilities", id, "--output", "json"]);

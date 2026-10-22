@@ -8,4 +8,4 @@ publish.workspace = true
 [dependencies]
 serde_json.workspace = true
 serde = { workspace = true }
-ds-geo-lite = { path = "../../../ds-command-kernel/crates/ds-geo-lite", features = ["index", "vector_types"] }
+ds-geo-lite = { path = "../../shared/ds-geo-lite", features = ["index", "vector_types"] }

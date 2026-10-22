@@ -372,48 +372,7 @@ impl Execution {
     }
 }
 
-/// Whether a command can run on this machine right now, and if not, why.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Availability {
-    Available,
-    /// A concrete missing prerequisite, with the concrete thing to do about
-    /// it. A reason without a remedy is a dead end for an agent.
-    ///
-    /// `code` is the domain's own stable identifier for this prerequisite —
-    /// not a generic "unavailable". Dispatch refuses with it verbatim, so a
-    /// caller branching on `error.code` sees the same value whether the
-    /// prerequisite was caught by the gate or by the command itself.
-    Unavailable {
-        code: &'static str,
-        reason: String,
-        remedy: String,
-    },
-}
-
-impl Availability {
-    pub fn unavailable(
-        code: &'static str,
-        reason: impl Into<String>,
-        remedy: impl Into<String>,
-    ) -> Self {
-        Self::Unavailable {
-            code,
-            reason: reason.into(),
-            remedy: remedy.into(),
-        }
-    }
-
-    pub const fn token(&self) -> &'static str {
-        match self {
-            Self::Available => "available",
-            Self::Unavailable { .. } => "unavailable",
-        }
-    }
-
-    pub const fn is_available(&self) -> bool {
-        matches!(self, Self::Available)
-    }
-}
+pub use ds_core_contracts::Availability;
 
 /// How an argument carries its value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

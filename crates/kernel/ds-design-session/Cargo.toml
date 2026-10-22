@@ -1,0 +1,22 @@
+[package]
+name = "ds-design-session"
+description = "Kernel-owned design working state, mutation history and scoped selection"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+enable_dataframes = ["dep:polars"]
+bindings = ["dep:tsify", "dep:wasm-bindgen"]
+
+[dependencies]
+ds-geo-lite = { path = "../../shared/ds-geo-lite", features = ["revision", "projection", "geojson", "index"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+polars = { version = "0.53.0", default-features = false, optional = true }
+tsify = { version = "0.5.8", default-features = false, features = ["js"], optional = true }
+wasm-bindgen = { version = "0.2", optional = true }

@@ -1,7 +1,6 @@
 //! Server effect adapter for the Solar-owned native application. Each
 //! authorized owner/project has an independent state and workspace authority.
 mod output;
-pub(crate) use output::command;
 use crate::host::{App, ProjectQuery};
 use axum::{
     Json,
@@ -11,6 +10,7 @@ use axum::{
 };
 use ds_cli_contract::Failure;
 use ds_solar_native::NativeHost;
+pub(crate) use output::command;
 use serde_json::Value;
 use std::{
     collections::BTreeMap,

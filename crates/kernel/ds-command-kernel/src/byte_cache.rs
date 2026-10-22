@@ -15,11 +15,11 @@
 //! A cache is never work. A photo read serves the bytes of a pending upload
 //! first ([`crate::media_outbox`]) so a photo waiting to sync reads like a
 //! synced one, and a photo put never replaces them.
-use crate::byte_parts::{part_length, parts_of, Blob, Blobs, Received, Share, Stage, PART_BYTES};
+use crate::byte_parts::{Blob, Blobs, PART_BYTES, Received, Share, Stage, part_length, parts_of};
 use crate::durable_store::{Input, Outcome};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub const STORE: &str = "byte_cache";
 pub const INVALID: &str = "byte_cache_invalid";
@@ -90,6 +90,41 @@ pub struct Key {
     pub key: String,
 }
 
+/// What a cached photo IS, beyond its path: the storage generation of the
+/// original it shows (or that original's SHA-256) and the clockwise
+/// quarter-turns a derived image (thumbnail, rendered view) shows. A host
+/// puts these into the entry's `meta` (`generation`, `source_sha256`,
+/// `quarter_turns`) and names them on `get`; an entry that disagrees is a
+/// miss, so a stale orientation is never shown and then turned again.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct PhotoIdentity {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sha256: Option<String>,
+    #[serde(default)]
+    pub quarter_turns: u8,
+}
+
+impl PhotoIdentity {
+    /// Whether an entry's meta is this identity. Absent meta turns are 0; a
+    /// named generation or digest must be present and equal.
+    pub fn matches(&self, meta: &Value) -> bool {
+        let named = |key: &str, want: &Option<String>| {
+            want.as_ref()
+                .is_none_or(|want| meta.get(key).and_then(Value::as_str) == Some(want.as_str()))
+        };
+        named("generation", &self.generation)
+            && named("source_sha256", &self.source_sha256)
+            && meta
+                .get("quarter_turns")
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+                == u64::from(self.quarter_turns)
+    }
+}
+
 /// One transaction's work; the host binds the identity.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
@@ -110,6 +145,11 @@ pub enum Operation {
         part: u64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         expect_version: Option<String>,
+        /// A photo read names WHAT it wants: the original generation and
+        /// the turns a derived image shows. An entry put for another
+        /// generation or turn is a miss (`changed`), never shown stale.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expect_identity: Option<PhotoIdentity>,
     },
     /// Keep bytes under a key, part by part for a payload over one part.
     /// A declared `sha256` must match the bytes.
@@ -125,7 +165,9 @@ pub enum Operation {
         meta: Option<Value>,
         now: u64,
     },
-    Delete { key: Key },
+    Delete {
+        key: Key,
+    },
 }
 
 fn invalid(message: impl std::fmt::Display) -> String {
@@ -154,7 +196,10 @@ fn admit_key(key: &Key) -> Result<(), String> {
     Ok(())
 }
 fn hex64(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 pub(crate) fn schema(connection: &Connection) -> Result<(), String> {
@@ -242,7 +287,12 @@ fn remove(connection: &Connection, owner: &str, kind: Kind, key: &str) -> Result
 
 /// The owner's content with this digest when it is held whole, else what
 /// `write` keeps.
-fn content(connection: &Connection, owner: &str, digest: &str, write: impl FnOnce() -> Result<Option<Blob>, String>) -> Result<Option<Blob>, String> {
+fn content(
+    connection: &Connection,
+    owner: &str,
+    digest: &str,
+    write: impl FnOnce() -> Result<Option<Blob>, String>,
+) -> Result<Option<Blob>, String> {
     if let Some(held) = CONTENT.find(connection, owner, digest)? {
         if CONTENT.intact(connection, &held)? {
             return Ok(Some(held));
@@ -254,7 +304,15 @@ fn content(connection: &Connection, owner: &str, digest: &str, write: impl FnOnc
 
 /// Name `blob` under `key`, then keep the kind within its budget, oldest
 /// first, never evicting the entry just written. Answers how many left.
-fn name_entry(connection: &Connection, owner: &str, key: &Key, blob: &Blob, media_type: &str, meta: &str, now: u64) -> Result<u64, String> {
+fn name_entry(
+    connection: &Connection,
+    owner: &str,
+    key: &Key,
+    blob: &Blob,
+    media_type: &str,
+    meta: &str,
+    now: u64,
+) -> Result<u64, String> {
     let previous: Option<i64> = connection
         .query_row(
             "SELECT blob FROM byte_cache_entries WHERE owner=?1 AND kind=?2 AND key=?3",
@@ -277,7 +335,12 @@ fn name_entry(connection: &Connection, owner: &str, key: &Key, blob: &Blob, medi
 
 /// The one retention rule: while the owner's entries of a kind exceed the
 /// budget, the oldest leave first, never `keep`. Answers how many left.
-fn keep_within(connection: &Connection, owner: &str, keep: &Key, budget: u64) -> Result<u64, String> {
+fn keep_within(
+    connection: &Connection,
+    owner: &str,
+    keep: &Key,
+    budget: u64,
+) -> Result<u64, String> {
     let mut statement = connection
         .prepare("SELECT e.key,b.byte_length FROM byte_cache_entries e JOIN byte_cache_blobs b ON b.id=e.blob WHERE e.owner=?1 AND e.kind=?2 ORDER BY e.stored_at_ms,e.key")
         .map_err(sql)?;
@@ -317,8 +380,13 @@ fn put(
     bytes: Option<Vec<u8>>,
 ) -> Result<Outcome, String> {
     admit_key(&key)?;
-    if !printable(&media_type, 255) || now > MAX_SAFE || declared.as_deref().is_some_and(|digest| !hex64(digest)) {
-        return Err(invalid("a put names a printable media type, its time and any SHA-256 in lowercase hex"));
+    if !printable(&media_type, 255)
+        || now > MAX_SAFE
+        || declared.as_deref().is_some_and(|digest| !hex64(digest))
+    {
+        return Err(invalid(
+            "a put names a printable media type, its time and any SHA-256 in lowercase hex",
+        ));
     }
     let meta = match meta {
         None => "{}".to_string(),
@@ -328,19 +396,30 @@ fn put(
     if meta.len() > MAX_META_BYTES {
         return Err(invalid("meta holds at most 16 KiB"));
     }
-    if key.kind == Kind::Photo && crate::media_outbox::pending(connection, owner, &key.key)?.is_some() {
+    if key.kind == Kind::Photo
+        && crate::media_outbox::pending(connection, owner, &key.key)?.is_some()
+    {
         return Ok(kinded(
             Outcome::read(fields(json!({"stored": false, "pending_upload": true}))),
             key.kind,
         ));
     }
-    let operation = serde_json::to_string(&(&key, &declared, &media_type, &meta, share.byte_length)).map_err(|e| e.to_string())?;
+    let operation =
+        serde_json::to_string(&(&key, &declared, &media_type, &meta, share.byte_length))
+            .map_err(|e| e.to_string())?;
     let stage = Stage {
         code: INVALID,
         owner,
         store: STORE,
     };
-    let payload = match stage.receive(connection, &operation, share, bytes, key.kind.max_entry(), now)? {
+    let payload = match stage.receive(
+        connection,
+        &operation,
+        share,
+        bytes,
+        key.kind.max_entry(),
+        now,
+    )? {
         Received::Staged {
             staging,
             received,
@@ -349,16 +428,23 @@ fn put(
             return Ok(kinded(
                 Outcome::read(fields(Received::staged_answer(staging, received, parts))),
                 key.kind,
-            ))
+            ));
         }
         Received::Complete(payload) => payload,
     };
     let digest = payload.sha256(connection, INVALID)?;
-    if declared.as_ref().is_some_and(|declared| *declared != digest) {
+    if declared
+        .as_ref()
+        .is_some_and(|declared| *declared != digest)
+    {
         return Err(invalid("the bytes do not match their declared SHA-256"));
     }
-    let blob = content(connection, owner, &digest, || CONTENT.write(connection, owner, &payload, &digest).map(Some))?
-        .ok_or_else(|| invalid("the payload could not be kept"))?;
+    let blob = content(connection, owner, &digest, || {
+        CONTENT
+            .write(connection, owner, &payload, &digest)
+            .map(Some)
+    })?
+    .ok_or_else(|| invalid("the payload could not be kept"))?;
     payload.release(connection, INVALID)?;
     let evicted = name_entry(connection, owner, &key, &blob, &media_type, &meta, now)?;
     Ok(kinded(
@@ -398,13 +484,23 @@ fn hit(kind: Kind, value: Value, bytes: Vec<u8>) -> Outcome {
     )
 }
 
-fn get(connection: &Connection, owner: &str, key: Key, part: u64, expect_version: Option<String>) -> Result<Outcome, String> {
+fn get(
+    connection: &Connection,
+    owner: &str,
+    key: Key,
+    part: u64,
+    expect_version: Option<String>,
+    expect_identity: Option<&PhotoIdentity>,
+) -> Result<Outcome, String> {
     admit_key(&key)?;
     let kind = key.kind;
     if kind == Kind::Photo {
         if let Some(pending) = crate::media_outbox::pending(connection, owner, &key.key)? {
             let version = format!("pending:{}", pending.generation);
-            if expect_version.as_ref().is_some_and(|expected| *expected != version) {
+            if expect_version
+                .as_ref()
+                .is_some_and(|expected| *expected != version)
+            {
                 return Ok(miss(kind, false, json!({"changed": true})));
             }
             let parts = parts_of(pending.length);
@@ -415,7 +511,12 @@ fn get(connection: &Connection, owner: &str, key: Key, part: u64, expect_version
                 return Err(invalid("the part is past the entry's end"));
             }
             // A pending upload's bytes are work: a read never drops them.
-            let Some(bytes) = pending.read(connection, part * PART_BYTES, part_length(pending.length, part))? else {
+            let Some(bytes) = pending.read(
+                connection,
+                part * PART_BYTES,
+                part_length(pending.length, part),
+            )?
+            else {
                 return Ok(miss(kind, false, json!({"pending_upload": true})));
             };
             return Ok(hit(
@@ -441,8 +542,21 @@ fn get(connection: &Connection, owner: &str, key: Key, part: u64, expect_version
         remove(connection, owner, kind, &key.key)?;
         return Ok(miss(kind, true, json!({"dropped": true})));
     };
-    if expect_version.as_ref().is_some_and(|expected| *expected != blob.sha256) {
+    if expect_version
+        .as_ref()
+        .is_some_and(|expected| *expected != blob.sha256)
+    {
         return Ok(miss(kind, false, json!({"changed": true})));
+    }
+    if let Some(expected) = expect_identity {
+        let held = serde_json::from_str::<Value>(&entry.meta).unwrap_or_else(|_| json!({}));
+        if !expected.matches(&held) {
+            return Ok(miss(
+                kind,
+                false,
+                json!({"changed": true, "identity": held}),
+            ));
+        }
     }
     if part >= blob.parts {
         return Err(invalid("the part is past the entry's end"));
@@ -473,22 +587,36 @@ fn get(connection: &Connection, owner: &str, key: Key, part: u64, expect_version
     ))
 }
 
-fn has(connection: &Connection, owner: &str, key: Key, byte_length: Option<u64>) -> Result<Outcome, String> {
+fn has(
+    connection: &Connection,
+    owner: &str,
+    key: Key,
+    byte_length: Option<u64>,
+) -> Result<Outcome, String> {
     admit_key(&key)?;
     let pending = match key.kind {
         Kind::Photo => crate::media_outbox::pending(connection, owner, &key.key)?,
         _ => None,
     };
     let held = match pending {
-        Some(pending) => byte_length.is_none_or(|length| length == pending.length) && pending.present(connection)?,
+        Some(pending) => {
+            byte_length.is_none_or(|length| length == pending.length)
+                && pending.present(connection)?
+        }
         None => match entry(connection, owner, &key)? {
-            Some(Entry { blob: Some(blob), .. }) => {
-                byte_length.is_none_or(|length| length == blob.byte_length) && CONTENT.intact(connection, &blob)?
+            Some(Entry {
+                blob: Some(blob), ..
+            }) => {
+                byte_length.is_none_or(|length| length == blob.byte_length)
+                    && CONTENT.intact(connection, &blob)?
             }
             _ => false,
         },
     };
-    Ok(kinded(Outcome::read(fields(json!({"has": held}))), key.kind))
+    Ok(kinded(
+        Outcome::read(fields(json!({"has": held}))),
+        key.kind,
+    ))
 }
 
 /// Keep a verified upload's bytes as the cached photo at `path`, copied from
@@ -523,14 +651,22 @@ pub(crate) fn adopt_photo(
     else {
         return Ok(false);
     };
-    let media_type = if printable(media_type, 255) { media_type } else { "" };
+    let media_type = if printable(media_type, 255) {
+        media_type
+    } else {
+        ""
+    };
     name_entry(connection, owner, &key, &blob, media_type, "{}", now)?;
     crate::durable_store::advance(connection, &Kind::Photo.generation_key())?;
     Ok(true)
 }
 
 /// Run one operation inside the caller's transaction.
-pub fn execute(connection: &Connection, input: Input, operation: Operation) -> Result<Outcome, String> {
+pub fn execute(
+    connection: &Connection,
+    input: Input,
+    operation: Operation,
+) -> Result<Outcome, String> {
     if input.bytes.is_some() && !matches!(operation, Operation::Put { .. }) {
         return Err(invalid("only a put carries payload bytes"));
     }
@@ -540,16 +676,31 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
         Operation::Limits => {
             let budgets: Map<String, Value> = Kind::ALL
                 .iter()
-                .map(|kind| (kind.name().to_string(), json!({"budget": kind.budget(), "max_entry": kind.max_entry()})))
+                .map(|kind| {
+                    (
+                        kind.name().to_string(),
+                        json!({"budget": kind.budget(), "max_entry": kind.max_entry()}),
+                    )
+                })
                 .collect();
-            Ok(Outcome::read(fields(json!({"part_bytes": PART_BYTES, "kinds": budgets}))))
+            Ok(Outcome::read(fields(
+                json!({"part_bytes": PART_BYTES, "kinds": budgets}),
+            )))
         }
         Operation::Has { key, byte_length } => has(connection, &owner, key, byte_length),
         Operation::Get {
             key,
             part,
             expect_version,
-        } => get(connection, &owner, key, part, expect_version),
+            expect_identity,
+        } => get(
+            connection,
+            &owner,
+            key,
+            part,
+            expect_version,
+            expect_identity.as_ref(),
+        ),
         Operation::Put {
             key,
             payload,
@@ -557,7 +708,17 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
             media_type,
             meta,
             now,
-        } => put(connection, &owner, key, payload, sha256, media_type, meta, now, input.bytes),
+        } => put(
+            connection,
+            &owner,
+            key,
+            payload,
+            sha256,
+            media_type,
+            meta,
+            now,
+            input.bytes,
+        ),
         Operation::Delete { key } => {
             admit_key(&key)?;
             let deleted = remove(connection, &owner, key.kind, &key.key)?;
@@ -577,3 +738,7 @@ pub fn execute(connection: &Connection, input: Input, operation: Operation) -> R
 #[cfg(test)]
 #[path = "byte_cache_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "byte_cache_identity_tests.rs"]
+mod identity_tests;

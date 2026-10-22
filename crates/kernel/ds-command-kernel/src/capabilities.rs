@@ -222,7 +222,7 @@ pub fn on_core(id: &str) -> Result<&'static Capability, String> {
 /// The page's exports: this build's answer for a capability, and one run of
 /// it on the executor that answer names.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{capability, route, Executor, Route, Run};
     use js_sys::{Function, Object, Promise, Reflect};
     use wasm_bindgen::prelude::*;
@@ -239,11 +239,7 @@ export interface CapabilityHost {
 }
 
 /** How `capabilityRun` rejects. */
-export interface CapabilityRefusal extends Error {
-    code: string;
-    remedy: string;
-    retryable: boolean;
-}
+export interface CapabilityRefusal extends Error, CommandRefusal {}
 
 export interface CapabilityFailure {
     class: string;
@@ -278,6 +274,14 @@ export interface CapabilityFailure {
     }
 
     fn host_failure(error: JsValue) -> JsValue {
+        if let Ok(refusal) = tsify::serde_wasm_bindgen::from_value::<
+            ds_core_contracts::CommandRefusal,
+        >(error.clone())
+        {
+            if refusal.validate().is_ok() {
+                return crate::design_lv::browser::failure(refusal);
+            }
+        }
         let code = member(&error, "code").as_string();
         let message = member(&error, "message")
             .as_string()
@@ -412,6 +416,35 @@ export interface CapabilityFailure {
         Ok(args.into())
     }
 
+    /// One concrete application exchange. The native command and the browser
+    /// class consume the same captured input and the same owner decoder.
+    pub(crate) async fn run_captured_lv(
+        host: &CapabilityHost,
+        captured: &crate::design_lv::CapturedLvProcess,
+    ) -> Result<ds_network_contracts::lv::LvProcessBatchOutput, JsValue> {
+        let capability =
+            super::on_core(crate::design_lv::COMMAND).map_err(|text| refused(&text))?;
+        let batch: ds_network_contracts::lv::LvProcessBatchInput =
+            serde_json::from_slice(captured.input()).expect("private captured LV input");
+        let input = crate::gateway_exchange::browser::typed(&batch)?;
+        let args = arguments(capability.run, input)?;
+        let envelope = open(
+            host,
+            "core",
+            [capability.id.into(), captured.project().into(), args],
+        )
+        .await?;
+        let value = tsify::serde_wasm_bindgen::from_value(envelope).map_err(|_| {
+            refusal(
+                "network_result_invalid",
+                "Core's LV response is not a compatible command envelope.",
+            )
+        })?;
+        captured
+            .decode_core_response(value)
+            .map_err(crate::design_lv::browser::failure)
+    }
+
     /// This build's answer for `capability`.
     #[wasm_bindgen(js_name = capabilityRoute, unchecked_return_type = "{ schema: string; capability: string; platform: string; status: 'supported' | 'pending' | 'discarded'; executor?: 'core' | 'kernel' | 'network_unit'; exchange?: string; page_lanes?: number; refusal?: { code: 'capability_pending' | 'capability_discarded'; reason: string; message: string } }")]
     pub fn capability_route(
@@ -425,51 +458,76 @@ export interface CapabilityFailure {
     /// names: Core through the host's Core door, the
     /// page's Network unit, or the typed refusal. A refusal rejects as a
     /// `CapabilityRefusal`; a Kernel exchange is run through its typed export.
-    #[wasm_bindgen(js_name = capabilityRun, unchecked_return_type = "any")]
-    pub async fn capability_run(
+    #[wasm_bindgen(js_name = capabilityRun, unchecked_return_type = "Promise<any>")]
+    pub fn capability_run(
         host: CapabilityHost,
         #[wasm_bindgen(unchecked_param_type = "RunnableCapabilityId")] capability_id: String,
         project: String,
         #[wasm_bindgen(unchecked_param_type = "unknown")] input: JsValue,
-    ) -> Result<JsValue, JsValue> {
-        let capability = capability(&capability_id).map_err(|text| refused(&text))?;
-        match capability.route() {
-            Route::Supported {
-                executor: Executor::Core,
-                ..
-            } => {
-                let args = arguments(capability.run, input)?;
-                let envelope =
-                    open(&host, "core", [capability.id.into(), project.into(), args]).await?;
-                admit(&envelope, capability.run)
+    ) -> Promise {
+        let capability = match capability(&capability_id) {
+            Ok(capability) => capability,
+            Err(text) => return Promise::reject(&refused(&text)),
+        };
+        // wasm-bindgen polls an async export on a later microtask. Capture the
+        // LV JsValue synchronously here, before returning its Promise.
+        let captured = if capability.id == crate::design_lv::COMMAND {
+            if let Err(text) = super::on_core(capability.id) {
+                return Promise::reject(&refused(&text));
             }
-            Route::Supported {
-                executor: Executor::NetworkUnit,
-                ..
-            } => {
-                open(
-                    &host,
-                    "unit",
-                    [capability.id.into(), input, JsValue::UNDEFINED],
-                )
-                .await
+            match crate::design_lv::browser::capture_wasm(
+                project.clone(),
+                tsify::Ts::new_unchecked(input.clone()),
+            ) {
+                Ok(captured) => Some(captured),
+                Err(error) => return Promise::reject(&error),
             }
-            Route::Supported {
-                executor: Executor::Kernel,
-                exchange,
-            } => Err(refusal(
-                "capability_typed_export",
-                &format!(
+        } else {
+            None
+        };
+        wasm_bindgen_futures::future_to_promise(async move {
+            if let Some(captured) = captured {
+                let output = run_captured_lv(&host, &captured).await?;
+                return crate::gateway_exchange::browser::typed(&output);
+            }
+            match capability.route() {
+                Route::Supported {
+                    executor: Executor::Core,
+                    ..
+                } => {
+                    let args = arguments(capability.run, input)?;
+                    let envelope =
+                        open(&host, "core", [capability.id.into(), project.into(), args]).await?;
+                    admit(&envelope, capability.run)
+                }
+                Route::Supported {
+                    executor: Executor::NetworkUnit,
+                    ..
+                } => {
+                    open(
+                        &host,
+                        "unit",
+                        [capability.id.into(), input, JsValue::UNDEFINED],
+                    )
+                    .await
+                }
+                Route::Supported {
+                    executor: Executor::Kernel,
+                    exchange,
+                } => Err(refusal(
+                    "capability_typed_export",
+                    &format!(
                     "`{}` runs through the Kernel's typed `{}` exchange here, not capabilityRun.",
                     capability.id,
                     exchange.unwrap_or_default()
                 ),
-            )),
-            route => {
-                let answer = route.refusal().expect("a refused route has its refusal");
-                Err(refusal(answer.code, answer.message))
+                )),
+                route => {
+                    let answer = route.refusal().expect("a refused route has its refusal");
+                    Err(refusal(answer.code, answer.message))
+                }
             }
-        }
+        })
     }
 
     /// Narrow a runtime-selected id before consulting this build's routes.

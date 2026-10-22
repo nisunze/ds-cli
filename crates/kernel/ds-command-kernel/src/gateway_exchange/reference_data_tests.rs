@@ -57,6 +57,7 @@ fn a_page_answers_exactly_what_was_asked() {
 }
 
 #[test]
+#[cfg(feature = "durable-store")]
 fn a_catalogue_is_held_per_project_and_admitted_again() {
     use crate::gateway_exchange::retained::testing::{block_on, TestEdge};
     let edge = TestEdge::new();

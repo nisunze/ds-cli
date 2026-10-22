@@ -136,7 +136,7 @@ mod tests {
     fn every_native_option_appears_once_and_numeric_requests_obey_the_owner() {
         let state = DisplayState::default();
         let styles = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/profile-display-style.json"
+            "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
         ))
         .unwrap();
         let rows = crate::profile_encoding::resolve(&state, &styles).unwrap();

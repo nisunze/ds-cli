@@ -15,7 +15,7 @@ fakes = []
 
 [dependencies]
 ds-report-artifacts = { path = "../ds-report-artifacts" }
-ds-command-kernel = { path = "../.." }
+ds-command-kernel = { path = "../ds-command-kernel" }
 ds-sync-store = { path = "../ds-sync-store" }
 ds-compute-runtime = { path = "../ds-compute-runtime" }
 chrono = "0.4"
@@ -34,4 +34,3 @@ ds-client-core = { path = "../ds-client-core" }
 ds-sync-runtime = { path = ".", features = ["fakes"] }
 
 # Native host crate: not part of the portable WASM workspace.
-[workspace]

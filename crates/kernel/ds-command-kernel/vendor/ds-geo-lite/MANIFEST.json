@@ -1,36 +1,12 @@
 {
   "version": 1,
-  "generated_by": "scripts/sync-geo-lite.sh",
-  "contract": "docs/contracts/ds-portable-geometry.md",
+  "generated_by": "crates/kernel/ds-command-kernel/scripts/sync-geo-lite.sh",
+  "contract": "crates/kernel/ds-command-kernel/docs/contracts/ds-portable-geometry.md",
   "ds_network": {
     "repo": "ds-network",
     "commit": "a9c3915da8da97128bf015549ffd9ff6177dfe75"
   },
   "files": [
-    {
-      "vendored": "geo/identity.rs",
-      "partial": false,
-      "sha256": "c697a357db7edc8fcc94e48853844deddc254f2ce0727ef5b2d1e47e0772b7b5",
-      "source_commit": "a9c3915da8da97128bf015549ffd9ff6177dfe75",
-      "sources": [
-        {
-          "path": "crates/ds-geo/src/identity.rs",
-          "sha256": "c697a357db7edc8fcc94e48853844deddc254f2ce0727ef5b2d1e47e0772b7b5"
-        }
-      ]
-    },
-    {
-      "vendored": "geo/comparison.rs",
-      "partial": false,
-      "sha256": "021dfb6f4172f3d21205d9e56272eeb3c318fd526f972f0af378e2b5b611e3ef",
-      "source_commit": "a9c3915da8da97128bf015549ffd9ff6177dfe75",
-      "sources": [
-        {
-          "path": "crates/ds-geo/src/comparison.rs",
-          "sha256": "021dfb6f4172f3d21205d9e56272eeb3c318fd526f972f0af378e2b5b611e3ef"
-        }
-      ]
-    },
     {
       "vendored": "network/processor_presets.json",
       "partial": false,

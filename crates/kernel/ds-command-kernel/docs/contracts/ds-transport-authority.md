@@ -69,7 +69,7 @@ Placement, and why it is not the other way round:
   client.** Native builds have no HTTP dependency and gain none. The browser
   WASM build alone carries one executor, `gateway_exchange::browser`:
   reqwest's WebAssembly client, which is the page's own `fetch` (owner,
-  2026-10-20, [architecture sentence 4](../../../ds-architecture/architecture/development-philosophy.md#architecture-in-nine-sentences)).
+  2026-10-20, [architecture sentence 4](../../../../../../ds-architecture/architecture/development-philosophy.md#architecture-in-nine-sentences)).
   The step machines it runs stay pure, so the same typed exchanges run
   natively in Core: identical bytes in the browser, the shell and the CLI.
 - **`ds-client-core` holds the gateway operation registry**, not the kernel.
@@ -79,7 +79,7 @@ Placement, and why it is not the other way round:
   source for those constants and guarantee drift. It already depends on
   `ds-command-kernel`; the edge stays one-way.
 - **The browser reaches the registry through Rust in WASM** (owner, 2026-10-19,
-  [development philosophy §6](../../../ds-architecture/architecture/development-philosophy.md#6-the-frontend-is-designed-as-if-it-were-rust)):
+  [development philosophy §6](../../../../../../ds-architecture/architecture/development-philosophy.md#6-the-frontend-is-designed-as-if-it-were-rust)):
   `gateway_exchange` and each domain's typed exchanges construct the request,
   decide retry and backoff, interpret the response and map refusals, and the
   browser executor sends them. Svelte calls one typed async export per

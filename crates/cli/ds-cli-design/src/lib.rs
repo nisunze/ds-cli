@@ -94,6 +94,7 @@ pub mod pinned;
 pub mod preview;
 pub mod process_settings;
 pub mod project;
+mod project_worker;
 pub mod repair;
 pub mod selection;
 pub mod tag;

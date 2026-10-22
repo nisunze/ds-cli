@@ -97,6 +97,7 @@ pub struct BrowserAuthority {
     pub route_manifest_sha256: String,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
 #[serde(deny_unknown_fields)]
 pub struct VerifiedFile {
     pub filename: String,

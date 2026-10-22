@@ -839,7 +839,7 @@ mod tests {
     #[test]
     fn producer_configuration_is_messages_v1_and_server_bounded() {
         let fixture: Value = serde_json::from_slice(include_bytes!(
-            "../../../../ds-brain/docs/contracts/messaging-wire/messages-v1/config.json"
+            "../../../../../ds-brain/docs/contracts/messaging-wire/messages-v1/config.json"
         ))
         .unwrap();
         assert_eq!(fixture["data"]["wire_contract"], "messages-v1");

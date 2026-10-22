@@ -7,7 +7,7 @@ rust-version = "1.90"
 publish = false
 
 [dependencies]
-ds-command-kernel = { path = "../.." }
+ds-command-kernel = { path = "../ds-command-kernel" }
 ds-project-data = { path = "../ds-project-data" }
 ds-layer-store = { path = "../ds-layer-store" }
 serde = { version = "1", features = ["derive"] }
@@ -21,4 +21,3 @@ tempfile = "3"
 rustix = { version = "1", features = ["fs"] }
 
 # Native host crate, separate from the portable WASM workspace.
-[workspace]

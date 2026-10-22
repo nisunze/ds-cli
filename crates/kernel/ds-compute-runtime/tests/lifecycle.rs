@@ -1054,18 +1054,42 @@ fn a_host_learns_its_limits_make_no_share_before_it_starts_workers_not_per_claim
     drop(runtime::Workers::start(alone, 1).expect("a host with one worker and nothing to divide"));
 }
 
-/// The crate's headline claim — "this crate makes no network call" — asserted
-/// over its own dependency record rather than over its prose. A transport
-/// arriving through a feature flag, a default that flips, or a new dependency
-/// is caught here on the day it lands, not by a reader.
-///
-/// tokio (and mio beneath it) is in the closure on purpose: the tile runtime
-/// drives its engine subprocesses through tokio's `process` pipes. That is
-/// process IPC, not a network transport, so the lock check names the HTTP and
-/// TLS stacks and the source check below proves no socket is ever opened.
+/// Check this runtime's normal/build closure, rather than the shared workspace
+/// lockfile: unrelated members may legitimately carry HTTP clients.
 #[test]
 fn nothing_in_this_crate_s_dependency_closure_can_open_a_socket() {
-    const LOCK: &str = include_str!("../Cargo.lock");
+    let output = std::process::Command::new(env!("CARGO"))
+        .args([
+            "tree",
+            "--offline",
+            "--locked",
+            "--manifest-path",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"),
+            "--package",
+            "ds-compute-runtime",
+            "--edges",
+            "normal,build",
+            "--prefix",
+            "none",
+            "--format",
+            "{p}",
+        ])
+        .output()
+        .expect("read the compute runtime's resolved dependency closure");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let graph = String::from_utf8(output.stdout).expect("Cargo tree is UTF-8");
+    let packages: std::collections::BTreeSet<&str> = graph
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .collect();
+    assert!(
+        packages.contains("ds-compute-runtime"),
+        "dependency walk must reach this runtime"
+    );
     for transport in [
         "reqwest",
         "hyper",
@@ -1081,7 +1105,7 @@ fn nothing_in_this_crate_s_dependency_closure_can_open_a_socket() {
         "socket2",
     ] {
         assert!(
-            !LOCK.contains(&format!("\nname = \"{transport}\"\n")),
+            !packages.contains(transport),
             "{transport} is in this crate's closure; the Solar runtime's http-provider feature \
              is off for exactly this reason, and admission, execution and recovery are local"
         );

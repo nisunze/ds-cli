@@ -1,26 +1,35 @@
-//! Bounded pixel processing for a locally captured or imported survey photo.
+//! Bounded pixel work for a survey photo: its thumbnail, a rendered view and
+//! its displayed dimensions — never a rewrite of the camera original.
 //!
-//! The host owns capture, Blob/IndexedDB persistence and upload. This module
-//! owns the deterministic decode, orientation, resize, rotation and encoding
-//! that happen before the host persists those bytes. It accepts JPEG and PNG
-//! only; the output stays in that same format. No photo bytes cross this API as
-//! JSON or base64.
+//! The camera original is kept exactly as captured (full resolution, EXIF and
+//! all). A rotation is METADATA: the net clockwise quarter-turns an entry
+//! records for the original (`survey_media_rotation`), applied after the EXIF
+//! orientation whenever pixels are shown — here when the thumbnail or a
+//! rendered view is made, and in a host's own transform when it draws the
+//! original. That makes every rotation lossless and reversible.
+//!
+//! The host owns capture, storage and upload. This module owns the
+//! deterministic decode, orientation, resize, rotation and encoding of the
+//! derived images. It decodes JPEG and PNG only. No photo bytes cross this API
+//! as JSON or base64.
 
 use serde::Serialize;
 use std::io::Cursor;
 
 use image::{
-    codecs::{jpeg::JpegDecoder, png::PngDecoder},
-    imageops::FilterType,
-    metadata::Orientation,
     ColorType, DynamicImage, ImageBuffer, ImageDecoder, ImageEncoder, ImageFormat, Limits, Rgb,
+    codecs::{jpeg::JpegDecoder, png::PngDecoder},
+    metadata::Orientation,
 };
 
+/// The one admission limit for a survey media object, shared by this module,
+/// the media outbox and ds-brain's upload grant (50 MiB declared size).
 pub const MAX_INPUT_BYTES: usize = 50 * 1024 * 1024;
 pub const MAX_SOURCE_EDGE: u32 = 50_000;
 pub const MAX_SOURCE_PIXELS: u64 = 50_000_000;
 pub const MAX_DECODED_BYTES: u64 = 256 * 1024 * 1024;
-pub const MAX_ORIGINAL_EDGE: u32 = 2_048;
+/// The longest edge of a rendered view (hosts that cannot transform pixels).
+pub const MAX_RENDER_EDGE: u32 = 2_048;
 pub const MAX_THUMBNAIL_EDGE: u32 = 320;
 pub const JPEG_QUALITY: u8 = 85;
 pub const UNSUPPORTED_IMAGE_CODE: &str = "SURVEY_PHOTO_UNSUPPORTED_IMAGE";
@@ -34,18 +43,37 @@ pub enum MediaDetection {
     NotImage,
 }
 
-/// Classify only the leading format signature. Hosts use this before calling
-/// [`process`] so a GIF/WebP or a non-image attachment remains its exact
-/// original bytes rather than being silently flattened or rejected.
+/// Classify only the leading format signature: the one image classification
+/// every host shares. JPEG and PNG are processed; GIF, WebP, AVIF, BMP, TIFF
+/// and HEIC/HEIF are images kept as their exact bytes without a thumbnail;
+/// anything else is an ordinary attachment.
 pub fn detect_media(input: &[u8]) -> MediaDetection {
+    if is_heif(input) {
+        return MediaDetection::UnsupportedImage;
+    }
     match image::guess_format(input) {
         Ok(ImageFormat::Jpeg) => MediaDetection::ProcessableJpeg,
         Ok(ImageFormat::Png) => MediaDetection::ProcessablePng,
-        Ok(ImageFormat::Gif | ImageFormat::WebP | ImageFormat::Avif) => {
-            MediaDetection::UnsupportedImage
-        }
+        Ok(
+            ImageFormat::Gif
+            | ImageFormat::WebP
+            | ImageFormat::Avif
+            | ImageFormat::Bmp
+            | ImageFormat::Tiff,
+        ) => MediaDetection::UnsupportedImage,
         _ => MediaDetection::NotImage,
     }
+}
+
+/// An ISO-BMFF `ftyp` box naming a HEIF/HEIC brand (phones' default capture
+/// format), which the image decoder does not recognise.
+fn is_heif(input: &[u8]) -> bool {
+    input.len() >= 12
+        && &input[4..8] == b"ftyp"
+        && matches!(
+            &input[8..12],
+            b"heic" | b"heix" | b"hevc" | b"hevx" | b"heim" | b"heis" | b"mif1" | b"msf1"
+        )
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -54,6 +82,28 @@ pub enum Rotation {
     Deg90,
     Deg180,
     Deg270,
+}
+
+impl Rotation {
+    /// Net clockwise quarter-turns, 0..=3.
+    pub const fn quarter_turns(self) -> u8 {
+        match self {
+            Self::Deg0 => 0,
+            Self::Deg90 => 1,
+            Self::Deg180 => 2,
+            Self::Deg270 => 3,
+        }
+    }
+
+    pub fn from_quarter_turns(turns: u8) -> Result<Self, String> {
+        match turns {
+            0 => Ok(Self::Deg0),
+            1 => Ok(Self::Deg90),
+            2 => Ok(Self::Deg180),
+            3 => Ok(Self::Deg270),
+            _ => Err("Survey-photo quarter-turns must be 0, 1, 2 or 3.".into()),
+        }
+    }
 }
 
 /// The same quarter-turn normalization for every host, including local drafts.
@@ -90,9 +140,10 @@ pub struct MediaPlan {
     pub rotation: u16,
 }
 
-/// Decide preservation versus pixel processing from bytes, never a host MIME
-/// label. A rotation of an unsupported attachment is refused here in native
-/// and WASM alike; browser workers only execute the returned effect.
+/// Decide thumbnailing versus exact-byte preservation from bytes, never a
+/// host MIME label. `process` makes a thumbnail; the original stays its exact
+/// bytes in every case. A rotation of an image this module cannot decode is
+/// refused here in native and WASM alike.
 pub fn plan_media(input: &[u8], degrees: f64) -> Result<MediaPlan, String> {
     let rotation = exact_rotation(degrees)?;
     let (detection, action) = match detect_media(input) {
@@ -163,49 +214,148 @@ impl Format {
     }
 }
 
-/// Encoded bytes and their independently useful metadata. `original_bytes`
-/// means the normalized upload original, bounded to 2048px; it is not the
-/// unprocessed camera file.
+/// One derived image: encoded bytes and the pixel size they show.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Encoded {
+    pub media_type: &'static str,
+    pub bytes: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The capture bundle: the camera original unchanged, its displayed size and
+/// its thumbnail. `original_bytes` IS the input — never re-encoded.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PhotoBundle {
     pub media_type: &'static str,
     pub thumbnail_media_type: &'static str,
     pub original_bytes: Vec<u8>,
     pub thumbnail_bytes: Vec<u8>,
+    /// The original as displayed: EXIF orientation then the rotation.
     pub original_width: u32,
     pub original_height: u32,
     pub thumbnail_width: u32,
     pub thumbnail_height: u32,
 }
 
-/// Decode one supported image and produce the normalized upload original plus
-/// its 320px thumbnail. EXIF orientation is applied before the caller's net
-/// clockwise turn, and is not retained in the freshly encoded result.
+/// Capture/import: keep the original bytes exactly and make the thumbnail
+/// showing `rotation` (applied after EXIF orientation).
 pub fn process(input: &[u8], rotation: Rotation) -> Result<PhotoBundle, String> {
+    let (format, decoder_orientation, (width, height)) = header(input)?;
+    let thumbnail = thumbnail(input, rotation)?;
+    let (original_width, original_height) =
+        displayed((width, height), decoder_orientation, rotation);
+    Ok(PhotoBundle {
+        media_type: format.media_type(),
+        thumbnail_media_type: thumbnail.media_type,
+        original_bytes: input.to_vec(),
+        thumbnail_bytes: thumbnail.bytes,
+        original_width,
+        original_height,
+        thumbnail_width: thumbnail.width,
+        thumbnail_height: thumbnail.height,
+    })
+}
+
+/// The thumbnail alone: a white-composited JPEG at most 320 px on its longest
+/// edge, showing the EXIF orientation and then `rotation`. No larger image is
+/// encoded on the way.
+pub fn thumbnail(input: &[u8], rotation: Rotation) -> Result<Encoded, String> {
+    let image = derive(input, rotation, MAX_THUMBNAIL_EDGE)?.1;
+    Ok(Encoded {
+        media_type: "image/jpeg",
+        width: image.width(),
+        height: image.height(),
+        bytes: encode_thumbnail(&image)?,
+    })
+}
+
+/// A rendered view for a host that cannot transform pixels itself (a report,
+/// a local file): the same format, at most `max_edge` px, orientation and
+/// rotation applied. It is a derived copy, never stored over the original.
+pub fn render(input: &[u8], rotation: Rotation, max_edge: u32) -> Result<Encoded, String> {
+    let max_edge = max_edge.clamp(1, MAX_RENDER_EDGE);
+    let (format, image) = derive(input, rotation, max_edge)?;
+    Ok(Encoded {
+        media_type: format.media_type(),
+        width: image.width(),
+        height: image.height(),
+        bytes: encode(&image, format)?,
+    })
+}
+
+/// The original's displayed size after EXIF orientation and the requested net
+/// turn. Read headers only: do not decode pixels, resize, encode or change bytes.
+pub fn display_dimensions(input: &[u8], rotation: Rotation) -> Result<(u32, u32), String> {
     if input.is_empty() || input.len() > MAX_INPUT_BYTES {
         return Err(format!(
             "{MALFORMED_IMAGE_CODE}: survey-photo image must contain at most {MAX_INPUT_BYTES} bytes."
         ));
     }
+    let (size, orientation) = match detect_media(input) {
+        MediaDetection::ProcessableJpeg => {
+            let mut decoder = JpegDecoder::new(Cursor::new(input)).map_err(|error| {
+                format!("{MALFORMED_IMAGE_CODE}: JPEG header cannot be read: {error}")
+            })?;
+            let orientation = decoder.orientation().map_err(|error| {
+                format!("{MALFORMED_IMAGE_CODE}: JPEG orientation cannot be read: {error}")
+            })?;
+            (decoder.dimensions(), orientation)
+        }
+        MediaDetection::ProcessablePng => {
+            let mut decoder =
+                PngDecoder::with_limits(Cursor::new(input), limits()).map_err(|error| {
+                    format!("{MALFORMED_IMAGE_CODE}: PNG header cannot be read: {error}")
+                })?;
+            let orientation = decoder.orientation().map_err(|error| {
+                format!("{MALFORMED_IMAGE_CODE}: PNG orientation cannot be read: {error}")
+            })?;
+            (decoder.dimensions(), orientation)
+        }
+        MediaDetection::UnsupportedImage => {
+            return Err(format!(
+                "{UNSUPPORTED_IMAGE_CODE}: preserve the original bytes without a thumbnail."
+            ));
+        }
+        MediaDetection::NotImage => {
+            return Err(format!(
+                "{MALFORMED_IMAGE_CODE}: bytes are not a readable JPEG or PNG."
+            ));
+        }
+    };
+    let exif_swaps = matches!(
+        orientation,
+        Orientation::Rotate90
+            | Orientation::Rotate270
+            | Orientation::Rotate90FlipH
+            | Orientation::Rotate270FlipH
+    );
+    let turn_swaps = matches!(rotation, Rotation::Deg90 | Rotation::Deg270);
+    if exif_swaps != turn_swaps {
+        Ok((size.1, size.0))
+    } else {
+        Ok(size)
+    }
+}
 
-    let (format, mut image, orientation) = decode(input)?;
-    image.apply_orientation(orientation);
-    let original = resize_to_edge(image, MAX_ORIGINAL_EDGE);
-    let original = rotate(original, rotation);
-    let thumbnail = resize_to_edge(original.clone(), MAX_THUMBNAIL_EDGE);
-
-    let (original_width, original_height) = (original.width(), original.height());
-    let (thumbnail_width, thumbnail_height) = (thumbnail.width(), thumbnail.height());
-    Ok(PhotoBundle {
-        media_type: format.media_type(),
-        thumbnail_media_type: "image/jpeg",
-        original_bytes: encode(&original, format)?,
-        thumbnail_bytes: encode_thumbnail(&thumbnail)?,
-        original_width,
-        original_height,
-        thumbnail_width,
-        thumbnail_height,
-    })
+fn displayed(
+    (width, height): (u32, u32),
+    orientation: Orientation,
+    rotation: Rotation,
+) -> (u32, u32) {
+    let exif_swaps = matches!(
+        orientation,
+        Orientation::Rotate90
+            | Orientation::Rotate270
+            | Orientation::Rotate90FlipH
+            | Orientation::Rotate270FlipH
+    );
+    let turn_swaps = matches!(rotation, Rotation::Deg90 | Rotation::Deg270);
+    if exif_swaps != turn_swaps {
+        (height, width)
+    } else {
+        (width, height)
+    }
 }
 
 fn limits() -> Limits {
@@ -216,46 +366,86 @@ fn limits() -> Limits {
     limits
 }
 
-fn decode(input: &[u8]) -> Result<(Format, DynamicImage, Orientation), String> {
-    let guessed = image::guess_format(input);
-    if matches!(detect_media(input), MediaDetection::UnsupportedImage) {
+fn admitted(input: &[u8]) -> Result<Format, String> {
+    if input.is_empty() || input.len() > MAX_INPUT_BYTES {
         return Err(format!(
-            "{UNSUPPORTED_IMAGE_CODE}: preserve the original bytes without a thumbnail."
+            "{MALFORMED_IMAGE_CODE}: survey-photo image must contain at most {MAX_INPUT_BYTES} bytes."
         ));
     }
-    let guessed = guessed
-        .map_err(|_| format!("{MALFORMED_IMAGE_CODE}: bytes are not a readable JPEG or PNG."))?;
-    match guessed {
-        ImageFormat::Jpeg => {
-            let mut decoder = JpegDecoder::new(Cursor::new(input)).map_err(|error| {
-                format!("{MALFORMED_IMAGE_CODE}: JPEG cannot be decoded: {error}")
-            })?;
-            decoder.set_limits(limits()).map_err(|error| {
-                format!("{MALFORMED_IMAGE_CODE}: JPEG exceeds decode bounds: {error}")
-            })?;
+    match detect_media(input) {
+        MediaDetection::ProcessableJpeg => Ok(Format::Jpeg),
+        MediaDetection::ProcessablePng => Ok(Format::Png),
+        MediaDetection::UnsupportedImage => Err(format!(
+            "{UNSUPPORTED_IMAGE_CODE}: preserve the original bytes without a thumbnail."
+        )),
+        MediaDetection::NotImage => Err(format!(
+            "{MALFORMED_IMAGE_CODE}: bytes are not a readable JPEG or PNG."
+        )),
+    }
+}
+
+/// MIME type admitted by the shared byte-format owner, independent of host labels.
+pub fn source_media_type(input: &[u8]) -> Result<&'static str, String> {
+    admitted(input).map(Format::media_type)
+}
+
+fn malformed(kind: &str, what: &str, error: impl std::fmt::Display) -> String {
+    format!("{MALFORMED_IMAGE_CODE}: {kind} {what}: {error}")
+}
+
+/// Format, orientation and stored size from the header; no pixels.
+fn header(input: &[u8]) -> Result<(Format, Orientation, (u32, u32)), String> {
+    match admitted(input)? {
+        Format::Jpeg => {
+            let mut decoder = JpegDecoder::new(Cursor::new(input))
+                .map_err(|e| malformed("JPEG", "cannot be decoded", e))?;
+            let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+            Ok((Format::Jpeg, orientation, decoder.dimensions()))
+        }
+        Format::Png => {
+            let mut decoder = PngDecoder::new(Cursor::new(input))
+                .map_err(|e| malformed("PNG", "cannot be decoded", e))?;
+            let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+            Ok((Format::Png, orientation, decoder.dimensions()))
+        }
+    }
+}
+
+/// Decode once, shrink to `edge` FIRST, then orient and turn the small image:
+/// orientation never allocates a second full-resolution buffer.
+fn derive(input: &[u8], rotation: Rotation, edge: u32) -> Result<(Format, DynamicImage), String> {
+    let (format, image, orientation) = decode(input)?;
+    let mut image = shrink(image, edge);
+    image.apply_orientation(orientation);
+    Ok((format, rotate(image, rotation)))
+}
+
+fn decode(input: &[u8]) -> Result<(Format, DynamicImage, Orientation), String> {
+    match admitted(input)? {
+        Format::Jpeg => {
+            let mut decoder = JpegDecoder::new(Cursor::new(input))
+                .map_err(|e| malformed("JPEG", "cannot be decoded", e))?;
+            decoder
+                .set_limits(limits())
+                .map_err(|e| malformed("JPEG", "exceeds decode bounds", e))?;
             check_source_pixels(decoder.dimensions())?;
             let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
-            let image = DynamicImage::from_decoder(decoder).map_err(|error| {
-                format!("{MALFORMED_IMAGE_CODE}: JPEG cannot be decoded: {error}")
-            })?;
+            let image = DynamicImage::from_decoder(decoder)
+                .map_err(|e| malformed("JPEG", "cannot be decoded", e))?;
             Ok((Format::Jpeg, image, orientation))
         }
-        ImageFormat::Png => {
-            let mut decoder = PngDecoder::new(Cursor::new(input)).map_err(|error| {
-                format!("{MALFORMED_IMAGE_CODE}: PNG cannot be decoded: {error}")
-            })?;
-            decoder.set_limits(limits()).map_err(|error| {
-                format!("{MALFORMED_IMAGE_CODE}: PNG exceeds decode bounds: {error}")
-            })?;
+        Format::Png => {
+            let mut decoder = PngDecoder::new(Cursor::new(input))
+                .map_err(|e| malformed("PNG", "cannot be decoded", e))?;
+            decoder
+                .set_limits(limits())
+                .map_err(|e| malformed("PNG", "exceeds decode bounds", e))?;
             check_source_pixels(decoder.dimensions())?;
-            let image = DynamicImage::from_decoder(decoder).map_err(|error| {
-                format!("{MALFORMED_IMAGE_CODE}: PNG cannot be decoded: {error}")
-            })?;
-            Ok((Format::Png, image, Orientation::NoTransforms))
+            let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+            let image = DynamicImage::from_decoder(decoder)
+                .map_err(|e| malformed("PNG", "cannot be decoded", e))?;
+            Ok((Format::Png, image, orientation))
         }
-        _ => Err(format!(
-            "{UNSUPPORTED_IMAGE_CODE}: format must be JPEG or PNG."
-        )),
     }
 }
 
@@ -268,11 +458,12 @@ fn check_source_pixels((width, height): (u32, u32)) -> Result<(), String> {
     Ok(())
 }
 
-fn resize_to_edge(image: DynamicImage, edge: u32) -> DynamicImage {
+/// Area-averaging downscale: no full-width floating-point intermediate.
+fn shrink(image: DynamicImage, edge: u32) -> DynamicImage {
     if image.width().max(image.height()) <= edge {
         image
     } else {
-        image.resize(edge, edge, FilterType::Triangle)
+        image.thumbnail(edge, edge)
     }
 }
 
@@ -382,188 +573,63 @@ pub fn process_wasm(input: &[u8], rotation_degrees: u16) -> Result<SurveyPhotoBu
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use image::{ImageBuffer, Rgba};
+/// One derived image for a browser host: bytes plus the size they show.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub struct SurveyPhotoImageWasm {
+    image: Encoded,
+}
 
-    #[test]
-    fn quarter_turn_drafts_wrap_and_preserve_clockwise_ties() {
-        for (input, expected) in [
-            (-450.0, 270),
-            (-90.0, 270),
-            (-45.0, 0),
-            (0.0, 0),
-            (44.9, 0),
-            (45.0, 90),
-            (315.0, 0),
-            (450.0, 90),
-        ] {
-            assert_eq!(normalize_rotation(input).unwrap(), expected);
-        }
-        assert_eq!(accumulate_rotation(270.0, 90.0).unwrap(), 0);
-        assert_eq!(accumulate_rotation(0.0, -90.0).unwrap(), 270);
-        for degrees in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            assert!(normalize_rotation(degrees).is_err());
-        }
-        assert!(accumulate_rotation(45.0, 90.0).is_err());
-        assert!(accumulate_rotation(0.0, 180.0).is_err());
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+impl SurveyPhotoImageWasm {
+    #[wasm_bindgen::prelude::wasm_bindgen(getter, js_name = mediaType)]
+    pub fn media_type(&self) -> String {
+        self.image.media_type.into()
     }
-
-    #[test]
-    fn attachment_preservation_and_rotation_refusal_are_kernel_decisions() {
-        for (bytes, detection) in [
-            (b"GIF89a".as_slice(), "unsupported_image"),
-            (b"document".as_slice(), "not_image"),
-        ] {
-            assert_eq!(
-                plan_media(bytes, 0.0).unwrap(),
-                MediaPlan {
-                    detection,
-                    action: "preserve",
-                    rotation: 0
-                }
-            );
-            assert!(plan_media(bytes, 90.0)
-                .unwrap_err()
-                .contains("only for JPEG and PNG"));
-        }
-        for degrees in [-90.0, 45.0, 360.0, 65536.0, f64::NAN, f64::INFINITY] {
-            assert!(plan_media(b"GIF89a", degrees).is_err());
-        }
-        let png_signature = b"\x89PNG\r\n\x1a\n";
-        assert_eq!(
-            plan_media(png_signature, 90.0).unwrap(),
-            MediaPlan {
-                detection: "png",
-                action: "process",
-                rotation: 90
-            }
-        );
+    #[wasm_bindgen::prelude::wasm_bindgen(getter)]
+    pub fn width(&self) -> u32 {
+        self.image.width
     }
-
-    fn png(image: ImageBuffer<Rgba<u8>, Vec<u8>>) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        image::codecs::png::PngEncoder::new(&mut bytes)
-            .write_image(
-                &image,
-                image.width(),
-                image.height(),
-                ColorType::Rgba8.into(),
-            )
-            .unwrap();
-        bytes
+    #[wasm_bindgen::prelude::wasm_bindgen(getter)]
+    pub fn height(&self) -> u32 {
+        self.image.height
     }
-
-    fn decode_png(bytes: &[u8]) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
-        image::load_from_memory_with_format(bytes, ImageFormat::Png)
-            .unwrap()
-            .to_rgba8()
-    }
-
-    #[test]
-    fn png_rotation_moves_actual_pixels_and_inverse_restores_them() {
-        let source = ImageBuffer::from_fn(3, 2, |x, y| match (x, y) {
-            (0, 0) => Rgba([1, 0, 0, 255]),
-            (1, 0) => Rgba([2, 0, 0, 255]),
-            (2, 0) => Rgba([3, 0, 0, 255]),
-            (0, 1) => Rgba([4, 0, 0, 255]),
-            (1, 1) => Rgba([5, 0, 0, 255]),
-            _ => Rgba([6, 0, 0, 255]),
-        });
-        let forward = process(&png(source.clone()), Rotation::Deg90).unwrap();
-        assert_eq!((forward.original_width, forward.original_height), (2, 3));
-        let turned = decode_png(&forward.original_bytes);
-        assert_eq!(turned.get_pixel(1, 0), &Rgba([1, 0, 0, 255]));
-        assert_eq!(turned.get_pixel(1, 2), &Rgba([3, 0, 0, 255]));
-        assert_eq!(turned.get_pixel(0, 0), &Rgba([4, 0, 0, 255]));
-
-        let inverse = process(&forward.original_bytes, Rotation::Deg270).unwrap();
-        assert_eq!(decode_png(&inverse.original_bytes), source);
-    }
-
-    #[test]
-    fn png_keeps_alpha_and_thumbnail_is_bounded() {
-        let source = ImageBuffer::from_fn(640, 320, |x, y| Rgba([x as u8, y as u8, 30, 17]));
-        let result = process(&png(source), Rotation::Deg0).unwrap();
-        assert_eq!(result.media_type, "image/png");
-        assert_eq!(result.thumbnail_media_type, "image/jpeg");
-        assert_eq!((result.original_width, result.original_height), (640, 320));
-        assert_eq!(
-            (result.thumbnail_width, result.thumbnail_height),
-            (320, 160)
-        );
-        assert_eq!(decode_png(&result.original_bytes).get_pixel(0, 10)[3], 17);
-        let thumbnail =
-            image::load_from_memory_with_format(&result.thumbnail_bytes, ImageFormat::Jpeg)
-                .unwrap()
-                .to_rgb8();
-        assert!(
-            thumbnail.get_pixel(0, 10)[0] > 230,
-            "transparent pixel is composited over white"
-        );
-    }
-
-    #[test]
-    fn original_and_thumbnail_edges_are_capped() {
-        let source = ImageBuffer::from_pixel(4096, 2048, Rgba([8, 9, 10, 255]));
-        let result = process(&png(source), Rotation::Deg90).unwrap();
-        assert_eq!(
-            (result.original_width, result.original_height),
-            (1024, 2048)
-        );
-        assert_eq!(
-            (result.thumbnail_width, result.thumbnail_height),
-            (160, 320)
-        );
-    }
-
-    #[test]
-    fn jpeg_exif_orientation_is_applied_before_the_requested_turn() {
-        let mut jpeg = Vec::new();
-        let pixels = ImageBuffer::from_pixel(3, 2, image::Rgb([20, 40, 60]));
-        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 100)
-            .write_image(&pixels, 3, 2, ColorType::Rgb8.into())
-            .unwrap();
-        let mut tiff = b"II*\0\x08\0\0\0\x01\0\x12\x01\x03\0\x01\0\0\0\x06\0\0\0\0\0\0\0".to_vec();
-        let mut exif = b"Exif\0\0".to_vec();
-        exif.append(&mut tiff);
-        let mut oriented = vec![0xff, 0xd8, 0xff, 0xe1];
-        oriented.extend_from_slice(&u16::try_from(exif.len() + 2).unwrap().to_be_bytes());
-        oriented.extend_from_slice(&exif);
-        oriented.extend_from_slice(&jpeg[2..]);
-        let result = process(&oriented, Rotation::Deg0).unwrap();
-        assert_eq!((result.original_width, result.original_height), (2, 3));
-        let result = process(&oriented, Rotation::Deg270).unwrap();
-        assert_eq!((result.original_width, result.original_height), (3, 2));
-    }
-
-    #[test]
-    fn unsupported_malformed_and_oversize_inputs_are_refused() {
-        assert!(process(b"not an image", Rotation::Deg0)
-            .unwrap_err()
-            .contains(MALFORMED_IMAGE_CODE));
-        assert!(process(b"\x89PNG\r\n\x1a\n", Rotation::Deg0).is_err());
-        assert!(process(&vec![0; MAX_INPUT_BYTES + 1], Rotation::Deg0)
-            .unwrap_err()
-            .contains("at most"));
-        assert!(Rotation::try_from(45).is_err());
-    }
-
-    #[test]
-    fn sniff_separates_processable_unsupported_images_and_other_attachments() {
-        assert_eq!(
-            detect_media(&png(ImageBuffer::from_pixel(1, 1, Rgba([1, 2, 3, 4])))),
-            MediaDetection::ProcessablePng
-        );
-        assert_eq!(
-            detect_media(b"GIF89a\x01\0\x01\0"),
-            MediaDetection::UnsupportedImage
-        );
-        assert_eq!(
-            detect_media(b"RIFF\x00\x00\x00\x00WEBP"),
-            MediaDetection::UnsupportedImage
-        );
-        assert_eq!(detect_media(b"a field-note.pdf"), MediaDetection::NotImage);
+    #[wasm_bindgen::prelude::wasm_bindgen]
+    pub fn bytes(&self) -> Vec<u8> {
+        self.image.bytes.clone()
     }
 }
+
+/// `surveyPhotoThumbnail(bytes, quarterTurns)`: the thumbnail-only entry
+/// point (attachments of Project Work, messaging and notes included).
+#[cfg(feature = "wasm")]
+pub fn thumbnail_wasm(input: &[u8], quarter_turns: u8) -> Result<SurveyPhotoImageWasm, String> {
+    Ok(SurveyPhotoImageWasm {
+        image: thumbnail(input, Rotation::from_quarter_turns(quarter_turns)?)?,
+    })
+}
+
+/// `surveyPhotoRender(bytes, quarterTurns, maxEdge)`: a rendered view.
+#[cfg(feature = "wasm")]
+pub fn render_wasm(
+    input: &[u8],
+    quarter_turns: u8,
+    max_edge: u32,
+) -> Result<SurveyPhotoImageWasm, String> {
+    Ok(SurveyPhotoImageWasm {
+        image: render(
+            input,
+            Rotation::from_quarter_turns(quarter_turns)?,
+            max_edge,
+        )?,
+    })
+}
+
+#[cfg(test)]
+#[path = "survey_photo_media_tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "survey_photo_media_dimensions_tests.rs"]
+mod dimensions_tests;

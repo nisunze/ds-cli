@@ -403,7 +403,7 @@ fn real_v1_drafts_move_to_the_current_authored_network() {
             assert_eq!(journal.header.source.engine, resumed["engine"]);
             // Draw the large model, then keep editing through authored rows.
             let style: Value = serde_json::from_str(include_str!(
-                "../../../../ds-command-kernel/tests/fixtures/profile-display-style.json"
+                "../../../kernel/ds-command-kernel/tests/fixtures/profile-display-style.json"
             ))
             .unwrap();
             let drawn = execute(request(
@@ -516,4 +516,220 @@ fn real_store_copy_drafts_move_to_the_current_authored_network() {
             started.elapsed().as_millis()
         );
     }
+}
+
+fn authored_values(recovery: &ds_sync_store::ProfileRecovery) -> (Value, Vec<Value>) {
+    let Some(ds_sync_store::ProfileDraft::Journal(journal)) = &recovery.draft else {
+        panic!("expected authored recovery")
+    };
+    (
+        serde_json::from_slice(&journal.metadata).unwrap(),
+        journal
+            .entries
+            .iter()
+            .map(|entry| serde_json::from_slice(&entry.bytes).unwrap())
+            .collect(),
+    )
+}
+
+/// Two explicit runs share a private DS_PROFILE_REBIND_ROOT: `retain` with the
+/// previous authored Network, `current` with the selected station-capable one.
+/// `unavailable` is a separate run with an unavailable selected executable.
+/// No old executable is needed for either recovery or refusal; acceptance is
+/// the decoded saved structure coordinates, IDs, source and native history.
+#[test]
+#[ignore = "requires explicit previous/current native Networks and a real .dsgrid"]
+fn real_authored_draft_rebinds_selected_network_and_keeps_saved_positions() {
+    let bytes = fs::read(env_path("DS_PROFILE_LARGE_PACKAGE")).unwrap();
+    let root = env_path("DS_PROFILE_REBIND_ROOT");
+    let scratch = root.join("scratch");
+    let database = root.join("state.sqlite");
+    let sessions = Sessions::default();
+    let execute = |request| sessions.execute(scope(), &scratch, &database, request, &|| Ok(()));
+    let manifest_path = root.join("authored.json");
+    match std::env::var("DS_PROFILE_REBIND_PHASE").as_deref() {
+        Ok("retain") => {
+            fs::create_dir(&scratch).unwrap();
+            let mut cases = Vec::new();
+            for index in 0..3 {
+                let opened = execute(open(&bytes, false)).unwrap();
+                let snapshot: Value =
+                    serde_json::from_str(opened["payload"]["snapshot_json"].as_str().unwrap())
+                        .unwrap();
+                let structures = snapshot["structures"].as_array().unwrap();
+                let edit = execute(request(&opened, "edit_mode", json!({"enabled":true}))).unwrap();
+                let edited =
+                    execute(moved(&edit, &structures[2], &format!("retained-{index}"))).unwrap();
+                let snapshot = execute(request(&edited, "snapshot", json!({}))).unwrap();
+                let snapshot: Value =
+                    serde_json::from_str(snapshot["payload"]["snapshot_json"].as_str().unwrap())
+                        .unwrap();
+                let id = edited["session_id"].as_str().unwrap();
+                let recovered = recovery(&database, id);
+                let Some(ds_sync_store::ProfileDraft::Journal(journal)) = &recovered.draft else {
+                    panic!("the previous engine must support authored recovery")
+                };
+                if index > 0 {
+                    let mut metadata: Value = serde_json::from_slice(&journal.metadata).unwrap();
+                    if index == 1 {
+                        metadata["binding_state_sha256"] = json!("f".repeat(64));
+                    } else {
+                        metadata["entry_count"] = json!("invalid typed count");
+                    }
+                    let metadata = serde_json::to_vec(&metadata).unwrap();
+                    let mut header = journal.header.clone();
+                    header.metadata_sha256 = sha(&metadata);
+                    header.metadata_bytes = metadata.len() as u64;
+                    Store::open(&database)
+                        .unwrap()
+                        .retain_profile_journal_draft(
+                            &recovered.source.scope,
+                            &recovered.source,
+                            &header.history,
+                            Some(&header.chain_sha256),
+                            &header,
+                            &metadata,
+                            header.entry_count,
+                            &[],
+                            now_ms(),
+                        )
+                        .unwrap();
+                }
+                cases.push(json!({"receipt":edited,"snapshot":snapshot}));
+            }
+            fs::write(manifest_path, serde_json::to_vec(&cases).unwrap()).unwrap();
+        }
+        phase @ (Ok("current") | Ok("unavailable")) => {
+            let cases: Vec<Value> =
+                serde_json::from_slice(&fs::read(manifest_path).unwrap()).unwrap();
+            if phase == Ok("unavailable") {
+                let receipt = &cases[0]["receipt"];
+                let id = receipt["session_id"].as_str().unwrap();
+                let before = recovery(&database, id);
+                assert!(execute(request(receipt, "state", json!({}))).is_err());
+                let after = recovery(&database, id);
+                assert_eq!(after.source, before.source);
+                assert_eq!(authored_values(&after), authored_values(&before));
+                return;
+            }
+            for case in &cases[1..] {
+                let receipt = &case["receipt"];
+                let id = receipt["session_id"].as_str().unwrap();
+                let before = recovery(&database, id);
+                assert!(execute(request(receipt, "state", json!({}))).is_err());
+                let after = recovery(&database, id);
+                assert_eq!(after.source, before.source);
+                assert_eq!(authored_values(&after), authored_values(&before));
+            }
+            let saved = &cases[0];
+            let receipt = &saved["receipt"];
+            let id = receipt["session_id"].as_str().unwrap();
+            let before = recovery(&database, id);
+            let station_structure = &saved["snapshot"]["structures"][1];
+            let target_station = station_structure["station_m"].as_f64().unwrap() + 0.5;
+            // This first request must resolve the NEW operation capability on
+            // the selected engine, even if the retained engine never had it.
+            let edited = execute(request(
+                receipt,
+                "control",
+                json!({"operation":{
+                "action":"apply_structure_station_move","request":{
+                    "expected_revision":receipt["history"]["model_revision"],
+                    "structure_id":station_structure["id"],"station_m":target_station}}}),
+            ))
+            .unwrap();
+            let snapshot = execute(request(&edited, "snapshot", json!({}))).unwrap();
+            let snapshot: Value =
+                serde_json::from_str(snapshot["payload"]["snapshot_json"].as_str().unwrap())
+                    .unwrap();
+            assert_eq!(
+                snapshot["structures"][2], saved["snapshot"]["structures"][2],
+                "the previously saved structure coordinates and ID survive the new engine"
+            );
+            assert_eq!(snapshot["structures"][1]["id"], station_structure["id"]);
+            assert_eq!(snapshot["structures"][1]["station_m"], target_station);
+            let after = recovery(&database, id);
+            assert!(controls::upgrade::same_original(
+                &after.source,
+                &before.source
+            ));
+            let commands = authored_values(&before).1;
+            assert_eq!(
+                &authored_values(&after).1[..commands.len()],
+                commands.as_slice()
+            );
+            assert_eq!(after.draft.as_ref().unwrap().history(), &edited["history"]);
+            drop(sessions);
+            let restarted = Sessions::default();
+            let resumed = restarted
+                .execute(
+                    scope(),
+                    &scratch,
+                    &database,
+                    request(&edited, "snapshot", json!({})),
+                    &|| Ok(()),
+                )
+                .unwrap();
+            let restored: Value =
+                serde_json::from_str(resumed["payload"]["snapshot_json"].as_str().unwrap())
+                    .unwrap();
+            assert_eq!(resumed["history"], edited["history"]);
+            assert_eq!(restored["structures"], snapshot["structures"]);
+            eprintln!(
+                "selected Network recovered saved structure positions, accepted station {target_station}, and retained its history after restart"
+            );
+        }
+        other => {
+            panic!("DS_PROFILE_REBIND_PHASE must be retain/current/unavailable, found {other:?}")
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires an explicit native Network without authored recovery and a real .dsgrid"]
+fn real_opaque_draft_keeps_working_with_the_selected_legacy_network() {
+    let bytes = fs::read(env_path("DS_PROFILE_LARGE_PACKAGE")).unwrap();
+    let root = ds_cli_contract::testing::private_tempdir(".ds-profile-opaque-");
+    let scratch = root.path().join("scratch");
+    fs::create_dir(&scratch).unwrap();
+    let database = root.path().join("state.sqlite");
+    let sessions = Sessions::default();
+    let execute = |request| sessions.execute(scope(), &scratch, &database, request, &|| Ok(()));
+    let opened = execute(open(&bytes, false)).unwrap();
+    let snapshot: Value =
+        serde_json::from_str(opened["payload"]["snapshot_json"].as_str().unwrap()).unwrap();
+    let enabled = execute(request(&opened, "edit_mode", json!({"enabled":true}))).unwrap();
+    let edited = execute(moved(
+        &enabled,
+        &snapshot["structures"][2],
+        "legacy-position",
+    ))
+    .unwrap();
+    let saved = execute(request(&edited, "snapshot", json!({}))).unwrap();
+    let saved: Value =
+        serde_json::from_str(saved["payload"]["snapshot_json"].as_str().unwrap()).unwrap();
+    let id = edited["session_id"].as_str().unwrap();
+    assert!(matches!(
+        recovery(&database, id).draft,
+        Some(ds_sync_store::ProfileDraft::Checkpoint { .. })
+    ));
+    drop(sessions);
+    let restarted = Sessions::default();
+    let resumed = restarted
+        .execute(
+            scope(),
+            &scratch,
+            &database,
+            request(&edited, "snapshot", json!({})),
+            &|| Ok(()),
+        )
+        .unwrap();
+    let restored: Value =
+        serde_json::from_str(resumed["payload"]["snapshot_json"].as_str().unwrap()).unwrap();
+    assert_eq!(resumed["history"], edited["history"]);
+    assert_eq!(restored["structures"], saved["structures"]);
+    assert!(matches!(
+        recovery(&database, id).draft,
+        Some(ds_sync_store::ProfileDraft::Checkpoint { .. })
+    ));
 }

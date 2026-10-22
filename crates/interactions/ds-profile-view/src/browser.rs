@@ -194,7 +194,13 @@ fn transact(runtime: &Rc<RefCell<Runtime>>, f: impl FnOnce(&mut Runtime)) {
     flush(runtime);
 }
 fn handle_style(p: Option<Screen>) -> String {
-    match p {Some(p)=>format!("position:absolute;left:{}px;top:{}px;transform:translate(-50%,-50%);z-index:20;touch-action:none;color:#a5f3fc;background:#020617;border:1px solid #67e8f9;border-radius:4px;width:28px;height:28px;cursor:move",p.x,p.y),None=>"display:none".into()}
+    match p {
+        Some(p) => format!(
+            "position:absolute;left:{}px;top:{}px;transform:translate(-50%,-50%);z-index:20;touch-action:none;color:#a5f3fc;background:#020617;border:1px solid #67e8f9;border-radius:4px;width:28px;height:28px;cursor:move",
+            p.x, p.y
+        ),
+        None => "display:none".into(),
+    }
 }
 
 pub fn mount(
@@ -1093,7 +1099,7 @@ impl Runtime {
         if self.lasso_points.len() >= 255 {
             let mut index = 0usize;
             self.lasso_points.retain(|_| {
-                let keep = index % 2 == 0;
+                let keep = index.is_multiple_of(2);
                 index += 1;
                 keep
             });
@@ -1589,7 +1595,7 @@ impl Runtime {
             {
                 (
                     state.selected_entity_ids.clone(),
-                    state.selected_entity_id.clone(),
+                    id.clone().or_else(|| state.selected_entity_id.clone()),
                 )
             } else {
                 (id.iter().cloned().collect(), id)
@@ -1761,6 +1767,7 @@ impl Mounted {
                 r.source_scene = Arc::new(scene);
             }
             if new_source || old.geometry_preview != state.geometry_preview {
+                r.close_menus();
                 r.cancel();
                 let next =
                     crate::preview::project(&r.source_scene, state.geometry_preview.as_ref())

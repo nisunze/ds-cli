@@ -52,10 +52,10 @@ fn actual_network_process_retains_historical_cli_bytes_and_ordered_failures() {
     let source = directory.path().join("request.json");
     let output = directory.path().join("result.json");
     let request = include_bytes!(
-        "../../../../../ds-network/crates/ds-network/tests/fixtures/native-engine-boundary/v1/mixed.request.json"
+        "../../../../../../ds-network/crates/ds-network/tests/fixtures/native-engine-boundary/v1/mixed.request.json"
     );
     let golden = include_bytes!(
-        "../../../../../ds-network/crates/ds-network/tests/fixtures/native-engine-boundary/v1/mixed.insertion.result.json"
+        "../../../../../../ds-network/crates/ds-network/tests/fixtures/native-engine-boundary/v1/mixed.insertion.result.json"
     );
     std::fs::write(&source, request).unwrap();
     let receipt = execute(&source, &output).unwrap();
@@ -110,7 +110,7 @@ fn approved_rows_a_job_would_change_are_kept_and_the_analysis_still_returns() {
     let input_path = dir.path().join("request.json");
     let output_path = dir.path().join("result.json");
     let mut source: Value = serde_json::from_slice(include_bytes!(
-        "../../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/native-lv-save-request.json"
+        "../../../../kernel/ds-client-core/tests/fixtures/native-lv-save-request.json"
     )).unwrap();
     source["jobs"][0]["gdfs"]["lv_poles"]["features"] = json!([{
         "type":"Feature", "id":"approved-missing-pole", "geometry":null,
@@ -171,7 +171,7 @@ fn a_supplied_network_kept_as_drawn_comes_back_row_for_row() {
     let input_path = dir.path().join("request.json");
     let output_path = dir.path().join("result.json");
     let mut source: Value = serde_json::from_slice(include_bytes!(
-        "../../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/native-lv-save-request.json"
+        "../../../../kernel/ds-client-core/tests/fixtures/native-lv-save-request.json"
     )).unwrap();
     source["jobs"][0]["settings"]["keep_network_as_drawn"] = json!(true);
     std::fs::write(&input_path, serde_json::to_vec(&source).unwrap()).unwrap();

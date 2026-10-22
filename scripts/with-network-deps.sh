@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run one command with every native path dependency at Cargo's sibling paths.
+# Run one command with the independently pinned Network sibling.
 #
 # Cargo resolves path dependencies beside this checkout. Admit each sibling
 # against the committed native pins, including isolated release worktrees.
@@ -21,36 +21,13 @@ if [[ ! "$expected_network_sha" =~ ^[0-9a-f]{40}$ ]]; then
     echo "with-network-deps: pins/ds-network.rev is not one exact Git SHA" >&2
     exit 66
 fi
-expected_native_core_sha=$(cat "$repo_root/pins/ds-client-core.rev")
-expected_native_core_sha=${expected_native_core_sha%$'\r'}
-if [[ ! "$expected_native_core_sha" =~ ^[0-9a-f]{40}$ ]]; then
-    echo "with-network-deps: pins/ds-client-core.rev is not one exact Git SHA" >&2
-    exit 66
-fi
-expected_command_kernel_sha=$(cat "$repo_root/pins/ds-command-kernel.rev")
-expected_command_kernel_sha=${expected_command_kernel_sha%$'\r'}
-if [[ ! "$expected_command_kernel_sha" =~ ^[0-9a-f]{40}$ ]]; then
-    echo "with-network-deps: pins/ds-command-kernel.rev is not one exact Git SHA" >&2
-    exit 66
-fi
 common_git_dir=$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)
 main_checkout=$(dirname "$common_git_dir")
 network_checkout=$(dirname "$main_checkout")/ds-network
-native_core_checkout=$(dirname "$main_checkout")/ds-command-kernel
-command_kernel_checkout=$(dirname "$main_checkout")/ds-command-kernel
 required_network_link=$(dirname "$repo_root")/ds-network
-required_native_core_link=$(dirname "$repo_root")/ds-command-kernel
-required_command_kernel_link=$(dirname "$repo_root")/ds-command-kernel
 if [[ -e "$required_network_link" || -L "$required_network_link" ]]; then
     network_checkout=$(realpath "$required_network_link")
 fi
-if [[ -e "$required_native_core_link" || -L "$required_native_core_link" ]]; then
-    native_core_checkout=$(realpath "$required_native_core_link")
-fi
-if [[ -e "$required_command_kernel_link" || -L "$required_command_kernel_link" ]]; then
-    command_kernel_checkout=$(realpath "$required_command_kernel_link")
-fi
-
 for crate in ds-grid-model ds-grid-engine ds-grid-exchange ds-grid-tasks ds-io; do
     if [[ ! -f "$network_checkout/crates/$crate/Cargo.toml" ]]; then
         echo "with-network-deps: expected $network_checkout/crates/$crate/Cargo.toml" >&2
@@ -69,67 +46,13 @@ if [[ -n "$(git -C "$network_checkout" status --porcelain --untracked-files=norm
     echo "with-network-deps: ds-network Cargo inputs differ from its pinned commit" >&2
     exit 66
 fi
-if [[ ! -f "$native_core_checkout/crates/ds-client-core/Cargo.toml" ]]; then
-    echo "with-network-deps: expected $native_core_checkout/crates/ds-client-core/Cargo.toml" >&2
-    exit 66
-fi
-if [[ "$(git -C "$native_core_checkout" remote get-url origin)" != *nisunze/ds-command-kernel.git ]]; then
-    echo "with-network-deps: $native_core_checkout is not the nisunze/ds-command-kernel checkout" >&2
-    exit 66
-fi
-# The pin names the ds-command-kernel commit whose native client and report host are linked. The
-# sibling checkout may sit at a later commit as long as that crate's tree is
-# byte-identical — the same rule the desktop sidecar applies — so a docs or
-# scripts push to ds-command-kernel does not silence this gate.
-if ! git -C "$native_core_checkout" cat-file -e "$expected_native_core_sha^{commit}" 2>/dev/null; then
-    echo "with-network-deps: the pinned ds-client-core revision $expected_native_core_sha is unavailable in $native_core_checkout" >&2
-    exit 66
-fi
-for native_crate in ds-client-core ds-report-host ds-sync-runtime ds-layer-store ds-project-data ds-edge-authority; do
-    pinned_core_tree=$(git -C "$native_core_checkout" rev-parse "$expected_native_core_sha:crates/$native_crate" 2>/dev/null || true)
-    actual_core_tree=$(git -C "$native_core_checkout" rev-parse "HEAD:crates/$native_crate" 2>/dev/null || true)
-    if [[ -z "$pinned_core_tree" || "$pinned_core_tree" != "$actual_core_tree" ]]; then
-        echo "with-network-deps: ds-command-kernel's $native_crate differs from the pinned revision $expected_native_core_sha" >&2
-        exit 66
-    fi
-    if [[ -n "$(git -C "$native_core_checkout" status --porcelain -- "crates/$native_crate")" ]]; then
-        echo "with-network-deps: ds-command-kernel's $native_crate has uncommitted inputs" >&2
-        exit 66
-    fi
-done
-if [[ ! -f "$command_kernel_checkout/Cargo.toml" ]]; then
-    echo "with-network-deps: expected $command_kernel_checkout/Cargo.toml" >&2
-    exit 66
-fi
-if [[ "$(git -C "$command_kernel_checkout" remote get-url origin)" != *nisunze/ds-command-kernel.git ]]; then
-    echo "with-network-deps: $command_kernel_checkout is not the nisunze/ds-command-kernel checkout" >&2
-    exit 66
-fi
-if [[ "$(git -C "$command_kernel_checkout" rev-parse HEAD)" != "$expected_command_kernel_sha" ]]; then
-    echo "with-network-deps: ds-command-kernel must be pinned to $expected_command_kernel_sha" >&2
-    exit 66
-fi
-if [[ -n "$(git -C "$command_kernel_checkout" status --porcelain --untracked-files=normal -- Cargo.toml Cargo.lock src crates)" ]]; then
-    echo "with-network-deps: ds-command-kernel native inputs differ from its pinned commit" >&2
-    exit 66
-fi
-
 created_network_link=0
-created_native_core_link=0
-created_command_kernel_link=0
 cleanup() {
     if ((created_network_link)) && [[ -L "$required_network_link" ]] \
         && [[ "$(realpath "$required_network_link")" == "$(realpath "$network_checkout")" ]]; then
         unlink "$required_network_link"
     fi
-    if ((created_native_core_link)) && [[ -L "$required_native_core_link" ]] \
-        && [[ "$(realpath "$required_native_core_link")" == "$(realpath "$native_core_checkout")" ]]; then
-        unlink "$required_native_core_link"
-    fi
-    if ((created_command_kernel_link)) && [[ -L "$required_command_kernel_link" ]] \
-        && [[ "$(realpath "$required_command_kernel_link")" == "$(realpath "$command_kernel_checkout")" ]]; then
-        unlink "$required_command_kernel_link"
-    fi
+
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -146,7 +69,5 @@ ensure_link() {
     fi
 }
 ensure_link "$required_network_link" "$network_checkout" ds-network created_network_link
-ensure_link "$required_native_core_link" "$native_core_checkout" ds-command-kernel created_native_core_link
-ensure_link "$required_command_kernel_link" "$command_kernel_checkout" ds-command-kernel created_command_kernel_link
 
 "$@"

@@ -141,7 +141,7 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     /// The exact descriptor bytes this crate was generated from.
-    const DESCRIPTOR_SOURCE: &str = include_str!("../../../routing/operations.json");
+    const DESCRIPTOR_SOURCE: &str = include_str!("../../ds-command-kernel/routing/operations.json");
 
     fn op(id: &str) -> &'static GatewayOperation {
         operation(id).unwrap_or_else(|| panic!("registry has no operation {id}"))

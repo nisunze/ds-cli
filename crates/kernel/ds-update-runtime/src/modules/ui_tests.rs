@@ -3,6 +3,156 @@ use super::*;
 use serde_json::json;
 use std::cell::Cell;
 
+fn local_inputs(
+    component: UiComponent,
+    directory: &Path,
+) -> (PathBuf, String, String, Vec<(&'static str, Vec<u8>)>) {
+    let (_, files) = fixture(component, 1);
+    let identity: Value = serde_json::from_str(match component {
+        UiComponent::Interactions => include_str!("../../../ds-command-kernel/src/module_release/fixtures/interactions-ui-engine-build.json"),
+        UiComponent::CommandKernel => include_str!("../../../ds-command-kernel/src/module_release/fixtures/command-kernel-ui-engine-build.json"),
+    }).unwrap();
+    let identity_path = directory.join("identity.json");
+    fs::write(&identity_path, serde_json::to_vec(&identity).unwrap()).unwrap();
+    for (name, bytes) in &files {
+        fs::write(directory.join(name), bytes).unwrap();
+    }
+    let wasm = files
+        .iter()
+        .find(|(name, _)| name.ends_with("_bg.wasm"))
+        .unwrap();
+    (
+        identity_path,
+        identity["source_sha"].as_str().unwrap().into(),
+        format!("{:x}", Sha256::digest(&wasm.1)),
+        files,
+    )
+}
+
+#[test]
+fn local_stage_uses_same_owned_bytes_and_keeps_release_selection_independent() {
+    for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
+        let base = private_base();
+        let input = private_base();
+        let (identity, source, wasm_sha, files) = local_inputs(component, input.path());
+        let local =
+            UiModuleStore::new_scoped(base.path(), component, "canary", UiScope::LocalDev).unwrap();
+        let release = UiModuleStore::new(base.path(), component, "canary").unwrap();
+        let ready = local
+            .stage_local(input.path(), &identity, &source, &wasm_sha, &|| false)
+            .unwrap();
+        assert!(local.selection().unwrap().is_none());
+        assert!(release.selection().unwrap().is_none());
+        assert!(
+            release
+                .stage_local(input.path(), &identity, &source, &wasm_sha, &|| false)
+                .is_err()
+        );
+        assert!(
+            local
+                .activate(&ready.receipt_id, 1, ActivationGuard::default(), &|| false)
+                .is_err()
+        );
+        local
+            .activate(&ready.receipt_id, 0, ActivationGuard::default(), &|| false)
+            .unwrap();
+        let captured = local.capture(&|| false).unwrap();
+        assert_eq!(captured.receipt.unit.scope(), UiScope::LocalDev);
+        assert!(release.selection().unwrap().is_none());
+        fs::write(
+            input.path().join(files[0].0),
+            b"source changed after staging",
+        )
+        .unwrap();
+        for (name, bytes) in &files {
+            let (held, _) = local
+                .member(
+                    captured.receipt.unit.unit_sha256(),
+                    name,
+                    0,
+                    MAX_MEMBER_CHUNK,
+                    &|| false,
+                )
+                .unwrap();
+            assert_eq!(&held, bytes, "capture retains the already staged bytes");
+        }
+        let selected = local.selection().unwrap().unwrap();
+        // A release store cannot consume a local ready receipt or selection.
+        assert!(release.admit_receipt(&captured.receipt).is_err());
+        assert!(
+            policy::activate(
+                Some(&selected),
+                policy::prepare(
+                    policy::inspect(component.as_str(), "canary", &fixture(component, 2).0)
+                        .unwrap(),
+                    UiAuthority::Published(PublishedUiAuthority {
+                        gateway_origin: "https://gateway.example".into(),
+                        route_manifest_sha256: "e".repeat(64)
+                    }),
+                    &fixture(component, 2)
+                        .1
+                        .iter()
+                        .map(|(name, bytes)| VerifiedFile {
+                            filename: (*name).into(),
+                            sha256: format!("{:x}", Sha256::digest(bytes)),
+                            size_bytes: bytes.len() as i64
+                        })
+                        .collect::<Vec<_>>(),
+                    true,
+                )
+                .unwrap(),
+                selected.generation,
+                true,
+                ActivationGuard::default()
+            )
+            .is_err()
+        );
+        fs::write(
+            local
+                .unit_directory(captured.receipt.unit.unit_sha256())
+                .unwrap()
+                .join(files[0].0),
+            b"corrupt retained",
+        )
+        .unwrap();
+        assert!(local.capture(&|| false).is_err());
+    }
+}
+
+#[test]
+fn local_stage_rejects_wrong_scope_source_digest_and_linked_inputs_before_selection() {
+    let base = private_base();
+    let input = private_base();
+    let component = UiComponent::CommandKernel;
+    let (identity, source, wasm_sha, files) = local_inputs(component, input.path());
+    assert!(
+        UiModuleStore::new_scoped(base.path(), component, "stable", UiScope::LocalDev).is_err()
+    );
+    let store =
+        UiModuleStore::new_scoped(base.path(), component, "canary", UiScope::LocalDev).unwrap();
+    assert!(
+        store
+            .stage_local(input.path(), &identity, &"f".repeat(40), &wasm_sha, &|| {
+                false
+            })
+            .is_err()
+    );
+    assert!(
+        store
+            .stage_local(input.path(), &identity, &source, &"f".repeat(64), &|| false)
+            .is_err()
+    );
+    let file = input.path().join(files[0].0);
+    fs::remove_file(&file).unwrap();
+    std::os::unix::fs::symlink(&identity, &file).unwrap();
+    assert!(
+        store
+            .stage_local(input.path(), &identity, &source, &wasm_sha, &|| false)
+            .is_err()
+    );
+    assert!(store.selection().unwrap().is_none());
+}
+
 fn private_base() -> tempfile::TempDir {
     let directory = tempfile::tempdir().unwrap();
     #[cfg(unix)]
@@ -23,10 +173,10 @@ fn authority() -> CapturedReleaseAuthority {
 fn fixture(component: UiComponent, revision: usize) -> (Value, Vec<(&'static str, Vec<u8>)>) {
     let mut release: Value = serde_json::from_str(match component {
         UiComponent::Interactions => {
-            include_str!("../../../../src/module_release/fixtures/interactions-ui-wasm-canary.json")
+            include_str!("../../../ds-command-kernel/src/module_release/fixtures/interactions-ui-wasm-canary.json")
         }
         UiComponent::CommandKernel => include_str!(
-            "../../../../src/module_release/fixtures/command-kernel-ui-wasm-canary.json"
+            "../../../ds-command-kernel/src/module_release/fixtures/command-kernel-ui-wasm-canary.json"
         ),
     })
     .unwrap();
@@ -54,7 +204,7 @@ fn grant(
     calls: &Cell<usize>,
 ) -> Result<TrustedUiGrant, String> {
     let unit = policy::inspect(component.as_str(), "canary", &release).unwrap();
-    authority().acquire_ui_with(component, Some(&unit.unit_sha256), &|| false, |url| {
+    authority().acquire_ui_with(component, Some(unit.unit_sha256()), &|| false, |url| {
         calls.set(calls.get() + 1);
         assert!(url.ends_with(&format!(
             "?component={}&channel=canary&runtime=wasm",
@@ -98,7 +248,7 @@ fn both_ui_units_stage_four_opaque_members_and_capture_survives_update_removal_r
         assert_eq!(selected.generation, 1);
         let captured = store.capture(&|| false).unwrap();
         let name = component.files()[0].0;
-        let digest = captured.receipt.unit.unit_sha256.clone();
+        let digest = captured.receipt.unit.unit_sha256().to_owned();
         let expected = fixture(component, 1).1[0].1.clone();
         let mut body = store.member(&digest, name, 0, 4, &|| false).unwrap().0;
         body.extend(
@@ -184,7 +334,7 @@ fn authority_admits_complete_source_compiler_config_and_members_before_any_trans
         assert!(authority()
             .acquire_ui_with(
                 UiComponent::Interactions,
-                Some(&unit.unit_sha256),
+                Some(unit.unit_sha256()),
                 &|| false,
                 |_| {
                     reads.set(reads.get() + 1);
@@ -198,7 +348,7 @@ fn authority_admits_complete_source_compiler_config_and_members_before_any_trans
     assert!(authority()
         .acquire_ui_with(
             UiComponent::Interactions,
-            Some(&unit.unit_sha256),
+            Some(unit.unit_sha256()),
             &|| false,
             |_| Ok(serde_json::to_vec(&json!({"success":true,"release":incomplete})).unwrap())
         )
@@ -206,7 +356,7 @@ fn authority_admits_complete_source_compiler_config_and_members_before_any_trans
     assert!(authority()
         .acquire_ui_with(
             UiComponent::Interactions,
-            Some(&unit.unit_sha256),
+            Some(unit.unit_sha256()),
             &|| true,
             |_| panic!("cancelled acquisition must not read")
         )
@@ -216,7 +366,7 @@ fn authority_admits_complete_source_compiler_config_and_members_before_any_trans
     assert!(authority()
         .acquire_ui_with(
             UiComponent::Interactions,
-            Some(&unit.unit_sha256),
+            Some(unit.unit_sha256()),
             &|| false,
             |_| Ok(serde_json::to_vec(&json!({"success":true,"release":withdrawn})).unwrap())
         )
@@ -242,7 +392,7 @@ fn a_new_core_profile_reuses_verified_unit_bytes_and_keeps_each_acquisition_auth
     let grant = next_authority
         .acquire_ui_with(
             UiComponent::Interactions,
-            Some(&unit.unit_sha256),
+            Some(unit.unit_sha256()),
             &|| false,
             |_| Ok(serde_json::to_vec(&json!({"success":true,"release":release})).unwrap()),
         )
@@ -255,7 +405,7 @@ fn a_new_core_profile_reuses_verified_unit_bytes_and_keeps_each_acquisition_auth
     let historical: InstalledUiModule = serde_json::from_slice(
         &fs::read(
             store
-                .unit_directory(&unit.unit_sha256)
+                .unit_directory(unit.unit_sha256())
                 .unwrap()
                 .join("installation.json"),
         )
@@ -278,7 +428,7 @@ fn a_new_core_profile_reuses_verified_unit_bytes_and_keeps_each_acquisition_auth
     );
     assert!(store
         .member(
-            &unit.unit_sha256,
+            unit.unit_sha256(),
             "ds_interactions_wasm.js",
             0,
             100,
@@ -325,7 +475,7 @@ fn cancellation_corruption_stale_generation_and_lifecycle_guard_preserve_selecti
     let held = store.capture(&|| false).unwrap();
     fs::write(
         store
-            .unit_directory(&held.receipt.unit.unit_sha256)
+            .unit_directory(held.receipt.unit.unit_sha256())
             .unwrap()
             .join("ds_interactions_wasm_bg.wasm"),
         b"damaged",
@@ -421,13 +571,13 @@ fn an_installed_unit_follows_the_active_release_and_rollback_is_just_another_rel
         assert_eq!(downloads.get(), 4);
         let captured = store.capture(&|| false).unwrap();
         assert_eq!(
-            Some(&captured.receipt.unit.unit_sha256),
-            updated.unit_sha256.as_ref()
+            Some(captured.receipt.unit.unit_sha256()),
+            updated.unit_sha256.as_deref()
         );
         // A loaded Desktop keeps reading the unit it captured.
         let name = component.files()[0].0;
         assert!(store
-            .member(&loaded.receipt.unit.unit_sha256, name, 0, 8, &|| false)
+            .member(loaded.receipt.unit.unit_sha256(), name, 0, 8, &|| false)
             .is_ok());
         let current = converge_to(&store, 2, &downloads).unwrap();
         assert_eq!(current.outcome, UiConvergenceOutcome::Current);
@@ -531,7 +681,7 @@ fn active_acquisition_admits_the_whole_release_and_refuses_a_withdrawn_one() {
     let (release, _) = fixture(UiComponent::Interactions, 3);
     let unit = policy::inspect("interactions", "canary", &release).unwrap();
     let grant = active_grant(UiComponent::Interactions, release.clone()).unwrap();
-    assert_eq!(grant.unit.unit_sha256, unit.unit_sha256);
+    assert_eq!(grant.unit.unit_sha256(), unit.unit_sha256());
     let mut withdrawn = release.clone();
     withdrawn["status"] = json!("blocked");
     assert!(active_grant(UiComponent::Interactions, withdrawn)

@@ -15,6 +15,12 @@ pub use ds_solar_contracts::is_solar_id;
 /// The time crate the kernel's instants are spelled in, for hosts that pass them.
 pub use time;
 pub mod application_navigation;
+pub mod design_features;
+pub mod design_lv;
+#[cfg(feature = "wasm")]
+pub mod design_session;
+#[cfg(feature = "wasm")]
+pub use design_session::{find_feature_in_tabs_v2, SelectionCoordinator, SessionHandle};
 pub mod asset_preview;
 pub mod assets;
 pub mod grid_held_models;
@@ -24,8 +30,6 @@ pub mod profile_display;
 pub mod profile_encoding;
 pub mod profile_inputs;
 pub mod profile_layout;
-#[cfg(all(feature = "profile-view", target_arch = "wasm32"))]
-mod profile_view;
 pub mod profile_style;
 pub mod project_snapshot;
 pub use ds_kml as kml;
@@ -204,7 +208,7 @@ pub mod transformer_status_store;
 pub fn transformer_status_store_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     transformer_status_store::evaluate(input).map_err(|e| wasm_bindgen::JsValue::from_str(&e))
 }
-/// The Kernel durable stores on SQLite: one call vocabulary and one
+/// The Kernel durable stores on SQLite: one request vocabulary and one
 /// transaction for Core and the browser storage worker.
 #[cfg(feature = "durable-store")]
 pub mod durable_store;
@@ -345,6 +349,10 @@ pub fn project_design_extent_wasm(input: &[u8]) -> Result<String, wasm_bindgen::
     project_design_extent::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 pub mod reference_cache;
+pub mod grid_crs;
+pub mod selection_field;
+pub mod table_query;
+pub mod domain_value;
 /// The one rule every input door applies to a geometry (owner ruling,
 /// 2026-09-27): what BigQuery's `ST_GEOGFROMGEOJSON` refuses is refused, and
 /// so is a polygon covering half the globe or more. Host crates reach it here.
@@ -1487,6 +1495,26 @@ pub mod survey_photo_outbox;
 /// separate from the JSON state machines so photo payloads never become base64
 /// command fields.
 pub mod survey_photo_media;
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoThumbnail)]
+pub fn survey_photo_thumbnail_wasm(
+    input: &[u8],
+    quarter_turns: u8,
+) -> Result<survey_photo_media::SurveyPhotoImageWasm, wasm_bindgen::JsValue> {
+    survey_photo_media::thumbnail_wasm(input, quarter_turns)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyPhotoRender)]
+pub fn survey_photo_render_wasm(
+    input: &[u8],
+    quarter_turns: u8,
+    max_edge: u32,
+) -> Result<survey_photo_media::SurveyPhotoImageWasm, wasm_bindgen::JsValue> {
+    survey_photo_media::render_wasm(input, quarter_turns, max_edge)
+        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+}
 
 pub mod survey_photo_transport;
 #[cfg(feature = "wasm")]
@@ -1515,6 +1543,8 @@ pub fn survey_photo_thumbnail_path_wasm(path: &str) -> Result<String, wasm_bindg
 /// ds-web's and the field app's three path layouts — and the body a host
 /// sends to address it. No host re-derives the grammar.
 pub mod survey_media_address;
+/// Generation-bound photo rotation metadata; original media bytes stay immutable.
+pub mod survey_media_rotation;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = surveyMediaAddress)]
 pub fn survey_media_address_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
@@ -1646,3 +1676,9 @@ pub fn tiling_placement_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVal
 /// How every capability runs on every platform, and on this build's: the one
 /// capability manifest, `routing/capabilities.json`, compiled in by build.rs.
 pub mod capabilities;
+
+pub mod design_cell_vocabulary;
+
+pub mod geojson_comparison;
+
+pub mod table_edit;

@@ -635,5 +635,5 @@ CRS and units, preserve unaffected facts and geometry, inspect the proposal,
 then use the explicit approved native apply/publication contract. DS exposes no
 custom general analysis DAG, recipe store or arbitrary shell launcher.
 
-The [external analysis boundary](../../../ds-command-kernel/docs/contracts/ds-workflows.md)
+The [external analysis boundary](../../crates/kernel/ds-command-kernel/docs/contracts/ds-workflows.md)
 records executor provenance and the validation/import responsibilities.

@@ -14,7 +14,7 @@ use std::{
 };
 
 fn fixture_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../ds-solar/fixtures")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/fixtures")
 }
 fn intake() -> Value {
     let snapshot: Value = serde_json::from_slice(

@@ -34,6 +34,7 @@ pub static ACTIVATE: Command = Command {
         COMPONENT,
         CHANNEL,
         RUNTIME,
+        crate::ui_components::SCOPE,
         Arg::value(
             "receipt-id",
             "<id>",
@@ -60,7 +61,7 @@ pub static ROLLBACK: Command = Command {
     effect: Effect::MachineWrite,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[COMPONENT, CHANNEL, RUNTIME, GENERATION],
+    args: &[COMPONENT, CHANNEL, RUNTIME, crate::ui_components::SCOPE, GENERATION],
     output: "UI runtime wasm returns committed ds.ui-module-selection/v1. Native returns committed ds.module-selection/v1 receipt naming the verified previous unit as active and the incremented generation.",
     examples: &[],
     refusals: REFUSALS,

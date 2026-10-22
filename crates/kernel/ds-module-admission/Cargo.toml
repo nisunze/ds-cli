@@ -8,8 +8,6 @@ publish = false
 
 # Detached on purpose: release packaging compiles only this crate and its two
 # registry dependencies, never the Kernel workspace or a sibling repository.
-[workspace]
-
 [[bin]]
 name = "ds-module-admission"
 path = "src/main.rs"

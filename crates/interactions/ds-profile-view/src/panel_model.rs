@@ -119,6 +119,7 @@ pub struct Retype {
     pub model_id: String,
     pub expected_revision: String,
     pub structure_ids: Vec<String>,
+    pub current: bool,
     pub loading: bool,
     pub busy: bool,
     pub error: String,
@@ -142,6 +143,7 @@ pub struct Sag {
 pub struct Selection {
     pub model_id: String,
     pub expected_revision: String,
+    pub current: bool,
     pub loading: bool,
     pub busy: bool,
     pub error: String,
@@ -408,6 +410,7 @@ pub struct GenericCapabilities {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Definition {
+    pub entity_id: String,
     pub structure_type_id: Option<String>,
     pub label: String,
     pub table: String,

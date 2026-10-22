@@ -259,7 +259,7 @@ fn actual_native_prepared_task_matches_cli_and_mcp_with_zero_provider_calls() {
         return;
     };
     let root = tempfile::tempdir().unwrap();
-    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../ds-solar/fixtures");
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/fixtures");
     let prepared = root.path().join("prepared");
     let preparation = Command::new(preparation_tool)
         .args(["prepare", "--fixtures"])

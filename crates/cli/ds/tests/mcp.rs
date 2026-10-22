@@ -19,7 +19,7 @@ static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 #[test]
 fn report_inventory_uses_identical_cli_chapter_and_typed_profile_projection() {
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
-        "../../../ds-command-kernel/tests/fixtures/report-inventory/held-six-old-legacy-three.json",
+        "../../kernel/ds-command-kernel/tests/fixtures/report-inventory/held-six-old-legacy-three.json",
     );
     let request = fixture.to_str().unwrap();
     let expected = cli_envelope(&[
@@ -442,7 +442,7 @@ fn no_published_mcp_text_names_a_terminal_sign_in() {
 /// a fixture bundle; this reads the real documents that ship.
 #[test]
 fn no_shipped_skill_names_a_terminal_sign_in() {
-    let skills = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../skills");
+    let skills = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../skills");
     let mut seen = 0;
     for entry in fs::read_dir(&skills).expect("skills directory").flatten() {
         let document = entry.path().join("SKILL.md");
@@ -3539,7 +3539,11 @@ fn profile_calculation_tickets_are_a_typed_cli_projection_with_closed_mcp_argume
     // A missing descriptor keeps the fence deterministic on a machine that
     // also runs paired desktops.
     let temp = TestDir::new("calculation");
-    let missing = temp.0.join("no-desktop.json").to_string_lossy().into_owned();
+    let missing = temp
+        .0
+        .join("no-desktop.json")
+        .to_string_lossy()
+        .into_owned();
     let (messages, _) = mcp(
         &["--exposure", "commands", "--profile", "grid-profile"],
         &[

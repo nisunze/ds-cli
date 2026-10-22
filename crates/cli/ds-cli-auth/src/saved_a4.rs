@@ -253,7 +253,7 @@ mod tests {
         };
         let response = json!({"scope":"project","project_id":"project","kind":"a4","id":"voltage-drop-a4-v1","revision_id":content,"content_sha256":content,"html_sha256":html_sha,"html_available":true,"html":html,"document":document});
         let defaults: Value = serde_json::from_str(include_str!(
-            "../../../../ds-command-kernel/tests/fixtures/governed-renderer-defaults.json"
+            "../../../kernel/ds-command-kernel/tests/fixtures/governed-renderer-defaults.json"
         ))
         .unwrap();
         let style = json!({"version":1,"type":"line","paint":{},"layout":{},"metadata":{"print_renderer_defaults":defaults}});

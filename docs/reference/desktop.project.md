@@ -55,4 +55,4 @@ Stable/Canary crossings refuse. Older discovery builds may report
 `desktop_target_mismatch` with reason `lane`, or `desktop_ambiguous`, for this
 otherwise admitted explicit Local pairing. A CLI update with its committed
 Kernel dependency repairs discovery; no Desktop protocol or data migration is
-required. See the [owning selection contract](../../../ds-command-kernel/docs/contracts/ds-desktop-instance.md#explicit-local-development-pairing).
+required. See the [owning selection contract](../../crates/kernel/ds-command-kernel/docs/contracts/ds-desktop-instance.md#explicit-local-development-pairing).

@@ -429,7 +429,10 @@ fn download_needed(run: &Run, now: u64) -> Result<bool, String> {
         .map(|h| sync::LocalArtifact {
             identity: h.identity.clone(),
             sha256: h.sha256.clone(),
-            size_bytes: h.outputs.iter().fold(0u64, |sum, o| sum.saturating_add(o.size_bytes)),
+            size_bytes: h
+                .outputs
+                .iter()
+                .fold(0u64, |sum, o| sum.saturating_add(o.size_bytes)),
             produced_at_ms: h.published_at_ms,
             base_revision: Some(h.revision.clone()),
             input_base_fingerprint: h.input_base_fingerprint.clone(),

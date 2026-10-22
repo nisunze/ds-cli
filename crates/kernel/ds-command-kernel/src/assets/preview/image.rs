@@ -20,8 +20,19 @@ pub fn image(bytes: &[u8], request: &PreviewRequest) -> Result<PreviewDoc, Strin
             "the {format} header carries no readable image size ({error}); the metadata card is the honest alternative"
         )
     })?;
-    let width = edge(size.width, format, "width")?;
-    let height = edge(size.height, format, "height")?;
+    // The size a viewer sees: a JPEG/PNG EXIF orientation that turns the
+    // picture swaps its edges (header only; still no pixel decode).
+    let (shown_width, shown_height) = match format {
+        Format::Jpg | Format::Png => crate::survey_photo_media::display_dimensions(
+            bytes,
+            crate::survey_photo_media::Rotation::Deg0,
+        )
+        .map(|(w, h)| (w as usize, h as usize))
+        .unwrap_or((size.width, size.height)),
+        _ => (size.width, size.height),
+    };
+    let width = edge(shown_width, format, "width")?;
+    let height = edge(shown_height, format, "height")?;
 
     let mut doc = PreviewDoc::new(format);
     doc.blocks.push(Block::Image {
@@ -249,3 +260,7 @@ mod tests {
         assert!(error.contains("tif"), "{error}");
     }
 }
+
+#[cfg(test)]
+#[path = "image_exif_tests.rs"]
+mod exif_tests;

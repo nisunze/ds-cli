@@ -14,6 +14,7 @@ path = "src/lib.rs"
 
 [features]
 default = []
+bindings = ["dep:tsify", "dep:wasm-bindgen"]
 vector_types = ["dep:serde"]
 projection = ["dep:serde"]
 codec = ["geojson", "dep:geozero"]
@@ -30,6 +31,8 @@ tin = ["dep:spade"]
 profile = ["index"]
 
 [dependencies]
+wasm-bindgen = { version = "0.2", optional = true }
+tsify = { version = "0.5.8", default-features = false, features = ["js"], optional = true }
 # Exact polygon predicates only (BooleanOps, BoundingRect, Centroid, Intersects).
 # Pinned to the version ds-network resolves, so the snapshot compiles against
 # the same geo the source was written for.

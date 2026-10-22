@@ -910,10 +910,9 @@ fn rust_files(dir: &Path) -> Vec<PathBuf> {
 
 fn crates_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("..")
         .canonicalize()
-        .expect("workspace root")
-        .join("crates")
+        .expect("CLI crates directory")
 }
 
 #[test]
@@ -1042,7 +1041,12 @@ fn every_constructible_refusal_code_is_documented() {
     let mut unreadable: Vec<String> = Vec::new();
     let mut scanned = 0usize;
     for &(crate_name, domains) in domain_crates {
-        let dir = root.join(crate_name).join("src");
+        let crate_dir = if crate_name == "ds-cli-exec" {
+            root.join("../kernel").join(crate_name)
+        } else {
+            root.join(crate_name)
+        };
+        let dir = crate_dir.join("src");
         assert!(dir.is_dir(), "crate source missing: {}", dir.display());
 
         let declared: BTreeSet<String> = if domains.is_empty() {
@@ -1075,12 +1079,13 @@ fn every_constructible_refusal_code_is_documented() {
         scanned += constructed.len();
 
         for (file, site) in unresolved {
-            let relative = file
-                .strip_prefix(&root)
-                .unwrap_or(&file)
-                .display()
-                .to_string()
-                .replace('\\', "/");
+            let relative = format!(
+                "{crate_name}/{}",
+                file.strip_prefix(&crate_dir)
+                    .expect("refusal source is inside its crate")
+                    .display()
+            )
+            .replace('\\', "/");
             match accounted.get(relative.as_str()) {
                 Some(listed) => {
                     listed_and_seen.insert(listed);
@@ -1165,7 +1170,7 @@ fn every_constructible_refusal_code_is_documented() {
 fn ds_web() -> PathBuf {
     let root = match std::env::var_os("DS_WEB_DIR") {
         Some(explicit) => PathBuf::from(explicit),
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-web"),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-web"),
     };
     assert!(
         root.is_dir(),

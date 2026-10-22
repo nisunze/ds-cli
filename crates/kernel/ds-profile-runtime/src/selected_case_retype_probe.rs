@@ -52,7 +52,7 @@ fn named_selected_case_retype_receipts() {
             restore_state: None,
             options: Default::default(),
             style_document: serde_json::from_str(include_str!(
-                "../../../tests/fixtures/profile-display-style.json"
+                "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
             ))
             .unwrap(),
             patch: Default::default(),
@@ -72,7 +72,7 @@ fn named_selected_case_retype_receipts() {
             journal_json: serde_json::to_string(&worker.retained_journal()).unwrap(),
             options: Default::default(),
             style_document: serde_json::from_str(include_str!(
-                "../../../tests/fixtures/profile-display-style.json"
+                "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
             ))
             .unwrap(),
             patch,
@@ -204,7 +204,7 @@ fn named_selected_case_retype_receipts() {
             restore_state: Some(runtime.views[scope].clone()),
             options: Default::default(),
             style_document: serde_json::from_str(include_str!(
-                "../../../tests/fixtures/profile-display-style.json"
+                "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
             ))
             .unwrap(),
             patch: Default::default(),

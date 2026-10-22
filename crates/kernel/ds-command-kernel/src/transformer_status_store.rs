@@ -2,8 +2,14 @@
 //! no storage fallback, timer, credential, or network IO lives here.
 use crate::sql_effect::{ResultRows, Statement};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+
+mod receipts;
+pub use receipts::{
+    MAX_STATUS_FILE_BYTES, STATUS_FILE_SCHEMA, StatusFileReceipt, StatusObservation,
+    StatusObservationSource, StatusObservationState, status_observation,
+};
 
 pub const MAX_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
@@ -54,7 +60,12 @@ pub fn size(scope: &Scope) -> Result<Statement, String> {
     ))
 }
 pub fn read(scope: &Scope) -> Result<Statement, String> {
-    Ok(Statement::new("SELECT document,sha256,observed_at_ms,needs_refresh,last_error,revision FROM project_status_observations WHERE scope=?1 AND length(CAST(document AS BLOB))<=?2",vec![json!(scope.key()?),json!(MAX_BYTES)],1,64*1024*1024))
+    Ok(Statement::new(
+        "SELECT document,sha256,observed_at_ms,needs_refresh,last_error,revision FROM project_status_observations WHERE scope=?1 AND length(CAST(document AS BLOB))<=?2",
+        vec![json!(scope.key()?), json!(MAX_BYTES)],
+        1,
+        64 * 1024 * 1024,
+    ))
 }
 pub fn admit_size(result: &ResultRows) -> Result<(Option<u64>, bool), String> {
     match result.rows.as_slice() {
@@ -128,7 +139,17 @@ pub fn write(scope: &Scope, document: &Value, now: u64) -> Result<Statement, Str
     if bytes.len() > MAX_BYTES || now > 9_007_199_254_740_991 {
         return Err("status observation exceeds its bounds".into());
     }
-    Ok(Statement::new("INSERT INTO project_status_observations VALUES(?1,?2,?3,?4,0,NULL,1) ON CONFLICT(scope) DO UPDATE SET document=excluded.document,sha256=excluded.sha256,observed_at_ms=excluded.observed_at_ms,needs_refresh=0,last_error=NULL,revision=project_status_observations.revision+1",vec![json!(scope.key()?),json!(bytes),json!(digest(document)?),json!(now)],0,2))
+    Ok(Statement::new(
+        "INSERT INTO project_status_observations VALUES(?1,?2,?3,?4,0,NULL,1) ON CONFLICT(scope) DO UPDATE SET document=excluded.document,sha256=excluded.sha256,observed_at_ms=excluded.observed_at_ms,needs_refresh=0,last_error=NULL,revision=project_status_observations.revision+1",
+        vec![
+            json!(scope.key()?),
+            json!(bytes),
+            json!(digest(document)?),
+            json!(now),
+        ],
+        0,
+        2,
+    ))
 }
 fn revision(scope: &Scope) -> Result<Statement, String> {
     Ok(Statement::new(
@@ -406,22 +427,40 @@ pub fn view(
                     .is_some_and(|name| targets.iter().any(|target| target == name))
         })
         .collect();
-    let state = if held.needs_refresh || held.last_error.is_some() {
-        "held"
-    } else {
-        "ready"
-    };
+    let observation = status_observation(&held, refreshed, None)?;
+    let is_held = observation.state == StatusObservationState::Held;
     Ok(
-        json!({"data":rows,"observation":{"source":if refreshed{"refresh"}else{"held"},"state":state,"observed_at_ms":held.observed_at_ms,"sha256":held.sha256,"last_error":held.last_error},"error":if state=="held"{Some("Status is held; refresh to observe current project status.")}else{None}}),
+        json!({"data":rows,"observation":observation,"error":if is_held {Some("Status is held; refresh to observe current project status.")}else{None}}),
     )
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
-pub enum ReadMode {
+pub enum TransformerStatusRead {
     Held,
     Refresh,
     Acquire,
 }
+impl TransformerStatusRead {
+    pub const NAMES: &'static [&'static str] = &["held", "refresh", "acquire"];
+
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Held => "held",
+            Self::Refresh => "refresh",
+            Self::Acquire => "acquire",
+        }
+    }
+
+    pub fn acquires(self, held: Option<&Observation>) -> bool {
+        match self {
+            Self::Held => false,
+            Self::Refresh => true,
+            Self::Acquire => needs_acquisition(false, held),
+        }
+    }
+}
+pub type ReadMode = TransformerStatusRead;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum FlowContinuation {
@@ -493,10 +532,7 @@ pub fn flow_resume(continuation: FlowContinuation, result: FlowResult) -> Result
                 revision,
             },
         ) => {
-            if matches!(mode, ReadMode::Refresh)
-                || matches!(mode, ReadMode::Acquire)
-                    && needs_acquisition(false, observation.as_ref())
-            {
+            if mode.acquires(observation.as_ref()) {
                 FlowStep::Fetch {
                     route: "/report".into(),
                     body: request_body(&scope.project, &[]),
@@ -521,7 +557,7 @@ pub fn flow_resume(continuation: FlowContinuation, result: FlowResult) -> Result
                     return flow_resume(
                         FlowContinuation::Fetched { scope, expected },
                         FlowResult::Failure,
-                    )
+                    );
                 }
             };
             FlowStep::Storage {

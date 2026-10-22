@@ -86,7 +86,8 @@ fn profile_input(lane: DeploymentLane) -> ClientProfileInput {
         survey_entries_changes_method: "POST".to_owned(),
         survey_entries_changes_path: "/api/v1/survey/entries/changes".to_owned(),
         survey_entry_create_method: "POST".to_owned(),
-        survey_entry_create_path: "/v1/projects/{firebase_project}/databases/(default)/documents:commit".to_owned(),
+        survey_entry_create_path:
+            "/v1/projects/{firebase_project}/databases/(default)/documents:commit".to_owned(),
         survey_entry_create_operation: "create".to_owned(),
         project_data_method: "POST".to_owned(),
         project_data_path: "/api/v1/project_data".to_owned(),
@@ -1179,13 +1180,19 @@ impl Transport for FixtureTransport {
     ) -> Result<TransportResponse, TransportError> {
         let mut state = self.0.lock().unwrap();
         let body = call.body();
-        let actual:serde_json::Value=serde_json::from_slice(body.as_bytes()).unwrap();
+        let actual: serde_json::Value = serde_json::from_slice(body.as_bytes()).unwrap();
         let exact_body = actual["writes"].as_array().is_some_and(|writes| writes.len()==1)
             && actual["writes"][0]["currentDocument"]==json!({"exists":false})
             && actual["writes"][0]["update"]["name"].as_str().is_some_and(|n|n.ends_with("/eds_project/project_a/parents/parent:1/forms/survey_points/entries/entry_1"))
             && actual["writes"][0]["updateTransforms"]==json!([{"fieldPath":"metadata.firestore_updated_at","setToServerValue":"REQUEST_TIME"}]);
-        state.calls.push(format!("survey_entry_create method={} origin={} path={} body_exact={} authorization={}",
-            call.method(),call.origin(),call.path(),exact_body,!call.bearer_token().is_empty()));
+        state.calls.push(format!(
+            "survey_entry_create method={} origin={} path={} body_exact={} authorization={}",
+            call.method(),
+            call.origin(),
+            call.path(),
+            exact_body,
+            !call.bearer_token().is_empty()
+        ));
         Ok(state.survey_entry_create.pop_front().unwrap())
     }
 
@@ -2047,7 +2054,8 @@ fn catalog_profile_is_closed_lane_bound_and_deterministic() {
         survey_entries_changes_method: "POST".to_owned(),
         survey_entries_changes_path: "/api/v1/survey/entries/changes".to_owned(),
         survey_entry_create_method: "POST".to_owned(),
-        survey_entry_create_path: "/v1/projects/{firebase_project}/databases/(default)/documents:commit".to_owned(),
+        survey_entry_create_path:
+            "/v1/projects/{firebase_project}/databases/(default)/documents:commit".to_owned(),
         survey_entry_create_operation: "create".to_owned(),
         project_data_method: "POST".to_owned(),
         project_data_path: "/api/v1/project_data".to_owned(),
@@ -2528,6 +2536,191 @@ fn transformer_context_reads_full_source_with_nested_properties() {
         .unwrap();
     let saved_call = transport.calls().last().unwrap().clone();
     assert!(saved_call.contains("projection=saved body_exact=true lane_absent=true"));
+}
+
+#[test]
+fn version_catalog_publication_uses_closed_bulk_route_once_without_content_or_readback() {
+    use ds_client_core::design_version_catalog::{Command, Mutation};
+    let id = format!("vc_{}", "a".repeat(64));
+    let revision = format!("vr_{}", "b".repeat(64));
+    let catalog = json!({"schema":"ds.lv-version-catalog/v1","project_id":"active-project","object":{"kind":"lv_transformer","id":"TR-1"},"catalog_revision":"c".repeat(64),"versions":[{"version_id":id,"display_ordinal":1,"head_revision_id":revision,"revision_count":1}]});
+    let reply = json!({"catalog":catalog,"changed":true,"metadata":{"project_id":"active-project","transformer_id":"TR-1","version_id":id,"revision_id":revision,"revision_number":1,"display_ordinal_at_capture":1,"content_digest":"d".repeat(64),"source_revision":"2026-10-12T12:00:00Z"}});
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_design_versions(200, &selection_envelope(reply));
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let command = Command::Publish {
+        object_id: "TR-1".into(),
+        mutation: Mutation {
+            version_id: None,
+            task_id: None,
+            source_record_id: None,
+            display_ordinal: Some(1),
+            insert_before_version_id: None,
+            expected_catalog_revision: "a".repeat(64),
+            expected_source_revision: "2026-10-12T12:00:00Z".into(),
+            reason: "Freeze reviewed current".into(),
+            idempotency_key: "freeze1".into(),
+        },
+    };
+    client
+        .design_version_catalog("active-project", &command, NOW + 1)
+        .unwrap();
+    let calls = transport.calls();
+    assert_eq!(
+        calls.len(),
+        2,
+        "only sign-in and single publication: {calls:?}"
+    );
+    let call = calls.last().unwrap();
+    for expected in [
+        "path=/api/v1/data",
+        "publish_transformer_version_revision",
+        "catalog_publication",
+        "eds_project_id",
+        "transformer_id",
+        "correlation=true",
+    ] {
+        assert!(call.contains(expected), "{call}");
+    }
+    assert!(
+        !call.contains("gdfs") && !call.contains("snapshot") && !call.contains("layers"),
+        "no caller content: {call}"
+    );
+    transport.push_design_versions(409,br#"{"success":false,"error":{"code":"VERSION_CATALOG_SOURCE_MOVED","message":"Exact source moved"}}"#);
+    let error = client
+        .design_version_catalog("active-project", &command, NOW + 2)
+        .unwrap_err();
+    assert_eq!(
+        error.service_refusal().unwrap().code(),
+        Some("version_catalog_source_moved")
+    );
+    assert_eq!(
+        transport.calls().len(),
+        3,
+        "one attempt, no retry/readback on conflict"
+    );
+}
+
+#[test]
+fn historical_import_uses_one_closed_bulk_write_and_rejects_moved_acknowledgement() {
+    use ds_client_core::transformer_history_import::{Import, Source};
+    let input=Import{transformer_id:"TR-1".into(),version_number:0,expected_source_revision:"2026-10-12T12:00:00Z".into(),reason:"Approved archival design".into(),milestone:None,idempotency_key:"april-TR-1".into(),source:Source{record_id:"r1".into(),asset_id:"a1".into(),asset_version:3,asset_sha256:"a".repeat(64),archive_member:"GEOPACKAGE/TR-1.gpkg".into(),member_sha256:"b".repeat(64),historical_period:"April 2026".into()},layers:["customers","lv_lines","lv_poles","service_cables","spans","tr"].into_iter().map(|name|{let features=if name=="tr"{vec![json!({"type":"Feature","properties":{"fid":17},"geometry":{"type":"Point","coordinates":[30,-2,1234]}})]}else{vec![]};(name.into(),json!({"type":"FeatureCollection","features":features}))}).collect()};
+    let mut source = json!(input.source);
+    source["imported_layers_sha256"] = json!("c".repeat(64));
+    let ack = json!({"version":{"project_id":"active-project","object":{"kind":"lv_transformer","id":"TR-1"},"version_id":"v0","version":0,"source_mode":"source_pinned_import","snapshot_scope":"exported_design","source":source}});
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_design_versions(200, &selection_envelope(ack.clone()));
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    client
+        .transformer_history_import("active-project", &input, NOW + 1)
+        .unwrap();
+    let calls = transport.calls();
+    assert_eq!(calls.len(), 2);
+    let call = calls.last().unwrap();
+    for expected in [
+        "import_transformer_version",
+        "path=/api/v1/data",
+        "active-project",
+        "TR-1",
+    ] {
+        assert!(call.contains(expected), "{call}");
+    }
+    assert!(!calls
+        .iter()
+        .any(|c| c.contains("transformer_context ") || c.contains("project_configuration")));
+    let mut moved = ack;
+    moved["version"]["source"]["member_sha256"] = json!("d".repeat(64));
+    transport.push_design_versions(200, &selection_envelope(moved));
+    assert_eq!(
+        client
+            .transformer_history_import("active-project", &input, NOW + 2)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
+    assert_eq!(
+        transport.calls().len(),
+        3,
+        "no blind retry after uncertain/mismatched immutable publication"
+    );
+    let mut bad = input;
+    bad.version_number = 1;
+    assert_eq!(
+        client
+            .transformer_history_import("active-project", &bad, NOW + 3)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidInput
+    );
+    assert_eq!(
+        transport.calls().len(),
+        3,
+        "invalid input has no authority effect"
+    );
+}
+
+#[test]
+fn version_catalog_is_one_explicit_read_and_invalid_mutation_reads_nothing() {
+    use ds_client_core::design_version_catalog::{Command, Mutation};
+    let catalog = json!({"schema":"ds.lv-version-catalog/v1","project_id":"active-project",
+        "object":{"kind":"lv_transformer","id":"TR-1"},"catalog_revision":"a".repeat(64),
+        "versions":[{"version_id":"v1","display_ordinal":2,"head_revision_id":"v1","revision_count":1}]});
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_design_versions(200, &selection_envelope(json!({"catalog":catalog})));
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let c = Command::Catalog {
+        object_id: "TR-1".into(),
+    };
+    let reply = client
+        .design_version_catalog("active-project", &c, NOW + 1)
+        .unwrap();
+    assert_eq!(reply["catalog"]["versions"][0]["version_id"], "v1");
+    assert_eq!(reply["catalog"]["versions"][0]["display_ordinal"], 2);
+    let calls = transport.calls();
+    assert_eq!(
+        calls.len(),
+        2,
+        "only sign-in plus consumed catalog: {calls:?}"
+    );
+    let call = calls.last().unwrap();
+    for expected in [
+        "get_version_catalog",
+        "active-project",
+        "TR-1",
+        "correlation=true",
+        "path=/api/v1/design/versions",
+    ] {
+        assert!(call.contains(expected), "{call}");
+    }
+    assert!(!calls
+        .iter()
+        .any(|c| c.contains("transformer_context ") || c.contains("project_configuration")));
+    let invalid = Command::Publish {
+        object_id: "TR-1".into(),
+        mutation: Mutation {
+            version_id: Some("v1".into()),
+            task_id: None,
+            source_record_id: None,
+            display_ordinal: Some(0),
+            insert_before_version_id: None,
+            expected_catalog_revision: "a".repeat(64),
+            expected_source_revision: "2026-10-12T12:00:00Z".into(),
+            reason: "baseline".into(),
+            idempotency_key: "same".into(),
+        },
+    };
+    assert_eq!(
+        client
+            .design_version_catalog("active-project", &invalid, NOW + 2)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::InvalidInput
+    );
+    assert_eq!(
+        transport.calls(),
+        calls,
+        "invalid mutation performs no restore/read/write"
+    );
 }
 
 #[test]
@@ -5023,33 +5216,83 @@ fn survey_entry_create_profile_and_response_identity_fail_closed() {
         );
     }
 
-    for response in [json!({}),json!({"commitTime":"2026-08-30T00:00:01Z","writeResults":[]}),
+    for response in [
+        json!({}),
+        json!({"commitTime":"2026-08-30T00:00:01Z","writeResults":[]}),
         json!({"commitTime":"2026-08-30T00:00:01Z","writeResults":[{"updateTime":"2026-08-30T00:00:01Z","transformResults":[]}]}),
-        json!({"commitTime":"2026-08-30T00:00:01Z","writeResults":[{"updateTime":"2026-08-30T00:00:01Z","transformResults":[{"timestampValue":"2026-08-30T00:00:01Z"}]}],"unknown":true})] {
-        let transport=FixtureTransport::with_sign_in(SIGN_IN);transport.push_survey_entry_create(200,&serde_json::to_vec(&response).unwrap());
-        let mut client=signed_in(transport,MemoryStore::default());
-        assert_eq!(client.survey_entry_create("project_a",&survey_entry_create_request(),NOW+1).unwrap_err().kind(),ErrorKind::UnreadableResponse);
+        json!({"commitTime":"2026-08-30T00:00:01Z","writeResults":[{"updateTime":"2026-08-30T00:00:01Z","transformResults":[{"timestampValue":"2026-08-30T00:00:01Z"}]}],"unknown":true}),
+    ] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        transport.push_survey_entry_create(200, &serde_json::to_vec(&response).unwrap());
+        let mut client = signed_in(transport, MemoryStore::default());
+        assert_eq!(
+            client
+                .survey_entry_create("project_a", &survey_entry_create_request(), NOW + 1)
+                .unwrap_err()
+                .kind(),
+            ErrorKind::UnreadableResponse
+        );
     }
-    let transport=FixtureTransport::with_sign_in(SIGN_IN);
-    transport.push_survey_entry_create(200,&vec![b'x';ds_client_core::SURVEY_ENTRY_CREATE_RESPONSE_LIMIT+1]);
-    let mut client=signed_in(transport,MemoryStore::default());
-    assert_eq!(client.survey_entry_create("project_a",&survey_entry_create_request(),NOW+1).unwrap_err().kind(),ErrorKind::UnreadableResponse);
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_survey_entry_create(
+        200,
+        &vec![b'x'; ds_client_core::SURVEY_ENTRY_CREATE_RESPONSE_LIMIT + 1],
+    );
+    let mut client = signed_in(transport, MemoryStore::default());
+    assert_eq!(
+        client
+            .survey_entry_create("project_a", &survey_entry_create_request(), NOW + 1)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
 }
 
 #[test]
 fn survey_entry_create_maps_exact_firestore_denials_and_retains_conflicts() {
     use SurveyEntryCreateServiceCode as C;
-    for (status,wire,code,kind) in [(400,"INVALID_ARGUMENT",C::Invalid,ErrorKind::InvalidInput),
-        (401,"UNAUTHENTICATED",C::Unauthorized,ErrorKind::AuthenticationRejected),
-        (403,"PERMISSION_DENIED",C::PermissionDenied,ErrorKind::AuthenticationRejected),
-        (404,"NOT_FOUND",C::ScopeNotFound,ErrorKind::ResourceNotFound),
-        (409,"ALREADY_EXISTS",C::AlreadyExists,ErrorKind::InvalidInput),
-        (500,"INTERNAL",C::Failed,ErrorKind::Transient)] {
-        let transport=FixtureTransport::with_sign_in(SIGN_IN);
-        transport.push_survey_entry_create(status,&serde_json::to_vec(&json!({"error":{"code":status,"status":wire,"message":"private backend text"}})).unwrap());
-        let mut client=signed_in(transport,MemoryStore::default());
-        let error=client.survey_entry_create("project_a",&survey_entry_create_request(),NOW+1).unwrap_err();
-        assert_eq!(error.kind(),kind);assert_eq!(error.survey_entry_create_service_code(),Some(code));
+    for (status, wire, code, kind) in [
+        (400, "INVALID_ARGUMENT", C::Invalid, ErrorKind::InvalidInput),
+        (
+            401,
+            "UNAUTHENTICATED",
+            C::Unauthorized,
+            ErrorKind::AuthenticationRejected,
+        ),
+        (
+            403,
+            "PERMISSION_DENIED",
+            C::PermissionDenied,
+            ErrorKind::AuthenticationRejected,
+        ),
+        (
+            404,
+            "NOT_FOUND",
+            C::ScopeNotFound,
+            ErrorKind::ResourceNotFound,
+        ),
+        (
+            409,
+            "ALREADY_EXISTS",
+            C::AlreadyExists,
+            ErrorKind::InvalidInput,
+        ),
+        (500, "INTERNAL", C::Failed, ErrorKind::Transient),
+    ] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        transport.push_survey_entry_create(
+            status,
+            &serde_json::to_vec(
+                &json!({"error":{"code":status,"status":wire,"message":"private backend text"}}),
+            )
+            .unwrap(),
+        );
+        let mut client = signed_in(transport, MemoryStore::default());
+        let error = client
+            .survey_entry_create("project_a", &survey_entry_create_request(), NOW + 1)
+            .unwrap_err();
+        assert_eq!(error.kind(), kind);
+        assert_eq!(error.survey_entry_create_service_code(), Some(code));
         assert!(!error.to_string().contains("private backend text"));
     }
 }
@@ -6189,14 +6432,26 @@ macro_rules! device_authorized_call {
 }
 
 impl AuthorizedTransport for DeviceAuthorizedProbe {
-    fn personal_notes(&mut self, call: ds_client_core::personal_notes::PersonalNotesCall<'_>) -> Result<TransportResponse, TransportError> {
-        Self::verify(call.canonical_uid(),call.canonical_email(),call.device_id(),call.bearer_token())?;
+    fn personal_notes(
+        &mut self,
+        call: ds_client_core::personal_notes::PersonalNotesCall<'_>,
+    ) -> Result<TransportResponse, TransportError> {
+        Self::verify(
+            call.canonical_uid(),
+            call.canonical_email(),
+            call.device_id(),
+            call.bearer_token(),
+        )?;
         assert_eq!(call.path(), "/api/v1/notes");
         assert_eq!(call.method(), "POST");
         assert_eq!(call.timeout_seconds(), 30);
         assert_eq!(call.response_limit(), 8 << 20);
-        self.note_bodies.push(serde_json::from_slice(call.body().as_bytes()).unwrap());
-        Ok(self.selected_responses.pop_front().expect("selected notes response"))
+        self.note_bodies
+            .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
+        Ok(self
+            .selected_responses
+            .pop_front()
+            .expect("selected notes response"))
     }
     fn project_management(
         &mut self,
@@ -6213,7 +6468,9 @@ impl AuthorizedTransport for DeviceAuthorizedProbe {
         assert_eq!(call.path(), "/api/v1/pm");
         self.pm_bodies
             .push(serde_json::from_slice(call.body().as_bytes()).unwrap());
-        if let Some(response) = self.selected_responses.pop_front() { return Ok(response); }
+        if let Some(response) = self.selected_responses.pop_front() {
+            return Ok(response);
+        }
         Ok(TransportResponse::new(
             200,
             br#"{"success":true,"data":{"projects":[],"status":"active","next_cursor":""}}"#
@@ -6372,12 +6629,25 @@ fn device_credential(profile: &ClientProfile) -> DeviceCredential {
 
 #[test]
 fn survey_entry_create_device_provider_refuses_before_any_transport() {
-    let p=profile(DeploymentLane::Stable);let credential=device_credential(&p);
-    let session=DeviceAccessSession::new("ds-access-token".into(),NOW+300,NOW).unwrap();
-    let authority=credential.authorize_api(&session,&p,"uid-1",NOW).unwrap();
-    let mut transport=FixtureTransport::default();
-    let error=authority.survey_entry_create(&mut transport,"project_a",&survey_entry_create_request(),NOW+1).unwrap_err();
-    assert_eq!(error.survey_entry_create_service_code(),Some(SurveyEntryCreateServiceCode::FirebaseSessionRequired));
+    let p = profile(DeploymentLane::Stable);
+    let credential = device_credential(&p);
+    let session = DeviceAccessSession::new("ds-access-token".into(), NOW + 300, NOW).unwrap();
+    let authority = credential
+        .authorize_api(&session, &p, "uid-1", NOW)
+        .unwrap();
+    let mut transport = FixtureTransport::default();
+    let error = authority
+        .survey_entry_create(
+            &mut transport,
+            "project_a",
+            &survey_entry_create_request(),
+            NOW + 1,
+        )
+        .unwrap_err();
+    assert_eq!(
+        error.survey_entry_create_service_code(),
+        Some(SurveyEntryCreateServiceCode::FirebaseSessionRequired)
+    );
     assert!(transport.calls().is_empty());
 }
 
@@ -11027,173 +11297,6 @@ fn grid_publication_requires_storage_proof_commit_and_exact_readback() {
     }
 }
 
-fn push_photo(transport: &FixtureTransport, status: u16, data: serde_json::Value) {
-    transport
-        .0
-        .lock()
-        .unwrap()
-        .survey_photo
-        .push_back(TransportResponse::new(
-            status,
-            serde_json::to_vec(&serde_json::json!({"success":status == 200,"data":data})).unwrap(),
-        ));
-}
-
-#[test]
-fn photo_rotation_is_headless_pinned_and_retry_does_not_rotate_twice() {
-    use ds_client_core::survey_photo::{Command, Receipt};
-    use serde_json::json;
-    let transport = FixtureTransport::with_sign_in(SIGN_IN);
-    let mut client = signed_in(transport.clone(), MemoryStore::default());
-    let path = "project_a/forms/poles/entry/photo.png";
-    let thumb = "project_a/forms/poles/entry/photo_thunder.jpeg";
-    push_photo(
-        &transport,
-        200,
-        json!({"bucket":"test-bucket","blob_path":path,"generation":"7","source_url":format!("https://storage.googleapis.com/test-bucket/{path}?generation=7")}),
-    );
-    push_photo(&transport, 404, json!({}));
-    use base64::Engine;
-    let png = base64::engine::general_purpose::STANDARD.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=").unwrap();
-    transport
-        .0
-        .lock()
-        .unwrap()
-        .photo_downloads
-        .push_back(TransportResponse::new(200, png));
-    let Receipt::Prepared(bundle) = client
-        .survey_photo(
-            "project_a",
-            Command::Prepare {
-                object_path: path,
-                degrees: 90,
-                expected_generation: Some("7"),
-            },
-            NOW + 1,
-        )
-        .unwrap()
-    else {
-        panic!("expected prepared")
-    };
-    assert_eq!(bundle.manifest.thumbnail_path, thumb);
-    assert!(!serde_json::to_string(&bundle.manifest)
-        .unwrap()
-        .contains("source_url"));
-    // Neither another project nor edited local bytes can consume an upload grant.
-    for project in ["project_b", "project_a"] {
-        let original = if project == "project_a" {
-            &b"changed"[..]
-        } else {
-            bundle.original.as_slice()
-        };
-        assert!(client
-            .survey_photo(
-                project,
-                Command::Publish {
-                    manifest: &bundle.manifest,
-                    original,
-                    thumbnail: &bundle.thumbnail
-                },
-                NOW + 1
-            )
-            .is_err());
-    }
-    let mut other_audience = bundle.manifest.clone();
-    other_audience.credential_audience_sha256 = "0".repeat(64);
-    assert!(client
-        .survey_photo(
-            "project_a",
-            Command::Publish {
-                manifest: &other_audience,
-                original: &bundle.original,
-                thumbnail: &bundle.thumbnail
-            },
-            NOW + 1
-        )
-        .is_err());
-    assert_eq!(transport.0.lock().unwrap().photo_bodies.len(), 2);
-    push_photo(
-        &transport,
-        200,
-        json!({"bucket":"test-bucket","blob_path":path,"session_uri":"https://storage.googleapis.com/upload/storage/v1/b/test-bucket/o?uploadType=resumable&upload_id=a"}),
-    );
-    transport
-        .0
-        .lock()
-        .unwrap()
-        .uploads
-        .push_back(TransportResponse::new(200, b"{}".as_slice()));
-    push_photo(
-        &transport,
-        200,
-        json!({"bucket":"test-bucket","blob_path":path,"generation":"8","already_present":true}),
-    );
-    // Fail after the original has published, before the thumbnail gets a grant.
-    push_photo(&transport, 503, json!({}));
-    assert!(client
-        .survey_photo(
-            "project_a",
-            Command::Publish {
-                manifest: &bundle.manifest,
-                original: &bundle.original,
-                thumbnail: &bundle.thumbnail
-            },
-            NOW + 1
-        )
-        .is_err());
-    push_photo(
-        &transport,
-        200,
-        json!({"bucket":"test-bucket","blob_path":path,"generation":"8","already_present":true}),
-    );
-    push_photo(
-        &transport,
-        200,
-        json!({"bucket":"test-bucket","blob_path":thumb,"session_uri":"https://storage.googleapis.com/upload/storage/v1/b/test-bucket/o?uploadType=resumable&upload_id=b"}),
-    );
-    transport
-        .0
-        .lock()
-        .unwrap()
-        .uploads
-        .push_back(TransportResponse::new(200, b"{}".as_slice()));
-    push_photo(
-        &transport,
-        200,
-        json!({"bucket":"test-bucket","blob_path":thumb,"generation":"9","already_present":true}),
-    );
-    let Receipt::Published(done) = client
-        .survey_photo(
-            "project_a",
-            Command::Publish {
-                manifest: &bundle.manifest,
-                original: &bundle.original,
-                thumbnail: &bundle.thumbnail,
-            },
-            NOW + 1,
-        )
-        .unwrap()
-    else {
-        panic!("expected published")
-    };
-    assert_eq!(done["publication"], "published");
-    let state = transport.0.lock().unwrap();
-    assert_eq!(state.uploaded_bytes, [bundle.original, bundle.thumbnail]);
-    for body in state
-        .photo_bodies
-        .iter()
-        .filter(|v| v["file_name"] == "photo_thunder.jpeg" && v["action"] == "survey_upload_start")
-    {
-        assert_eq!(body["source_generation"], "8");
-        assert_eq!(body["source_file_name"], "photo.png");
-        assert!(body.get("expected_generation").is_none());
-    }
-    assert!(state
-        .photo_bodies
-        .iter()
-        .all(|v| v["project_id"] == "project_a"));
-}
-
 #[test]
 fn solar_portfolio_catalog_rejects_changed_membership_and_wrong_project_before_transport() {
     use ds_client_core::{solar_portfolio, solar_project::Command};
@@ -13168,8 +13271,7 @@ fn native_lv_save_missing_engine_refuses_without_project_reads() {
     assert!(!state
         .calls
         .iter()
-        .any(|call| call.starts_with("transformer_context ")
-            || call.starts_with("config ")));
+        .any(|call| call.starts_with("transformer_context ") || call.starts_with("config ")));
     assert!(state.transformer_save_bodies.is_empty());
 }
 
@@ -13549,7 +13651,7 @@ fn compounded_archive_list_reads_brain_generic_groups_and_legacy_districts() {
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     transport.push_project_report(
         200,
-        include_bytes!("../../../tests/fixtures/compounded-archive-groups.json"),
+        include_bytes!("../../ds-command-kernel/tests/fixtures/compounded-archive-groups.json"),
     );
     let mut client = signed_in(transport.clone(), MemoryStore::default());
     let archives = client.compounded_report_list("project_a", NOW + 1).unwrap();
@@ -13601,7 +13703,7 @@ fn compounded_archive_layout_reads_the_generic_knobs() {
     let transport = FixtureTransport::with_sign_in(SIGN_IN);
     transport.push_project_report(
         200,
-        include_bytes!("../../../tests/fixtures/compounded-archive-groups.json"),
+        include_bytes!("../../ds-command-kernel/tests/fixtures/compounded-archive-groups.json"),
     );
     transport.push_project_report(
         200,
@@ -14057,55 +14159,107 @@ fn reliability_event_rides_the_fixed_ingest_with_an_optional_bearer() {
 
 #[test]
 fn guarded_property_repair_uses_one_exact_read_and_never_sends_process_or_whole_layers() {
-    use ds_command_kernel::{design::{self,Snapshot},design_repair::{self,Proposal,ApplySelection}};
     use ds_command_kernel::report_export::jcs::layers_content_digest;
+    use ds_command_kernel::{
+        design::{self, Snapshot},
+        design_repair::{self, ApplySelection, Proposal},
+    };
     use serde_json::Value;
     let target:Snapshot=serde_json::from_value(json!({"schema":"ds.design.snapshot/v1","transformer":"T1","crs":"EPSG:4326",
       "layers":{"lv_poles":{"type":"FeatureCollection","features":[{"type":"Feature","id":"pole","geometry":{"type":"Point","coordinates":[30.0,-2.0]},"properties":{"struct_type":"old","drafting_status":"approved","stay":1}}]}},
       "settings":{},"network_config":{"sheets":{}},"sources":[],"include_design_customers":true})).unwrap();
-    let scope=json!({"project":"explicit-project","principal":"uid-1","lane":"stable","audience":profile(DeploymentLane::Stable).credential_audience_sha256()});
-    let source_digest=layers_content_digest(&target.layers).unwrap();
+    let scope = json!({"project":"explicit-project","principal":"uid-1","lane":"stable","audience":profile(DeploymentLane::Stable).credential_audience_sha256()});
+    let source_digest = layers_content_digest(&target.layers).unwrap();
     let proposal:Proposal=serde_json::from_value(design_repair::evaluate("propose",json!({"target":target,"request":{
        "scope":scope,"target":{"snapshot_revision":design::digest(&target).unwrap(),"server_version":7,"layers_content_digest":source_digest},
        "policy":{"scope":scope,"fields":{"lv_poles":{"struct_type":{"field_type":"string"}}}},"allowlist":{"lv_poles":["struct_type"]},
        "operations":[{"kind":"assign","target_layer":"lv_poles","target_ids":["pole"],"values":{"struct_type":{"kind":"value","value":"new"}}}]
     }})).unwrap()).unwrap();
     let selection:ApplySelection=serde_json::from_value(json!({"scope":scope,"proposal_digest":proposal.digest,"change_ids":proposal.changes.iter().map(|c|c.id.clone()).collect::<Vec<_>>(),"confirmed":true})).unwrap();
-    let projected=design_repair::apply_selected(None,&target,&proposal,&selection).unwrap().snapshot;
-    let expected=layers_content_digest(&projected.layers).unwrap();
-    let publication=ds_client_core::TransformerRepairPublication{operation_id:"repair-one".into(),source:None,target:target.clone(),proposal,selection};
-    let context=|layers:&std::collections::BTreeMap<String,Value>,version:u64|serde_json::to_vec(&json!({"success":true,"data":{"total":1,"found_count":1,"failed_count":0,"results":[{"transformer_name":"T1","ok":true,"data":{"layers":layers,"metadata":{"version":version,"content_digest":layers_content_digest(layers).unwrap()}}}]}})).unwrap();
-    for corrupt_readback in [false,true] {
-        let transport=FixtureTransport::with_sign_in(SIGN_IN);
-        let mut client=signed_in(transport.clone(),MemoryStore::default());
-        transport.push_transformer_context(200,&context(if corrupt_readback {&target.layers}else{&projected.layers},8));
+    let projected = design_repair::apply_selected(None, &target, &proposal, &selection)
+        .unwrap()
+        .snapshot;
+    let expected = layers_content_digest(&projected.layers).unwrap();
+    let publication = ds_client_core::TransformerRepairPublication {
+        operation_id: "repair-one".into(),
+        source: None,
+        target: target.clone(),
+        proposal,
+        selection,
+    };
+    let context = |layers: &std::collections::BTreeMap<String, Value>, version: u64| {
+        serde_json::to_vec(&json!({"success":true,"data":{"total":1,"found_count":1,"failed_count":0,"results":[{"transformer_name":"T1","ok":true,"data":{"layers":layers,"metadata":{"version":version,"content_digest":layers_content_digest(layers).unwrap()}}}]}})).unwrap()
+    };
+    for corrupt_readback in [false, true] {
+        let transport = FixtureTransport::with_sign_in(SIGN_IN);
+        let mut client = signed_in(transport.clone(), MemoryStore::default());
+        transport.push_transformer_context(
+            200,
+            &context(
+                if corrupt_readback {
+                    &target.layers
+                } else {
+                    &projected.layers
+                },
+                8,
+            ),
+        );
         transport.0.lock().unwrap().transformer_saves.push_back(TransportResponse{status:200,body:serde_json::to_vec(&json!({"success":true,"data":{"operation_id":"repair-one","transformer_name":"T1","source_version":7,"source_content_digest":source_digest,"version":8,"content_digest":expected,"changed_cells":1}})).unwrap()});
-        let result=client.repair_transformer("explicit-project",&publication,NOW+1);
-        if corrupt_readback {assert_eq!(result.unwrap_err().to_string(),"repair_readback_unverified");}
-        else {let result=result.unwrap();assert_eq!(result["verified"],true);assert_eq!(result["measurements"]["transformer_reads"],1);}
-        let state=transport.0.lock().unwrap();
-        assert_eq!(state.transformer_save_bodies.len(),1);
-        let body=&state.transformer_save_bodies[0];
-        assert_eq!(body["action"],"repair_transformer_properties");
-        assert_eq!(body["repair"]["changes"][0]["identity"],json!({"field":"id","value":"pole"}));
-        assert!(body.get("gdfs").is_none());assert!(body.get("process_metadata").is_none());
-        assert_eq!(body["repair"].as_object().unwrap().len(),4);
+        let result = client.repair_transformer("explicit-project", &publication, NOW + 1);
+        if corrupt_readback {
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "repair_readback_unverified"
+            );
+        } else {
+            let result = result.unwrap();
+            assert_eq!(result["verified"], true);
+            assert_eq!(result["measurements"]["transformer_reads"], 1);
+        }
+        let state = transport.0.lock().unwrap();
+        assert_eq!(state.transformer_save_bodies.len(), 1);
+        let body = &state.transformer_save_bodies[0];
+        assert_eq!(body["action"], "repair_transformer_properties");
+        assert_eq!(
+            body["repair"]["changes"][0]["identity"],
+            json!({"field":"id","value":"pole"})
+        );
+        assert!(body.get("gdfs").is_none());
+        assert!(body.get("process_metadata").is_none());
+        assert_eq!(body["repair"].as_object().unwrap().len(), 4);
         assert!(state.configurations.is_empty());
     }
     // The independent server CAS refusal consumes no saved-room read at all.
-    let refused_transport=FixtureTransport::with_sign_in(SIGN_IN);
-    let mut refused_client=signed_in(refused_transport.clone(),MemoryStore::default());
+    let refused_transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut refused_client = signed_in(refused_transport.clone(), MemoryStore::default());
     refused_transport.0.lock().unwrap().transformer_saves.push_back(TransportResponse{status:409,body:serde_json::to_vec(&json!({"success":false,"error":{"code":"TRANSFORMER_REPAIR_PREIMAGE_MOVED","message":"Selected cell changed"}})).unwrap()});
-    let error=refused_client.repair_transformer("explicit-project",&publication,NOW+1).unwrap_err();
-    assert_eq!(error.service_refusal().unwrap().code(),Some("transformer_repair_preimage_moved"));
-    let state=refused_transport.0.lock().unwrap();
-    assert_eq!(state.transformer_save_bodies.len(),1);
-    assert!(!state.calls.iter().any(|c|c.starts_with("transformer_context ")));
+    let error = refused_client
+        .repair_transformer("explicit-project", &publication, NOW + 1)
+        .unwrap_err();
+    assert_eq!(
+        error.service_refusal().unwrap().code(),
+        Some("transformer_repair_preimage_moved")
+    );
+    let state = refused_transport.0.lock().unwrap();
+    assert_eq!(state.transformer_save_bodies.len(), 1);
+    assert!(!state
+        .calls
+        .iter()
+        .any(|c| c.starts_with("transformer_context ")));
     drop(state);
-    let transport=FixtureTransport::with_sign_in(SIGN_IN);let mut client=signed_in(transport.clone(),MemoryStore::default());
-    let mut wrong_scope=publication;wrong_scope.selection.scope.principal="different".into();
-    assert!(client.repair_transformer("explicit-project",&wrong_scope,NOW+1).is_err());
-    assert!(transport.0.lock().unwrap().transformer_save_bodies.is_empty());
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let mut wrong_scope = publication;
+    wrong_scope.selection.scope.principal = "different".into();
+    assert!(client
+        .repair_transformer("explicit-project", &wrong_scope, NOW + 1)
+        .is_err());
+    assert!(transport
+        .0
+        .lock()
+        .unwrap()
+        .transformer_save_bodies
+        .is_empty());
 }
 
 #[test]
@@ -14181,7 +14335,6 @@ fn checklist_commands_read_no_unused_data_and_replay_one_captured_project_write(
     );
     assert!(transport.seen.is_empty());
 }
-
 
 #[test]
 fn selected_notes_read_only_when_consumed_and_keep_private_project_replay_isolated() {
@@ -14399,90 +14552,66 @@ fn selected_document_operations_never_acquire_unused_sources_and_replay_exact_pi
 }
 
 #[test]
-fn version_catalog_is_one_explicit_read_and_invalid_mutation_reads_nothing() {
-    use ds_client_core::design_version_catalog::{Command, Mutation};
-    let catalog=json!({"schema":"ds.lv-version-catalog/v1","project_id":"active-project",
-        "object":{"kind":"lv_transformer","id":"TR-1"},"catalog_revision":"a".repeat(64),
-        "versions":[{"version_id":"v1","display_ordinal":2,"head_revision_id":"v1","revision_count":1}]});
-    let transport=FixtureTransport::with_sign_in(SIGN_IN);
-    transport.push_design_versions(200,&selection_envelope(json!({"catalog":catalog})));
-    let mut client=signed_in(transport.clone(),MemoryStore::default());
-    let c=Command::Catalog {object_id:"TR-1".into()};
-    let reply=client.design_version_catalog("active-project",&c,NOW+1).unwrap();
-    assert_eq!(reply["catalog"]["versions"][0]["version_id"],"v1");
-    assert_eq!(reply["catalog"]["versions"][0]["display_ordinal"],2);
-    let calls=transport.calls(); assert_eq!(calls.len(),2,"only sign-in plus consumed catalog: {calls:?}");
-    let call=calls.last().unwrap();
-    for expected in ["get_version_catalog","active-project","TR-1","correlation=true","path=/api/v1/design/versions"] { assert!(call.contains(expected),"{call}"); }
-    assert!(!calls.iter().any(|c|c.contains("transformer_context ")||c.contains("project_configuration")));
-    let invalid=Command::Publish {object_id:"TR-1".into(),mutation:Mutation{
-        version_id:Some("v1".into()),task_id:None,source_record_id:None,display_ordinal:Some(0),insert_before_version_id:None,
-        expected_catalog_revision:"a".repeat(64),expected_source_revision:"2026-10-12T12:00:00Z".into(),
-        reason:"baseline".into(),idempotency_key:"same".into()}};
-    assert_eq!(client.design_version_catalog("active-project",&invalid,NOW+2).unwrap_err().kind(),ErrorKind::InvalidInput);
-    assert_eq!(transport.calls(),calls,"invalid mutation performs no restore/read/write");
-}
-
-
-#[test]
-fn version_catalog_publication_uses_closed_bulk_route_once_without_content_or_readback() {
-    use ds_client_core::design_version_catalog::{Command,Mutation};
-    let id=format!("vc_{}","a".repeat(64));let revision=format!("vr_{}","b".repeat(64));
-    let catalog=json!({"schema":"ds.lv-version-catalog/v1","project_id":"active-project","object":{"kind":"lv_transformer","id":"TR-1"},"catalog_revision":"c".repeat(64),"versions":[{"version_id":id,"display_ordinal":1,"head_revision_id":revision,"revision_count":1}]});
-    let reply=json!({"catalog":catalog,"changed":true,"metadata":{"project_id":"active-project","transformer_id":"TR-1","version_id":id,"revision_id":revision,"revision_number":1,"display_ordinal_at_capture":1,"content_digest":"d".repeat(64),"source_revision":"2026-10-12T12:00:00Z"}});
-    let transport=FixtureTransport::with_sign_in(SIGN_IN);transport.push_design_versions(200,&selection_envelope(reply));
-    let mut client=signed_in(transport.clone(),MemoryStore::default());
-    let command=Command::Publish {object_id:"TR-1".into(),mutation:Mutation{version_id:None,task_id:None,source_record_id:None,display_ordinal:Some(1),insert_before_version_id:None,expected_catalog_revision:"a".repeat(64),expected_source_revision:"2026-10-12T12:00:00Z".into(),reason:"Freeze reviewed current".into(),idempotency_key:"freeze1".into()}};
-    client.design_version_catalog("active-project",&command,NOW+1).unwrap();
-    let calls=transport.calls();assert_eq!(calls.len(),2,"only sign-in and single publication: {calls:?}");let call=calls.last().unwrap();
-    for expected in ["path=/api/v1/data","publish_transformer_version_revision","catalog_publication","eds_project_id","transformer_id","correlation=true"] {assert!(call.contains(expected),"{call}");}
-    assert!(!call.contains("gdfs")&&!call.contains("snapshot")&&!call.contains("layers"),"no caller content: {call}");
-    transport.push_design_versions(409,br#"{"success":false,"error":{"code":"VERSION_CATALOG_SOURCE_MOVED","message":"Exact source moved"}}"#);
-    let error=client.design_version_catalog("active-project",&command,NOW+2).unwrap_err();
-    assert_eq!(error.service_refusal().unwrap().code(),Some("version_catalog_source_moved"));
-    assert_eq!(transport.calls().len(),3,"one attempt, no retry/readback on conflict");
-}
-
-
-#[test]
-fn historical_import_uses_one_closed_bulk_write_and_rejects_moved_acknowledgement() {
-    use ds_client_core::transformer_history_import::{Import,Source};
-    let input=Import{transformer_id:"TR-1".into(),version_number:0,expected_source_revision:"2026-10-12T12:00:00Z".into(),reason:"Approved archival design".into(),milestone:None,idempotency_key:"april-TR-1".into(),source:Source{record_id:"r1".into(),asset_id:"a1".into(),asset_version:3,asset_sha256:"a".repeat(64),archive_member:"GEOPACKAGE/TR-1.gpkg".into(),member_sha256:"b".repeat(64),historical_period:"April 2026".into()},layers:["customers","lv_lines","lv_poles","service_cables","spans","tr"].into_iter().map(|name|{let features=if name=="tr"{vec![json!({"type":"Feature","properties":{"fid":17},"geometry":{"type":"Point","coordinates":[30,-2,1234]}})]}else{vec![]};(name.into(),json!({"type":"FeatureCollection","features":features}))}).collect()};
-    let mut source=json!(input.source);
-    source["imported_layers_sha256"]=json!("c".repeat(64));
-    let ack=json!({"version":{"project_id":"active-project","object":{"kind":"lv_transformer","id":"TR-1"},"version_id":"v0","version":0,"source_mode":"source_pinned_import","snapshot_scope":"exported_design","source":source}});
-    let transport=FixtureTransport::with_sign_in(SIGN_IN);
-    transport.push_design_versions(200,&selection_envelope(ack.clone()));
-    let mut client=signed_in(transport.clone(),MemoryStore::default());
-    client.transformer_history_import("active-project",&input,NOW+1).unwrap();
-    let calls=transport.calls();assert_eq!(calls.len(),2);
-    let call=calls.last().unwrap();
-    for expected in ["import_transformer_version","path=/api/v1/data","active-project","TR-1"] {assert!(call.contains(expected),"{call}");}
-    assert!(!calls.iter().any(|c|c.contains("transformer_context ")||c.contains("project_configuration")));
-    let mut moved=ack;moved["version"]["source"]["member_sha256"]=json!("d".repeat(64));
-    transport.push_design_versions(200,&selection_envelope(moved));
-    assert_eq!(client.transformer_history_import("active-project",&input,NOW+2).unwrap_err().kind(),ErrorKind::UnreadableResponse);
-    assert_eq!(transport.calls().len(),3,"no blind retry after uncertain/mismatched immutable publication");
-    let mut bad=input;bad.version_number=1;
-    assert_eq!(client.transformer_history_import("active-project",&bad,NOW+3).unwrap_err().kind(),ErrorKind::InvalidInput);
-    assert_eq!(transport.calls().len(),3,"invalid input has no authority effect");
-}
-
-#[test]
 fn immutable_binding_is_one_metadata_write_and_verifies_issued_record_and_assets() {
     use ds_client_core::design_version_catalog::Command;
-    use ds_command_kernel::design_version_binding::{Binding,AssetPin};
-    let b=Binding{version_id:"v0".into(),revision_id:"v0".into(),purpose:"submission".into(),record_id:Some("R-1".into()),expected_record_revision:Some("2026-10-13T00:00:00Z".into()),milestone_id:None,assets:vec![AssetPin{asset_id:"A-1".into(),asset_version:3,asset_sha256:"a".repeat(64),asset_generation:Some(123)}],expected_catalog_revision:"b".repeat(64),expected_source_revision:"2026-10-13T00:00:00Z".into(),reason:"Issue reviewed deliverable".into(),idempotency_key:"issue-1".into()};
-    let command=Command::Bind{object_id:"TR-1".into(),binding:b};
-    let mut ack=json!({"catalog":{"schema":"ds.lv-version-catalog/v1","project_id":"active-project","object":{"kind":"lv_transformer","id":"TR-1"},"catalog_revision":"c".repeat(64),"versions":[{"version_id":"v0","display_ordinal":0,"head_revision_id":"v0","revision_count":1,"issued_revision_id":"v0","binding_count":1}]},"binding":{"binding_id":"binding-1","project_id":"active-project","transformer_id":"TR-1","version_id":"v0","revision_id":"v0","purpose":"submission","record_id":"R-1","record_revision":"2026-10-13T00:00:00Z","record_sha256":"c".repeat(64),"snapshot_digest":"d".repeat(64),"created_by":"owner","created_at":"2026-10-13T00:01:00Z","display_ordinal_at_issue":0,"assets":[{"asset_id":"A-1","asset_version":3,"asset_sha256":"a".repeat(64),"asset_generation":123}]}});
-    let transport=FixtureTransport::with_sign_in(SIGN_IN);transport.push_design_versions(200,&selection_envelope(ack.clone()));
-    let mut client=signed_in(transport.clone(),MemoryStore::default());client.design_version_catalog("active-project",&command,NOW+1).unwrap();
-    let calls=transport.calls();assert_eq!(calls.len(),2);let call=calls.last().unwrap();
-    for expected in ["bind_version_revision","path=/api/v1/design/versions","R-1","A-1"]{assert!(call.contains(expected),"{call}");}
-    assert!(!calls.iter().any(|c|c.contains("transformer_context ")||c.contains("project_configuration")));
-    ack["catalog"]["versions"][0]["issued_revision_id"]=json!("v1");transport.push_design_versions(200,&selection_envelope(ack));
-    assert_eq!(client.design_version_catalog("active-project",&command,NOW+2).unwrap_err().kind(),ErrorKind::UnreadableResponse);
-    assert_eq!(transport.calls().len(),3,"no blind repeat when issuance acknowledgement differs");
+    use ds_command_kernel::design_version_binding::{AssetPin, Binding};
+    let b = Binding {
+        version_id: "v0".into(),
+        revision_id: "v0".into(),
+        purpose: "submission".into(),
+        record_id: Some("R-1".into()),
+        expected_record_revision: Some("2026-10-13T00:00:00Z".into()),
+        milestone_id: None,
+        assets: vec![AssetPin {
+            asset_id: "A-1".into(),
+            asset_version: 3,
+            asset_sha256: "a".repeat(64),
+            asset_generation: Some(123),
+        }],
+        expected_catalog_revision: "b".repeat(64),
+        expected_source_revision: "2026-10-13T00:00:00Z".into(),
+        reason: "Issue reviewed deliverable".into(),
+        idempotency_key: "issue-1".into(),
+    };
+    let command = Command::Bind {
+        object_id: "TR-1".into(),
+        binding: b,
+    };
+    let mut ack = json!({"catalog":{"schema":"ds.lv-version-catalog/v1","project_id":"active-project","object":{"kind":"lv_transformer","id":"TR-1"},"catalog_revision":"c".repeat(64),"versions":[{"version_id":"v0","display_ordinal":0,"head_revision_id":"v0","revision_count":1,"issued_revision_id":"v0","binding_count":1}]},"binding":{"binding_id":"binding-1","project_id":"active-project","transformer_id":"TR-1","version_id":"v0","revision_id":"v0","purpose":"submission","record_id":"R-1","record_revision":"2026-10-13T00:00:00Z","record_sha256":"c".repeat(64),"snapshot_digest":"d".repeat(64),"created_by":"owner","created_at":"2026-10-13T00:01:00Z","display_ordinal_at_issue":0,"assets":[{"asset_id":"A-1","asset_version":3,"asset_sha256":"a".repeat(64),"asset_generation":123}]}});
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    transport.push_design_versions(200, &selection_envelope(ack.clone()));
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    client
+        .design_version_catalog("active-project", &command, NOW + 1)
+        .unwrap();
+    let calls = transport.calls();
+    assert_eq!(calls.len(), 2);
+    let call = calls.last().unwrap();
+    for expected in [
+        "bind_version_revision",
+        "path=/api/v1/design/versions",
+        "R-1",
+        "A-1",
+    ] {
+        assert!(call.contains(expected), "{call}");
+    }
+    assert!(!calls
+        .iter()
+        .any(|c| c.contains("transformer_context ") || c.contains("project_configuration")));
+    ack["catalog"]["versions"][0]["issued_revision_id"] = json!("v1");
+    transport.push_design_versions(200, &selection_envelope(ack));
+    assert_eq!(
+        client
+            .design_version_catalog("active-project", &command, NOW + 2)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::UnreadableResponse
+    );
+    assert_eq!(
+        transport.calls().len(),
+        3,
+        "no blind repeat when issuance acknowledgement differs"
+    );
 }
 
 #[test]
@@ -14606,8 +14735,7 @@ fn exact_revision_comparison_consumes_only_two_bulk_reads_and_offline_reuse_none
     );
     for call in &calls[1..] {
         assert!(
-            call.contains("path=/api/v1/data")
-                && call.contains("get_transformer_version_revision"),
+            call.contains("path=/api/v1/data") && call.contains("get_transformer_version_revision"),
             "{call}"
         );
         assert!(
@@ -14852,3 +14980,5 @@ fn installation_invalid_receipts_and_foreign_identity_replies_cannot_acquire_or_
     );
     assert!(unused.observed.lock().unwrap().is_empty());
 }
+#[path = "client_contract/configuration_save.rs"]
+mod configuration_save_exchange;

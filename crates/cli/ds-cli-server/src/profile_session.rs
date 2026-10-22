@@ -75,27 +75,7 @@ pub fn command(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         .read_to_end(&mut bytes)
         .map_err(crate::failure)?;
     let parsed = Request::parse(&bytes)?;
-    let action = match parsed.operation {
-        Operation::Open { .. } => "open",
-        Operation::PackageCheckpoint { .. } => "package_checkpoint",
-        Operation::EditMode { .. } => "edit_mode",
-        Operation::Control { .. } => "control",
-        Operation::SaveControl { .. } => "save_control",
-        Operation::Discard { .. } => "discard",
-        Operation::Snapshot { .. } => "snapshot",
-        Operation::State { .. } => "state",
-        Operation::Checkpoint { .. } => "checkpoint",
-        Operation::Close { .. } => "close",
-        Operation::DiscardRecovery { .. } => "discard_recovery",
-        Operation::View { .. } => "view",
-        Operation::Scene { .. } => "scene",
-        Operation::GisProjection { .. } => "gis_projection",
-        Operation::FeatureCodes { .. } => "feature_codes",
-        Operation::Properties { .. } => "properties",
-        Operation::Pick { .. } => "pick",
-        Operation::SelectionRange { .. } => "selection_range",
-        Operation::EngineeringAttributes { .. } => "engineering_attributes",
-    };
+    let action = parsed.operation.action();
     let project = crate::project(inputs)?;
     let response = crate::request_with_timeout(
         inputs,
@@ -388,7 +368,7 @@ pub(crate) async fn invoke(
         })?;
         let scratch = parent.join("profile-sessions");
         crate::host::prepare_directory(&scratch).map_err(crate::failure)?;
-        let style_demand = matches!(&request.operation, Operation::View { style_document, .. } if style_document.is_null());
+        let style_demand = request.operation.demands_style();
         let editing = matches!(&request.operation, Operation::PackageCheckpoint { .. } | Operation::EditMode { .. } | Operation::Control { .. }
             | Operation::SaveControl { .. } | Operation::Discard { .. } | Operation::DiscardRecovery { .. });
         let authorized = || {

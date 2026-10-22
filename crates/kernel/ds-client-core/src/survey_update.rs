@@ -125,6 +125,50 @@ impl SurveyUpdateRequest {
             preview,
         })
     }
+    /// A photo rotation: the one system-owned `ds_media_rotation` data key
+    /// (`survey_media_rotation`), under the entry version the person saw. No
+    /// form field changes; geometry and capture metadata are never sent.
+    pub fn media_rotation(
+        project: &str,
+        form: &str,
+        doc: &str,
+        key: &str,
+        now: &str,
+        expected_version: u64,
+        updated_data: &Value,
+    ) -> Result<Self, ClientError> {
+        let clock = OffsetDateTime::parse(now, &Rfc3339).map_err(|_| invalid())?;
+        let only_rotation = updated_data.as_object().is_some_and(|changes| {
+            changes.len() == 1
+                && changes
+                    .get(ds_command_kernel::survey_media_rotation::KEY)
+                    .is_some_and(Value::is_object)
+        });
+        if !only_rotation
+            || expected_version >= 9_007_199_254_740_991
+            || key.trim() != key
+            || key.is_empty()
+            || key.len() > 512
+            || key.chars().any(char::is_control)
+            || clock.unix_timestamp() < 0
+        {
+            return Err(invalid());
+        }
+        let payload = evaluate(json!({"operation":"mutation","mode":"normalize","row":{
+            "project_id":project,"form_id":form,"doc_id":doc,"operation":"update","idempotency_key":key,
+            "payload":{"updated_data":updated_data,"expected_version":expected_version,
+                "queued_at":clock.unix_timestamp(),"metadata":{"edit_at":now,"origin":"cli"}}
+        }}))?;
+        let preview = json!({"schema":"ds.survey-entry-update-plan/v1","project_id":project,"form_id":form,"doc_id":doc,
+            "expected_version":expected_version,"changed_fields":[ds_command_kernel::survey_media_rotation::KEY],
+            "scope":"media_rotation","effects":"none","authorized":false,
+            "geometry_preserved":true,"capture_metadata_preserved":true,"cloud_freshness":"unconfirmed"});
+        Ok(Self {
+            project: project.into(),
+            payload,
+            preview,
+        })
+    }
     pub fn project(&self) -> &str {
         &self.project
     }

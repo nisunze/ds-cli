@@ -9,10 +9,10 @@ if ($PSVersionTable.PSVersion -lt [version] '7.2') {
     throw 'This developer gate requires PowerShell 7.2+; production drivers still require Windows PowerShell 5.1.'
 }
 $repo = Split-Path -Parent $PSScriptRoot
-$desktop = Join-Path $repo 'crates/ds-cli-pls/desktop'
+$desktop = Join-Path $repo 'crates/cli/ds-cli-pls/desktop'
 $plsCadd = Join-Path $desktop 'adapters/pls-cadd'
 $word = Join-Path $desktop 'adapters/word'
-$bundle = Join-Path $repo 'crates/ds-cli-pls/src/desktop/bundle.rs'
+$bundle = Join-Path $repo 'crates/cli/ds-cli-pls/src/desktop/bundle.rs'
 $analyzer = Import-Module -Name $AnalyzerManifest -PassThru -ErrorAction Stop
 if ($analyzer.Name -ne 'PSScriptAnalyzer' -or $analyzer.Version -ne [version] '1.24.0') {
     throw 'Pass the manifest of PSScriptAnalyzer 1.24.0 explicitly; no gallery download or silent fallback is performed.'

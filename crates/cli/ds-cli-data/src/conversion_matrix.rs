@@ -11,7 +11,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::Value;
 
-const MATRIX: &str = include_str!("../../../docs/contracts/conversion-capability-matrix.json");
+const MATRIX: &str = include_str!("../../../../docs/contracts/conversion-capability-matrix.json");
 
 pub static COMMAND: Command = Command {
     id: "data.conversion-matrix",

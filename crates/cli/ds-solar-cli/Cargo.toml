@@ -1,0 +1,30 @@
+[package]
+name = "ds-solar-cli"
+description = "Local Solar execution and parity tooling."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "UNLICENSED"
+repository = "https://github.com/nisunze/ds-solar"
+
+[[bin]]
+name = "ds-solar"
+path = "src/main.rs"
+
+[dependencies]
+ds-solar-addon = { path = "../../../../ds-solar/apps/solar" }
+ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
+ds-solar-project = { path = "../../kernel/ds-solar-project", features = ["compute"] }
+ds-solar-reference-host = { path = "../../kernel/ds-solar-reference-host" }
+# This application uses the typed calculation stages; sealed reference units
+# decode through the shared Arrow reader, without a second Polars crossing.
+ds-solar-engine = { path = "../../../../ds-solar/crates/ds-solar-engine", default-features = false }
+ds-solar-runtime = { path = "../../../../ds-solar/crates/ds-solar-runtime" }
+anyhow.workspace = true
+tempfile = "3"
+chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
+clap = { version = "4", features = ["derive", "env"] }
+serde.workspace = true
+serde_json = { workspace = true, features = ["raw_value", "float_roundtrip", "preserve_order"] }
+sha2.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

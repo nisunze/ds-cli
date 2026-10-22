@@ -33,7 +33,7 @@ otherwise. Include bounded non-secret evidence, the expected behavior, and an
 observable acceptance condition. Repeated sightings of the same OPEN report are
 deliberately merged by the feedback service, so filing twice is cheap. Coding
 sessions never submit; they fix findings or record unfinished work in the
-owning backlogs ([PRINCIPLES.md §4](../../../ds-command-kernel/backlog/PRINCIPLES.md#4-report-as-you-go-owner-2026-10-07)).
+owning backlogs ([PRINCIPLES.md §4](../../crates/kernel/ds-command-kernel/backlog/PRINCIPLES.md#4-report-as-you-go-owner-2026-10-07)).
 
 A settled report is never merged into. Once a report is `resolved` or
 `wont_fix`, the next sighting of the same obstacle becomes a NEW report whose

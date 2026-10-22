@@ -43,7 +43,7 @@ fn full_offline_flow_keeps_pinned_results_and_print_bytes_without_desktop() {
     ]);
     assert_eq!(init["publication"], "local_only");
     let printing_config = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../ds-network-reporter/examples/printing/network-config.a0-a3.example.json");
+        .join("../../../../ds-network-reporter/examples/printing/network-config.a0-a3.example.json");
     let mut network_config: Value =
         serde_json::from_slice(&std::fs::read(printing_config).unwrap()).unwrap();
     let print_format = "pdf__a3-landscape-aderm-lv";

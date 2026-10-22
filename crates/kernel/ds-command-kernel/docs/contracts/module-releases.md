@@ -44,7 +44,7 @@ atomic activation boundary before any UI or CLI control can offer installation.
 
 Brain owns authenticated publication, immutable metadata and atomic pointer
 advance under `app.release.manage`; its receiving wire contract is
-[App release governance](../../../ds-brain/docs/contracts/app-release-governance.md).
+[App release governance](../../../../../../ds-brain/docs/contracts/app-release-governance.md).
 The protected publication envelope remains distinct from the existing public
 `{success,release}` envelope.
 
@@ -252,7 +252,7 @@ precede cloning; incomplete units, unknown keys and crossed facts refuse.
 
 Every UI catalog requires a typed `build_manifest`, carrying the closed ten-field
 `ds.ui-engine-build/v1` DTO that the loaded unit must return:
-`schema`, `component`, `protocol`, integer `ui_contract: 1`, `source_sha`,
+`schema`, `component`, `protocol`, unsigned numeric `ui_contract`, `source_sha`,
 `cargo_lock_sha256`, `rustc`, `target`, `profile`, `config_sha256`. Source is
 exactly 40 lowercase hex characters; lock/config hashes are 64 lowercase hex.
 Only `wasm32-unknown-unknown` and `release` are admitted. Compiler text remains
@@ -288,3 +288,48 @@ Focused proof is `cargo test --lib module_release::ui --jobs 1`, including both
 closed component fixtures, exact compiler/configuration identity binding,
 unknown keys, unsupported UI ABI, lane/source/member tampering, withdrawn status,
 generation races, protected lifecycle deferral and offline retained rollback.
+
+### Explicit local UI producer staging
+
+`core.component.stage-local` admits an already built four-member UI unit on
+Linux x86_64 into the separate canary `local-dev` namespace. The operation is a
+confirmed OS-user machine write. Its inputs are the absolute producer directory,
+the actual `uiEngineBuildIdentity` output file, the exact source snapshot SHA and
+the tested WASM SHA-256. Core never builds or evaluates these inputs. It reads
+bounded ordinary files, verifies the selected WASM digest, admits the existing
+typed identity and derives the complete unit digest from its captured identity
+and sorted four-member byte hashes. The captured bytes are copied once into the
+existing immutable store and produce the same private ready receipt and
+generation-fenced activation flow.
+
+`UiUnit::LocalBuild` serializes `local_build` instead of `release`. It declares
+`ds.ui-local-build/v1`, `scope: local-dev`, component, canary channel, typed
+identity and four `VerifiedFile` records. `UiAuthority::LocalBuild` records this
+scope and source snapshot; it asserts no gateway acquisition, publication URL,
+release date or governance status. Published unit and authority JSON retain
+their existing shapes. Published acquisition cannot mint a local grant or
+activate into a local store, and a local receipt cannot enter a release
+selection. Local files never become production artifacts by selection.
+
+Existing UI selection, activation, removal, rollback, capture and member commands
+accept `--scope release|local-dev`, defaulting to `release`. Native engines have
+no local UI scope. Local Dev explicitly selects `local-dev`; installed Canary
+and production clients select `release`. The store namespaces, locks and
+generations are independent, and automatic published convergence only accesses
+release selections. No absent selection falls back to vendor files or another
+scope. An older native UI admission implementation that lacks the local variant
+must be updated as an affected shell interface; it must not reinterpret a local
+unit as a published one.
+
+Numeric `ui_contract` metadata alone does not establish compatibility. The
+required protocol/schema, producer compiler/source/configuration facts,
+complete byte receipt, actual loaded identity and demanded callable ABI remain
+the admission controls. A self-consistent numeric addition is accepted; changing
+the number without updating the producer-bound manifest still fails integrity.
+
+Core's local producer runs the consolidated dependency checker with
+`--component-only`: it checks the same declared and resolved local dependency
+rules without requiring an unrelated Web checkout. CLI, Kernel, Interactions
+and Shared must also remain free of a dependency on Web. The check's default
+mode still includes Web; the complete application source/dependency gate and
+assembled workflow acceptance remain required before application qualification.

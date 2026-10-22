@@ -444,7 +444,7 @@ pub fn process(i: &Inputs, _: &Context) -> Result<Value, Failure> {
         let root = std::fs::canonicalize(i.require("workspace")?)
             .map_err(|e| map_error(Error::Io(e.to_string())))?;
         return Ok(
-            json!({"run_id":id,"worker_pid":ds_cli_exec::start_design_project_process(&root,id,workers)?,"state":"launched","progress":"ds design project status --workspace <dir> --run-id <id>"}),
+            json!({"run_id":id,"worker_pid":crate::project_worker::start_design_project_process(&root,id,workers)?,"state":"launched","progress":"ds design project status --workspace <dir> --run-id <id>"}),
         );
     }
     serde_json::to_value(w.process(id, workers).map_err(map_error)?)

@@ -49,7 +49,7 @@ windows-sys = { workspace = true }
 
 [dev-dependencies]
 # Vector CLI fixtures compare receipts and Arrow exports with their Rust owner.
-ds-network = { path = "../../../ds-network/crates/ds-network" }
+ds-network = { path = "../../../../ds-network/crates/ds-network" }
 tempfile = "3"
 # tests/gateway_operations.rs proves the CLI and the desktop select the same
 # reviewed gateway operations. The binary reaches the core through
@@ -62,12 +62,12 @@ ds-command-kernel = { workspace = true }
 # tests/survey_moments.rs seeds the Server's survey-media records exactly as
 # `ds survey photo rotate` writes them, then proves the read side and the
 # clean through the binary with no gateway.
-ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
-ds-report-artifacts = { path = "../../../ds-command-kernel/crates/ds-report-artifacts" }
+ds-sync-store = { path = "../../kernel/ds-sync-store" }
+ds-report-artifacts = { path = "../../kernel/ds-report-artifacts" }
 # tests/domain_smoke.rs seeds a working copy's PLS-CADD link through the same
 # store `ds dsgrid model link` writes, then proves `ds dsgrid model unlink`
 # removes exactly that link through the binary.
-ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
+ds-layer-store = { path = "../../kernel/ds-layer-store" }
 # Linked-model CLI fixtures use the authoritative typed rows and requests.
 ds-grid-model = { workspace = true }
 serde = { workspace = true }
@@ -78,7 +78,7 @@ ds-grid-exchange = { workspace = true }
 zip = { workspace = true }
 ds-solar-contracts = { workspace = true }
 # Public cache-only preparation tests seed through the real reference cache owner.
-ds-solar-io = { path = "../../../ds-solar/crates/ds-solar-io" }
+ds-solar-io = { path = "../../../../ds-solar/crates/ds-solar-io" }
 serde_json = { workspace = true }
 # Offline report negative controls use only their own synthetic workspace to
 # emulate historical/damaged saved results; they never touch native auth state.

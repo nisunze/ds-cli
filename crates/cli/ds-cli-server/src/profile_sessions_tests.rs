@@ -69,7 +69,7 @@ fn style_owner() -> ds_cli_auth::ProviderIdentity {
 }
 fn authored_style() -> Value {
     serde_json::from_str(include_str!(
-        "../../../../ds-command-kernel/tests/fixtures/profile-display-style.json"
+        "../../../kernel/ds-command-kernel/tests/fixtures/profile-display-style.json"
     ))
     .unwrap()
 }

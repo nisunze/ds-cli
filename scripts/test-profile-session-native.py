@@ -27,7 +27,7 @@ if selected is None: raise RuntimeError('Compile the qualified Profile View serv
 sg=json.loads(selected.read_text())
 (out/'server-graph-proof.json').write_text(json.dumps({'fingerprint':str(selected),'kind':'test' if selected.name.startswith('test-') else 'library'},indent=2)+'\n')
 roots={name:dep(sg,name)[0] for name in ['ds_grid_exchange','ds_network_client','ds_cli_contract','serde','serde_json','ds_grid_engine','sha2','base64','ds_network_contracts','getrandom','ds_profile_runtime','ds_command_kernel','ds_sync_store','ds_cli_auth']}
-src=cli/'crates/ds-cli-server/src/profile_sessions.rs'
+src=cli/'crates/cli/ds-cli-server/src/profile_sessions.rs'
 command=[str(pathlib.Path.home()/'.cargo/bin/rustc'),'--edition=2024','--test',str(src),'-Ldependency='+str(deps),'-Ccodegen-units=1','-o',str(out/'profile-owner-tests')]
 for name,lib in roots.items(): command+=['--extern',f'{name}={lib}']
 (out/'dependency-proof.json').write_text(json.dumps({k:str(v) for k,v in roots.items()},indent=2)+'\n')

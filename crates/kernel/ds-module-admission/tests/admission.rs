@@ -177,7 +177,7 @@ fn browser_engine_and_ui_units_answer_their_unit_facts() {
         format!("ds-network@0.1.0+{}", "a".repeat(40))
     );
     let identity: Value = serde_json::from_str(include_str!(
-        "../../../src/module_release/fixtures/interactions-ui-engine-build.json"
+        "../../ds-command-kernel/src/module_release/fixtures/interactions-ui-engine-build.json"
     ))
     .unwrap();
     let (code, stdout, stderr) = run(&request("interactions", "browser", identity.clone()), &[]);

@@ -25,36 +25,36 @@ use std::path::{Path, PathBuf};
 /// from constants and typed inputs, never from a caller's string.
 const SPAWN_OWNERS: &[(&str, &str)] = &[
     (
-        "crates/ds-cli-exec/src/session.rs",
+        "crates/kernel/ds-cli-exec/src/session.rs",
         "captured verified Network executable runs only fixed profile-session with private request/output paths and an admitted positive worker budget; no caller executable or argv, managed identity revalidated before spawn",
     ),
     (
-        "crates/ds-cli-report/src/project/export.rs",
+        "crates/cli/ds-cli-report/src/project/export.rs",
         "captured Reporter executable runs only fixed render-grid-plan-profile over host-owned retained request/result paths; no caller executable or argv, owner retains the render lock and failure journal",
     ),
     (
-        "../ds-command-kernel/crates/ds-assets-pdf-host/src/lib.rs",
+        "crates/kernel/ds-assets-pdf-host/src/lib.rs",
         "native Assets PDF text owner runs only fixed /usr/bin/prlimit plus /usr/bin/pdfinfo or /usr/bin/pdftotext, closed decoder choice and validated numeric page, over private governed bytes with memory/CPU/deadline/output limits; no caller executable, argv, environment or URL",
     ),
     (
-        "crates/ds-cli-server/src/solar_documents.rs",
+        "crates/cli/ds-cli-server/src/solar_documents.rs",
         "captured Solar report renderer invokes only installed pandoc and libreoffice with fixed conversion options, private owner-verified resources and fixed report filenames; the caller supplies neither an executable nor argv",
     ),
     (
-        "crates/ds-cli-exec/src/design_worker.rs",
+        "crates/cli/ds-cli-design/src/project_worker.rs",
         "re-invokes only the current ds executable with fixed Design project processing, captured run id, absolute workspace and numeric CPU budget",
     ),
     (
-        "crates/ds-cli-exec/src/solar_worker.rs",
+        "crates/cli/ds-cli-solar/src/project_worker.rs",
         "re-invokes only the current ds executable with the fixed Solar project sync command, absolute workspace, validated explicit project and deployment lane after the caller governed-write gate",
     ),
     (
-        "crates/ds-cli-exec/src/lib.rs",
+        "crates/kernel/ds-cli-exec/src/lib.rs",
         "the audited engine boundary: one named `&'static str` subcommand per call, \
          for the owners that chose process separation (ds-report, ds-solar)",
     ),
     (
-        "crates/ds-cli-pls/src/desktop/run.rs",
+        "crates/cli/ds-cli-pls/src/desktop/run.rs",
         "Windows PowerShell 5.1 from %SystemRoot% (never PATH) on one ds-desktop \
          entry of the embedded, digest-pinned PLS-CADD driver bundle: the switches \
          are literals, the entry is a closed `Entry` enum, parameter names are \
@@ -62,23 +62,23 @@ const SPAWN_OWNERS: &[(&str, &str)] = &[
          verb validated; quoting is its own tested function passed by raw_arg",
     ),
     (
-        "crates/ds-cli-mcp/src/tools.rs",
+        "crates/cli/ds-cli-mcp/src/tools.rs",
         "re-invokes this same executable for declared tool calls and diagnostic probes \
          (descriptor-built argv, path is `current_exe`) and, for one MCP invoke whose live \
          descriptor carries desktop-class authority and names no descriptor, starts \
          the installed DS GridDesign application once with no arguments",
     ),
     (
-        "crates/ds-cli-workstation/src/detect.rs",
+        "crates/cli/ds-cli-workstation/src/detect.rs",
         "asks a detected local tool for its version; the argv is a fixed literal",
     ),
     (
-        "crates/ds-cli-workstation/src/install.rs",
+        "crates/cli/ds-cli-workstation/src/install.rs",
         "drives the platform package manager; the argv is a fixed array with a `const` \
          package id, never an operator string",
     ),
     (
-        "crates/ds-cli-workstation/src/verify.rs",
+        "crates/cli/ds-cli-workstation/src/verify.rs",
         "runs a component's own verification probe; the argv is a fixed literal",
     ),
 ];
@@ -89,7 +89,7 @@ const CONSTRUCTORS: &[&str] = &["Command::new(", "ProcessCommand::new("];
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .canonicalize()
         .expect("the workspace root resolves")
 }
@@ -113,17 +113,20 @@ fn rust_sources(root: &Path, into: &mut Vec<PathBuf>) {
 fn spawning_files() -> BTreeSet<String> {
     let root = workspace_root();
     let mut sources = Vec::new();
-    for crate_dir in std::fs::read_dir(root.join("crates")).expect("crates/ exists") {
+    for crate_dir in std::fs::read_dir(root.join("crates/cli")).expect("crates/ exists") {
         let source = crate_dir.expect("a crate directory").path().join("src");
         if source.is_dir() {
             rust_sources(&source, &mut sources);
         }
     }
-    // Only the explicitly linked native decoder joins this inventory.
-    rust_sources(
-        &root.join("../ds-command-kernel/crates/ds-assets-pdf-host/src"),
-        &mut sources,
-    );
+    // The shared process executor and native decoder are the linked Kernel
+    // owners covered by this CLI process-construction inventory.
+    for owner in ["ds-cli-exec", "ds-assets-pdf-host"] {
+        rust_sources(
+            &root.join("crates/kernel").join(owner).join("src"),
+            &mut sources,
+        );
+    }
     assert!(
         sources.len() > 50,
         "only {} source files found; the walk is not reaching the tree",
@@ -207,8 +210,9 @@ fn the_engine_boundary_still_takes_a_static_subcommand() {
     // The one property the whole contract rests on. `&'static str` is what
     // makes "a subcommand no command registers stays unreachable" true: a
     // value derived from model output cannot be one.
-    let source = std::fs::read_to_string(workspace_root().join("crates/ds-cli-exec/src/lib.rs"))
-        .expect("ds-cli-exec source");
+    let source =
+        std::fs::read_to_string(workspace_root().join("crates/kernel/ds-cli-exec/src/lib.rs"))
+            .expect("ds-cli-exec source");
     let shipped = source.split("#[cfg(test)]").next().unwrap_or_default();
 
     let signatures = shipped.matches("subcommand: &'static str").count();
@@ -249,9 +253,10 @@ fn the_engine_boundary_still_takes_a_static_subcommand() {
 
 #[test]
 fn solar_background_worker_has_a_closed_self_invocation() {
-    let source =
-        std::fs::read_to_string(workspace_root().join("crates/ds-cli-exec/src/solar_worker.rs"))
-            .unwrap();
+    let source = std::fs::read_to_string(
+        workspace_root().join("crates/cli/ds-cli-solar/src/project_worker.rs"),
+    )
+    .unwrap();
     assert!(source.contains("std::env::current_exe()"));
     assert!(source.contains("!workspace.is_absolute()"));
     assert!(source.contains("matches!(lane, \"stable\" | \"canary\")"));

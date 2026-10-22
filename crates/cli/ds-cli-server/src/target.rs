@@ -173,7 +173,10 @@ mod tests {
         assert_eq!(resolve(&inputs(Some("desktop"))).unwrap(), Target::Desktop);
         assert_eq!(resolve(&inputs(Some("core"))).unwrap(), Target::Server);
 
-        assert_eq!(resolve(&inputs(Some("server"))).unwrap_err().code(), "unknown_target");
+        assert_eq!(
+            resolve(&inputs(Some("server"))).unwrap_err().code(),
+            "unknown_target"
+        );
         let instance = resolve(&inputs(Some("desktop:kigali"))).unwrap_err();
         assert_eq!(instance.code(), "target_instance_unsupported");
         assert!(

@@ -289,7 +289,7 @@ mod tests {
     fn package_validation_exposes_bounded_owner_advisories_without_invalidating_it() {
         use ds_grid_exchange::package::{PackOptions, unpack};
         let mut package = unpack(include_bytes!(
-            "../../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid"
+            "../../../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid"
         ))
         .unwrap();
         for cable in &mut package.snapshot.cables {

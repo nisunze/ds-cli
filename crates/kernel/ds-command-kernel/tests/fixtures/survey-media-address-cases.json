@@ -1,7 +1,7 @@
 {
   "schema": "ds.survey-media-address-cases/v1",
   "purpose": "What ds-command-kernel::survey_media_address answers for a survey media reference: which of the three stored layouts it is, what it identifies, the object and thumbnail companion it resolves to, and the body a host sends to ds-brain's survey_media actions. The kernel replays this file in tests/survey_media_address_cases.rs and ds-web replays the identical copy through the vendored WASM, so no rule can be true on one host only.",
-  "source": "ds-command-kernel/docs/contracts/survey-photo-outbox.md (Survey media address). The rules replace ds-web src/lib/api/survey-media-upload.ts (surveyMediaAddress) and are transcribed from ds-brain internal/handlers/survey_media.go (surveyMediaSegment, surveyMediaFileName, surveyMediaPath); the field app's layout is simple_notes/lib/src/core/entry_engine.dart.",
+  "source": "ds-cli/crates/kernel/ds-command-kernel/docs/contracts/survey-photo-outbox.md (Survey media address). The rules replace ds-web src/lib/api/survey-media-upload.ts (surveyMediaAddress) and are transcribed from ds-brain internal/handlers/survey_media.go (surveyMediaSegment, surveyMediaFileName, surveyMediaPath); the field app's layout is simple_notes/lib/src/core/entry_engine.dart.",
   "note": "Each case is the op WITHOUT the schema wrapper; `schema` overrides the default ds.survey-media-address/v1. `expected` is the parsed answer, or {\"error\": \"<the exact Err string>\"} when the reference or the request is refused. `refuses` names why, from the vocabulary below.",
   "refusals": {
     "not_a_layout": "The reference is not one of the three stored layouts.",

@@ -75,7 +75,7 @@ fn ds(args: &[&str], engine: Option<&Path>, home: &Path) -> (bool, Value) {
 
 fn fixture() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid")
+        .join("../../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid")
 }
 
 /// A protocol-only executable that answers `build-info` as an older Network

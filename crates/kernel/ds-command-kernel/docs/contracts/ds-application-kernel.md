@@ -291,6 +291,34 @@ Consequences worth stating, because they are the parts that get skipped:
 - Undo/redo is state-transition semantics, so it is kernel-owned. A per-surface
   undo stack is two implementations of one idea.
 
+Selection field hints use `selection_field::selection_field_info` for native
+callers and the typed `selectionFieldInfoIpc` adapter for browser callers. The
+Kernel owns `SelectionFieldQuery`, `SelectionFieldProfile` and its named request
+and response refusals; it consumes `ds-geo` statistics and `ds-columnar` stored
+value kinds directly. Generated TypeScript carries those same definitions.
+The owning decoder accepts additive fields and rejects missing required data,
+unknown kinds, crossed columns, inconsistent counts and invalid numeric ranges.
+Flattened browser responses serialize as plain objects, with absent numeric
+bounds represented by null; they must never masquerade as object declarations
+while returning a JavaScript Map. Field hints read explicit input and never
+acquire project data or change selection, authored state or SQLite.
+
+Table edit proposals use `table_edit::TableEditRequest` and `TableEditResponse`.
+Their five variants consume the existing `ds_geo::table` inputs and result types
+directly. The same Rust owner supplies integer/float/bool interpretation and
+the generated browser bindings; presentation does not coerce values separately.
+`encodeTableEdit` captures explicit inputs, `tableEdit` calculates a proposal,
+and `decodeTableEdit` validates operation, scope, old values and result types
+at each serialized consumer. Compatible additional fields remain acceptable.
+The UI retains native JSON scalar types when applying a returned cell value.
+Before effects, it checks its captured project/table/session context and calls
+`validateTableEditSnapshot` with current rows and geometry. That is a comparison
+of input values, not a durable model revision or an atomic write transaction.
+Existing scoped writers and durable owners still govern applying and retaining
+edits; these stateless operations acquire no project data and never write SQLite.
+The native exchange tests and real-WASM mounted controls support this boundary;
+they do not establish installed CLI/UI parity or restart acceptance by themselves.
+
 ## 6. Where the code actually is — measured, not estimated
 
 `ds-web` on `run`, non-test TypeScript under `src/lib`, largest first:
@@ -361,11 +389,12 @@ decides what the user may do outranks a 4,000-line module that formats things.
    rule: a TypeScript module still holding domain logic is not a tracked
    exception, it is the work, and its tests are deleted with it. Do not preserve
    TypeScript business logic for convenience.
-2. **Kernel modules take facts and return decisions.** One
-   `evaluate(&[u8]) -> Result<String, String>` entry point, `deny_unknown_fields`
-   request, serialisable reply, `wasm_bindgen` export — the shape every existing
-   kernel module already uses. Pure: no IO, no clock of its own, no randomness;
-   take `now` as an input.
+2. **Kernel modules take typed facts and return typed decisions.** Rust callers
+   and handlers consume their owning request, response and refusal types directly;
+   generate non-Rust bindings from those same types. Serialized/WASM adapters use
+   the owning serializers and decoders, with clear refusals for incompatible data.
+   Accept compatible additive fields; do not require equal releases or digests.
+   Pure decisions have no IO, ambient clock or randomness; take `now` as an input.
 3. **Prove it headlessly.** A migrated capability is finished when `ds` can
    exercise it with no map, and a contract test pins that the browser and the
    CLI select the same operation with the same inputs, outputs, errors and side
@@ -398,3 +427,22 @@ Ordered by (truth density × how badly the current home hurts), not by size:
    §4 requires.
 
 The transport slice is done; treat it as the worked example of steps 1–4 of §7.
+
+
+### Design cell-lock vocabulary
+
+Properties reads `designCellLockVocabulary` through the initialized application
+Kernel. The response constructor, serialized response and refusal live in
+`ds-network-contracts::cell_authority`, alongside the `LockableCell` and
+`Component` facts used directly by Network's cell authority. This query has no
+inputs, state effects, network acquisition or engine initialization. Kernel's
+native decoder and WASM `decodeDesignCellLockVocabulary` validate required
+shapes, unique cell/component names and ordered status choices; compatible
+extra fields, cells and layers are accepted. Neither release equality nor an
+independently handwritten TypeScript list participates in acceptance.
+
+A missing or incompatible vocabulary is a visible Properties error before edit
+context entry. Read-only inspection remains available, and saved lock metadata
+is not changed or reinterpreted through a fallback list. The deterministic
+mounted editor tests exercise the actual Kernel constructor/decoder and verify
+that refusal preserves the held row and context.

@@ -109,4 +109,4 @@ cargo clippy --manifest-path crates/ds-sync-runtime/Cargo.toml --all-targets --a
 ```
 
 The product destination is
-[the headless runtime contract](../../../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md).
+[the headless runtime contract](../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md).

@@ -76,6 +76,30 @@ fn isolated_bulk_control() {
         assert!(!session.is_closed());
         assert_eq!(session.history(), &history);
         clean();
+        for operation in [
+            json!({"action":"preview_structure_station_move","request":{
+                "expected_revision":history["model_revision"],"structure_id":"one","station_m":12.},
+                "options":{},"held_axis_pin":{}}),
+            json!({"action":"apply_structure_retype","request":{
+                "expected_revision":history["model_revision"],"structure_ids":["one"],"structure_type_id":"new"}}),
+        ] {
+            let preflight = session
+                .check_control_transport(&native(operation.clone()), Some(&history))
+                .unwrap_err();
+            assert_eq!(preflight.code(), "network_engine_incompatible");
+            let error = session.request(native(operation), &|| false).unwrap_err();
+            assert_eq!(error.code(), "network_engine_incompatible");
+            assert!(!session.is_closed());
+            assert_eq!(session.history(), &history);
+            clean();
+        }
+        let error = session
+            .request(NativeProfileOperationV1::ModelLibrary {}, &|| false)
+            .unwrap_err();
+        assert_eq!(error.code(), "network_engine_incompatible");
+        assert!(!session.is_closed());
+        assert_eq!(session.history(), &history);
+        clean();
         session.request(native(small), &|| false).unwrap();
         session.close(&|| false).unwrap();
         return;

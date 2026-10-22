@@ -4,7 +4,7 @@ use ds_network_contracts::lv_processing::decode_native_lv_request;
 
 fn binding() -> Value {
     let defaults: Value = serde_json::from_str(include_str!(
-        "../../../../../ds-command-kernel/tests/fixtures/governed-renderer-defaults.json"
+        "../../../../kernel/ds-command-kernel/tests/fixtures/governed-renderer-defaults.json"
     ))
     .unwrap();
     let document = json!({"type":"line","paint":{},"layout":{},

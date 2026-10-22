@@ -4,20 +4,19 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.90"
 publish = false
-[workspace]
 [dependencies]
 anyhow = "1"
 ds-tile-runtime = { path = "../ds-tile-runtime" }
 tempfile = "3"
 tokio = { version = "1", features = ["rt", "time", "macros", "sync"] }
-ds-command-kernel = { path = "../.." }
+ds-command-kernel = { path = "../ds-command-kernel" }
 ds-sync-store = { path = "../ds-sync-store" }
-ds-network-contracts = { path = "../../../ds-network/crates/ds-network-contracts", default-features = false }
+ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
 ds-network-client = { path = "../ds-network-client" }
-ds-cli-exec = { path = "../../../ds-cli/crates/ds-cli-exec" }
-ds-solar-contracts = { path = "../../../ds-solar/crates/ds-solar-contracts", default-features = false }
-ds-solar-io = { path = "../../../ds-solar/crates/ds-solar-io" }
-ds-solar-process = { path = "../../../ds-solar/crates/ds-solar-process" }
+ds-cli-exec = { path = "../ds-cli-exec" }
+ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
+ds-solar-io = { path = "../../../../ds-solar/crates/ds-solar-io" }
+ds-solar-process = { path = "../../../../ds-solar/crates/ds-solar-process" }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 base64 = "0.22"

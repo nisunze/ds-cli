@@ -529,8 +529,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 evidence: *evidence,
             };
             manifest.id = manifest_id(&manifest)?;
-            serde_json::to_value(Bundle { manifest, rooms })
-            .map_err(|e| e.to_string())?
+            serde_json::to_value(Bundle { manifest, rooms }).map_err(|e| e.to_string())?
         }
         Command::Read { scope, id, bundle } => read(&scope, &id, &bundle)?,
         Command::Compare {
@@ -553,7 +552,8 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     max_detail_features: 500,
                     detail_change_classes: vec![],
                 },
-            )?;
+            )
+            .map_err(|error| error.to_string())?;
             let metadata_layer = |snapshot: &Value| {
                 BTreeMap::from([(
                     "computation_metadata".into(),
@@ -575,7 +575,8 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                     max_detail_features: 1,
                     detail_change_classes: vec![],
                 },
-            )?;
+            )
+            .map_err(|error| error.to_string())?;
             let mut artifact = json!({"schema":"ds.design.version-comparison/v1","scope":scope,
                 "left_revision":left.manifest.id,"right_revision":right.manifest.id,
                 "comparison": comparison, "metadata_comparison":metadata_comparison, "consistency": consistency(&left.manifest.evidence, &right.manifest.evidence, tolerance_m)});

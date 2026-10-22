@@ -1,7 +1,7 @@
 # Contributing to ds-command-kernel
 
 Start with [AGENTS.md](AGENTS.md) and its owning contract/check links.
-Read [the shared collaboration agreement](../ds-command-kernel/docs/agent-guidance/collaboration.md).
+Read [the shared collaboration agreement](docs/agent-guidance/collaboration.md).
 
 1. Inspect current run/HEAD, worktree and index; preserve concurrent authors' work.
 2. Identify one owning behavior and acceptance proof; change one coherent slice.

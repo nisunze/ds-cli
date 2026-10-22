@@ -18,9 +18,8 @@ pub use crate::profile::{
     PROJECT_FORMS_ACTION, PROJECT_FORMS_METHOD, PROJECT_FORMS_PATH, PROJECT_FORM_EDITOR_ACTION,
     SOLAR_SNAPSHOT_METHOD, SOLAR_SNAPSHOT_PATH, SURVEY_ENTRIES_CHANGES_METHOD,
     SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH,
-    SURVEY_ENTRY_CREATE_METHOD, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH,
-    TILES_METHOD, TILES_PATH, TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD,
-    TRANSFORMER_CONTEXT_PATH,
+    SURVEY_ENTRY_CREATE_METHOD, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_METHOD, TILES_PATH,
+    TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
 };
 pub use crate::profile::{PROJECT_REPORT_METHOD, PROJECT_REPORT_PATH};
 pub use crate::profile::{
@@ -799,7 +798,9 @@ impl SurveyEntryCreateCall<'_> {
         self.authority.device_id
     }
     pub fn body(&self) -> SecretRequestBody {
-        SecretRequestBody(serde_json::to_vec(&self.direct.body).expect("admitted direct create body"))
+        SecretRequestBody(
+            serde_json::to_vec(&self.direct.body).expect("admitted direct create body"),
+        )
     }
 }
 
@@ -2894,11 +2895,8 @@ impl ProjectReportCall<'_> {
 /// redirects so an exact validated origin can never hand credentials to a
 /// second origin.
 pub struct ProjectConfigurationCall<'a> {
-    pub(crate) expected_data: Option<&'a serde_json::Value>,
     pub(crate) profile: &'a ClientProfile,
-    pub(crate) project: &'a str,
-    pub(crate) settings: Option<&'a serde_json::Value>,
-    pub(crate) sheet: &'a str,
+    pub(crate) request: ds_command_kernel::gateway_exchange::Request,
     pub(crate) authority: CallAuthority<'a>,
 }
 
@@ -2907,18 +2905,10 @@ impl ProjectConfigurationCall<'_> {
         self.profile.gateway_origin()
     }
     pub fn path(&self) -> String {
-        if self.settings.is_some() {
-            "/report".into()
-        } else {
-            crate::project_feeders::read_path(self.project)
-        }
+        self.request.path.clone()
     }
     pub fn method(&self) -> &'static str {
-        if self.settings.is_some() {
-            "POST"
-        } else {
-            "GET"
-        }
+        self.request.method.as_str()
     }
     pub fn content_type(&self) -> &'static str {
         "application/json"
@@ -2943,18 +2933,10 @@ impl ProjectConfigurationCall<'_> {
     }
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
-            self.settings
-                .map(|rows| {
-                    let bytes = save_config_body(self.project, self.sheet, rows);
-                    if let Some(expected) = self.expected_data {
-                        let mut body: serde_json::Value =
-                            serde_json::from_slice(&bytes).expect("fixed save body");
-                        body["expected_data"] = expected.clone();
-                        serde_json::to_vec(&body).expect("fixed fenced save body")
-                    } else {
-                        bytes
-                    }
-                })
+            self.request
+                .body
+                .as_ref()
+                .map(|body| serde_json::to_vec(body).expect("owning configuration request"))
                 .unwrap_or_default(),
         )
     }
@@ -3028,22 +3010,6 @@ impl KnownColumnsCall<'_> {
                 .unwrap_or_default(),
         )
     }
-}
-
-/// The `/report` `save_config` request, byte for byte as the browser sends it
-/// (`ds-web/src/lib/api/design.ts:2119-2125` through `wireProject`, which is
-/// `eds_project_id`). One builder, so a native settings save and a browser
-/// settings save cannot be two different requests; `expected_data` is the
-/// browser's optional dirty-check and is not part of the shape itself.
-pub(crate) fn save_config_body(
-    project: &str,
-    sheet: &str,
-    rows: &impl serde::Serialize,
-) -> Vec<u8> {
-    serde_json::to_vec(&serde_json::json!({
-        "action":"save_config","eds_project_id":project,"sheet_name":sheet,"data":rows
-    }))
-    .expect("JSON settings serialize")
 }
 
 pub trait Transport {

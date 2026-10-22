@@ -11,16 +11,16 @@
 //! and why not, and the one rotation policy.
 //!
 //! The rotation policy is the properties panel's, transcribed and not
-//! re-invented (owner, 2026-09-20): a turn is offered only for a stored
-//! ORIGINAL the kernel's address grammar admits for this project — a derived
-//! thumbnail, a data: URL or a foreign path is refused before any byte moves;
-//! the turn is the NET clockwise quarter-turn (90, 180 or 270; a counter-
-//! clockwise click is 270), applied once to the generation-pinned source
-//! through `survey_photo_media::process`, which also regenerates the JPEG
-//! thumbnail; the result is durable locally FIRST (`waiting`) and reaches the
-//! bucket through publication, never through a second rotation of a changed
-//! source; while a rotation of the same object is still waiting, a further
-//! turn rotates the waiting bytes and supersedes them.
+//! re-invented (owner, 2026-09-20; rotation as metadata, owner 2026-10-21): a
+//! turn is offered only for a stored ORIGINAL the kernel's address grammar
+//! admits for this project — a derived thumbnail, a data: URL or a foreign
+//! path is refused before any byte moves; the turn is a clockwise
+//! quarter-turn (90, 180 or 270; a counter-clockwise click is 270). The
+//! original is never rewritten: the turn is entry metadata
+//! (`survey_media_rotation`) and only the JPEG thumbnail is regenerated. One
+//! rule for a second turn while one is still waiting: the quarter-turns
+//! accumulate onto the waiting net (`pending_degrees`); a full circle leaves
+//! nothing to publish.
 //!
 //! Dates: `since`/`until` are RFC 3339 instants or bare `YYYY-MM-DD` days.
 //! A bare day is a UTC calendar day; a caller whose days are local (the
@@ -584,8 +584,10 @@ pub const RECORD_SCHEMA: &str = "ds.survey-media-record/v1";
 /// record behind a [`MomentRow`], beside the bytes on disk. A record is
 /// written when a rotation is prepared (`waiting`) and settled when it is
 /// published (`synced`); the bytes are the rotation bundle
-/// (`original.bin`, `thumbnail.jpeg`, `manifest.json`) under
-/// `survey-media/<project>/<key>/`, digest-pinned by this record.
+/// (`original.bin` — the camera original, byte-identical to the stored
+/// object — `thumbnail.jpeg`, `manifest.json`) under
+/// `survey-media/<project>/<key>/`, digest-pinned by this record. `degrees`
+/// is the net turn the entry metadata records once published.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MediaRecord {
@@ -603,7 +605,8 @@ pub struct MediaRecord {
     pub cached_at_ms: u64,
     pub updated_at_ms: u64,
     pub state: SyncState,
-    /// The net clockwise turn these bytes carry relative to `source_generation`.
+    /// The net clockwise turn the entry records for the original at
+    /// `source_generation` (its bytes are never turned).
     pub degrees: u16,
     /// The published generation the bytes were derived from — the
     /// precondition a publication replaces.
@@ -649,37 +652,29 @@ pub fn media_key(path: &str) -> String {
 /// The one root every host keeps survey media under, below its state root.
 pub const MEDIA_ROOT: &str = "survey-media";
 
-/// Where the bytes a rotation turns come from — the properties panel's two
-/// cases, transcribed.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RotationSource {
-    /// A rotation of this object is still waiting on this machine: turn
-    /// those bytes and supersede the waiting row; never re-read the bucket.
-    Waiting,
-    /// Read the published head, pinned to its generation, and turn it.
-    Published,
-}
-
-/// One admitted rotation: the object, the net clockwise turn and the bytes
-/// it applies to.
+/// One admitted turn: the object, the clockwise turn asked for and the net
+/// turn the entry will record once any waiting turn is added.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rotation {
     pub project: String,
     pub path: String,
     pub thumbnail_path: String,
+    /// The clockwise turn asked for: 90, 180 or 270.
     pub degrees: u16,
-    pub source: RotationSource,
+    /// `pending_degrees + degrees`, modulo a full circle: what publishing
+    /// records. 0 means the turns cancel and nothing is left to publish.
+    pub net_degrees: u16,
 }
 
-/// The properties panel's rotation gate, in one place. `waiting` says
-/// whether this machine already holds a waiting rotation of `path`.
+/// The properties panel's rotation gate, in one place. `pending_degrees` is
+/// the net turn this machine already holds waiting for `path` (0 if none):
+/// a further turn accumulates onto it, never refused and never re-encoded.
 pub fn rotation(
     project: &str,
     path: &str,
     degrees: i64,
-    waiting: bool,
+    pending_degrees: u16,
 ) -> Result<Rotation, Refusal> {
     let address: SurveyMediaAddress = survey_media_address::parse(path).map_err(|_| {
         Refusal::new(
@@ -724,16 +719,19 @@ pub fn rotation(
             REMEDY_TURN,
         ));
     }
+    if !matches!(pending_degrees, 0 | 90 | 180 | 270) {
+        return Err(Refusal::new(
+            INVALID_TURN,
+            format!("{pending_degrees} is not a waiting quarter-turn"),
+            REMEDY_TURN,
+        ));
+    }
     Ok(Rotation {
         project: project.into(),
         path: address.object_path,
         thumbnail_path: address.thumbnail_object_path,
         degrees: turn,
-        source: if waiting {
-            RotationSource::Waiting
-        } else {
-            RotationSource::Published
-        },
+        net_degrees: (pending_degrees + turn) % 360,
     })
 }
 
@@ -756,8 +754,12 @@ enum Request {
         project: String,
         path: String,
         degrees: i64,
+        /// Retired: a waiting turn is now named by `pending_degrees`.
         #[serde(default)]
         waiting: bool,
+        /// The net turn this host already holds waiting for `path`.
+        #[serde(default)]
+        pending_degrees: u16,
     },
 }
 
@@ -782,8 +784,9 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             project,
             path,
             degrees,
-            waiting,
-        } => rotation(&project, &path, degrees, waiting).map(|rotation| json!(rotation)),
+            waiting: _,
+            pending_degrees,
+        } => rotation(&project, &path, degrees, pending_degrees).map(|rotation| json!(rotation)),
     };
     let value = match answer {
         Ok(data) => json!({"status": "ok", "data": data}),
@@ -1234,51 +1237,52 @@ mod tests {
     #[test]
     fn the_rotation_gate_is_the_properties_panels() {
         let path = format!("{PROJECT}/forms/poles/e1/IMG_0001.jpg");
-        let admitted = rotation(PROJECT, &path, 90, false).unwrap();
-        assert_eq!(admitted.degrees, 90);
-        assert_eq!(admitted.source, RotationSource::Published);
+        let admitted = rotation(PROJECT, &path, 90, 0).unwrap();
+        assert_eq!((admitted.degrees, admitted.net_degrees), (90, 90));
         assert_eq!(
             admitted.thumbnail_path,
             format!("{PROJECT}/forms/poles/e1/IMG_0001_thunder.jpeg")
         );
-        // A counter-clockwise click is the net turn 270; a waiting rotation is
-        // turned again in place.
-        assert_eq!(rotation(PROJECT, &path, -90, true).unwrap().degrees, 270);
+        // A counter-clockwise click is the turn 270; a turn while another is
+        // waiting accumulates onto it, and four quarter-turns cancel.
+        assert_eq!(rotation(PROJECT, &path, -90, 0).unwrap().degrees, 270);
+        assert_eq!(rotation(PROJECT, &path, -90, 90).unwrap().net_degrees, 0);
+        assert_eq!(rotation(PROJECT, &path, 90, 180).unwrap().net_degrees, 270);
         assert_eq!(
-            rotation(PROJECT, &path, -90, true).unwrap().source,
-            RotationSource::Waiting
+            rotation(PROJECT, &path, 90, 45).unwrap_err().code,
+            INVALID_TURN
         );
-        assert_eq!(rotation(PROJECT, &path, 180, false).unwrap().degrees, 180);
+        assert_eq!(rotation(PROJECT, &path, 180, 0).unwrap().degrees, 180);
         // The refusals, before any byte moves.
         assert_eq!(
-            rotation(PROJECT, &path, 0, false).unwrap_err().code,
+            rotation(PROJECT, &path, 0, 0).unwrap_err().code,
             INVALID_TURN
         );
         assert_eq!(
-            rotation(PROJECT, &path, 360, false).unwrap_err().code,
+            rotation(PROJECT, &path, 360, 0).unwrap_err().code,
             INVALID_TURN
         );
         assert_eq!(
-            rotation(PROJECT, &path, 45, false).unwrap_err().code,
+            rotation(PROJECT, &path, 45, 0).unwrap_err().code,
             INVALID_TURN
         );
         let thumb = format!("{PROJECT}/forms/poles/e1/IMG_0001_thunder.jpeg");
         assert_eq!(
-            rotation(PROJECT, &thumb, 90, false).unwrap_err().code,
+            rotation(PROJECT, &thumb, 90, 0).unwrap_err().code,
             DERIVED_THUMBNAIL
         );
         assert_eq!(
-            rotation("other", &path, 90, false).unwrap_err().code,
+            rotation("other", &path, 90, 0).unwrap_err().code,
             PROJECT_MISMATCH
         );
         assert_eq!(
-            rotation(PROJECT, "data:image/png;base64,AAAA", 90, false)
+            rotation(PROJECT, "data:image/png;base64,AAAA", 90, 0)
                 .unwrap_err()
                 .code,
             NOT_SURVEY_MEDIA
         );
         assert_eq!(
-            rotation(PROJECT, "https://example.test/x.jpg", 90, false)
+            rotation(PROJECT, "https://example.test/x.jpg", 90, 0)
                 .unwrap_err()
                 .code,
             NOT_SURVEY_MEDIA

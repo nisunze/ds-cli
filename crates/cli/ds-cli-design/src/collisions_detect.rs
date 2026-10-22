@@ -21,6 +21,9 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_command_kernel::transformer_status_store::{
+    StatusObservation, StatusObservationSource, StatusObservationState, TransformerStatusRead,
+};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
@@ -411,8 +414,15 @@ pub fn detect(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let engine = capture_engine(lane)?;
     let layers = engine_input_layers(&engine)?;
 
-    let (status, observation) =
-        ds_cli_auth::read_transformer_status_for_project(lane, &project, refresh)?;
+    let (status, observation) = ds_cli_auth::read_transformer_status_for_project(
+        lane,
+        &project,
+        if refresh {
+            TransformerStatusRead::Refresh
+        } else {
+            TransformerStatusRead::Held
+        },
+    )?;
     let identity = status.identity().clone();
     let rows: Vec<(String, Value)> = status
         .result()
@@ -435,7 +445,9 @@ pub fn detect(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .collect();
     // Only a fresh, reachable status read justifies fetching rooms. A held or
     // failed read means the rooms already on this machine are the input.
-    let live = refresh && observation["source"] == "refresh" && observation["state"] == "ready";
+    let live = refresh
+        && observation.source == StatusObservationSource::Refresh
+        && observation.state == StatusObservationState::Ready;
 
     let user = if status.user_email().is_empty() {
         identity.uid().to_owned()
@@ -591,12 +603,12 @@ pub fn detect(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
 fn acquisition_receipt(
     acquisition: &ds_cli_report::project::hold::RoomsAcquisition,
-    observation: &Value,
+    observation: &StatusObservation,
     live: bool,
 ) -> Value {
     let mut receipt = acquisition.receipt.clone();
     receipt["heads"] = json!(if live { "read" } else { "held" });
-    receipt["status_observation"] = observation.clone();
+    receipt["status_observation"] = json!(observation);
     if let Some(why) = &acquisition.unreachable {
         receipt["unreachable"] = json!(why);
     }

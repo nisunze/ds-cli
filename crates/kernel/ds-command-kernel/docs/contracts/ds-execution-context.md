@@ -15,7 +15,7 @@ something (§2), the share invariant is asked before a host starts its workers
 and not once per claim (§5, `Limits::validate`), and the durable row's own key
 collisions answer the kernel's sentence rather than a shorter twin (§8).
 Parent:
-[project and instance isolation](../../../ds-web/docs/project-and-instance-isolation-contract.md);
+[project and instance isolation](../../../../../../ds-web/docs/project-and-instance-isolation-contract.md);
 refines [Headless application runtime](ds-headless-application-runtime.md) §6.
 
 ## 1. The question this settles
@@ -319,7 +319,7 @@ restart. `ds-compute-runtime` admits through the kernel and makes no network cal
 prepared request under a bounded per-job CPU budget. Cancellation kills and
 reaps its worker before execution returns and lease renewal stops; output is
 admitted only after engine, request, project/city/run, result and artifact fences
-pass. [Solar IO boundaries](../../../ds-solar/docs/io-boundaries.md) defines the
+pass. [Solar IO boundaries](../../../../../../ds-solar/docs/io-boundaries.md) defines the
 fixed task limits and the linked project/portfolio consumers still outside this
 extraction. The no-network claim is also asserted over its own `Cargo.lock`,
 not over its prose: a claimed job runs

@@ -44,7 +44,9 @@ fn recovered(store: &Store, source: &ProfileSourceHeader) -> ProfileRecovery {
 
 #[test]
 fn opaque_checkpoint_upgrades_to_the_new_engine_journal_atomically() {
-    let mut store = Store::in_memory().unwrap();
+    let directory = super::tests::private_directory();
+    let path = directory.path().join("store.sqlite");
+    let mut store = Store::open(&path).unwrap();
     let source = source(1);
     retain_source(&mut store, &source);
     let v1 = retain_draft(&mut store, &source);
@@ -73,19 +75,21 @@ fn opaque_checkpoint_upgrades_to_the_new_engine_journal_atomically() {
     }
     // The former pin is no longer the retained original.
     let (next, next_metadata) = journal(&source, history(2), &[E1, E2]);
-    assert!(store
-        .retain_profile_journal_draft(
-            &source.scope,
-            &source,
-            &v1.history,
-            Some(&header.chain_sha256),
-            &next,
-            &next_metadata,
-            1,
-            &[E2],
-            11
-        )
-        .is_err());
+    assert!(
+        store
+            .retain_profile_journal_draft(
+                &source.scope,
+                &source,
+                &v1.history,
+                Some(&header.chain_sha256),
+                &next,
+                &next_metadata,
+                1,
+                &[E2],
+                11
+            )
+            .is_err()
+    );
     let (next, next_metadata) = journal(&upgraded, history(2), &[E1, E2]);
     store
         .retain_profile_journal_draft(
@@ -100,20 +104,125 @@ fn opaque_checkpoint_upgrades_to_the_new_engine_journal_atomically() {
             12,
         )
         .unwrap();
-    // A journal is already authored recovery: it is never upgraded again.
+    // A selected compatible engine may recover an already-authored journal.
     let mut again = repinned(&upgraded);
     again.engine = serde_json::json!({"selected_sha256":"c".repeat(64),"protocol":1});
     let (header, metadata) = journal(&again, history(2), &[E1, E2]);
-    assert!(store
+    store
         .upgrade_profile_recovery(
             &upgraded.scope,
             &upgraded,
             &next.history,
             &again,
             Some((&header, &metadata, &[E1, E2])),
-            13
+            13,
         )
-        .is_err());
+        .unwrap();
+    drop(store);
+    let store = Store::open_read_only(&path).unwrap().unwrap();
+    let recovery = recovered(&store, &again);
+    assert_eq!(recovery.source.model_id, source.model_id);
+    assert_eq!(recovery.source.coordinate_system, source.coordinate_system);
+    assert_eq!(recovery.source.source_revision, source.source_revision);
+    let Some(ProfileDraft::Journal(draft)) = recovery.draft else {
+        panic!("the authored recovery must survive reopen")
+    };
+    assert_eq!(draft.header.source, again);
+    assert_eq!(draft.header.history, history(2));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&draft.metadata).unwrap(),
+        serde_json::from_slice::<Value>(&next_metadata).unwrap()
+    );
+    assert_eq!(
+        draft
+            .entries
+            .iter()
+            .map(|entry| serde_json::from_slice::<Value>(&entry.bytes).unwrap())
+            .collect::<Vec<_>>(),
+        vec![
+            serde_json::from_slice::<Value>(E1).unwrap(),
+            serde_json::from_slice::<Value>(E2).unwrap()
+        ]
+    );
+}
+
+#[test]
+fn authored_rebind_refuses_changed_commands_metadata_and_history_without_writes() {
+    let mut store = Store::in_memory().unwrap();
+    let source = source(1);
+    retain_source(&mut store, &source);
+    let (retained_header, metadata) = journal(&source, history(2), &[E1, E2]);
+    store
+        .retain_profile_journal_draft(
+            &source.scope,
+            &source,
+            &source.initial_history,
+            None,
+            &retained_header,
+            &metadata,
+            0,
+            &[E1, E2],
+            1,
+        )
+        .unwrap();
+    let before = recovered(&store, &source);
+    let upgraded = repinned(&source);
+    let (header, _) = journal(&upgraded, history(2), &[E1, E2]);
+    let altered_command = br#"{"command_id":"b","value":12}"#.as_slice();
+    let (changed_rows, _) = journal(&upgraded, history(2), &[E1, altered_command]);
+    let (changed_history, changed_metadata) = journal(&upgraded, history(3), &[E1, E2]);
+    let mut changed_chain = header.clone();
+    changed_chain.chain_sha256 = "f".repeat(64);
+    let altered_metadata =
+        serde_json::to_vec(&serde_json::json!({"history":history(2),"extra":true})).unwrap();
+    let mut changed_metadata_header = header.clone();
+    changed_metadata_header.metadata_sha256 = sha256_hex(&altered_metadata);
+    changed_metadata_header.metadata_bytes = altered_metadata.len() as u64;
+    for (candidate, metadata, entries, expected) in [
+        (
+            &changed_rows,
+            metadata.as_slice(),
+            vec![E1, altered_command],
+            history(2),
+        ),
+        (
+            &changed_history,
+            changed_metadata.as_slice(),
+            vec![E1, E2],
+            history(2),
+        ),
+        (
+            &changed_chain,
+            metadata.as_slice(),
+            vec![E1, E2],
+            history(2),
+        ),
+        (
+            &changed_metadata_header,
+            altered_metadata.as_slice(),
+            vec![E1, E2],
+            history(2),
+        ),
+        (&header, metadata.as_slice(), vec![E1, E2], history(1)),
+    ] {
+        assert!(
+            store
+                .upgrade_profile_recovery(
+                    &source.scope,
+                    &source,
+                    &expected,
+                    &upgraded,
+                    Some((candidate, metadata, &entries)),
+                    2
+                )
+                .is_err()
+        );
+        assert_eq!(
+            recovered(&store, &source),
+            before,
+            "a refused rebind must leave the original retained state unchanged"
+        );
+    }
 }
 
 #[test]
@@ -193,10 +302,32 @@ fn upgrade_refuses_crossed_sources_fences_and_rows_without_writes() {
             1
         )
         .is_err());
-    assert!(store
-        .upgrade_profile_recovery(&source.scope, &source, &v1.history, &upgraded, None, 1)
-        .is_err());
     assert_eq!(recovered(&store, &source), before);
+}
+
+#[test]
+fn opaque_checkpoint_rebind_preserves_saved_values_and_history_after_reopen() {
+    let directory = super::tests::private_directory();
+    let path = directory.path().join("store.sqlite");
+    let mut store = Store::open(&path).unwrap();
+    let source = source(1);
+    retain_source(&mut store, &source);
+    let header = retain_draft(&mut store, &source);
+    let before = recovered(&store, &source);
+    let upgraded = repinned(&source);
+    store.upgrade_profile_recovery(&source.scope, &source, &header.history, &upgraded, None, 3).unwrap();
+    drop(store);
+    let store = Store::open_read_only(&path).unwrap().unwrap();
+    let after = recovered(&store, &upgraded);
+    assert_eq!(after.source, upgraded);
+    let (Some(ProfileDraft::Checkpoint { header: previous, bytes: previous_values }),
+        Some(ProfileDraft::Checkpoint { header, bytes: values })) = (before.draft, after.draft)
+    else { panic!("legacy recovery must keep its supported format") };
+    assert_eq!(header.source, upgraded);
+    assert_eq!(header.history, previous.history);
+    assert_eq!(header.checkpoint_sha256, previous.checkpoint_sha256);
+    assert_eq!(serde_json::from_slice::<Value>(&values).unwrap(),
+        serde_json::from_slice::<Value>(&previous_values).unwrap());
 }
 
 #[test]

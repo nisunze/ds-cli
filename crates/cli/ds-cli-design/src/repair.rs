@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn native_repair_vocabulary_remains_declared_and_preserved() {
-        let source = include_str!("../../../../ds-command-kernel/src/design_repair.rs");
+        let source = include_str!("../../../kernel/ds-command-kernel/src/design_repair.rs");
         let mut checked = std::collections::BTreeSet::new();
         for code in source.split('"').filter(|text| {
             (text.starts_with("repair_") || text.starts_with("audit_"))

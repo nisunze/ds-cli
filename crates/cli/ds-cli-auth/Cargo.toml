@@ -9,18 +9,20 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
-ds-update-runtime = { path = "../../../ds-command-kernel/crates/ds-update-runtime" }
-ds-solar-io = { path = "../../../ds-solar/crates/ds-solar-io", features = ["http-provider"] }
-ds-solar-contracts = { path = "../../../ds-solar/crates/ds-solar-contracts", default-features = false }
+ds-native-host = { workspace = true }
+ds-update-runtime = { path = "../../kernel/ds-update-runtime" }
+ds-solar-io = { path = "../../../../ds-solar/crates/ds-solar-io" }
+ds-solar-reference-host = { workspace = true }
+ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
 base64 = { workspace = true }
 ds-cli-contract = { workspace = true }
 ds-cli-desktop = { workspace = true }
 ds-client-core = { workspace = true }
-ds-project-data = { path = "../../../ds-command-kernel/crates/ds-project-data" }
-ds-report-host = { path = "../../../ds-command-kernel/crates/ds-report-host" }
-ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
-ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
-ds-compute-runtime = { path = "../../../ds-command-kernel/crates/ds-compute-runtime" }
+ds-project-data = { path = "../../kernel/ds-project-data" }
+ds-report-host = { path = "../../kernel/ds-report-host" }
+ds-layer-store = { path = "../../kernel/ds-layer-store" }
+ds-sync-store = { path = "../../kernel/ds-sync-store" }
+ds-compute-runtime = { path = "../../kernel/ds-compute-runtime" }
 ds-edge-authority = { workspace = true }
 ds-sync-runtime = { workspace = true }
 # The kernel owns transfer terminal causes; the shared runtime hosts its IO.

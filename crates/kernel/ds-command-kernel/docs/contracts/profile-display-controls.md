@@ -6,7 +6,7 @@ The owner accepts current DS Grid speed for CLI-first delivery (2026-10-12).
 The dedicated optimization campaign is closed; historical timings below are
 evidence, not an outstanding interactive-speed release gate. Authority,
 revision fences and functional control guarantees still apply. See the
-[owning acceptance](../../../ds-network/docs/contracts/profile-transactional-database.md#current-delivery-acceptance-owner-2026-10-12).
+[owning acceptance](../../../../../../ds-network/docs/contracts/profile-transactional-database.md#current-delivery-acceptance-owner-2026-10-12).
 
 `profile_display::DisplayState::patched` owns display validation and atomic
 patching. `profile_controls::groups` owns the declared grouping, label keys,
@@ -282,7 +282,7 @@ Reads do not implicitly project or solve.
 
 The Linux Desktop public replay of prepared selection, receipt-only reselection,
 two subsequent retypes, live capture and Undo/Redo is recorded in
-[`profile-calculated-scene-transport.md`](../../../ds-network/docs/contracts/profile-calculated-scene-transport.md#receiving-native-worker).
+[`profile-calculated-scene-transport.md`](../../../../../../ds-network/docs/contracts/profile-calculated-scene-transport.md#receiving-native-worker).
 It proves retained signed bases and actual completed differential draws on a
 disposable Model 1 copy. It does not establish packaged Windows acceptance or
 the outstanding 500-ms latency target.

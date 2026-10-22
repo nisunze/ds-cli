@@ -1,7 +1,7 @@
 # Captured native Profile sessions
 
 The native `ds-network-client` Profile adapter consumes Network's
-[`network-profile-process-contract.md`](../../../ds-network/docs/contracts/network-profile-process-contract.md).
+[`network-profile-process-contract.md`](../../../../../../ds-network/docs/contracts/network-profile-process-contract.md).
 It is transport and admission, with no linked Grid engineering, package replay,
 scene calculation or analysis implementation.
 

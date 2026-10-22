@@ -635,7 +635,11 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.status", "local_auth_state", "headless_project"),
     // The retained MV catalogue: Kernel SQLite rows on this machine; a
     // refresh restores the native session, which may rotate the credential.
-    ("design.model.catalog", "local_auth_state", "headless_project"),
+    (
+        "design.model.catalog",
+        "local_auth_state",
+        "headless_project",
+    ),
     ("design.collisions", "local_auth_state", "headless_project"),
     // Collision detection runs on this machine and writes only its private
     // result file; publishing that result is the governed project write.
@@ -1400,6 +1404,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("core.auth.status", "read_only", "none"),
     ("core.cache.retire", "machine_write", "headless_user"),
     ("core.component.activate", "machine_write", "none"),
+    ("core.component.stage-local", "machine_write", "none"),
     ("core.component.capture", "read_only", "none"),
     ("core.component.member", "read_only", "none"),
     ("core.component.remove", "machine_write", "none"),
@@ -1497,6 +1502,7 @@ fn one_operation_has_one_command_id_whichever_host_executes_it() {
             "core.engine"
                 | "core.serve"
                 | "core.module-stage"
+                | "core.component.stage-local"
                 | "core.component.selection"
                 | "core.component.capture"
                 | "core.component.member"

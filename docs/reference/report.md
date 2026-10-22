@@ -888,8 +888,8 @@ digest/size/presentation and generation time separately from its cloud head and
 publication state. Older legacy cloud URLs/timestamps stay separate. Missing
 outputs, changed input, native-pin disagreement and held/unavailable reads are
 explicit; timestamps never select a producing generation. See the
-[owned snapshot contract](../../../ds-command-kernel/docs/contracts/report-inventory.md)
-and [six-output fixture](../../../ds-command-kernel/tests/fixtures/report-inventory/held-six-old-legacy-three.json).
+[owned snapshot contract](../../crates/kernel/ds-command-kernel/docs/contracts/report-inventory.md)
+and [six-output fixture](../../crates/kernel/ds-command-kernel/tests/fixtures/report-inventory/held-six-old-legacy-three.json).
 
 The fixture is an owned supplied-facts example, not evidence about a real
 project. Actual publication still uses the one native sync queue and requires
@@ -926,7 +926,7 @@ The native sync-store artifact/receipt projections and requested output IDs may
 also be supplied. The result reports generated/published counts, queue issues,
 per-row regeneration reasons and a waiting transformer after no generation
 progress. It does not run or authorize an export. See the [owning activity
-contract](../../../ds-command-kernel/docs/contracts/report-activity.md).
+contract](../../crates/kernel/ds-command-kernel/docs/contracts/report-activity.md).
 
 Preview admission is available through `ds report layout edit --request
 preview.json --output json`, using the kernel's `render_plan` operation:
@@ -1764,8 +1764,8 @@ Report locale comes from the existing Network Template `project_settings` row
 `report_locale`. English and French ship in the one kernel message catalogue;
 a third locale needs complete catalogue data. Missing language refuses by name.
 Capture the existing project configuration with LV standard/A4 requests; do not
-choose language from country or the UI. See the [owner contract](../../../ds-command-kernel/docs/printing.md#report-language-and-artifact-names)
-and [dry-run-first backfills](../../../ds-command-kernel/migrations/report-locale-and-artifact-names.md).
+choose language from country or the UI. See the [owner contract](../../crates/kernel/ds-command-kernel/docs/printing.md#report-language-and-artifact-names)
+and [dry-run-first backfills](../../crates/kernel/ds-command-kernel/migrations/report-locale-and-artifact-names.md).
 No migration is performed by export. Report filenames and stored-name validation
 use the kernel rule; PDF title casing preserves the protected delivery.
 

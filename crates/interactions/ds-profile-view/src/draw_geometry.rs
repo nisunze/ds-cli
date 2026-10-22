@@ -6,6 +6,43 @@ use std::collections::{BTreeSet, HashMap};
 pub const JUNCTION_HINT_LENGTH_PX: f64 = 12.;
 pub const JUNCTION_HINT_HEAD_PX: f64 = 3.;
 
+/// Place an authored span annotation between the already projected offset
+/// guides. Gaps retain the authored boundary; no new curve is interpolated.
+pub fn span_label_anchor(scene: &Scene, authored: Point) -> Point {
+    let (mut ground, mut wire) = (None, None);
+    for guide in &scene.clearance_guides {
+        if !matches!(guide.kind.as_str(), "ground_offset" | "lowest_wire_drop") {
+            continue;
+        }
+        let y = guide.segments.iter().find_map(|segment| {
+            segment.points.windows(2).find_map(|edge| {
+                let (a, b) = (edge[0], edge[1]);
+                let x = authored.scene_x;
+                if x < a.scene_x.min(b.scene_x) || x > a.scene_x.max(b.scene_x) {
+                    return None;
+                }
+                let dx = b.scene_x - a.scene_x;
+                Some(if dx.abs() < 1e-12 {
+                    (a.scene_y + b.scene_y) / 2.
+                } else {
+                    a.scene_y + (x - a.scene_x) / dx * (b.scene_y - a.scene_y)
+                })
+            })
+        });
+        if y.is_some() {
+            match guide.kind.as_str() {
+                "ground_offset" => ground = y,
+                "lowest_wire_drop" => wire = y,
+                _ => unreachable!(),
+            }
+        }
+    }
+    Point {
+        scene_y: (ground.unwrap_or(authored.scene_y) + wire.unwrap_or(authored.scene_y)) / 2.,
+        ..authored
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct ScreenArrow {
     pub start: Screen,

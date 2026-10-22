@@ -137,7 +137,7 @@ fn progressive_modes_share_native_admission_and_refuse_mixed_reads_before_auth_o
 #[test]
 fn alignment_flag_stages_a_native_fixture_selection_and_cleans_up() {
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid");
+        .join("../../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid");
     let (package, _) = ds_grid_exchange::dsgrid::ingest(&std::fs::read(fixture).unwrap()).unwrap();
     let scene = ds_grid_engine::GridSession::open(package.snapshot)
         .profile_atlas_scene(ds_grid_engine::ProfileAtlasOptions::default())

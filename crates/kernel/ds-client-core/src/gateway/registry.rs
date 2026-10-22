@@ -1,7 +1,7 @@
 // @generated — DO NOT EDIT BY HAND.
 //
 // Emitted by ds-web/scripts/routing/generate-routes.mjs from the reviewed
-// descriptor ds-command-kernel/routing/operations.json. Regenerate with:
+// descriptor ds-cli/crates/kernel/ds-command-kernel/routing/operations.json. Regenerate with:
 //
 //     cd ds-web && npm run routes:generate -- --target web-canary \
 //         --gateway <lane gateway origin>

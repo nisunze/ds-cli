@@ -20,12 +20,12 @@ ds-cli-server = { workspace = true }
 # Survey moments read the Server's survey-media store (rows in the lane's
 # sync store) and hand the rows to the kernel's gallery decisions.
 ds-command-kernel = { workspace = true }
-ds-compute-runtime = { path = "../../../ds-command-kernel/crates/ds-compute-runtime" }
-ds-sync-store = { path = "../../../ds-command-kernel/crates/ds-sync-store" }
+ds-compute-runtime = { path = "../../kernel/ds-compute-runtime" }
+ds-sync-store = { path = "../../kernel/ds-sync-store" }
 # The core's survey hold: decisions in the kernel, bytes in ds-project-data,
 # under the same layer root as the working-area form choice.
-ds-project-data = { path = "../../../ds-command-kernel/crates/ds-project-data" }
-ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
+ds-project-data = { path = "../../kernel/ds-project-data" }
+ds-layer-store = { path = "../../kernel/ds-layer-store" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

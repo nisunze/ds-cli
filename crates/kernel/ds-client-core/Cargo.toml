@@ -7,12 +7,12 @@ rust-version = "1.88"
 publish = false
 
 [dependencies]
-ds-network-contracts = { path = "../../../ds-network/crates/ds-network-contracts" }
+ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts" }
 ds-network-client = { path = "../ds-network-client" }
 tempfile = "3"
-ds-solar-contracts = { path = "../../../ds-solar/crates/ds-solar-contracts", default-features = false }
+ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
 base64 = "0.22"
-ds-command-kernel = { path = "../.." }
+ds-command-kernel = { path = "../ds-command-kernel" }
 ed25519-dalek = "2"
 getrandom = "0.3"
 serde = { version = "1", features = ["derive"] }
@@ -27,4 +27,3 @@ zeroize = "1"
 serde_json = "1"
 
 # Native host crate: not part of the portable WASM workspace.
-[workspace]

@@ -37,7 +37,7 @@ zip = { workspace = true }
 
 ds-cli-auth = { workspace = true }
 ds-command-kernel = { workspace = true }
-ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
+ds-layer-store = { path = "../../kernel/ds-layer-store" }
 tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]

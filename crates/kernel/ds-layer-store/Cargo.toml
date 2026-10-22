@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.90"
 publish = false
 [dependencies]
-ds-command-kernel = { path = "../..", features = ["durable-store"] }
+ds-command-kernel = { path = "../ds-command-kernel", features = ["durable-store"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 fs2 = "0.4"
@@ -14,7 +14,7 @@ dirs = "6"
 uuid = { version = "1", features = ["v4"] }
 rusqlite = { version = "0.40.2", features = ["bundled", "fallible_uint"] }
 sha2 = "0.10"
-ds-columnar = { path = "../../../ds-network/crates/ds-columnar" }
+ds-columnar = { path = "../../../../ds-network/crates/ds-columnar" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -23,4 +23,3 @@ libc = "0.2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_System_SystemServices"] }
 
 # Native host crate, separate from the portable WASM workspace.
-[workspace]

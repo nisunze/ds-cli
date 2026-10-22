@@ -1,6 +1,7 @@
 use super::*;
 use ds_command_kernel::gateway_exchange::design::{
     ProjectConfigurationDocument, ProjectConfigurationObservation,
+    admit_project_configuration_file_reply,
 };
 use std::cell::Cell;
 
@@ -68,6 +69,17 @@ fn the_document_handler_retains_one_complete_typed_reply_without_sheet_iteration
         file,
         reply("project-p", ProjectConfigurationRead::Refresh).document
     );
+    let envelope = json!({"v":2,"command":"design.config.read","contract":7,"status":"ok",
+        "data":result,"files":{"out":serde_json::to_value(&file).unwrap()}});
+    assert_eq!(
+        admit_project_configuration_file_reply(
+            "project-p",
+            ProjectConfigurationRead::Refresh,
+            envelope
+        )
+        .unwrap(),
+        Some(reply("project-p", ProjectConfigurationRead::Refresh))
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -123,10 +135,13 @@ fn invalid_document_sheet_or_page_inputs_refuse_before_any_owner_call() {
 }
 
 #[test]
-fn a_crossed_project_or_mode_receipt_cannot_be_written() {
+fn a_crossed_project_mode_or_unsafe_observation_receipt_cannot_be_written() {
+    let mut unsafe_observation = reply("project-p", ProjectConfigurationRead::Refresh);
+    unsafe_observation.observation.saved_at_ms = 9_007_199_254_740_992;
     for crossed in [
         reply("project-q", ProjectConfigurationRead::Refresh),
         reply("project-p", ProjectConfigurationRead::Held),
+        unsafe_observation,
     ] {
         let root = private_root();
         let path = root.path().join("config.json");

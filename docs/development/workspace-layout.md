@@ -1,4 +1,46 @@
-# Keep the multi-repository workspace root small
+# Application workspace and repository boundaries
+
+The application sources live in one `ds-cli` Git repository and Rust workspace.
+Kernel, CLI and Interactions are crate boundaries. They are not separately pinned
+repositories. `Cargo.toml` is the package inventory and `Cargo.lock` is the only
+workspace lockfile.
+
+| Group | Responsibility | Permitted application dependencies |
+| --- | --- | --- |
+| `crates/kernel/*` | Commands, application state, contracts, durable stores, sync and native hosts | Kernel and neutral shared crates |
+| `crates/cli/*` | Terminal/MCP argument, discovery, help and output adapters | CLI, Kernel and neutral shared crates |
+| `crates/interactions/*` | Pointer/selection/camera, Canvas and Profile rendering/intents | Interactions and neutral shared crates |
+| `crates/shared/ds-geo-lite` | Portable geometry used by every group and independent engines | No dependency on another application group |
+
+The neutral group is necessary because geometry is used by both Kernel and
+Interactions, while dependencies in either direction between those groups are
+forbidden. It contains no application state or command adapter. Shared process
+failures/availability belong to `ds-core-contracts`; CLI Contract reexports the
+same Rust types. `ds-cli-exec` is the Kernel native process owner despite its
+historical package name. Its fixed CLI worker launchers live with the Design and
+Solar CLI adapters. `ds-native-host` owns Windows protection mechanics; Auth and
+Desktop consume that owner without importing CLI into the UI.
+
+Kernel source, routing, release declarations, tests, fixtures, documentation and
+backlogs are under `crates/kernel/ds-command-kernel`. Interactions documentation
+and release declarations are under `crates/interactions`; its actual packages
+are siblings there. Profile Canvas rendering and its WASM mount export are
+Interactions-owned. Admitting and applying a pole move remains Kernel-owned.
+
+Core, Kernel UI WASM, Interactions WASM and the independent Network, Reporter and
+Solar units retain their public package/unit identities and release separately.
+Source provenance names the `ds-cli` commit for application crates. Historical
+receipt source labels remain readable; source/version equality is not runtime
+compatibility. Required typed operations, capabilities and actual payloads decide
+acceptance. Building a selected unit never requires publishing another unit.
+
+`node scripts/check-workspace-boundaries.mjs` reads Cargo metadata for the
+workspace and ds-web. It checks declared optional and resolved transitive edges;
+`node scripts/check-workspace-boundaries.test.mjs` includes deliberately forbidden
+edges. The UI may consume Kernel and Interactions but cannot consume CLI through
+any intermediate dependency. Engine source repositories remain independent.
+
+## Keep the orchestration root small
 
 The workspace root is a navigation and planning anchor. It is not a package,
 script directory, knowledge dump, output directory, or archive.

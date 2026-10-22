@@ -58,7 +58,7 @@ pub fn json(args: &[&str]) -> (Value, i32) {
 /// here adds no new requirement.
 pub fn original_fixture() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid");
+        .join("../../../../ds-network/fixtures/pls-public/humble-pole/humble-pole.dsgrid");
     let path = path.canonicalize().unwrap_or(path);
     assert!(
         path.is_file(),
@@ -83,7 +83,7 @@ pub fn fixture() -> String {
             assert!(migrated.receipt.assets_and_attachments_preserved);
             assert!(migrated.receipt.output_strictly_verified);
             let scratch = std::env::var_os("TMPDIR").map_or_else(
-                || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/test-fixtures"),
+                || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../target/test-fixtures"),
                 PathBuf::from,
             );
             std::fs::create_dir_all(&scratch).expect("disk fixture scratch is available");

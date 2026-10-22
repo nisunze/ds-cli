@@ -27,7 +27,7 @@ fn own_copy() -> PathBuf {
 }
 fn web_copy() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../ds-web/src/tests/fixtures/survey-media-address/cases.json")
+        .join("../../../../ds-web/src/tests/fixtures/survey-media-address/cases.json")
 }
 
 fn corpus() -> Value {

@@ -530,7 +530,7 @@ mod tests {
     #[test]
     fn brain_generic_groups_and_legacy_districts_reach_the_row_and_render() {
         let doc: Value = serde_json::from_str(include_str!(
-            "../../../../../ds-command-kernel/tests/fixtures/compounded-archive-groups.json"
+            "../../../../kernel/ds-command-kernel/tests/fixtures/compounded-archive-groups.json"
         ))
         .unwrap();
         let rows: Vec<Value> = doc["compounded_reports"]

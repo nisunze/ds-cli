@@ -197,7 +197,7 @@ refuses by name. Hosts never construct a style id from a layer name.
 
 Authored purpose groups use that same held tuple authority. Their declaration
 and the separate printing-layout boundary live in the kernel's
-[style purpose contract](../../../ds-command-kernel/docs/contracts/style-purpose-index.md).
+[style purpose contract](../../crates/kernel/ds-command-kernel/docs/contracts/style-purpose-index.md).
 Discover the read through `ds capabilities style.purpose.index`; no production
 document adoption is implied by the availability of this command.
 

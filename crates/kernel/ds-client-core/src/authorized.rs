@@ -98,6 +98,71 @@ pub(crate) fn list_projects<T: AuthorizedTransport>(
     ProjectDirectory::from_buckets(buckets)
 }
 
+/// Request purpose determines its owning decoder. A save receipt cannot be
+/// assigned to the document returned by a read.
+struct ProjectConfigurationExchange<'a, T> {
+    profile: &'a ClientProfile,
+    transport: &'a mut T,
+    authority: Authority<'a>,
+    project: &'a str,
+    expected_data: Option<Value>,
+}
+
+impl<T: AuthorizedTransport> ProjectConfigurationExchange<'_, T> {
+    fn read(&mut self, _sheet: &str) -> Result<Value, ClientError> {
+        let request = self.request(
+            ds_command_kernel::gateway_exchange::design::DesignCall::ProjectConfig {
+                project: self.project.to_owned(),
+            },
+        )?;
+        crate::project_feeders::decode(self.transport.project_configuration(
+            crate::ProjectConfigurationCall {
+                profile: self.profile,
+                request,
+                authority: self.authority.call(),
+            },
+        )?)
+    }
+
+    fn save(
+        &mut self,
+        sheet: &str,
+        settings: &Value,
+    ) -> Result<
+        ds_command_kernel::gateway_exchange::design::ProjectConfigurationSaveAcknowledgement,
+        ClientError,
+    > {
+        let request = self.request(
+            ds_command_kernel::gateway_exchange::design::DesignCall::SaveConfigSheet {
+                project: self.project.to_owned(),
+                sheet: sheet.to_owned(),
+                rows: settings.clone(),
+                expected: self.expected_data.clone(),
+            },
+        )?;
+        crate::project_feeders::decode_save(self.transport.project_configuration(
+            crate::ProjectConfigurationCall {
+                profile: self.profile,
+                request,
+                authority: self.authority.call(),
+            },
+        )?)
+    }
+
+    fn request(
+        &self,
+        call: ds_command_kernel::gateway_exchange::design::DesignCall,
+    ) -> Result<ds_command_kernel::gateway_exchange::Request, ClientError> {
+        use ds_command_kernel::gateway_exchange::Exchange;
+        call.plan().map(|plan| plan.request).map_err(|_| {
+            ClientError::new(
+                ErrorKind::InvalidInput,
+                "configuration request does not match the shared design contract",
+            )
+        })
+    }
+}
+
 pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
@@ -121,23 +186,14 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
         }
         _ => None,
     };
-    let mut send = |sheet: &str, settings: Option<&Value>| {
-        crate::project_feeders::decode(transport.project_configuration(
-            crate::ProjectConfigurationCall {
-                profile,
-                project,
-                settings,
-                expected_data: if settings.is_some() {
-                    expected_data.as_ref()
-                } else {
-                    None
-                },
-                sheet,
-                authority: authority.call(),
-            },
-        )?)
+    let mut exchange = ProjectConfigurationExchange {
+        profile,
+        transport,
+        authority,
+        project,
+        expected_data,
     };
-    let mut document = send("project_settings", None)?;
+    let mut document = exchange.read("project_settings")?;
     if let Some(ProjectConfigurationChange::MvPrintingSelection {
         selection,
         expected_rows,
@@ -159,8 +215,8 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
                     "mv_print_selection_invalid: canonical MV selection or project settings are invalid",
                 )
             })?;
-        send("project_settings", Some(&json!(rows)))?;
-        document = send("project_settings", None)?;
+        exchange.save("project_settings", &json!(rows))?;
+        document = exchange.read("project_settings")?;
         if !ds_command_kernel::design_config::settings_equal(
             &document["sheets"]["project_settings"],
             &json!(rows),
@@ -229,8 +285,8 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
             let value = value.map_err(|code| ClientError::new(ErrorKind::InvalidInput, code))?;
             if !ds_command_kernel::design_config::settings_equal(&document["sheets"][sheet], &value)
             {
-                send(sheet, Some(&value))?;
-                document = send(sheet, None)?;
+                exchange.save(sheet, &value)?;
+                document = exchange.read(sheet)?;
                 if !ds_command_kernel::design_config::settings_equal(
                     &document["sheets"][sheet],
                     &value,
@@ -251,8 +307,8 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
     if let Some((min, max)) = bounds {
         let updated =
             crate::project_feeders::updated(crate::project_feeders::rows(&document)?, min, max)?;
-        send("project_settings", Some(&json!(updated)))?;
-        document = send("project_settings", None)?;
+        exchange.save("project_settings", &json!(updated))?;
+        document = exchange.read("project_settings")?;
         let verified = crate::project_feeders::snapshot(project, document.clone(), true)?;
         let number = |key: &str| {
             verified.summary[key]
@@ -269,8 +325,8 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
     if let Some(ProjectConfigurationChange::EnsureMeterType { name }) = change {
         let updated = crate::project_feeders::ensure_meter_type(&document, name)?;
         if document["sheets"]["cust_meter_type"] != json!(updated) {
-            send("cust_meter_type", Some(&json!(updated)))?;
-            document = send("cust_meter_type", None)?;
+            exchange.save("cust_meter_type", &json!(updated))?;
+            document = exchange.read("cust_meter_type")?;
             if document["sheets"]["cust_meter_type"] != json!(updated) {
                 return Err(ClientError::new(
                     ErrorKind::UnreadableResponse,
@@ -282,8 +338,8 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
     if let Some(ProjectConfigurationChange::DesignOutputs { rows }) = change {
         crate::project_feeders::design_outputs(rows)?;
         if crate::project_feeders::rows(&document)? != rows {
-            send("project_settings", Some(&json!(rows)))?;
-            document = send("project_settings", None)?;
+            exchange.save("project_settings", &json!(rows))?;
+            document = exchange.read("project_settings")?;
             if crate::project_feeders::rows(&document)? != rows {
                 return Err(ClientError::new(
                     ErrorKind::UnreadableResponse,
@@ -321,8 +377,8 @@ pub(crate) fn feeder_configuration<T: AuthorizedTransport>(
     };
     if let Some((sheet, updated)) = catalog_edit {
         if document["sheets"][sheet] != json!(updated) {
-            send(sheet, Some(&json!(updated)))?;
-            document = send(sheet, None)?;
+            exchange.save(sheet, &json!(updated))?;
+            document = exchange.read(sheet)?;
             if document["sheets"][sheet] != json!(updated) {
                 return Err(ClientError::new(
                     ErrorKind::UnreadableResponse,
@@ -528,22 +584,58 @@ pub(crate) fn survey_entries_changes<T: AuthorizedTransport>(
 }
 
 pub(crate) fn survey_entry_create<T: AuthorizedTransport>(
-    profile: &ClientProfile, transport: &mut T, authority: Authority<'_>, project_id: &str,
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project_id: &str,
     request: &SurveyEntryCreateRequest,
 ) -> Result<SurveyEntryCreateReceipt, ClientError> {
     if authority.device_id.is_some() {
-        return Err(ClientError::with_survey_entry_create_service_code(ErrorKind::AuthenticationRejected,
-            "trusted-device tokens cannot authorize direct Firestore creation",crate::SurveyEntryCreateServiceCode::FirebaseSessionRequired));
+        return Err(ClientError::with_survey_entry_create_service_code(
+            ErrorKind::AuthenticationRejected,
+            "trusted-device tokens cannot authorize direct Firestore creation",
+            crate::SurveyEntryCreateServiceCode::FirebaseSessionRequired,
+        ));
     }
-    let direct = request.direct_plan(project_id, &ds_command_kernel::survey_entry_create::direct::Authority {
-        firebase_project:profile.firebase_project_id().into(),uid:authority.uid.into(),email:authority.email.into(),lane:profile.lane().token().into(),
+    let direct = request.direct_plan(
+        project_id,
+        &ds_command_kernel::survey_entry_create::direct::Authority {
+            firebase_project: profile.firebase_project_id().into(),
+            uid: authority.uid.into(),
+            email: authority.email.into(),
+            lane: profile.lane().token().into(),
+        },
+    )?;
+    let response = transport.survey_entry_create(SurveyEntryCreateCall {
+        direct: &direct,
+        authority: authority.call(),
     })?;
-    let response = transport.survey_entry_create(SurveyEntryCreateCall { direct:&direct, authority:authority.call() })?;
-    if response.status != 200 { return Err(crate::survey_entry_create::decode_service_error(&response, SURVEY_ENTRY_CREATE_RESPONSE_LIMIT).unwrap_or_else(|| classify_survey_entry_create_error(response.status))); }
-    if response.body.len() > SURVEY_ENTRY_CREATE_RESPONSE_LIMIT { return Err(ClientError::new(ErrorKind::UnreadableResponse,"Survey create response exceeds its bound")); }
-    let value:serde_json::Value=serde_json::from_slice(&response.body).map_err(|_| ClientError::new(ErrorKind::UnreadableResponse,"Survey create commit receipt is unreadable"))?;
-    ds_command_kernel::survey_entry_create::direct::receipt(&direct,response.status,&value)
-        .map_err(|_| ClientError::new(ErrorKind::UnreadableResponse,"Survey create commit receipt is unreadable"))
+    if response.status != 200 {
+        return Err(crate::survey_entry_create::decode_service_error(
+            &response,
+            SURVEY_ENTRY_CREATE_RESPONSE_LIMIT,
+        )
+        .unwrap_or_else(|| classify_survey_entry_create_error(response.status)));
+    }
+    if response.body.len() > SURVEY_ENTRY_CREATE_RESPONSE_LIMIT {
+        return Err(ClientError::new(
+            ErrorKind::UnreadableResponse,
+            "Survey create response exceeds its bound",
+        ));
+    }
+    let value: serde_json::Value = serde_json::from_slice(&response.body).map_err(|_| {
+        ClientError::new(
+            ErrorKind::UnreadableResponse,
+            "Survey create commit receipt is unreadable",
+        )
+    })?;
+    ds_command_kernel::survey_entry_create::direct::receipt(&direct, response.status, &value)
+        .map_err(|_| {
+            ClientError::new(
+                ErrorKind::UnreadableResponse,
+                "Survey create commit receipt is unreadable",
+            )
+        })
 }
 
 pub(crate) fn tile_status<T: AuthorizedTransport>(

@@ -11,4 +11,3 @@ serde = { version = "1", features = ["derive"] }
 tempfile = "3"
 
 # Native host: no PDF decoder or process dependency enters the WASM kernel.
-[workspace]

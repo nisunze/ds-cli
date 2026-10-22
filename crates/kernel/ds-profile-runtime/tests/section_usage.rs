@@ -1,5 +1,5 @@
 //! Native source facts and actual display-selector acceptance, with no UI calculation.
-#[path = "../../../../ds-network/crates/ds-grid-engine/tests/common/mod.rs"]
+#[path = "../../../../../ds-network/crates/ds-grid-engine/tests/common/mod.rs"]
 mod common;
 use ds_grid_engine::GridSession;
 use ds_grid_model::*;
@@ -90,7 +90,7 @@ fn section_usage_label_reads_current_solver_basis_and_native_selector_controls_i
         &[],
     );
     request.style_document = serde_json::from_str(include_str!(
-        "../../../../ds-brain/internal/services/profile_display_style.v1.json"
+        "../../../../../ds-brain/internal/services/profile_display_style.v1.json"
     ))
     .unwrap();
     request.patch = serde_json::from_value(json!({"visibility":{"section_labels":true}})).unwrap();

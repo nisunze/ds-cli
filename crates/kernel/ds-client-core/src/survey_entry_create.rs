@@ -100,10 +100,13 @@ impl SurveyEntryCreateRequest {
         self.request.detailed_location()
     }
 
-    pub(crate) fn direct_plan(&self, project: &str, authority: &kernel::direct::Authority) -> Result<kernel::direct::DirectPlan, ClientError> {
+    pub(crate) fn direct_plan(
+        &self,
+        project: &str,
+        authority: &kernel::direct::Authority,
+    ) -> Result<kernel::direct::DirectPlan, ClientError> {
         kernel::direct::plan(&self.request, project, authority).map_err(map_refusal)
     }
-
 }
 
 impl std::fmt::Debug for SurveyEntryCreateRequest {
@@ -130,30 +133,50 @@ impl std::fmt::Debug for SurveyEntryCreateRequest {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ErrorEnvelope { error: ErrorDetailsWire }
+struct ErrorEnvelope {
+    error: ErrorDetailsWire,
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ErrorDetailsWire {
-    code:u16, status:String, message:String,
-    #[serde(default)] details:Vec<serde::de::IgnoredAny>,
+    code: u16,
+    status: String,
+    message: String,
+    #[serde(default)]
+    details: Vec<serde::de::IgnoredAny>,
 }
-pub(crate) fn validate_project(project_id:&str)->Result<(),ClientError> { kernel::validate_project(project_id).map_err(map_refusal) }
-pub(crate) fn decode_service_error(response:&TransportResponse,limit:usize)->Option<ClientError> {
-    if response.body.len()>limit {return None;}
-    let envelope:ErrorEnvelope=serde_json::from_slice(&response.body).ok()?;
-    let e=envelope.error;
-    if e.code!=response.status || e.message.len()>16384 || e.details.len()>128 {return None;}
+pub(crate) fn validate_project(project_id: &str) -> Result<(), ClientError> {
+    kernel::validate_project(project_id).map_err(map_refusal)
+}
+pub(crate) fn decode_service_error(
+    response: &TransportResponse,
+    limit: usize,
+) -> Option<ClientError> {
+    if response.body.len() > limit {
+        return None;
+    }
+    let envelope: ErrorEnvelope = serde_json::from_slice(&response.body).ok()?;
+    let e = envelope.error;
+    if e.code != response.status || e.message.len() > 16384 || e.details.len() > 128 {
+        return None;
+    }
     use SurveyEntryCreateServiceCode as C;
-    let (code,kind)=match (response.status,e.status.as_str()) {
-        (400,"INVALID_ARGUMENT"|"FAILED_PRECONDITION")=>(C::Invalid,ErrorKind::InvalidInput),
-        (401,"UNAUTHENTICATED")=>(C::Unauthorized,ErrorKind::AuthenticationRejected),
-        (403,"PERMISSION_DENIED")=>(C::PermissionDenied,ErrorKind::AuthenticationRejected),
-        (404,"NOT_FOUND")=>(C::ScopeNotFound,ErrorKind::ResourceNotFound),
-        (409,"ALREADY_EXISTS")=>(C::AlreadyExists,ErrorKind::InvalidInput),
-        (429,"RESOURCE_EXHAUSTED")|(500,"INTERNAL")|(503,"UNAVAILABLE")=>(C::Failed,ErrorKind::Transient),
-        _=>return None,
+    let (code, kind) = match (response.status, e.status.as_str()) {
+        (400, "INVALID_ARGUMENT" | "FAILED_PRECONDITION") => (C::Invalid, ErrorKind::InvalidInput),
+        (401, "UNAUTHENTICATED") => (C::Unauthorized, ErrorKind::AuthenticationRejected),
+        (403, "PERMISSION_DENIED") => (C::PermissionDenied, ErrorKind::AuthenticationRejected),
+        (404, "NOT_FOUND") => (C::ScopeNotFound, ErrorKind::ResourceNotFound),
+        (409, "ALREADY_EXISTS") => (C::AlreadyExists, ErrorKind::InvalidInput),
+        (429, "RESOURCE_EXHAUSTED") | (500, "INTERNAL") | (503, "UNAVAILABLE") => {
+            (C::Failed, ErrorKind::Transient)
+        }
+        _ => return None,
     };
-    Some(ClientError::with_survey_entry_create_service_code(kind,"Direct Survey create was not acknowledged; retain the exact row",code))
+    Some(ClientError::with_survey_entry_create_service_code(
+        kind,
+        "Direct Survey create was not acknowledged; retain the exact row",
+        code,
+    ))
 }
 
 fn map_refusal(refusal: kernel::Refusal) -> ClientError {

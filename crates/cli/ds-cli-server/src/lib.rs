@@ -38,8 +38,8 @@ mod solar_documents;
 pub mod solar_sync;
 pub mod durable_store;
 pub mod survey_queue;
-pub mod sync_recovery;
 pub mod sync_read;
+pub mod sync_recovery;
 use ds_cli_contract::{
     Context, Failure, Inputs,
     outcome::ExitClass,
@@ -711,9 +711,15 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         Some("result_failed") => Failure::new(class, "result_failed", message),
         Some("result_cancelled") => Failure::new(class, "result_cancelled", message),
         Some("result_wait_invalid") => Failure::new(class, "result_wait_invalid", message),
-        Some("core_profile_request_invalid") => Failure::new(class, "core_profile_request_invalid", message),
-        Some("core_profile_session_unavailable") => Failure::new(class, "core_profile_session_unavailable", message),
-        Some("core_profile_history_conflict") => Failure::new(class, "core_profile_history_conflict", message),
+        Some("core_profile_request_invalid") => {
+            Failure::new(class, "core_profile_request_invalid", message)
+        }
+        Some("core_profile_session_unavailable") => {
+            Failure::new(class, "core_profile_session_unavailable", message)
+        }
+        Some("core_profile_history_conflict") => {
+            Failure::new(class, "core_profile_history_conflict", message)
+        }
         Some("core_profile_capacity") => Failure::new(class, "core_profile_capacity", message),
         Some("core_profile_draft_stale") => {
             Failure::new(class, "core_profile_draft_stale", message)
@@ -721,7 +727,9 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         Some("core_profile_session_active") => {
             Failure::new(class, "core_profile_session_active", message)
         }
-        Some("core_profile_native_refused") => Failure::new(class, "core_profile_native_refused", message),
+        Some("core_profile_native_refused") => {
+            Failure::new(class, "core_profile_native_refused", message)
+        }
         // The Server connection's own fence.
         Some("server_owner_changed") => Failure::new(class, "server_owner_changed", message),
         // The shared layer owner's, re-raised for `ds map layer … --target core`.
@@ -979,6 +987,7 @@ pub static DOMAIN: Domain = Domain {
         &modules::RELEASE,
         &module_updates::STAGE,
         &core_components::SELECTION,
+        &ui_components::STAGE_LOCAL,
         &ui_components::CAPTURE,
         &ui_components::MEMBER,
         &core_components::REMOVE,

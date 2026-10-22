@@ -2848,7 +2848,7 @@ pub(crate) mod tests {
             SolarCityInput, WeatherDataset, WeatherKey, WeatherPin,
         };
         let root =
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-solar/fixtures");
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/fixtures");
         let city = "aderm_bere";
         let snapshot: Value = serde_json::from_slice(
             &fs::read(root.join(format!("city/{city}.snapshot.json"))).unwrap(),

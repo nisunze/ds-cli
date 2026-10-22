@@ -1,0 +1,23 @@
+[package]
+name = "ds-elevation-host"
+description = "Bounded headless comparison of governed Rwanda and Terrarium elevations"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-elevation = { path = "../../../../ds-network/crates/ds-elevation" }
+ds-geo = { path = "../../../../ds-network/crates/ds-geo" }
+csv = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+ureq = "3.3.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::report::inventory::RetainedOutput;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{io::Write, path::Path};
 
 pub static COMMAND: Command = Command {
@@ -226,7 +226,7 @@ pub(crate) fn attach_cloud(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ds_command_kernel::report::inventory::{project_with_retained, ReadState};
+    use ds_command_kernel::report::inventory::{ReadState, project_with_retained};
     fn snapshot() -> ds_command_kernel::report::inventory::Snapshot {
         serde_json::from_value(json!({"owner":"owner","project":"project","transformer":"test","variant":"default","expected_input_base_fingerprint":null,"local_read":{"state":"ready","error":null},"sync_read":{"state":"ready","error":null},"cloud_read":{"state":"not_observed","error":null},"local_sets":[],"sync_artifacts":[],"cloud_head":null,"legacy_cloud":null,"required_outputs":[]})).unwrap()
     }

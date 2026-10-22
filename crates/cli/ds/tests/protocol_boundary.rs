@@ -42,7 +42,7 @@ const PROTOCOL_CONSUMERS: &[(&str, &str, &str)] = &[
         "ds",
         "ds-cli-mcp",
         "the binary registers `mcp serve`/`mcp install` as one ordinary domain \
-         in crates/ds/src/registry.rs, with the same Entry shape as every other \
+         in crates/cli/ds/src/registry.rs, with the same Entry shape as every other \
          domain, so removing the protocol is removing rows",
     ),
     (
@@ -69,16 +69,16 @@ const COUPLING_TOKENS: &[&str] = &["ds_cli_mcp", "ds_cli_skills", "DS_MCP_"];
 /// Files allowed to contain a coupling token, and why.
 const COUPLING_OWNERS: &[(&str, &str)] = &[
     (
-        "crates/ds/src/registry.rs",
+        "crates/cli/ds/src/registry.rs",
         "the binary's one registration table, where every domain is named once",
     ),
     (
-        "crates/ds/src/native_catalog.rs",
+        "crates/cli/ds/src/native_catalog.rs",
         "the binary's downloadable catalogue reuses the adapter's input projection, \
          so flags, choices and confirmation have one schema implementation",
     ),
     (
-        "crates/ds/src/meta.rs",
+        "crates/cli/ds/src/meta.rs",
         "`ds diagnostics` reports the receipt-verified skill bundle shipped beside \
          this executable; the reader is called, and reads nothing back about a host",
     ),
@@ -86,7 +86,7 @@ const COUPLING_OWNERS: &[(&str, &str)] = &[
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .canonicalize()
         .expect("the workspace root resolves")
 }
@@ -112,32 +112,42 @@ fn relative(root: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
-/// Each crate directory name paired with the text of its manifest.
-fn manifests() -> Vec<(String, String)> {
+/// Each source-workspace crate directory name paired with its manifest.
+fn crate_dirs() -> Vec<PathBuf> {
     let root = workspace_root();
     let mut found = Vec::new();
-    for entry in std::fs::read_dir(root.join("crates")).expect("crates/ exists") {
-        let path = entry.expect("a crate directory").path();
-        let manifest = path.join("Cargo.toml");
-        if !manifest.is_file() {
-            continue;
+    for group in ["cli", "kernel", "interactions", "shared"] {
+        for entry in std::fs::read_dir(root.join("crates").join(group)).expect("owner group exists")
+        {
+            let path = entry.expect("a crate directory").path();
+            if path.join("Cargo.toml").is_file() {
+                found.push(path);
+            }
         }
-        let name = path
-            .file_name()
-            .expect("a crate directory name")
-            .to_string_lossy()
-            .into_owned();
-        found.push((
-            name,
-            std::fs::read_to_string(&manifest).expect("a UTF-8 manifest"),
-        ));
     }
     assert!(
-        found.len() > 20,
-        "only {} manifests found; the walk is not reaching the tree",
+        found.len() > 50,
+        "only {} source crates found; the walk is incomplete",
         found.len()
     );
     found
+}
+
+fn manifests() -> Vec<(String, String)> {
+    crate_dirs()
+        .into_iter()
+        .map(|path| {
+            let name = path
+                .file_name()
+                .expect("crate directory name")
+                .to_string_lossy()
+                .into_owned();
+            (
+                name,
+                std::fs::read_to_string(path.join("Cargo.toml")).expect("a UTF-8 manifest"),
+            )
+        })
+        .collect()
 }
 
 /// A manifest declares a dependency when the crate name starts a line. A
@@ -202,8 +212,9 @@ fn the_protocol_adapter_links_no_domain() {
     // in its graph it *cannot* call one in process, so the only route it has
     // is the one the CLI publishes. That is what makes replacing the protocol
     // a rewrite of one leaf rather than a pass over every domain.
-    let manifest = std::fs::read_to_string(workspace_root().join("crates/ds-cli-mcp/Cargo.toml"))
-        .expect("the ds-cli-mcp manifest");
+    let manifest =
+        std::fs::read_to_string(workspace_root().join("crates/cli/ds-cli-mcp/Cargo.toml"))
+            .expect("the ds-cli-mcp manifest");
     let permitted = ["ds-cli-contract", "ds-cli-skills"];
 
     for (name, _) in manifests() {
@@ -225,8 +236,7 @@ fn no_domain_carries_a_protocol_token() {
     let owners: BTreeSet<&str> = COUPLING_OWNERS.iter().map(|(path, _)| *path).collect();
 
     let mut sources = Vec::new();
-    for entry in std::fs::read_dir(root.join("crates")).expect("crates/ exists") {
-        let path = entry.expect("a crate directory").path();
+    for path in crate_dirs() {
         let name = path
             .file_name()
             .expect("a name")

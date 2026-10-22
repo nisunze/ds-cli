@@ -94,11 +94,13 @@ optional Cargo configuration and toolchain files (including declared absence),
 Cargo's encoded Rust flags, feature environment, optimization level and debug
 setting. Its framing is versioned and distinguishes an absent input from empty
 bytes. It contains no timestamp, installation identity or ambient sibling HEAD.
-The external neutral `ds-geo-lite` path source remains a release-driver input;
-the lock digest does not pretend to pin its source bytes. WASM packaging tools and
-final artifact digests belong to the release receipt, outside this Rust identity.
+The neutral `crates/shared/ds-geo-lite` path source belongs to the same `ds-cli`
+repository and is captured by the owner's exact source revision; the lock digest
+does not pretend to pin its source bytes. WASM packaging tools and final artifact
+digests belong to the release receipt, outside this Rust identity.
 
-The component's committed `release/ui-wasm-source.json` pins its external neutral
-geometry source. The producer admits its exact normal/build closure, captures
+The component's committed `release/ui-wasm-source.json` declares an empty external
+source closure. The producer admits its exact normal/build closure, including the
+same-repository geometry, and refuses undeclared external dependencies. It captures
 compiler and Cargo configuration, injects that configuration digest, and compares
 the actual WASM export before minting a publication receipt.

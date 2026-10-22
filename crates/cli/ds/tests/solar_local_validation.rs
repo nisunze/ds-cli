@@ -2,7 +2,7 @@
 use ds_solar_contracts::{WeatherDataset, WeatherKey, result_comparison::comparison_receipt};
 use serde_json::{Value, json};
 use std::{path::Path, process::Command};
-#[path = "../../../../ds-solar/crates/ds-solar-contracts/tests/common/result.rs"]
+#[path = "../../../../../ds-solar/crates/ds-solar-contracts/tests/common/result.rs"]
 mod fixture;
 
 fn invoke(args: &[&str], missing: &Path) -> (Value, bool) {
@@ -78,7 +78,7 @@ fn local_weather_validation_needs_no_engine_and_preserves_report() {
     let path = dir.path().join("weather.json");
     let missing = dir.path().join("missing-solar");
     let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../ds-solar/fixtures/weather/aderm_bere.weather.json");
+        .join("../../../../ds-solar/fixtures/weather/aderm_bere.weather.json");
     let mut weather: WeatherDataset =
         serde_json::from_slice(&std::fs::read(fixture_path).unwrap()).unwrap();
     std::fs::write(&path, serde_json::to_vec(&weather).unwrap()).unwrap();

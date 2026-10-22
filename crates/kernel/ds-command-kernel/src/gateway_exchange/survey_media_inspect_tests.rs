@@ -1,5 +1,5 @@
 use super::*;
-use crate::gateway_exchange::retained::testing::{block_on, Answer, TestEdge};
+use crate::gateway_exchange::retained::testing::{Answer, TestEdge, block_on};
 const PHOTO: &str = "demo/forms/poles/entry/photo.jpg";
 const BUCKET: &str = "demo.firebasestorage.app";
 fn answer(path: &str, generation: &str) -> Value {
@@ -32,9 +32,11 @@ fn original_address_and_pinned_generation_are_preserved() {
 fn optional_absence_is_only_404_and_invalid_addresses_send_nothing() {
     let edge = TestEdge::new();
     edge.answer(Answer::Json(404, json!({"error": "missing"})));
-    assert!(block_on(inspect(&edge, PHOTO.into(), true))
-        .unwrap()
-        .is_none());
+    assert!(
+        block_on(inspect(&edge, PHOTO.into(), true))
+            .unwrap()
+            .is_none()
+    );
     edge.answer(Answer::Json(403, json!({"error": "denied"})));
     assert_eq!(
         block_on(inspect(&edge, PHOTO.into(), true))

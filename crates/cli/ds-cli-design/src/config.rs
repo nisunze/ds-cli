@@ -299,20 +299,19 @@ fn read_with(
         let mode = serde_json::from_value::<ProjectConfigurationRead>(json!(i.require("read")?))
             .map_err(invalid)?;
         let answer = document(i.require("lane")?, i.require("project")?, mode)?;
-        if answer.project != i.require("project")? || answer.observation.source != mode {
-            return Err(invalid(
-                "configuration receipt does not answer this project and read mode",
-            ));
-        }
         if let Some(path) = i.value("out") {
+            let receipt = answer
+                .file_receipt(i.require("project")?, mode, path.into())
+                .map_err(invalid)?;
             write_output(
                 path,
                 &serde_json::to_vec_pretty(&answer.document).map_err(invalid)?,
             )?;
-            return Ok(
-                json!({"project":answer.project,"observation":answer.observation,"path":path}),
-            );
+            return serde_json::to_value(receipt).map_err(invalid);
         }
+        answer
+            .admit_context(i.require("project")?, mode)
+            .map_err(invalid)?;
         return serde_json::to_value(answer).map_err(invalid);
     }
     let key = key.expect("sheet was admitted before acquisition");

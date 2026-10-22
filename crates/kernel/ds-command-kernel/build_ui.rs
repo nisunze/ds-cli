@@ -29,7 +29,7 @@ pub fn requires_release_stamps(target: &str, profile: &str) -> bool {
     target.starts_with("wasm32-") && profile == "release"
 }
 
-pub fn emit(root: &Path) {
+pub fn emit(workspace: &Path) {
     for name in ["DS_COMMAND_KERNEL_SOURCE_SHA", "DS_UI_BUILD_CONFIG_SHA256"] {
         println!("cargo:rerun-if-env-changed={name}");
     }
@@ -52,7 +52,7 @@ pub fn emit(root: &Path) {
         config_input.as_deref(),
     )
     .unwrap_or_else(|error| panic!("{error}"));
-    let lock = root.join("Cargo.lock");
+    let lock = workspace.join("Cargo.lock");
     println!("cargo:rerun-if-changed={}", lock.display());
     let lock_sha256 = format!(
         "{:x}",

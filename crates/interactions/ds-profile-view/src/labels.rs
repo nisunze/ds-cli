@@ -9,6 +9,63 @@ use std::{
 
 pub use core::{Align, Baseline, Bounds, Options, Orientation, Placement};
 
+/// Measured station labels reserve the exact global ends before alignment
+/// boundaries and ordinary ticks. Only text is suppressed; ticks stay native.
+pub fn station_rows(candidates: &[(f64, f64, bool)]) -> Vec<(usize, usize)> {
+    if candidates.is_empty() {
+        return vec![];
+    }
+    let (mut leftmost, mut rightmost) = (0, 0);
+    for i in 1..candidates.len() {
+        if candidates[i].0 < candidates[leftmost].0 {
+            leftmost = i;
+        }
+        if candidates[i].0 > candidates[rightmost].0 {
+            rightmost = i;
+        }
+    }
+    let priority = |i: usize| {
+        if i == leftmost || i == rightmost {
+            2
+        } else {
+            u8::from(candidates[i].2)
+        }
+    };
+    let mut ordered: Vec<_> = (0..candidates.len()).collect();
+    ordered.sort_by(|&a, &b| {
+        priority(b)
+            .cmp(&priority(a))
+            .then(candidates[a].0.total_cmp(&candidates[b].0))
+    });
+    let mut occupied = [Vec::<(f64, f64)>::new(), Vec::new()];
+    let mut placed = Vec::new();
+    for i in ordered {
+        let (x, width, _) = candidates[i];
+        let half = width.max(0.) / 2. + 3.;
+        let interval = (x - half, x + half);
+        if let Some(row) = occupied.iter().position(|row| {
+            row.iter()
+                .all(|&(left, right)| interval.1 <= left || interval.0 >= right)
+        }) {
+            occupied[row].push(interval);
+            placed.push((i, row));
+        }
+    }
+    placed.sort_by(|&(a, ar), &(b, br)| {
+        candidates[a]
+            .0
+            .total_cmp(&candidates[b].0)
+            .then(ar.cmp(&br))
+    });
+    placed
+}
+
+pub fn station_text(metres: f64) -> String {
+    let metres = (metres.max(0.) * 10.).round() / 10.;
+    let kilometres = (metres / 1000.).floor();
+    format!("{kilometres:.0}+{:05.1}", metres - kilometres * 1000.)
+}
+
 #[derive(Clone, Debug)]
 pub struct LabelRequest {
     pub id: String,

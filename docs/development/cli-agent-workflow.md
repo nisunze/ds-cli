@@ -75,7 +75,7 @@ chosen process separation and documented why. Three already exist:
 |---|---|---|
 | `ds-grid` | `ds-network/crates/ds-grid-cli` | one named subcommand per call |
 | `reporter` | `ds-network-reporter/src/bin/reporter.rs` | typed request file, machine-readable result file |
-| `ds-solar` | `ds-solar/apps/ds-solar-cli` | prepare/run split; `run` may not touch the network |
+| `ds-solar` | `ds-cli/crates/kernel/ds-solar-cli` | prepare/run split; `run` may not touch the network |
 
 `ds-report`'s own header states the rule: one named subcommand per call, never
 a caller-supplied argv, a typed request file rather than flags built from model
@@ -286,7 +286,7 @@ only ever gets relaxed is not protecting anything.
 ## CLI-first delivery and project isolation
 
 Follow the delivery cadence and per-request project context section of
-[`ds-headless-application-runtime.md`](../../../ds-command-kernel/docs/contracts/ds-headless-application-runtime.md).
+[`ds-headless-application-runtime.md`](../../crates/kernel/ds-command-kernel/docs/contracts/ds-headless-application-runtime.md).
 Prove the current CLI/MCP outcome, using the source server launcher when the
 installed release does not contain the current code. Repair the smallest owner gap,
 then bind the UI. The web retains project selection; native requests capture and

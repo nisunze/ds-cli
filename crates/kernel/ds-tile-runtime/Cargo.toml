@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.90"
 publish = false
-[workspace]
 [dependencies]
 anyhow = "1"
 fs2 = "0.4"

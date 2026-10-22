@@ -23,6 +23,7 @@ pub mod network_seed;
 pub mod portfolio_headless;
 pub mod portfolio_management;
 pub mod project;
+mod project_worker;
 pub mod project_sync;
 pub mod reference;
 pub mod run;

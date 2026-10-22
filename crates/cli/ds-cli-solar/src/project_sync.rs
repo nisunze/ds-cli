@@ -96,7 +96,7 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     validate_workspace_project(&status, project)?;
     if i.switch("background") {
         return Ok(
-            json!({"worker_pid":ds_cli_exec::start_solar_project_sync(&workspace,lane,project)?,"project_id":project,"workspace":workspace,"publication":"background"}),
+            json!({"worker_pid":crate::project_worker::start_solar_project_sync(&workspace,lane,project)?,"project_id":project,"workspace":workspace,"publication":"background"}),
         );
     }
     let path = workspace.join("sync.lock");

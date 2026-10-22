@@ -42,9 +42,9 @@ fn text(ctx: &Context, value: &str, p: Screen) {
 }
 fn source_color(source: &str) -> &'static str {
     match source {
-        "surveyed" => "#4ade80",
-        "dem_survey_corrected" => "#38bdf8",
-        "dem_raw" => "#fbbf24",
+        "surveyed" => "#16a34a",
+        "dem_survey_corrected" => "#06b6d4",
+        "dem_raw" => "#f59e0b",
         _ => "#94a3b8",
     }
 }
@@ -135,7 +135,7 @@ fn plot_line(ctx: &Context, camera: &Camera, a: Point, b: Point, stroke: &Stroke
 }
 fn grid(ctx: &Context, scene: &Scene, camera: &Camera) {
     let s = camera.projection().scale;
-    let target = scene.grid.target_screen_spacing_px.max(32.);
+    let target = scene.grid.target_screen_spacing_px;
     let bounds = &scene.plot_bounds;
     ctx.set_font("9px monospace");
     ctx.set_text_align("center");
@@ -145,10 +145,11 @@ fn grid(ctx: &Context, scene: &Scene, camera: &Camera) {
         .grid
         .station_levels
         .iter()
-        .find(|l| l.step_m * scene.scale.horizontal_scene_units_per_m * s >= target)
+        .find(|l| l.step_m >= target / (scene.scale.horizontal_scene_units_per_m * s).max(1e-12))
         .or_else(|| scene.grid.station_levels.last());
-    let mut last_label = f64::NEG_INFINITY;
     if let Some(level) = stations {
+        let mut labels = Vec::new();
+        let mut candidates = Vec::new();
         for t in &level.ticks {
             let p = camera.project(Point::xy(t.scene_x, bounds.max_y));
             if p.x < 0. || p.x > camera.width {
@@ -165,26 +166,28 @@ fn grid(ctx: &Context, scene: &Scene, camera: &Camera) {
                     &scene.foundation.station_grid
                 },
             );
-            if p.x - last_label > 65. {
-                let km = (t.value_m / 1000.).floor();
-                let m = t.value_m - km * 1000.;
-                text(
-                    ctx,
-                    &format!("{km:.0}+{m:06.2}"),
-                    Screen {
-                        x: p.x,
-                        y: p.y + 4.,
-                    },
-                );
-                last_label = p.x;
-            }
+            let label = crate::labels::station_text(t.value_m);
+            let width = ctx.measure_text(&label).map(|m| m.width()).unwrap_or(0.);
+            labels.push((label, p));
+            candidates.push((p.x, width, t.boundary));
+        }
+        for (i, row) in crate::labels::station_rows(&candidates) {
+            let (label, p) = &labels[i];
+            text(
+                ctx,
+                label,
+                Screen {
+                    x: p.x,
+                    y: p.y + 4. + row as f64 * 11.,
+                },
+            );
         }
     }
     let elevations = scene
         .grid
         .elevation_levels
         .iter()
-        .find(|l| l.step_m * scene.scale.vertical_scene_units_per_m * s >= target)
+        .find(|l| l.step_m >= target / (scene.scale.vertical_scene_units_per_m * s).max(1e-12))
         .or_else(|| scene.grid.elevation_levels.last());
     ctx.set_text_align("right");
     ctx.set_text_baseline("middle");
@@ -200,9 +203,9 @@ fn grid(ctx: &Context, scene: &Scene, camera: &Camera) {
             let p = camera.project(Point::xy(bounds.min_x, t.scene_y));
             text(
                 ctx,
-                &format!("{:.0}", t.value_m),
+                &format!("{:.0} m", t.value_m),
                 Screen {
-                    x: p.x - 4.,
+                    x: p.x - 5.,
                     y: p.y,
                 },
             );
@@ -368,7 +371,11 @@ pub fn base(
                             },
                         );
                     }
-                    for attachment in &structure.attachment_points {
+                    for attachment in structure
+                        .attachment_points
+                        .iter()
+                        .filter(|_| v.show_attachments)
+                    {
                         let ink = if attachment.connected_section_ids.is_empty() {
                             "#64748b"
                         } else {
@@ -393,17 +400,47 @@ pub fn base(
             if guide.kind == "lowest_wire_drop" && !scene.current() {
                 continue;
             }
+            ctx.save();
+            if guide.kind == "lowest_wire_drop" {
+                ctx.set_global_alpha(state.wire_opacity.clamp(0., 1.));
+            }
+            let p = pen(scene, "clearance_line");
+            let color = p
+                .map(|p| p.color.as_str())
+                .unwrap_or(if guide.kind == "ground_offset" {
+                    "#fb7185"
+                } else {
+                    "#f97316"
+                });
             for segment in &guide.segments {
-                let p = pen(scene, "clearance_line");
                 line(
                     ctx,
                     camera,
                     &segment.points,
-                    p.map(|p| p.color.as_str()).unwrap_or("#f59e0b"),
+                    color,
                     p.map(|p| p.width_px).unwrap_or(1.),
-                    &[5., 4.],
+                    p.map(|p| p.dash_px.as_slice()).unwrap_or(&[6., 4.]),
                 );
             }
+            if let (Some(label), Some(point)) = (
+                &guide.label,
+                guide.segments.iter().rev().find_map(|s| s.points.last()),
+            ) {
+                let point = camera.project(*point);
+                ctx.set_font(p.map(|p| p.font.as_str()).unwrap_or("10px monospace"));
+                ctx.set_fill_style_str(p.map(|p| p.label_color.as_str()).unwrap_or(color));
+                ctx.set_text_align("right");
+                ctx.set_text_baseline("bottom");
+                text(
+                    ctx,
+                    label,
+                    Screen {
+                        x: point.x - 4.,
+                        y: point.y - 3.,
+                    },
+                );
+            }
+            ctx.restore();
         }
     }
     if v.show_wire && scene.current() {
@@ -429,20 +466,36 @@ pub fn base(
                     camera,
                     &span.points,
                     c,
-                    encoding.map(|p| p.width_px).unwrap_or(1.3),
+                    encoding.map(|p| p.width_px).unwrap_or(1.6),
                     encoding.map(|p| p.dash_px.as_slice()).unwrap_or(&[]),
                 );
             }
-            if state.show_span_labels && scene.display.is_none() {
+            if state.show_span_labels && scene.display.is_none() && !span.cross_alignment {
                 if let Some(label) = &span.span_label {
                     if visible(camera, label.point, 80.) {
-                        ctx.set_font("10px monospace");
+                        ctx.save();
+                        ctx.set_font("9px monospace");
                         ctx.set_text_align("center");
-                        ctx.set_text_baseline("bottom");
-                        ctx.set_fill_style_str(c);
-                        let mut p = camera.project(label.point);
-                        p.y -= 5.;
+                        ctx.set_text_baseline("middle");
+                        let p = camera
+                            .project(crate::draw_geometry::span_label_anchor(scene, label.point));
+                        let width = ctx
+                            .measure_text(&label.text)
+                            .map(|m| m.width())
+                            .unwrap_or(0.)
+                            + 6.;
+                        ctx.set_fill_style_str("rgba(2, 6, 23, 0.82)");
+                        ctx.fill_rect(p.x - width / 2., p.y - 6.5, width, 13.);
+                        let selected = state
+                            .selected_entity_ids
+                            .iter()
+                            .chain(state.selected_entity_id.iter())
+                            .any(|id| {
+                                id == &span.section_id || span.section_set_member_ids.contains(id)
+                            });
+                        ctx.set_fill_style_str(if selected { "#facc15" } else { "#cbd5e1" });
                         text(ctx, &label.text, p);
+                        ctx.restore();
                     }
                 }
             }
@@ -477,7 +530,7 @@ pub fn base(
                 }
             }
         }
-        if state.show_clearance_guides {
+        if state.show_clearance_guides && scene.display.is_none() {
             for points in lowest_wire_segments {
                 line(ctx, camera, points, "#f59e0b", 1., &[5., 4.]);
             }
@@ -545,7 +598,17 @@ pub fn base(
             // Review glyphs are composited after the selection layer.
         }
     }
-    if scene.bands.is_empty() {
+    if scene.bands.is_empty()
+        && scene.display.as_ref().is_none_or(|display| {
+            display.primitives.is_empty()
+                && display.symbols.is_empty()
+                && display.authored_structures.is_empty()
+        })
+        && scene
+            .engineering
+            .as_ref()
+            .is_none_or(|e| e.markers.is_empty())
+    {
         ctx.set_font("12px sans-serif");
         ctx.set_fill_style_str("#94a3b8");
         ctx.set_text_align("center");
@@ -614,7 +677,7 @@ pub fn generic_labels(ctx: &Context, scene: &Scene, state: &ViewState, camera: &
             Baseline::Top => "top",
         });
         ctx.set_fill_style_str(if request.required {
-            "#67e8f9"
+            "#facc15"
         } else {
             "#cbd5e1"
         });
@@ -643,7 +706,7 @@ pub fn selection(ctx: &Context, scene: &Scene, state: &ViewState, camera: &Camer
     if ids.is_empty() {
         return;
     }
-    let selected = "#67e8f9";
+    let selected = "#facc15";
     color(ctx, selected, selected);
     for band in &scene.bands {
         if ids.contains(band.alignment_id.as_str()) && state.visibility.show_ground {
@@ -664,11 +727,19 @@ pub fn selection(ctx: &Context, scene: &Scene, state: &ViewState, camera: &Camer
                         camera,
                         &[s.base, s.top.unwrap_or(s.ground)],
                         selected,
-                        4.,
+                        if s.network_role.as_deref() == Some("transformer") {
+                            4.
+                        } else {
+                            3.
+                        },
                         &[],
                     );
                 }
-                for a in &s.attachment_points {
+                for a in s
+                    .attachment_points
+                    .iter()
+                    .filter(|_| state.visibility.show_attachments)
+                {
                     if ids.contains(
                         AttachmentRef {
                             structure_id: s.entity_id.clone(),
@@ -1050,7 +1121,11 @@ pub fn feature_clearances(
                     ctx.set_fill_style_str("#cbd5e1");
                     text(
                         ctx,
-                        &format!("display Δ {m:+.1} m"),
+                        &format!(
+                            "display Δ {}{:.1} m",
+                            if m < 0. { "−" } else { "+" },
+                            m.abs()
+                        ),
                         Screen {
                             x: tip.x + 6.,
                             y: tip.y + 9.,

@@ -32,9 +32,13 @@
 # bytes must be the same on every checkout, so they are never converted —
 # not even the CRLF rule for *.ps1 above, which would change every digest on
 # the next checkout.
-crates/ds-cli-pls/desktop/** -text -eol
+crates/cli/ds-cli-pls/desktop/** -text -eol
 # Driver receipts recorded as Windows PowerShell 5.1 writes them (CRLF).
-crates/ds-cli-pls/tests/fixtures/desktop/** -text -eol
+crates/cli/ds-cli-pls/tests/fixtures/desktop/** -text -eol
+
+# Imported review scripts are retained historical evidence. Preserve their
+# original bytes when capturing the consolidated repository.
+crates/kernel/ds-command-kernel/backlog/**/*.py -text -eol
 
 # Binary — never touched, never diffed as text.
 *.png  binary

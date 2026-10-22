@@ -70,7 +70,7 @@ this migration. Brain was clean. Tests listed below were inspected, not executed
 | Batch operation_id is correlation, not a durable receipt; batch items commit independently. | Brain `data_models.go:257-259`; service `1466-1469,1544-1562`. | Add per-command idempotency; keep truthful per-item partial success. |
 | Presence/leases and content use different revision semantics. | Brain `transformer_governance.go:214-266,329-359,501-519`. | Presence cannot replace CAS or spuriously become an engineering revision. |
 | Stronger receipt/CAS paths already exist for repair and version promotion. | Brain `transformer_repair.go:497-561`; `transformer_version_promotion.go:88-147,199-231`. | Extend the existing mutation owner rather than add another privileged save route. |
-| Stable catalog version IDs and immutable revision IDs already exist; display numbering is separate. | Brain `transformer_version_catalog.go:23-64,543-599`; [version authority](../../ds-brain/docs/contracts/design-version-authority.md). | Reuse this catalog for intentional versions; do not create catalog entries merely to preserve conflicts. |
+| Stable catalog version IDs and immutable revision IDs already exist; display numbering is separate. | Brain `transformer_version_catalog.go:23-64,543-599`; [version authority](../../../../../ds-brain/docs/contracts/design-version-authority.md). | Reuse this catalog for intentional versions; do not create catalog entries merely to preserve conflicts. |
 | OPFS is already used for Arrow upload-chunk spill, not for SQLite databases. | Web `design/upload-blobs.ts:1-13,33-43,86-94`. | Keep its byte lifecycle distinct from the database VFS. |
 | Some native room/catalog stores are JSON+file locks, while dataset/snapshot stores use separate SQLite. | Kernel `ds-layer-store/src/scoped.rs:138-201`, `local_models.rs:327-360`, `project_dataset_cache.rs:131-244`. | Consolidate transaction semantics incrementally; do not rename filesystem locks as portable SQLite proof. |
 
@@ -417,7 +417,7 @@ Reconcile contracts at implementation time, with corresponding consumer proof:
   only after actual SQLite-WASM parity and rollout, preserving the shared rows.
 - `transformer-acquisition.md` names an IndexedDB commit boundary; preserve its
   authority, dirty-room and late-response checks in the new transaction owner.
-- Web [survey-native-offline.md](../../ds-web/docs/contracts/survey-native-offline.md)
+- Web [survey-native-offline.md](../../../../../ds-web/docs/contracts/survey-native-offline.md)
   explicitly retired a previous separate native capture workspace. The new
   common store must not resurrect its old CLI operations or a second survey
   architecture. Survey migration is a later bounded slice with mirror semantics.

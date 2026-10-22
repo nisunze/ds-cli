@@ -36,7 +36,7 @@ fn browser_release_inspection_is_explicit_and_native_default_is_preserved() {
     let mut browser = tempfile::NamedTempFile::new().unwrap();
     browser
         .write_all(include_bytes!(
-            "../../../../ds-command-kernel/src/module_release/fixtures/network-wasm-canary.json"
+            "../../../kernel/ds-command-kernel/src/module_release/fixtures/network-wasm-canary.json"
         ))
         .unwrap();
     assert!(inspect_file(browser.path(), "network", None).is_err());
@@ -45,7 +45,7 @@ fn browser_release_inspection_is_explicit_and_native_default_is_preserved() {
     assert_eq!(admitted["protocol"], "ds.network-wasm/v1");
     assert_eq!(admitted["assets"].as_array().unwrap().len(), 4);
     let mut native = tempfile::NamedTempFile::new().unwrap();
-    native.write_all(include_bytes!("../../../../ds-command-kernel/src/module_release/fixtures/network-native-canary.json")).unwrap();
+    native.write_all(include_bytes!("../../../kernel/ds-command-kernel/src/module_release/fixtures/network-native-canary.json")).unwrap();
     let legacy = inspect_file(native.path(), "network", None).unwrap();
     assert_eq!(
         legacy,
@@ -128,8 +128,8 @@ fn unsupported_release_lane_refuses_before_any_addon_probe() {
 #[test]
 fn ui_inspection_returns_complete_digest_and_requires_explicit_wasm_before_file_access() {
     for (component, bytes) in [
-        ("interactions", include_bytes!("../../../../ds-command-kernel/src/module_release/fixtures/interactions-ui-wasm-canary.json").as_slice()),
-        ("command-kernel", include_bytes!("../../../../ds-command-kernel/src/module_release/fixtures/command-kernel-ui-wasm-canary.json").as_slice()),
+        ("interactions", include_bytes!("../../../kernel/ds-command-kernel/src/module_release/fixtures/interactions-ui-wasm-canary.json").as_slice()),
+        ("command-kernel", include_bytes!("../../../kernel/ds-command-kernel/src/module_release/fixtures/command-kernel-ui-wasm-canary.json").as_slice()),
     ] {
         let mut file = tempfile::NamedTempFile::new().unwrap();
         file.write_all(bytes).unwrap();

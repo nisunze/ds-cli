@@ -72,17 +72,15 @@ fn isolated_complete_view() {
     let case = env::var("DS_PROFILE_VIEW_CASE").unwrap();
     if case == "collision" {
         fs::write(run.join("profile-input-0000000001.json"), b"occupied").unwrap();
-        assert!(
-            session
-                .view_at(
-                    &input,
-                    false,
-                    history.clone(),
-                    Duration::from_secs(30),
-                    &|| false
-                )
-                .is_err()
-        );
+        assert!(session
+            .view_at(
+                &input,
+                false,
+                history.clone(),
+                Duration::from_secs(30),
+                &|| false
+            )
+            .is_err());
         assert!(session.is_closed());
         drop(session);
         assert_eq!(fs::read_dir(scratch.path()).unwrap().count(), 0);
@@ -172,17 +170,15 @@ fn isolated_complete_view() {
     assert_eq!(state(&mut session)["calculation_requests"], 1);
     let mut malformed = input.clone();
     malformed.style_document = serde_json::json!({});
-    assert!(
-        session
-            .view_at(
-                &malformed,
-                true,
-                history.clone(),
-                Duration::from_secs(30),
-                &|| false
-            )
-            .is_err()
-    );
+    assert!(session
+        .view_at(
+            &malformed,
+            true,
+            history.clone(),
+            Duration::from_secs(30),
+            &|| false
+        )
+        .is_err());
     no_staged_input();
     assert!(!session.is_closed());
     let mut oversized = input.clone();

@@ -26,7 +26,7 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 ds-geo-lite = { workspace = true, features = ["vector_types"] }
 ds-geo = { workspace = true }
-ds-layer-store = { path = "../../../ds-command-kernel/crates/ds-layer-store" }
+ds-layer-store = { path = "../../kernel/ds-layer-store" }
 ds-layer-ops.workspace = true
 
 sha2 = { workspace = true }

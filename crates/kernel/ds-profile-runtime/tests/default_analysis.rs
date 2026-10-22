@@ -1,6 +1,6 @@
 //! Owner, 2026-10-05: the analysis report is on by default. Rust says when a held
 //! revision still owes it; the host only runs the explicit Analyze action then.
-#[path = "../../../../ds-network/crates/ds-grid-engine/tests/common/mod.rs"]
+#[path = "../../../../../ds-network/crates/ds-grid-engine/tests/common/mod.rs"]
 mod common;
 use ds_grid_engine::profile_display_case::ProfileDisplayCase;
 use ds_grid_engine::GridSession;

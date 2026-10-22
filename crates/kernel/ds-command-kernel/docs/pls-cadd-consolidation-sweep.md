@@ -2,7 +2,7 @@
 
 Status: **index only, not reviewed** (2026-09-22, `run` 0d3714e). Main index
 and sweep order:
-[ds-network/docs/diagnostics/pls-cadd-consolidation-sweep.md](../../ds-network/docs/diagnostics/pls-cadd-consolidation-sweep.md).
+[ds-network/docs/diagnostics/pls-cadd-consolidation-sweep.md](../../../../../ds-network/docs/diagnostics/pls-cadd-consolidation-sweep.md).
 
 The kernel carries little PLS code: `src/local_models.rs` (`PlsSourceLink`),
 `src/design_attachments.rs` (test fixture label only),

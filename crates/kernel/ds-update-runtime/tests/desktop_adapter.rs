@@ -5,7 +5,7 @@ mod connectivity {
         Ok(())
     }
 }
-#[path = "../../../../ds-web/src-tauri/src/download_manager.rs"]
+#[path = "../../../../../ds-web/src-tauri/src/download_manager.rs"]
 mod desktop;
 use sha2::{Digest, Sha256};
 #[test]

@@ -469,7 +469,7 @@ continuation after interruption; failures attempt exact old-epoch restoration.
 This deliberate operation is separate from positive SQLite-corruption recovery.
 Permission, lane, account, stale digest and active-owner failures remain refusals.
 Source support is not installed platform acceptance. The live command and
-[Core reference](../../../ds-cli/docs/reference/core.md#deliberate-account-cache-retirement)
+[Core reference](../../../../../docs/reference/core.md#deliberate-account-cache-retirement)
 own operator inputs, effects, refusal remedies and migration behavior.
 
 ## Native retained Profile sessions

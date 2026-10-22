@@ -18,3 +18,13 @@ pub mod preview;
 #[cfg(target_arch = "wasm32")]
 mod readiness;
 pub mod selection;
+
+#[cfg(target_arch = "wasm32")]
+mod display;
+pub mod filter;
+#[cfg(target_arch = "wasm32")]
+mod legend;
+pub mod retype;
+pub mod retype_search;
+#[cfg(target_arch = "wasm32")]
+mod weather;

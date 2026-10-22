@@ -41,7 +41,7 @@ impl Transport for NativeTransport {
         &mut self,
         call: ds_client_core::SolarReferenceCall<'_>,
     ) -> ds_solar_contracts::SolarResult<ds_solar_contracts::BundleBytes> {
-        use ds_solar_io::provider::ReferenceBundleProvider;
+        use ds_solar_reference_host::ReferenceBundleProvider;
         if local_go::is_local().map_err(|_| {
             ds_solar_contracts::SolarError::weather_unavailable(
                 "native local Go transport selection is invalid",
@@ -51,7 +51,7 @@ impl Transport for NativeTransport {
                 "Solar reference transport does not support local Go; no cloud fallback was attempted",
             ));
         }
-        ds_solar_io::provider::HttpReferenceProvider::new(
+        ds_solar_reference_host::HttpReferenceProvider::new(
             call.gateway_origin(),
             Some(call.bearer_token().to_owned()),
         )?
@@ -2517,7 +2517,10 @@ fn survey_entries_changes_url(origin: &str) -> String {
 
 #[cfg(test)]
 fn survey_entry_create_url(firebase_project: &str) -> String {
-    format!("https://firestore.googleapis.com{}", ds_client_core::SURVEY_ENTRY_CREATE_PATH.replace("{firebase_project}", firebase_project))
+    format!(
+        "https://firestore.googleapis.com{}",
+        ds_client_core::SURVEY_ENTRY_CREATE_PATH.replace("{firebase_project}", firebase_project)
+    )
 }
 
 fn tiles_url(origin: &str) -> String {

@@ -26,7 +26,7 @@ use serde_json::Value;
 
 fn corpus_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../ds-command-kernel/tests/fixtures/ds-envelope-cases.json")
+        .join("../../kernel/ds-command-kernel/tests/fixtures/ds-envelope-cases.json")
 }
 
 fn corpus_text() -> String {

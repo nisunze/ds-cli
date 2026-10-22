@@ -2,7 +2,7 @@ use super::*;
 #[test]
 fn global_confirmation_selects_write_and_refuses_missing_or_conflicting_modes() {
     let source = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../out/nonexistent-confirmation-source.dsgrid");
+        .join("../../../out/nonexistent-confirmation-source.dsgrid");
     assert!(!source.exists());
     for (dry, confirmed, expected) in [
         (false, false, "package_migration_confirmation"),

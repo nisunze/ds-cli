@@ -116,26 +116,33 @@ const INVENTORY: &[(&str, Layer, usize)] = &[
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .canonicalize()
         .expect("ds-cli workspace root")
 }
 
-/// Every crate directory in the workspace.
+/// Every crate directory in the source workspace, including the moved executor.
 fn crate_dirs() -> Vec<(String, PathBuf)> {
-    let crates = workspace_root().join("crates");
+    let root = workspace_root();
     let mut found = Vec::new();
-    for entry in std::fs::read_dir(&crates).expect("crates directory") {
-        let path = entry.expect("crate entry").path();
-        if path.join("Cargo.toml").is_file() {
-            let name = path
-                .file_name()
-                .expect("crate directory name")
-                .to_string_lossy()
-                .into_owned();
-            found.push((name, path));
+    for group in ["cli", "kernel", "interactions", "shared"] {
+        for entry in std::fs::read_dir(root.join("crates").join(group)).expect("owner group exists")
+        {
+            let path = entry.expect("crate entry").path();
+            if path.join("Cargo.toml").is_file() {
+                let name = path
+                    .file_name()
+                    .expect("crate directory name")
+                    .to_string_lossy()
+                    .into_owned();
+                found.push((name, path));
+            }
         }
     }
+    assert!(
+        found.len() > 50,
+        "source workspace crate walk is incomplete"
+    );
     found.sort();
     found
 }

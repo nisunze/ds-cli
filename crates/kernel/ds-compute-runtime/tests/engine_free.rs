@@ -1,4 +1,4 @@
-//! Guard the detached compute runtime's actual normal dependency closure.
+//! Guard the compute runtime's actual normal dependency closure.
 use std::process::Command;
 
 #[test]
@@ -6,7 +6,16 @@ fn normal_dependency_graph_has_no_embedded_computation_or_report_owner() {
     let output = Command::new(env!("CARGO"))
         .args(["tree", "--offline", "--manifest-path"])
         .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
-        .args(["--edges", "normal", "--prefix", "none", "--format", "{p}"])
+        .args([
+            "--package",
+            "ds-compute-runtime",
+            "--edges",
+            "normal",
+            "--prefix",
+            "none",
+            "--format",
+            "{p}",
+        ])
         .output()
         .unwrap();
     assert!(
@@ -37,10 +46,14 @@ fn normal_dependency_graph_has_no_embedded_computation_or_report_owner() {
             "native execution linked {forbidden} instead of the standalone component"
         );
     }
-    assert!(graph
-        .lines()
-        .any(|line| line.starts_with("ds-solar-process ")));
-    assert!(graph
-        .lines()
-        .any(|line| line.starts_with("ds-network-client ")));
+    assert!(
+        graph
+            .lines()
+            .any(|line| line.starts_with("ds-solar-process "))
+    );
+    assert!(
+        graph
+            .lines()
+            .any(|line| line.starts_with("ds-network-client "))
+    );
 }

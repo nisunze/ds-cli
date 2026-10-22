@@ -745,7 +745,7 @@ mod tests {
         assert_eq!(
             on_disk(),
             declared,
-            "crates/ds-cli-pls/desktop and the BUNDLE table must name the same files"
+            "crates/cli/ds-cli-pls/desktop and the BUNDLE table must name the same files"
         );
     }
 

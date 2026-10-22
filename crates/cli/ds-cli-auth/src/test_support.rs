@@ -22,10 +22,10 @@ use crate::device::DeviceSession;
 
 pub(crate) const NOW: u64 = 1_900_000_000;
 pub(crate) const SIGN_IN: &[u8] = include_bytes!(
-    "../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/firebase-sign-in.json"
+    "../../../kernel/ds-client-core/tests/fixtures/firebase-sign-in.json"
 );
 pub(crate) const REFRESH: &[u8] = include_bytes!(
-    "../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/firebase-refresh.json"
+    "../../../kernel/ds-client-core/tests/fixtures/firebase-refresh.json"
 );
 /// The bearer a linked device presents; nothing decodes it here.
 pub(crate) const DEVICE_ACCESS_TOKEN: &str = "device-access-token";

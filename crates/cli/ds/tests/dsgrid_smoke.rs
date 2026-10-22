@@ -110,7 +110,7 @@ fn temp_root(label: &str) -> PathBuf {
 /// The real PLS-CADD workspace that ships with `ds-network`.
 fn workspace() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../ds-network/fixtures/pls-public/humble-pole/workspace");
+        .join("../../../../ds-network/fixtures/pls-public/humble-pole/workspace");
     let path = path.canonicalize().unwrap_or(path);
     assert!(
         path.is_dir(),

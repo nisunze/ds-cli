@@ -1575,7 +1575,8 @@ pub(crate) mod tests {
             survey_entries_changes_method: "POST".to_owned(),
             survey_entries_changes_path: "/api/v1/survey/entries/changes".to_owned(),
             survey_entry_create_method: "POST".to_owned(),
-            survey_entry_create_path: "/v1/projects/{firebase_project}/databases/(default)/documents:commit".to_owned(),
+            survey_entry_create_path:
+                "/v1/projects/{firebase_project}/databases/(default)/documents:commit".to_owned(),
             survey_entry_create_operation: "create".to_owned(),
             project_data_method: "POST".to_owned(),
             project_data_path: "/api/v1/project_data".to_owned(),

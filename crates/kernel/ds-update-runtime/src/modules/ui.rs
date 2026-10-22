@@ -2,8 +2,8 @@
 //! this owner never evaluates JavaScript, WASM, or an Interactions operation.
 use super::*;
 use ds_command_kernel::module_release::ui::{
-    self as policy, InstalledUiModule, UiAuthority, UiCapture, UiComponent, UiSelection,
-    UiSelectionState, UiUnit, VerifiedFile,
+    self as policy, InstalledUiModule, PublishedUiAuthority, UiAuthority, UiCapture, UiComponent,
+    UiScope, UiSelection, UiSelectionState, UiUnit, VerifiedFile,
 };
 
 const STAGE_SCHEMA: &str = "ds.ui-module-stage/v1";
@@ -172,22 +172,22 @@ impl CapturedReleaseAuthority {
         // before the grant exists and before any member transfer is possible.
         let unit = policy::inspect(component.as_str(), self.channel, &envelope.release)
             .map_err(|e| e.to_string())?;
-        if unit.release.status != "active" {
+        if unit.published().expect("published inspection").status != "active" {
             return Err("module_release_inactive: retain the installed UI unit".into());
         }
-        if expected_sha256.is_some_and(|digest| unit.unit_sha256 != digest) {
+        if expected_sha256.is_some_and(|digest| unit.unit_sha256() != digest) {
             return Err(
                 "module_release_changed: refresh explicitly before confirming the UI unit".into(),
             );
         }
-        policy::acquisition_plan(&unit, self.channel, &unit.unit_sha256, true)
+        policy::acquisition_plan(&unit, self.channel, unit.unit_sha256(), true)
             .map_err(|e| e.to_string())?;
         Ok(TrustedUiGrant {
             unit,
-            authority: UiAuthority {
+            authority: UiAuthority::Published(PublishedUiAuthority {
                 gateway_origin: self.gateway_origin.clone(),
                 route_manifest_sha256: self.catalog_sha256.clone(),
-            },
+            }),
         })
     }
 }
@@ -240,7 +240,7 @@ pub fn convergence_plan(
         None => UiConvergenceOutcome::Absent,
         Some(UiSelectionState::Removed { .. }) => UiConvergenceOutcome::Removed,
         Some(UiSelectionState::Installed { active, .. })
-            if active.unit.unit_sha256 == active_release_sha256 =>
+            if active.unit.unit_sha256() == active_release_sha256 =>
         {
             UiConvergenceOutcome::Current
         }
@@ -279,13 +279,44 @@ struct StoredUiStage {
     installed: InstalledUiModule,
 }
 
+fn admit_scope(channel: &str, scope: UiScope) -> Result<(), String> {
+    if scope == UiScope::LocalDev
+        && (channel != "canary" || !cfg!(all(target_os = "linux", target_arch = "x86_64")))
+    {
+        return Err(
+            "module_scope_invalid: local UI builds require Linux x86_64 canary local-dev scope"
+                .into(),
+        );
+    }
+    Ok(())
+}
+fn scoped_base(base: &Path, scope: UiScope, create: bool) -> Result<PathBuf, String> {
+    if scope == UiScope::Release {
+        return Ok(base.to_path_buf());
+    }
+    if create {
+        transfer::ensure_owned_directory(base, Path::new("local-dev"))
+    } else {
+        Ok(base.join("local-dev"))
+    }
+}
+
 pub struct UiModuleStore {
     root: PathBuf,
     component: UiComponent,
     channel: String,
+    scope: UiScope,
 }
 impl UiModuleStore {
     pub fn managed(component: UiComponent, channel: &str) -> Result<Self, String> {
+        Self::managed_scoped(component, channel, UiScope::Release)
+    }
+    pub fn managed_scoped(
+        component: UiComponent,
+        channel: &str,
+        scope: UiScope,
+    ) -> Result<Self, String> {
+        admit_scope(channel, scope)?;
         ui_platform()?;
         let base = ds_cli_exec::addons::managed_module_base().map_err(|e| e.to_string())?;
         fs::create_dir_all(&base).map_err(|e| e.to_string())?;
@@ -303,15 +334,24 @@ impl UiModuleStore {
             fs::set_permissions(&base, fs::Permissions::from_mode(0o700))
                 .map_err(|e| e.to_string())?;
         }
-        Self::new(&base, component, channel)
+        Self::new_scoped(&base, component, channel, scope)
     }
     /// Open retained bytes without creating any installation state.
     pub fn retained_managed(component: UiComponent, channel: &str) -> Result<Self, String> {
+        Self::retained_managed_scoped(component, channel, UiScope::Release)
+    }
+    pub fn retained_managed_scoped(
+        component: UiComponent,
+        channel: &str,
+        scope: UiScope,
+    ) -> Result<Self, String> {
+        admit_scope(channel, scope)?;
         ui_platform()?;
         if !matches!(channel, "stable" | "canary") {
             return Err("module_store_invalid: invalid UI lane".into());
         }
         let base = ds_cli_exec::addons::managed_module_base().map_err(|e| e.to_string())?;
+        let base = scoped_base(&base, scope, false)?;
         let root = base.join(component.as_str()).join(channel);
         if !exists_plain(&root)? {
             return Err("module_not_installed: no retained UI installation".into());
@@ -320,17 +360,29 @@ impl UiModuleStore {
             root,
             component,
             channel: channel.into(),
+            scope,
         };
         store.check_root()?;
         Ok(store)
     }
     pub fn new(base: &Path, component: UiComponent, channel: &str) -> Result<Self, String> {
+        Self::new_scoped(base, component, channel, UiScope::Release)
+    }
+    pub fn new_scoped(
+        base: &Path,
+        component: UiComponent,
+        channel: &str,
+        scope: UiScope,
+    ) -> Result<Self, String> {
+        admit_scope(channel, scope)?;
         ui_platform()?;
         if !base.is_absolute() || !matches!(channel, "stable" | "canary") {
             return Err(
                 "module_store_invalid: use the exact absolute native store and lane".into(),
             );
         }
+        let scoped = scoped_base(base, scope, true)?;
+        let base = scoped.as_path();
         #[cfg(windows)]
         {
             let owner = windows_owner()?;
@@ -350,6 +402,7 @@ impl UiModuleStore {
             root,
             component,
             channel: channel.into(),
+            scope,
         };
         store.check_root()?;
         Ok(store)
@@ -362,11 +415,30 @@ impl UiModuleStore {
         let base = ds_cli_exec::addons::managed_module_base().map_err(|e| e.to_string())?;
         Self::selection_from(&base, component, channel)
     }
+    pub fn selection_managed_scoped(
+        component: UiComponent,
+        channel: &str,
+        scope: UiScope,
+    ) -> Result<Option<UiSelection>, String> {
+        let base = ds_cli_exec::addons::managed_module_base().map_err(|e| e.to_string())?;
+        Self::selection_from_scoped(&base, component, channel, scope)
+    }
     fn selection_from(
         base: &Path,
         component: UiComponent,
         channel: &str,
     ) -> Result<Option<UiSelection>, String> {
+        Self::selection_from_scoped(base, component, channel, UiScope::Release)
+    }
+    fn selection_from_scoped(
+        base: &Path,
+        component: UiComponent,
+        channel: &str,
+        scope: UiScope,
+    ) -> Result<Option<UiSelection>, String> {
+        admit_scope(channel, scope)?;
+        let scoped = scoped_base(base, scope, false)?;
+        let base = scoped.as_path();
         ui_platform()?;
         if !base.is_absolute() || !matches!(channel, "stable" | "canary") {
             return Err("module_store_invalid: invalid UI store or lane".into());
@@ -382,6 +454,7 @@ impl UiModuleStore {
             root,
             component,
             channel: channel.into(),
+            scope,
         }
         .selection()
     }
@@ -455,6 +528,19 @@ impl UiModuleStore {
                 .map_err(|_| "module_receipt_invalid: malformed UI selection")?;
         policy::validate_selection(&selected, self.component, &self.channel)
             .map_err(|e| e.to_string())?;
+        match &selected.selection {
+            UiSelectionState::Installed { active, previous } => {
+                self.admit_receipt(active)?;
+                if let Some(previous) = previous {
+                    self.admit_receipt(previous)?;
+                }
+            }
+            UiSelectionState::Removed { previous } => {
+                if let Some(previous) = previous {
+                    self.admit_receipt(previous)?;
+                }
+            }
+        }
         Ok(Some(selected))
     }
     fn unit_directory(&self, digest: &str) -> Result<PathBuf, String> {
@@ -468,10 +554,10 @@ impl UiModuleStore {
         Ok(directory)
     }
     fn admit_receipt(&self, receipt: &InstalledUiModule) -> Result<(), String> {
-        if receipt.unit.release.component != self.component {
+        if receipt.unit.component() != self.component || receipt.unit.scope() != self.scope {
             return Err("module_receipt_invalid: crossed UI component".into());
         }
-        policy::admit_retained(receipt, &self.channel, &receipt.authority.gateway_origin)
+        policy::admit_retained(receipt, &self.channel, receipt.authority.gateway_origin())
             .map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -484,26 +570,15 @@ impl UiModuleStore {
         self.admit_receipt(receipt)?;
         ordinary_directory(directory)?;
         let mut verified = Vec::new();
-        for (filename, _) in self.component.files() {
-            let asset = receipt
-                .unit
-                .release
-                .assets
-                .iter()
-                .find(|asset| asset.url.ends_with(&format!("/{filename}")))
-                .ok_or("module_receipt_invalid: missing fixed UI member")?;
+        for file in receipt.unit.files() {
             transfer::reopen_verified_download(
-                &directory.join(filename),
-                asset.size_bytes as u64,
-                &asset.sha256,
+                &directory.join(&file.filename),
+                file.size_bytes as u64,
+                &file.sha256,
                 || check_cancel(cancelled),
             )
             .map_err(|e| format!("module_artifact_invalid: {e}"))?;
-            verified.push(VerifiedFile {
-                filename: filename.into(),
-                sha256: asset.sha256.clone(),
-                size_bytes: asset.size_bytes,
-            });
+            verified.push(file);
         }
         policy::verify_files(&receipt.unit, &verified).map_err(|e| e.to_string())?;
         Ok(verified)
@@ -515,7 +590,7 @@ impl UiModuleStore {
     ) -> Result<(), String> {
         self.verify_at(
             receipt,
-            &self.unit_directory(&receipt.unit.unit_sha256)?,
+            &self.unit_directory(receipt.unit.unit_sha256())?,
             cancelled,
         )
         .map(|_| ())
@@ -564,39 +639,138 @@ impl UiModuleStore {
             &Path,
         ) -> Result<(), String>,
     ) -> Result<StagedUiModule, String> {
-        check_cancel(cancelled)?;
-        if grant.unit.release.component != self.component
-            || grant.unit.release.channel != self.channel
-        {
-            return Err("module_receipt_invalid: crossed UI grant".into());
+        if self.scope != UiScope::Release {
+            return Err(
+                "module_scope_invalid: published acquisition cannot stage into local-dev".into(),
+            );
         }
         let assets =
-            policy::acquisition_plan(&grant.unit, &self.channel, &grant.unit.unit_sha256, true)
+            policy::acquisition_plan(&grant.unit, &self.channel, grant.unit.unit_sha256(), true)
                 .map_err(|e| e.to_string())?;
-        let _lock = self.lock()?;
-        let generation = self.selection()?.map_or(0, |s| s.generation);
-        let directory = self.root.join("versions").join(&grant.unit.unit_sha256);
-        // Preparation copies only trusted catalog identity; no executable probe.
         let provisional = InstalledUiModule {
             schema: policy::INSTALLATION_SCHEMA.into(),
-            engine_identity: grant.unit.release.build_manifest.clone(),
+            engine_identity: grant.unit.identity().clone(),
             unit: grant.unit,
             authority: grant.authority,
+        };
+        self.retain_unit(provisional, cancelled, |directory| {
+            for asset in &assets {
+                check_cancel(cancelled)?;
+                download(
+                    asset,
+                    &directory.join(asset.url.rsplit('/').next().unwrap()),
+                )?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Explicit OS-user local build import. Inputs stay opaque: the loader
+    /// later re-admits the actual exported identity before invoking any UI ABI.
+    pub fn stage_local(
+        &self,
+        directory: &Path,
+        identity_file: &Path,
+        source_sha: &str,
+        wasm_sha256: &str,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<StagedUiModule, String> {
+        if self.scope != UiScope::LocalDev || self.channel != "canary" {
+            return Err(
+                "module_scope_invalid: local builds require the canary local-dev store".into(),
+            );
+        }
+        if !directory.is_absolute()
+            || !identity_file.is_absolute()
+            || !transfer::exact_sha256(wasm_sha256)
+        {
+            return Err(
+                "module_artifact_invalid: use absolute local producer inputs and exact WASM digest"
+                    .into(),
+            );
+        }
+        ordinary_directory(directory)?;
+        let identity: Value = serde_json::from_slice(&read_plain(identity_file, 32 * 1024)?)
+            .map_err(|_| "module_engine_incompatible: malformed local producer identity")?;
+        let mut bytes = Vec::new();
+        let mut verified = Vec::new();
+        let mut total = 0usize;
+        for (filename, _) in self.component.files() {
+            check_cancel(cancelled)?;
+            let value = read_plain(&directory.join(filename), 128 * 1024 * 1024)?;
+            total = total
+                .checked_add(value.len())
+                .ok_or("module_artifact_invalid: local UI size overflow")?;
+            if total > 128 * 1024 * 1024 {
+                return Err("module_artifact_invalid: local UI unit exceeds 128 MiB".into());
+            }
+            let sha256 = format!("{:x}", Sha256::digest(&value));
+            if filename.ends_with("_bg.wasm") && sha256 != wasm_sha256 {
+                return Err(
+                    "module_artifact_invalid: local WASM differs from the selected tested artifact"
+                        .into(),
+                );
+            }
+            verified.push(VerifiedFile {
+                filename: filename.into(),
+                sha256,
+                size_bytes: value.len() as i64,
+            });
+            bytes.push((filename, value));
+        }
+        let unit = policy::local_unit(
+            self.component,
+            &self.channel,
+            source_sha,
+            &identity,
+            &verified,
+        )
+        .map_err(|e| e.to_string())?;
+        let provisional =
+            policy::prepare_local(unit, source_sha, &verified, true).map_err(|e| e.to_string())?;
+        self.retain_unit(provisional, cancelled, |destination| {
+            for (filename, value) in &bytes {
+                write_new_bounded(&destination.join(filename), value, 128 * 1024 * 1024)?;
+            }
+            Ok(())
+        })
+    }
+
+    fn retain_unit(
+        &self,
+        provisional: InstalledUiModule,
+        cancelled: &dyn Fn() -> bool,
+        mut populate: impl FnMut(&Path) -> Result<(), String>,
+    ) -> Result<StagedUiModule, String> {
+        check_cancel(cancelled)?;
+        self.admit_receipt(&provisional)?;
+        let _lock = self.lock()?;
+        let generation = self
+            .selection()?
+            .map_or(0, |selection| selection.generation);
+        let directory = self
+            .root
+            .join("versions")
+            .join(provisional.unit.unit_sha256());
+        let finish = |provisional: InstalledUiModule, verified: &[VerifiedFile]| {
+            if provisional.unit.scope() == UiScope::LocalDev {
+                let source = provisional.engine_identity.source_sha.clone();
+                policy::prepare_local(provisional.unit, &source, verified, true)
+            } else {
+                policy::prepare(provisional.unit, provisional.authority, verified, true)
+            }
+            .map_err(|e| e.to_string())
         };
         let installed;
         if exists_plain(&directory)? {
             let verified = self.verify_at(&provisional, &directory, cancelled)?;
-            installed = policy::prepare(provisional.unit, provisional.authority, &verified, true)
-                .map_err(|e| e.to_string())?;
+            installed = finish(provisional, &verified)?;
             let retained: InstalledUiModule = serde_json::from_slice(&read_plain(
                 &directory.join("installation.json"),
                 MAX_STORED_BYTES,
             )?)
             .map_err(|_| "module_receipt_invalid: malformed retained UI installation")?;
             self.admit_receipt(&retained)?;
-            // A later Core profile can grant the same complete public unit.
-            // Keep its historical byte receipt immutable; the new ready
-            // receipt retains the authority captured for this acquisition.
             if retained.unit != installed.unit
                 || retained.engine_identity != installed.engine_identity
             {
@@ -606,16 +780,9 @@ impl UiModuleStore {
             let temporary = PrivateDirectory(transfer::create_fresh_private_directory(
                 &self.root, "stage",
             )?);
-            for asset in &assets {
-                check_cancel(cancelled)?;
-                download(
-                    asset,
-                    &temporary.0.join(asset.url.rsplit('/').next().unwrap()),
-                )?;
-            }
+            populate(&temporary.0)?;
             let verified = self.verify_at(&provisional, &temporary.0, cancelled)?;
-            installed = policy::prepare(provisional.unit, provisional.authority, &verified, true)
-                .map_err(|e| e.to_string())?;
+            installed = finish(provisional, &verified)?;
             write_new_bounded(
                 &temporary.0.join("installation.json"),
                 &serde_json::to_vec(&installed).map_err(|e| e.to_string())?,
@@ -630,12 +797,12 @@ impl UiModuleStore {
         let receipt_id = uuid::Uuid::new_v4().simple().to_string();
         let stored = StoredUiStage {
             schema: STAGE_SCHEMA.into(),
-            receipt_id: receipt_id.clone(),
+            receipt_id,
             expected_generation: generation,
             installed,
         };
         write_new_bounded(
-            &self.receipt_path(&receipt_id)?,
+            &self.receipt_path(&stored.receipt_id)?,
             &serde_json::to_vec(&stored).map_err(|e| e.to_string())?,
             MAX_STORED_BYTES,
         )?;
@@ -663,15 +830,13 @@ impl UiModuleStore {
         stage: impl FnOnce(TrustedUiGrant) -> Result<StagedUiModule, String>,
     ) -> Result<UiConvergence, String> {
         check_cancel(cancelled)?;
-        if grant.unit.release.component != self.component
-            || grant.unit.release.channel != self.channel
-        {
+        if grant.unit.component() != self.component || grant.unit.channel() != self.channel {
             return Err("module_receipt_invalid: crossed UI grant".into());
         }
         let current = self.selection()?;
         let planned = current.as_ref().map_or(0, |selected| selected.generation);
-        let version = grant.unit.release.version.clone();
-        let digest = grant.unit.unit_sha256.clone();
+        let version = grant.unit.version();
+        let digest = grant.unit.unit_sha256().to_owned();
         let outcome = convergence_plan(current.as_ref(), &digest);
         let generation = if outcome == UiConvergenceOutcome::Updated {
             let staged = stage(grant)?;
@@ -813,7 +978,7 @@ impl UiModuleStore {
             Some(&selected),
             self.component,
             &self.channel,
-            &active.authority.gateway_origin,
+            active.authority.gateway_origin(),
         )
         .map_err(|e| e.to_string())
     }
@@ -846,35 +1011,27 @@ impl UiModuleStore {
             MAX_STORED_BYTES,
         )?)
         .map_err(|_| "module_receipt_invalid: malformed retained installation")?;
-        if receipt.unit.unit_sha256 != unit_sha256 {
+        if receipt.unit.unit_sha256() != unit_sha256 {
             return Err("module_receipt_invalid: crossed retained UI unit".into());
         }
         self.admit_receipt(&receipt)?;
-        let asset = receipt
+        let file = receipt
             .unit
-            .release
-            .assets
-            .iter()
-            .find(|a| a.url.ends_with(&format!("/{filename}")))
+            .files()
+            .into_iter()
+            .find(|file| file.filename == filename)
             .ok_or("module_receipt_invalid: missing fixed UI member")?;
         let mut held = transfer::reopen_verified_download(
             &directory.join(filename),
-            asset.size_bytes as u64,
-            &asset.sha256,
+            file.size_bytes as u64,
+            &file.sha256,
             || check_cancel(cancelled),
         )
         .map_err(|e| format!("module_artifact_invalid: {e}"))?;
         check_cancel(cancelled)?;
         let bytes = held.read_range(offset, limit)?;
         check_cancel(cancelled)?;
-        Ok((
-            bytes,
-            VerifiedFile {
-                filename: filename.into(),
-                sha256: asset.sha256.clone(),
-                size_bytes: asset.size_bytes,
-            },
-        ))
+        Ok((bytes, file))
     }
 }
 fn staged(stored: StoredUiStage) -> StagedUiModule {
@@ -882,10 +1039,10 @@ fn staged(stored: StoredUiStage) -> StagedUiModule {
         schema: stored.schema,
         state: "ready".into(),
         receipt_id: stored.receipt_id,
-        component: stored.installed.unit.release.component,
-        channel: stored.installed.unit.release.channel.clone(),
-        version: stored.installed.unit.release.version.clone(),
-        sha256: stored.installed.unit.unit_sha256.clone(),
+        component: stored.installed.unit.component(),
+        channel: stored.installed.unit.channel().to_owned(),
+        version: stored.installed.unit.version(),
+        sha256: stored.installed.unit.unit_sha256().to_owned(),
         expected_generation: stored.expected_generation,
     }
 }

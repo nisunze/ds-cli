@@ -29,10 +29,16 @@ mod epoch_tests {
     use super::*;
     use serde_json::json;
 
-    struct NoteTransport { response: Value, calls: usize }
+    struct NoteTransport {
+        response: Value,
+        calls: usize,
+    }
     macro_rules! unrelated {
         ($method:ident, $call:ident) => {
-            fn $method(&mut self, _: crate::$call<'_>) -> Result<crate::TransportResponse, crate::TransportError> {
+            fn $method(
+                &mut self,
+                _: crate::$call<'_>,
+            ) -> Result<crate::TransportResponse, crate::TransportError> {
                 panic!("note query must not acquire unrelated data")
             }
         };
@@ -54,32 +60,65 @@ mod epoch_tests {
         unrelated!(layers, LayersCall);
         unrelated!(tiles, TileCall);
         unrelated!(project_report, ProjectReportCall);
-        fn project_management(&mut self, call: crate::ProjectManagementCall<'_>) -> Result<crate::TransportResponse, crate::TransportError> {
+        fn project_management(
+            &mut self,
+            call: crate::ProjectManagementCall<'_>,
+        ) -> Result<crate::TransportResponse, crate::TransportError> {
             self.calls += 1;
             assert_eq!(call.authority.canonical_uid, "uid");
             assert_eq!(call.payload["ds_project"], "p");
             assert_eq!(call.payload["action"], "project_note_query");
             assert_eq!(call.payload["project_note"]["limit"], 5);
-            Ok(crate::TransportResponse::new(200, serde_json::to_vec(&json!({"success":true,"data":self.response})).unwrap()))
+            Ok(crate::TransportResponse::new(
+                200,
+                serde_json::to_vec(&json!({"success":true,"data":self.response})).unwrap(),
+            ))
         }
     }
     #[test]
     fn server_numeric_note_epoch_passes_fixed_transport_without_relaxing_page_admission() {
-        let command = Command::Query(serde_json::from_value(json!({"tag_match":"any","sort":"updated","direction":"desc","limit":5})).unwrap());
+        let command = Command::Query(
+            serde_json::from_value(
+                json!({"tag_match":"any","sort":"updated","direction":"desc","limit":5}),
+            )
+            .unwrap(),
+        );
         let page = json!({"project_id":"p","items":[],"scanned":0,"truncated":false,"complete":true,"migration_required":[],"context_revision":0});
         for (field, value, accepted) in [
-            ("context_revision",json!(0),true), ("context_revision",json!(17),true),
-            ("context_revision",json!("a".repeat(64)),false), ("context_revision",json!(-1),false),
-            ("project_id",json!("foreign"),false), ("truncated",json!(true),false),
-            ("items",json!(null),false), ("scanned",json!(201),false),
+            ("context_revision", json!(0), true),
+            ("context_revision", json!(17), true),
+            ("context_revision", json!("a".repeat(64)), false),
+            ("context_revision", json!(-1), false),
+            ("project_id", json!("foreign"), false),
+            ("truncated", json!(true), false),
+            ("items", json!(null), false),
+            ("scanned", json!(201), false),
         ] {
-            let mut response=page.clone(); response[field]=value;
-            let mut transport=NoteTransport { response:response.clone(), calls:0 };
-            let result=run(&crate::data_distribution::tests::profile_for_tests(), &mut transport,
-                Authority { bearer_token:"bearer", uid:"uid", email:"user@example.com", device_id:None }, "p", &command, None);
-            assert_eq!(transport.calls,1);
-            if accepted { assert_eq!(result.unwrap(),response); }
-            else { assert_eq!(result.unwrap_err().kind(),ErrorKind::UnreadableResponse); }
+            let mut response = page.clone();
+            response[field] = value;
+            let mut transport = NoteTransport {
+                response: response.clone(),
+                calls: 0,
+            };
+            let result = run(
+                &crate::data_distribution::tests::profile_for_tests(),
+                &mut transport,
+                Authority {
+                    bearer_token: "bearer",
+                    uid: "uid",
+                    email: "user@example.com",
+                    device_id: None,
+                },
+                "p",
+                &command,
+                None,
+            );
+            assert_eq!(transport.calls, 1);
+            if accepted {
+                assert_eq!(result.unwrap(), response);
+            } else {
+                assert_eq!(result.unwrap_err().kind(), ErrorKind::UnreadableResponse);
+            }
         }
     }
 }

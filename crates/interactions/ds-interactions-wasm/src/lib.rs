@@ -9,6 +9,8 @@ mod map_geometry;
 mod polygon_edge_hit;
 pub use polygon_edge_hit::polygon_edge_hit;
 mod gantt_hit_index;
+#[cfg(target_arch = "wasm32")]
+mod profile_canvas;
 mod profile_labels;
 pub use gantt_hit_index::{
     GanttHitIndex, gantt_point_to_polyline_distance, gantt_point_to_segment_distance,
@@ -16,6 +18,8 @@ pub use gantt_hit_index::{
 pub use map_geometry::{
     geojson_bounds, geojson_line_length_m, measure_frame, spherical_polygon_area_m2,
 };
+#[cfg(target_arch = "wasm32")]
+pub use profile_canvas::{ProfileCanvas, mount};
 pub use profile_labels::{
     canvas_profile_label_layout, canvas_profile_label_order, canvas_profile_label_placement,
 };

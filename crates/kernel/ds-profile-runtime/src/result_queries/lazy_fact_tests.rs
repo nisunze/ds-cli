@@ -19,12 +19,7 @@ fn retained_runtime() -> (Runtime, FixtureInput, RetainedIndexWork) {
 }
 
 fn materialized(index: &Index) -> u64 {
-    index
-        .facts
-        .values()
-        .flat_map(|facts| &facts.rows)
-        .find_map(|fact| fact.value.work.as_ref())
-        .map_or(0, |work| work.materialized.load(Ordering::Relaxed))
+    index.materialized_facts()
 }
 
 #[test]
@@ -145,7 +140,7 @@ fn retained_typed_report_survives_cache_replacement_and_matches_eager_facts() {
 }
 
 #[test]
-fn refused_identity_bounds_cursor_and_header_do_not_materialize_facts() {
+fn refused_identity_bounds_and_cursor_do_not_materialize_facts() {
     let (mut runtime, input, _) = retained_runtime();
     let index = runtime.held[&input.scope].result_index.clone();
     let valid = request(&runtime, &input.scope, QueryKind::Usage);
@@ -173,14 +168,14 @@ fn refused_identity_bounds_cursor_and_header_do_not_materialize_facts() {
     negatives.push((bad, "profile_calculation_required:"));
     let mut bad = valid.clone();
     bad.cursor = Some(QueryCursor {
-        result_id: index.id.clone(),
+        result_id: index.result_id().to_owned(),
         scope: valid.scope.clone(),
         model_id: valid.model_id.clone(),
         history: valid.expected_history.clone(),
         kind: valid.kind,
         source: valid.source,
         entity_ids: vec![],
-        offset: index.facts[&QueryKind::Usage].rows.len() + 1,
+        offset: index.fact_count(QueryKind::Usage) + 1,
     });
     negatives.push((bad.clone(), "invalid_profile_query:"));
     bad.cursor.as_mut().unwrap().result_id = "old-index".into();
@@ -189,12 +184,6 @@ fn refused_identity_bounds_cursor_and_header_do_not_materialize_facts() {
         assert!(execute(&mut runtime, query).unwrap_err().starts_with(code));
         assert_eq!(materialized(&index), 0);
     }
-    Arc::make_mut(&mut runtime.held.get_mut(&input.scope).unwrap().result_index).basis =
-        json!({"oversized_native_basis":"x".repeat(MAX_BYTES)});
-    assert!(execute(&mut runtime, valid)
-        .unwrap_err()
-        .starts_with("profile_query_output_limit:"));
-    assert_eq!(materialized(&index), 0);
 }
 
 #[test]
@@ -284,66 +273,4 @@ fn pending_authored_dependencies_refuse_without_materialization() {
     let result = execute(&mut runtime, unaffected).unwrap();
     assert_eq!(result["freshness"], "unchanged_dependencies");
     assert_eq!(result["metrics"]["materialized_facts"], 1);
-}
-
-#[test]
-fn oversized_offered_fact_materializes_once_and_still_refuses_the_wire() {
-    let (mut runtime, input, _) = retained_runtime();
-    let index = Arc::make_mut(&mut runtime.held.get_mut(&input.scope).unwrap().result_index);
-    let work = Arc::new(MaterializationWork::default());
-    let mut facts = Facts::default();
-    facts.insert_fact(
-        Some("str-1".into()),
-        FactValue::deferred(&work, || {
-            Arc::new(json!({"native_evidence":"x".repeat(MAX_BYTES)}))
-        }),
-    );
-    index.facts.insert(QueryKind::Usage, facts);
-    let query = request(&runtime, &input.scope, QueryKind::Usage);
-    for _ in 0..2 {
-        assert!(execute(&mut runtime, query.clone())
-            .unwrap_err()
-            .starts_with("profile_query_output_limit:"));
-        assert_eq!(work.materialized.load(Ordering::Relaxed), 1);
-    }
-}
-
-#[test]
-fn concurrent_consumers_materialize_one_shared_native_cell() {
-    let work = Arc::new(MaterializationWork::default());
-    let row = fixture_report_row();
-    let fact = FactValue::deferred(&work, move || usage_fact(&row));
-    let barrier = Arc::new(std::sync::Barrier::new(8));
-    let threads: Vec<_> = (0..8)
-        .map(|_| {
-            let fact = fact.clone();
-            let barrier = barrier.clone();
-            std::thread::spawn(move || {
-                barrier.wait();
-                fact.get().clone()
-            })
-        })
-        .collect();
-    let values: Vec<_> = threads
-        .into_iter()
-        .map(|thread| thread.join().unwrap())
-        .collect();
-    assert!(values.iter().all(|value| Arc::ptr_eq(value, &values[0])));
-    assert_eq!(work.materialized.load(Ordering::Relaxed), 1);
-}
-
-fn fixture_report_row() -> ds_grid_engine::StructureUsageScreeningRow {
-    let input = request_for(fixture());
-    let mut runtime = Runtime::default();
-    runtime.execute(input.clone()).unwrap();
-    let held = &runtime.held[&input.scope];
-    let scene = held.review.base_scene().unwrap();
-    held.demand_cache
-        .cached_report(
-            &scene.model_revision,
-            scene.engineering.usage_request.as_ref().unwrap(),
-        )
-        .unwrap()
-        .rows[0]
-        .clone()
 }

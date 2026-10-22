@@ -197,8 +197,6 @@ fn lv_project_run_is_discoverable_and_print_preflight_has_no_project_effect() {
     assert_eq!(std::fs::read_dir(fixture.path()).unwrap().count(), 0);
 }
 
-
-
 #[test]
 fn print_removal_is_a_confirmed_headless_project_operation() {
     let described = ok(&["capabilities", "report.artifact.remove", "--output", "json"]);
@@ -665,7 +663,6 @@ fn native_pm_refusal(args: &[&str]) -> String {
     native_refusal(&named_pm_args(args))
 }
 
-
 fn pm_refusal(args: &[&str]) -> String {
     refusal(&named_pm_args(args))
 }
@@ -939,9 +936,30 @@ fn solar_local_clean_is_project_explicit_confirmed_and_has_no_recovery_options()
     let command = ok(&["capabilities", "solar.project.clean", "--output", "json"]);
     assert_eq!(command["command"]["effect"], "global_write");
     let inputs = command["command"]["inputs"].as_array().unwrap();
-    assert!(inputs.iter().any(|input| input["name"] == "project" && input["required"] == true));
-    assert!(!inputs.iter().any(|input| input["name"] == "digest" || input["name"] == "action"));
-    assert_eq!(refusal(&["solar", "project", "clean", "--workspace", "missing", "--project", "project", "--output", "json"]), "confirmation_required");
+    assert!(
+        inputs
+            .iter()
+            .any(|input| input["name"] == "project" && input["required"] == true)
+    );
+    assert!(
+        !inputs
+            .iter()
+            .any(|input| input["name"] == "digest" || input["name"] == "action")
+    );
+    assert_eq!(
+        refusal(&[
+            "solar",
+            "project",
+            "clean",
+            "--workspace",
+            "missing",
+            "--project",
+            "project",
+            "--output",
+            "json"
+        ]),
+        "engine_refused"
+    );
     let schema = ds_cli_server::solar_application_schema(Some("project_clean")).unwrap();
     assert!(schema.to_string().contains("project_id"));
 }
@@ -1085,9 +1103,6 @@ fn desktop_sync_exposes_path_free_status_and_guards_exact_row_retry() {
     assert_eq!(run.code, 2);
     assert_eq!(run.envelope["error"]["code"], "confirmation_required");
 }
-
-
-
 
 // ---------------------------------------------------------------------------
 // capabilities --requires
@@ -1375,39 +1390,18 @@ fn workstation_configure_is_confirmation_gated_on_native_windows() {
 // dsgrid
 // ---------------------------------------------------------------------------
 
-
-
 // ---------------------------------------------------------------------------
 // library
 // ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
 
 /// The real package's assets: the original PLS-CADD upload comes out
 /// byte-for-byte as the committed backup, a delivered backup attaches bound
 /// to the snapshot and detaches back to the same model and asset contents, and the model's own
 /// files are never writable.
 
-
 /// A governed revision's assets need the project owner, but an output that
 /// already exists is refused before any credential or network, and a
 /// signed-out machine gets a code the command declares.
-
-
-
-
-
-
-
 
 // ---------------------------------------------------------------------------
 // dsgrid model — the paired application's local model lifecycle
@@ -1423,54 +1417,14 @@ fn workstation_configure_is_confirmation_gated_on_native_windows() {
 // control for one thing that family conflated, and every one of them holds on
 // a machine with no application at all.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /// Client GIS files (owner rule, 2026-09-29). A real model's KMZ and
 /// Shapefile ZIP carry no tension sections, no terrain points and no internal
 /// exchange report unless asked; `--include-layer` brings a layer back, and a
 /// layer id the projection does not have is refused before anything runs.
 
-
-
-
-
-
-
-
 // ---------------------------------------------------------------------------
 // pls
 // ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ---------------------------------------------------------------------------
 // pls desktop
@@ -1481,25 +1435,17 @@ fn workstation_configure_is_confirmation_gated_on_native_windows() {
 /// "Save changes" No, AutoSag goes through the Section Table, the Repair
 /// Wizard stops a run.
 
-
 /// Off Windows every verb that drives PLS-CADD refuses `windows_only` at the
 /// dispatch gate, before it validates a path, extracts a driver or creates a
 /// folder — and says what to do instead.
-
-
 /// The toolkit is the one desktop verb that only writes files: on this host
 /// it writes every embedded adapter, its manifest pins match what it wrote,
 /// the Word adapter is where the PLS-CADD drivers call it, and a second run
 /// into the same folder refuses rather than overwriting.
 
-
-
-
 // ---------------------------------------------------------------------------
 // Cross-cutting
 // ---------------------------------------------------------------------------
-
-
 
 // ---------------------------------------------------------------------------
 // data elevation
@@ -4858,8 +4804,6 @@ fn design_activities_capture_is_deliberate_sequential_and_honest_about_its_gaps(
         run.stderr
     );
 }
-
-
 
 #[test]
 fn profile_analysis_is_an_explicit_native_set_action_without_an_extra_window_command() {
@@ -8902,19 +8846,26 @@ fn model_links_pin_an_exact_catalog_revision_and_refuse_before_any_round_trip() 
 
 #[test]
 fn project_note_create_is_a_confirmed_project_write_with_one_canonical_input() {
-    let described=ok(&["capabilities","pm.note.create","--output","json"]);
-    let command=&described["command"];
-    assert_eq!(command["authority"],"headless_project");
-    assert_eq!(command["effect"],"global_write");
-    assert_eq!(command["confirmation_required"],true);
-    let inputs=command["inputs"].as_array().unwrap();
-    for required in ["project","input"] {
-        assert!(inputs.iter().any(|i|i["name"]==required&&i["required"]==true));
+    let described = ok(&["capabilities", "pm.note.create", "--output", "json"]);
+    let command = &described["command"];
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "global_write");
+    assert_eq!(command["confirmation_required"], true);
+    let inputs = command["inputs"].as_array().unwrap();
+    for required in ["project", "input"] {
+        assert!(
+            inputs
+                .iter()
+                .any(|i| i["name"] == required && i["required"] == true)
+        );
     }
-    assert!(!inputs.iter().any(|i|matches!(i["name"].as_str(),Some("title"|"body"|"body-file"|"transformer"))));
-    let dir=temp_root("canonical-note-create");
+    assert!(!inputs.iter().any(|i| matches!(
+        i["name"].as_str(),
+        Some("title" | "body" | "body-file" | "transformer")
+    )));
+    let dir = temp_root("canonical-note-create");
     std::fs::create_dir_all(&dir).unwrap();
-    let input=dir.join("observation.json");
+    let input = dir.join("observation.json");
     std::fs::write(&input,serde_json::to_vec(&json!({
         "operation_id":"smoke-note-create","id":"smoke-observation","reason":"Signed-out authoring admission fixture",
         "draft":{"subject":"Reviewed fixture","body":"Literal test observation.","tags":[],
@@ -8922,14 +8873,27 @@ fn project_note_create_is_a_confirmed_project_write_with_one_canonical_input() {
                 "provenance":{"kind":"user_instruction","source_author":"Test author"},
                 "scope":{"kind":"project"},"claims":[],"evidence":[]}}
     })).unwrap()).unwrap();
-    let args=["pm","note","create","--input",input.to_str().unwrap(),"--output","json"];
-    assert_eq!(native_pm_refusal(&args),"confirmation_required");
-    let mut confirmed=args.to_vec();confirmed.push("--yes");
-    assert!(NATIVE_AUTH_CODES.contains(&native_pm_refusal(&confirmed).as_str()),"canonical input reaches native authorization without a desktop or network write");
+    let args = [
+        "pm",
+        "note",
+        "create",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        "json",
+    ];
+    assert_eq!(native_pm_refusal(&args), "confirmation_required");
+    let mut confirmed = args.to_vec();
+    confirmed.push("--yes");
+    assert!(
+        NATIVE_AUTH_CODES.contains(&native_pm_refusal(&confirmed).as_str()),
+        "canonical input reaches native authorization without a desktop or network write"
+    );
     // Availability guards a build without its packaged native profile before
     // handler JSON parsing. The retired public flag is still refused at admission.
-    let mut obsolete=confirmed.clone();obsolete.extend(["--body","retired quick-note field"]);
-    assert_eq!(native_pm_refusal(&obsolete),"unknown_flag");
+    let mut obsolete = confirmed.clone();
+    obsolete.extend(["--body", "retired quick-note field"]);
+    assert_eq!(native_pm_refusal(&obsolete), "unknown_flag");
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -9042,8 +9006,6 @@ fn task_delete_requires_reviewed_revision_stable_id_and_confirmation() {
         "a shaped deletion reaches native authorization without a desktop"
     );
 }
-
-
 
 #[test]
 fn feedback_is_one_confirmed_shared_write() {
@@ -10329,10 +10291,6 @@ fn capability_search_finds_sre_by_operator_vocabulary() {
         );
     }
 }
-
-
-
-
 
 #[test]
 fn sre_validates_bounds_and_filters_before_the_window_is_opened() {
@@ -11715,7 +11673,7 @@ fn survey_discovery_examples_capture_required_project_and_form() {
 
 #[test]
 fn survey_discovery_skill_routes_to_grammar_and_keeps_runtime_layer_boundary() {
-    let survey = include_str!("../../../skills/ds-survey-lifecycle/references/read-data.md");
+    let survey = include_str!("../../../../skills/ds-survey-lifecycle/references/read-data.md");
     assert!(survey.contains("ds capabilities survey.query --output json"));
     assert!(survey.contains("ds survey query --help"));
     let layers = ok(&["capabilities", "map.layer.list", "--output", "json"]);
@@ -11726,7 +11684,7 @@ fn survey_discovery_skill_routes_to_grammar_and_keeps_runtime_layer_boundary() {
             .unwrap()
             .contains("No desktop runtime state is read.")
     );
-    let skill = include_str!("../../../skills/ds-layer-management/SKILL.md")
+    let skill = include_str!("../../../../skills/ds-layer-management/SKILL.md")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
@@ -11737,7 +11695,7 @@ fn survey_discovery_skill_routes_to_grammar_and_keeps_runtime_layer_boundary() {
     // Skill examples are outside Command::examples, but capture the same
     // explicit project. Check command snippets without treating route-only
     // mentions as invocations or duplicating their argument contracts.
-    let tags = include_str!("../../../skills/ds-design-tag-groups/SKILL.md");
+    let tags = include_str!("../../../../skills/ds-design-tag-groups/SKILL.md");
     let mut examples = 0;
     for snippet in tags.split('`').skip(1).step_by(2) {
         let words = snippet.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -12203,17 +12161,11 @@ fn retired_survey_workspace_is_not_discoverable_and_never_touches_existing_data(
 /// from the gateway, with no browser, no DOM and no map instance in the
 /// process. What it asserts is specifically true of that fixture, not merely
 /// well-formed.
-/// The recorded gateway fixtures live beside the client that records them —
-/// `ds-client-core`, kernel-owned since 2026-09-14 — in the sibling
-/// ds-command-kernel checkout. The sibling by default, `DS_COMMAND_KERNEL_DIR`
-/// when the layout differs — a git worktree of this repository is two levels
-/// deeper, and a silently skipped parity check is worse than none.
+/// The recorded gateway fixtures live with the shared client in this workspace.
 fn web_fixture(name: &str) -> PathBuf {
-    let root = match std::env::var_os("DS_COMMAND_KERNEL_DIR") {
-        Some(explicit) => PathBuf::from(explicit),
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-command-kernel"),
-    };
-    root.join("crates/ds-client-core/tests/fixtures").join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../kernel/ds-client-core/tests/fixtures")
+        .join(name)
 }
 
 #[test]
@@ -12353,7 +12305,7 @@ fn printable_inventory_is_headless_and_limits_before_reading_credentials() {
 #[test]
 fn report_inventory_plan_matches_native_projection_and_refuses_foreign_facts_without_auth() {
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
-        "../../../ds-command-kernel/tests/fixtures/report-inventory/held-six-old-legacy-three.json",
+        "../../kernel/ds-command-kernel/tests/fixtures/report-inventory/held-six-old-legacy-three.json",
     );
     let request = fixture.to_str().unwrap();
     let descriptor = ok(&["capabilities", "report.plan", "--output", "json"]);
@@ -13315,36 +13267,12 @@ fn pinned_preview_is_a_server_command_that_refuses_an_empty_pin_set() {
 /// gate, the missing clearance criteria — without any working copy or
 /// window.
 
-
-
-
-
-
-
-
-
-
-
-
-
 // File-only batching must have the same canonical result as single-command
 // apply while avoiding intermediate package writes.
-
-
-
 
 // ---------------------------------------------------------------------------
 // Versions and submissions (2026-09-25)
 // ---------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
 
 #[path = "smoke/elevation_compare.rs"]
 mod elevation_compare;
@@ -13414,9 +13342,6 @@ fn pm_collaboration_adapters_declare_bounded_reads_and_confirmed_task_comment() 
 /// a library anything is delivered from). Without a staking table the
 /// baseline is the design as DS reads it; the dry run translates and compares
 /// in memory, the write commits the four artifacts.
-
-
-
 
 #[test]
 fn survey_delete_preview_runs_the_real_kernel_and_admits_no_write() {
@@ -13713,18 +13638,29 @@ fn profile_calculation_discovers_native_tickets_and_refuses_transport_overrides_
 
 #[test]
 fn solar_portfolio_legacy_uploader_is_absent_and_native_observation_stays_discoverable() {
-    let removed = native_ds(&["capabilities", "solar.portfolio.publish", "--output", "json"]);
+    let removed = native_ds(&[
+        "capabilities",
+        "solar.portfolio.publish",
+        "--output",
+        "json",
+    ]);
     assert_ne!(removed.code, 0, "{}", removed.envelope);
-    let published = native_ds(&["capabilities", "solar.portfolio.published.read", "--output", "json"]);
+    let published = native_ds(&[
+        "capabilities",
+        "solar.portfolio.published.read",
+        "--output",
+        "json",
+    ]);
     assert_eq!(published.code, 0, "{}", published.envelope);
     let schema = ds_cli_server::solar_application_schema(Some("portfolio_publish")).unwrap();
     assert!(schema.to_string().contains("batch_digest"));
-    let client = include_str!("../../../../ds-command-kernel/crates/ds-client-core/src/solar_project.rs");
+    let client =
+        include_str!("../../../kernel/ds-client-core/src/solar_project.rs");
     assert!(!client.contains("pub(crate) fn publish"));
-    let portfolio = include_str!("../../../../ds-command-kernel/crates/ds-client-core/src/solar_portfolio.rs");
+    let portfolio =
+        include_str!("../../../kernel/ds-client-core/src/solar_portfolio.rs");
     assert!(!portfolio.contains("Command::Publish {"));
 }
-
 
 #[test]
 fn task_checklist_commands_are_item_scoped_and_refuse_before_unused_reads() {
@@ -14007,10 +13943,6 @@ fn selected_note_and_document_controls_keep_private_scope_and_explicit_intent() 
     std::fs::remove_dir_all(folder).unwrap();
 }
 
-
-
-
-
 #[test]
 fn pm_task_detach_descriptor_confirmation_and_packaging_gate_are_honest() {
     let command = ok(&["capabilities", "pm.task.detach", "--output", "json"])["command"].clone();
@@ -14056,14 +13988,38 @@ fn pm_task_detach_descriptor_confirmation_and_packaging_gate_are_honest() {
 
 #[test]
 fn project_overview_is_discoverable_bounded_and_headless() {
-    let command=ok(&["capabilities","pm.overview","--output","json"])["command"].clone();
-    assert_eq!(command["effect"],"read_only");assert_eq!(command["authority"],"headless_project");assert_eq!(command["requires"],"server");
-    let names:Vec<_>=command["inputs"].as_array().unwrap().iter().map(|i|i["name"].as_str().unwrap()).collect();
-    assert_eq!(names,vec!["project","limit","records-cursor","lane"]);
-    let search=ok(&["capabilities","--search","project overview","--limit","50","--output","json"]);
-    assert!(search["results"].as_array().unwrap().iter().any(|r|r["id"]=="pm.overview"));
-    let response=native_pm_refusal(&["pm","overview","--limit","10","--output","json"]);
-    assert!(NATIVE_AUTH_CODES.contains(&response.as_str()),"a bounded overview read stops at native auth, got `{response}`");
+    let command = ok(&["capabilities", "pm.overview", "--output", "json"])["command"].clone();
+    assert_eq!(command["effect"], "read_only");
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["requires"], "server");
+    let names: Vec<_> = command["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, vec!["project", "limit", "records-cursor", "lane"]);
+    let search = ok(&[
+        "capabilities",
+        "--search",
+        "project overview",
+        "--limit",
+        "50",
+        "--output",
+        "json",
+    ]);
+    assert!(
+        search["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["id"] == "pm.overview")
+    );
+    let response = native_pm_refusal(&["pm", "overview", "--limit", "10", "--output", "json"]);
+    assert!(
+        NATIVE_AUTH_CODES.contains(&response.as_str()),
+        "a bounded overview read stops at native auth, got `{response}`"
+    );
 }
 
 #[test]

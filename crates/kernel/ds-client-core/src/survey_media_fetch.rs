@@ -18,11 +18,11 @@
 //! The route is hard-coded, not a profile route, so the credential audience
 //! is unchanged.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::{
-    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind, Transport,
-    TransportResponse,
+    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, Transport, TransportResponse,
+    authorized::Authority,
 };
 
 pub const GRANT_PATH: &str = "/report";
@@ -332,8 +332,8 @@ pub struct SurveyThumbnail {
     pub photo: SurveyPhoto,
     /// True when the store held no thumbnail (the field app does not always
     /// upload one) and it was made from the original by the product's own
-    /// thumbnail procedure, `survey_photo_media::process`: the same bytes
-    /// the browser and a rotation write.
+    /// thumbnail procedure, `survey_photo_media::thumbnail`: the same bytes
+    /// the browser and a rotation make.
     pub generated: bool,
 }
 
@@ -344,8 +344,43 @@ pub fn fetch_thumbnail<T: Transport + ?Sized>(
     grants: &MediaGrants,
     object_path: &str,
 ) -> Result<SurveyThumbnail, ClientError> {
+    fetch_thumbnail_turned(transport, grants, object_path, 0)
+}
+
+/// The thumbnail showing the `quarter_turns` the photo's entry records. An
+/// unturned photo reads its stored companion (or makes one when the store
+/// never received it); a turned photo's thumbnail is made from the original
+/// here, by the one Kernel procedure, so a companion that predates the turn
+/// is never shown.
+pub fn fetch_thumbnail_turned<T: Transport + ?Sized>(
+    transport: &mut T,
+    grants: &MediaGrants,
+    object_path: &str,
+    quarter_turns: u8,
+) -> Result<SurveyThumbnail, ClientError> {
     let address = ds_command_kernel::survey_media_address::parse(object_path)
         .map_err(|_| invalid("the reference is not a survey media address"))?;
+    let rotation =
+        ds_command_kernel::survey_photo_media::Rotation::from_quarter_turns(quarter_turns)
+            .map_err(|_| invalid("a rotation is 0 to 3 clockwise quarter-turns"))?;
+    let make = |transport: &mut T| -> Result<SurveyThumbnail, ClientError> {
+        let original = fetch(transport, grants, &address.object_path)?;
+        let made = ds_command_kernel::survey_photo_media::thumbnail(&original.bytes, rotation)
+            .map_err(|_| {
+                unreadable("the original photo could not be decoded to make its thumbnail")
+            })?;
+        Ok(SurveyThumbnail {
+            photo: SurveyPhoto {
+                object_path: address.thumbnail_object_path.clone(),
+                bytes: made.bytes,
+                media_type: Some(made.media_type),
+            },
+            generated: true,
+        })
+    };
+    if quarter_turns != 0 && address.thumbnail_object_path != address.object_path {
+        return make(transport);
+    }
     match fetch(transport, grants, &address.thumbnail_object_path) {
         Ok(photo) => Ok(SurveyThumbnail {
             photo,
@@ -355,22 +390,7 @@ pub fn fetch_thumbnail<T: Transport + ?Sized>(
             if error.kind() == ErrorKind::ResourceNotFound
                 && address.thumbnail_object_path != address.object_path =>
         {
-            let original = fetch(transport, grants, &address.object_path)?;
-            let mut bundle = ds_command_kernel::survey_photo_media::process(
-                &original.bytes,
-                ds_command_kernel::survey_photo_media::Rotation::Deg0,
-            )
-            .map_err(|_| {
-                unreadable("the original photo could not be decoded to make its thumbnail")
-            })?;
-            Ok(SurveyThumbnail {
-                photo: SurveyPhoto {
-                    object_path: address.thumbnail_object_path,
-                    bytes: std::mem::take(&mut bundle.thumbnail_bytes),
-                    media_type: Some(bundle.thumbnail_media_type),
-                },
-                generated: true,
-            })
+            make(transport)
         }
         Err(error) => Err(error),
     }
@@ -420,10 +440,36 @@ fn sniff(bytes: &[u8]) -> Option<&'static str> {
     match bytes {
         [0xFF, 0xD8, 0xFF, ..] => Some("image/jpeg"),
         [0x89, b'P', b'N', b'G', ..] => Some("image/png"),
-        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some("image/webp"),
-        [_, _, _, _, b'f', b't', b'y', b'p', b'h', b'e', b'i', b'c' | b'x', ..] => {
-            Some("image/heic")
-        }
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => Some("image/webp"),
+        [
+            _,
+            _,
+            _,
+            _,
+            b'f',
+            b't',
+            b'y',
+            b'p',
+            b'h',
+            b'e',
+            b'i',
+            b'c' | b'x',
+            ..,
+        ] => Some("image/heic"),
         _ => None,
     }
 }
@@ -539,12 +585,16 @@ mod tests {
             grants.link_for(legacy).unwrap(),
             "https://brain.example/api/v1/media/link/legacy-p1?o=p1%2Fforms%2Ffield_notes%2Fe1%2FDSC_0570.JPG"
         );
-        assert!(grants
-            .link_for("p9/forms/field_notes/e1/secret.jpg")
-            .is_none());
-        assert!(grants
-            .link_for("p1/assets/confidential/contract.pdf")
-            .is_none());
+        assert!(
+            grants
+                .link_for("p9/forms/field_notes/e1/secret.jpg")
+                .is_none()
+        );
+        assert!(
+            grants
+                .link_for("p1/assets/confidential/contract.pdf")
+                .is_none()
+        );
         assert_eq!(prepare(&grants, legacy).unwrap().0, legacy);
         let document: Value =
             serde_json::from_slice(&grants.report_grant_document().unwrap()).unwrap();

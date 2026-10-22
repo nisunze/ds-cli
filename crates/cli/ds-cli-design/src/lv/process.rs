@@ -8,14 +8,10 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Failure, Inputs};
-use ds_network_contracts::lv::LvProcessBatchInput;
-use ds_network_contracts::lv_processing::{
-    MAX_NATIVE_LV_INPUT_BYTES, NativeLvError, lv_batch_output_from_native,
-    native_lv_request_from_batch,
-};
-use serde_json::{Value, json};
+use ds_network_contracts::lv_processing::{NativeLvError, MAX_NATIVE_LV_INPUT_BYTES};
+use serde_json::{json, Value};
 
-use super::artifact::{RESULT, ensure_absent, sha256, write_new};
+use super::artifact::{ensure_absent, sha256, write_new, RESULT};
 
 pub static COMMAND: Command = Command {
     id: "design.lv.process",
@@ -163,8 +159,12 @@ pub(super) fn run_receipt(inputs: &Inputs, _context: &Context) -> Result<Value, 
     // A page batch names its project: Core makes it the native request here and
     // answers the page's own batch output, so no host converts either side.
     let project = inputs.value("project");
-    let request = match project {
-        Some(project) => page_request(project, &input)?,
+    let captured = project
+        .map(|project| ds_command_kernel::design_lv::capture_bytes(project, &input))
+        .transpose()
+        .map_err(map_application_error)?;
+    let request = match &captured {
+        Some(captured) => captured.native_request().map_err(map_application_error)?,
         None => input,
     };
     let workers = std::thread::available_parallelism().map_or(1, usize::from);
@@ -216,14 +216,18 @@ pub(super) fn run_receipt(inputs: &Inputs, _context: &Context) -> Result<Value, 
         })
         .collect::<Vec<_>>();
     let engine_core_version = result.engine_core_version.clone();
-    let output = match project {
-        Some(project) => serde_json::to_vec(&lv_batch_output_from_native(result, project))
-            .map_err(|error| {
-                Failure::internal(
-                    "fast_lv_result_encoding_failed",
-                    format!("Could not encode the page batch output: {error}"),
-                )
-            })?,
+    let output = match captured {
+        Some(captured) => serde_json::to_vec(
+            &captured
+                .response_from_native(result)
+                .map_err(map_application_error)?,
+        )
+        .map_err(|error| {
+            Failure::internal(
+                "fast_lv_result_encoding_failed",
+                format!("Could not encode the page batch output: {error}"),
+            )
+        })?,
         None => outcome.bytes,
     };
     let result_sha256 = sha256(&output);
@@ -289,21 +293,13 @@ fn all_jobs_failed(receipt: &Value) -> Failure {
     }))
 }
 
-/// The native request for the page's batch: every job is the named project's.
-fn page_request(project: &str, input: &[u8]) -> Result<Vec<u8>, Failure> {
-    let batch: LvProcessBatchInput = serde_json::from_slice(input).map_err(|error| {
-        Failure::invalid(
-            "fast_lv_input_invalid",
-            format!("The page LV batch is malformed: {error}"),
+fn map_application_error(error: ds_command_kernel::envelope::CommandRefusal) -> Failure {
+    error.into_failure().unwrap_or_else(|_| {
+        Failure::internal(
+            "fast_lv_result_encoding_failed",
+            "The LV application owner returned a malformed refusal.",
         )
-    })?;
-    if batch.jobs.iter().any(|job| job.ds_project != project) {
-        return Err(Failure::invalid(
-            "fast_lv_input_invalid",
-            "Every job of a page LV batch belongs to --project.",
-        ));
-    }
-    native_lv_request_from_batch(batch).map_err(map_owner_error)
+    })
 }
 
 pub fn render(value: &Value) -> String {
@@ -434,3 +430,7 @@ pub(super) fn map_network_error(error: ds_network_client::NetworkFailure) -> Fai
 #[cfg(test)]
 #[path = "process_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "process_exchange_tests.rs"]
+mod exchange_tests;

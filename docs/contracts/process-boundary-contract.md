@@ -20,7 +20,7 @@ process contracts exist today, each designed as one:
 | `ds-grid` | `ds-network/crates/ds-grid-cli` | one named subcommand per call |
 | `reporter` | `ds-network-reporter/src/bin/reporter.rs` | typed request file; machine-readable result file; the result must not already exist |
 | `solar` | `ds-solar/apps/solar` | fixed build identity and sealed prepared-calculation file task; no acquisition |
-| `ds-solar` | `ds-solar/apps/ds-solar-cli` | `prepare` may reach the network, `run` may not |
+| `ds-solar` | `ds-cli/crates/kernel/ds-solar-cli` | `prepare` may reach the network, `run` may not |
 
 Local `solar.project` and `solar.reference` controls link the engine-free
 `ds-solar-project` owner directly. They do not discover or launch the retired

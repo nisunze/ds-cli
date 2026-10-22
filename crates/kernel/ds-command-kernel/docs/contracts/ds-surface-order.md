@@ -118,7 +118,7 @@ when it is touched.
   prove a capability. UI evidence stays where it lives today, for UI work only.
 - **Discovery is the specification.** `ds capabilities` and tier-3 help are the
   definition of the product surface
-  ([`ds-cli/docs/contracts/discovery-contract.md`](../../../ds-cli/docs/contracts/discovery-contract.md)),
+  ([`ds-cli/docs/contracts/discovery-contract.md`](../../../../../docs/contracts/discovery-contract.md)),
   which is the 2026-09-12 ruling that the CLI is a definition of kernel
   capability, restated as the ordering rule.
 - **Host transparency is unchanged.** CLI/MCP → Desktop or Server is one

@@ -435,7 +435,7 @@ impl Runtime {
 
 
 #[cfg(test)]
-#[path = "../../../../ds-network/crates/ds-grid-engine/tests/common/mod.rs"]
+#[path = "../../../../../ds-network/crates/ds-grid-engine/tests/common/mod.rs"]
 mod common;
 
 #[cfg(test)]
@@ -511,7 +511,7 @@ mod transactional_projection_tests {
             seed_json: serde_json::to_string(&seed).unwrap(),
             options: Default::default(),
             style_document: serde_json::from_str(include_str!(
-                "../../../tests/fixtures/profile-display-style.json"
+                "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
             ))
             .unwrap(),
             patch: Default::default(),

@@ -51,6 +51,14 @@ pub type RegionRings = Vec<RegionRing>;
 /// must carry the operator's choice through to the kernel rather than assuming
 /// one.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(hashmap_as_object)
+)]
 #[serde(rename_all = "snake_case")]
 pub enum RegionPredicate {
     /// The geometry touches or overlaps the region anywhere.

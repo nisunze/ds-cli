@@ -165,10 +165,7 @@ mod tests {
     #[test]
     fn canary_core_registration_is_distinct_from_desktop_and_stable_core() {
         let server = ServerIdentity::new("core-canary", RuntimePlatform::Linux);
-        assert_eq!(
-            server.registration_name(),
-            "dsGridDesignCoreCanaryLinux"
-        );
+        assert_eq!(server.registration_name(), "dsGridDesignCoreCanaryLinux");
         for lane in ["core", "canary", "stable"] {
             let other = ServerIdentity::new(lane, RuntimePlatform::Linux);
             assert_ne!(server.registration_name(), other.registration_name());

@@ -64,7 +64,7 @@ impl ReportEngine for ProcessEngine {
 
 fn examples() -> Option<PathBuf> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../ds-network-reporter/examples/printing");
+        .join("../../../../ds-network-reporter/examples/printing");
     root.is_dir().then_some(root)
 }
 

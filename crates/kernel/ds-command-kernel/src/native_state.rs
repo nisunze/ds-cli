@@ -44,7 +44,10 @@ mod tests {
             state_base(Some(r"D:\isolated".into()), home, local, true),
             Some(PathBuf::from(r"D:\isolated"))
         );
-        assert_eq!(state_base(None, Some("/c/Users/eng".into()), None, true), None);
+        assert_eq!(
+            state_base(None, Some("/c/Users/eng".into()), None, true),
+            None
+        );
     }
 
     #[test]

@@ -5,7 +5,7 @@ use base64::Engine;
 use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::module_install::ActivationGuard;
-use ds_command_kernel::module_release::ui::UiComponent;
+use ds_command_kernel::module_release::ui::{UiComponent, UiScope};
 use ds_update_runtime::modules::ui::{MAX_MEMBER_CHUNK, UiModuleStore};
 use serde_json::{Value, json};
 
@@ -17,10 +17,28 @@ const UI_COMPONENT: Arg = Arg::value(
 .choices(&["interactions", "command-kernel"])
 .required();
 
+pub(crate) const SCOPE: Arg = Arg::value(
+    "scope",
+    "<release|local-dev>",
+    "Release selection or the separate Linux canary local-dev UI selection.",
+)
+.choices(&["release", "local-dev"])
+.default("release");
+
+fn scope(inputs: &Inputs) -> Result<UiScope, Failure> {
+    UiScope::parse(inputs.value("scope").unwrap_or("release"))
+        .map_err(|e| owner_failure(e.to_string()))
+}
+
 pub fn requested(inputs: &Inputs) -> Result<bool, Failure> {
     let runtime = inputs.value("runtime").unwrap_or("native");
     let component = inputs.require("component")?;
     let ui = matches!(component, "interactions" | "command-kernel");
+    if !ui && scope(inputs)? != UiScope::Release {
+        return Err(owner_failure(
+            "module_scope_invalid: native components have no local UI scope".into(),
+        ));
+    }
     if !matches!(runtime, "native" | "wasm") {
         return Err(owner_failure(
             "invalid_choice: select native or wasm".into(),
@@ -46,6 +64,11 @@ fn selected(inputs: &Inputs) -> Result<(UiComponent, &str), Failure> {
     if !matches!(channel, "stable" | "canary") {
         return Err(owner_failure(
             "invalid_choice: select stable or canary".into(),
+        ));
+    }
+    if scope(inputs)? == UiScope::LocalDev && channel != "canary" {
+        return Err(owner_failure(
+            "module_scope_invalid: local UI builds cannot enter the stable release lane".into(),
         ));
     }
     Ok((component, channel))
@@ -98,7 +121,93 @@ pub fn stage(inputs: &Inputs) -> Result<Value, Failure> {
 }
 pub fn selection(inputs: &Inputs) -> Result<Value, Failure> {
     let (component, channel) = selected(inputs)?;
-    value(UiModuleStore::selection_managed(component, channel).map_err(owner_failure)?)
+    value(
+        UiModuleStore::selection_managed_scoped(component, channel, scope(inputs)?)
+            .map_err(owner_failure)?,
+    )
+}
+
+pub static STAGE_LOCAL: Command = Command {
+    id: "core.component.stage-local",
+    path: &["core", "component", "stage-local"],
+    contract: 1,
+    summary: "Stage one already built local UI unit without publication or activation.",
+    purpose: "Explicit Linux canary local-dev operation over four fixed opaque producer files, their actual exported UI identity, exact source snapshot and tested WASM digest. Core admits the identity and hashes, captures the same bytes into its separate private local-dev store and returns a generation-fenced ready receipt. No gateway, publication, build, JavaScript/WASM evaluation, release selection or project access occurs. The Desktop must select local-dev explicitly; this artifact cannot be promoted into a release selection.",
+    chapter: Chapter::Workstation,
+    effect: Effect::MachineWrite,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[
+        UI_COMPONENT,
+        CHANNEL,
+        Arg::value("runtime", "<wasm>", "Only the two fixed UI WASM owners.")
+            .choices(&["wasm"])
+            .default("wasm"),
+        Arg::value(
+            "scope",
+            "<local-dev>",
+            "Separate local development selection; never a release.",
+        )
+        .choices(&["local-dev"])
+        .default("local-dev"),
+        Arg::value(
+            "directory",
+            "<absolute-directory>",
+            "Four already built fixed JS/WASM/type members.",
+        )
+        .required(),
+        Arg::value(
+            "identity-file",
+            "<absolute-json-file>",
+            "Actual uiEngineBuildIdentity output from these tested bytes.",
+        )
+        .required(),
+        Arg::value(
+            "source-sha",
+            "<git-snapshot-sha>",
+            "Exact captured source snapshot stamped into the built identity.",
+        )
+        .required(),
+        Arg::value(
+            "wasm-sha256",
+            "<sha256>",
+            "Exact SHA-256 of the already tested WASM artifact.",
+        )
+        .required(),
+    ],
+    output: "ds.ui-module-stage/v1 ready receipt, complete local unit SHA-256 and expectedGeneration. No active selection changes.",
+    examples: &[],
+    refusals: REFUSALS,
+    reference: Some("docs/reference/core.md"),
+    search: &["ui", "wasm", "local", "development"],
+    requires: Requires::Server,
+    availability: ui_availability,
+};
+pub fn stage_local(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    if !context.confirmed {
+        return Err(Failure::invalid(
+            "confirmation_required",
+            "Confirm local UI staging with --yes",
+        ));
+    }
+    let (component, channel) = selected(inputs)?;
+    if scope(inputs)? != UiScope::LocalDev {
+        return Err(owner_failure(
+            "module_scope_invalid: local builds require explicit local-dev scope".into(),
+        ));
+    }
+    value(
+        UiModuleStore::managed_scoped(component, channel, UiScope::LocalDev)
+            .map_err(owner_failure)?
+            .stage_local(
+                std::path::Path::new(inputs.require("directory")?),
+                std::path::Path::new(inputs.require("identity-file")?),
+                inputs.require("source-sha")?,
+                inputs.require("wasm-sha256")?,
+                &|| false,
+            )
+            .map_err(owner_failure)?,
+    )
 }
 // These observations belong to this foreground OS-user installer: it owns no
 // editor sessions, jobs, or restart-dependent UI execution. Existing loaded UI
@@ -120,7 +229,7 @@ pub fn activate(inputs: &Inputs) -> Result<Value, Failure> {
         ));
     }
     value(
-        UiModuleStore::managed(component, channel)
+        UiModuleStore::managed_scoped(component, channel, scope(inputs)?)
             .map_err(owner_failure)?
             .activate(id, generation, guard(), &|| false)
             .map_err(owner_failure)?,
@@ -130,7 +239,7 @@ pub fn remove(inputs: &Inputs) -> Result<Value, Failure> {
     let (component, channel) = selected(inputs)?;
     let generation = generation(inputs)?;
     value(
-        UiModuleStore::retained_managed(component, channel)
+        UiModuleStore::retained_managed_scoped(component, channel, scope(inputs)?)
             .map_err(owner_failure)?
             .remove(generation, guard(), &|| false)
             .map_err(owner_failure)?,
@@ -140,7 +249,7 @@ pub fn rollback(inputs: &Inputs) -> Result<Value, Failure> {
     let (component, channel) = selected(inputs)?;
     let generation = generation(inputs)?;
     value(
-        UiModuleStore::retained_managed(component, channel)
+        UiModuleStore::retained_managed_scoped(component, channel, scope(inputs)?)
             .map_err(owner_failure)?
             .rollback(generation, guard(), &|| false)
             .map_err(owner_failure)?,
@@ -175,7 +284,7 @@ pub static CAPTURE: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[UI_COMPONENT, CHANNEL, RUNTIME],
+    args: &[UI_COMPONENT, CHANNEL, RUNTIME, SCOPE],
     output: "UiCapture with generation and complete ds.ui-module-installation/v1 receipt. receipt.unit.unit_sha256 pins the four member reads; no private filesystem path is exposed.",
     examples: &[],
     refusals: REFUSALS,
@@ -198,6 +307,7 @@ pub static MEMBER: Command = Command {
         UI_COMPONENT,
         CHANNEL,
         RUNTIME,
+        SCOPE,
         Arg::value(
             "unit-sha256",
             "<sha256>",
@@ -234,7 +344,7 @@ pub static MEMBER: Command = Command {
 pub fn capture(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let (component, channel) = selected(inputs)?;
     value(
-        UiModuleStore::retained_managed(component, channel)
+        UiModuleStore::retained_managed_scoped(component, channel, scope(inputs)?)
             .map_err(owner_failure)?
             .capture(&|| false)
             .map_err(owner_failure)?,
@@ -267,10 +377,11 @@ pub fn member(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     {
         return Err(invalid());
     }
-    let (bytes, identity) = UiModuleStore::retained_managed(component, channel)
-        .map_err(owner_failure)?
-        .member(digest, filename, offset, limit, &|| false)
-        .map_err(owner_failure)?;
+    let (bytes, identity) =
+        UiModuleStore::retained_managed_scoped(component, channel, scope(inputs)?)
+            .map_err(owner_failure)?
+            .member(digest, filename, offset, limit, &|| false)
+            .map_err(owner_failure)?;
     Ok(
         json!({ "schema":"ds.ui-module-member/v1", "unit_sha256":digest, "filename":filename, "offset":offset, "byte_count":bytes.len(), "total_bytes":identity.size_bytes, "sha256":identity.sha256, "body_base64":base64::engine::general_purpose::STANDARD.encode(&bytes), "more":offset + (bytes.len() as u64) < identity.size_bytes as u64 }),
     )
@@ -279,6 +390,67 @@ pub fn member(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_stage_requires_confirmation_and_release_consumers_cannot_select_local_scope() {
+        let input = inputs(
+            &STAGE_LOCAL,
+            "command-kernel",
+            None,
+            &[
+                "--directory",
+                "/abs/producer",
+                "--identity-file",
+                "/abs/identity.json",
+                "--source-sha",
+                &"a".repeat(40),
+                "--wasm-sha256",
+                &"b".repeat(64),
+            ],
+        );
+        assert!(STAGE_LOCAL.requires_confirmation());
+        assert_eq!(scope(&input).unwrap(), UiScope::LocalDev);
+        let context = Context {
+            confirmed: false,
+            output: ds_cli_contract::Output::resolve(ds_cli_contract::Format::Json, false, true),
+        };
+        assert_eq!(
+            stage_local(&input, &context).unwrap_err().code(),
+            "confirmation_required"
+        );
+        let native = inputs(
+            &crate::core_components::SELECTION,
+            "network",
+            None,
+            &["--scope", "local-dev"],
+        );
+        assert_eq!(
+            requested(&native).unwrap_err().code(),
+            "module_scope_invalid"
+        );
+        let release = inputs(&CAPTURE, "command-kernel", Some("wasm"), &[]);
+        assert_eq!(scope(&release).unwrap(), UiScope::Release);
+        let mut stable_args = vec![
+            "--component",
+            "command-kernel",
+            "--channel",
+            "stable",
+            "--runtime",
+            "wasm",
+            "--scope",
+            "local-dev",
+        ];
+        let stable = ds_cli_contract::parse(
+            &CAPTURE,
+            &stable_args.drain(..).map(str::to_owned).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        assert_eq!(
+            selected(&stable).unwrap_err().code(),
+            "module_scope_invalid"
+        );
+    }
+
     fn inputs(command: &Command, component: &str, runtime: Option<&str>, extra: &[&str]) -> Inputs {
         let mut args = vec!["--component", component, "--channel", "canary"];
         if let Some(runtime) = runtime {

@@ -147,19 +147,36 @@ pub fn observed_transformer_status_for_project(
     ))
 }
 
-/// Explicit UI reads: held never acquires, refresh retains prior bytes on failure.
+/// Typed application reads: held never acquires, acquire uses the Kernel's
+/// held-first flow, and failed acquisition preserves the prior SQLite bytes.
 /// The observation describes the returned snapshot, not remote freshness.
 pub fn read_transformer_status_for_project(
     lane: &str,
     project: &str,
-    refresh: bool,
-) -> Result<(HeadlessNamedProject<TransformerStatusList>, Value), Failure> {
+    mode: ds_command_kernel::transformer_status_store::TransformerStatusRead,
+) -> Result<
+    (
+        HeadlessNamedProject<TransformerStatusList>,
+        ds_command_kernel::transformer_status_store::StatusObservation,
+    ),
+    Failure,
+> {
     let project = bounded_named_project(project)?;
     let identity = headless_identity_for_named_project(lane)?;
-    let refresh_error = if refresh {
-        observed_transformer_status_for_project(lane, &project, true).err()
-    } else {
-        None
+    use ds_command_kernel::transformer_status_store::TransformerStatusRead;
+    let acquisition = match mode {
+        TransformerStatusRead::Held => None,
+        TransformerStatusRead::Refresh => Some(observed_transformer_status_for_project(
+            lane, &project, true,
+        )),
+        TransformerStatusRead::Acquire => Some(observed_transformer_status_for_project(
+            lane, &project, false,
+        )),
+    };
+    let (refreshed, refresh_error) = match acquisition {
+        Some(Ok((_, cached))) => (!cached, None),
+        Some(Err(error)) => (false, Some(error)),
+        None => (false, None),
     };
     if headless_identity_for_named_project(lane)? != identity {
         return Err(failed(
@@ -183,17 +200,12 @@ pub fn read_transformer_status_for_project(
     }
     let result = TransformerStatusList::from_observation(held.document["transformers"].clone())
         .map_err(map_client)?;
-    let error = refresh_error
-        .as_ref()
-        .map(|error| error.code().to_string())
-        .or(held.last_error);
-    let state = if held.needs_refresh || error.is_some() {
-        "held"
-    } else {
-        "ready"
-    };
-    let observation = json!({"source":if refresh && refresh_error.is_none() {"refresh"} else {"held"},
-        "state":state,"observed_at_ms":held.observed_at_ms,"sha256":held.sha256,"last_error":error});
+    let observation = ds_command_kernel::transformer_status_store::status_observation(
+        &held,
+        refreshed,
+        refresh_error.as_ref().map(|error| error.code()),
+    )
+    .map_err(failed)?;
     Ok((
         HeadlessNamedProject {
             identity,

@@ -6,7 +6,7 @@ use serde_json::json;
 const SOLAR_PROJECT: &str = "durable-server-test";
 pub fn prepared_solar_request() -> Vec<u8> {
     let root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ds-solar/fixtures");
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/fixtures");
     let city = "aderm_bere";
     let snapshot: serde_json::Value = serde_json::from_slice(
         &std::fs::read(root.join(format!("city/{city}.snapshot.json"))).unwrap(),

@@ -44,6 +44,7 @@ pub(crate) const CHANNEL: Arg = Arg::value(
 
 pub(crate) const REFUSALS: &[Refusal] = &[
     crate::PLATFORM,
+    Refusal { code: "module_scope_invalid", when: "a local UI unit crosses release scope, platform or lane", remedy: "use explicit Linux canary local-dev UI scope; release selections admit only published units" },
     Refusal {
         code: "ui_component_platform_unavailable",
         when: "UI installation or reads run on an unqualified platform",
@@ -210,6 +211,7 @@ pub static REMOVE: Command = Command {
         COMPONENT,
         CHANNEL,
         RUNTIME,
+        crate::ui_components::SCOPE,
         Arg::value(
             "expected-generation",
             "<u64>",
@@ -236,7 +238,7 @@ pub static SELECTION: Command = Command {
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[COMPONENT, CHANNEL, RUNTIME],
+    args: &[COMPONENT, CHANNEL, RUNTIME, crate::ui_components::SCOPE],
     output: "UI runtime wasm: ds.ui-module-selection/v1 (active/previous or removed). Native: the retained ds.module-selection/v1 or v2 record with component, channel and generation, or null. It does not imply the executable is available.",
     examples: &[],
     refusals: REFUSALS,
@@ -290,7 +292,8 @@ pub(crate) fn owner_failure(message: String) -> Failure {
         | "module_not_installed"
         | "ui_component_platform_unavailable"
         | "module_platform_unsupported" => Failure::unavailable(refusal.code, bounded),
-        "component_generation_invalid"
+        "module_scope_invalid"
+        | "component_generation_invalid"
         | "component_request_invalid"
         | "invalid_choice"
         | "module_release_component_invalid"

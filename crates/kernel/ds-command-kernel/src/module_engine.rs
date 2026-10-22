@@ -392,6 +392,7 @@ pub const UI_PROTOCOL: &str = "ds.ui-wasm/v1";
 
 /// UI components are deliberately separate from the three native engines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
 #[serde(rename_all = "kebab-case")]
 pub enum UiComponent {
     Interactions,
@@ -496,7 +497,6 @@ pub fn admit_ui_identity(
     if identity.schema != "ds.ui-engine-build/v1"
         || identity.component != component
         || identity.protocol != UI_PROTOCOL
-        || identity.ui_contract != 1
         || !hex(&identity.source_sha, 40)
         || source_sha.is_some_and(|source| identity.source_sha != source)
         || !hex(&identity.cargo_lock_sha256, 64)

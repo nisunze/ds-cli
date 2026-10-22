@@ -11,11 +11,9 @@ description = "Native offline Design persistence and job lifecycle; no renderer 
 # any of them, so while this sat in ds-command-kernel's `members` the kernel
 # could not build with ds-network absent no matter what the kernel's own
 # dependencies said. Its path is unchanged, so ds-cli is unaffected.
-[workspace]
-
 [dependencies]
-ds-command-kernel = { path = "../.." }
-ds-network-contracts = { path = "../../../ds-network/crates/ds-network-contracts" }
+ds-command-kernel = { path = "../ds-command-kernel" }
+ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts" }
 ds-network-client = { path = "../ds-network-client" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
@@ -27,6 +25,6 @@ tempfile = "3"
 thiserror = "2"
 
 [dev-dependencies]
-ds-grid-model = { path = "../../../ds-network/crates/ds-grid-model" }
-ds-grid-engine = { path = "../../../ds-network/crates/ds-grid-engine" }
-ds-grid-exchange = { path = "../../../ds-network/crates/ds-grid-exchange" }
+ds-grid-model = { path = "../../../../ds-network/crates/ds-grid-model" }
+ds-grid-engine = { path = "../../../../ds-network/crates/ds-grid-engine" }
+ds-grid-exchange = { path = "../../../../ds-network/crates/ds-grid-exchange" }

@@ -3,14 +3,13 @@ name = "ds-profile-runtime"
 version = "0.1.0"
 edition = "2021"
 publish = false
-[workspace]
 [dependencies]
-ds-profile-presentation = { path = "../../../ds-network/crates/ds-profile-presentation" }
-ds-command-kernel = { path = "../.." }
-ds-grid-engine = { path = "../../../ds-network/crates/ds-grid-engine" }
-ds-grid-exchange = { path = "../../../ds-network/crates/ds-grid-exchange" }
+ds-profile-presentation = { path = "../../../../ds-network/crates/ds-profile-presentation" }
+ds-command-kernel = { path = "../ds-command-kernel" }
+ds-grid-engine = { path = "../../../../ds-network/crates/ds-grid-engine" }
+ds-grid-exchange = { path = "../../../../ds-network/crates/ds-grid-exchange" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-ds-grid-model = { path = "../../../ds-network/crates/ds-grid-model" }
-ds-grid-physics = { path = "../../../ds-network/crates/ds-grid-physics" }
+ds-grid-model = { path = "../../../../ds-network/crates/ds-grid-model" }
+ds-grid-physics = { path = "../../../../ds-network/crates/ds-grid-physics" }

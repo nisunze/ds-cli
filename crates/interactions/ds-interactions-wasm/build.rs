@@ -25,7 +25,13 @@ fn main() {
     let source_sha = build_support::source_sha(&profile, source.as_deref())
         .unwrap_or_else(|error| panic!("{error}"));
     let crate_root = std::path::PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let root = crate_root.parent().unwrap().parent().unwrap();
+    let root = crate_root
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
     let lock = root.join("Cargo.lock");
     println!("cargo:rerun-if-changed={}", lock.display());
     let cargo_lock_sha256 = digest(&fs::read(lock).expect("Cargo.lock is a build identity input"));
@@ -74,14 +80,16 @@ fn config_digest(root: &Path) -> String {
         ".cargo/config.toml",
         "rust-toolchain",
         "rust-toolchain.toml",
-        "crates/ds-canvas/Cargo.toml",
-        "crates/ds-canvas-graph/Cargo.toml",
-        "crates/ds-map-interaction/Cargo.toml",
-        "crates/ds-interactions-wasm/Cargo.toml",
-        "crates/ds-interactions-wasm/build.rs",
-        "crates/ds-interactions-wasm/build_support.rs",
-        "crates/ds-interactions-wasm/.cargo/config",
-        "crates/ds-interactions-wasm/.cargo/config.toml",
+        "crates/interactions/ds-canvas/Cargo.toml",
+        "crates/interactions/ds-canvas-graph/Cargo.toml",
+        "crates/interactions/ds-map-interaction/Cargo.toml",
+        "crates/interactions/ds-profile-view/Cargo.toml",
+        "crates/shared/ds-geo-lite/Cargo.toml",
+        "crates/interactions/ds-interactions-wasm/Cargo.toml",
+        "crates/interactions/ds-interactions-wasm/build.rs",
+        "crates/interactions/ds-interactions-wasm/build_support.rs",
+        "crates/interactions/ds-interactions-wasm/.cargo/config",
+        "crates/interactions/ds-interactions-wasm/.cargo/config.toml",
     ] {
         let path = root.join(name);
         println!("cargo:rerun-if-changed={}", path.display());

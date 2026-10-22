@@ -21,9 +21,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=DS_CLI_SOURCE_DIRTY");
     println!("cargo:rerun-if-env-changed=DS_NATIVE_CLIENT_PROFILE_SHA256");
     println!("cargo:rerun-if-env-changed=DS_RELEASE_PIN_DS_NETWORK");
-    println!("cargo:rerun-if-changed=../../.git/HEAD");
-    println!("cargo:rerun-if-changed=../../pins/ds-client-core.rev");
-    println!("cargo:rerun-if-changed=../../pins/ds-command-kernel.rev");
+    println!("cargo:rerun-if-changed=../../../.git/HEAD");
 
     let pinned = std::env::var("DS_CLI_SOURCE_SHA")
         .ok()
@@ -42,31 +40,9 @@ fn main() {
 
     println!("cargo:rustc-env=DS_BUILD_SHA={sha}");
     println!("cargo:rustc-env=DS_BUILD_DIRTY={}", u8::from(dirty));
-    // Cargo reruns a cached build-script executable when a pin changes. Read
-    // the pin at execution time: include_str! can retain the previous pin in
-    // that executable even while downstream tests see the new file.
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("Cargo manifest directory");
-    let native_pin = std::fs::read_to_string(
-        std::path::Path::new(&manifest_dir).join("../../pins/ds-client-core.rev"),
-    )
-    .expect("native client source pin");
-    let native_client_core_sha = native_pin.trim();
-    let native_client_core_sha = if ds_cli_contract::util::is_hex(
-        native_client_core_sha,
-        40,
-        ds_cli_contract::util::HexCase::Any,
-    ) {
-        native_client_core_sha
-    } else {
-        "unknown"
-    };
-    println!("cargo:rustc-env=DS_NATIVE_CLIENT_CORE_SHA={native_client_core_sha}");
-    let kernel_pin = std::fs::read_to_string(
-        std::path::Path::new(&manifest_dir).join("../../pins/ds-command-kernel.rev"),
-    )
-    .expect("command kernel source pin");
-    let command_kernel_sha = exact_source_pin(&kernel_pin).unwrap_or("unknown");
-    println!("cargo:rustc-env=DS_COMMAND_KERNEL_SHA={command_kernel_sha}");
+    // These owners are built from this repository, not separately pinned siblings.
+    println!("cargo:rustc-env=DS_NATIVE_CLIENT_CORE_SHA={sha}");
+    println!("cargo:rustc-env=DS_COMMAND_KERNEL_SHA={sha}");
     let native_client_profile_sha256 = std::env::var("DS_NATIVE_CLIENT_PROFILE_SHA256")
         .ok()
         .filter(|digest| {
@@ -95,12 +71,6 @@ fn main() {
         std::env::var("TARGET").unwrap_or_else(|_| "unknown".into())
     );
     println!("cargo:rustc-env=DS_BUILD_PROFILE={}", profile);
-}
-
-fn exact_source_pin(value: &str) -> Option<&str> {
-    let value = value.trim();
-    (ds_cli_contract::util::is_hex(value, 40, ds_cli_contract::util::HexCase::Lower))
-        .then_some(value)
 }
 
 fn git_sha() -> Option<String> {

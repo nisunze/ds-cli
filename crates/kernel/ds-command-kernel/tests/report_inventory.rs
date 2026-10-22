@@ -311,7 +311,12 @@ fn the_sealed_combined_report_is_an_inventory_identity_but_other_aggregates_are_
     assert_eq!(output["local_output_count"], 6);
     assert_eq!(output["active_client_publish_id"], "publish-sep29");
     assert_eq!(output["outputs"].as_array().unwrap().len(), 6);
-    for reserved in ["collisions", "all_transformers", "combined_transformers", "__all__"] {
+    for reserved in [
+        "collisions",
+        "all_transformers",
+        "combined_transformers",
+        "__all__",
+    ] {
         refused(combined(reserved));
     }
 }

@@ -27,8 +27,8 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::Availability;
+use ds_core_contracts::Failure;
+use ds_core_contracts::Availability;
 use serde_json::json;
 
 pub mod addons;
@@ -1286,10 +1286,6 @@ mod tests {
     }
 }
 
-mod solar_worker;
-pub use solar_worker::start_solar_project_sync;
-mod design_worker;
-pub use design_worker::start_design_project_process;
 
 #[cfg(test)]
 mod supervised_tests {

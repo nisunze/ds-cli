@@ -1,0 +1,21 @@
+[package]
+name = "ds-terrain-host"
+description = "Bounded native single-source terrain sampling file orchestration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ds-terrain-sampling = { path = "../../../../ds-network/crates/ds-terrain-sampling" }
+ds-elevation-host = { path = "../ds-elevation-host" }
+ds-geo = { path = "../../../../ds-network/crates/ds-geo" }
+ds-geo-lite = { path = "../../shared/ds-geo-lite", features = ["tin"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { version = "1.2", default-features = false, features = ["derive", "std"] }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+csv = "1"

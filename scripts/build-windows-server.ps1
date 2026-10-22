@@ -30,7 +30,7 @@ if ($Plan) {
     exit 0
 }
 $sources = [ordered]@{}
-foreach ($repo in @('ds-cli','ds-network','ds-command-kernel','ds-solar','ds-network-reporter')) {
+foreach ($repo in @('ds-cli','ds-network','ds-solar','ds-network-reporter')) {
     $path = Join-Path $workspace $repo
     $sha = (& git -C $path rev-parse --verify HEAD | Out-String).Trim()
     if ($LASTEXITCODE -or $sha -cnotmatch '^[0-9a-f]{40}$') { throw "Cannot resolve source: $repo" }
@@ -41,11 +41,7 @@ foreach ($repo in @('ds-cli','ds-network','ds-command-kernel','ds-solar','ds-net
     if ($LASTEXITCODE) { throw "Push $repo before packaging." }
     $sources[$repo] = $sha
 }
-foreach ($pin in @('ds-command-kernel','ds-client-core')) {
-    if ((Get-Content -LiteralPath (Join-Path $repository "pins/$pin.rev") -Raw).Trim() -cne $sources['ds-command-kernel']) {
-        throw "The CLI's $pin pin differs from the clean linked kernel."
-    }
-}
+$sources['ds-command-kernel'] = $sources['ds-cli']
 $catalogPath = Assert-ServerLocalPath $ProfileCatalog
 $catalog = Get-Content -LiteralPath $catalogPath -Raw | ConvertFrom-Json
 if ($catalog.development -ne $false) { throw 'A development profile cannot be packaged.' }
@@ -84,14 +80,14 @@ try {
     $env:DS_NATIVE_CLIENT_PROFILE_BUNDLE = $catalogPath
     $env:DS_NATIVE_CLIENT_PROFILE_SHA256 = (Get-FileHash -LiteralPath $catalogPath).Hash.ToLowerInvariant()
     $env:DS_RELEASE_PIN_DS_NETWORK = $sources['ds-network']
-    $env:DS_RELEASE_PIN_DS_COMMAND_KERNEL = $sources['ds-command-kernel']
+    $env:DS_RELEASE_PIN_DS_COMMAND_KERNEL = $sources['ds-cli']
     $env:DS_RELEASE_PIN_DS_SOLAR = $sources['ds-solar']
     $env:DS_RELEASE_PIN_DS_NETWORK_REPORTER = $sources['ds-network-reporter']
     $build = @('build','--manifest-path',(Join-Path $repository 'Cargo.toml'),'--locked','--release','-p','ds','--bin','ds')
     if ($Offline) { $build += '--offline' }
     & cargo @build
     if ($LASTEXITCODE) { throw 'Native release build failed; persistent caches retained.' }
-    foreach ($repo in $sources.Keys) {
+    foreach ($repo in @($sources.Keys | Where-Object { $_ -ne 'ds-command-kernel' })) {
         $path = Join-Path $workspace $repo
         $after = (& git -C $path rev-parse HEAD | Out-String).Trim()
         if ($LASTEXITCODE -or $after -cne $sources[$repo] -or (& git -C $path status --porcelain --untracked-files=normal)) {

@@ -251,7 +251,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
-            "../../out/library-download-test-{}-{unique}",
+            "../../../out/library-download-test-{}-{unique}",
             std::process::id()
         ));
         std::fs::create_dir_all(&root).unwrap();

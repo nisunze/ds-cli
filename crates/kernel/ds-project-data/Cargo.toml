@@ -7,7 +7,7 @@ rust-version = "1.90"
 publish = false
 
 [dependencies]
-ds-command-kernel = { path = "../..", features = ["durable-store"] }
+ds-command-kernel = { path = "../ds-command-kernel", features = ["durable-store"] }
 ds-sync-store = { path = "../ds-sync-store" }
 ds-layer-store = { path = "../ds-layer-store" }
 serde = { version = "1", features = ["derive"] }
@@ -19,10 +19,9 @@ csv = "1"
 tempfile = "3"
 
 ds-network-client = { path = "../ds-network-client" }
-ds-network-contracts = { path = "../../../ds-network/crates/ds-network-contracts", default-features = false }
-ds-columnar = { path = "../../../ds-network/crates/ds-columnar" }
+ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
+ds-columnar = { path = "../../../../ds-network/crates/ds-columnar" }
 
 [dev-dependencies]
 
 # Native host crate, separate from the portable WASM workspace.
-[workspace]

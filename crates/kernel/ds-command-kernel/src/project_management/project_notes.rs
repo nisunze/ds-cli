@@ -774,7 +774,9 @@ impl Command {
                         && v["replayed"].is_boolean()
                         && v["note"]["version"].as_u64()
                             == Some(w.expected_version.map_or(1, |n| n + 1))
-                        && v["context_revision"].as_i64().is_some_and(|revision| revision >= 0),
+                        && v["context_revision"]
+                            .as_i64()
+                            .is_some_and(|revision| revision >= 0),
                     "Write lacks its exact durable operation receipt",
                 )?;
             }
@@ -975,7 +977,9 @@ fn verify_page(project: &str, v: &serde_json::Value, limit: u32) -> Result<(), S
             && v["complete"].is_boolean()
             && v["truncated"].is_boolean()
             && !(v["complete"] == true && v["truncated"] == true)
-            && v["context_revision"].as_i64().is_some_and(|revision| revision >= 0),
+            && v["context_revision"]
+                .as_i64()
+                .is_some_and(|revision| revision >= 0),
         "Note page completeness is invalid; an incomplete page is not no context",
     )?;
     if !v["migration_required"].is_null() {
@@ -1007,7 +1011,9 @@ fn verify_lifecycle(
             && v["backup_id"] == backup
             && v["backup_sha256"] == digest
             && v["replayed"].is_boolean()
-            && v["context_revision"].as_i64().is_some_and(|revision| revision >= 0),
+            && v["context_revision"]
+                .as_i64()
+                .is_some_and(|revision| revision >= 0),
         "Lifecycle receipt differs from its verified backup/operation",
     )?;
     let rows = v["notes"]
@@ -1245,23 +1251,52 @@ mod tests {
     fn note_epoch_is_a_nonnegative_signed_integer_for_pages_and_receipts() {
         let query = Command::Query(query());
         let write = Command::Write(Write {
-            operation_id: "op1".into(), id: "n1".into(), expected_version: Some(2),
-            reason: "Record ruling".into(), draft: draft(),
+            operation_id: "op1".into(),
+            id: "n1".into(),
+            expected_version: Some(2),
+            reason: "Record ruling".into(),
+            draft: draft(),
         });
-        let refs = vec![VersionRef { id: "n1".into(), version: 2 }];
-        let cases = [json!(0), json!(1), json!(i64::MAX), json!(-1), json!(1.0),
-            json!(1.5), json!("0"), json!("a".repeat(64)), json!(null),
-            json!(true), json!(9_223_372_036_854_775_808u64)];
+        let refs = vec![VersionRef {
+            id: "n1".into(),
+            version: 2,
+        }];
+        let cases = [
+            json!(0),
+            json!(1),
+            json!(i64::MAX),
+            json!(-1),
+            json!(1.0),
+            json!(1.5),
+            json!("0"),
+            json!("a".repeat(64)),
+            json!(null),
+            json!(true),
+            json!(9_223_372_036_854_775_808u64),
+        ];
         for (index, revision) in cases.into_iter().enumerate() {
             let accepted = index < 3;
             let page = json!({"project_id":"p","items":[],"scanned":0,"truncated":false,"complete":true,"migration_required":[],"context_revision":revision});
-            assert_eq!(query.verify_response("p", &page).is_ok(), accepted, "page {revision}");
+            assert_eq!(
+                query.verify_response("p", &page).is_ok(),
+                accepted,
+                "page {revision}"
+            );
             let receipt = json!({"project_id":"p","note":view("n1",3),"operation_id":"op1","replayed":false,"context_revision":revision});
-            assert_eq!(write.verify_response("p", &receipt).is_ok(), accepted, "write {revision}");
+            assert_eq!(
+                write.verify_response("p", &receipt).is_ok(),
+                accepted,
+                "write {revision}"
+            );
             let lifecycle = json!({"project_id":"p","notes":[view("n1",3)],"operation_id":"op1","replayed":false,"backup_id":"backup1","backup_sha256":"b".repeat(64),"context_revision":revision});
-            assert_eq!(verify_lifecycle("p", &lifecycle, &refs, "op1", "backup1", &"b".repeat(64)).is_ok(), accepted, "lifecycle {revision}");
+            assert_eq!(
+                verify_lifecycle("p", &lifecycle, &refs, "op1", "backup1", &"b".repeat(64)).is_ok(),
+                accepted,
+                "lifecycle {revision}"
+            );
         }
-        let missing = json!({"project_id":"p","items":[],"scanned":0,"truncated":false,"complete":true});
+        let missing =
+            json!({"project_id":"p","items":[],"scanned":0,"truncated":false,"complete":true});
         assert!(query.verify_response("p", &missing).is_err());
     }
 

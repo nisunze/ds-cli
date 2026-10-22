@@ -43,6 +43,39 @@ pub struct ProjectConfigurationDocument {
     pub additional: Map<String, Value>,
 }
 
+/// A save acknowledges transport success; it does not return a configuration.
+/// Brain currently returns message/records metadata; older producers returned
+/// success:true. Neither metadata shape replaces the required fresh readback.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, schemars::JsonSchema)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+#[serde(untagged)]
+pub enum ProjectConfigurationSaveAcknowledgement {
+    Updated { message: String, records: u64 },
+    Legacy { success: bool },
+}
+
+pub fn admit_project_configuration_save(
+    body: &Value,
+) -> Result<ProjectConfigurationSaveAcknowledgement, Refusal> {
+    if body
+        .get("success")
+        .is_some_and(|value| value.as_bool() != Some(true))
+    {
+        return Err(answer_invalid("configuration save acknowledgement"));
+    }
+    let object = data(body)
+        .as_object()
+        .ok_or_else(|| answer_invalid("configuration save acknowledgement"))?;
+    if object
+        .get("success")
+        .is_some_and(|value| value.as_bool() != Some(true))
+    {
+        return Err(answer_invalid("configuration save acknowledgement"));
+    }
+    serde_json::from_value(Value::Object(object.clone()))
+        .map_err(|_| answer_invalid("configuration save acknowledgement"))
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, schemars::JsonSchema, PartialEq, Eq)]
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
@@ -69,6 +102,176 @@ pub struct ProjectConfigurationReply {
     pub project: String,
     pub document: ProjectConfigurationDocument,
     pub observation: ProjectConfigurationObservation,
+}
+
+/// Complete-document output travels in the declared `out` file. This receipt
+/// accompanies it in command data; the path is diagnostic metadata only.
+#[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema, PartialEq)]
+pub struct ProjectConfigurationFileReceipt {
+    pub project: String,
+    pub observation: ProjectConfigurationObservation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+pub const PROJECT_CONFIG_RECEIPT_INVALID: &str = "project_config_receipt_invalid";
+const MAX_SAFE_OBSERVATION_MS: u64 = 9_007_199_254_740_991;
+
+fn config_receipt_invalid() -> Refusal {
+    Refusal::new(
+        PROJECT_CONFIG_RECEIPT_INVALID,
+        "The configuration owner answered another command, project or read mode, or an invalid observation.",
+    )
+}
+
+fn admit_config_context(
+    actual: &str,
+    observation: &ProjectConfigurationObservation,
+    project: &str,
+    read: ProjectConfigurationRead,
+) -> Result<(), Refusal> {
+    project_reference(project)?;
+    if actual != project
+        || observation.source != read
+        || observation.saved_at_ms > MAX_SAFE_OBSERVATION_MS
+    {
+        return Err(config_receipt_invalid());
+    }
+    Ok(())
+}
+
+impl ProjectConfigurationReply {
+    /// Shared native/browser admission. An observation must survive a JS
+    /// number crossing exactly, even when its producer is a native caller.
+    pub fn admit_context(
+        &self,
+        project: &str,
+        read: ProjectConfigurationRead,
+    ) -> Result<(), Refusal> {
+        admit_config_context(&self.project, &self.observation, project, read)
+    }
+
+    pub fn file_receipt(
+        &self,
+        project: &str,
+        read: ProjectConfigurationRead,
+        path: String,
+    ) -> Result<ProjectConfigurationFileReceipt, Refusal> {
+        self.admit_context(project, read)?;
+        Ok(ProjectConfigurationFileReceipt {
+            project: self.project.clone(),
+            observation: self.observation.clone(),
+            path: Some(path),
+        })
+    }
+}
+
+pub fn admit_project_configuration_document(
+    value: Value,
+) -> Result<ProjectConfigurationDocument, Refusal> {
+    serde_json::from_value(value).map_err(|_| answer_invalid("project configuration"))
+}
+
+pub fn admit_project_configuration_reply(
+    project: &str,
+    read: ProjectConfigurationRead,
+    value: Value,
+) -> Result<ProjectConfigurationReply, Refusal> {
+    // Decode observation and context before the document, retaining the
+    // existing distinct receipt/document refusal codes.
+    let Value::Object(mut value) = value else {
+        return Err(config_receipt_invalid());
+    };
+    let document = value
+        .remove("document")
+        .ok_or_else(config_receipt_invalid)?;
+    let receipt: ProjectConfigurationFileReceipt =
+        serde_json::from_value(Value::Object(value)).map_err(|_| config_receipt_invalid())?;
+    admit_config_context(&receipt.project, &receipt.observation, project, read)?;
+    let answer = ProjectConfigurationReply {
+        project: receipt.project,
+        observation: receipt.observation,
+        document: admit_project_configuration_document(document)?,
+    };
+    Ok(answer)
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ProjectConfigurationFileFailure {
+    Receipt(Refusal),
+    /// Preserve a real command refusal and compatible additions verbatim.
+    Command(Value),
+}
+impl From<Refusal> for ProjectConfigurationFileFailure {
+    fn from(value: Refusal) -> Self {
+        Self::Receipt(value)
+    }
+}
+
+/// Decode the actual Core file reply, independently of numeric producer
+/// versions. Needed fields determine compatibility; additions are harmless.
+pub fn admit_project_configuration_file_reply(
+    project: &str,
+    read: ProjectConfigurationRead,
+    value: Value,
+) -> Result<Option<ProjectConfigurationReply>, ProjectConfigurationFileFailure> {
+    #[derive(Deserialize)]
+    struct Envelope {
+        #[serde(rename = "v")]
+        _version: serde_json::Number,
+        command: String,
+        #[serde(rename = "contract")]
+        _contract: serde_json::Number,
+        #[serde(flatten)]
+        outcome: Outcome,
+    }
+    #[derive(Deserialize)]
+    #[serde(tag = "status", rename_all = "snake_case")]
+    enum Outcome {
+        Ok {
+            data: ProjectConfigurationFileReceipt,
+            files: Map<String, Value>,
+        },
+        Error {
+            error: Map<String, Value>,
+        },
+    }
+    project_reference(project)?;
+    let envelope: Envelope = serde_json::from_value(value).map_err(|_| config_receipt_invalid())?;
+    if envelope.command != "design.config.read" {
+        return Err(config_receipt_invalid().into());
+    }
+    match envelope.outcome {
+        Outcome::Ok { data, mut files } => {
+            admit_config_context(&data.project, &data.observation, project, read)?;
+            let document = files.remove("out").ok_or_else(config_receipt_invalid)?;
+            let answer = ProjectConfigurationReply {
+                project: data.project,
+                observation: data.observation,
+                document: admit_project_configuration_document(document)?,
+            };
+            Ok(Some(answer))
+        }
+        Outcome::Error { error } => {
+            if !error.get("class").is_some_and(Value::is_string)
+                || !error
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .is_some_and(|v| !v.is_empty())
+                || !error.get("message").is_some_and(Value::is_string)
+                || !error.get("retryable").is_some_and(Value::is_boolean)
+            {
+                return Err(config_receipt_invalid().into());
+            }
+            if read == ProjectConfigurationRead::Held && error["code"] == "project_config_not_held"
+            {
+                return Ok(None);
+            }
+            Err(ProjectConfigurationFileFailure::Command(Value::Object(
+                error,
+            )))
+        }
+    }
 }
 
 /// The most transformers one read, save or digest check names.
@@ -130,7 +333,10 @@ pub struct TransformerSave {
     )]
     pub process_metadata: Option<Map<String, Value>>,
     #[serde(default)]
-    #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional, type = "unknown"))]
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        tsify(optional, type = "unknown")
+    )]
     pub voltage_drop: Option<Value>,
     #[serde(default)]
     #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
@@ -198,7 +404,9 @@ pub struct UnsavedWork {
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DesignCall {
     /// The project's design configuration document.
-    ProjectConfig { project: String },
+    ProjectConfig {
+        project: String,
+    },
     /// Replace one configuration sheet; `expected` is the sheet as it was
     /// read, and a sheet changed since refuses the save.
     SaveConfigSheet {
@@ -207,11 +415,16 @@ pub enum DesignCall {
         #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(type = "unknown"))]
         rows: Value,
         #[serde(default)]
-        #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional, type = "unknown"))]
+        #[cfg_attr(
+            all(feature = "wasm", target_arch = "wasm32"),
+            tsify(optional, type = "unknown")
+        )]
         expected: Option<Value>,
     },
     /// The project's transformer status document.
-    TransformerStatus { project: String },
+    TransformerStatus {
+        project: String,
+    },
     /// Saved transformer documents, by name.
     ReadTransformers {
         project: String,
@@ -260,7 +473,10 @@ pub enum DesignCall {
         user: Option<String>,
     },
     /// Every user's working draft of one transformer, without layers.
-    ListDrafts { project: String, transformer: String },
+    ListDrafts {
+        project: String,
+        transformer: String,
+    },
     /// The edit lease of one transformer for this session.
     Lease {
         project: String,
@@ -313,7 +529,10 @@ pub enum DesignCall {
         name_signal: Option<String>,
         confirm_phrase: String,
     },
-    DeleteCombinedReport { project: String, prefix: String },
+    DeleteCombinedReport {
+        project: String,
+        prefix: String,
+    },
     /// The project's compounded report archives.
     CompoundedReports {
         project: String,
@@ -321,7 +540,10 @@ pub enum DesignCall {
         #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), tsify(optional))]
         artifacts: Option<bool>,
     },
-    DeleteCompoundedReport { project: String, stem: String },
+    DeleteCompoundedReport {
+        project: String,
+        stem: String,
+    },
 }
 
 fn input_invalid(message: impl Into<String>) -> Refusal {
@@ -344,13 +566,17 @@ fn name<'a>(text: &'a str, what: &str) -> Result<&'a str, Refusal> {
     if bounded(trimmed, NAME_MAX_CHARS) {
         Ok(trimmed)
     } else {
-        Err(input_invalid(format!("A {what} is one name of at most {NAME_MAX_CHARS} characters.")))
+        Err(input_invalid(format!(
+            "A {what} is one name of at most {NAME_MAX_CHARS} characters."
+        )))
     }
 }
 
 fn names(list: &[String], max: usize) -> Result<Vec<&str>, Refusal> {
     if list.is_empty() || list.len() > max {
-        return Err(input_invalid(format!("Name between 1 and {max} transformers.")));
+        return Err(input_invalid(format!(
+            "Name between 1 and {max} transformers."
+        )));
     }
     list.iter().map(|item| name(item, "transformer")).collect()
 }
@@ -360,19 +586,27 @@ fn text<'a>(value: &'a str, what: &str) -> Result<&'a str, Refusal> {
     if bounded(trimmed, TEXT_MAX_CHARS) {
         Ok(trimmed)
     } else {
-        Err(input_invalid(format!("The {what} is required and bounded.")))
+        Err(input_invalid(format!(
+            "The {what} is required and bounded."
+        )))
     }
 }
 
 /// The project id as one percent-encoded path segment.
 fn path_segment(project: &str) -> String {
     use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
-    const SEGMENT: &AsciiSet = &NON_ALPHANUMERIC.remove(b'-').remove(b'_').remove(b'.').remove(b'~');
+    const SEGMENT: &AsciiSet = &NON_ALPHANUMERIC
+        .remove(b'-')
+        .remove(b'_')
+        .remove(b'.')
+        .remove(b'~');
     utf8_percent_encode(project, SEGMENT).to_string()
 }
 
 fn post(path: &str, body: Value, timeout_ms: u64, cap: u64) -> Request {
-    Request::post(path, body).timeout_ms(timeout_ms).response_cap(cap)
+    Request::post(path, body)
+        .timeout_ms(timeout_ms)
+        .response_cap(cap)
 }
 
 fn read(request: Request) -> Plan {
@@ -400,7 +634,9 @@ fn save_item(save: &TransformerSave) -> Result<Value, Refusal> {
     }
     if let Some(reviewed) = save.overwrite_reviewed_version {
         if reviewed < 1 {
-            return Err(input_invalid("An overwrite names the positive version it reviewed."));
+            return Err(input_invalid(
+                "An overwrite names the positive version it reviewed.",
+            ));
         }
         item["force_version_conflict"] = json!(true);
         item["reviewed_current_version"] = json!(reviewed);
@@ -411,17 +647,27 @@ fn save_item(save: &TransformerSave) -> Result<Value, Refusal> {
     if let Some(drop) = save.voltage_drop.as_ref().filter(|drop| !drop.is_null()) {
         item["voltage_drop"] = drop.clone();
     }
-    if let Some(digest) = save.content_digest.as_deref().filter(|d| !d.trim().is_empty()) {
+    if let Some(digest) = save
+        .content_digest
+        .as_deref()
+        .filter(|d| !d.trim().is_empty())
+    {
         item["content_digest"] = json!(text(digest, "content digest")?);
     }
-    if let Some(operation) = save.operation_id.as_deref().filter(|o| !o.trim().is_empty()) {
+    if let Some(operation) = save
+        .operation_id
+        .as_deref()
+        .filter(|o| !o.trim().is_empty())
+    {
         item["operation_id"] = json!(text(operation, "operation id")?);
     }
     Ok(item)
 }
 
 fn within_body(body: &Value) -> Result<(), Refusal> {
-    let size = serde_json::to_vec(body).map(|bytes| bytes.len()).unwrap_or(usize::MAX);
+    let size = serde_json::to_vec(body)
+        .map(|bytes| bytes.len())
+        .unwrap_or(usize::MAX);
     if size > MAX_BODY_BYTES {
         return Err(Refusal::new(
             SAVE_TOO_LARGE,
@@ -480,10 +726,8 @@ impl DesignCall {
                 expected,
                 ..
             } => {
-                let mut body = act(
-                    "save_config",
-                    json!({"sheet_name": name(sheet, "configuration sheet")?, "data": rows}),
-                );
+                let mut body = json!({"action":"save_config","eds_project_id":project,
+                    "sheet_name":name(sheet, "configuration sheet")?,"data":rows});
                 if let Some(expected) = expected {
                     body["expected_data"] = expected.clone();
                 }
@@ -517,7 +761,10 @@ impl DesignCall {
                     )));
                 }
                 let items = saves.iter().map(save_item).collect::<Result<Vec<_>, _>>()?;
-                let body = act("save_transformers_data", json!({"transformer_saves": items}));
+                let body = act(
+                    "save_transformers_data",
+                    json!({"transformer_saves": items}),
+                );
                 within_body(&body)?;
                 post(DATA_PATH, body, SAVE_MS, RECEIPT_CAP).into()
             }
@@ -530,8 +777,13 @@ impl DesignCall {
                 let rows = digests
                     .iter()
                     .map(|held| {
-                        let mut row = json!({"transformer_name": name(&held.transformer, "transformer")?});
-                        if let Some(digest) = held.content_digest.as_deref().filter(|d| !d.trim().is_empty()) {
+                        let mut row =
+                            json!({"transformer_name": name(&held.transformer, "transformer")?});
+                        if let Some(digest) = held
+                            .content_digest
+                            .as_deref()
+                            .filter(|d| !d.trim().is_empty())
+                        {
                             row["content_digest"] = json!(text(digest, "content digest")?);
                         }
                         if let Some(version) = held.base_version {
@@ -542,7 +794,10 @@ impl DesignCall {
                     .collect::<Result<Vec<_>, Refusal>>()?;
                 read(post(
                     DATA_PATH,
-                    act("transformer_digest_status", json!({"transformer_digests": rows})),
+                    act(
+                        "transformer_digest_status",
+                        json!({"transformer_digests": rows}),
+                    ),
                     READ_MS,
                     RECEIPT_CAP,
                 ))
@@ -621,7 +876,11 @@ impl DesignCall {
                     body["lock_hold"] = json!(true);
                     body["unsaved_since"] = json!(text(&work.since, "unsaved-since time")?);
                     body["local_digest"] = json!(text(&work.local_digest, "local digest")?);
-                    if work.feature_counts.values().any(|count| count.as_i64().is_none_or(|n| n < 0)) {
+                    if work
+                        .feature_counts
+                        .values()
+                        .any(|count| count.as_i64().is_none_or(|n| n < 0))
+                    {
                         return Err(input_invalid("Feature counts are whole numbers."));
                     }
                     body["feature_counts"] = Value::Object(work.feature_counts.clone());
@@ -774,7 +1033,10 @@ impl DesignCall {
             Self::DigestStatus { .. } => {
                 let answer = object(data(&body), "digest status")?;
                 rows(&answer, "items", "digest status", |row| {
-                    row.get("status").and_then(Value::as_str).map(drop).ok_or(())
+                    row.get("status")
+                        .and_then(Value::as_str)
+                        .map(drop)
+                        .ok_or(())
                 })?;
                 Value::Object(answer)
             }
@@ -792,7 +1054,11 @@ impl DesignCall {
             }
             Self::Rename { .. } => {
                 let answer = object(&body, "rename")?;
-                if !answer.get("new_name").and_then(Value::as_str).is_some_and(|n| !n.is_empty()) {
+                if !answer
+                    .get("new_name")
+                    .and_then(Value::as_str)
+                    .is_some_and(|n| !n.is_empty())
+                {
                     return Err(answer_invalid("rename"));
                 }
                 Value::Object(answer)
@@ -815,13 +1081,15 @@ impl DesignCall {
                 }
                 Value::Object(answer)
             }
-            Self::ProjectConfig { .. } => serde_json::to_value(
-                serde_json::from_value::<ProjectConfigurationDocument>(body)
-                    .map_err(|_| answer_invalid("project configuration"))?,
-            )
-            .map_err(|_| answer_invalid("project configuration"))?,
-            Self::SaveConfigSheet { .. }
-            | Self::PutDraft { .. }
+            Self::ProjectConfig { .. } => {
+                serde_json::to_value(admit_project_configuration_document(body)?)
+                    .map_err(|_| answer_invalid("project configuration"))?
+            }
+            Self::SaveConfigSheet { .. } => {
+                admit_project_configuration_save(&body)?;
+                Value::Object(object(data(&body), "configuration save acknowledgement")?)
+            }
+            Self::PutDraft { .. }
             | Self::GetDraft { .. }
             | Self::DeleteDraft { .. }
             | Self::ListDrafts { .. }
@@ -878,7 +1146,7 @@ impl Exchange for DesignCall {
 /// executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
-    use super::{DesignCall, ProjectConfigurationDocument};
+    use super::{DesignCall, ProjectConfigurationFileFailure, ProjectConfigurationRead};
     use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};
     use wasm_bindgen::prelude::*;
 
@@ -891,9 +1159,51 @@ mod exports {
         // the native JSON decoder used by the command and gateway exchange.
         let json: serde_json::Value = tsify::serde_wasm_bindgen::from_value(value)
             .map_err(|_| rejection(&super::answer_invalid("project configuration")))?;
-        let document: ProjectConfigurationDocument = serde_json::from_value(json)
-            .map_err(|_| rejection(&super::answer_invalid("project configuration")))?;
+        let document =
+            super::admit_project_configuration_document(json).map_err(|error| rejection(&error))?;
         typed(&document)
+    }
+
+    #[wasm_bindgen(js_name = projectConfigReplyAdmit, unchecked_return_type = "ProjectConfigurationReply")]
+    pub fn project_config_reply_admit(
+        project: &str,
+        #[wasm_bindgen(unchecked_param_type = "ProjectConfigurationRead")] read: JsValue,
+        value: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let read: ProjectConfigurationRead =
+            tsify::serde_wasm_bindgen::from_value(read).map_err(|_| {
+                rejection(&super::input_invalid(
+                    "Invalid project configuration read mode.",
+                ))
+            })?;
+        let value = tsify::serde_wasm_bindgen::from_value(value)
+            .map_err(|_| rejection(&super::config_receipt_invalid()))?;
+        typed(
+            &super::admit_project_configuration_reply(project, read, value)
+                .map_err(|error| rejection(&error))?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = projectConfigFileReplyAdmit, unchecked_return_type = "ProjectConfigurationReply | null")]
+    pub fn project_config_file_reply_admit(
+        project: &str,
+        #[wasm_bindgen(unchecked_param_type = "ProjectConfigurationRead")] read: JsValue,
+        value: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let read: ProjectConfigurationRead =
+            tsify::serde_wasm_bindgen::from_value(read).map_err(|_| {
+                rejection(&super::input_invalid(
+                    "Invalid project configuration read mode.",
+                ))
+            })?;
+        let value = tsify::serde_wasm_bindgen::from_value(value)
+            .map_err(|_| rejection(&super::config_receipt_invalid()))?;
+        match super::admit_project_configuration_file_reply(project, read, value) {
+            Ok(Some(answer)) => typed(&answer),
+            Ok(None) => Ok(JsValue::NULL),
+            Err(ProjectConfigurationFileFailure::Receipt(error)) => Err(rejection(&error)),
+            Err(ProjectConfigurationFileFailure::Command(error)) => Err(typed(&error)?),
+        }
     }
 
     /// One design action; the answer is its admitted JSON document.
@@ -915,3 +1225,7 @@ mod tests;
 #[cfg(test)]
 #[path = "design_config_document_tests.rs"]
 mod config_document_tests;
+
+#[cfg(test)]
+#[path = "design_config_save_tests.rs"]
+mod config_save_tests;

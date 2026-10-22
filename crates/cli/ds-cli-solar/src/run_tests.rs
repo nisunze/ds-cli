@@ -3,7 +3,7 @@ use super::*;
 use ds_cli_contract::args::parse;
 use ds_solar_contracts::{PreparedCalculationRequest, PreparedSolarCityInput};
 use std::fs;
-#[path = "../../../../ds-command-kernel/crates/ds-compute-runtime/tests/common/mod.rs"]
+#[path = "../../../kernel/ds-compute-runtime/tests/common/mod.rs"]
 mod prepared_fixture;
 
 fn prepared(root: &Path) -> PathBuf {

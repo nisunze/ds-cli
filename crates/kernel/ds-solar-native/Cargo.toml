@@ -1,0 +1,31 @@
+[package]
+name = "ds-solar-native"
+description = "Native Solar application operations shared by Server and thin Desktop adapters."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ds-command-kernel = { path = "../ds-command-kernel", default-features = false }
+ds-cli-exec = { path = "../ds-cli-exec" }
+ds-compute-runtime = { path = "../ds-compute-runtime" }
+ds-sync-runtime = { path = "../ds-sync-runtime" }
+ds-sync-store = { path = "../ds-sync-store" }
+ds-solar-project = { path = "../ds-solar-project", default-features = false }
+ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
+ds-solar-io = { path = "../../../../ds-solar/crates/ds-solar-io" }
+ds-solar-reference-host = { path = "../ds-solar-reference-host" }
+ds-solar-process = { path = "../../../../ds-solar/crates/ds-solar-process" }
+serde.workspace = true
+serde_json.workspace = true
+schemars = "1.2.2"
+rayon = "1"
+chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
+rand = "0.9"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+ds-solar-runtime = { path = "../../../../ds-solar/crates/ds-solar-runtime", default-features = false }
+tempfile = "3"

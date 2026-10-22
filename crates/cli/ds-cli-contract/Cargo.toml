@@ -9,6 +9,7 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+ds-core-contracts = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { version = "3", optional = true }

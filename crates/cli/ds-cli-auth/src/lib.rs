@@ -5,20 +5,20 @@
 //! project response contract remain exclusively in `ds-client-core`.
 
 pub mod account;
-pub mod config_document;
-pub mod core_identity;
 pub mod asset_index_source;
-pub mod pm_graph_source;
 pub mod asset_preview_source;
-pub mod document_semantic;
 mod context;
+pub mod core_identity;
+pub mod config_document;
 pub mod correspondence;
 pub mod device;
+pub mod document_semantic;
 pub mod grid_library_member;
 pub mod grid_mv_catalogue;
 pub mod link_approval;
 mod local_go;
 mod metadata;
+pub mod pm_graph_source;
 pub use metadata::{
     observed_style_catalog, observed_transformer_status_for_project,
     read_transformer_status_for_project,
@@ -40,18 +40,16 @@ mod saved_a4;
 mod saved_preview_read;
 mod state;
 #[cfg(windows)]
-mod state_windows;
-#[cfg(windows)]
-#[doc(hidden)]
-pub mod windows_host;
+pub(crate) use ds_native_host::state_windows;
 pub mod sync;
 #[cfg(test)]
 mod test_support;
 mod transport;
+#[cfg(windows)]
+#[doc(hidden)]
+pub mod windows_host;
 
-pub use saved_a4::{
-    SavedA4Capture, saved_a4_for_project, saved_owned_a4_for_project,
-};
+pub use saved_a4::{SavedA4Capture, saved_a4_for_project, saved_owned_a4_for_project};
 pub use saved_preview_read::{
     PublicationOutputSelection, publication_output_for_project, retained_a4_for_project,
 };
@@ -386,19 +384,33 @@ pub fn headless_principal_read_only(lane_value: &str) -> Result<HeadlessPrincipa
 
 /// Pure direct-create plan authority from the existing protected principal.
 /// The published same-owner Desktop Firebase session executes IO separately.
-pub fn survey_direct_authority_read_only(lane_value: &str) -> Result<ds_command_kernel::survey_entry_create::direct::Authority, Failure> {
+pub fn survey_direct_authority_read_only(
+    lane_value: &str,
+) -> Result<ds_command_kernel::survey_entry_create::direct::Authority, Failure> {
     let principal = headless_principal_read_only(lane_value)?;
     let lane = Lane::parse(lane_value)?;
     let profile = profile::load(lane)?;
     let attribution = if let Some(firebase) = NativeRefreshStore::probe_read_only(&profile)? {
-        (firebase.uid().to_owned(),firebase.email().to_owned())
+        (firebase.uid().to_owned(), firebase.email().to_owned())
     } else if let Some(device) = device::probe_context_read_only(lane)? {
-        (device.uid().to_owned(),device.email().to_owned())
-    } else { return Err(Failure::unavailable("headless_signed_out","The protected Survey principal is unavailable")); };
-    if attribution.0 != principal.account_uid() { return Err(Failure::conflict("auth_context_mismatch", "Survey create provider changed")); }
+        (device.uid().to_owned(), device.email().to_owned())
+    } else {
+        return Err(Failure::unavailable(
+            "headless_signed_out",
+            "The protected Survey principal is unavailable",
+        ));
+    };
+    if attribution.0 != principal.account_uid() {
+        return Err(Failure::conflict(
+            "auth_context_mismatch",
+            "Survey create provider changed",
+        ));
+    }
     Ok(ds_command_kernel::survey_entry_create::direct::Authority {
-        firebase_project: profile.firebase_project_id().into(), uid: attribution.0,
-        email: attribution.1, lane: profile.lane().token().into(),
+        firebase_project: profile.firebase_project_id().into(),
+        uid: attribution.0,
+        email: attribution.1,
+        lane: profile.lane().token().into(),
     })
 }
 
@@ -3532,8 +3544,13 @@ pub fn project_assets_for_project(
     })?;
     if let Some(fence) = &write_fence {
         match asset_index_source::after_write(lane_value, project, command, &captured, fence) {
-            Ok(invalidated) => captured.result["retained_invalidation"] = json!({"status":"verified", "invalidated":invalidated, "acquired":false}),
-            Err(error) => captured.result["retained_invalidation"] = json!({"status":"failed", "code":error.code(), "message":"the source write committed, but native catalogue invalidation was not verified; refresh before reusing retained data"}),
+            Ok(invalidated) => {
+                captured.result["retained_invalidation"] =
+                    json!({"status":"verified", "invalidated":invalidated, "acquired":false})
+            }
+            Err(error) => {
+                captured.result["retained_invalidation"] = json!({"status":"failed", "code":error.code(), "message":"the source write committed, but native catalogue invalidation was not verified; refresh before reusing retained data"})
+            }
         }
     }
     Ok(captured)
@@ -5090,7 +5107,9 @@ fn map_client(error: ClientError) -> Failure {
         return map_project_report_service_code(code, error.service_refusal());
     }
     let message = error.to_string();
-    if message.starts_with("repair_") && message.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') {
+    if message.starts_with("repair_")
+        && message.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+    {
         return match message.as_str() {
         "repair_bound_exceeded" |
         "repair_change_ambiguous" |
@@ -5161,6 +5180,11 @@ fn map_client(error: ClientError) -> Failure {
         Some(refusal) => map_service_refusal(error.kind(), refusal, &message),
         None => map_client_kind(error.kind(), message.clone()),
     };
+    // Only this local decoder's static field/type diagnostics cross here.
+    // A backend ServiceRefusal must never impersonate an owner diagnostic.
+    if project_forms_diagnostic(error.kind(), refusal.is_some(), &message) {
+        return failure.detail(json!({"owner_message": message}));
+    }
     // "did not match its closed contract" is nothing a caller can act on;
     // which contract the answer broke (a pin, a header, a bound, a field) is.
     // ClientError messages are static owner text, never response bytes.
@@ -5239,8 +5263,8 @@ fn map_service_refusal(
     // a corrected flag — which is why `ds pm` documents them by name rather
     // than as one `auth_rejected`.
     if owner_message.starts_with("transformer repair") {
-        let code=refusal.code().unwrap_or("repair_response_failed");
-        let detail=json!({"http_status":refusal.status(),"service_code":code});
+        let code = refusal.code().unwrap_or("repair_response_failed");
+        let detail = json!({"http_status":refusal.status(),"service_code":code});
         use ds_cli_contract::outcome::ExitClass;
         let class = match refusal.status() {
             409 | 423 => ExitClass::Conflict,
@@ -5249,31 +5273,31 @@ fn map_service_refusal(
             _ => ExitClass::Failed,
         };
         let failure = match code {
-            "insufficient_permissions" |
-            "project_archived" |
-            "project_expired" |
-            "repair_operation_id_invalid" |
-            "repair_readback_unverified" |
-            "repair_receipt_mismatch" |
-            "repair_response_failed" |
-            "repair_response_invalid" |
-            "repair_response_too_large" |
-            "repair_server_fence_required" |
-            "reserved_transformer_name" |
-            "transformer_deleted" |
-            "transformer_document_too_large" |
-            "transformer_locked" |
-            "transformer_repair_conflict" |
-            "transformer_repair_identity_invalid" |
-            "transformer_repair_invalid" |
-            "transformer_repair_operation_conflict" |
-            "transformer_repair_preimage_moved" |
-            "transformer_repair_source_invalid" |
-            "transformer_repair_source_moved" |
-            "transformer_retired" |
-            "transformer_source_changed" |
-            "transformer_version_conflict" |
-            "transformer_version_mismatch" => Failure::new(class, code, message),
+            "insufficient_permissions"
+            | "project_archived"
+            | "project_expired"
+            | "repair_operation_id_invalid"
+            | "repair_readback_unverified"
+            | "repair_receipt_mismatch"
+            | "repair_response_failed"
+            | "repair_response_invalid"
+            | "repair_response_too_large"
+            | "repair_server_fence_required"
+            | "reserved_transformer_name"
+            | "transformer_deleted"
+            | "transformer_document_too_large"
+            | "transformer_locked"
+            | "transformer_repair_conflict"
+            | "transformer_repair_identity_invalid"
+            | "transformer_repair_invalid"
+            | "transformer_repair_operation_conflict"
+            | "transformer_repair_preimage_moved"
+            | "transformer_repair_source_invalid"
+            | "transformer_repair_source_moved"
+            | "transformer_retired"
+            | "transformer_source_changed"
+            | "transformer_version_conflict"
+            | "transformer_version_mismatch" => Failure::new(class, code, message),
             _ => Failure::failed("repair_response_failed", message),
         };
         return failure.detail(detail).remedy("Inspect the named source/head, project permission or technical lock. Retry only the identical operation when its outcome is unknown.");
@@ -5633,6 +5657,12 @@ pub fn map_project_management_refusal(
 /// obvious one: the credential was verified for this very call, so
 /// re-authenticating changes nothing. Taking the message as the input keeps
 /// this testable — `ClientError` is `pub(crate)` to construct.
+fn project_forms_diagnostic(kind: ErrorKind, has_service_refusal: bool, message: &str) -> bool {
+    kind == ErrorKind::UnreadableResponse
+        && !has_service_refusal
+        && message.starts_with("the project-forms activation contract refused ")
+}
+
 /// The data/config routes whose static diagnostics travel with their status
 /// and the service's own sentence.
 fn route_diagnostic_prefixed(message: &str) -> bool {
@@ -6807,10 +6837,22 @@ pub fn transformer_analysis_for_project(
 
 /// Save one batch to the project the batch itself names (a sealed source
 /// receipt's project); the saved selection is never read.
-pub fn repair_transformer(lane:&str,input:&ds_client_core::TransformerRepairPublication)->Result<HeadlessProjectReport<Value>,Failure>{
- let receipt=headless_named_report(lane,input.project(),|device,project|device.repair_transformer(project,input),|client,project|client.repair_transformer(project,input,now()))?;
- metadata::invalidate(receipt.identity(),input.project(),ds_project_data::metadata::Kind::TransformerStatus)?;
- Ok(receipt)
+pub fn repair_transformer(
+    lane: &str,
+    input: &ds_client_core::TransformerRepairPublication,
+) -> Result<HeadlessProjectReport<Value>, Failure> {
+    let receipt = headless_named_report(
+        lane,
+        input.project(),
+        |device, project| device.repair_transformer(project, input),
+        |client, project| client.repair_transformer(project, input, now()),
+    )?;
+    metadata::invalidate(
+        receipt.identity(),
+        input.project(),
+        ds_project_data::metadata::Kind::TransformerStatus,
+    )?;
+    Ok(receipt)
 }
 
 pub fn save_transformers(
@@ -7414,7 +7456,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn model_reference_capture_rechecks_current_protected_binding_before_return() {
         let fence = LayerScopeFence {
@@ -7897,6 +7938,31 @@ mod tests {
 
     /// The shared kind mapping has no lane in hand; its next step at least
     /// says that one has to be named.
+    #[test]
+    fn project_forms_decoder_diagnostic_cannot_be_impersonated_by_service_text() {
+        let message = "the project-forms activation contract refused user.roles: expected array";
+        assert!(project_forms_diagnostic(
+            ErrorKind::UnreadableResponse,
+            false,
+            message
+        ));
+        assert!(!project_forms_diagnostic(
+            ErrorKind::UnreadableResponse,
+            true,
+            message
+        ));
+        assert!(!project_forms_diagnostic(
+            ErrorKind::Transient,
+            false,
+            message
+        ));
+        assert!(!project_forms_diagnostic(
+            ErrorKind::UnreadableResponse,
+            false,
+            "private backend text"
+        ));
+    }
+
     #[test]
     fn signed_out_kind_tells_the_caller_to_name_a_lane() {
         let failure = map_client_kind(ErrorKind::SignedOut, "session gone".to_owned());
@@ -8796,7 +8862,9 @@ mod tests {
         ));
         assert_eq!(failure.code(), "auth_response_unreadable");
         assert!(
-            failure.message().ends_with(": analysis response exceeds 32 MiB"),
+            failure
+                .message()
+                .ends_with(": analysis response exceeds 32 MiB"),
             "{failure:?}"
         );
         assert_eq!(
@@ -9179,7 +9247,7 @@ mod feedback_error_tests {
     fn feedback_auth_refresh_failures_keep_auth_codes_and_never_call_feedback() {
         for (status, body, expected) in [
             (500, br#"{"error":{"message":"PRIVATE"}}"#.as_slice(), "auth_transient"),
-            (400, include_bytes!("../../../../ds-command-kernel/crates/ds-client-core/tests/fixtures/firebase-revoked.json").as_slice(), "auth_revoked"),
+            (400, include_bytes!("../../../kernel/ds-client-core/tests/fixtures/firebase-revoked.json").as_slice(), "auth_revoked"),
         ] {
             let transport = FixtureTransport::with_sign_in(SIGN_IN);
             let mut client = signed_in(transport.clone()).with_weak_network(WeakNetwork::new(&[]));

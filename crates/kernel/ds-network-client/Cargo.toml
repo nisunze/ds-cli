@@ -4,11 +4,10 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.90"
 publish = false
-[workspace]
 [dependencies]
-ds-network-contracts = { path = "../../../ds-network/crates/ds-network-contracts", default-features = false }
-ds-cli-exec = { path = "../../../ds-cli/crates/ds-cli-exec" }
-ds-cli-contract = { path = "../../../ds-cli/crates/ds-cli-contract" }
+ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
+ds-cli-exec = { path = "../ds-cli-exec" }
+ds-core-contracts = { workspace = true }
 serde_json = { version = "1", features = ["raw_value"] }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"

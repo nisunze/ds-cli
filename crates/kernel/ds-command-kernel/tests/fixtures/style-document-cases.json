@@ -1,7 +1,7 @@
 {
   "schema": "ds.style-document-cases/v1",
   "purpose": "What ds-command-kernel::style_document answers for the style family's wire: the publish payload, the request body per action, and every admission rule. The kernel replays this file in tests/style_document_cases.rs and ds-web replays the identical copy through the vendored WASM, so no rule can be true on one host only.",
-  "source": "ds-command-kernel/docs/contracts/ds-style-document.md; the rules moved out of ds-web src/lib/api/styles.ts (buildStyleSavePayload), src/lib/layers/user-data-style.ts (mapGeometryToSeed), src/lib/components/styles/StyleCenterDialog.svelte (extractIssueMessages, extractWarningMessages) and ds-client-core::authorized::style_edit.",
+  "source": "ds-cli/crates/kernel/ds-command-kernel/docs/contracts/ds-style-document.md; the rules moved out of ds-web src/lib/api/styles.ts (buildStyleSavePayload), src/lib/layers/user-data-style.ts (mapGeometryToSeed), src/lib/components/styles/StyleCenterDialog.svelte (extractIssueMessages, extractWarningMessages) and ds-client-core::authorized::style_edit.",
   "note": "Each case is the op WITHOUT the schema wrapper; `schema` overrides the default ds.style-document/v1. `expected` is the parsed answer, or {\"error\": \"<the exact Err string>\"} when the request itself is malformed.",
   "cases": [
     {

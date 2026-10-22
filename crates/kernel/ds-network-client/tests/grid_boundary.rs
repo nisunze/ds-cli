@@ -140,14 +140,13 @@ fn isolated_grid_real_owner() {
         .unwrap();
     assert!(read.result.container.verified);
     assert_eq!(read.result.package_sha256, sha(&model));
-    assert!(
-        read.result
-            .model
-            .as_ref()
-            .unwrap()
-            .authored_revision
-            .starts_with("rev:")
-    );
+    assert!(read
+        .result
+        .model
+        .as_ref()
+        .unwrap()
+        .authored_revision
+        .starts_with("rev:"));
     assert_eq!(read.receipt.artifact.sha256, sha(&read.bytes));
 
     let inspection = captured
@@ -192,13 +191,11 @@ fn isolated_grid_real_owner() {
         error.owner_detail.as_ref().unwrap()["unknown"],
         json!(["unowned"])
     );
-    assert!(
-        error
-            .owner_remedy
-            .as_ref()
-            .unwrap()
-            .contains("project_plan")
-    );
+    assert!(error
+        .owner_remedy
+        .as_ref()
+        .unwrap()
+        .contains("project_plan"));
     query.params = json!({});
     query.source.expected_revision = Some(format!("rev:{}", "0".repeat(64)));
     assert_eq!(

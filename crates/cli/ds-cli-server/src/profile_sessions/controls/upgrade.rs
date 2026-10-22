@@ -1,47 +1,32 @@
-//! Moving retained recovery off a Network without authored recovery. Such an
-//! engine keeps only an opaque checkpoint that grows with calculated results
+//! Restoring retained recovery through the selected compatible Network. An
+//! authored journal is replayed without changing any retained payload byte.
+//! A Network without authored recovery keeps only an opaque checkpoint that grows with calculated results
 //! and refuses at its 64 MiB bound, so a retained pin to it would refuse every
 //! later edit of a large model. When the current same-lane Network keeps
 //! authored recovery and reproduces the exact original and the exact retained
 //! head, Core re-pins the recovery to it: the original plus verified command
-//! rows. When it cannot, the stale draft refuses with a typed discard remedy.
+//! rows. A selected legacy engine may keep the opaque format. Failed admission
+//! leaves every retained draft and history available.
 use super::*;
 
-const AUTHORED_RECOVERY: [NetworkCapability; 4] = [
-    NetworkCapability::ProfileSessionV1,
-    NetworkCapability::ProfilePackageOpenV1,
-    NetworkCapability::ProfileEditControlsV1,
-    NetworkCapability::ProfileAuthoredCheckpointV1,
-];
-
-/// Whether a retained engine pin already keeps authored recovery.
-pub(in crate::profile_sessions) fn pinned_authored(
-    source: &ProfileSourceHeader,
-) -> Result<bool, Failure> {
-    let pin: ds_network_client::NetworkEnginePin =
-        serde_json::from_value(source.engine.clone()).map_err(invalid)?;
-    Ok(pin
-        .identity
-        .capabilities
-        .contains(&NetworkCapability::ProfileAuthoredCheckpointV1))
-}
-
-/// The current same-lane Network when it keeps authored recovery and the
-/// requested capability. Without one, the retained pin keeps its behavior.
-pub(super) fn current_authored_engine(
+/// Selection and actual operation capabilities govern a restored worker.
+/// Retained executable provenance is not a cross-build compatibility gate.
+pub(super) fn selected_engine(
     scope: &Scope,
     required: Option<&NetworkCapability>,
-) -> Option<CapturedNetworkClient> {
+) -> Result<CapturedNetworkClient, Failure> {
     let workers = std::thread::available_parallelism()
         .map_or(1, usize::from)
         .min(2);
-    let client = CapturedNetworkClient::capture_for_lane(&scope.lane, workers, &|| false).ok()?;
+    let client =
+        CapturedNetworkClient::capture_for_lane(&scope.lane, workers, &|| false).map_err(native)?;
     let capabilities = &client.identity().capabilities;
-    (AUTHORED_RECOVERY
-        .iter()
-        .all(|capability| capabilities.contains(capability))
-        && required.is_none_or(|capability| capabilities.contains(capability)))
-    .then_some(client)
+    require_read_capability(capabilities, NetworkCapability::ProfileSessionV1)?;
+    require_read_capability(capabilities, NetworkCapability::ProfilePackageOpenV1)?;
+    if let Some(required) = required {
+        require_read_capability(capabilities, required.clone())?;
+    }
+    Ok(client)
 }
 
 /// Equal retained originals apart from the engine pin.
@@ -156,6 +141,19 @@ pub(super) fn checkpoint(
     upgraded.engine = serde_json::to_value(session.pin()).map_err(invalid)?;
     let (journal, metadata) = journal_header(&document, &upgraded, &sizes)?;
     let entries: Vec<&[u8]> = document.entries.iter().map(|e| e.as_bytes()).collect();
+    let retained = RetainedJournal {
+        digests,
+        sizes,
+        chain: document.chain_sha256.clone(),
+    };
+    let held = held_from(
+        scope.clone(),
+        session,
+        upgraded.clone(),
+        history.clone(),
+        Some(retained),
+        authorized,
+    )?;
     authorized()?;
     Store::open(database)
         .map_err(source_error)?
@@ -169,19 +167,108 @@ pub(super) fn checkpoint(
         )
         .map_err(source_error)?;
     authorized()?;
-    let retained = RetainedJournal {
-        digests,
-        sizes,
-        chain: document.chain_sha256.clone(),
+    Ok(held)
+}
+
+/// An engine without authored-journal support still restores its supported
+/// opaque checkpoint. Original and snapshot admission precede provenance-only
+/// retention; no format conversion or executable-identity match is required.
+pub(super) fn opaque(
+    scope: Scope,
+    scratch: &Path,
+    database: &Path,
+    recovery: &ds_sync_store::ProfileRecovery,
+    client: &CapturedNetworkClient,
+    authorized: &dyn Fn() -> Result<(), Failure>,
+) -> Result<(Held, Vec<u8>), Failure> {
+    let Some(ProfileDraft::Checkpoint { header, bytes }) = &recovery.draft else {
+        return Err(invalid("An opaque v1 draft is required"));
     };
-    held_from(
-        scope,
+    drop(current_original(
+        client,
+        scratch,
+        recovery,
+        &header.history,
+        authorized,
+    )?);
+    let session = client
+        .open_profile_session_with_timeout(bytes, scratch, DEADLINE, &|| false)
+        .map_err(native)?;
+    let mut upgraded = recovery.source.clone();
+    upgraded.engine = serde_json::to_value(session.pin()).map_err(invalid)?;
+    let held = held_from(
+        scope.clone(),
         session,
-        upgraded,
-        history.clone(),
+        upgraded.clone(),
+        header.history.clone(),
+        None,
+        authorized,
+    )?;
+    if upgraded.engine != recovery.source.engine {
+        authorized()?;
+        Store::open(database)
+            .map_err(source_error)?
+            .upgrade_profile_recovery(
+                &source_scope(&scope),
+                &recovery.source,
+                &header.history,
+                &upgraded,
+                None,
+                now_ms(),
+            )
+            .map_err(source_error)?;
+        authorized()?;
+    }
+    Ok(held)
+}
+
+/// Replay the exact retained journal through the selected engine. The snapshot
+/// and every typed restore receipt are admitted before the atomic provenance
+/// update, which must retain all existing authored bytes.
+pub(super) fn journal(
+    scope: Scope,
+    scratch: &Path,
+    database: &Path,
+    recovery: &ds_sync_store::ProfileRecovery,
+    journal: &ds_sync_store::ProfileJournalDraft,
+    client: &CapturedNetworkClient,
+    authorized: &dyn Fn() -> Result<(), Failure>,
+) -> Result<(Held, Vec<u8>), Failure> {
+    let source = &recovery.source;
+    let (session, retained) = restore_journal(client, scratch, recovery, journal, authorized)?;
+    let mut upgraded = source.clone();
+    upgraded.engine = serde_json::to_value(session.pin()).map_err(invalid)?;
+    let held = held_from(
+        scope.clone(),
+        session,
+        upgraded.clone(),
+        journal.header.history.clone(),
         Some(retained),
         authorized,
-    )
+    )?;
+    if upgraded.engine != source.engine {
+        let mut header = journal.header.clone();
+        header.source = upgraded.clone();
+        let entries: Vec<&[u8]> = journal
+            .entries
+            .iter()
+            .map(|entry| entry.bytes.as_slice())
+            .collect();
+        authorized()?;
+        Store::open(database)
+            .map_err(source_error)?
+            .upgrade_profile_recovery(
+                &source_scope(&scope),
+                source,
+                &header.history,
+                &upgraded,
+                Some((&header, &journal.metadata, &entries)),
+                now_ms(),
+            )
+            .map_err(source_error)?;
+        authorized()?;
+    }
+    Ok(held)
 }
 
 /// Open the retained original through the current engine at its exact
@@ -223,9 +310,8 @@ fn current_original(
     Ok(session)
 }
 
-/// Re-pin an original-only recovery when the current engine reproduces it
-/// exactly. Nothing authored can be lost, so any difference or engine refusal
-/// keeps the retained pin instead.
+/// Restore an original with the selected engine. Only exact domain identity
+/// allows its provenance to change; an incompatible reply leaves SQLite alone.
 pub(in crate::profile_sessions) fn original(
     scope: Scope,
     scratch: &Path,
@@ -233,15 +319,13 @@ pub(in crate::profile_sessions) fn original(
     recovery: &ds_sync_store::ProfileRecovery,
     authorized: &dyn Fn() -> Result<(), Failure>,
     required: Option<NetworkCapability>,
-) -> Result<Option<(Held, Vec<u8>)>, Failure> {
+) -> Result<(Held, Vec<u8>), Failure> {
     let source = &recovery.source;
-    if recovery.draft.is_some() || pinned_authored(source)? {
-        return Ok(None);
+    if recovery.draft.is_some() {
+        return Err(invalid("An original without a draft is required"));
     }
-    let Some(client) = current_authored_engine(&scope, required.as_ref()) else {
-        return Ok(None);
-    };
-    let opened = open_original(
+    let client = selected_engine(&scope, required.as_ref())?;
+    let (value, snapshot) = open_original(
         scope.clone(),
         scratch,
         &recovery.source_bytes,
@@ -249,34 +333,29 @@ pub(in crate::profile_sessions) fn original(
         authorized,
         required,
         Some(client),
-    );
-    let (value, snapshot) = match opened {
-        Ok(opened) if same_original(&opened.0.source, source) => opened,
-        Ok(_) => return Ok(None),
-        Err(error)
-            if matches!(
-                error.code(),
-                "core_profile_native_refused" | "core_profile_request_invalid"
-            ) =>
-        {
-            return Ok(None);
-        }
-        Err(error) => return Err(error),
-    };
-    authorized()?;
-    Store::open(database)
-        .map_err(source_error)?
-        .upgrade_profile_recovery(
-            &source_scope(&scope),
-            source,
-            &source.initial_history,
-            &value.source,
-            None,
-            now_ms(),
-        )
-        .map_err(source_error)?;
-    authorized()?;
-    Ok(Some((value, snapshot)))
+    )?;
+    if !same_original(&value.source, source) {
+        return Err(Failure::conflict(
+            "core_profile_source_changed",
+            "Selected Network differs from the retained original model/history/revision/CRS",
+        ));
+    }
+    if value.source.engine != source.engine {
+        authorized()?;
+        Store::open(database)
+            .map_err(source_error)?
+            .upgrade_profile_recovery(
+                &source_scope(&scope),
+                source,
+                &source.initial_history,
+                &value.source,
+                None,
+                now_ms(),
+            )
+            .map_err(source_error)?;
+        authorized()?;
+    }
+    Ok((value, snapshot))
 }
 
 /// Explicitly drop the retained recovery of a session that is not live, at its

@@ -212,7 +212,7 @@ pub fn resolve(
     // Deviation and embedment dimensions share their native governed pens; visibility is independent.
     let expected = DisplayOption::ALL
         .into_iter()
-        .map(|option| pen_key(option))
+        .map(pen_key)
         .chain(std::iter::once("clearance_violations".to_owned()))
         .collect::<std::collections::BTreeSet<_>>();
     let source = document["metadata"]["profile_pens"].as_object();
@@ -250,7 +250,7 @@ pub fn resolve(
                     let mut encoding = encode_pen(pen, key)?;
                     crate::profile_style::apply(
                         state,
-                        &serde_json::to_value(option).unwrap().as_str().unwrap(),
+                        serde_json::to_value(option).unwrap().as_str().unwrap(),
                         &mut encoding,
                     );
                     encoding
@@ -339,7 +339,7 @@ mod tests {
     #[test]
     fn every_drawable_pen_exists_in_the_governed_document() {
         let seed: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/profile-display-style.json"
+            "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
         ))
         .unwrap();
         resolve(&DisplayState::default(), &seed).unwrap();
@@ -360,7 +360,7 @@ mod tests {
     #[test]
     fn each_cable_name_gets_its_own_pen_and_legend_entry() {
         let document: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/profile-display-style.json"
+            "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
         ))
         .unwrap();
         let rows = resolve(&DisplayState::default(), &document).unwrap();
@@ -418,7 +418,7 @@ mod tests {
     #[test]
     fn governed_pens_are_complete_distinct_and_scaled() {
         let document: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/profile-display-style.json"
+            "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
         ))
         .unwrap();
         let rows = resolve(&DisplayState::default(), &document).unwrap();
@@ -477,7 +477,7 @@ mod tests {
     #[test]
     fn review_neutral_and_partial_warning_are_native_governed_roles() {
         let mut document: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/profile-display-style.json"
+            "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
         ))
         .unwrap();
         document["metadata"]["profile_pens"]["embedded"]["color"] = "#778899".into();
@@ -495,7 +495,7 @@ mod tests {
     #[test]
     fn semantic_legend_and_canvas_symbols_follow_independent_style_center_pens() {
         let mut document: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../tests/fixtures/profile-display-style.json"
+            "../../ds-command-kernel/tests/fixtures/profile-display-style.json"
         ))
         .unwrap();
         for (pen, color) in [
