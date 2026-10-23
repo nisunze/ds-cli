@@ -1,0 +1,20 @@
+[package]
+name = "ds-upload-rules"
+description = "Neutral upload rules shared by the page Kernel and Network cleaning: single-cell value domains and upload grouping with provenance stamps."
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+bindings = ["dep:tsify", "dep:wasm-bindgen"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tsify = { version = "0.5.8", default-features = false, features = ["js"], optional = true }
+wasm-bindgen = { version = "0.2", optional = true }

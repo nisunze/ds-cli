@@ -1540,6 +1540,7 @@ name = "ds-cleaning"
 version = "0.1.0"
 dependencies = [
  "ds-geo-lite",
+ "ds-upload-rules",
  "polars",
  "polars-io",
  "serde",
@@ -2927,6 +2928,16 @@ dependencies = [
  "tempfile",
  "ureq",
  "uuid",
+]
+
+[[package]]
+name = "ds-upload-rules"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tsify",
+ "wasm-bindgen",
 ]
 
 [[package]]

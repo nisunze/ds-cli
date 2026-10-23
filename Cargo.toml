@@ -1,6 +1,6 @@
 # One source workspace, independently built and released units.
 # Kernel owns application state; CLI adapts commands; Interactions owns transient UI.
-# Shared contains neutral geometry only. scripts/check-workspace-boundaries.mjs
+# Shared contains neutral geometry and upload rules. scripts/check-workspace-boundaries.mjs
 # checks direct, optional and transitive dependencies across these groups.
 [workspace]
 resolver = "3"
@@ -71,6 +71,7 @@ members = [
     "crates/kernel/ds-tile-runtime",
     "crates/kernel/ds-update-runtime",
     "crates/shared/ds-geo-lite",
+    "crates/shared/ds-upload-rules",
 ]
 
 [workspace.package]
