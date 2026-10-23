@@ -51,7 +51,7 @@ pub const SUBJECT_ARG: Arg = Arg::value(
 );
 pub const BODY_ARG: Arg = Arg::value(
     "body",
-    "<text>",
+    "<message>",
     "The text of the record. Mutually exclusive with --body-file.",
 );
 pub const BODY_FILE_ARG: Arg = Arg::value(

@@ -151,7 +151,8 @@ a failing command and asserts none appears in the event.
 
 `ds` keeps a small local journal of its last 50 invocations (command id, flag
 names, result class, error code, latency, request id, time — the same privacy
-rules as §3.3) in the DS state directory. It is what makes filing cheap:
+rules as §3.3, except the redacted replay below) in the DS state directory. It is
+what makes filing cheap:
 
 ```text
 ds feedback draft --last [--n 3] --output json
@@ -162,6 +163,26 @@ invocation(s): title, component (the owning repository, from the command
 registry), kind, severity guess, evidence lines (command id, error code, ds
 release, request id) and context (`sre_event`, `host_kind`, `lane`). The agent
 adds only what it expected and the acceptance condition, then submits.
+
+**Replay.** A failed, crashed or refused entry also journals a `replay`
+(`feedback::Replay`): `version`, `source_sha` (or `unknown`), `dirty`,
+`channel`, `os`, `arch`, the command id and `argv`, every word after `ds` in
+order. The host projects `argv` from the command's descriptor: a value whose
+declared shape is sensitive (`ds_cli_contract::spec::SENSITIVE_VALUES`: email,
+phone, message text, secret; the descriptor shows `sensitive: true`) becomes
+`<redacted>` and is named in `redacted`; a value no declared input takes
+becomes `<unbound>`; the longest values become `<elided>` (named in `elided`)
+when the encoding would exceed 1000 characters. Path words, flags, choices,
+project ids, transformer names and paths stay. A crash adds `panic_location`
+(`file:line`, machine directories stripped) and never its message: the SRE
+event's `error_message` for a crash is `panicked at <file:line>` or absent.
+The replay is never in an SRE event; it leaves the machine only inside a
+feedback report: the automatic report of §5.3 (a repeat carries the newest
+occurrence's replay), a draft, or `feedback submit --replay-last`, which
+attaches the newest failure that is not itself `feedback.submit` or
+`feedback.draft`. On the wire it is the one reserved `context` entry `replay`
+(compact JSON), which the backlog already keeps per sighting;
+`ds feedback list --detail` returns it as the row's `replay` member.
 
 ## 5. Feedback without being asked
 

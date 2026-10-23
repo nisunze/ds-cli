@@ -100,6 +100,7 @@ fn invocation(action: &str, termination: Termination) -> Invocation {
         agent: Some("claude-code".into()),
         termination,
         argument_values: Vec::new(),
+        replay: None,
     }
 }
 
@@ -256,10 +257,9 @@ fn a_crash_is_one_crashed_failure() {
     assert_eq!(event["result_class"], "crashed");
     assert_eq!(event["outcome"], "failure");
     assert_eq!(event["error_class"], "internal");
-    assert!(!event["error_message"]
-        .as_str()
-        .unwrap()
-        .contains("src/lib.rs"));
+    // The panic message never leaves the machine, sanitized or not: without
+    // a computed location the event carries no message at all.
+    assert!(event.get("error_message").is_none(), "{event}");
 }
 
 /// §7.4: sentinel values in every argument of a failing command appear in no
@@ -933,4 +933,163 @@ fn a_coalesced_ending_is_drafted_under_the_event_that_holds_it() {
         drafts[0]["context"]["sre_event"],
         first.invocation_id.as_str()
     );
+}
+
+fn replay(command: &str, argv: &[&str]) -> ds_client_core::feedback::Replay {
+    ds_client_core::feedback::Replay {
+        version: "0.1.0".into(),
+        source_sha: "eaf7eb823141ebb39c24e6b91c444e6cfd73cec0".into(),
+        dirty: false,
+        channel: "canary".into(),
+        os: "linux".into(),
+        arch: "x86_64".into(),
+        command: command.into(),
+        argv: argv.iter().map(|word| word.to_string()).collect(),
+        redacted: vec!["email".into()],
+        elided: Vec::new(),
+        panic_location: None,
+    }
+}
+
+/// Contract §4 and §5.3: a failed, crashed or refused ending journals its
+/// replay; an answer journals none. The draft and the automatic report carry
+/// it with the panic location, and the SRE event never does: no argument
+/// value the replay keeps, and no panic message, is ever in an event.
+#[test]
+fn a_replay_is_journalled_for_a_failure_and_rides_only_on_feedback() {
+    let mut store = MemoryStore::default();
+    let mut offline = Sink::new(Gateway::Unreachable);
+    let argv = [
+        "pm",
+        "party",
+        "create",
+        "--project",
+        "rwanda_template",
+        "--email",
+        "<redacted>",
+        "--kind",
+        "person",
+        "--output",
+        "json",
+    ];
+    let mut answered = ok("pm.party.create");
+    answered.replay = Some(replay("pm.party.create", &argv));
+    finish_invocation(true, &mut store, &mut offline, &answered, T0).unwrap();
+    assert!(reporter::journal_entries(&mut store).unwrap()[0]
+        .replay
+        .is_none());
+
+    let mut crashed = crash("pm.party.create");
+    let mut crashed_replay = replay("pm.party.create", &argv);
+    crashed_replay.panic_location = Some("crates/cli/ds-cli-pm/src/party/create.rs:88".into());
+    crashed.replay = Some(crashed_replay.clone());
+    finish_invocation(true, &mut store, &mut offline, &crashed, T0 + 1_000).unwrap();
+    let entries = reporter::journal_entries(&mut store).unwrap();
+    assert_eq!(entries[0].replay.as_ref(), Some(&crashed_replay));
+    let draft = &reporter::draft(&entries, 1)[0];
+    assert_eq!(draft["replay"], serde_json::json!(crashed_replay));
+
+    let state: Value = serde_json::from_slice(store.document.as_ref().unwrap()).unwrap();
+    let automatic = &state["automatic"][0]["payload"];
+    assert_eq!(automatic["replay"], serde_json::json!(crashed_replay));
+    assert!(automatic["detail"]
+        .as_str()
+        .unwrap()
+        .contains("panic at crates/cli/ds-cli-pm/src/party/create.rs:88"));
+    let events = state["outbox"].to_string();
+    for kept in ["rwanda_template", "--kind", "person", "replay", "argv"] {
+        assert!(
+            !events.contains(kept),
+            "`{kept}` reached an SRE event: {events}"
+        );
+    }
+    assert_eq!(
+        state["outbox"][0]["event"]["error_message"],
+        "panicked at crates/cli/ds-cli-pm/src/party/create.rs:88",
+        "a crash event names where, never what the panic said"
+    );
+    assert!(!state.to_string().contains("SENTINEL-PANIC"), "{state}");
+
+    // A repeat raises the count and carries the newest occurrence's replay.
+    let mut again = crash("pm.party.create");
+    let mut newer = replay("pm.party.create", &argv);
+    newer.version = "0.1.1".into();
+    newer.panic_location = Some("crates/cli/ds-cli-pm/src/party/create.rs:91".into());
+    again.replay = Some(newer.clone());
+    finish_invocation(true, &mut store, &mut offline, &again, T0 + 2_000).unwrap();
+    let state: Value = serde_json::from_slice(store.document.as_ref().unwrap()).unwrap();
+    assert_eq!(state["automatic"][0]["occurrences"], 2);
+    assert_eq!(
+        state["automatic"][0]["payload"]["replay"],
+        serde_json::json!(newer)
+    );
+}
+
+/// A replay over its own bound is dropped, never journalled half-true; and
+/// the failure `--replay-last` attaches skips the filing commands' own
+/// refusals, so a submit retried with `--yes` attaches the real failure.
+#[test]
+fn an_invalid_replay_is_dropped_and_the_last_failure_skips_feedback_filing() {
+    let mut store = MemoryStore::default();
+    let mut offline = Sink::new(Gateway::Unreachable);
+    let mut listed = failure("feedback.list", "feedback_service_unavailable");
+    listed.replay = Some(replay(
+        "feedback.list",
+        &["feedback", "list", "--limit", "50"],
+    ));
+    finish_invocation(true, &mut store, &mut offline, &listed, T0).unwrap();
+    let mut oversized = failure("dsgrid.describe", "descriptor_unreadable");
+    let long = "x".repeat(ds_client_core::feedback::REPLAY_MAX_CHARS);
+    oversized.replay = Some(replay("dsgrid.describe", &["dsgrid", "describe", &long]));
+    finish_invocation(true, &mut store, &mut offline, &oversized, T0 + 1_000).unwrap();
+    let mut submit = invocation(
+        "feedback.submit",
+        Termination::Error {
+            class: "invalid_input".into(),
+            code: "confirmation_required".into(),
+            message: String::new(),
+            retryable: false,
+        },
+    );
+    submit.replay = Some(replay(
+        "feedback.submit",
+        &["feedback", "submit", "--replay-last"],
+    ));
+    finish_invocation(true, &mut store, &mut offline, &submit, T0 + 2_000).unwrap();
+
+    let entries = reporter::journal_entries(&mut store).unwrap();
+    assert_eq!(entries[0].action, "feedback.submit");
+    assert!(
+        entries[1].replay.is_none(),
+        "an over-long replay is dropped"
+    );
+    let last = reporter::last_failure(&entries).expect("a failure");
+    assert_eq!(last.action, "dsgrid.describe");
+    assert!(last.replay.is_none());
+    let without_oversized: Vec<_> = entries
+        .iter()
+        .filter(|entry| entry.action != "dsgrid.describe")
+        .cloned()
+        .collect();
+    assert_eq!(
+        reporter::last_failure(&without_oversized)
+            .and_then(|entry| entry.replay.as_ref())
+            .map(|replay| replay.command.as_str()),
+        Some("feedback.list")
+    );
+}
+
+#[test]
+fn a_journal_written_before_replays_still_reads() {
+    let mut store = MemoryStore {
+        document: Some(
+            br#"{"schema":"ds.sre-reporter/v1","journal":[{"at_ms":1,"action":"feedback.list","flags":[],"result_class":"crashed","error_code":"panic","latency_ms":3,"request_id":null,"invocation_id":"inv_1","release":"ds 0.1.0 (kernel eaf7eb8)","lane":"stable","host_kind":"headless","platform":"cli","agent":null}]}"#
+                .to_vec(),
+        ),
+        ..MemoryStore::default()
+    };
+    let entries = reporter::journal_entries(&mut store).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert!(entries[0].replay.is_none());
+    assert!(reporter::draft(&entries, 1)[0].get("replay").is_none());
 }

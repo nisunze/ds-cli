@@ -120,14 +120,18 @@ fn a_refusal_is_recorded_without_changing_the_answer() {
     );
 }
 
-/// §7.4: sentinel values in every argument appear nowhere in what is stored
-/// or would be sent.
+/// §7.4 and §4: sentinel values in every argument appear in no SRE event and
+/// in no automatic report. The one place a value is kept is the journalled
+/// replay of the refused invocation, which leaves the machine only in a
+/// feedback report; a value whose shape the descriptor marks sensitive is
+/// withheld even there (`a_crash_replay_withholds_sensitive_values_and_the_panic_message`).
 #[test]
 fn no_argument_value_reaches_the_outbox() {
     let on = state_root("privacy");
     let output = ds(&on, "on", &[], REFUSED);
     assert_eq!(output.status.code(), Some(2));
-    let (text, _) = stored(&on);
+    let (_, document) = stored(&on);
+    let leaving = format!("{}{}", document["outbox"], document["automatic"]);
     for sentinel in [
         "SENTINEL",
         "sentinel",
@@ -136,8 +140,70 @@ fn no_argument_value_reaches_the_outbox() {
         "/home/",
         "private",
     ] {
-        assert!(!text.contains(sentinel), "`{sentinel}` was stored: {text}");
+        assert!(
+            !leaving.contains(sentinel),
+            "`{sentinel}` would be sent: {leaving}"
+        );
     }
+    let replay = &document["journal"][0]["replay"];
+    assert_eq!(replay["command"], "feedback.submit");
+    assert_eq!(replay["argv"][3], "SENTINEL-TITLE-4711", "{replay}");
+}
+
+/// The crash path end to end: the replay names the panic's `file:line` and
+/// withholds a sensitive value; neither that value nor the panic message is in
+/// anything stored to be sent, while the project id and flags stay.
+#[test]
+fn a_crash_replay_withholds_sensitive_values_and_the_panic_message() {
+    let on = state_root("crash-replay");
+    let crash = ds(
+        &on,
+        "on",
+        &[("DS_CLI_TEST_PANIC", "pm.party.create")],
+        &[
+            "pm",
+            "party",
+            "create",
+            "--project",
+            "rwanda_template",
+            "--name",
+            "Kigali Water",
+            "--kind",
+            "person",
+            "--email",
+            "secret.person@example.org",
+            "--phone",
+            "SECRET-0788",
+            "--output",
+            "json",
+        ],
+    );
+    assert_eq!(crash.status.code(), Some(101));
+    let (text, document) = stored(&on);
+    for secret in [
+        "secret.person",
+        "SECRET-0788",
+        "asked pm.party.create to crash",
+    ] {
+        assert!(!text.contains(secret), "`{secret}` was stored: {text}");
+    }
+    let replay = &document["automatic"][0]["payload"]["replay"];
+    assert_eq!(replay["command"], "pm.party.create");
+    assert_eq!(replay["redacted"], serde_json::json!(["email", "phone"]));
+    assert!(
+        replay["argv"].to_string().contains("rwanda_template"),
+        "{replay}"
+    );
+    assert!(
+        replay["panic_location"]
+            .as_str()
+            .is_some_and(|at| at.starts_with("crates/cli/ds/src/reliability.rs:")),
+        "{replay}"
+    );
+    assert_eq!(
+        document["outbox"][0]["event"]["error_message"],
+        format!("panicked at {}", replay["panic_location"].as_str().unwrap())
+    );
 }
 
 /// A tool call's process records its event as `mcp` and leaves the send to the

@@ -434,7 +434,40 @@ pub fn channel_lane() -> &'static str {
     CHANNEL_LANE.get().copied().unwrap_or("stable")
 }
 
+/// The value shapes whose values are personal data or secrets: an email
+/// address, a phone number, the text of a message or note between people, a
+/// secret. A placeholder is the declared type of an input's value, so an input
+/// declared with one of these is `sensitive` in its descriptor, and a feedback
+/// replay withholds exactly those values while every other value, flag and
+/// choice travels (ds-command-kernel
+/// `docs/contracts/ds-cli-reliability-and-feedback.md` §4).
+pub const SENSITIVE_VALUES: &[&str] = &[
+    "<email>",
+    "<party-id | email>",
+    "<phone>",
+    "<message>",
+    "<secret>",
+];
+
 impl Arg {
+    /// Whether the value is personal data or a secret ([`SENSITIVE_VALUES`]).
+    pub fn is_sensitive(&self) -> bool {
+        SENSITIVE_VALUES.contains(&self.value)
+    }
+
+    /// The inclusive bound a `<min-max>` placeholder declares, e.g. `<1-50>`,
+    /// so a caller reads the bound (`minimum`, `maximum`) instead of meeting
+    /// it as a refusal.
+    pub fn range(&self) -> Option<(i64, i64)> {
+        let (min, max) = self
+            .value
+            .strip_prefix('<')?
+            .strip_suffix('>')?
+            .split_once('-')?;
+        let (min, max) = (min.parse().ok()?, max.parse().ok()?);
+        (min <= max).then_some((min, max))
+    }
+
     /// The value used when the flag is absent. The shared lane default follows
     /// the binary's own channel instead of always naming `stable`.
     pub fn effective_default(&self) -> Option<&'static str> {
@@ -454,14 +487,16 @@ impl Arg {
         }
         std::borrow::Cow::Owned(
             self.summary
-                .replace("stable is the default", &format!("{channel} is the default"))
+                .replace(
+                    "stable is the default",
+                    &format!("{channel} is the default"),
+                )
                 .replace("defaults to stable", &format!("defaults to {channel}"))
                 .replace("default stable", &format!("default {channel}")),
         )
     }
 
-    pub const fn summary(mut self
-, summary: &'static str) -> Self {
+    pub const fn summary(mut self, summary: &'static str) -> Self {
         self.summary = summary;
         self
     }

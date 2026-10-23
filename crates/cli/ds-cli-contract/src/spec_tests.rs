@@ -262,3 +262,41 @@ fn a_declared_dry_run_switch_is_the_one_confirmation_free_path_of_a_write() {
     let gated = crate::parse(&VALUE, &["--dry-run".to_string(), "x".to_string()]).unwrap();
     assert!(VALUE.confirmation_required_for(&gated));
 }
+
+/// A placeholder is the declared type of a value: the sensitive shapes mark
+/// their inputs sensitive, and a `<min-max>` placeholder declares its bound.
+#[test]
+fn a_value_shape_declares_sensitivity_and_a_bound() {
+    for shape in super::SENSITIVE_VALUES {
+        assert!(Arg::value("x", shape, "s").is_sensitive(), "{shape}");
+    }
+    for plain in ["<project-id>", "<name>", "<path>", "<token>", "<text>", ""] {
+        assert!(!Arg::value("x", plain, "s").is_sensitive(), "{plain}");
+    }
+    assert!(!Arg::switch("x", "s").is_sensitive());
+    assert_eq!(Arg::value("limit", "<1-50>", "s").range(), Some((1, 50)));
+    assert_eq!(
+        Arg::value("timeout", "<0-900>", "s").range(),
+        Some((0, 900))
+    );
+    for unbounded in ["<count>", "<50-1>", "<a-b>", "<1->", "1-50", "<1-50"] {
+        assert_eq!(Arg::value("x", unbounded, "s").range(), None, "{unbounded}");
+    }
+    static MARKED: &[Arg] = &[
+        Arg::value("limit", "<1-50>", "Rows."),
+        Arg::value("email", "<email>", "Who."),
+        Arg::value("project", "<project-id>", "Where."),
+    ];
+    let json = crate::help::command_json_unchecked(&Command {
+        args: MARKED,
+        ..confirmation_fixture(Effect::ReadOnly)
+    });
+    let inputs = json["inputs"].as_array().expect("inputs");
+    assert_eq!(
+        (inputs[0]["minimum"].as_i64(), inputs[0]["maximum"].as_i64()),
+        (Some(1), Some(50))
+    );
+    assert!(inputs[0].get("sensitive").is_none());
+    assert_eq!(inputs[1]["sensitive"], true);
+    assert!(inputs[2].get("sensitive").is_none() && inputs[2].get("minimum").is_none());
+}

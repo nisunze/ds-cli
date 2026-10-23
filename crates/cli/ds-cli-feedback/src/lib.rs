@@ -40,6 +40,7 @@ pub mod list;
 pub mod note;
 pub mod submit;
 
+use ds_cli_auth::reliability::{FileStore, reporter};
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{Domain, Refusal};
 
@@ -116,6 +117,33 @@ pub const NOT_PERMITTED: Refusal = Refusal {
     when: "the signed-in account may read the shared backlog but not triage it",
     remedy: "ask an account that holds the platform triage capability to close it",
 };
+pub const JOURNAL_UNAVAILABLE: Refusal = Refusal {
+    code: "journal_unavailable",
+    when: "the reporter state on this machine could not be read or is held by another ds process",
+    remedy: "re-run in a moment; ds keeps its journal under $XDG_STATE_HOME/ds (else ~/.local/state/ds)",
+};
+pub const NO_REPLAY: Refusal = Refusal {
+    code: "feedback_no_replay",
+    when: "--replay-last found no failed, crashed or refused ds invocation with a replay in this machine's journal",
+    remedy: "run the failing command again on this machine with reporting on, then submit; or drop --replay-last",
+};
+
+/// This machine's journal, newest first; empty with `DS_SRE_REPORTING=off`,
+/// which keeps nothing. It is read locally: no account, no network.
+pub fn journal() -> Result<(bool, Vec<reporter::JournalEntry>), Failure> {
+    let enabled =
+        reporter::reporting_enabled(std::env::var(reporter::REPORTING_SWITCH).ok().as_deref());
+    if !enabled {
+        return Ok((false, Vec::new()));
+    }
+    let unavailable = || {
+        Failure::unavailable(JOURNAL_UNAVAILABLE.code, "The ds journal could not be read")
+            .remedy(JOURNAL_UNAVAILABLE.remedy)
+    };
+    let mut store = FileStore::open().ok_or_else(unavailable)?;
+    let entries = reporter::journal_entries(&mut store).map_err(|_| unavailable())?;
+    Ok((true, entries))
+}
 
 // The three triage conditions arrive typed from the native owner
 // (`ds_cli_auth::feedback`), which maps `feedback_not_found`,
@@ -174,42 +202,5 @@ pub fn invoke_native(
 }
 
 #[cfg(test)]
-mod refusal_tests {
-    use super::*;
-
-    #[test]
-    fn every_feedback_endpoint_command_declares_service_and_existing_auth_refusals() {
-        for command in [
-            &list::COMMAND,
-            &submit::COMMAND,
-            &note::COMMAND,
-            &close::COMMAND,
-        ] {
-            let refusal = command
-                .refusals
-                .iter()
-                .find(|refusal| {
-                    refusal.code == ds_cli_auth::FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL.code
-                })
-                .expect("feedback service refusal is discoverable");
-            assert_eq!(
-                refusal.remedy,
-                ds_cli_auth::FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL.remedy
-            );
-            for existing in ds_cli_auth::PROJECT_STATUS_COMMAND.refusals {
-                assert!(
-                    command
-                        .refusals
-                        .iter()
-                        .any(|refusal| refusal.code == existing.code)
-                );
-            }
-        }
-        assert!(
-            !draft::COMMAND.refusals.iter().any(|refusal| {
-                refusal.code == ds_cli_auth::FEEDBACK_SERVICE_UNAVAILABLE_REFUSAL.code
-            }),
-            "local drafts never call the feedback endpoint"
-        );
-    }
-}
+#[path = "lib_tests.rs"]
+mod tests;

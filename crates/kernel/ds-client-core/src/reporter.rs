@@ -237,6 +237,11 @@ pub struct Invocation {
     pub termination: Termination,
     /// Every value the caller supplied. Never sent.
     pub argument_values: Vec<String>,
+    /// The invocation as a replay, already redacted by the host from the
+    /// command's descriptor (contract §4). Never in an SRE event: it is
+    /// journalled for a failed, crashed or refused ending and leaves the
+    /// machine only inside a feedback report.
+    pub replay: Option<crate::feedback::Replay>,
 }
 
 impl Invocation {
@@ -287,7 +292,10 @@ pub fn command_event(invocation: &Invocation) -> Option<Value> {
             message,
             retryable,
         } => (class.as_str(), code.as_str(), *retryable, message.as_str()),
-        Termination::Crashed { message } => ("internal", "panic", false, message.as_str()),
+        // A panic's message is whatever its author formatted into it, values
+        // included, so it never leaves the machine: the event says where it
+        // panicked instead, a location `ds` computed itself.
+        Termination::Crashed { .. } => ("internal", "panic", false, ""),
     };
     let mut event = host_fields(invocation, SOURCE_COMMAND);
     event.insert("action".into(), json!(action_id(&invocation.action)));
@@ -336,12 +344,24 @@ pub fn command_event(invocation: &Invocation) -> Option<Value> {
             event.insert("agent".into(), json!(agent));
         }
     }
-    let message = sanitize_message(message, &invocation.argument_values);
+    let message = match (&invocation.termination, panic_location(invocation)) {
+        (Termination::Crashed { .. }, Some(location)) => format!("panicked at {location}"),
+        _ => sanitize_message(message, &invocation.argument_values),
+    };
     if !message.is_empty() {
         event.insert("error_message".into(), json!(message));
     }
     event.insert("occurrences".into(), json!(1));
     Some(Value::Object(event))
+}
+
+/// Where a crash panicked, as the host's replay recorded it.
+fn panic_location(invocation: &Invocation) -> Option<&str> {
+    invocation
+        .replay
+        .as_ref()
+        .filter(|replay| replay.is_valid())
+        .and_then(|replay| replay.panic_location.as_deref())
 }
 
 fn host_fields(invocation: &Invocation, source: &str) -> Map<String, Value> {
@@ -1124,8 +1144,9 @@ pub const JOURNAL_ENTRIES: usize = 50;
 /// A draft covers at most this many invocations.
 pub const MAX_DRAFTS: usize = 10;
 
-/// One journalled invocation, under the same privacy rules as an event:
-/// flag names, codes and ids, never a value or a message.
+/// One journalled invocation: flag names, codes and ids, never a message; and,
+/// for a failed, crashed or refused ending, its redacted [`Replay`]
+/// (`crate::feedback::Replay`), the one place argument values are kept.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JournalEntry {
     pub at_ms: u64,
@@ -1142,6 +1163,9 @@ pub struct JournalEntry {
     pub host_kind: String,
     pub platform: String,
     pub agent: Option<String>,
+    /// Absent for an answer, and in a journal written before replays.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay: Option<crate::feedback::Replay>,
 }
 
 fn journal(state: &mut State, invocation: &Invocation, now_ms: u64) {
@@ -1168,6 +1192,12 @@ fn journal(state: &mut State, invocation: &Invocation, now_ms: u64) {
             .as_deref()
             .map(agent_text)
             .filter(|agent| !agent.is_empty()),
+        // An answer needs no replay; a replay that misses its own bound is
+        // dropped rather than journalled half-true.
+        replay: invocation
+            .replay
+            .clone()
+            .filter(|replay| invocation.result_class() != ResultClass::Ok && replay.is_valid()),
     });
     let excess = state.journal.len().saturating_sub(JOURNAL_ENTRIES);
     state.journal.drain(..excess);
@@ -1187,8 +1217,9 @@ pub fn journal_entries(
 
 /// Ready `feedback.submit` payloads for the newest `n` failed, crashed or
 /// refused invocations, newest first. Each carries the title, component, kind,
-/// severity guess, evidence and context; its `detail` names the two things
-/// only the caller can add: what it expected and what would show it works.
+/// severity guess, evidence, context and, when journalled, the `replay`; its
+/// `detail` names the two things only the caller can add: what it expected
+/// and what would show it works.
 pub fn draft(entries: &[JournalEntry], n: usize) -> Vec<Value> {
     entries
         .iter()
@@ -1196,6 +1227,26 @@ pub fn draft(entries: &[JournalEntry], n: usize) -> Vec<Value> {
         .take(n.clamp(1, MAX_DRAFTS))
         .map(draft_one)
         .collect()
+}
+
+/// The replay vocabulary a host builds the journalled replay with.
+pub use crate::feedback::{
+    Replay, ELIDED, REDACTED, REPLAY_CONTEXT_KEY, REPLAY_MAX_CHARS, UNBOUND,
+};
+
+/// The commands that file feedback. Their own refusals are never the failure
+/// a report is about: a submit refused for want of `--yes` must not replace
+/// the failure its retry attaches.
+pub const REPORTING_COMMANDS: &[&str] = &["feedback.submit", "feedback.draft"];
+
+/// The failure `feedback.submit --replay-last` attaches: the newest failed,
+/// crashed or refused invocation (newest-first `entries`) that is not itself
+/// a feedback filing.
+pub fn last_failure(entries: &[JournalEntry]) -> Option<&JournalEntry> {
+    entries.iter().find(|entry| {
+        entry.result_class != ResultClass::Ok.token()
+            && !REPORTING_COMMANDS.contains(&entry.action.as_str())
+    })
 }
 
 fn draft_one(entry: &JournalEntry) -> Value {
@@ -1246,6 +1297,9 @@ fn draft_one(entry: &JournalEntry) -> Value {
         payload["agent"] = json!(agent);
     } else if let Some(needs) = payload["needs"].as_array_mut() {
         needs.push(json!("agent: the reporting agent's name"));
+    }
+    if let Some(replay) = &entry.replay {
+        payload["replay"] = json!(replay);
     }
     payload
 }
@@ -1320,6 +1374,11 @@ fn queue_automatic(state: &mut State, invocation: &Invocation, now_ms: u64) -> A
         .find(|pending| pending.key == key)
     {
         pending.occurrences += 1;
+        // The newest occurrence is the one a replay should try first: the
+        // build that still crashes, and the exact argument list it crashed on.
+        if let (Some(replay), Some(payload)) = (&entry.replay, pending.payload.as_object_mut()) {
+            payload.insert("replay".into(), json!(replay));
+        }
         return AutomaticReporting::Raised {
             occurrences: pending.occurrences,
         };
@@ -1341,11 +1400,22 @@ fn queue_automatic(state: &mut State, invocation: &Invocation, now_ms: u64) -> A
 fn automatic_payload(entry: &JournalEntry) -> Value {
     let mut payload = draft_one(entry);
     payload["agent"] = json!(AUTOMATIC_AGENT);
+    let at = entry
+        .replay
+        .as_ref()
+        .and_then(|replay| replay.panic_location.as_deref())
+        .map(|location| format!(" at {location}"))
+        .unwrap_or_default();
+    let replay = if entry.replay.is_some() {
+        " Its replay holds the exact build, platform and argument list to run again."
+    } else {
+        ""
+    };
     payload["detail"] = json!(format!(
         "Expected: ds {action} answers or refuses with a declared code. Observed: it \
-         ended {class} with {code} (the message never leaves the machine). \
-         Acceptance: the same invocation no longer ends this way. Filed automatically \
-         by ds.",
+         ended {class} with {code}{at} (the message never leaves the machine). \
+         Acceptance: the same invocation no longer ends this way.{replay} Filed \
+         automatically by ds.",
         action = entry.action,
         class = entry.result_class,
         code = entry.error_code.as_deref().unwrap_or("no_code"),

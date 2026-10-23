@@ -444,7 +444,7 @@ pub use project_delete::{
 
 const LANE: ds_cli_contract::spec::Arg =
     ds_cli_contract::spec::LANE.summary("Deployment lane; stable is the default.");
-const EMAIL: Arg = Arg::value("email", "<address>", "Firebase account email.").required();
+const EMAIL: Arg = Arg::value("email", "<email>", "Firebase account email.").required();
 const PASSWORD_STDIN: Arg = Arg::switch(
     "password-stdin",
     "Read one bounded password line from stdin instead of a hidden TTY prompt.",

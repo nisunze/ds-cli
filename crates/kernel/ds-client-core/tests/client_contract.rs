@@ -10180,6 +10180,7 @@ fn retired_feedback_owners_refuse_before_refresh_or_transport() {
             client: None,
             evidence: Vec::new(),
             context: Default::default(),
+            replay: None,
         };
         let error = client.feedback(&request, NOW + 4_000).unwrap_err();
         assert_eq!(
@@ -10759,6 +10760,7 @@ fn headless_feedback_submit_uses_authenticated_agent_contract_without_project() 
         client: Some("CLI".into()),
         evidence: vec!["No Desktop is paired".into()],
         context: Default::default(),
+        replay: None,
     };
     let result = client.feedback(&request, NOW + 1).unwrap();
     assert_eq!(result["report"]["id"], "f1");
@@ -10771,6 +10773,107 @@ fn headless_feedback_submit_uses_authenticated_agent_contract_without_project() 
     assert_eq!(call["report"]["evidence"][0], "No Desktop is paired");
     assert!(call.get("ds_project").is_none());
     assert!(call["report"].get("reporter_email").is_none());
+}
+
+/// A replay rides on the submit as one `context` entry the deployed backlog
+/// already stores per sighting, and `--detail` reads it back as a typed
+/// `replay` member; a bounded row and a report without one carry none.
+#[test]
+fn a_feedback_replay_is_submitted_as_context_and_read_back_on_a_full_row() {
+    use ds_client_core::feedback::{Command, Replay, REPLAY_CONTEXT_KEY};
+    let replay = Replay {
+        version: "0.1.0".into(),
+        source_sha: "eaf7eb823141ebb39c24e6b91c444e6cfd73cec0".into(),
+        dirty: false,
+        channel: "stable".into(),
+        os: "linux".into(),
+        arch: "x86_64".into(),
+        command: "feedback.list".into(),
+        argv: ["feedback", "list", "--view", "all", "--output", "json"]
+            .map(String::from)
+            .to_vec(),
+        redacted: Vec::new(),
+        elided: Vec::new(),
+        panic_location: Some("crates/cli/ds-cli-feedback/src/list.rs:120".into()),
+    };
+    let transport = FixtureTransport::with_sign_in(SIGN_IN);
+    let mut client = signed_in(transport.clone(), MemoryStore::default());
+    let mut stored = feedback_row("open", 1);
+    stored["context"] = serde_json::json!({"sre_event": "inv_1", "replay": replay.encode()});
+    {
+        let mut state = transport.0.lock().unwrap();
+        state.feedback.push_back(project_response(
+            serde_json::json!({"report": stored.clone(), "deduplicated": false}),
+        ));
+        for _ in 0..2 {
+            state
+                .feedback
+                .push_back(project_response(serde_json::json!({
+                    "reports":[stored.clone(), feedback_row("open", 2)],
+                    "count":2,"matched":2,"complete":true,"changed":true,
+                    "cursor":"fb1.abc.def","cursor_source":"reader"
+                })));
+        }
+    }
+    let submitted = client
+        .feedback(
+            &Command::Submit {
+                title: "ds feedback.list crashed: panic".into(),
+                detail: "Filed automatically by ds.".into(),
+                component: "ds-cli/feedback".into(),
+                kind: "bug".into(),
+                severity: "major".into(),
+                agent: "ds (automatic)".into(),
+                model: None,
+                client: None,
+                evidence: Vec::new(),
+                context: [("sre_event".to_string(), "inv_1".to_string())].into(),
+                replay: Some(replay.clone()),
+            },
+            NOW + 1,
+        )
+        .unwrap();
+    assert_eq!(submitted["report"]["replay"], serde_json::json!(replay));
+    let list = |detail: bool, client: &mut Client<FixtureTransport, MemoryStore>| {
+        client
+            .feedback(
+                &Command::List {
+                    view: "all".into(),
+                    component: None,
+                    query: None,
+                    limit: 50,
+                    detail,
+                    cursor: None,
+                    all: true,
+                },
+                NOW + 2,
+            )
+            .unwrap()
+    };
+    let full = list(true, &mut client);
+    assert_eq!(full["reports"][0]["replay"], serde_json::json!(replay));
+    assert!(full["reports"][0].get("context").is_none());
+    assert!(
+        full["reports"][1].get("replay").is_none(),
+        "a report filed without a replay has none"
+    );
+    let bounded = list(false, &mut client);
+    assert!(bounded["reports"][0].get("replay").is_none());
+
+    let state = transport.0.lock().unwrap();
+    let context = &state.feedback_bodies[0]["report"]["context"];
+    assert_eq!(context["sre_event"], "inv_1");
+    let carried: Replay = serde_json::from_str(
+        context[REPLAY_CONTEXT_KEY]
+            .as_str()
+            .expect("one string entry"),
+    )
+    .unwrap();
+    assert_eq!(carried, replay);
+    assert!(
+        state.feedback_bodies[0]["report"].get("replay").is_none(),
+        "the backlog's closed submit body gains no member"
+    );
 }
 
 #[test]

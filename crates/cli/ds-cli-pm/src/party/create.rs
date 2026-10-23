@@ -32,17 +32,17 @@ pub const ORGANISATION_ARG: Arg = Arg::value(
 );
 pub const EMAIL_ARG: Arg = Arg::repeated(
     "email",
-    "<address>",
+    "<email>",
     "An address the party writes from. Repeat for several (at most 20).",
 );
 pub const PHONE_ARG: Arg = Arg::repeated(
     "phone",
-    "<number>",
+    "<phone>",
     "A phone number. Repeat for several (at most 20).",
 );
 pub const NOTES_ARG: Arg = Arg::value(
     "notes",
-    "<text>",
+    "<message>",
     "Anything worth knowing about the party (at most 2000 characters).",
 );
 const ID_ARG: Arg = Arg::value(

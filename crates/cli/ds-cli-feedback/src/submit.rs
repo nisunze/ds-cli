@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use ds_cli_auth::reliability::reporter;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -49,8 +50,9 @@ sessions, file as soon as it happens, unasked: friction, confusing help or \
 refusal text, wrong or surprising output, slow steps and workarounds, and ideas, \
 as well as failures and missing capabilities; repeats merge into occurrences. \
 Distinguish a clear-contract agent mistake from an unclear CLI/MCP contract, a \
-code defect, and a genuinely new capability. Coding sessions fix findings or use \
-their owning backlogs instead.",
+code defect, and a genuinely new capability. After a failure, --replay-last \
+attaches its exact invocation so the report can be replayed. Coding sessions \
+fix findings or use their owning backlogs instead.",
     chapter: Chapter::Operations,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
@@ -108,21 +110,26 @@ their owning backlogs instead.",
         Arg::repeated(
             "context",
             "<key=value>",
-            "Bounded triage context; repeat for up to 24 unique keys.",
+            "Bounded triage context; repeat for up to 24 unique keys (23 with --replay-last); `replay` is reserved.",
+        ),
+        Arg::switch(
+            "replay-last",
+            "Attach this machine's last failed, crashed or refused ds invocation as `replay`: exact build, platform and argument list, sensitive values withheld.",
         ),
         crate::LANE_ARG,
     ],
     output: "\
 The shared report, whether this sighting was merged into an existing open \
-report, and the report's current occurrence count.",
+report, and the report's current occurrence count; with --replay-last the \
+report carries the attached `replay`.",
     examples: &[Example {
         command: "ds feedback submit --title 'CLI cannot discover feeder export' --detail 'Expected a supported export command; live capability search and domain inspection found none. Acceptance: ds exposes and documents the export.' --component ds-cli --severity major --agent codex --evidence 'ds capabilities --search feeder-export matched 0' --yes --output json",
         note: "The report is written only after --yes and is deduplicated by the feedback service.",
         runnable: false,
     }],
     refusals: &crate::native_refusals::<
-        8,
-        { 8 + 1 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
+        10,
+        { 10 + 1 + ds_cli_auth::PROJECT_STATUS_COMMAND.refusals.len() },
     >([
         INVALID_TEXT,
         COMPONENT_UNKNOWN,
@@ -136,6 +143,8 @@ report, and the report's current occurrence count.",
             when: "--yes was not given for a report written to the shared backlog",
             remedy: "re-run with --yes once the observed evidence is ready to submit",
         },
+        crate::NO_REPLAY,
+        crate::JOURNAL_UNAVAILABLE,
     ]),
     reference: Some("docs/reference/feedback.md"),
     search: &["bug report", "problem report", "file bug"],
@@ -156,6 +165,21 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let client = optional_text(inputs.value("client"), "client", MAX_AGENT_PART_CHARS)?;
     let evidence = parse_evidence(inputs.repeated("evidence"))?;
     let context = parse_context(inputs.repeated("context"))?;
+    let replay = if inputs.switch("replay-last") {
+        if context.len() >= MAX_CONTEXT {
+            return Err(Failure::invalid(
+                INVALID_CONTEXT.code,
+                format!(
+                    "`--replay-last` takes one context entry; pass at most {} --context",
+                    MAX_CONTEXT - 1
+                ),
+            )
+            .remedy(INVALID_CONTEXT.remedy));
+        }
+        Some(last_replay()?)
+    } else {
+        None
+    };
 
     let mut arguments = Map::from_iter([
         ("title".to_string(), Value::String(title.to_string())),
@@ -182,8 +206,27 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(client) = client {
         arguments.insert("client".to_string(), Value::String(client.to_string()));
     }
+    if let Some(replay) = replay {
+        arguments.insert("replay".to_string(), json!(replay));
+    }
 
     crate::invoke_native(inputs, "submit", arguments)
+}
+
+/// The replay of this machine's last failure that is not itself a filing:
+/// `ds` built it from the command's descriptor, so it withholds exactly the
+/// values that descriptor marks sensitive.
+fn last_replay() -> Result<reporter::Replay, Failure> {
+    let (_, entries) = crate::journal()?;
+    reporter::last_failure(&entries)
+        .and_then(|entry| entry.replay.clone())
+        .ok_or_else(|| {
+            Failure::invalid(
+                crate::NO_REPLAY.code,
+                "No failed, crashed or refused ds invocation with a replay is journalled on this machine",
+            )
+            .remedy(crate::NO_REPLAY.remedy)
+        })
 }
 
 fn optional_text<'a>(
@@ -252,6 +295,13 @@ fn parse_context(values: &[String]) -> Result<BTreeMap<&str, &str>, Failure> {
             Failure::invalid("invalid_context", "context has an invalid key")
                 .remedy(INVALID_CONTEXT.remedy)
         })?;
+        if key == reporter::REPLAY_CONTEXT_KEY {
+            return Err(Failure::invalid(
+                "invalid_context",
+                "`--context replay=` is reserved: --replay-last attaches the replay ds journalled",
+            )
+            .remedy(INVALID_CONTEXT.remedy));
+        }
         let value = bounded_text(value, "context", MAX_CONTEXT_VALUE_CHARS).map_err(|_| {
             Failure::invalid("invalid_context", "context has an invalid value")
                 .remedy(INVALID_CONTEXT.remedy)
@@ -279,54 +329,5 @@ pub fn render(data: &Value) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn evidence_and_context_are_bounded() {
-        let evidence = vec!["capabilities matched 0".to_string()];
-        assert_eq!(
-            parse_evidence(&evidence).unwrap(),
-            ["capabilities matched 0"]
-        );
-        let context = vec!["operation=feeder.export".to_string()];
-        assert_eq!(
-            parse_context(&context).unwrap().get("operation"),
-            Some(&"feeder.export")
-        );
-        assert!(parse_context(&["operation=a".into(), "operation=b".into()]).is_err());
-    }
-
-    #[test]
-    fn the_report_carries_only_report_fields() {
-        // What the command sends is now one typed native command rather than a
-        // declared bridge argument list, so the fields are asserted where they
-        // are built: nothing about a host, a window or a descriptor may ride
-        // along with an operator's report.
-        for arg in COMMAND.args {
-            assert!(
-                !["target", "desktop-descriptor"].contains(&arg.name),
-                "`{}` still offers a host flag",
-                arg.name
-            );
-        }
-        let declared: Vec<&str> = COMMAND.args.iter().map(|arg| arg.name).collect();
-        for field in [
-            "title",
-            "detail",
-            "component",
-            "kind",
-            "severity",
-            "agent",
-            "model",
-            "client",
-            "evidence",
-            "context",
-        ] {
-            assert!(
-                declared.contains(&field),
-                "`--{field}` is no longer declared"
-            );
-        }
-    }
-}
+#[path = "submit_tests.rs"]
+mod tests;

@@ -41,6 +41,9 @@ pub enum Command {
         evidence: Vec<String>,
         #[serde(default)]
         context: BTreeMap<String, String>,
+        /// The failed invocation, exactly enough to run it again.
+        #[serde(default)]
+        replay: Option<Replay>,
     },
     Close {
         id: String,
@@ -126,6 +129,108 @@ fn text(s: &str, max: usize) -> bool {
             .chars()
             .any(|c| c.is_control() && !matches!(c, '\n' | '\t'))
 }
+/// What a coding session needs to run one failed invocation again, exactly:
+/// the build, the platform, the command and its argument list (ds-command-kernel
+/// `docs/contracts/ds-cli-reliability-and-feedback.md` §4).
+///
+/// The host builds it from the command's descriptor. Every flag, choice and
+/// value travels as typed, except a value the descriptor marks sensitive
+/// ([`REDACTED`]), a value no declared input takes ([`UNBOUND`]) and a value too
+/// long for the backlog's bound ([`ELIDED`]). A panic carries its `file:line`
+/// and never its message.
+///
+/// On the wire it is one `context` entry, [`REPLAY_CONTEXT_KEY`], holding this
+/// object's compact JSON: the backlog already stores context per sighting, so a
+/// deployed backlog keeps it without a change, and a row decodes it back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Replay {
+    /// The `ds` version, as `ds version` prints it.
+    pub version: String,
+    /// The exact source commit the executable was built from, or `unknown`.
+    pub source_sha: String,
+    /// The build carried uncommitted changes, so the commit alone is not it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dirty: bool,
+    /// `stable`, `canary` or `local`.
+    pub channel: String,
+    pub os: String,
+    pub arch: String,
+    /// The dotted command id.
+    pub command: String,
+    /// Every word after `ds`, in order.
+    pub argv: Vec<String>,
+    /// Inputs whose values the descriptor marks sensitive and were withheld.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redacted: Vec<String>,
+    /// Inputs whose values were too long for the backlog and were withheld.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub elided: Vec<String>,
+    /// Where a crash panicked, `file:line`; never the panic message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panic_location: Option<String>,
+}
+
+/// The `context` key a [`Replay`] travels under. A caller's own `--context`
+/// may not use it.
+pub const REPLAY_CONTEXT_KEY: &str = "replay";
+/// The longest encoded replay: the backlog's bound on one context value.
+pub const REPLAY_MAX_CHARS: usize = 1_000;
+/// The place of a value the descriptor marks sensitive.
+pub const REDACTED: &str = "<redacted>";
+/// The place of a value no declared input takes.
+pub const UNBOUND: &str = "<unbound>";
+/// The place of a value too long for [`REPLAY_MAX_CHARS`].
+pub const ELIDED: &str = "<elided>";
+const REPLAY_MAX_WORDS: usize = 256;
+const REPLAY_MAX_NAMES: usize = 64;
+
+impl Replay {
+    /// The compact JSON that travels as the context value.
+    pub fn encode(&self) -> String {
+        serde_json::to_string(self).expect("a replay serializes")
+    }
+
+    /// Whether every field holds its shape and the encoding fits the bound.
+    pub fn is_valid(&self) -> bool {
+        let token = |s: &str, max: usize| {
+            !s.is_empty()
+                && s.len() <= max
+                && s.chars().all(|c| {
+                    c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '.' | '-')
+                })
+        };
+        let names = |names: &[String]| {
+            names.len() <= REPLAY_MAX_NAMES && names.iter().all(|name| text(name, 64))
+        };
+        text(&self.version, 64)
+            && !self.version.contains(char::is_whitespace)
+            // A build without its commit says so rather than guessing one.
+            && (self.source_sha == "unknown"
+                || ((7..=64).contains(&self.source_sha.len())
+                    && self.source_sha.chars().all(|c| c.is_ascii_hexdigit())))
+            && ["stable", "canary", "local"].contains(&self.channel.as_str())
+            && token(&self.os, 32)
+            && token(&self.arch, 32)
+            && token(&self.command, 128)
+            && self.argv.len() <= REPLAY_MAX_WORDS
+            && names(&self.redacted)
+            && names(&self.elided)
+            && self
+                .panic_location
+                .as_deref()
+                .is_none_or(|at| text(at, 300) && at.contains(':') && !at.contains('\n'))
+            && self.encode().chars().count() <= REPLAY_MAX_CHARS
+    }
+
+    /// The replay a stored report's context carries, when it carries a valid
+    /// one. A report filed before replays, or by hand, has none.
+    pub fn from_context(context: &BTreeMap<String, String>) -> Option<Self> {
+        let replay: Self = serde_json::from_str(context.get(REPLAY_CONTEXT_KEY)?).ok()?;
+        replay.is_valid().then_some(replay)
+    }
+}
+
 /// The backlog's own view and blocked filter behind each view a caller names.
 ///
 /// `open` is what is legitimately open: unsettled and waiting on nothing. A
@@ -179,6 +284,7 @@ impl Command {
                 client,
                 evidence,
                 context,
+                replay,
             } => {
                 text(title, 200)
                     && text(detail, 16384)
@@ -191,8 +297,12 @@ impl Command {
                     && optional(client, 200)
                     && evidence.len() <= 20
                     && evidence.iter().all(|s| text(s, 500))
-                    && context.len() <= 24
+                    // The replay travels as one more context entry, under a
+                    // key a caller's own context may not take.
+                    && context.len() + usize::from(replay.is_some()) <= 24
+                    && !context.contains_key(REPLAY_CONTEXT_KEY)
                     && context.iter().all(|(k, v)| text(k, 500) && text(v, 1000))
+                    && replay.as_ref().is_none_or(Replay::is_valid)
             }
             Self::Close {
                 id,
@@ -286,6 +396,9 @@ struct Report {
     supersedes: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     superseded_by: String,
+    /// The latest sighting's context. A row shows only the replay it carries.
+    #[serde(default, skip_serializing)]
+    context: BTreeMap<String, String>,
 }
 
 /// One later observation about a report: who, when, what, and what it waits on.
@@ -332,8 +445,14 @@ impl Report {
         if clipped {
             self.detail = self.detail.chars().take(ROW_DETAIL_CHARS).collect();
         }
+        // The replay is what closing a report needs, like the full detail,
+        // so it rides on the same full read.
+        let replay = full.then(|| Replay::from_context(&self.context)).flatten();
         let mut row = serde_json::to_value(self).expect("feedback row");
         row["detail_truncated"] = json!(clipped);
+        if let Some(replay) = replay {
+            row["replay"] = json!(replay);
+        }
         row
     }
 }
@@ -529,6 +648,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
             client,
             evidence,
             context,
+            replay,
         } => {
             let mut a = json!({"name":agent});
             if let Some(m) = model {
@@ -536,6 +656,10 @@ pub(crate) fn run<T: AuthorizedTransport>(
             }
             if let Some(c) = client {
                 a["client"] = json!(c)
+            }
+            let mut context = context.clone();
+            if let Some(replay) = replay {
+                context.insert(REPLAY_CONTEXT_KEY.to_string(), replay.encode());
             }
             let data = call(
                 profile,
@@ -618,98 +742,5 @@ pub(crate) fn run<T: AuthorizedTransport>(
 }
 
 #[cfg(test)]
-mod component_tests {
-    use super::*;
-
-    fn submit(component: &str) -> Command {
-        Command::Submit {
-            title: "t".into(),
-            detail: "d".into(),
-            component: component.into(),
-            kind: "bug".into(),
-            severity: "minor".into(),
-            agent: "a".into(),
-            model: None,
-            client: None,
-            evidence: Vec::new(),
-            context: BTreeMap::new(),
-        }
-    }
-
-    /// FEEDBACK `9ab57db2`: a report names a live repository, optionally with
-    /// an area; a retired or invented label is refused, and a legacy label's
-    /// refusal can name the repository that owns it.
-    #[test]
-    fn a_report_names_a_live_repository_or_is_refused() {
-        for live in [
-            "ds-cli",
-            "ds-cli/feedback",
-            "ds-network/spotting",
-            "simple_notes",
-        ] {
-            assert!(submit(live).validate().is_ok(), "{live} is accepted");
-        }
-        for unknown in [
-            "ds-vector-tiler",
-            "ds-vector-tiler/tiles",
-            "ds-solar-weather",
-            "ds-solar-weather/weather",
-            "ds-grid",
-            "ds-grid-engine/sag",
-            "platform",
-            "ds",
-            "ds-desktop/x",
-        ] {
-            let error = submit(unknown).validate().unwrap_err();
-            assert_eq!(error.to_string(), COMPONENT_UNKNOWN, "{unknown}");
-        }
-        assert_eq!(legacy_owner("ds-grid-engine"), Some("ds-network"));
-        assert_eq!(legacy_owner("ds-report-pdf"), Some("ds-network-reporter"));
-        assert_eq!(legacy_owner("ds pls desktop (windows)"), Some("ds-cli"));
-        assert_eq!(legacy_owner("platform"), None);
-        // A component the bounds already refuse keeps its bounded refusal.
-        assert_ne!(
-            submit(" ds-cli").validate().unwrap_err().to_string(),
-            COMPONENT_UNKNOWN
-        );
-    }
-}
-
-#[cfg(test)]
-mod cursor_tests {
-    use super::*;
-    fn list(cursor: String) -> Command {
-        Command::List {
-            view: "not_addressed".into(),
-            component: Some("ds-cli/feedback".into()),
-            query: None,
-            limit: 1,
-            detail: false,
-            cursor: Some(cursor),
-            all: false,
-        }
-    }
-    #[test]
-    fn bounded_page_tokens_accept_admitted_long_ids_without_local_decoding() {
-        for size in [741, Command::MAX_CURSOR_BYTES] {
-            assert!(list(format!("fb1.{}", "a".repeat(size - 4)))
-                .validate()
-                .is_ok());
-        }
-        assert!(list("fb1.legacy.digest".into()).validate().is_ok());
-    }
-    #[test]
-    fn oversized_and_non_token_cursors_are_refused_before_transport() {
-        for cursor in [
-            format!("fb1.{}", "a".repeat(Command::MAX_CURSOR_BYTES - 3)),
-            format!("fb1.{}", "é".repeat(Command::MAX_CURSOR_BYTES / 2)),
-            "forged-without-prefix".into(),
-            "".into(),
-        ] {
-            assert_eq!(
-                list(cursor).validate().unwrap_err().kind(),
-                ErrorKind::InvalidInput
-            );
-        }
-    }
-}
+#[path = "feedback_tests.rs"]
+mod tests;

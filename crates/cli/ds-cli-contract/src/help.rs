@@ -388,6 +388,13 @@ fn arg_json(arg: &Arg) -> Value {
     if !arg.choices.is_empty() {
         value["choices"] = json!(arg.choices);
     }
+    if let Some((minimum, maximum)) = arg.range() {
+        value["minimum"] = json!(minimum);
+        value["maximum"] = json!(maximum);
+    }
+    if arg.is_sensitive() {
+        value["sensitive"] = json!(true);
+    }
     value
 }
 

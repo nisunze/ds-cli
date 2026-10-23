@@ -18,7 +18,7 @@ const ID: Arg = Arg::value(
     "<comment-id>",
     "Stable comment id; read comments after an uncertain reply before choosing another id.",
 );
-const BODY: Arg = Arg::value("body", "<text>", "Comment text, 1..4000 UTF-8 bytes.");
+const BODY: Arg = Arg::value("body", "<message>", "Comment text, 1..4000 UTF-8 bytes.");
 const PAGE_LIMIT: Refusal = Refusal {
     code: "pm_page_limit",
     when: "the requested page limit is not an integer from 1 through 100",
@@ -235,35 +235,5 @@ pub fn render(data: &Value) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn collaboration_commands_declare_their_response_and_page_refusals() {
-        for command in [&PROJECTS, &COMMENT, &COMMENTS] {
-            assert!(
-                command
-                    .refusals
-                    .iter()
-                    .any(|refusal| refusal.code == unreadable().code()
-                        && refusal.remedy == UNREADABLE.remedy)
-            );
-        }
-        for command in [&PROJECTS, &COMMENTS] {
-            assert!(
-                command
-                    .refusals
-                    .iter()
-                    .any(|refusal| refusal.code == PAGE_LIMIT.code
-                        && refusal.remedy == PAGE_LIMIT.remedy)
-            );
-        }
-    }
-    #[test]
-    fn public_project_page_must_match_status_and_bounds() {
-        let page = json!({"status":"active","next_cursor":"next","projects":[{"id":"p","name":"Project","lifecycle_state":"active"}]});
-        validate_projects(&page, "active", 1).unwrap();
-        assert!(validate_projects(&page, "archived", 1).is_err());
-        assert!(validate_projects(&page, "active", 0).is_err());
-        assert!(validate_projects(&json!({"projects":[]}), "active", 50).is_err());
-    }
-}
+#[path = "collaboration_tests.rs"]
+mod tests;

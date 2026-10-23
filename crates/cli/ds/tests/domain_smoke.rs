@@ -9224,7 +9224,15 @@ fn feedback_draft_turns_the_last_refusal_into_a_ready_report() {
             .as_str()
             .is_some_and(|id| id.starts_with("inv_"))
     );
-    assert!(!answer.to_string().contains("VALUE-"), "{answer}");
+    let replay = drafts[0]["replay"].clone();
+    assert_eq!(replay["command"], "feedback.submit", "{answer}");
+    assert!(
+        replay["argv"].to_string().contains("VALUE-TITLE"),
+        "the replay keeps a value no descriptor marks sensitive"
+    );
+    let mut rest = answer.clone();
+    rest["data"]["drafts"][0]["replay"] = Value::Null;
+    assert!(!rest.to_string().contains("VALUE-"), "{answer}");
     assert!(
         run(
             &[

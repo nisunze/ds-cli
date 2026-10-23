@@ -21,6 +21,9 @@ use serde_json::{Value, json};
 
 use crate::build;
 
+#[path = "reliability_replay.rs"]
+mod replay;
+
 /// Set by a protocol adapter on the `ds` process it runs for one tool call:
 /// the surface that invoked it. Such a process records its event and leaves
 /// the send to the adapter's own process, off the request path.
@@ -66,6 +69,12 @@ pub fn enabled() -> bool {
 /// declaration and its path words are not mistaken for values.
 pub fn resolved(command: &'static Command) {
     SEEN.with(|seen| seen.borrow_mut().command = Some(command));
+    // From here a panic belongs to this command, and its replay names where
+    // it happened. The hook wraps the one before it, so the panic prints and
+    // unwinds exactly as it did.
+    if enabled() {
+        replay::capture_panic_location();
+    }
     // A development build can be made to crash on one command, so the crash
     // path (one event, one automatic report) is provable end to end
     // (contract §7.3). A release build has no such hook.
@@ -131,6 +140,11 @@ pub fn report(argv: &[String], started: Instant, crash: Option<String>) {
         (None, None) => ("ds".to_string(), 1, Termination::Ok),
     };
     let (flags, argument_values) = split_argv(argv, command);
+    // Only an ending that may be reported needs its replay; an answer is
+    // counted and nothing more.
+    let replay = command
+        .filter(|_| termination != Termination::Ok)
+        .and_then(|command| replay::replay(argv, command, replay::panic_location()));
     let adapter = std::env::var(SURFACE_ENV).is_ok_and(|surface| surface == "mcp");
     let invocation = Invocation {
         platform: if adapter {
@@ -160,6 +174,7 @@ pub fn report(argv: &[String], started: Instant, crash: Option<String>) {
             .filter(|agent| !agent.is_empty()),
         termination,
         argument_values,
+        replay,
     };
     let now = now_ms();
     // Local commands must stay local on every ending, including a missing
@@ -364,99 +379,5 @@ impl EventSink for Sink {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn tokens(values: &[&str]) -> Vec<String> {
-        values.iter().map(|value| value.to_string()).collect()
-    }
-
-    #[test]
-    fn host_context_is_explicit_and_only_the_server_owner_defaults_to_server() {
-        for action in ["core.serve", "server.status", "feedback.list"] {
-            assert_eq!(
-                resolve_host_kind(Some("desktop"), action),
-                HostKind::Desktop
-            );
-            assert_eq!(resolve_host_kind(Some("core"), action), HostKind::Server);
-            assert_eq!(
-                resolve_host_kind(Some("headless"), action),
-                HostKind::Headless
-            );
-            let fallback = if action == "core.serve" {
-                HostKind::Server
-            } else {
-                HostKind::Headless
-            };
-            assert_eq!(resolve_host_kind(None, action), fallback);
-            assert_eq!(resolve_host_kind(Some("invalid"), action), fallback);
-        }
-    }
-
-    #[test]
-    fn local_commands_record_without_delivery_and_the_existing_adapter_still_flushes() {
-        for (id, only_records) in [
-            ("solar.calculate-prepared", true),
-            ("feedback.draft", true),
-            ("feedback.submit", false),
-            ("core.sync.read", true),
-            ("core.store", true),
-            ("core.sync.retry", false),
-            ("mcp.serve", false),
-        ] {
-            let command = crate::registry::find_by_id(id).expect("registered command");
-            assert_eq!(records_only(command.command), only_records, "{id}");
-        }
-    }
-
-    #[test]
-    fn only_declared_flag_names_are_flags_and_everything_else_is_scrubbed() {
-        let command = crate::registry::all_commands()
-            .into_iter()
-            .find(|command| command.id == "feedback.submit")
-            .expect("feedback.submit is registered");
-        let argv = tokens(&[
-            "feedback",
-            "submit",
-            "--title=SECRET-TITLE",
-            "--detail",
-            "SECRET DETAIL",
-            "--kind",
-            "bug",
-            "--not-declared",
-            "--output",
-            "json",
-            "--",
-            "--yes",
-        ]);
-        let (flags, values) = split_argv(&argv, Some(command));
-        assert_eq!(
-            flags,
-            tokens(&["--title", "--detail", "--kind", "--output"])
-        );
-        assert!(values.contains(&"SECRET-TITLE".to_string()));
-        assert!(values.contains(&"SECRET DETAIL".to_string()));
-        assert!(values.contains(&"--not-declared".to_string()));
-        assert!(
-            values.contains(&"--yes".to_string()),
-            "after `--` it is an operand"
-        );
-        assert!(
-            !values.contains(&"bug".to_string()),
-            "a declared choice is vocabulary"
-        );
-        assert!(
-            !values.contains(&"submit".to_string()),
-            "a path word is vocabulary"
-        );
-        assert_eq!(
-            project_flag(&tokens(&["x", "--project", "kigali"])).as_deref(),
-            Some("kigali")
-        );
-        assert_eq!(
-            project_flag(&tokens(&["x", "--project=kigali"])).as_deref(),
-            Some("kigali")
-        );
-        assert_eq!(project_flag(&tokens(&["x", "--", "--project", "p"])), None);
-    }
-}
+#[path = "reliability_tests.rs"]
+mod tests;
