@@ -54,8 +54,7 @@ fn capabilities(component: &str, identity: &Value) -> Option<Value> {
         identity["schema"].as_str().is_some_and(|schema| {
             ds_network_contracts::engine::schema_family(schema)
                 == ds_network_contracts::engine::ENGINE_BUILD_SCHEMA_FAMILY
-        }) && identity["service"] == "ds-network-reporter"
-            && identity["binary"] == "ds-report"
+        }) && ds_command_kernel::module_engine::is_reporter_build(identity)
     };
     let schemas = identity["schemas"].as_array().filter(|schemas| {
         schemas.len() <= 128

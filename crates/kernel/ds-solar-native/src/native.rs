@@ -4547,7 +4547,7 @@ pub fn import_prepared(
         }
     } else if prepared_path(&directory, &city).exists() {
         return Err(
-            "Existing prepared Solar input is corrupt; it cannot be silently replaced".into(),
+            "The held prepared Solar input is corrupt; it cannot be silently replaced".into(),
         );
     } else if expected.is_some() {
         return Err("The expected prepared Solar input is unavailable".into());

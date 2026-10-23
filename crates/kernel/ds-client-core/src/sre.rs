@@ -133,6 +133,15 @@ impl Filters {
             ("source", self.source.as_ref()),
         ]
     }
+    /// Does one event row carry every declared filter value?
+    fn admits(&self, row: &Value) -> bool {
+        matches(&row["service"], self.service.as_ref())
+            && matches(&row["error_category"], self.category.as_ref())
+            && matches(&row["lane"], self.lane.as_ref())
+            && matches(&row["action"], self.action.as_ref())
+            && matches(&row["ds_project"], self.project.as_ref())
+            && matches(&row["source"], self.source.as_ref())
+    }
     fn declared(&self, outcome: Outcome) -> Value {
         let mut out = Map::new();
         out.insert("outcome".into(), json!(outcome.token()));
@@ -469,10 +478,13 @@ pub fn project_ds_client(rows: &[Value], window_days: i64, scan_limit: i64) -> V
     let mut refusals: u64 = 0;
     let mut failing: BTreeMap<String, u64> = BTreeMap::new();
     let mut refused: BTreeMap<String, u64> = BTreeMap::new();
+    // The window's own service filter, applied again to what the server returned.
+    let ds_container = Filters {
+        service: Some(DS_CLIENT_SERVICE.into()),
+        ..Filters::default()
+    };
     for row in dedupe_events(rows) {
-        let is_ds = row["service"]
-            .as_str()
-            .is_some_and(|service| service.eq_ignore_ascii_case(DS_CLIENT_SERVICE));
+        let is_ds = ds_container.admits(row);
         let source = row["source"].as_str().unwrap_or_default();
         let is_client_source =
             source.eq_ignore_ascii_case("cli_command") || source.eq_ignore_ascii_case("cli_rollup");
@@ -610,12 +622,7 @@ pub fn project_events(
                 || row["outcome"]
                     .as_str()
                     .is_some_and(|value| value.eq_ignore_ascii_case(outcome.token())))
-                && matches(&row["service"], filters.service.as_ref())
-                && matches(&row["error_category"], filters.category.as_ref())
-                && matches(&row["lane"], filters.lane.as_ref())
-                && matches(&row["action"], filters.action.as_ref())
-                && matches(&row["ds_project"], filters.project.as_ref())
-                && matches(&row["source"], filters.source.as_ref())
+                && filters.admits(row)
         })
         .collect();
     let limit = limit.max(0) as usize;

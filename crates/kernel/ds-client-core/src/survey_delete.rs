@@ -2,6 +2,7 @@
 //! Backend deletes are individual operations, never a remote transaction.
 use crate::transport::{AuthorizedTransport, CallAuthority, SecretRequestBody};
 use crate::{ClientError, ClientProfile, ErrorKind, TransportResponse};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
@@ -100,6 +101,21 @@ impl SurveyDeleteCall<'_> {
     }
 }
 
+/// The producer members of a Survey write acknowledgement, read as typed wire
+/// fields. Other members are checked by each receipt.
+#[derive(Deserialize)]
+struct Producer<'a> {
+    service: &'a str,
+    version: &'a str,
+}
+
+/// Was this Survey write acknowledgement produced by the current Brain envelope?
+pub(crate) fn brain_acknowledged(value: &Value) -> bool {
+    Producer::deserialize(value).is_ok_and(|producer| {
+        producer.service == "data-solutions-backend" && producer.version == "1.0.0"
+    })
+}
+
 fn receipt(response: &TransportResponse, intent: &Value) -> Option<Value> {
     if response.status != 200 || response.body.len() > 65536 {
         return None;
@@ -107,8 +123,7 @@ fn receipt(response: &TransportResponse, intent: &Value) -> Option<Value> {
     let value: Value = serde_json::from_slice(&response.body).ok()?;
     if value["success"] != true
         || !value["error"].is_null()
-        || value["service"] != "data-solutions-backend"
-        || value["version"] != "1.0.0"
+        || !brain_acknowledged(&value)
         || OffsetDateTime::parse(value["timestamp"].as_str()?, &Rfc3339).is_err()
         || value["data"]["operation"] != "delete"
         || value["data"]["doc_id"] != intent["identity"]["doc_id"]
@@ -240,6 +255,16 @@ mod tests {
             )
         };
         assert_eq!(decode(&v).unwrap()["state"], "deleted");
+        // Another producer, version or a non-string member is not the Brain's.
+        for (member, other) in [
+            ("service", json!("other-backend")),
+            ("version", json!("2.0.0")),
+            ("service", json!(1)),
+        ] {
+            let mut forged = v.clone();
+            forged[member] = other;
+            assert!(decode(&forged).is_none(), "{member}");
+        }
         v["data"]["doc_id"] = json!("other");
         assert!(decode(&v).is_none());
         v["data"] = json!({"doc_id":"n","operation":"delete","idempotent":true});

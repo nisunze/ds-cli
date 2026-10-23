@@ -76,6 +76,22 @@ const SOLAR_SCHEMAS: [&str; 4] = [
 ];
 const REPORTER_SCHEMAS: [&str; 2] = [ENGINE_BUILD_SCHEMA, "ds-network-reporter.task-result/v1"];
 
+/// The owner members of a Reporter build-info document, read as typed wire
+/// fields. Additive members from a newer Reporter are ignored.
+#[derive(Deserialize)]
+struct ReporterBuildOwner<'a> {
+    service: &'a str,
+    binary: &'a str,
+}
+
+/// Does this build-info document name the compute Reporter: the `ds-report`
+/// binary of `ds-network-reporter`?
+pub fn is_reporter_build(build_info: &Value) -> bool {
+    ReporterBuildOwner::deserialize(build_info).is_ok_and(|owner| {
+        owner.service == ModuleComponent::Reporter.engine_owner() && owner.binary == "ds-report"
+    })
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleComponent {
@@ -253,8 +269,7 @@ pub fn admit_engine_build(
                     derived.as_str()
                 }
             };
-            if v["service"] != "ds-network-reporter"
-                || v["binary"] != "ds-report"
+            if !is_reporter_build(v)
                 || v["features"] != serde_json::json!([])
                 || v["engine_version"] != expected
             {

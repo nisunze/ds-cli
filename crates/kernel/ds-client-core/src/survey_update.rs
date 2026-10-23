@@ -239,8 +239,7 @@ fn receipt(response: &TransportResponse, request: &SurveyUpdateRequest) -> Optio
     let version = value["data"]["client_version"].as_u64()?;
     if value["success"] != true
         || !value["error"].is_null()
-        || value["service"] != "data-solutions-backend"
-        || value["version"] != "1.0.0"
+        || !crate::survey_delete::brain_acknowledged(&value)
         || value["data"]["operation"] != "update"
         || value["data"]["doc_id"] != request.payload["doc_id"]
         || request.payload["expected_version"].as_u64()?.checked_add(1) != Some(version)

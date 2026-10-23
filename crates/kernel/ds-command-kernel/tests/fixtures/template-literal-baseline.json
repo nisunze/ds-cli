@@ -2,64 +2,64 @@
   "count": 10,
   "occurrences": [
     {
-      "path": "crates/ds-client-core/src/sre.rs",
-      "line": 117,
+      "path": "ds-client-core/src/sre.rs",
+      "line": 128,
       "token": "service",
       "literal_sha256": "9df6b026a8c6c26e3c3acd2370a16e93fffdc0015ff5bd879218788025db0280"
     },
     {
-      "path": "crates/ds-client-core/src/sre.rs",
-      "line": 307,
+      "path": "ds-client-core/src/sre.rs",
+      "line": 138,
       "token": "service",
       "literal_sha256": "9df6b026a8c6c26e3c3acd2370a16e93fffdc0015ff5bd879218788025db0280"
     },
     {
-      "path": "crates/ds-client-core/src/sre.rs",
-      "line": 414,
+      "path": "ds-client-core/src/sre.rs",
+      "line": 329,
       "token": "service",
       "literal_sha256": "9df6b026a8c6c26e3c3acd2370a16e93fffdc0015ff5bd879218788025db0280"
     },
     {
-      "path": "crates/ds-client-core/src/survey_delete.rs",
-      "line": 110,
+      "path": "ds-command-kernel/src/gateway_exchange/architecture.rs",
+      "line": 14,
       "token": "service",
       "literal_sha256": "9df6b026a8c6c26e3c3acd2370a16e93fffdc0015ff5bd879218788025db0280"
     },
     {
-      "path": "crates/ds-layer-store/src/project_dataset_cache.rs",
-      "line": 399,
+      "path": "ds-command-kernel/src/printing/mv_context.rs",
+      "line": 79,
+      "token": "Existing",
+      "literal_sha256": "3659c270316ced75117b5766ba47e6baddf29c795790f5194e5ff4178d29442b"
+    },
+    {
+      "path": "ds-command-kernel/src/printing/mv_context.rs",
+      "line": 80,
+      "token": "Existing",
+      "literal_sha256": "92e534f311c36983fa96598fbda17f7467669b250e32e0e5d50f166e9ca76316"
+    },
+    {
+      "path": "ds-command-kernel/src/project_dataset_cache.rs",
+      "line": 1726,
       "token": "exists",
       "literal_sha256": "ad5aabc97d88f6e56deaffc34c7a6e292e9e12db04a56799d773cfb64ca9898d"
     },
     {
-      "path": "crates/ds-layer-store/src/project_dataset_cache.rs",
-      "line": 465,
-      "token": "exists",
-      "literal_sha256": "ad5aabc97d88f6e56deaffc34c7a6e292e9e12db04a56799d773cfb64ca9898d"
-    },
-    {
-      "path": "crates/ds-project-data/src/ensure.rs",
-      "line": 560,
-      "token": "exists",
-      "literal_sha256": "ad5aabc97d88f6e56deaffc34c7a6e292e9e12db04a56799d773cfb64ca9898d"
-    },
-    {
-      "path": "src/project_dataset_cache.rs",
-      "line": 1797,
-      "token": "exists",
-      "literal_sha256": "ad5aabc97d88f6e56deaffc34c7a6e292e9e12db04a56799d773cfb64ca9898d"
-    },
-    {
-      "path": "src/solar_dashboard.rs",
+      "path": "ds-command-kernel/src/solar_dashboard.rs",
       "line": 114,
       "token": "Existing",
       "literal_sha256": "223ab5e4d6f7f666d68aef41561ee1a64f63fbacc28faa4fb8af4cc13af65957"
     },
     {
-      "path": "src/survey/read.rs",
+      "path": "ds-command-kernel/src/survey/read.rs",
       "line": 638,
       "token": "Cell",
       "literal_sha256": "75fa386342e8b7022ed37c5e303b1cff740c973c4e685776d4d294c80baf3cfe"
+    },
+    {
+      "path": "ds-project-data/src/ensure.rs",
+      "line": 757,
+      "token": "exists",
+      "literal_sha256": "ad5aabc97d88f6e56deaffc34c7a6e292e9e12db04a56799d773cfb64ca9898d"
     }
   ]
 }
