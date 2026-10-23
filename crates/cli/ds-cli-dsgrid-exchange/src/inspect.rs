@@ -19,16 +19,18 @@
 //! opening words of each summary carry that distinction, because that is all
 //! a caller reads before choosing.
 //!
-//! The classification and the capability matrix are both the engine's. `ds`
-//! reads bytes, hands them over, and shapes the answer.
+//! The classification and the capability matrix are both the exchange
+//! owner's, in the Network addon. `ds` reads bytes, stages them, and shapes
+//! the answer.
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_exchange::conversion::{CapabilityState, conversion_capabilities, inspect_sources};
-use ds_grid_exchange::material_history::inspect_material_history;
+use ds_cli_dsgrid::native;
+use ds_network_contracts::grid_exchange::ExchangeInspectParamsV1;
+use ds_network_contracts::grid_operation::GridOperationV1;
 use serde_json::{Value, json};
 
 use crate::sources;
@@ -93,137 +95,73 @@ are source evidence, not current model bindings.",
             runnable: false,
         },
     ],
-    refusals: &[
-        sources::SHARED_REFUSALS[0],
-        sources::SHARED_REFUSALS[1],
-        sources::SHARED_REFUSALS[2],
-        Refusal {
-            code: "invalid_limit",
-            when: "--limit is outside 1..5000",
-            remedy: "pass --limit 1..5000",
-        },
-        Refusal {
-            code: "retained_backup_missing",
-            when: "a package has neither retained original nor round-trip backup",
-            remedy: "select a package retaining its native backup, or the explicit backup/CRI source",
-        },
-        Refusal {
-            code: "retained_package_invalid",
-            when: "a selected retained asset is missing, ambiguous or fails byte verification",
-            remedy: "use the exact intact package; resolve missing, ambiguous or mismatched retained assets",
-        },
-        Refusal {
-            code: "native_history_parse_failed",
-            when: "a native backup or CRI history cannot be parsed, even beyond the output bound",
-            remedy: "select intact native CRI/backup bytes with declared history weather cases; inspect the named parse failure",
-        },
-    ],
+    refusals: &REFUSALS,
     reference: Some("docs/reference/dsgrid-exchange.md"),
     search: &["creep", "load history", "retained criteria"],
     requires: Requires::Server,
     availability: available,
 };
 
+/// The source and history refusals, then the addon's own.
+const OWN: &[Refusal] = &[
+    sources::SHARED_REFUSALS[0],
+    sources::SHARED_REFUSALS[1],
+    sources::SHARED_REFUSALS[2],
+    Refusal {
+        code: "invalid_limit",
+        when: "--limit is outside 1..5000",
+        remedy: "pass --limit 1..5000",
+    },
+    Refusal {
+        code: "retained_backup_missing",
+        when: "a package has neither retained original nor round-trip backup",
+        remedy: "select a package retaining its native backup, or the explicit backup/CRI source",
+    },
+    Refusal {
+        code: "retained_package_invalid",
+        when: "a selected retained asset is missing, ambiguous or fails byte verification",
+        remedy: "use the exact intact package; resolve missing, ambiguous or mismatched retained assets",
+    },
+    Refusal {
+        code: "native_history_parse_failed",
+        when: "a native backup or CRI history cannot be parsed, even beyond the output bound",
+        remedy: "select intact native CRI/backup bytes with declared history weather cases; inspect the named parse failure",
+    },
+];
+static REFUSALS: [Refusal; OWN.len() + native::REFUSALS.len()] =
+    native::extend_refusals::<{ OWN.len() + native::REFUSALS.len() }>(OWN);
+
 fn available() -> Availability {
     Availability::Available
 }
 
-/// Whether a capability is worth offering by default.
-///
-/// Matched on the enum, not on its `Debug` spelling. An earlier version
-/// compared `format!("{:?}", state)` against `"Available"` — a variant that
-/// does not exist — so every capability was filtered out and a source set
-/// with six ready conversions reported "none available". A stringly-typed
-/// comparison against a name nobody checked is how that happens.
-///
-/// `Unverified` is included deliberately: a path that exists but has not been
-/// verified for these inputs is something a caller may want to attempt, and
-/// its reason says so. `Unsupported` and `NotImplemented` are not offers.
-pub const fn offerable(state: CapabilityState) -> bool {
-    matches!(state, CapabilityState::Ready | CapabilityState::Unverified)
-}
-
-/// The state's stable lowercase token. `ds` reports states in snake_case
-/// everywhere; the engine's `Debug` spelling is an implementation detail.
-pub const fn state_token(state: CapabilityState) -> &'static str {
-    match state {
-        CapabilityState::Ready => "ready",
-        CapabilityState::Unsupported => "unsupported",
-        CapabilityState::NotImplemented => "not_implemented",
-        CapabilityState::Unverified => "unverified",
-    }
-}
-
+/// Classify the sources, or read their retained material history, in the
+/// addon. Capabilities that are neither ready nor unverified are offered
+/// only with `--blocked`; the owner counts the rest under `more`.
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let history_limit = if inputs.switch("material-history") {
+    let material_history_limit = if inputs.switch("material-history") {
         Some(ds_cli_dsgrid::package::parse_limit(inputs.value("limit"))?)
     } else {
         None
     };
     let loaded = sources::load(inputs.repeated("source"))?;
-    if let Some(limit) = history_limit {
-        let history = inspect_material_history(&loaded.sources, limit).map_err(|error| {
-            Failure::invalid(error.code(), error.to_string()).remedy(error.remedy())
-        })?;
-        return Ok(json!({
-            "material_history": history,
-            "byte_len": loaded.byte_len,
-            "warnings": loaded.warnings,
-        }));
-    }
-    let inspection = inspect_sources(&loaded.sources);
-    let capabilities = conversion_capabilities(&inspection);
-
-    let show_blocked = inputs.switch("blocked");
-    let capability_values: Vec<Value> = capabilities
-        .iter()
-        .filter(|capability| show_blocked || offerable(capability.state))
-        .map(|capability| {
-            json!({
-                "id": capability.id,
-                "state": state_token(capability.state),
-                "reason": capability.reason,
-            })
-        })
-        .collect();
-
-    let candidates: Vec<Value> = inspection
-        .candidates
-        .iter()
-        .map(|candidate| {
-            json!({
-                "name": candidate.display_name,
-                "kind": format!("{:?}", candidate.kind),
-                "digest": candidate.digest,
-                "members": candidate.member_count,
-                "version_evidence": candidate.version_evidence,
-                "units_evidence": candidate.units_evidence,
-                "counts": candidate.counts,
-                "gis_layers": candidate.gis_layers,
-            })
-        })
-        .collect();
-
-    let mut answer = json!({
-        "sources": candidates,
-        "byte_len": loaded.byte_len,
-        "capabilities": capability_values,
-        "warnings": loaded.warnings,
-    });
-
-    if !show_blocked {
-        let blocked = capabilities
-            .iter()
-            .filter(|capability| !offerable(capability.state))
-            .count();
-        if blocked > 0 {
-            answer["more"] = json!({
-                "blocked": blocked,
-                "next": "ds dsgrid-exchange inspect --blocked",
-            });
-        }
-    }
-
+    let outcome = crate::exchange(
+        &GridOperationV1::ExchangeInspect(ExchangeInspectParamsV1 {
+            sources: loaded.sources,
+            blocked: inputs.switch("blocked"),
+            material_history_limit,
+        }),
+        &loaded.inputs,
+    )?;
+    let mut answer: Value = crate::result(outcome)?;
+    let Some(object) = answer.as_object_mut() else {
+        return Err(Failure::failed(
+            "network_result_invalid",
+            "the exchange inspection is not an object",
+        ));
+    };
+    object.insert("byte_len".into(), json!(loaded.byte_len));
+    object.insert("warnings".into(), json!(loaded.warnings));
     Ok(answer)
 }
 

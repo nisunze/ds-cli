@@ -12,23 +12,21 @@
 //! the other writes files into a directory. The blockers, warnings and losses
 //! reported here are the engine's own, and a plan carrying a blocker has no
 //! executable stages at all.
+//!
+//! The plan is the exchange owner's, computed in the Network addon from the
+//! staged sources and the declared choices (DECOUPLING-003).
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_exchange::conversion::{ConversionPlan, plan_conversion};
-use serde_json::{Value, json};
+use ds_cli_dsgrid::native;
+use ds_network_contracts::grid_exchange::ExchangeRequestParamsV1;
+use ds_network_contracts::grid_operation::GridOperationV1;
+use serde_json::Value;
 
-use crate::{refusals, render, request, sources, token};
-
-/// How many per-source rows and expected artifacts to project by default. A
-/// conversion of a large workspace can plan thousands of artifacts; printing
-/// all of them by default would bury the blockers, which are the reason to
-/// read a plan at all.
-const PROJECTION_LIMIT: usize = 25;
-
+use crate::{refusals, render, request, sources};
 pub static COMMAND: Command = Command {
     id: "dsgrid-exchange.plan",
     path: &["dsgrid-exchange", "plan"],
@@ -78,100 +76,33 @@ full. Long lists are truncated and the withheld count reported.",
     availability: available,
 };
 
-/// The source refusals, then the request refusals. Spliced at compile time so
-/// the list cannot fall out of step with what the two modules actually emit.
-static REFUSALS: [Refusal; 12] =
-    refusals::splice(&[sources::SHARED_REFUSALS, request::REQUEST_REFUSALS]);
+/// The source refusals, the request refusals the owner raises, then the
+/// addon's own. Spliced at compile time so the list cannot fall out of step.
+static REFUSALS: [Refusal; 12 + native::REFUSALS.len()] = refusals::splice(&[
+    sources::SHARED_REFUSALS,
+    request::REQUEST_REFUSALS,
+    native::REFUSALS,
+]);
 
 fn available() -> Availability {
     Availability::Available
 }
 
+/// The owner's bounded plan projection. Blockers, warnings and losses are
+/// never truncated: they are the answer to "should this run", and a caller
+/// who reads a truncated blocker list has been told a conversion is safe
+/// when it is not. Long artifact and source lists name the withheld count.
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let loaded = sources::load(inputs.repeated("source"))?;
-    let source_warnings = loaded.warnings;
-    let request = request::build(inputs, loaded.sources)?;
-    let mut plan = plan_conversion(&request);
-    plan.warnings.extend(source_warnings);
-    Ok(project(&plan))
-}
-
-/// Shape the engine's plan into the bounded projection `ds` returns.
-///
-/// Blockers, warnings and losses are never truncated. Everything else is:
-/// those three are the answer to "should this run", and a caller who reads a
-/// truncated blocker list has been told a conversion is safe when it is not.
-pub fn project(plan: &ConversionPlan) -> Value {
-    let (artifacts, artifacts_withheld) = take(
-        plan.expected_artifacts
-            .iter()
-            .map(|artifact| {
-                json!({
-                    "path": artifact.relative_path,
-                    "artifact_type": artifact.artifact_type,
-                    "source_index": artifact.source_index,
-                })
-            })
-            .collect(),
-        PROJECTION_LIMIT,
-    );
-
-    let (per_source, sources_withheld) = take(
-        plan.per_source
-            .iter()
-            .map(|source| {
-                json!({
-                    "source_index": source.source_index,
-                    "name": source.display_name,
-                    "kind": token(&source.kind),
-                    "digest": source.digest,
-                    "planned": source.planned,
-                    "blockers": source.blockers,
-                    "warnings": source.warnings,
-                })
-            })
-            .collect(),
-        PROJECTION_LIMIT,
-    );
-
-    let mut answer = json!({
-        "plan_id": plan.plan_id,
-        "target": token(&plan.target),
-        "batch_mode": token(&plan.batch_mode),
-        "executable": plan.is_executable(),
-        "chosen_capabilities": plan.chosen_capability_ids,
-        "stages": plan.stages.len(),
-        "expected_artifacts": artifacts,
-        "expected_artifact_count": plan.expected_artifacts.len(),
-        "per_source": per_source,
-        "pinned_digests": plan.pinned_digests,
-        "declared_crs": plan.declared_crs,
-        "swap_xy": plan.swap_xy,
-        "include_layers": plan.gis_include_layers,
-        "omitted_structure_type_ids": plan.omitted_structure_type_ids,
-        "blockers": plan.blockers,
-        "warnings": plan.warnings,
-        "losses": plan.losses,
-    });
-
-    if artifacts_withheld > 0 || sources_withheld > 0 {
-        answer["more"] = json!({
-            "expected_artifacts_withheld": artifacts_withheld,
-            "per_source_withheld": sources_withheld,
-            "next": "read plan.expected_artifact_count for the full total",
-        });
-    }
-
-    answer
-}
-
-fn take(mut items: Vec<Value>, limit: usize) -> (Vec<Value>, usize) {
-    if items.len() <= limit {
-        return (items, 0);
-    }
-    let withheld = items.len() - limit;
-    items.truncate(limit);
-    (items, withheld)
+    let outcome = crate::exchange(
+        &GridOperationV1::ExchangePlan(ExchangeRequestParamsV1 {
+            sources: loaded.sources,
+            choices: request::choices(inputs),
+            warnings: loaded.warnings,
+        }),
+        &loaded.inputs,
+    )?;
+    crate::result(outcome)
 }
 
 pub fn render(data: &Value) -> String {

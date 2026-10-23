@@ -961,6 +961,9 @@ fn every_constructible_refusal_code_is_documented() {
         // closed `grid-operation` port are declared by the `ds dsgrid`
         // commands that reach them.
         ("ds-cli-dsgrid", &["dsgrid"]),
+        // Import and export: host source reads and output writes in Core, the
+        // exchange owner's refusals re-raised from the addon's closed calls.
+        ("ds-cli-dsgrid-exchange", &["dsgrid-exchange"]),
         ("ds-cli-report", &["report"]),
         // Two surfaces, and it is the same crate on purpose. `ds server …` is
         // host administration, and this crate also owns the owner-only socket
@@ -1025,7 +1028,7 @@ fn every_constructible_refusal_code_is_documented() {
             continue;
         }
         // These independent crates have no public Core command registrations or normal dependency.
-        if ["ds-cli-dsgrid-exchange", "ds-cli-library", "ds-cli-pls"].contains(&name.as_str()) {
+        if ["ds-cli-library", "ds-cli-pls"].contains(&name.as_str()) {
             let manifest = std::fs::read_to_string(root.join("ds/Cargo.toml")).unwrap();
             let normal = manifest
                 .split("[dependencies]")

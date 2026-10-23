@@ -630,6 +630,26 @@ static REPORT_ENTRIES: &[Entry] = &[
     },
 ];
 
+// Import and export through the Network addon's closed exchange calls
+// (DECOUPLING-003). `sync` stays retired until its own operation returns.
+static DSGRID_EXCHANGE_ENTRIES: &[Entry] = &[
+    Entry {
+        command: &ds_cli_dsgrid_exchange::inspect::COMMAND,
+        handler: ds_cli_dsgrid_exchange::inspect::run,
+        render: ds_cli_dsgrid_exchange::inspect::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid_exchange::plan::COMMAND,
+        handler: ds_cli_dsgrid_exchange::plan::run,
+        render: ds_cli_dsgrid_exchange::plan::render,
+    },
+    Entry {
+        command: &ds_cli_dsgrid_exchange::convert::COMMAND,
+        handler: ds_cli_dsgrid_exchange::convert::run,
+        render: ds_cli_dsgrid_exchange::convert::render,
+    },
+];
+
 static SOLAR_ENTRIES: &[Entry] = &[
     Entry {
         command: &ds_cli_solar::calculate_prepared::COMMAND,
@@ -3537,6 +3557,10 @@ static DOMAINS: &[Registered] = &[
     Registered {
         domain: &ds_cli_dsgrid::DOMAIN,
         entries: DSGRID_ENTRIES,
+    },
+    Registered {
+        domain: &ds_cli_dsgrid_exchange::DOMAIN,
+        entries: DSGRID_EXCHANGE_ENTRIES,
     },
     Registered {
         domain: &ds_cli_solar::DOMAIN,

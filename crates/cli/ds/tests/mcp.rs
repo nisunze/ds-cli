@@ -2451,6 +2451,9 @@ fn the_host_is_one_flag_and_the_other_targets_are_a_closed_set() {
         // The authored-purpose index uses the same screen/print style
         // dimension; it does not select the machine that executes it.
         "style.purpose.index",
+        // A conversion's output format, not an execution host.
+        "dsgrid-exchange.plan",
+        "dsgrid-exchange.convert",
     ];
     const HOST_PLACEHOLDER: &str = "<desktop|desktop:instance|core>";
     /// `ds mcp install --host` names an MCP host *program* — Claude Code,

@@ -111,6 +111,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("dsgrid.create", "local_file_write", "none"),
     ("dsgrid.inspect", "discovery", "none"),
     ("dsgrid.validate", "discovery", "none"),
+    ("dsgrid-exchange.inspect", "read_only", "none"),
+    ("dsgrid-exchange.plan", "discovery", "none"),
+    ("dsgrid-exchange.convert", "local_file_write", "none"),
     ("dsgrid.describe", "discovery", "none"),
     ("dsgrid.run", "read_only", "none"),
     (

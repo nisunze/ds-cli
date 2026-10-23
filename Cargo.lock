@@ -1472,6 +1472,7 @@ dependencies = [
  "ds-cli-design",
  "ds-cli-desktop",
  "ds-cli-dsgrid",
+ "ds-cli-dsgrid-exchange",
  "ds-cli-feedback",
  "ds-cli-installs",
  "ds-cli-map",
@@ -1706,13 +1707,13 @@ version = "0.1.0"
 dependencies = [
  "ds-cli-contract",
  "ds-cli-dsgrid",
- "ds-command-kernel",
- "ds-grid-exchange",
- "ds-io",
+ "ds-network-client",
+ "ds-network-contracts",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "zip 2.4.2",
 ]
 
 [[package]]

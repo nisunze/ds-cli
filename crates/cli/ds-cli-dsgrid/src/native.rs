@@ -47,7 +47,7 @@ pub fn scratch() -> Result<tempfile::TempDir, Failure> {
 }
 
 /// Run one closed Grid file operation through an already captured addon.
-pub(crate) fn operation_with(
+pub fn operation_with(
     client: &CapturedNetworkClient,
     call: &GridOperationV1,
     model: Option<&[u8]>,
@@ -60,7 +60,7 @@ pub(crate) fn operation_with(
 }
 
 /// Capture the lane's addon and run one closed Grid file operation.
-pub(crate) fn operation(
+pub fn operation(
     call: &GridOperationV1,
     model: Option<&[u8]>,
     inputs: &[(String, Vec<u8>)],
@@ -70,7 +70,7 @@ pub(crate) fn operation(
 
 /// An owner refusal from a closed operation keeps its exit class, follow-up
 /// commands and detail exactly as the linked command raised them.
-pub(crate) fn operation_failure(error: NetworkFailure) -> Failure {
+pub fn operation_failure(error: NetworkFailure) -> Failure {
     let envelope = error
         .owner_detail
         .as_deref()

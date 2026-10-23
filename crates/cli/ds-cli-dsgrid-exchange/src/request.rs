@@ -1,48 +1,36 @@
-//! Building one `ConversionRequest`, once.
+//! The inputs `plan` and `convert` share, declared once.
 //!
-//! `plan` and `convert` take the same inputs and must build the same request
-//! from them, because the whole point of planning first is that the plan you
-//! read is the plan that runs. If the two commands assembled their requests
-//! separately, a flag handled slightly differently in one of them would make
-//! the plan a lie — and it would be a quiet lie, since both calls would still
-//! succeed. So the request is built here and both commands call it.
+//! `plan` and `convert` take the same inputs and must hand the exchange owner
+//! the same choices, because the whole point of planning first is that the
+//! plan you read is the plan that runs. If the two commands captured their
+//! choices separately, a flag handled slightly differently in one of them
+//! would make the plan a lie — and it would be a quiet lie, since both calls
+//! would still succeed. So the choices are captured here and both commands
+//! call it; the Network addon's exchange owner builds the one request from
+//! them (DECOUPLING-003).
 //!
-//! Every value this module accepts is a closed set, declared in `ARGS` and
-//! enforced by the contract parser before a handler ever runs. A conversion
-//! target is not a free-text field: an unrecognized one has to fail at the
-//! door with the accepted list, not deep inside the engine.
+//! Every closed value this module accepts is declared in `SHARED_ARGS` from
+//! the Network contract's vocabulary and enforced by the contract parser
+//! before a handler ever runs. A conversion target is not a free-text field:
+//! an unrecognized one has to fail at the door with the accepted list, not
+//! deep inside the engine.
 
 use ds_cli_contract::Inputs;
-use ds_cli_contract::outcome::Failure;
-use ds_cli_contract::spec::{Arg, Refusal};
-use ds_grid_exchange::conversion::{
-    BatchMode, ConversionRequest, ExpectedWgs84Location, PlsContainer, PlsVersionIntent, SourceSet,
-    TargetFormat, gis_mv_import_selection, gis_network_import_selection,
-    resolve_pls_project_selection,
+use ds_cli_contract::spec::{Arg, ArgKind, Refusal};
+use ds_network_contracts::grid_exchange::{
+    EXCHANGE_CONTAINERS, EXCHANGE_GIS_LAYER_IDS, EXCHANGE_MODES, EXCHANGE_NETWORK_SOURCE_ROLES,
+    EXCHANGE_TARGETS, ExchangeChoicesV1,
 };
-use ds_grid_exchange::gis::{GIS_LAYER_IDS, GisLayerId};
-use serde_json::json;
 
 /// The accepted `--target` values, in the order help prints them. These are
 /// the CLI's spellings, not the engine's variant names: `shp` and `gpkg` are
-/// what an operator types, and mapping them here is what keeps the engine's
-/// Rust identifiers out of an interface people have to memorize.
-pub const TARGETS: &[&str] = &[
-    "dsgrid",
-    "pls-folder",
-    "pls-bak",
-    "geojson",
-    "kmz",
-    "shp",
-    "gpkg",
-    "csv",
-    "tsv",
-    "xlsx",
-];
+/// what an operator types, and the owner maps them so the engine's Rust
+/// identifiers stay out of an interface people have to memorize.
+pub const TARGETS: &[&str] = EXCHANGE_TARGETS;
 
-pub const MODES: &[&str] = &["separate", "compose", "combine", "merge-gis"];
-pub const CONTAINERS: &[&str] = &["folder", "bak"];
-pub const NETWORK_SOURCE_ROLES: &[&str] = &["tapping", "substation", "plant", "network_source"];
+pub const MODES: &[&str] = EXCHANGE_MODES;
+pub const CONTAINERS: &[&str] = EXCHANGE_CONTAINERS;
+pub const NETWORK_SOURCE_ROLES: &[&str] = EXCHANGE_NETWORK_SOURCE_ROLES;
 
 /// The inputs `plan` and `convert` share. `convert` splices `--out` and
 /// `--yes` onto this; nothing else differs between them, which is the
@@ -181,7 +169,7 @@ pub const SHARED_ARGS: &[Arg] = &[
         "<layer>",
         "Keep a layer a client kmz/shp leaves out (tension_sections, terrain_points). Repeatable.",
     )
-    .choices(&GIS_LAYER_IDS),
+    .choices(EXCHANGE_GIS_LAYER_IDS),
     Arg::repeated(
         "omit-unused-structure-type",
         "<type-id>",
@@ -252,328 +240,39 @@ pub const REQUEST_REFUSALS: &[Refusal] = &[
     },
 ];
 
-/// The version intent every native output is authored at.
+/// The operator's choices exactly as the declared flags carried them, for the
+/// addon's exchange owner to interpret.
 ///
-/// There is deliberately no `--version` flag. `ds-grid` accepts one and then
-/// rejects every value except 16.81, which makes it a flag whose only job is
-/// to produce an error — the caller learns the constraint by tripping over
-/// it. Stating the constraint in help instead costs one line and no failed
-/// invocations. If this build ever authors a second version, the flag arrives
-/// with a real closed set behind it.
-const VERSION_INTENT: PlsVersionIntent = PlsVersionIntent::ConvertTo16_81;
-
-/// The guard behind every closed-set flag in this module.
-///
-/// One code rather than three, because all three describe the same defect: a
-/// value the contract parser accepted from a `choices` list that this build
-/// has no engine value for. A caller cannot produce it — the choice list makes
-/// it unreachable — which is why it is registered as internal-only in
-/// `refusal_coverage.rs` rather than documented in three REFUSALS sections a
-/// caller would never match on.
-fn unmapped(flag: &str, given: &str, accepted: &[&str]) -> Failure {
-    Failure::internal(
-        "unmapped_choice",
-        format!("--{flag} `{given}` passed validation but has no mapping in this build"),
-    )
-    .remedy(format!(
-        "report this; accepted values are: {}",
-        accepted.join(", ")
-    ))
-}
-
-fn parse_target(value: &str) -> Result<TargetFormat, Failure> {
-    Ok(match value {
-        "dsgrid" => TargetFormat::Dsgrid,
-        "pls-folder" => TargetFormat::PlsWorkspaceFolder,
-        "pls-bak" => TargetFormat::PlsBackup,
-        "geojson" => TargetFormat::GeoJson,
-        "kmz" => TargetFormat::Kmz,
-        "shp" => TargetFormat::ShapefileZip,
-        "gpkg" => TargetFormat::GeoPackage,
-        "csv" => TargetFormat::Csv,
-        "tsv" => TargetFormat::Tsv,
-        "xlsx" => TargetFormat::Xlsx,
-        // Unreachable: the contract parser enforces `choices` before dispatch,
-        // so only a value from TARGETS arrives here. Kept as a typed failure
-        // rather than a panic so that adding a target to TARGETS without a
-        // mapping here degrades to a clean refusal instead of a crash.
-        other => return Err(unmapped("target", other, TARGETS)),
-    })
-}
-
-fn parse_mode(value: Option<&str>) -> Result<BatchMode, Failure> {
-    Ok(match value {
-        None | Some("separate") => BatchMode::Separate,
-        Some("compose") => BatchMode::ComposeDsGrid,
-        Some("combine") => BatchMode::CombinePlsNative,
-        Some("merge-gis") => BatchMode::MergeGis,
-        other => return Err(unmapped("mode", other.unwrap_or_default(), MODES)),
-    })
-}
-
-fn parse_container(value: Option<&str>) -> Result<PlsContainer, Failure> {
-    Ok(match value {
-        None | Some("folder") => PlsContainer::Folder,
-        Some("bak") => PlsContainer::Backup,
-        other => return Err(unmapped("container", other.unwrap_or_default(), CONTAINERS)),
-    })
-}
-
-/// The three `--expect-*` flags are all-or-nothing on purpose. Two of the
-/// three is not a weaker assertion — it is an assertion the engine cannot
-/// evaluate, and accepting it would silently skip the check the caller
-/// believed they had asked for.
-fn parse_expected_location(inputs: &Inputs) -> Result<Option<ExpectedWgs84Location>, Failure> {
-    let longitude = inputs.value("expect-lon");
-    let latitude = inputs.value("expect-lat");
-    let radius = inputs.value("expect-radius-km");
-
-    match (longitude, latitude, radius) {
-        (None, None, None) => Ok(None),
-        (Some(longitude), Some(latitude), Some(radius)) => {
-            let longitude_deg = number(longitude, "expect-lon")?;
-            let latitude_deg = number(latitude, "expect-lat")?;
-            let radius_km = number(radius, "expect-radius-km")?;
-            Ok(Some(ExpectedWgs84Location {
-                longitude_deg,
-                latitude_deg,
-                max_distance_m: radius_km * 1000.0,
-            }))
+/// There is deliberately no `--version` flag: this build authors native
+/// output at PLS-CADD 16.81 only, and the owner states that in its plan. Every
+/// value here passed this command's parser, which enforced each closed
+/// `choices` list; the owner maps them onto its request and answers a value
+/// it has no mapping for as `unmapped_choice` (internal-only, registered in
+/// `refusal_coverage.rs`), and every other refusal above unchanged.
+pub fn choices(inputs: &Inputs) -> ExchangeChoicesV1 {
+    let mut choices = ExchangeChoicesV1::default();
+    for arg in SHARED_ARGS {
+        match arg.kind {
+            ArgKind::Value => {
+                if let Some(value) = inputs.value(arg.name) {
+                    choices.values.insert(arg.name.to_owned(), value.to_owned());
+                }
+            }
+            ArgKind::Repeated if arg.name != "source" => {
+                let values = inputs.repeated(arg.name);
+                if !values.is_empty() {
+                    choices
+                        .repeated
+                        .insert(arg.name.to_owned(), values.to_vec());
+                }
+            }
+            ArgKind::Switch => {
+                if inputs.switch(arg.name) {
+                    choices.switches.insert(arg.name.to_owned());
+                }
+            }
+            _ => {}
         }
-        _ => Err(Failure::invalid(
-            "incomplete_expected_location",
-            "--expect-lon, --expect-lat and --expect-radius-km must be given together",
-        )
-        .remedy("pass all three, or none")
-        .detail(json!({
-            "expect_lon": longitude.is_some(),
-            "expect_lat": latitude.is_some(),
-            "expect_radius_km": radius.is_some(),
-        }))),
     }
-}
-
-fn number(raw: &str, flag: &str) -> Result<f64, Failure> {
-    raw.parse::<f64>().map_err(|_| {
-        Failure::invalid(
-            "invalid_expected_location",
-            format!("--{flag} `{raw}` is not a number"),
-        )
-        .remedy("pass decimal degrees for lon/lat and kilometres for the radius")
-    })
-}
-
-/// Assemble the request. `sources` is passed in already loaded because
-/// resolving `--select-project` needs to read the member list.
-pub fn build(inputs: &Inputs, sources: SourceSet) -> Result<ConversionRequest, Failure> {
-    let target = parse_target(inputs.require("target")?)?;
-    let batch_mode = parse_mode(inputs.value("mode"))?;
-    let pls_container = parse_container(inputs.value("container"))?;
-    let expected_location = parse_expected_location(inputs)?;
-    let alignment_layer = inputs.value("alignment-layer");
-    let network_source_layer = inputs.value("network-source-layer");
-    let network_source_role = inputs.value("network-source-role");
-    let network_snap_tolerance_m = inputs
-        .value("network-snap-tolerance-m")
-        .map(parse_network_snap_tolerance)
-        .transpose()?;
-    if network_source_layer.is_some() && alignment_layer.is_none() {
-        return Err(Failure::invalid(
-            "incomplete_gis_network_selection",
-            "--network-source-layer requires --alignment-layer",
-        )
-        .remedy("pass both --alignment-layer and --network-source-layer"));
-    }
-    if network_source_layer.is_none()
-        && (network_source_role.is_some() || network_snap_tolerance_m.is_some())
-    {
-        return Err(Failure::invalid(
-            "incomplete_gis_network_selection",
-            "--network-source-role and --network-snap-tolerance-m require --network-source-layer",
-        )
-        .remedy("pass --network-source-layer, or remove the network-only option"));
-    }
-
-    // Parsed through the engine's own layer type. The parser already held
-    // each value to the engine's list, so a miss here is a build defect.
-    let gis_include_layers = inputs
-        .repeated("include-layer")
-        .iter()
-        .map(|layer| {
-            layer
-                .parse::<GisLayerId>()
-                .map_err(|_| unmapped("include-layer", layer, &GIS_LAYER_IDS))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let pls_project = match inputs.value("select-project") {
-        Some(leaf) => Some(
-            resolve_pls_project_selection(&sources, leaf).map_err(|error| {
-                Failure::invalid(
-                    "project_not_resolvable",
-                    format!("--select-project `{leaf}` did not resolve"),
-                )
-                .remedy("run `ds dsgrid-exchange inspect` to list what the sources hold")
-                .next("ds dsgrid-exchange inspect --source <path>")
-                .detail(json!({ "detail": error.to_string() }))
-            })?,
-        ),
-        None => None,
-    };
-
-    let selection = if let Some(raw_index) = inputs.value("standards-source-index") {
-        let standards_source_index = raw_index.parse::<usize>().map_err(|_| {
-            Failure::invalid(
-                "invalid_gis_mv_selection",
-                format!("--standards-source-index `{raw_index}` is not a whole number"),
-            )
-            .remedy("pass the zero-based position of the standards --source")
-        })?;
-        let maximum_span_m =
-            positive_number(mv_required(inputs, "maximum-span-m")?, "maximum-span-m")?;
-        let terrain_resolution_m = inputs
-            .value("terrain-resolution-m")
-            .map(|raw| positive_number(raw, "terrain-resolution-m"))
-            .transpose()?;
-        let phase_catenary_constant_m = positive_number(
-            mv_required(inputs, "phase-catenary-constant-m")?,
-            "phase-catenary-constant-m",
-        )?;
-        let phase_attachment_slots = mv_required(inputs, "phase-attachment-slots")?
-            .split(',')
-            .map(|raw| {
-                raw.parse::<u32>().map_err(|_| {
-                    Failure::invalid(
-                        "invalid_gis_mv_selection",
-                        format!("phase attachment slot `{raw}` is not a whole number"),
-                    )
-                    .remedy("pass comma-separated slot ordinals such as 0,1,2")
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        gis_mv_import_selection(
-            mv_required(inputs, "alignment-layer")?,
-            inputs.value("alignment-label-property"),
-            mv_required(inputs, "network-source-layer")?,
-            mv_required(inputs, "network-source-role")?,
-            network_snap_tolerance_m,
-            mv_required(inputs, "terrain-layer")?,
-            mv_required(inputs, "terrain-elevation-property")?,
-            inputs.value("terrain-feature-class-property"),
-            mv_required(inputs, "terrain-provider")?,
-            inputs.value("terrain-dataset"),
-            terrain_resolution_m,
-            inputs.value("terrain-horizontal-crs"),
-            inputs.value("terrain-acquired-at"),
-            standards_source_index,
-            mv_required(inputs, "source-structure-type-id")?,
-            mv_required(inputs, "transformer-structure-type-id")?,
-            mv_required(inputs, "tapping-structure-type-id")?,
-            mv_required(inputs, "support-structure-type-id")?,
-            maximum_span_m,
-            mv_required(inputs, "phase-cable-id")?,
-            mv_required(inputs, "criterion-set-id")?,
-            mv_required(inputs, "sag-weather-state-id")?,
-            phase_catenary_constant_m,
-            mv_required(inputs, "phase-attachment-set")?,
-            &phase_attachment_slots,
-        )
-    } else {
-        alignment_layer.map_or_else(Vec::new, |layer| {
-            gis_network_import_selection(
-                layer,
-                inputs.value("alignment-label-property"),
-                network_source_layer,
-                network_source_role,
-                network_snap_tolerance_m,
-            )
-        })
-    };
-
-    Ok(ConversionRequest {
-        sources,
-        batch_mode,
-        target,
-        pls_version_intent: VERSION_INTENT,
-        pls_container,
-        // Explicit native combine ordering is not exposed in contract 1. The
-        // engine accepts it; `ds` does not yet name it, and the reference doc
-        // records that as a known gap rather than leaving a caller to guess
-        // that the ordering is arbitrary. Default ordering is source order.
-        combine: None,
-        declared_crs: inputs.value("crs").map(expand_crs_alias),
-        expected_location,
-        swap_xy: inputs.switch("swap-xy"),
-        selection,
-        pls_project,
-        gis_include_layers,
-        omitted_structure_type_ids: serde_json::from_value(json!(
-            inputs.repeated("omit-unused-structure-type")
-        ))
-        .map_err(|error| Failure::invalid("structure_omission_invalid", error.to_string()))?,
-    })
-}
-
-/// The CRS aliases `--crs` accepts, beside a proj string, WKT or EPSG code.
-///
-/// `rwanda-tm` is the one national grid PLS-CADD workspaces in Rwanda are
-/// authored in; its parameters (`lon_0=30`, `k=0.9999`, `x_0=500000`,
-/// `y_0=5000000`, GRS80) have no EPSG code, so without an alias every
-/// operator has to know the proj string by heart (contract 02 §5). The
-/// expansion is the engine's own canonical declaration.
-pub const CRS_ALIASES: &[(&str, &str)] =
-    &[("rwanda-tm", ds_grid_exchange::conversion::RWANDA_TM_CRS)];
-
-pub fn expand_crs_alias(raw: &str) -> String {
-    let key = raw.trim().to_ascii_lowercase().replace('_', "-");
-    CRS_ALIASES
-        .iter()
-        .find(|(alias, _)| *alias == key)
-        .map_or_else(|| raw.to_string(), |(_, crs)| (*crs).to_string())
-}
-
-fn mv_required<'a>(inputs: &'a Inputs, name: &str) -> Result<&'a str, Failure> {
-    inputs.value(name).ok_or_else(|| {
-        Failure::invalid(
-            "incomplete_gis_mv_selection",
-            format!("--standards-source-index requires --{name}"),
-        )
-        .remedy("supply the complete explicit terrain, structure, conductor, criteria, and attachment selection")
-    })
-}
-
-fn positive_number(raw: &str, flag: &str) -> Result<f64, Failure> {
-    let value = raw.parse::<f64>().map_err(|_| {
-        Failure::invalid(
-            "invalid_gis_mv_selection",
-            format!("--{flag} `{raw}` is not a number"),
-        )
-        .remedy("pass a finite positive distance in metres")
-    })?;
-    if !value.is_finite() || value <= 0.0 {
-        return Err(Failure::invalid(
-            "invalid_gis_mv_selection",
-            format!("--{flag} must be finite and positive, found {raw}"),
-        )
-        .remedy("pass a finite positive distance in metres"));
-    }
-    Ok(value)
-}
-
-fn parse_network_snap_tolerance(raw: &str) -> Result<f64, Failure> {
-    let value = raw.parse::<f64>().map_err(|_| {
-        Failure::invalid(
-            "invalid_network_snap_tolerance",
-            format!("--network-snap-tolerance-m `{raw}` is not a number"),
-        )
-        .remedy("pass a positive distance in metres, normally 0.5")
-    })?;
-    if !value.is_finite() || value <= 0.0 {
-        return Err(Failure::invalid(
-            "invalid_network_snap_tolerance",
-            format!("--network-snap-tolerance-m must be finite and positive, found {raw}"),
-        )
-        .remedy("pass a positive distance in metres, normally 0.5"));
-    }
-    Ok(value)
+    choices
 }

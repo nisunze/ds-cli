@@ -19,23 +19,30 @@
 //! * **It never overwrites.** An existing output path is a refusal, not a
 //!   silent replacement. There is deliberately no `--force`: the remedy is a
 //!   new directory, which keeps the previous conversion's evidence intact.
+//! * **The archive is verified before anything is written.** The Network
+//!   addon plans and runs the conversion (DECOUPLING-003) and returns every
+//!   output in one stored archive with its declared path, size and digest.
+//!   Each entry must match its declaration and stay inside `--out`; an
+//!   archive that does not is refused before the first byte lands.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::io::Read as _;
+use std::path::{Component, Path, PathBuf};
 
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_exchange::conversion::{
-    ConversionError, ConversionOutcome, ConversionPlan, OutcomeStatus, execute_conversion,
-    plan_conversion,
+use ds_cli_dsgrid::native;
+use ds_network_contracts::grid_exchange::{
+    EXCHANGE_OUTPUTS_ARTIFACT, ExchangeConvertResultV1, ExchangeOutputV1, ExchangeRequestParamsV1,
 };
+use ds_network_contracts::grid_operation::GridOperationV1;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::{refusals, render, request, sources, token};
+use crate::{refusals, render, request, sources};
 
 /// Artifacts listed in the result. The full count is always reported; a
 /// workspace conversion can write thousands of members and the list is not
@@ -121,10 +128,11 @@ const fn args() -> [Arg; request::SHARED_ARGS.len() + 1] {
     out
 }
 
-static REFUSALS: [Refusal; 21] = refusals::splice(&[
+static REFUSALS: [Refusal; 21 + native::REFUSALS.len()] = refusals::splice(&[
     sources::SHARED_REFUSALS,
     request::REQUEST_REFUSALS,
     CONVERT_REFUSALS,
+    native::REFUSALS,
 ]);
 
 /// Exactly the codes `run` and its helpers emit — no more. A declared refusal
@@ -185,7 +193,6 @@ fn available() -> Availability {
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let out_dir = PathBuf::from(inputs.require("out")?);
     let loaded = sources::load(inputs.repeated("source"))?;
-    let source_warnings = loaded.warnings;
     // The absolute paths the sources were read from, in `--source` order.
     // They travel into the exchange report beside the pinned digests so a
     // later `ds dsgrid model import-external` of this output can link the
@@ -196,30 +203,22 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .iter()
         .map(|raw| absolute_path(raw))
         .collect::<Vec<_>>();
-    let request = request::build(inputs, loaded.sources)?;
-    let mut plan = plan_conversion(&request);
-    plan.warnings.extend(source_warnings);
-
-    if !plan.blockers.is_empty() {
-        return Err(Failure::conflict(
-            "plan_blocked",
-            "the conversion plan carries blockers and will not run",
-        )
-        .remedy("resolve each blocker, or convert a source set that does not raise them")
-        .next("ds dsgrid-exchange plan --source <path> --target <format>")
-        .detail(json!({
-            "plan_id": plan.plan_id,
-            "blockers": plan.blockers,
-        })));
-    }
-
-    let outcome = execute_conversion(&plan, &request.sources).map_err(execution_failure)?;
-    let written = materialize(&out_dir, &outcome)?;
-    let report_path = write_report(&out_dir, &plan, &outcome, &source_paths)?;
-
+    let mut outcome = crate::exchange(
+        &GridOperationV1::ExchangeConvert(ExchangeRequestParamsV1 {
+            sources: loaded.sources,
+            choices: request::choices(inputs),
+            warnings: loaded.warnings,
+        }),
+        &loaded.inputs,
+    )?;
+    let archive = outcome.take_artifact(EXCHANGE_OUTPUTS_ARTIFACT);
+    let converted: ExchangeConvertResultV1 = crate::result(outcome)?;
+    let files = verified_outputs(&converted.outputs, archive)?;
+    let written = materialize(&out_dir, &converted.outputs, files)?;
+    let report_path = write_report(&out_dir, converted.report, &source_paths)?;
     finish(
-        &outcome.status,
-        project(&plan, &outcome, written, &report_path),
+        &converted.status,
+        project(converted.answer, written, &report_path),
     )
 }
 
@@ -230,86 +229,120 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 /// reader needs. The envelope still has to say the work did not happen, or a
 /// caller (and every reliability report built on the exit class) would count
 /// a backup that was never written as delivered.
-fn finish(status: &OutcomeStatus, answer: Value) -> Result<Value, Failure> {
+fn finish(status: &str, answer: Value) -> Result<Value, Failure> {
     let failure = match status {
-        OutcomeStatus::Completed => return Ok(answer),
-        OutcomeStatus::Failed => Failure::failed(
+        "completed" => return Ok(answer),
+        "failed" => Failure::failed(
             "conversion_failed",
             "the conversion ran but no source produced its target artifact",
         )
         .remedy(
             "read each source's detail and the exchange report under --out; resolve the named cause, plan again and convert into a new directory",
         ),
-        OutcomeStatus::PartiallyCompleted => Failure::failed(
+        "partially_completed" => Failure::failed(
             "conversion_partial",
             "the conversion ran but only some sources produced their target artifacts",
         )
         .remedy(
             "keep the written artifacts and report as evidence; resolve each failed source's detail and convert those sources into a new directory",
         ),
+        other => {
+            return Err(Failure::failed(
+                "network_result_invalid",
+                format!("the conversion reported the unknown status `{other}`"),
+            )
+            .detail(answer));
+        }
     };
     Err(failure
         .next("ds dsgrid-exchange plan --source <path> --target <format>")
         .detail(answer))
 }
 
-/// Map the engine's typed refusal onto this command's stable codes.
-///
-/// `DigestMismatch` and `CandidateCountMismatch` are one situation from the
-/// caller's side — the bytes are not the bytes that were previewed — so they
-/// share a code, and the detail carries which candidate and which digests.
-fn execution_failure(error: ConversionError) -> Failure {
-    match error {
-        ConversionError::PlanChoicesMismatch => Failure::conflict(
-            "conversion_plan_choices_mismatch",
-            "execution choices differ from the pinned plan",
-        )
-        .remedy("preview a new plan with the exact intended choices"),
-        ConversionError::Blocked { count } => Failure::conflict(
-            "plan_blocked",
-            "the conversion plan carries blockers and will not run",
-        )
-        .remedy("run `ds dsgrid-exchange plan` and resolve each blocker")
-        .detail(json!({ "blockers": count })),
-        ConversionError::CandidateCountMismatch { plan, sources } => Failure::conflict(
-            "source_digest_mismatch",
-            "the source set presented for execution is not the one that was planned",
-        )
-        .remedy("re-run; the plan pins the bytes it previewed")
-        .detail(json!({ "planned_candidates": plan, "given_candidates": sources })),
-        ConversionError::DigestMismatch {
-            index,
-            display_name,
-            pinned,
-            actual,
-        } => Failure::conflict(
-            "source_digest_mismatch",
-            format!("`{display_name}` changed since the plan pinned it"),
-        )
-        .remedy("re-run; the plan pins the bytes it previewed")
-        .detail(json!({
-            "source_index": index,
-            "name": display_name,
-            "pinned": pinned,
-            "actual": actual,
-        })),
-    }
+fn invalid_archive(message: impl Into<String>) -> Failure {
+    Failure::failed("network_result_invalid", message.into())
+        .remedy("use an intact compatible addon and unchanged inputs")
 }
 
-/// Write every output the outcome produced, under `out_dir`.
+/// A plan-relative output path stays a plain relative path: no root, prefix,
+/// `.` or `..` component, so joining it under `--out` cannot leave it.
+fn contained(relative: &str) -> bool {
+    let path = Path::new(relative);
+    !relative.is_empty()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+}
+
+/// Every declared output's bytes from the returned archive, verified against
+/// its declaration: present once, exact size and digest, and nothing else in
+/// the archive. Nothing is written until all of them pass.
+fn verified_outputs(
+    outputs: &[ExchangeOutputV1],
+    archive: Option<Vec<u8>>,
+) -> Result<Vec<Vec<u8>>, Failure> {
+    if outputs.is_empty() {
+        return match archive {
+            None => Ok(Vec::new()),
+            Some(_) => Err(invalid_archive(
+                "the conversion returned outputs it did not declare",
+            )),
+        };
+    }
+    let archive =
+        archive.ok_or_else(|| invalid_archive("the conversion declared outputs but returned none"))?;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(archive))
+        .map_err(|error| invalid_archive(format!("the outputs archive is unreadable: {error}")))?;
+    if archive.len() != outputs.len() {
+        return Err(invalid_archive(format!(
+            "the outputs archive holds {} entries for {} declared outputs",
+            archive.len(),
+            outputs.len()
+        )));
+    }
+    let mut files = Vec::with_capacity(outputs.len());
+    for output in outputs {
+        if !contained(&output.path) {
+            return Err(invalid_archive(format!(
+                "the output path `{}` is not a plain relative path",
+                output.path
+            )));
+        }
+        let mut entry = archive
+            .by_name(&output.path)
+            .map_err(|_| invalid_archive(format!("`{}` is missing from the outputs", output.path)))?;
+        let mut bytes = Vec::with_capacity(usize::try_from(output.byte_len).unwrap_or(0));
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|error| invalid_archive(format!("`{}`: {error}", output.path)))?;
+        if bytes.len() as u64 != output.byte_len || sha256(&bytes) != output.sha256 {
+            return Err(invalid_archive(format!(
+                "`{}` differs from its declared size or digest",
+                output.path
+            )));
+        }
+        files.push(bytes);
+    }
+    Ok(files)
+}
+
+/// Write every verified output under `out_dir`.
 ///
 /// Paths come from the plan verbatim. The collision check is a defect
 /// detector, not a repair: minting a distinct name would materialize a tree
 /// the plan does not describe.
-fn materialize(out_dir: &Path, outcome: &ConversionOutcome) -> Result<Vec<Value>, Failure> {
+fn materialize(
+    out_dir: &Path,
+    outputs: &[ExchangeOutputV1],
+    files: Vec<Vec<u8>>,
+) -> Result<Vec<Value>, Failure> {
     create_dir(out_dir)?;
 
-    let mut written = Vec::with_capacity(outcome.outputs.len());
     let mut claimed: BTreeSet<String> = BTreeSet::new();
-
-    for output in &outcome.outputs {
-        let relative = &output.relative_path;
-
+    // Refuse every collision or existing path before the first write, so a
+    // refused conversion leaves `--out` as it found it.
+    for output in outputs {
+        let relative = &output.path;
         // Case-insensitive, because Windows and macOS treat two paths
         // differing only in case as one file. A collision that only appears
         // on the operator's filesystem is a collision this must catch here.
@@ -321,7 +354,6 @@ fn materialize(out_dir: &Path, outcome: &ConversionOutcome) -> Result<Vec<Value>
             .remedy("report this: a plan naming one path twice is an engine defect")
             .detail(json!({ "path": relative })));
         }
-
         let target = out_dir.join(relative);
         if target.exists() {
             return Err(Failure::conflict(
@@ -331,29 +363,26 @@ fn materialize(out_dir: &Path, outcome: &ConversionOutcome) -> Result<Vec<Value>
             .remedy("convert into a new directory; this command never overwrites")
             .detail(json!({ "path": relative })));
         }
+    }
 
+    let mut written = Vec::with_capacity(outputs.len());
+    for (output, bytes) in outputs.iter().zip(files) {
+        let target = out_dir.join(&output.path);
         if let Some(parent) = target.parent() {
             create_dir(parent)?;
         }
-        write_bytes(&target, &output.bytes)?;
-
+        write_bytes(&target, &bytes)?;
         written.push(json!({
-            "path": relative,
+            "path": output.path,
             "artifact_type": output.artifact_type,
-            "byte_len": output.bytes.len(),
-            "sha256": format!("sha256:{}", hex(&output.bytes)),
+            "byte_len": output.byte_len,
+            "sha256": output.sha256,
             "source_index": output.source_index,
         }));
     }
-
     Ok(written)
 }
 
-/// Write the exchange report beside the artifacts.
-///
-/// The report carries the plan and the per-source outcome together, because
-/// the pair is the evidence: the plan says what was promised, the outcome
-/// says what happened, and a reader comparing them needs both in one file.
 /// The path a source was named by, made absolute against the working
 /// directory. Not canonicalized: a Drive stream or a mapped share may resolve
 /// to a name the operator would not recognise, and the link is for them.
@@ -367,10 +396,16 @@ fn absolute_path(raw: &str) -> String {
         .unwrap_or_else(|_| raw.to_string())
 }
 
+/// Write the exchange report beside the artifacts.
+///
+/// The report carries the plan and the per-source outcome together, because
+/// the pair is the evidence: the plan says what was promised, the outcome
+/// says what happened, and a reader comparing them needs both in one file.
+/// The owner's report names each source by index; the host adds the path it
+/// read that source from.
 fn write_report(
     out_dir: &Path,
-    plan: &ConversionPlan,
-    outcome: &ConversionOutcome,
+    mut document: Value,
     source_paths: &[String],
 ) -> Result<PathBuf, Failure> {
     let path = out_dir.join("exchange-report.json");
@@ -381,27 +416,17 @@ fn write_report(
         )
         .remedy("convert into a new directory; this command never overwrites"));
     }
-
-    let sources: Vec<Value> = plan
-        .per_source
-        .iter()
-        .map(|source| {
-            json!({
-                "source_index": source.source_index,
-                "name": source.display_name,
-                "kind": token(&source.kind),
-                "digest": source.digest,
-                "path": source_paths.get(source.source_index),
-            })
-        })
-        .collect();
-    let document = json!({
-        "plan": plan,
-        "status": token(&outcome.status),
-        "per_source": outcome.per_source,
-        "reports": outcome.reports,
-        "sources": sources,
-    });
+    if let Some(rows) = document.get_mut("sources").and_then(Value::as_array_mut) {
+        for row in rows {
+            let index = row["source_index"].as_u64().map(|index| index as usize);
+            if let Some(object) = row.as_object_mut() {
+                object.insert(
+                    "path".into(),
+                    json!(index.and_then(|index| source_paths.get(index))),
+                );
+            }
+        }
+    }
     let bytes = serde_json::to_vec_pretty(&document).map_err(|error| {
         Failure::internal(
             "report_unserializable",
@@ -435,57 +460,37 @@ fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), Failure> {
     })
 }
 
-fn hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+fn sha256(bytes: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
-fn project(
-    plan: &ConversionPlan,
-    outcome: &ConversionOutcome,
-    written: Vec<Value>,
-    report_path: &Path,
-) -> Value {
+/// The owner's bounded answer plus what this host wrote.
+fn project(answer: Value, written: Vec<Value>, report_path: &Path) -> Value {
     let total = written.len();
     let mut listed = written;
     let withheld = listed.len().saturating_sub(WRITTEN_LIMIT);
     listed.truncate(WRITTEN_LIMIT);
-
-    let per_source: Vec<Value> = outcome
-        .per_source
-        .iter()
-        .map(|status| {
-            json!({
-                "source_index": status.source_index,
-                "name": status.display_name,
-                "status": token(&status.status),
-                "detail": status.detail,
-                "snapshot_fingerprint": status.snapshot_fingerprint,
-                "artifact_digests": status.artifact_digests,
-            })
-        })
-        .collect();
-
-    let mut answer = json!({
-        "plan_id": plan.plan_id,
-        "status": token(&outcome.status),
-        "target": token(&plan.target),
-        "written": listed,
-        "written_count": total,
-        "report": report_path.to_string_lossy(),
-        "per_source": per_source,
-        "warnings": plan.warnings,
-        "losses": plan.losses,
-    });
-
+    let mut answer = match answer {
+        Value::Object(map) => map,
+        other => {
+            let mut map = serde_json::Map::new();
+            map.insert("answer".into(), other);
+            map
+        }
+    };
+    answer.insert("written".into(), json!(listed));
+    answer.insert("written_count".into(), json!(total));
+    answer.insert("report".into(), json!(report_path.to_string_lossy()));
     if withheld > 0 {
-        answer["more"] = json!({
-            "written_withheld": withheld,
-            "next": "read the exchange report for every artifact",
-        });
+        answer.insert(
+            "more".into(),
+            json!({
+                "written_withheld": withheld,
+                "next": "read the exchange report for every artifact",
+            }),
+        );
     }
-
-    answer
+    Value::Object(answer)
 }
 
 pub fn render(data: &Value) -> String {
@@ -519,58 +524,5 @@ pub fn render(data: &Value) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use ds_cli_contract::outcome::ExitClass;
-
-    use super::*;
-
-    fn answer(status: &str) -> Value {
-        json!({
-            "plan_id": "plan:pinned",
-            "status": status,
-            "target": "pls_backup",
-            "written": [],
-            "written_count": 0,
-            "report": "/out/exchange-report.json",
-            "per_source": [{
-                "source_index": 0,
-                "name": "model.dsgrid",
-                "status": "failed",
-                "detail": "strict workspace export failed: 2 difference(s) fall outside this release's characterized export edit classes",
-            }],
-        })
-    }
-
-    /// A conversion that ran without producing what was asked for answers
-    /// with a failure envelope, never `ok` (the PLS `.bak` export that wrote
-    /// nothing used to report success). The written evidence travels in the
-    /// detail, and both codes are declared on the command.
-    #[test]
-    fn only_a_completed_outcome_is_a_success() {
-        let completed = finish(&OutcomeStatus::Completed, answer("completed")).unwrap();
-        assert_eq!(completed["status"], "completed");
-
-        for (status, code) in [
-            (OutcomeStatus::Failed, "conversion_failed"),
-            (OutcomeStatus::PartiallyCompleted, "conversion_partial"),
-        ] {
-            let failure = finish(&status, answer(&token(&status))).unwrap_err();
-            assert_eq!(failure.code(), code);
-            assert_eq!(failure.class(), ExitClass::Failed);
-            assert!(
-                failure
-                    .remedy_text()
-                    .is_some_and(|remedy| !remedy.is_empty())
-            );
-            let detail = failure
-                .detail_value()
-                .expect("the outcome travels as detail");
-            assert_eq!(detail["report"], "/out/exchange-report.json");
-            assert_eq!(detail["per_source"][0]["status"], "failed");
-            assert!(
-                COMMAND.refusals.iter().any(|refusal| refusal.code == code),
-                "{code} is not declared"
-            );
-        }
-    }
-}
+#[path = "convert_tests.rs"]
+mod tests;

@@ -2,9 +2,9 @@
 //! model, and back out again.
 //!
 //! This domain is where a `.dsgrid` comes from and where it goes: PLS-CADD
-//! workspaces and backups in, GIS and tabular exports out, and composition of
-//! several models into one. `ds dsgrid` answers questions about a model that
-//! already exists; this domain manufactures one.
+//! workspaces and backups in, PLS-CADD backups, GIS and tabular exports out,
+//! and composition of several models into one. `ds dsgrid` answers questions
+//! about a model that already exists; this domain manufactures one.
 //!
 //! The split is deliberate and structural. Every command in `ds dsgrid` is
 //! `Discovery` or `ReadOnly`; this domain contains the only command in either
@@ -20,57 +20,57 @@
 //! convert   do that, and nothing else
 //! ```
 //!
-//! The fourth closes the loop the other way: `sync` writes a working copy's
-//! edits back INTO the PLS-CADD workspace it was converted from and linked
-//! to (`ds dsgrid model link`), member by member, leaving every untouched
-//! member byte-identical. Its `--dry-run` is the plan and its `--yes` the
-//! run, because there the two are one computation over one folder.
-//!
 //! `plan` pins the digest of every source it reads; `convert` re-digests them
 //! and refuses if any changed. That is what makes the sequence worth
 //! following rather than skipping to the end: the plan is a commitment, not a
 //! guess. It is also why there is no `convert --dry-run` — a dry run is a
 //! mode of one command, while these are two effect classes.
 //!
-//! Like `ds-cli-dsgrid`, this crate computes nothing. Classification, the
-//! capability matrix, planning and execution all belong to
-//! `ds-grid-exchange`. What lives here is argument handling, refusal mapping,
-//! bounded projection, and the file-writing rules — never overwrite, never
-//! rename an artifact the plan named.
+//! This crate computes nothing and links no Grid engine (DECOUPLING-003).
+//! Classification, the capability matrix, planning and execution belong to
+//! the exchange owner in the independently installed Network addon, reached
+//! through the closed `grid-operation` exchange calls
+//! (`grid_exchange_operations_v1`). What lives here is argument handling,
+//! source staging, refusal mapping, bounded presentation, and the
+//! file-writing rules — never overwrite, never rename an artifact the plan
+//! named. `sync` (writing a working copy's edits back into its linked
+//! workspace) stays retired until its own closed operation returns.
 
 pub mod convert;
 pub mod inspect;
-mod linked_pls;
 pub mod plan;
 pub mod refusals;
 pub mod render;
 pub mod request;
 pub mod sources;
-pub mod sync;
 
+use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::Domain;
+use ds_network_contracts::grid_operation::GridOperationV1;
 
 pub static DOMAIN: Domain = Domain {
     id: "dsgrid-exchange",
-    summary: "Import, export, sync back: classify, plan, convert, sync.",
-    commands: &[
-        &inspect::COMMAND,
-        &plan::COMMAND,
-        &convert::COMMAND,
-        &sync::COMMAND,
-    ],
+    summary: "Import and export: classify, plan, convert.",
+    commands: &[&inspect::COMMAND, &plan::COMMAND, &convert::COMMAND],
 };
 
-/// A value's canonical serde token, rather than its `Debug` spelling.
-///
-/// Same rule as `ds-cli-dsgrid`'s `table_token`: the engine's enum variants
-/// are `CamelCase` in Rust and `snake_case` on the wire, and `ds` reports the
-/// wire spelling everywhere. Deriving it from the type's own `Serialize`
-/// means a variant renamed upstream is renamed in this output too, instead of
-/// quietly diverging into a token that no longer matches the engine's.
-pub fn token<T: serde::Serialize>(value: &T) -> String {
-    serde_json::to_value(value)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_owned))
-        .unwrap_or_else(|| "unknown".to_owned())
+/// Run one exchange call in the captured Network addon over the staged
+/// sources, keeping the owner's refusal exactly as it raised it.
+pub(crate) fn exchange(
+    call: &GridOperationV1,
+    inputs: &[(String, Vec<u8>)],
+) -> Result<ds_network_client::GridOperationOutcome, Failure> {
+    ds_cli_dsgrid::native::operation(call, None, inputs)
 }
+
+/// The typed result of one exchange call.
+pub(crate) fn result<T: serde::de::DeserializeOwned>(
+    outcome: ds_network_client::GridOperationOutcome,
+) -> Result<T, Failure> {
+    serde_json::from_value(outcome.result.result)
+        .map_err(|error| Failure::failed("network_result_invalid", error.to_string()))
+}
+
+#[cfg(test)]
+#[path = "lib_tests.rs"]
+mod tests;

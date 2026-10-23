@@ -45,7 +45,7 @@ mod host_memory;
 pub mod inspect;
 pub mod model;
 pub mod mutation;
-mod native;
+pub mod native;
 pub mod package;
 pub mod package_migrate;
 pub mod preview_receipt;

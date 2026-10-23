@@ -5,9 +5,6 @@ use serde_json::Value;
 use std::process::Command;
 
 const RETIRED_COMMANDS: &[&str] = &[
-    "dsgrid-exchange.convert",
-    "dsgrid-exchange.inspect",
-    "dsgrid-exchange.plan",
     "dsgrid-exchange.sync",
     "dsgrid.alignment.gap.set",
     "dsgrid.alignment.gap.show",
@@ -101,8 +98,9 @@ fn call(args: &[&str]) -> (bool, Value) {
 #[test]
 fn retired_engine_commands_have_no_catalogue_or_dispatch_route() {
     let unique: std::collections::BTreeSet<_> = RETIRED_COMMANDS.iter().copied().collect();
-    // 122 removed at retirement; 42 DS Grid file commands are restored.
-    assert_eq!(RETIRED_COMMANDS.len(), 80);
+    // 122 removed at retirement; 42 DS Grid file commands and
+    // `dsgrid-exchange inspect|plan|convert` are restored.
+    assert_eq!(RETIRED_COMMANDS.len(), 77);
     assert_eq!(
         unique.len(),
         RETIRED_COMMANDS.len(),
@@ -116,9 +114,12 @@ fn retired_engine_commands_have_no_catalogue_or_dispatch_route() {
         path.extend(["--output", "json"]);
         let (success, refused) = call(&path);
         assert!(!success, "{id}");
-        // The dsgrid and pm domains exist; a retired verb there is an unknown
-        // command. The other retired domains are absent entirely.
-        let code = if id.starts_with("pm.") || id.starts_with("dsgrid.") {
+        // The dsgrid, dsgrid-exchange and pm domains exist; a retired verb
+        // there is an unknown command. The other retired domains are absent.
+        let code = if id.starts_with("pm.")
+            || id.starts_with("dsgrid.")
+            || id.starts_with("dsgrid-exchange.")
+        {
             "unknown_command"
         } else {
             "unknown_domain"
