@@ -1,6 +1,5 @@
 //! One fixed native prepared-city file task; the Solar owner computes and seals it.
 
-use std::ffi::OsString;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -14,7 +13,7 @@ use ds_solar_contracts::{
 };
 use serde_json::{Value, json};
 
-use crate::{DISCOVERY_TIMEOUT, ENGINE_LANE, RUN_TIMEOUT, SOLAR_ENGINE, capture_engine};
+use crate::{ENGINE_LANE, RUN_TIMEOUT, Solar, SolarTask, capture_engine};
 
 // A local receipt consumption bound; calculation/input limits remain Solar-owned.
 const MAX_RESULT_BYTES: u64 = 64 * 1024 * 1024;
@@ -118,55 +117,35 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     run_captured(inputs, capture_engine(inputs)?)
 }
 
-pub(crate) fn run_captured(
-    inputs: &Inputs,
-    engine: ds_cli_exec::CapturedExternal,
-) -> Result<Value, Failure> {
-    let request = inputs.require("request")?;
+pub(crate) fn run_captured(inputs: &Inputs, engine: Solar) -> Result<Value, Failure> {
+    let request = PathBuf::from(inputs.require("request")?);
     let out = PathBuf::from(inputs.require("out")?);
-    let identity = engine.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
-    let identity: EngineIdentity = serde_json::from_value(identity).map_err(|_| {
+    // The Kernel client checks the addon's catalogue before any process.
+    let identity = engine
+        .require(SolarTask::CalculatePrepared)
+        .map_err(|failure| {
+            if failure.code() == ds_cli_exec::solar::TASK_UNSUPPORTED {
+                Failure::unavailable(
+                    "solar_prepared_schema_unavailable",
+                    "the captured Solar engine does not support the prepared calculation task",
+                )
+                .remedy(
+                    "install compatible ds and Solar addon versions with the calculate-prepared native task",
+                )
+            } else {
+                failure
+            }
+        })?;
+    let identity: EngineIdentity = serde_json::from_value(identity.clone()).map_err(|_| {
         Failure::failed(
             "callee_contract_mismatch",
             "solar build-info is not its typed engine identity",
         )
         .remedy("install compatible ds and Solar addon versions")
     })?;
-    if identity.name != "ds-solar-engine"
-        || !identity
-            .schemas
-            .iter()
-            .any(|schema| schema == PREPARED_CALCULATION_TASK_SCHEMA)
-    {
-        return Err(Failure::unavailable(
-            "solar_prepared_schema_unavailable",
-            "the captured Solar engine does not support the prepared calculation task",
-        )
-        .remedy(
-            "install compatible ds and Solar addon versions with the calculate-prepared native task",
-        ));
-    }
-    let args = [
-        OsString::from("--request"),
-        OsString::from(request),
-        OsString::from("--out"),
-        out.as_os_str().to_owned(),
-    ];
-    let completed = engine.call("calculate-prepared", &args, RUN_TIMEOUT)?;
-    if !completed.succeeded() {
-        let mut failure = SOLAR_ENGINE.failure_from(&completed, "calculate-prepared");
-        // The native task writes typed refusal JSON on stdout. Keep it bounded,
-        // without losing the standard bounded stderr evidence.
-        if !completed.truncated
-            && completed.stdout.len() <= 8192
-            && let Ok(native) = serde_json::from_str::<Value>(&completed.stdout)
-            && native["status"] == "error"
-        {
-            let mut detail = failure.detail_value().cloned().unwrap_or_else(|| json!({}));
-            detail["native"] = native["error"].clone();
-            failure = failure.detail(detail);
-        }
-        return Err(failure);
+    let reply = engine.run(SolarTask::CalculatePrepared, &request, &out, RUN_TIMEOUT)?;
+    if !reply.succeeded() {
+        return Err(reply.refusal());
     }
     let result_path = out.join("task-result.json");
     let metadata = std::fs::symlink_metadata(&result_path).map_err(|_| incompatible_result())?;

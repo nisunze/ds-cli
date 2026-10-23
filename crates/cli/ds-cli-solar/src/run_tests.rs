@@ -182,11 +182,11 @@ fn isolated_no_fallback() {
 fn managed_batch_runs_exact_offline_artifacts_through_the_retained_capture() {
     assert!(std::env::var_os("DS_SOLAR_ENGINE_BIN").is_none());
     let binary = PathBuf::from(std::env::var_os("DS_MODULE_TEST_SOLAR_BIN").unwrap());
-    let identity = crate::SOLAR_ENGINE
-        .capture_pinned(&binary)
+    let identity = crate::Solar::capture_pinned(&binary)
         .unwrap()
-        .call_json("build-info", &[], crate::DISCOVERY_TIMEOUT)
-        .unwrap();
+        .build_info()
+        .unwrap()
+        .clone();
     let root = tempfile::tempdir().unwrap();
     let base = root.path().join("addons");
     let first = crate::engine_selection_tests::select(&base, "canary", &binary, &identity, b"");

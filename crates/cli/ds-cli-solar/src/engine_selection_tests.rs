@@ -77,11 +77,11 @@ fn selected_lane_and_captured_consumers_keep_exact_offline_calculation_after_poi
     let binary = PathBuf::from(
         std::env::var_os("DS_MODULE_TEST_SOLAR_BIN").expect("qualified Solar executable"),
     );
-    let identity = SOLAR_ENGINE
-        .capture_pinned(&binary)
+    let identity = Solar::capture_pinned(&binary)
         .unwrap()
-        .call_json("build-info", &[], DISCOVERY_TIMEOUT)
-        .unwrap();
+        .build_info()
+        .unwrap()
+        .clone();
     let scratch = tempfile::tempdir().unwrap();
     let base = scratch.path().join("addons");
     let stable = select(&base, "stable", &binary, &identity, b"");

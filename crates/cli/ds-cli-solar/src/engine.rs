@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DISCOVERY_TIMEOUT, ENGINE_LANE, capture_engine};
+use crate::{ENGINE_LANE, Solar, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "solar.engine",
@@ -63,8 +63,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     run_captured(capture_engine(inputs)?)
 }
 
-pub(crate) fn run_captured(engine: ds_cli_exec::CapturedExternal) -> Result<Value, Failure> {
-    let mut identity = engine.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
+pub(crate) fn run_captured(engine: Solar) -> Result<Value, Failure> {
+    // The Kernel client refuses an identity that is not the Solar engine's.
+    let mut identity = engine.build_info()?.clone();
     let object = identity.as_object_mut().ok_or_else(|| {
         Failure::failed(
             "callee_contract_mismatch",
@@ -72,13 +73,6 @@ pub(crate) fn run_captured(engine: ds_cli_exec::CapturedExternal) -> Result<Valu
         )
         .remedy("install compatible ds and Solar addon versions")
     })?;
-    if object.get("name").and_then(Value::as_str) != Some("ds-solar-engine") {
-        return Err(Failure::failed(
-            "callee_contract_mismatch",
-            "`solar build-info` returned the wrong engine identity",
-        )
-        .remedy("install compatible ds and Solar addon versions"));
-    }
     object.insert(
         "path".to_string(),
         json!(engine.executable().display().to_string()),

@@ -213,7 +213,7 @@ fn completed_failure(failure: Failure, completion: &Value) -> Failure {
 
 fn run_with_capture(
     inputs: &Inputs,
-    capture: impl FnOnce() -> Result<ds_cli_exec::CapturedExternal, Failure>,
+    capture: impl FnOnce() -> Result<crate::Solar, Failure>,
     timeout: Duration,
 ) -> Result<Value, Failure> {
     let deadline = Instant::now()
@@ -319,7 +319,7 @@ fn run_with_capture(
 /// the workspace chose. Failed cities stay in the committed `failures.json`;
 /// the workspace verifies the batch against its captured inputs.
 pub(crate) fn calculate_captured(
-    engine: &ds_cli_exec::CapturedExternal,
+    engine: &crate::Solar,
     lane: &str,
     calculation: ds_solar_project::run::LocalCalculation<'_>,
 ) -> Result<(), Failure> {
@@ -370,7 +370,7 @@ pub(crate) fn calculate_captured(
 /// ids of cities that failed; their successful siblings are committed too.
 fn execute_batch(
     request: &PreparedBatchRequest,
-    engine: &ds_cli_exec::CapturedExternal,
+    engine: &crate::Solar,
     out: &Path,
     lane: &str,
     deadline: Instant,
@@ -403,7 +403,7 @@ fn execute_batch(
             .push(event.event)
     };
     let attempted = Cell::new(false);
-    let result = engine.with_verified_executable(|path| {
+    let result = engine.with_task_executable(crate::SolarTask::CalculateBatch, |path| {
         let task = BatchEngine::capture(path, scratch.path(), ds_solar_host::compute_parallelism(), &cancel).map_err(process_failure)?;
         let timeout = remaining(deadline)?;
         attempted.set(true);

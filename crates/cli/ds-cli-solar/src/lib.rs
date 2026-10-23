@@ -33,16 +33,15 @@ pub mod workflow;
 use std::time::Duration;
 
 use ds_cli_contract::spec::Domain;
-pub use ds_cli_exec::addons::SOLAR as SOLAR_ENGINE;
+/// The Kernel's one Solar addon client: closed tasks, catalogue checked first.
+pub use ds_cli_exec::solar::{Solar, Task as SolarTask};
 
 /// Local file consumers name a native lane without acquiring account/project
 /// state. The supervisor captures one immutable selection for the whole call.
 const ENGINE_LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE
     .summary("Native addon lane; stable is the default. No account or project is read.");
 
-fn capture_engine(
-    inputs: &ds_cli_contract::Inputs,
-) -> Result<ds_cli_exec::CapturedExternal, ds_cli_contract::Failure> {
+fn capture_engine(inputs: &ds_cli_contract::Inputs) -> Result<Solar, ds_cli_contract::Failure> {
     capture_engine_at(inputs, &ds_cli_exec::addons::managed_module_base()?)
 }
 
@@ -50,8 +49,8 @@ fn capture_engine(
 fn capture_engine_at(
     inputs: &ds_cli_contract::Inputs,
     base: &std::path::Path,
-) -> Result<ds_cli_exec::CapturedExternal, ds_cli_contract::Failure> {
-    SOLAR_ENGINE.capture_for_lane_in(inputs.value("lane").unwrap_or("stable"), base)
+) -> Result<Solar, ds_cli_contract::Failure> {
+    Solar::capture_for_lane_in(inputs.value("lane").unwrap_or("stable"), base)
 }
 
 #[cfg(test)]

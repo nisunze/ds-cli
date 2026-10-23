@@ -300,7 +300,7 @@ fn run_calculates_the_captured_city_through_the_selected_addon() {
     let (workspace, cache) = ready_workspace(directory.path());
     let tokens = run_tokens(&workspace, &cache, "addon-run");
     let receipt = run_with(&inputs(&RUN, &tokens), || {
-        crate::SOLAR_ENGINE.capture_pinned(&binary)
+        crate::Solar::capture_pinned(&binary)
     })
     .expect("the selected addon calculates the captured run");
     assert_eq!(receipt["source_notices"], json!([]));

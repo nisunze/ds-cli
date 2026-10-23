@@ -271,31 +271,20 @@ fn solar_background_worker_has_a_closed_self_invocation() {
 }
 
 /// Contract 5: Core reaches an engine only through the Kernel's one
-/// engine-call owner for it — `ds_cli_exec::reporter::Reporter` (closed
-/// tasks, catalogue admission before work) and `ds_network_client` for
-/// Network. A CLI crate that captures an engine external, reads an engine's
-/// discovery documents, maps an engine refusal or declares its own engine
-/// executable bypasses that owner and fails here.
+/// engine-call owner for it — `ds_cli_exec::reporter::Reporter` and
+/// `ds_cli_exec::solar::Solar` (closed tasks, catalogue admission before
+/// work) and `ds_network_client` for Network. A CLI crate that captures an
+/// engine external, reads an engine's discovery documents, maps an engine
+/// refusal or declares its own engine executable bypasses that owner and
+/// fails here. No engine has an exception.
 const ENGINE_BYPASS_TOKENS: &[&str] = &[
     "addons::REPORTER",
     "addons::NETWORK",
+    "addons::SOLAR",
     "ds_cli_exec::External",
     "CapturedExternal",
     "call_json(",
     ".failure_from(",
-];
-
-/// CLI files that still hold the Solar engine's captured executable
-/// directly. Solar's Kernel client is the queued next step (Kernel OPEN.md,
-/// section 1); add a file here only for Solar, never for Reporter or Network,
-/// and remove each one its Kernel client absorbs. Reporter and Network have no
-/// exception.
-const SOLAR_PENDING: &[&str] = &[
-    "crates/cli/ds-cli-solar/src/calculate_prepared.rs",
-    "crates/cli/ds-cli-solar/src/engine.rs",
-    "crates/cli/ds-cli-solar/src/lib.rs",
-    "crates/cli/ds-cli-solar/src/project.rs",
-    "crates/cli/ds-cli-solar/src/run.rs",
 ];
 
 fn engine_bypass_files() -> BTreeSet<String> {
@@ -336,17 +325,11 @@ fn engine_bypass_files() -> BTreeSet<String> {
 #[test]
 fn cli_crates_reach_engines_only_through_the_kernel_engine_call_owners() {
     let found = engine_bypass_files();
-    let pending: BTreeSet<String> = SOLAR_PENDING.iter().map(|p| (*p).to_owned()).collect();
-    let bypasses: Vec<&String> = found.difference(&pending).collect();
+    let bypasses: Vec<&String> = found.iter().collect();
     assert!(
         bypasses.is_empty(),
         "these CLI files capture or call an engine outside the Kernel engine-call owner: \
-         {bypasses:?}\nCall `ds_cli_exec::reporter::Reporter` (Reporter) or \
-         `ds_network_client` (Network) instead; see docs/contracts/process-boundary-contract.md."
-    );
-    let stale: Vec<&String> = pending.difference(&found).collect();
-    assert!(
-        stale.is_empty(),
-        "these pinned Solar entries no longer bypass the Kernel owner; remove them: {stale:?}"
+         {bypasses:?}\nCall `ds_cli_exec::reporter::Reporter` (Reporter), \
+         `ds_cli_exec::solar::Solar` (Solar) or `ds_network_client` (Network) instead; see docs/contracts/process-boundary-contract.md."
     );
 }

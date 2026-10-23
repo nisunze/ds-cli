@@ -270,7 +270,7 @@ pub fn run(i: &Inputs, _: &Context) -> Result<Value, Failure> {
 /// [`run`] over an explicit addon capture, so a test can select a qualified engine.
 pub(crate) fn run_with(
     i: &Inputs,
-    capture: impl FnOnce() -> Result<ds_cli_exec::CapturedExternal, Failure>,
+    capture: impl FnOnce() -> Result<crate::Solar, Failure>,
 ) -> Result<Value, Failure> {
     let concurrency = i
         .value("concurrency")
