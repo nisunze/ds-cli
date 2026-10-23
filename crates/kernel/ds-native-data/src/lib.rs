@@ -7,6 +7,7 @@
 
 pub mod bridge;
 mod columnar;
+mod native_source;
 pub mod compute;
 pub mod elevation;
 mod engine_host;
@@ -14,7 +15,7 @@ pub mod point_cloud;
 pub mod rwanda_dem;
 
 pub use columnar::NativeColumnarConversion;
-pub use ds_io::{NativeLinkAccess, NativeSourceDisposition, NativeSourcePrepareResult};
+pub use native_source::{NativeLinkAccess, NativeSourceDisposition, NativeSourcePrepareResult};
 
 /// Application admission DTO. The engine's IO request is created only after
 /// this closed caller contract and the captured local scope have been checked.

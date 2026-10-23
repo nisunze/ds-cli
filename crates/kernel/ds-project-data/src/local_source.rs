@@ -421,8 +421,19 @@ mod tests {
     fn source(dir: &Path, features: Vec<Value>) -> Source {
         let bytes =
             serde_json::to_vec(&json!({"type":"FeatureCollection","features":features})).unwrap();
-        let converted =
-            ds_columnar::source_to_geoparquet("fixture.geojson", &bytes, None, None).unwrap();
+        let converted = ds_columnar::layers_to_geoparquet(
+            "fixture.geojson",
+            &bytes,
+            None,
+            vec![ds_columnar::SourceLayer {
+                name: "fixture".into(),
+                features,
+                style_document: None,
+            }],
+            None,
+            0,
+        )
+        .unwrap();
         let path = dir.join("source-input.parquet");
         std::fs::write(&path, converted.parquet).unwrap();
         Source {

@@ -53,7 +53,7 @@ fn fixture(dir: &Path) -> (Source, PathBuf) {
         first.clone(), first, footprint("building-b",30.0007), footprint("building-c",30.0605)]}))
     .unwrap();
     let converted =
-        ds_columnar::source_to_geoparquet("fixture.geojson", &bytes, None, None).unwrap();
+        crate::source_engine::fixture_geoparquet("fixture.geojson", &bytes);
     let artifact = dir.join("input.parquet");
     std::fs::write(&artifact, converted.parquet).unwrap();
     let source = Source {

@@ -6,11 +6,10 @@ use super::*;
 use ds_network_contracts::{
     grid_operation::GridOperationV1,
     source_io::{
-        GeopackageLayersParamsV1, GeopackageLayersV1, LayersGeojsonInputV1, SourceInspectParamsV1,
-        SourceInspectResultV1, SourceInspectV1, SourceLayersParamsV1, SourceLayersV1,
-        SourceReaderV1, GEOPACKAGE_LAYERS_ARTIFACT, GEOPACKAGE_LAYERS_SCHEMA_V1,
-        LAYERS_GEOJSON_ARTIFACT, LAYERS_INPUT, SOURCE_INPUT, SOURCE_LAYERS_ARTIFACT,
-        SOURCE_LAYERS_SCHEMA_V1,
+        GeopackageLayersParamsV1, GeopackageLayersV1, SourceInspectParamsV1, SourceInspectResultV1,
+        SourceInspectV1, SourceLayersParamsV1, SourceLayersV1, SourceReaderV1,
+        GEOPACKAGE_LAYERS_ARTIFACT, GEOPACKAGE_LAYERS_SCHEMA_V1, SOURCE_INPUT,
+        SOURCE_LAYERS_ARTIFACT, SOURCE_LAYERS_SCHEMA_V1,
     },
 };
 
@@ -122,20 +121,5 @@ impl CapturedNetworkClient {
             ));
         }
         Ok(tables)
-    }
-
-    /// The shared GeoJSON text for held layers.
-    pub fn layers_geojson(
-        &self,
-        layers: &LayersGeojsonInputV1,
-        cancel: &dyn Fn() -> bool,
-    ) -> Result<Vec<u8>, NetworkFailure> {
-        let bytes = serde_json::to_vec(layers)
-            .map_err(|e| NetworkFailure::new("network_request_invalid", e.to_string()))?;
-        let mut outcome =
-            self.source_call(GridOperationV1::LayersGeojson, LAYERS_INPUT, bytes, cancel)?;
-        outcome
-            .take_artifact(LAYERS_GEOJSON_ARTIFACT)
-            .ok_or_else(|| reply_invalid("GeoJSON reply has no text artifact"))
     }
 }

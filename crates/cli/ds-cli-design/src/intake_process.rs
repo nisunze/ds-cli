@@ -2,7 +2,7 @@
 //!
 //! ds-brain only receives the uploaded file; it never processes it. Each
 //! uploaded design file is processed here through the owners `ds design lv
-//! project-run` composes: the shared readers (`ds-io`) turn the local file into
+//! project-run` composes: the Network engine's readers turn the local file into
 //! the LV layers it names, the Network contracts build one
 //! `ds.lv.process.request/v1` job with the project's configuration and the
 //! mode's preset, the installed Network engine processes it by request and
@@ -16,6 +16,7 @@ use std::path::Path;
 use ds_cli_contract::Failure;
 use ds_command_kernel::report_export::jcs::layers_content_digest;
 use ds_network_contracts::lv_processing::encode_native_lv_request_with_config;
+use ds_network_contracts::source_io::SourceReaderV1;
 use serde_json::{Map, Value, json};
 
 /// The LV layers a processed transformer is made of; any other layer in an
@@ -84,32 +85,33 @@ pub(crate) fn read_layers(path: &Path) -> Result<(BTreeMap<String, Value>, Vec<S
         .remedy("upload a readable .gpkg, shapefile .zip or .geojson design file")
     };
     let mut raw: Vec<(String, Value)> = Vec::new();
+    // The Network engine reads the file; this host admits it (DECOUPLING-013).
     if lower.ends_with(".gpkg") {
         let requested: Vec<String> = LV_LAYERS.iter().map(|layer| (*layer).to_owned()).collect();
-        let read =
-            ds_io::read_geopackage_layers(path, &requested, MAX_ROWS, MAX_FILE_BYTES as usize)
-                .map_err(unreadable)?;
+        let read = crate::source_read::geopackage_tables(
+            path,
+            &requested,
+            MAX_ROWS,
+            MAX_FILE_BYTES as usize,
+        )
+        .map_err(|error| error.into_failure(unreadable))?;
         raw.extend(read.layers);
     } else {
         let bytes = std::fs::read(path).map_err(|error| invalid(error.to_string()))?;
-        let envelope = if lower.ends_with(".zip") {
-            ds_io::archive_bytes_to_layer(name, &bytes)
+        let reader = if lower.ends_with(".zip") {
+            SourceReaderV1::Archive
         } else if lower.ends_with(".geojson") || lower.ends_with(".json") {
-            ds_io::geojson_import(ds_io::GeoJsonImportInput {
-                text: ds_io::GeoTextImportInput {
-                    name: name.to_owned(),
-                    text: String::from_utf8(bytes)
-                        .map_err(|_| invalid(format!("{name} is not UTF-8 GeoJSON")))?,
-                },
-                crs: None,
-                center: None,
-            })
+            if std::str::from_utf8(&bytes).is_err() {
+                return Err(invalid(format!("{name} is not UTF-8 GeoJSON")));
+            }
+            SourceReaderV1::Geojson
         } else {
             return Err(invalid(format!(
                 "{name} is not a .gpkg, .zip or .geojson design file"
             )));
-        }
-        .map_err(unreadable)?;
+        };
+        let envelope = crate::source_read::layers(name, bytes, reader)
+            .map_err(|error| error.into_failure(unreadable))?;
         for layer in envelope.layers {
             raw.push((
                 layer.name,

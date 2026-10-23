@@ -25,6 +25,7 @@ pub mod mv_lv_orphans;
 pub mod point_cloud;
 pub mod project_cache;
 pub mod reference;
+pub(crate) mod source_engine;
 pub mod spatial;
 pub mod terrain_sampling;
 

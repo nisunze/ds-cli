@@ -111,7 +111,7 @@ fn bounded_chunks_keep_complete_lines_and_absolute_row_numbers() {
         data_start: 1,
         columns: vec!["x".to_string(), "y".to_string(), "z".to_string()],
         z_column: Some("z".to_string()),
-        input: SourceLayerInput {
+        input: SourceReadingV1 {
             sheet_key: "text".to_string(),
             separator: Some("whitespace".to_string()),
             header_row: None,
@@ -158,7 +158,7 @@ fn changed_source_size_is_rejected_before_streaming() {
         data_start: 1,
         columns: vec![],
         z_column: None,
-        input: SourceLayerInput {
+        input: SourceReadingV1 {
             sheet_key: "text".to_string(),
             separator: Some(",".to_string()),
             header_row: None,
@@ -194,7 +194,7 @@ fn quoted_newlines_stay_inside_one_logical_csv_record() {
         data_start: 1,
         columns: vec!["x".to_string(), "y".to_string(), "note".to_string()],
         z_column: None,
-        input: SourceLayerInput {
+        input: SourceReadingV1 {
             sheet_key: "csv".to_string(),
             separator: Some(",".to_string()),
             header_row: None,
@@ -244,7 +244,7 @@ fn arrow_batches_never_exceed_the_shared_1024_row_contract() {
         data_start: 1,
         columns: vec!["x".to_string(), "y".to_string()],
         z_column: None,
-        input: SourceLayerInput {
+        input: SourceReadingV1 {
             sheet_key: "text".to_string(),
             separator: Some("whitespace".to_string()),
             header_row: None,
@@ -286,7 +286,7 @@ fn rwanda_nix_xyz_rows_project_and_keep_elevation() {
         data_start: 1,
         columns: vec!["x".to_string(), "y".to_string(), "z".to_string()],
         z_column: Some("z".to_string()),
-        input: SourceLayerInput {
+        input: SourceReadingV1 {
             sheet_key: "text".to_string(),
             separator: Some("whitespace".to_string()),
             header_row: None,
@@ -327,7 +327,7 @@ fn xyz_request(path: PathBuf, file_name: &str, size: u64) -> NativeTabularImport
         data_start: 1,
         columns: vec!["x".to_string(), "y".to_string(), "z".to_string()],
         z_column: Some("z".to_string()),
-        input: SourceLayerInput {
+        input: SourceReadingV1 {
             sheet_key: "text".to_string(),
             separator: Some("whitespace".to_string()),
             header_row: None,

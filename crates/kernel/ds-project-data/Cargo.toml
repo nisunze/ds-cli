@@ -20,7 +20,7 @@ tempfile = "3"
 
 ds-network-client = { path = "../ds-network-client" }
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
-ds-columnar = { path = "../../../../ds-network/crates/ds-columnar" }
+ds-columnar = { path = "../../shared/ds-columnar" }
 
 [dev-dependencies]
 

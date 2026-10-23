@@ -17,7 +17,7 @@
 //! decides only WHERE an artifact lives and what the frontend is told about it.
 
 use ds_columnar::{ArtifactSummary, StreamedConversion};
-use ds_io::SourceLayerInput;
+use ds_network_contracts::source_io::SourceReadingV1;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -64,7 +64,7 @@ pub(crate) struct ColumnarPlan {
 }
 
 /// The post-parse parameters that change what this driver writes, on top of the
-/// `ds-io` input the converter already folds in.
+/// source reading the converter already folds in.
 ///
 /// The Desktop import renumbers rows, promotes an elevation column and locks a
 /// column set before the features reach `ds-columnar`, so two readings that
@@ -91,15 +91,17 @@ pub(crate) fn plan(
     root: &Path,
     source_path: &Path,
     file_name: &str,
-    input: &SourceLayerInput,
+    input: &SourceReadingV1,
     layer_name: Option<&str>,
     reading: &ReadingParameters,
 ) -> Result<ColumnarPlan, String> {
     let source_digest = ds_columnar::digest_file(source_path)?;
+    let input = serde_json::to_value(input)
+        .map_err(|error| format!("could not encode the source reading: {error}"))?;
     let conversion_id = ds_columnar::conversion_identity(
         &source_digest,
         file_name,
-        Some(input),
+        Some(&input),
         layer_name,
         Some(&reading.to_value()),
     )?;
@@ -162,8 +164,8 @@ pub(crate) fn receipt_for_artifact(
 
 /// A layer name for a source that has not been parsed yet: the operator's
 /// chosen name, else the file stem. Only ever a fallback — an artifact names
-/// its own layer and a conversion learns it from `ds-io`.
-pub(crate) fn fallback_layer_name(input: &SourceLayerInput, file_name: &str) -> String {
+/// its own layer and a conversion learns it from the reader.
+pub(crate) fn fallback_layer_name(input: &SourceReadingV1, file_name: &str) -> String {
     input
         .layer_name
         .clone()
@@ -204,8 +206,8 @@ mod tests {
         path
     }
 
-    fn input() -> SourceLayerInput {
-        SourceLayerInput {
+    fn input() -> SourceReadingV1 {
+        SourceReadingV1 {
             sheet_key: "text".to_string(),
             separator: Some("whitespace".to_string()),
             header_row: None,

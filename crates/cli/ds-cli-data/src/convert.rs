@@ -5,6 +5,7 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_network_contracts::source_io::{SourceInspectV1, SourceReaderV1, SourceReadingV1};
 use serde_json::{Value, json};
 
 pub const OUT_ARG: Arg = Arg {
@@ -84,6 +85,9 @@ features retain kml_style_id and decoded style properties.",
         crate::NO_SHEET,
         crate::NOT_CONVERTIBLE,
         crate::OUTPUT_REFUSED,
+        crate::source_engine::ENGINE_MISSING,
+        crate::source_engine::ENGINE_INCOMPATIBLE,
+        crate::source_engine::ENGINE_ORDER,
     ],
     reference: Some("docs/reference/data.md"),
     search: &[
@@ -119,15 +123,27 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let (name, bytes) = crate::inspect::read_geometry_source(&source)?;
     let separator = inputs.value("separator").map(str::to_string);
+    let engine = crate::source_engine::capture()?;
 
     // A source that already carries geometry needs no coordinate columns; a
     // table does, and inspection is what supplies the sheet key rather than a
     // guess.
-    let input = if ds_columnar::convert::carries_geometry(&name) {
+    let input: Option<SourceReadingV1> = if ds_columnar::carries_geometry(&name) {
         None
     } else {
-        let inspection = ds_columnar::convert::inspect(&name, &bytes, separator.clone())
-            .map_err(|error| Failure::invalid("source_unsupported", error))?;
+        let inspection = engine
+            .source_inspect(
+                &name,
+                bytes.clone(),
+                SourceInspectV1::Table {
+                    separator: separator.clone(),
+                },
+                &|| false,
+            )
+            .map_err(|error| match crate::source_engine::split(error) {
+                Ok(error) => Failure::invalid("source_unsupported", error),
+                Err(failure) => failure,
+            })?;
         let sheet_key = match inputs.value("sheet") {
             Some(wanted) => inspection
                 .sheets
@@ -162,12 +178,43 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         )
     };
 
-    let conversion = ds_columnar::source_to_geoparquet(&name, &bytes, input, inputs.value("layer"))
-        .map_err(|error| {
-            Failure::invalid("source_not_convertible", error).remedy(
-                "Run `ds data inspect` and pass the layer or coordinate columns it reports.",
-            )
+    let not_convertible = |error: String| {
+        Failure::invalid("source_not_convertible", error)
+            .remedy("Run `ds data inspect` and pass the layer or coordinate columns it reports.")
+    };
+    let reader = match &input {
+        Some(reading) => SourceReaderV1::Table(Box::new(reading.clone())),
+        None => crate::source_engine::geometry_reader(&name),
+    };
+    let read = engine
+        .source_layers(&name, bytes.clone(), reader, &|| false)
+        .map_err(|error| match crate::source_engine::split(error) {
+            Ok(error) => not_convertible(error),
+            Err(failure) => failure,
         })?;
+    let reading = input
+        .as_ref()
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|error| Failure::internal("source_not_convertible", error.to_string()))?;
+    let layers = read
+        .layers
+        .into_iter()
+        .map(|layer| ds_columnar::SourceLayer {
+            name: layer.name,
+            features: layer.features,
+            style_document: layer.style_document,
+        })
+        .collect();
+    let conversion = ds_columnar::layers_to_geoparquet(
+        &name,
+        &bytes,
+        reading.as_ref(),
+        layers,
+        inputs.value("layer"),
+        read.skipped_coordinate_rows.unwrap_or(0),
+    )
+    .map_err(not_convertible)?;
 
     std::fs::write(&out_path, &conversion.parquet).map_err(|error| {
         Failure::failed(

@@ -5,6 +5,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_network_contracts::source_io::SourceInspectV1;
 use serde_json::{Value, json};
 
 pub static COMMAND: Command = Command {
@@ -49,7 +50,13 @@ source that already carries geometry. Converted GeoParquet returns its exact foo
         note: "`.data.sheets[0].key` is what `ds data convert --sheet` takes.",
         runnable: false,
     }],
-    refusals: &[crate::UNREADABLE, crate::UNSUPPORTED],
+    refusals: &[
+        crate::UNREADABLE,
+        crate::UNSUPPORTED,
+        crate::source_engine::ENGINE_MISSING,
+        crate::source_engine::ENGINE_INCOMPATIBLE,
+        crate::source_engine::ENGINE_ORDER,
+    ],
     reference: Some("docs/reference/data.md"),
     search: &[
         "crs",
@@ -103,15 +110,20 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ));
     }
     let (name, bytes) = read_geometry_source(&source)?;
+    let engine = crate::source_engine::capture()?;
     // A source that carries its own geometry has layers, not sheets, and needs
     // no coordinate columns named. Reporting sheets for it would invite the
     // caller to supply columns that mean nothing.
-    if ds_columnar::convert::carries_geometry(&name) {
-        let layers =
-            ds_columnar::convert::inspect_geometry_source(&name, &bytes).map_err(|error| {
-                Failure::invalid("source_unsupported", error)
-                    .remedy("Check the file is a readable GeoJSON, KML/KMZ, or Shapefile (a .shp with its .dbf beside it, or zipped).")
-            })?;
+    if ds_columnar::carries_geometry(&name) {
+        let reader = crate::source_engine::geometry_reader(&name);
+        let layers = engine
+            .source_inspect(&name, bytes, SourceInspectV1::Layers(reader), &|| false)
+            .map_err(|error| match crate::source_engine::split(error) {
+                Ok(error) => Failure::invalid("source_unsupported", error)
+                    .remedy("Check the file is a readable GeoJSON, KML/KMZ, or Shapefile (a .shp with its .dbf beside it, or zipped)."),
+                Err(failure) => failure,
+            })?
+            .layers;
         return Ok(json!({
             "source": name,
             "carries_geometry": true,
@@ -124,12 +136,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         }));
     }
 
-    let inspection =
-        ds_columnar::convert::inspect(&name, &bytes, inputs.value("separator").map(str::to_string))
-            .map_err(|error| {
-                Failure::invalid("source_unsupported", error)
-                    .remedy("Check the file is one of the supported formats, or pass --separator.")
-            })?;
+    let separator = inputs.value("separator").map(str::to_string);
+    let inspection = engine
+        .source_inspect(&name, bytes, SourceInspectV1::Table { separator }, &|| false)
+        .map_err(|error| match crate::source_engine::split(error) {
+            Ok(error) => Failure::invalid("source_unsupported", error)
+                .remedy("Check the file is one of the supported formats, or pass --separator."),
+            Err(failure) => failure,
+        })?;
 
     let sheets: Vec<Value> = inspection
         .sheets
@@ -159,7 +173,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 pub(crate) fn read_geometry_source(source: &str) -> Result<(String, Vec<u8>), Failure> {
     let name = crate::file_name(source);
     if name.to_ascii_lowercase().ends_with(".shp") {
-        let bytes = ds_io::shapefile_with_sidecars_to_zip(std::path::Path::new(source)).map_err(
+        let bytes = crate::source_engine::shapefile_with_sidecars_to_zip(std::path::Path::new(source)).map_err(
             |error| {
                 Failure::invalid(
                     "source_unreadable",
@@ -235,7 +249,7 @@ fn inspect_parquet(
                 .map_err(|e| Failure::invalid("source_unsupported", e))?;
             for (row, shape) in values.iter_mut().zip(shapes) {
                 let shape = shape
-                    .map(|wkb| ds_io::gpkg_geometry_to_geojson(&wkb))
+                    .map(|wkb| ds_geo_lite::gpkg::gpkg_geometry_to_geojson(&wkb))
                     .transpose()
                     .map_err(|e| Failure::invalid("source_unsupported", e))?
                     .and_then(|s| s.geometry)
@@ -279,8 +293,7 @@ mod tests {
     #[test]
     fn converted_rows_are_bounded_and_geometry_keeps_properties() {
         let source = br#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"city":"A","phase":"II"},"geometry":{"type":"LineString","coordinates":[[15,8],[15.1,8.2]]}},{"type":"Feature","properties":{"city":"B","phase":"I"},"geometry":null}]}"#;
-        let converted =
-            ds_columnar::source_to_geoparquet("routes.geojson", source, None, None).unwrap();
+        let converted = crate::source_engine::fixture_geoparquet("routes.geojson", source);
         let path = std::env::temp_dir().join(format!(
             "ds-inspect-{}-{}.parquet",
             std::process::id(),
@@ -329,8 +342,7 @@ mod tests {
             features.join(",")
         );
         let converted =
-            ds_columnar::source_to_geoparquet("customers.geojson", source.as_bytes(), None, None)
-                .unwrap();
+            crate::source_engine::fixture_geoparquet("customers.geojson", source.as_bytes());
         let path = std::env::temp_dir().join(format!(
             "ds-inspect-pages-{}-{}.parquet",
             std::process::id(),
@@ -432,12 +444,23 @@ mod tests {
         let source = folder.join("customers.shp");
         let (name, bytes) = read_geometry_source(source.to_str().unwrap()).unwrap();
         assert_eq!(name, "customers.shp.zip");
-        let layers = ds_columnar::convert::inspect_geometry_source(&name, &bytes).unwrap();
+        // The zipped shapefile is what the engine's archive reader takes.
+        let engine = crate::source_engine::capture().unwrap();
+        let reader = crate::source_engine::geometry_reader(&name);
+        let layers = engine
+            .source_inspect(
+                &name,
+                bytes.clone(),
+                SourceInspectV1::Layers(reader.clone()),
+                &|| false,
+            )
+            .unwrap()
+            .layers;
         assert_eq!(layers.len(), 1);
         assert_eq!(layers[0].name, "customers");
         assert_eq!(layers[0].feature_count, 1);
-        let converted = ds_columnar::source_to_geoparquet(&name, &bytes, None, None).unwrap();
-        assert_eq!(converted.receipt.feature_count, 1);
+        let read = engine.source_layers(&name, bytes, reader, &|| false).unwrap();
+        assert_eq!(read.layers[0].features.len(), 1);
 
         let missing = read_geometry_source(folder.join("absent.shp").to_str().unwrap())
             .expect_err("an absent .shp is refused");

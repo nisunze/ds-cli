@@ -11,8 +11,7 @@ publish.workspace = true
 [dependencies]
 uuid = { version = "1", features = ["v4"] }
 fs2 = "0.4.3"
-ds-columnar = { path = "../../../../ds-network/crates/ds-columnar" }
-ds-io = { path = "../../../../ds-network/crates/ds-io" }
+ds-columnar = { path = "../../shared/ds-columnar" }
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
 ds-network-client = { path = "../ds-network-client" }
 tempfile = "3"

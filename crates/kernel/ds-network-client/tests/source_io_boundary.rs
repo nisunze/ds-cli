@@ -1,11 +1,8 @@
 //! Real consumer of the local GIS source calls against actual engines: the
-//! insertion engine reads, inspects and writes; a sorted engine and an absent
+//! insertion engine reads and inspects; a sorted engine and an absent
 //! engine refuse with typed codes before any source is staged.
 use ds_network_client::CapturedNetworkClient;
-use ds_network_contracts::source_io::{
-    GeojsonLayerV1, LayersGeojsonInputV1, SourceInspectV1, SourceReaderV1,
-};
-use serde_json::json;
+use ds_network_contracts::source_io::{SourceInspectV1, SourceReaderV1};
 use std::{env, path::PathBuf, process::Command};
 
 const GEOJSON: &str = r#"{"type":"FeatureCollection","features":[{"type":"Feature",
@@ -80,22 +77,6 @@ fn isolated_insertion_engine_reads_and_writes() {
         )
         .unwrap_err();
     assert!(refused.is_source_refusal(), "{refused:?}");
-    let text = client
-        .layers_geojson(
-            &LayersGeojsonInputV1 {
-                layers: vec![GeojsonLayerV1 {
-                    name: "places".into(),
-                    geojson: serde_json::from_str(GEOJSON).unwrap(),
-                }],
-            },
-            &|| false,
-        )
-        .unwrap();
-    let written: serde_json::Value = serde_json::from_slice(&text).unwrap();
-    assert_eq!(
-        written["features"][0]["properties"]["_layer"],
-        json!("places")
-    );
 }
 
 #[test]

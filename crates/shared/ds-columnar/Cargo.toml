@@ -1,0 +1,40 @@
+[package]
+name = "ds-columnar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+# The single centralized implementation of the columnar format contract
+# (ds-network/docs/contracts/columnar-format-contract.md), owned by Core and
+# shared by the Kernel, its stores and the CLI. It writes and reads the
+# formats only: reading a GIS source into layers is the Network engine's
+# typed task, so this crate links no reader. Native-only by design for the
+# artifacts; the browser keeps the pooled-WASM path it already has.
+
+[features]
+default = ["artifacts"]
+bindings = ["dep:tsify", "dep:wasm-bindgen"]
+artifacts = ["dep:arrow-array", "dep:arrow-ipc", "dep:arrow-schema", "dep:parquet", "dep:sha2", "dep:ds-geo-lite"]
+
+[dependencies]
+tsify = { version = "0.5.8", default-features = false, features = ["js"], optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+ds-geo-lite = { path = "../ds-geo-lite", features = ["codec"], optional = true }
+arrow-array = { version = "56", optional = true }
+arrow-ipc = { version = "56", optional = true }
+arrow-schema = { version = "56", features = ["serde"], optional = true }
+parquet = { version = "56", default-features = false, features = ["arrow", "snap", "base64"], optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true, optional = true }
+# Every Core binary links this crate, so it names the DEFLATE backend Core's
+# written bytes (PNG, PDF, zip packages) have always used. It arrived through
+# ds-io's calamine while Core linked the readers; naming it here keeps every
+# written byte unchanged now that reading lives in the Network engine.
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+
+[dev-dependencies]
+bytes = "1"

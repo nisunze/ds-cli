@@ -83,13 +83,14 @@ fn read(path: &str, bound: u64) -> Result<Vec<u8>, Failure> {
 }
 pub fn prepare(i: &Inputs, _: &Context) -> Result<Value, Failure> {
     let source: Source = serde_json::from_slice(&read(i.require("source")?, 8192)?).map_err(bad)?;
-    let result = ds_io::read_geopackage_layers(
+    // The Network engine reads the closed GeoPackage this host admitted.
+    let result = crate::source_read::geopackage_tables(
         Path::new(i.require("path")?),
         &ds_command_kernel::transformer_history_import::LAYERS.map(str::to_owned),
         20000,
         64 * 1024 * 1024,
     )
-    .map_err(bad)?;
+    .map_err(|error| error.into_failure(bad))?;
     if result.source_sha256 != source.member_sha256 {
         return Err(bad(
             "original GeoPackage digest differs from pinned archive member",

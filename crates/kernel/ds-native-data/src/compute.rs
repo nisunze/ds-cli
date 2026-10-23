@@ -7,10 +7,12 @@ use crate::columnar::{
 };
 use crate::RequestContext;
 use ds_columnar::{ArtifactReader, ConversionStream, Provenance};
-use ds_io::{
+use crate::native_source::{
     prepare_native_source, NativeLinkAccess, NativeSourceDisposition, NativeSourceFingerprint,
-    NativeSourcePrepareRequest, SourceLayerInput,
+    NativeSourcePrepareRequest,
 };
+use ds_network_client::CapturedNetworkClient;
+use ds_network_contracts::source_io::{SourceLayersV1, SourceReaderV1, SourceReadingV1};
 #[cfg(test)]
 use ds_network_contracts::engine::{ExecutionEnvironment, ExecutionRuntime};
 use serde::{Deserialize, Serialize};
@@ -45,8 +47,8 @@ pub struct NativeTabularImportRequest {
     #[serde(default)]
     pub expected_quick_sha256: Option<String>,
     /// Physical source lines before the first data row, taken from the bounded
-    /// preview. They are replayed in every batch so the shared ds-io cleaner
-    /// sees exactly the same header band and column names.
+    /// preview. They are replayed in every batch so the Network engine's table
+    /// reader sees exactly the same header band and column names.
     #[serde(default)]
     pub data_start: usize,
     #[serde(default)]
@@ -54,14 +56,14 @@ pub struct NativeTabularImportRequest {
     #[serde(default)]
     pub z_column: Option<String>,
     #[serde(deserialize_with = "strict_reading")]
-    pub input: SourceLayerInput,
+    pub input: SourceReadingV1,
 }
 
 /// The application admits only the declared reading contract, even when the
 /// independently released IO engine later learns additional wire fields.
 fn strict_reading<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
-) -> Result<SourceLayerInput, D::Error> {
+) -> Result<SourceReadingV1, D::Error> {
     let value = Value::deserialize(deserializer)?;
     let object = value.as_object().ok_or_else(|| {
         <D::Error as serde::de::Error>::custom("source reading must be an object")
@@ -178,8 +180,10 @@ enum SessionLane {
 
 struct ConvertLane {
     reader: BufReader<File>,
+    /// The Network engine that reads every batch of this import.
+    engine: CapturedNetworkClient,
     header_prefix: Vec<u8>,
-    input: SourceLayerInput,
+    input: SourceReadingV1,
     z_output_column: Option<String>,
     drop_z_output: bool,
     schema_locked: bool,
@@ -261,7 +265,7 @@ pub fn prepare_source(
     context: &RequestContext,
     managed_imports: &Path,
     request: crate::NativeSourcePrepareRequest,
-) -> Result<ds_io::NativeSourcePrepareResult, String> {
+) -> Result<crate::NativeSourcePrepareResult, String> {
     context.validate()?;
     if !request.source_path.is_absolute() {
         return Err("native source path must be absolute".into());
@@ -281,7 +285,7 @@ pub fn prepare_source(
         }
         request.destination
     };
-    prepare_native_source(ds_io::NativeSourcePrepareRequest {
+    prepare_native_source(NativeSourcePrepareRequest {
         source_path: request.source_path,
         disposition: request.disposition,
         link_access: request.link_access,
@@ -461,7 +465,7 @@ pub fn read_source_prefix(
 /// conversion (plan §0.8a).
 ///
 /// One read, two consumers: every `next` call parses complete lines with the
-/// shared ds-io kernel, returns one Arrow IPC batch to the import, and appends
+/// Network engine's table reader, returns one Arrow IPC batch to the import, and appends
 /// that same batch to the GeoParquet artifact. When the artifact for this exact
 /// reading already exists, no source line is read at all — the chunks come back
 /// out of the artifact instead.
@@ -607,7 +611,7 @@ fn open_tabular_session(
     });
     let mut input = request.input;
     if let Some(z_column) = request.z_column.as_ref() {
-        // ds-io normally drops properties before this bridge can promote Z.
+        // The reader normally drops properties before this bridge can promote Z.
         // Retain it just for conversion, then remove it below when requested.
         input.drop_columns.retain(|column| column != z_column);
     }
@@ -681,6 +685,7 @@ fn open_tabular_session(
         });
     }
 
+    let engine = capture_reader()?;
     let mut reader = BufReader::new(
         open_tabular_source(&source)
             .map_err(|error| format!("could not read source {}: {error}", source.display()))?,
@@ -716,6 +721,7 @@ fn open_tabular_session(
         file_bytes,
         lane: SessionLane::Convert(Box::new(ConvertLane {
             reader,
+            engine,
             header_prefix,
             input,
             z_output_column,
@@ -898,10 +904,11 @@ fn next_converted_chunk(
         let mut batch = Vec::with_capacity(lane.header_prefix.len().saturating_add(data.len()));
         batch.extend_from_slice(&lane.header_prefix);
         batch.extend_from_slice(&data);
-        Some(ds_io::source_to_layer(
+        Some(read_batch(
+            &lane.engine,
             &session.file_name,
-            &batch,
-            lane.input.clone(),
+            batch,
+            &lane.input,
         ))
     };
     let data_len = u64::try_from(data.len()).unwrap_or(u64::MAX);
@@ -943,11 +950,11 @@ fn next_converted_chunk(
 /// very same features to the artifact.
 fn absorb_parsed_batch(
     session: &mut NativeTabularSession,
-    result: ds_io::SourceLayerResult,
+    result: SourceLayersV1,
     rows_before: u64,
 ) -> Result<Vec<u8>, String> {
-    let invalid_coordinates = result.clean_report.skipped_coordinate_rows;
-    let Some(layer) = result.envelope.layers.into_iter().next() else {
+    let invalid_coordinates = result.skipped_coordinate_rows.unwrap_or(0);
+    let Some(layer) = result.layers.into_iter().next() else {
         let error = "native tabular parser returned no layer".to_string();
         abandon_conversion(session, &error);
         return Err(error);
@@ -1103,7 +1110,7 @@ fn verify_tabular_source_unchanged(session: &NativeTabularSession) -> Result<(),
 
 fn output_columns(
     preview_columns: &[String],
-    input: &SourceLayerInput,
+    input: &SourceReadingV1,
     z_column: Option<&str>,
     drop_z_output: bool,
 ) -> Vec<String> {
@@ -1179,3 +1186,34 @@ fn tabular_status(session_id: &str, session: &NativeTabularSession) -> NativeTab
 #[cfg(test)]
 #[path = "compute_tests.rs"]
 mod tests;
+
+/// The Network engine that reads the source's batches (DECOUPLING-013).
+fn capture_reader() -> Result<CapturedNetworkClient, String> {
+    CapturedNetworkClient::capture(1, &|| false).map_err(engine_message)
+}
+
+/// One bounded batch read by the engine's table reader. A reader refusal
+/// keeps the reader's own words; an engine failure names its code.
+fn read_batch(
+    engine: &CapturedNetworkClient,
+    file_name: &str,
+    batch: Vec<u8>,
+    reading: &SourceReadingV1,
+) -> Result<SourceLayersV1, String> {
+    engine
+        .source_layers(
+            file_name,
+            batch,
+            SourceReaderV1::Table(Box::new(reading.clone())),
+            &|| false,
+        )
+        .map_err(engine_message)
+}
+
+fn engine_message(failure: ds_network_client::NetworkFailure) -> String {
+    if failure.is_source_refusal() {
+        failure.message
+    } else {
+        format!("{}: {}", failure.code(), failure.message)
+    }
+}

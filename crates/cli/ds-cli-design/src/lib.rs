@@ -98,6 +98,7 @@ pub mod project;
 mod project_worker;
 pub mod repair;
 pub mod selection;
+mod source_read;
 pub mod tag;
 pub mod transformer;
 pub mod version_catalog;

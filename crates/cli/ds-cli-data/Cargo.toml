@@ -27,9 +27,15 @@ ds-layer-store = { path = "../../kernel/ds-layer-store" }
 ds-project-data = { path = "../../kernel/ds-project-data" }
 # The centralized converter. `ds` links the same implementation Desktop import
 # links; neither reimplements the format decisions it encodes. See
-# ds-network/docs/contracts/columnar-format-contract.md.
-ds-columnar = { path = "../../../../ds-network/crates/ds-columnar" }
-ds-io = { path = "../../../../ds-network/crates/ds-io" }
+# ds-network/docs/contracts/columnar-format-contract.md. It is Core's own
+# shared crate; the engine reads, it encodes.
+ds-columnar = { path = "../../shared/ds-columnar" }
+# Reading a local GIS source is the Network engine's typed task; this crate
+# keeps the host half (paths, a bare shapefile's sidecars, output files).
+ds-network-client = { workspace = true }
+ds-network-contracts = { workspace = true }
+ds-geo-lite = { workspace = true, features = ["codec"] }
+zip = { workspace = true }
 ds-elevation-host = { workspace = true }
 # Shared project dataset seeds: the Reporter by request/response, the
 # project head on the native Sync Center session, publisher tile integrity.

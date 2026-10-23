@@ -97,7 +97,7 @@ ds-cleaning = { path = "../../../../ds-network/crates/ds-cleaning", default-feat
 # The file writers own every exported byte (layer and dashboard exports).
 ds-io = { path = "../../../../ds-network/crates/ds-io", optional = true }
 ds-design-session = { path = "../ds-design-session" }
-ds-columnar = { path = "../../../../ds-network/crates/ds-columnar", default-features = false }
+ds-columnar = { path = "../../shared/ds-columnar", default-features = false }
 ds-profile-policy = { path = "../ds-profile-policy" }
 ds-kml = { path = "../ds-kml" }
 ryu = "1"

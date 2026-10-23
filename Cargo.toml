@@ -70,6 +70,7 @@ members = [
     "crates/kernel/ds-template-test-support",
     "crates/kernel/ds-tile-runtime",
     "crates/kernel/ds-update-runtime",
+    "crates/shared/ds-columnar",
     "crates/shared/ds-geo-lite",
     "crates/shared/ds-upload-rules",
 ]
