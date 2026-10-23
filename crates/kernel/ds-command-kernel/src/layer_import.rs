@@ -1,373 +1,37 @@
 //! Browser file readers as typed application operations.
 //!
-//! The application admits one declared reader request with its explicit byte
-//! parts, runs the `ds-io` reader that native Core also uses, encodes parsed
-//! layers as bounded Arrow IPC chunks for transport, and validates the reply.
-//! Every format decision (parsing, CRS, admission, provenance collapse) stays
-//! in the reader library; no file system, network or clock is touched here.
-//!
-//! Key order is explicit. This build enables serde_json `preserve_order`; the
-//! readers' default build iterates object keys sorted. Every feature, nested
-//! property object and style document is sorted before it is encoded or
-//! returned, so columns, Arrow chunks and replies equal the readers' default
-//! output whatever the map implementation.
-use ds_io as io;
+//! The Kernel admits one declared reader request with its explicit byte
+//! parts and names the effect: the governed Network unit's `layerImport`
+//! operation runs the reader there and answers the response with the Arrow
+//! IPC chunks of its layers beside it. The Kernel validates that reply
+//! against the request it admitted. A streaming GeoJSON import is the unit's
+//! `grid.stream` entry, admitted and decoded here the same way. Temporary
+//! upload grouping plans layers from preview metadata over the shared upload
+//! rules. Every format decision (parsing, CRS, admission, provenance
+//! collapse) stays with the readers; the vocabulary is
+//! `ds_network_contracts::page_data::layer_import`.
+use crate::grid_engine::{GridEffect, UNIT};
+use ds_network_contracts::grid_unit::{
+    decode_reply as decode_grid_reply, GridArg, GridModelMethod, GridOperation, GridRequest,
+    GridResult, GridStreamMethod,
+};
+pub use ds_network_contracts::page_data::layer_import::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-/// Features per Arrow IPC chunk of an imported layer.
-pub const LAYER_IMPORT_FEATURES_PER_CHUNK: usize = io::IMPORT_FEATURES_PER_BATCH;
-const ARROW_FILE_MAGIC: &[u8] = b"ARROW1";
-
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-pub struct ImportMapCenter {
-    pub lng: f64,
-    pub lat: f64,
-}
-
-/// One declared reader. Every reader takes one byte part, except `shapefile`
-/// (`.shp`, `.dbf`, `.prj`; an empty part is an absent sidecar). Text readers
-/// take UTF-8 bytes; `sketch_features` takes a UTF-8 JSON array of features.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "operation", rename_all = "snake_case")]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-pub enum LayerImportRequest {
-    GeojsonLayers {
-        name: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "wasm", tsify(optional))]
-        crs: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "wasm", tsify(optional))]
-        center: Option<ImportMapCenter>,
-    },
-    TransformerBackupLayers {
-        name: String,
-    },
-    KmlLayers {
-        name: String,
-    },
-    KmlInspect {
-        name: String,
-    },
-    KmzLayers {
-        name: String,
-    },
-    KmzInspect {
-        name: String,
-    },
-    ArchiveLayers {
-        name: String,
-    },
-    ArchiveInspect {
-        name: String,
-    },
-    PlsCaddXmlLayers {
-        name: String,
-    },
-    PlsCaddXmlInspect {
-        name: String,
-    },
-    PlsCaddBackupLayers {
-        name: String,
-        #[serde(default)]
-        #[cfg_attr(feature = "wasm", tsify(optional))]
-        options: io::PlsCaddImportOptions,
-    },
-    PlsCaddBackupProbe,
-    ShapefileZip {
-        name: String,
-    },
-    Shapefile {
-        name: String,
-    },
-    SourceInspect {
-        name: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(feature = "wasm", tsify(optional))]
-        separator: Option<String>,
-    },
-    SourceLayer {
-        name: String,
-        input: io::SourceLayerInput,
-    },
-    SourceLayers {
-        name: String,
-        input: io::SourceLayerInput,
-    },
-    SketchFeatures {
-        columns: Vec<String>,
-        id_prefix: String,
-    },
-}
-
-/// One parsed layer whose features travel as Arrow IPC chunks beside the
-/// reply (`chunk_feature_counts[i]` features in chunk `i`, in order).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(hashmap_as_object, missing_as_null))]
-pub struct ImportedIpcLayer {
-    pub name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "wasm", tsify(optional))]
-    pub crs: Option<io::LayerCrsInfo>,
-    pub feature_count: usize,
-    #[serde(default)]
-    pub geometry_type: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "wasm", tsify(optional, type = "Record<string, unknown>"))]
-    pub style_document: Option<Value>,
-    pub columns: Vec<String>,
-    pub chunk_feature_counts: Vec<usize>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "result", rename_all = "snake_case")]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(hashmap_as_object, missing_as_null))]
-pub enum LayerImportResponse {
-    IpcLayers(Vec<ImportedIpcLayer>),
-    Inspection(io::ArchiveInspection),
-    Envelope(io::GeoLayerImportEnvelope),
-    SourceInspection(io::SourceInspection),
-    SourceLayer(io::SourceLayerResult),
-    BackupProbe(bool),
-    SketchFeatures(io::sketch::SketchFeaturesOutput),
-}
-
-/// A reply and the Arrow IPC chunks of its `ipc_layers`, flattened in layer order.
-#[derive(Clone, Debug)]
-pub struct LayerImportReply {
-    pub response: LayerImportResponse,
-    pub chunks: Vec<Vec<u8>>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum LayerImportError {
-    InvalidRequest(String),
-    InvalidResponse(String),
-    /// The reader refused the bytes; its own message (often coded) is kept.
-    Reader(String),
-}
-impl std::fmt::Display for LayerImportError {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidRequest(message) => {
-                write!(out, "layer_import_request_invalid: {message}")
-            }
-            Self::InvalidResponse(message) => {
-                write!(out, "layer_import_response_invalid: {message}")
-            }
-            Self::Reader(message) => out.write_str(message),
-        }
-    }
-}
-impl std::error::Error for LayerImportError {}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ReplyKind {
-    IpcLayers,
-    Inspection,
-    Envelope,
-    SourceInspection,
-    SourceLayer,
-    BackupProbe,
-    SketchFeatures,
-}
-
-impl LayerImportRequest {
-    fn parts(&self) -> usize {
-        if matches!(self, Self::Shapefile { .. }) {
-            3
-        } else {
-            1
-        }
-    }
-    fn reply_kind(&self) -> ReplyKind {
-        match self {
-            Self::GeojsonLayers { .. }
-            | Self::TransformerBackupLayers { .. }
-            | Self::KmlLayers { .. }
-            | Self::KmzLayers { .. }
-            | Self::ArchiveLayers { .. }
-            | Self::PlsCaddXmlLayers { .. }
-            | Self::PlsCaddBackupLayers { .. }
-            | Self::SourceLayers { .. } => ReplyKind::IpcLayers,
-            Self::KmlInspect { .. }
-            | Self::KmzInspect { .. }
-            | Self::ArchiveInspect { .. }
-            | Self::PlsCaddXmlInspect { .. } => ReplyKind::Inspection,
-            Self::ShapefileZip { .. } | Self::Shapefile { .. } => ReplyKind::Envelope,
-            Self::SourceInspect { .. } => ReplyKind::SourceInspection,
-            Self::SourceLayer { .. } => ReplyKind::SourceLayer,
-            Self::PlsCaddBackupProbe => ReplyKind::BackupProbe,
-            Self::SketchFeatures { .. } => ReplyKind::SketchFeatures,
-        }
-    }
-}
-
-impl LayerImportResponse {
-    fn kind(&self) -> ReplyKind {
-        match self {
-            Self::IpcLayers(_) => ReplyKind::IpcLayers,
-            Self::Inspection(_) => ReplyKind::Inspection,
-            Self::Envelope(_) => ReplyKind::Envelope,
-            Self::SourceInspection(_) => ReplyKind::SourceInspection,
-            Self::SourceLayer(_) => ReplyKind::SourceLayer,
-            Self::BackupProbe(_) => ReplyKind::BackupProbe,
-            Self::SketchFeatures(_) => ReplyKind::SketchFeatures,
-        }
-    }
-}
-
-pub fn validate_request(request: &LayerImportRequest) -> Result<(), LayerImportError> {
-    use LayerImportRequest as Request;
-    let name = match request {
-        Request::PlsCaddBackupProbe => return Ok(()),
-        Request::SketchFeatures { id_prefix, columns } => {
-            let mut seen = std::collections::BTreeSet::new();
-            if let Some(column) = columns.iter().find(|column| !seen.insert(*column)) {
-                return Err(LayerImportError::InvalidRequest(format!(
-                    "sketch column {column:?} is listed twice"
-                )));
-            }
-            id_prefix
-        }
-        Request::GeojsonLayers { name, center, .. } => {
-            if center.is_some_and(|c| !c.lng.is_finite() || !c.lat.is_finite()) {
-                return Err(LayerImportError::InvalidRequest(
-                    "map center must be finite".into(),
-                ));
-            }
-            name
-        }
-        Request::TransformerBackupLayers { name }
-        | Request::KmlLayers { name }
-        | Request::KmlInspect { name }
-        | Request::KmzLayers { name }
-        | Request::KmzInspect { name }
-        | Request::ArchiveLayers { name }
-        | Request::ArchiveInspect { name }
-        | Request::PlsCaddXmlLayers { name }
-        | Request::PlsCaddXmlInspect { name }
-        | Request::PlsCaddBackupLayers { name, .. }
-        | Request::ShapefileZip { name }
-        | Request::Shapefile { name }
-        | Request::SourceInspect { name, .. }
-        | Request::SourceLayer { name, .. }
-        | Request::SourceLayers { name, .. } => name,
-    };
-    if name.trim().is_empty() {
-        return Err(LayerImportError::InvalidRequest(
-            "a source name (or sketch id prefix) is required".into(),
-        ));
-    }
-    Ok(())
-}
-
-pub fn decode_request(bytes: &[u8]) -> Result<LayerImportRequest, LayerImportError> {
-    let request = serde_json::from_slice(bytes)
-        .map_err(|error| LayerImportError::InvalidRequest(error.to_string()))?;
-    validate_request(&request)?;
-    Ok(request)
-}
-
-pub fn encode_request(request: &LayerImportRequest) -> Result<Vec<u8>, LayerImportError> {
-    validate_request(request)?;
-    serde_json::to_vec(request).map_err(|error| LayerImportError::InvalidRequest(error.to_string()))
-}
-
-/// `File.text()` semantics: a leading UTF-8 byte-order mark is dropped and
-/// invalid sequences become U+FFFD.
-fn text(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes)).into_owned()
-}
-
-fn optional(part: &[u8]) -> Option<&[u8]> {
-    (!part.is_empty()).then_some(part)
-}
-
-fn reader<T>(result: Result<T, String>) -> Result<T, LayerImportError> {
-    result.map_err(LayerImportError::Reader)
-}
-
-/// Sort every JSON object a reply carries (see the module note).
-pub fn canonical_envelope(mut envelope: io::GeoLayerImportEnvelope) -> io::GeoLayerImportEnvelope {
-    for layer in &mut envelope.layers {
-        layer.features.iter_mut().for_each(Value::sort_all_objects);
-        if let Some(style) = &mut layer.style_document {
-            style.sort_all_objects();
-        }
-    }
-    envelope
-}
-
-/// Encode an envelope's layers as Arrow IPC chunks in the upload working-set
-/// format (the `ds-cleaning` codec the upload chunks use). Columns are the
-/// reader's schema, or every property key seen.
-pub fn envelope_to_ipc(
-    envelope: io::GeoLayerImportEnvelope,
-) -> Result<(Vec<ImportedIpcLayer>, Vec<Vec<u8>>), LayerImportError> {
-    let envelope = canonical_envelope(envelope);
-    let mut layers = Vec::with_capacity(envelope.layers.len());
-    let mut chunks = Vec::new();
-    for layer in envelope.layers {
-        let schema_columns = layer
-            .schema
-            .iter()
-            .map(|field| field.name.clone())
-            .collect::<Vec<_>>();
-        let columns = if schema_columns.is_empty() {
-            ds_cleaning::arrow_ipc::columns_for_features(&layer.features)
-        } else {
-            schema_columns
-        };
-        let mut chunk_feature_counts = Vec::new();
-        for features in layer.features.chunks(LAYER_IMPORT_FEATURES_PER_CHUNK) {
-            chunks.push(
-                ds_cleaning::arrow_ipc::features_to_ipc(features, &columns)
-                    .map_err(LayerImportError::Reader)?,
-            );
-            chunk_feature_counts.push(features.len());
-        }
-        layers.push(ImportedIpcLayer {
-            name: layer.name,
-            crs: layer.crs,
-            feature_count: layer.features.len(),
-            geometry_type: layer.geometry_type,
-            style_document: layer.style_document,
-            columns,
-            chunk_feature_counts,
-        });
-    }
-    Ok((layers, chunks))
-}
-
-fn ipc(envelope: io::GeoLayerImportEnvelope) -> Result<LayerImportReply, LayerImportError> {
-    let (layers, chunks) = envelope_to_ipc(envelope)?;
-    Ok(LayerImportReply {
-        response: LayerImportResponse::IpcLayers(layers),
-        chunks,
+fn effect(operation: GridOperation, args: Vec<GridArg>) -> Result<GridEffect, LayerImportError> {
+    let request = GridRequest::new(operation, args)
+        .map_err(|refusal| LayerImportError::InvalidRequest(refusal.message))?;
+    Ok(GridEffect {
+        unit: UNIT,
+        entry: operation.entry(),
+        payload: request.encode(),
     })
 }
 
-fn plain(response: LayerImportResponse) -> Result<LayerImportReply, LayerImportError> {
-    Ok(LayerImportReply {
-        response,
-        chunks: Vec::new(),
-    })
-}
-
-/// Run one admitted reader over its explicit byte parts.
-pub fn execute(
-    request: &LayerImportRequest,
-    parts: &[&[u8]],
-) -> Result<LayerImportReply, LayerImportError> {
-    use LayerImportRequest as Request;
-    use LayerImportResponse as Response;
-    validate_request(request)?;
+/// The effect for one admitted reader request over its explicit byte parts.
+pub fn request_effect(input: &[u8], parts: &[&[u8]]) -> Result<GridEffect, LayerImportError> {
+    let request = decode_request(input)?;
     if parts.len() != request.parts() {
         return Err(LayerImportError::InvalidRequest(format!(
             "expected {} byte part(s), received {}",
@@ -375,332 +39,96 @@ pub fn execute(
             parts.len()
         )));
     }
-    let bytes = parts[0];
-    match request {
-        Request::GeojsonLayers { name, crs, center } => {
-            ipc(reader(io::geojson_import(io::GeoJsonImportInput {
-                text: io::GeoTextImportInput {
-                    name: name.clone(),
-                    text: text(bytes),
-                },
-                crs: crs.clone(),
-                center: center.map(|c| io::GeoJsonMapCenter {
-                    lng: c.lng,
-                    lat: c.lat,
-                }),
-            }))?)
-        }
-        Request::TransformerBackupLayers { name } => ipc(reader(
-            io::transformer_backup_json_to_layer(io::GeoTextImportInput {
-                name: name.clone(),
-                text: text(bytes),
-            }),
-        )?),
-        Request::KmlLayers { name } => {
-            ipc(reader(io::kml_text_to_layer(io::GeoTextImportInput {
-                name: name.clone(),
-                text: text(bytes),
-            }))?)
-        }
-        Request::KmlInspect { name } => plain(Response::Inspection(reader(
-            io::kml_text_inspect_entry(io::GeoTextImportInput {
-                name: name.clone(),
-                text: text(bytes),
-            }),
-        )?)),
-        Request::KmzLayers { name } => ipc(reader(io::kmz_bytes_to_layer(name, bytes))?),
-        Request::KmzInspect { name } => plain(Response::Inspection(reader(
-            io::kmz_bytes_inspect_entry(name, bytes),
-        )?)),
-        Request::ArchiveLayers { name } => ipc(io::upload_provenance::collapse(
-            reader(io::archive_bytes_to_layer(name, bytes))?,
-            name,
-        )),
-        Request::ArchiveInspect { name } => plain(Response::Inspection(
-            io::upload_provenance::collapse_inspection(
-                reader(io::archive_bytes_inspect(name, bytes))?,
-                name,
-            ),
-        )),
-        Request::PlsCaddXmlLayers { name } => ipc(reader(io::pls_cadd_xml_to_layer(
-            io::PlsCaddXmlImportInput {
-                name: name.clone(),
-                bytes: bytes.to_vec(),
-                input_projection: None,
-            },
-        ))?),
-        Request::PlsCaddXmlInspect { name } => plain(Response::Inspection(reader(
-            io::pls_cadd_xml_inspect(name, bytes),
-        )?)),
-        Request::PlsCaddBackupLayers { name, options } => ipc(reader(
-            io::pls_cadd_backup_to_layers_with(name, bytes, *options),
-        )?),
-        Request::PlsCaddBackupProbe => plain(Response::BackupProbe(
-            io::pls_cadd_is_backup_container(bytes),
-        )),
-        Request::ShapefileZip { name } => plain(Response::Envelope(canonical_envelope(reader(
-            io::shp_zip_bytes_to_layer(name, bytes),
-        )?))),
-        Request::Shapefile { name } => plain(Response::Envelope(canonical_envelope(reader(
-            io::shp_dbf_prj_bytes_to_layer(name, bytes, optional(parts[1]), optional(parts[2])),
-        )?))),
-        Request::SourceInspect { name, separator } => {
-            plain(Response::SourceInspection(reader(io::source_inspect(
-                name,
-                bytes,
-                io::SourceInspectInput {
-                    separator: separator.clone(),
-                },
-            ))?))
-        }
-        Request::SourceLayer { name, input } => {
-            let mut result = reader(io::source_to_layer(name, bytes, input.clone()))?;
-            result.envelope = canonical_envelope(result.envelope);
-            plain(Response::SourceLayer(result))
-        }
-        Request::SourceLayers { name, input } => ipc(io::upload_provenance::collapse(
-            reader(io::source_to_layer(name, bytes, input.clone()))?.envelope,
-            name,
-        )),
-        Request::SketchFeatures { columns, id_prefix } => {
-            let mut features: Vec<Value> = serde_json::from_slice(bytes).map_err(|error| {
-                LayerImportError::InvalidRequest(format!("sketch features: {error}"))
-            })?;
-            // Object-valued properties stringify in sorted key order.
-            features.iter_mut().for_each(Value::sort_all_objects);
-            plain(Response::SketchFeatures(
-                io::sketch::sketch_features_from_layer(io::sketch::SketchFeaturesInput {
-                    features,
-                    columns: columns.clone(),
-                    id_prefix: id_prefix.clone(),
-                }),
-            ))
-        }
-    }
+    let mut args = vec![GridArg::Bytes(input.to_vec())];
+    args.extend(parts.iter().map(|part| GridArg::Bytes(part.to_vec())));
+    effect(GridOperation::Model(GridModelMethod::LayerImport), args)
 }
 
 fn invalid(message: impl Into<String>) -> LayerImportError {
     LayerImportError::InvalidResponse(message.into())
 }
 
-fn validate_ipc_layers(
-    layers: &[ImportedIpcLayer],
-    chunk_heads: &[(usize, [u8; 6], [u8; 6])],
-) -> Result<(), LayerImportError> {
-    let mut next = 0usize;
-    for layer in layers {
-        let mut seen = std::collections::BTreeSet::new();
-        if let Some(column) = layer.columns.iter().find(|column| !seen.insert(*column)) {
-            return Err(invalid(format!(
-                "layer {:?} lists column {column:?} twice",
-                layer.name
-            )));
-        }
-        let mut total = 0usize;
-        for count in &layer.chunk_feature_counts {
-            if *count == 0 || *count > LAYER_IMPORT_FEATURES_PER_CHUNK {
-                return Err(invalid(format!(
-                    "layer {:?} has a chunk of {count} features",
-                    layer.name
-                )));
-            }
-            total += count;
-        }
-        if total != layer.feature_count {
-            return Err(invalid(format!(
-                "layer {:?} claims {} features but its chunks hold {total}",
-                layer.name, layer.feature_count
-            )));
-        }
-        next += layer.chunk_feature_counts.len();
+/// The JSON text and byte parts of a unit reply. The owner's refusal keeps
+/// its own message; a malformed or crossed reply is a response refusal.
+fn reply_parts(
+    operation: GridOperation,
+    reply: &[u8],
+) -> Result<Option<(String, Vec<Vec<u8>>)>, LayerImportError> {
+    match decode_grid_reply(operation, reply) {
+        Err(malformed) => Err(invalid(malformed.message)),
+        Ok(Err(refusal)) => Err(LayerImportError::Reader(refusal.message)),
+        Ok(Ok(GridResult::Parts { text, blobs })) => Ok(Some((text, blobs))),
+        Ok(Ok(GridResult::Opened)) => Ok(None),
+        Ok(Ok(_)) => Err(invalid("the reply does not carry a layer import answer")),
     }
-    if next != chunk_heads.len() {
-        return Err(invalid(format!(
-            "the reply names {next} Arrow IPC chunk(s) but carries {}",
-            chunk_heads.len()
-        )));
-    }
-    for (index, (length, head, tail)) in chunk_heads.iter().enumerate() {
-        if *length < 2 * ARROW_FILE_MAGIC.len()
-            || head != ARROW_FILE_MAGIC
-            || tail != ARROW_FILE_MAGIC
-        {
-            return Err(invalid(format!("chunk {index} is not an Arrow IPC file")));
-        }
-    }
-    Ok(())
 }
 
-fn validate_envelope(envelope: &io::GeoLayerImportEnvelope) -> Result<(), LayerImportError> {
-    for layer in &envelope.layers {
-        if let Some(index) = layer
-            .features
-            .iter()
-            .position(|feature| feature.get("type").and_then(Value::as_str) != Some("Feature"))
-        {
-            return Err(invalid(format!(
-                "layer {:?} feature {index} is not a GeoJSON Feature",
-                layer.name
-            )));
-        }
-    }
-    Ok(())
-}
-
-/// The first and last six bytes of a chunk, which is all validation reads.
-pub fn chunk_head(bytes: &[u8]) -> (usize, [u8; 6], [u8; 6]) {
-    let mut head = [0u8; 6];
-    let mut tail = [0u8; 6];
-    if bytes.len() >= 6 {
-        head.copy_from_slice(&bytes[..6]);
-        tail.copy_from_slice(&bytes[bytes.len() - 6..]);
-    }
-    (bytes.len(), head, tail)
-}
-
-/// Validate a reply against the request that produced it. Chunks are checked
-/// by length and Arrow file magic only; their bytes are never copied.
-pub fn validate_response(
+/// Decode the unit's reply to `request` and validate it; chunk bytes are
+/// checked by length and Arrow file magic only.
+pub fn decode_unit_reply(
     request: &LayerImportRequest,
-    response: LayerImportResponse,
-    chunk_heads: &[(usize, [u8; 6], [u8; 6])],
-) -> Result<LayerImportResponse, LayerImportError> {
-    validate_request(request)?;
-    if response.kind() != request.reply_kind() {
-        return Err(invalid("reply kind does not match the request"));
-    }
-    match &response {
-        LayerImportResponse::IpcLayers(layers) => validate_ipc_layers(layers, chunk_heads)?,
-        _ if !chunk_heads.is_empty() => {
-            return Err(invalid("only layer replies carry Arrow IPC chunks"));
-        }
-        LayerImportResponse::Envelope(envelope) => validate_envelope(envelope)?,
-        LayerImportResponse::SourceLayer(result) => validate_envelope(&result.envelope)?,
-        LayerImportResponse::SketchFeatures(output) => {
-            if let Some(feature) = output.features.iter().find(|f| f.geometry.is_null()) {
-                return Err(invalid(format!(
-                    "sketch feature {:?} has no geometry",
-                    feature.id
-                )));
-            }
-        }
-        LayerImportResponse::Inspection(_)
-        | LayerImportResponse::SourceInspection(_)
-        | LayerImportResponse::BackupProbe(_) => {}
-    }
-    Ok(response)
-}
-
-pub fn decode_response(
-    request: &LayerImportRequest,
-    bytes: &[u8],
-    chunk_heads: &[(usize, [u8; 6], [u8; 6])],
-) -> Result<LayerImportResponse, LayerImportError> {
-    validate_response(
-        request,
-        serde_json::from_slice(bytes).map_err(|error| invalid(error.to_string()))?,
-        chunk_heads,
-    )
+    reply: &[u8],
+) -> Result<LayerImportReply, LayerImportError> {
+    let (text, chunks) = reply_parts(GridOperation::Model(GridModelMethod::LayerImport), reply)?
+        .ok_or_else(|| invalid("the reply does not carry a layer import answer"))?;
+    let heads = chunks
+        .iter()
+        .map(|chunk| chunk_head(chunk))
+        .collect::<Vec<_>>();
+    let response = decode_response(request, text.as_bytes(), &heads)?;
+    Ok(LayerImportReply { response, chunks })
 }
 
 // ── Streaming GeoJSON ───────────────────────────────────────────────────
 
-/// Progress of a streaming GeoJSON import after one pushed byte slice.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(missing_as_null))]
-pub struct GeoJsonStreamUpdate {
-    pub name: String,
-    pub feature_count: usize,
-    #[serde(default)]
-    pub geometry_type: Option<String>,
-    pub columns: Vec<String>,
-    pub done: bool,
-    /// Features in each Arrow IPC chunk emitted by this step, in order.
-    pub chunk_feature_counts: Vec<usize>,
+/// One step of the unit's GeoJSON import stream.
+#[derive(Clone, Debug, PartialEq)]
+pub enum StreamStep<'a> {
+    Open(&'a str),
+    Push(&'a [u8]),
+    Finish,
 }
 
-/// A streaming GeoJSON import held by its host: bytes in, bounded chunks out.
-pub struct GeoJsonStreamImport {
-    stream: io::GeoJsonFeatureStream,
+impl StreamStep<'_> {
+    fn method(&self) -> GridStreamMethod {
+        match self {
+            Self::Open(_) => GridStreamMethod::GeoJsonStreamOpen,
+            Self::Push(_) => GridStreamMethod::GeoJsonStreamPush,
+            Self::Finish => GridStreamMethod::GeoJsonStreamFinish,
+        }
+    }
 }
 
-impl GeoJsonStreamImport {
-    pub fn new(name: &str) -> Result<Self, LayerImportError> {
-        if name.trim().is_empty() {
+/// The effect for one admitted stream step.
+pub fn stream_effect(step: &StreamStep) -> Result<GridEffect, LayerImportError> {
+    let args = match step {
+        StreamStep::Open(name) if name.trim().is_empty() => {
             return Err(LayerImportError::InvalidRequest(
                 "a source name is required".into(),
-            ));
+            ))
         }
-        Ok(Self {
-            stream: io::GeoJsonFeatureStream::new(name),
-        })
-    }
-
-    fn step(
-        &self,
-        batches: Vec<io::GeoJsonFeatureBatch>,
-    ) -> Result<(GeoJsonStreamUpdate, Vec<Vec<u8>>), LayerImportError> {
-        let mut chunks = Vec::with_capacity(batches.len());
-        let mut chunk_feature_counts = Vec::with_capacity(batches.len());
-        for batch in batches {
-            chunks.push(
-                ds_cleaning::arrow_ipc::features_to_ipc(&batch.features, &batch.columns)
-                    .map_err(LayerImportError::Reader)?,
-            );
-            chunk_feature_counts.push(batch.features.len());
-        }
-        Ok((
-            GeoJsonStreamUpdate {
-                name: self.stream.name().to_string(),
-                feature_count: self.stream.feature_count(),
-                geometry_type: self.stream.geometry_type().map(str::to_string),
-                columns: self.stream.columns().to_vec(),
-                done: self.stream.done(),
-                chunk_feature_counts,
-            },
-            chunks,
-        ))
-    }
-
-    pub fn push(
-        &mut self,
-        bytes: &[u8],
-    ) -> Result<(GeoJsonStreamUpdate, Vec<Vec<u8>>), LayerImportError> {
-        let batches = self.stream.push(bytes).map_err(LayerImportError::Reader)?;
-        self.step(batches)
-    }
-
-    pub fn finish(&mut self) -> Result<(GeoJsonStreamUpdate, Vec<Vec<u8>>), LayerImportError> {
-        let batches = self.stream.finish().map_err(LayerImportError::Reader)?;
-        self.step(batches)
-    }
+        StreamStep::Open(name) => vec![GridArg::Text(name.to_string())],
+        StreamStep::Push(bytes) => vec![GridArg::Bytes(bytes.to_vec())],
+        StreamStep::Finish => Vec::new(),
+    };
+    effect(GridOperation::Stream(step.method()), args)
 }
 
-pub fn validate_stream_update(
-    update: GeoJsonStreamUpdate,
-    chunk_heads: &[(usize, [u8; 6], [u8; 6])],
-) -> Result<GeoJsonStreamUpdate, LayerImportError> {
-    let emitted: usize = update.chunk_feature_counts.iter().sum();
-    if emitted > update.feature_count {
-        return Err(invalid(
-            "a stream step emitted more features than it has read",
-        ));
-    }
-    validate_ipc_layers(
-        &[ImportedIpcLayer {
-            name: update.name.clone(),
-            crs: None,
-            feature_count: emitted,
-            geometry_type: None,
-            style_document: None,
-            columns: update.columns.clone(),
-            chunk_feature_counts: update.chunk_feature_counts.clone(),
-        }],
-        chunk_heads,
-    )?;
-    Ok(update)
+/// Decode the unit's answer to one stream step: `None` for an open, else the
+/// validated progress update and the Arrow chunks the step completed.
+pub fn decode_stream_reply(
+    method: GridStreamMethod,
+    reply: &[u8],
+) -> Result<Option<(GeoJsonStreamUpdate, Vec<Vec<u8>>)>, LayerImportError> {
+    let Some((text, chunks)) = reply_parts(GridOperation::Stream(method), reply)? else {
+        return Ok(None);
+    };
+    let update = serde_json::from_str(&text).map_err(|error| invalid(error.to_string()))?;
+    let heads = chunks
+        .iter()
+        .map(|chunk| chunk_head(chunk))
+        .collect::<Vec<_>>();
+    Ok(Some((validate_stream_update(update, &heads)?, chunks)))
 }
 
 // ── Temporary upload grouping ───────────────────────────────────────────
@@ -839,9 +267,9 @@ pub fn temporary_upload_groups(
     request: &UploadGroupsRequest,
 ) -> Result<Vec<UploadGroupLayer>, LayerImportError> {
     let input = serde_json::to_value(request)
-        .and_then(serde_json::from_value::<ds_cleaning::upload_groups::Input>)
+        .and_then(serde_json::from_value::<ds_upload_rules::upload_groups::Input>)
         .map_err(|error| LayerImportError::InvalidRequest(error.to_string()))?;
-    let mut planned = ds_cleaning::upload_groups::plan(input);
+    let mut planned = ds_upload_rules::upload_groups::plan(input);
     // Stamped preview features keep sorted keys, as in every reader reply.
     planned.sort_all_objects();
     validate_upload_groups(
@@ -893,6 +321,7 @@ pub fn validate_upload_groups(
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod browser {
     use super::*;
+    use crate::grid_engine::browser::effect_value;
     use wasm_bindgen::prelude::*;
 
     #[wasm_bindgen(typescript_custom_section)]
@@ -901,13 +330,12 @@ mod browser {
 export interface LayerImportReply { response: LayerImportResponse; chunks: Uint8Array[] }
 /** One streaming GeoJSON step and the Arrow IPC chunks it emitted. */
 export interface GeoJsonStreamStep { update: GeoJsonStreamUpdate; chunks: Uint8Array[] }
+/** The Network unit effect a page-data request names; the host runs it on that unit's entry. */
+export interface PageDataEffect { unit: 'network'; entry: 'grid.model' | 'grid.stream'; payload: Uint8Array }
 "#;
 
     fn js_error(error: LayerImportError) -> JsError {
         JsError::new(&error.to_string())
-    }
-    fn request_error(error: impl std::fmt::Display) -> JsError {
-        js_error(LayerImportError::InvalidRequest(error.to_string()))
     }
     fn response_error(error: impl std::fmt::Display) -> JsError {
         js_error(LayerImportError::InvalidResponse(error.to_string()))
@@ -929,24 +357,6 @@ export interface GeoJsonStreamStep { update: GeoJsonStreamUpdate; chunks: Uint8A
         let text = serde_json::to_string(value).map_err(response_error)?;
         js_sys::JSON::parse(&text).map_err(|_| response_error("could not encode the reply"))
     }
-
-    fn heads(chunks: &[js_sys::Uint8Array]) -> Vec<(usize, [u8; 6], [u8; 6])> {
-        chunks
-            .iter()
-            .map(|chunk| {
-                let length = chunk.length() as usize;
-                let mut head = [0u8; 6];
-                let mut tail = [0u8; 6];
-                if length >= 6 {
-                    chunk.subarray(0, 6).copy_to(&mut head);
-                    chunk
-                        .subarray((length - 6) as u32, length as u32)
-                        .copy_to(&mut tail);
-                }
-                (length, head, tail)
-            })
-            .collect()
-    }
     fn js_chunks(chunks: Vec<Vec<u8>>) -> js_sys::Array {
         chunks
             .into_iter()
@@ -960,6 +370,10 @@ export interface GeoJsonStreamStep { update: GeoJsonStreamUpdate; chunks: Uint8A
             .map_err(|_| response_error("could not assemble the reply"))?;
         Ok(out.into())
     }
+    fn effect(effect: Result<GridEffect, LayerImportError>) -> Result<JsValue, JsError> {
+        effect_value(&effect.map_err(js_error)?)
+            .map_err(|_| response_error("could not assemble the effect"))
+    }
 
     #[wasm_bindgen(js_name = encodeLayerImport)]
     pub fn encode(request: tsify::Ts<LayerImportRequest>) -> Result<Vec<u8>, JsError> {
@@ -967,16 +381,22 @@ export interface GeoJsonStreamStep { update: GeoJsonStreamUpdate; chunks: Uint8A
         encode_request(&request).map_err(js_error)
     }
 
-    /// Run one declared reader over its byte parts (a worker operation).
-    #[wasm_bindgen(js_name = layerImport, unchecked_return_type = "LayerImportReply")]
-    pub fn run(input: &[u8], parts: Vec<js_sys::Uint8Array>) -> Result<JsValue, JsError> {
-        let request = decode_request(input).map_err(js_error)?;
+    /// The Network unit effect for one declared reader over its byte parts.
+    #[wasm_bindgen(js_name = layerImportEffect, unchecked_return_type = "PageDataEffect")]
+    pub fn request(input: &[u8], parts: Vec<js_sys::Uint8Array>) -> Result<JsValue, JsError> {
         let parts = parts
             .iter()
             .map(js_sys::Uint8Array::to_vec)
             .collect::<Vec<_>>();
         let parts = parts.iter().map(Vec::as_slice).collect::<Vec<_>>();
-        let reply = execute(&request, &parts).map_err(js_error)?;
+        effect(request_effect(input, &parts))
+    }
+
+    /// Decode and validate the unit's reply to a reader request.
+    #[wasm_bindgen(js_name = decodeLayerImportReply, unchecked_return_type = "LayerImportReply")]
+    pub fn decode(input: &[u8], reply: &[u8]) -> Result<JsValue, JsError> {
+        let request = decode_request(input).map_err(js_error)?;
+        let reply = decode_unit_reply(&request, reply).map_err(js_error)?;
         pair(
             "response",
             to_js(&reply.response)?,
@@ -984,53 +404,54 @@ export interface GeoJsonStreamStep { update: GeoJsonStreamUpdate; chunks: Uint8A
         )
     }
 
-    /// Validate a reader reply against its request; chunk bytes stay in place.
-    #[wasm_bindgen(js_name = decodeLayerImport, unchecked_return_type = "LayerImportReply")]
-    pub fn decode(
-        input: &[u8],
-        response: tsify::Ts<LayerImportResponse>,
-        chunks: Vec<js_sys::Uint8Array>,
+    /// The Network unit effect for one GeoJSON stream step: `open` with the
+    /// source name, `push` with bytes, or `finish`.
+    #[wasm_bindgen(js_name = geoJsonStreamEffect, unchecked_return_type = "PageDataEffect")]
+    pub fn stream(
+        #[wasm_bindgen(unchecked_param_type = "'open' | 'push' | 'finish'")] kind: &str,
+        #[wasm_bindgen(unchecked_param_type = "string | Uint8Array | undefined")] payload: JsValue,
     ) -> Result<JsValue, JsError> {
-        let request = decode_request(input).map_err(js_error)?;
-        let response = from_js(&response.js_value(), LayerImportError::InvalidResponse)?;
-        let response = validate_response(&request, response, &heads(&chunks)).map_err(js_error)?;
-        let array: js_sys::Array = chunks.into_iter().map(JsValue::from).collect();
-        pair("response", to_js(&response)?, array.into())
+        let invalid = |message: &str| js_error(LayerImportError::InvalidRequest(message.into()));
+        let name;
+        let bytes;
+        let step = match kind {
+            "open" => {
+                name = payload
+                    .as_string()
+                    .ok_or_else(|| invalid("a stream opens with its source name"))?;
+                StreamStep::Open(&name)
+            }
+            "push" if payload.is_instance_of::<js_sys::Uint8Array>() => {
+                bytes = js_sys::Uint8Array::new(&payload).to_vec();
+                StreamStep::Push(&bytes)
+            }
+            "push" => return Err(invalid("a stream push carries bytes")),
+            "finish" => StreamStep::Finish,
+            _ => return Err(invalid("a stream step is open, push or finish")),
+        };
+        effect(stream_effect(&step))
     }
 
-    /// A streaming GeoJSON import held by the page; push bytes, then finish.
-    #[wasm_bindgen(js_name = GeoJsonStreamImport)]
-    pub struct GeoJsonStreamImportHandle(GeoJsonStreamImport);
-
-    #[wasm_bindgen(js_class = GeoJsonStreamImport)]
-    impl GeoJsonStreamImportHandle {
-        #[wasm_bindgen(constructor)]
-        pub fn new(name: &str) -> Result<GeoJsonStreamImportHandle, JsError> {
-            GeoJsonStreamImport::new(name)
-                .map(GeoJsonStreamImportHandle)
-                .map_err(js_error)
-        }
-        #[wasm_bindgen(unchecked_return_type = "GeoJsonStreamStep")]
-        pub fn push(&mut self, bytes: &[u8]) -> Result<JsValue, JsError> {
-            let (update, chunks) = self.0.push(bytes).map_err(js_error)?;
-            pair("update", to_js(&update)?, js_chunks(chunks).into())
-        }
-        #[wasm_bindgen(unchecked_return_type = "GeoJsonStreamStep")]
-        pub fn finish(&mut self) -> Result<JsValue, JsError> {
-            let (update, chunks) = self.0.finish().map_err(js_error)?;
-            pair("update", to_js(&update)?, js_chunks(chunks).into())
-        }
-    }
-
-    #[wasm_bindgen(js_name = decodeGeoJsonStreamStep, unchecked_return_type = "GeoJsonStreamStep")]
+    /// Decode the unit's answer to one stream step: `null` for an open.
+    #[wasm_bindgen(js_name = decodeGeoJsonStreamReply, unchecked_return_type = "GeoJsonStreamStep | null")]
     pub fn decode_stream(
-        update: tsify::Ts<GeoJsonStreamUpdate>,
-        chunks: Vec<js_sys::Uint8Array>,
+        #[wasm_bindgen(unchecked_param_type = "'open' | 'push' | 'finish'")] kind: &str,
+        reply: &[u8],
     ) -> Result<JsValue, JsError> {
-        let update = from_js(&update.js_value(), LayerImportError::InvalidResponse)?;
-        let update = validate_stream_update(update, &heads(&chunks)).map_err(js_error)?;
-        let array: js_sys::Array = chunks.into_iter().map(JsValue::from).collect();
-        pair("update", to_js(&update)?, array.into())
+        let method = match kind {
+            "open" => GridStreamMethod::GeoJsonStreamOpen,
+            "push" => GridStreamMethod::GeoJsonStreamPush,
+            "finish" => GridStreamMethod::GeoJsonStreamFinish,
+            _ => {
+                return Err(js_error(LayerImportError::InvalidRequest(
+                    "a stream step is open, push or finish".into(),
+                )))
+            }
+        };
+        match decode_stream_reply(method, reply).map_err(js_error)? {
+            None => Ok(JsValue::NULL),
+            Some((update, chunks)) => pair("update", to_js(&update)?, js_chunks(chunks).into()),
+        }
     }
 
     #[wasm_bindgen(js_name = temporaryUploadGroups, unchecked_return_type = "UploadGroupsPlan")]

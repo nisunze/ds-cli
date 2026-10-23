@@ -1539,16 +1539,11 @@ dependencies = [
 name = "ds-cleaning"
 version = "0.1.0"
 dependencies = [
- "ds-geo-lite",
  "ds-network-contracts",
  "ds-upload-rules",
- "polars",
- "polars-io",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
- "tsify",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -2062,18 +2057,17 @@ dependencies = [
  "base64 0.22.1",
  "console_error_panic_hook",
  "csv",
- "ds-cleaning",
  "ds-columnar",
  "ds-core-contracts",
  "ds-design-session",
  "ds-geo",
  "ds-geo-lite",
- "ds-io",
  "ds-kml",
  "ds-network-contracts",
  "ds-profile-policy",
  "ds-solar-contracts",
  "ds-template-test-support",
+ "ds-upload-rules",
  "futures-channel",
  "futures-util",
  "gloo-timers",
@@ -2370,8 +2364,6 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "shapefile",
- "tsify",
- "wasm-bindgen",
  "zip 2.4.2",
  "zstd",
 ]

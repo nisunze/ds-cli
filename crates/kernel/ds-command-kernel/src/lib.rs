@@ -361,7 +361,6 @@ pub mod grid_crs;
 pub mod selection_field;
 #[cfg(feature = "page-geometry")]
 pub mod table_query;
-#[cfg(feature = "page-data")]
 pub mod domain_value;
 /// The one rule every input door applies to a geometry (owner ruling,
 /// 2026-09-27): what BigQuery's `ST_GEOGFROMGEOJSON` refuses is refused, and
@@ -1639,13 +1638,8 @@ pub mod geojson_comparison;
 #[cfg(feature = "page-geometry")]
 pub mod table_edit;
 
-#[cfg(feature = "page-data")]
 pub mod layer_export;
-#[cfg(feature = "page-data")]
-mod network_json_order;
-#[cfg(feature = "upload-batch-ipc")]
 pub mod upload_batch;
-#[cfg(feature = "page-data")]
 pub mod upload_cleaning;
 
 /// Typed geometry operations: interactive line edits and bulk profile sampling.
@@ -1658,6 +1652,5 @@ pub mod line_extension;
 /// Bounded GeoPackage geometry decoding and layer admission for browser hosts.
 pub mod gpkg_geometry;
 /// Browser file readers (GeoJSON, KML/KMZ, archives, shapefiles, PLS-CADD,
-/// tabular sources) as typed application operations over `ds-io`.
-#[cfg(feature = "layer-import")]
+/// tabular sources) admitted here and read in the governed Network unit.
 pub mod layer_import;

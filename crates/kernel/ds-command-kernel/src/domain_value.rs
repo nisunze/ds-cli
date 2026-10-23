@@ -1,9 +1,10 @@
-//! Application entry for the existing single-cell domain owner. No engine,
-//! project acquisition or application state is required to interpret a value.
-pub use ds_cleaning::domain_value::{
-    DomainValueError, DomainValueInput, DomainValueResponse, evaluate, validate_response,
+//! Application entry for the shared single-cell domain rules. The page's
+//! editors answer these synchronously while tables render, so the rules are
+//! the neutral ds-upload-rules crate (no engine, project acquisition or
+//! application state is needed to interpret a value).
+pub use ds_upload_rules::domain_value::{
+    evaluate, validate_response, DomainValueError, DomainValueInput, DomainValueResponse,
 };
-
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod browser {
     use super::*;

@@ -43,11 +43,7 @@ wasm = [
     "ds-design-session/enable_dataframes",
     "ds-columnar/artifacts",
     "ds-columnar/bindings",
-    "ds-cleaning/bindings",
-    "ds-io/bindings",
-    "page-data",
-    "layer-import",
-    "upload-batch-ipc",
+    "ds-upload-rules/bindings",
     "vector-tools",
     "dep:wasm-bindgen",
     "durable-store",
@@ -69,22 +65,11 @@ wasm = [
 # never its UI. The WASM build runs it on wasm-bindgen-futures; a native host
 # initializes any_spawner with its own runtime.
 client-state = ["durable-store", "dep:reactive_graph", "dep:any_spawner"]
-# The page's data owners (single-cell domain values, upload cleaning, layer
-# export writers) over Network's shared cleaning and file crates. Only the
-# browser build carries them: native Core links no Network crate beyond its
-# contracts and reaches cleaning and file IO through the Network engine.
-page-data = ["dep:ds-cleaning", "dep:ds-io"]
 # The page's in-browser geometry and table owners (area selection, line
 # extension, feature selection, attribute-table filter/edit/profiles) over
 # Network's ds-geo, until the page reaches them through its Network unit.
 # Native Core links no ds-geo: its feature selection is a Network engine task.
 page-geometry = ["dep:ds-geo"]
-# Chunk-level upload cleaning over Arrow IPC. The browser build carries it;
-# Core never stages upload chunks and keeps its build dataframe-free.
-upload-batch-ipc = ["page-data", "ds-cleaning/arrow_ipc"]
-# Browser file readers: ds-io parses; layers travel as the upload Arrow IPC
-# chunks (ds-cleaning codec). Core reads sources natively and leaves this off.
-layer-import = ["page-data", "ds-cleaning/arrow_ipc"]
 # The vector tools' host half (browser windows): the effect to the Network
 # unit's runner and the reply check; the runner and its IPC backend stay there.
 vector-tools = []
@@ -93,12 +78,11 @@ vector-tools = []
 ds-core-contracts = { path = "../ds-core-contracts" }
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts" }
 ds-geo = { path = "../../../../ds-network/crates/ds-geo", optional = true }
-ds-cleaning = { path = "../../../../ds-network/crates/ds-cleaning", default-features = false, optional = true }
-# The file writers own every exported byte (layer and dashboard exports).
-ds-io = { path = "../../../../ds-network/crates/ds-io", optional = true }
 ds-design-session = { path = "../ds-design-session" }
 ds-columnar = { path = "../../shared/ds-columnar", default-features = false }
 ds-profile-policy = { path = "../ds-profile-policy" }
+# Single-cell value domains and upload grouping the page answers synchronously.
+ds-upload-rules = { path = "../../shared/ds-upload-rules" }
 ds-kml = { path = "../ds-kml" }
 ryu = "1"
 schemars = "1.2.2"

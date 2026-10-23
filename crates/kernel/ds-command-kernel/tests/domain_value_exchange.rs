@@ -1,6 +1,5 @@
-#![cfg(feature = "page-data")]
 use ds_command_kernel::domain_value::{
-    DomainValueInput, DomainValueResponse, evaluate, validate_response,
+    evaluate, validate_response, DomainValueInput, DomainValueResponse,
 };
 use serde_json::json;
 
@@ -22,10 +21,8 @@ fn a_response_from_another_operation_is_not_accepted_as_options() {
     let request: DomainValueInput = serde_json::from_value(json!({"action":"options"})).unwrap();
     let response: DomainValueResponse =
         serde_json::from_value(json!({"action":"format","value":"wrong operation"})).unwrap();
-    assert!(
-        validate_response(&request, response)
-            .unwrap_err()
-            .to_string()
-            .contains("answer belongs to a different operation")
-    );
+    assert!(validate_response(&request, response)
+        .unwrap_err()
+        .to_string()
+        .contains("answer belongs to a different operation"));
 }
