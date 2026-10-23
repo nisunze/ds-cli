@@ -4,7 +4,7 @@ fn acceptance_native_mv_projection_local_route_context() {
     let path = std::env::var("DS_MV_PROJECTION_MODEL").unwrap();
     let bytes = std::fs::read(&path).unwrap();
     let digest = ds_command_kernel::report_export::sha256_hex(&bytes);
-    let (routes, source) = super::local_mv_route_extents(&path).unwrap();
+    let (routes, source) = super::local_mv_route_extents(&path, "stable").unwrap();
     assert!(!routes.is_empty());
     assert!(routes.iter().all(|route| {
         route
@@ -20,7 +20,7 @@ fn acceptance_native_mv_projection_local_route_context() {
 #[ignore = "requires an explicitly unavailable captured Network engine"]
 fn acceptance_native_mv_missing_engine_is_unavailable() {
     let path = std::env::var("DS_MV_PROJECTION_MODEL").unwrap();
-    let error = super::local_mv_route_extents(&path).unwrap_err();
+    let error = super::local_mv_route_extents(&path, "stable").unwrap_err();
     assert_eq!(
         error.class(),
         ds_cli_contract::outcome::ExitClass::Unavailable
