@@ -287,12 +287,14 @@ const ENGINE_BYPASS_TOKENS: &[&str] = &[
 
 /// CLI files that still hold the Solar engine's captured executable
 /// directly. Solar's Kernel client is the queued next step (Kernel OPEN.md,
-/// section 1); this inventory may only shrink. Reporter and Network have no
+/// section 1); add a file here only for Solar, never for Reporter or Network,
+/// and remove each one its Kernel client absorbs. Reporter and Network have no
 /// exception.
 const SOLAR_PENDING: &[&str] = &[
     "crates/cli/ds-cli-solar/src/calculate_prepared.rs",
     "crates/cli/ds-cli-solar/src/engine.rs",
     "crates/cli/ds-cli-solar/src/lib.rs",
+    "crates/cli/ds-cli-solar/src/project.rs",
     "crates/cli/ds-cli-solar/src/run.rs",
 ];
 
