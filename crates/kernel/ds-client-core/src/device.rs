@@ -2440,15 +2440,23 @@ pub struct DeviceProtectedCall<'a> {
 }
 
 impl DeviceProtectedCall<'_> {
-    pub fn method(&self) -> &'static str {
+    fn generated_operation(&self) -> ds_gateway_client::Operation {
         match self.operation {
-            DeviceProtectedOperation::List | DeviceProtectedOperation::Read(_) => "GET",
-            DeviceProtectedOperation::Revoke(_) => "DELETE",
+            DeviceProtectedOperation::List => ds_gateway_client::Operation::ListPrincipalDevices,
+            DeviceProtectedOperation::Read(_) => ds_gateway_client::Operation::ReadPrincipalDevice,
+            DeviceProtectedOperation::Revoke(_) => {
+                ds_gateway_client::Operation::RevokePrincipalDevice
+            }
         }
+    }
+    pub fn method(&self) -> &'static str {
+        self.generated_operation().method().as_str()
     }
     pub fn path(&self) -> Result<String, DeviceError> {
         match self.operation {
-            DeviceProtectedOperation::List => Ok("/api/v1/auth/devices".to_owned()),
+            DeviceProtectedOperation::List => {
+                Ok(self.generated_operation().path_template().to_owned())
+            }
             DeviceProtectedOperation::Read(id) | DeviceProtectedOperation::Revoke(id) => {
                 bounded(id, 128)?;
                 if !id
@@ -2457,7 +2465,13 @@ impl DeviceProtectedCall<'_> {
                 {
                     return Err(DeviceError::Input);
                 }
-                Ok(format!("/api/v1/auth/devices/{id}"))
+                // Admission above already limits IDs to unreserved bytes. Preserve
+                // that exact existing contract while the generated template owns
+                // the route, including IDs the generic planner refuses.
+                Ok(self
+                    .generated_operation()
+                    .path_template()
+                    .replace("{device_id}", id))
             }
         }
     }
@@ -2749,3 +2763,7 @@ mod tests;
 #[cfg(test)]
 #[path = "device_weak_network_tests.rs"]
 mod weak_network_tests;
+
+#[cfg(test)]
+#[path = "device_gateway_route_tests.rs"]
+mod gateway_route_tests;

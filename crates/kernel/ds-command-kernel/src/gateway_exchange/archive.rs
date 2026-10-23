@@ -3,12 +3,12 @@
 //! `{__type:"summary"}` line carries the count, or the failure that cut the
 //! stream; rows travel as served. Platform administrators only.
 
+use ds_gateway_client::Operation;
 use serde::Serialize;
 use serde_json::{json, Value};
 
 use super::{Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/data";
 const TIMEOUT_MS: u64 = 30_000;
 /// The window ds-brain bounds server-side, plus its summary line.
 pub const ROWS_MAX: usize = 20_000;
@@ -39,7 +39,7 @@ impl Exchange for DeletedTransformers {
         if let Some(limit) = self.limit {
             body["limit"] = limit.into();
         }
-        Ok(Request::post(PATH, body)
+        Ok(Request::generated(Operation::DataInterop, Some(body))?
             .timeout_ms(TIMEOUT_MS)
             .response_cap(CAP)
             .ndjson(ROWS_MAX + 1)

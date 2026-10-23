@@ -28,8 +28,8 @@ pub use crate::layer_state::Order;
 pub const SCHEMA: &str = "ds.layer-document/v1";
 /// The gateway registry id every host resolves the route from.
 pub const OPERATION: &str = "domains.layers.action";
-pub const METHOD: &str = "POST";
-pub const PATH: &str = "/api/v1/layers";
+pub const METHOD: &str = ds_gateway_client::Operation::LayersAction.method().as_str();
+pub const PATH: &str = ds_gateway_client::Operation::LayersAction.path_template();
 pub const ACTIONS: [&str; 5] = [
     "get_config",
     "get_style_catalog",

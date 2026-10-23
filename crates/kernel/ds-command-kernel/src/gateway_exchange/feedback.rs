@@ -4,12 +4,12 @@
 //! input and admit the typed report. Which statuses exist and which of them
 //! count as addressed is decided here, once.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/feedback";
 /// The most reports one backlog read asks for.
 pub const BACKLOG_LIMIT: u32 = 200;
 /// A backlog of 200 reports with full details.
@@ -213,11 +213,12 @@ impl Exchange for Backlog {
     type Output = FeedbackBacklog;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(
-            Request::post(PATH, json!({"action": "list", "limit": BACKLOG_LIMIT}))
-                .response_cap(BACKLOG_CAP)
-                .into(),
-        )
+        Ok(Request::generated(
+            Operation::FeedbackAction,
+            Some(json!({"action": "list", "limit": BACKLOG_LIMIT})),
+        )?
+        .response_cap(BACKLOG_CAP)
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -257,7 +258,7 @@ impl Exchange for UpdateStatus {
         }
         let body = json!({"action": "update_status", "id": self.id,
             "expected_version": self.expected_version, "status": self.status, "resolution": resolution});
-        Ok(Request::post(PATH, body).into())
+        Ok(Request::generated(Operation::FeedbackAction, Some(body))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -294,7 +295,11 @@ impl Exchange for SubmitHuman {
         if let Some(project) = &self.project {
             report["project_id"] = json!(project_reference(project)?);
         }
-        Ok(Request::post(PATH, json!({"action": "submit", "report": report})).into())
+        Ok(Request::generated(
+            Operation::FeedbackAction,
+            Some(json!({"action": "submit", "report": report})),
+        )?
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

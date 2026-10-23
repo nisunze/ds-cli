@@ -5,6 +5,7 @@
 //! envelope as served. Messaging answers its own CORS preflight, so these
 //! requests carry only the headers it admits.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -29,10 +30,10 @@ pub enum MessagingEndpoint {
 }
 
 impl MessagingEndpoint {
-    fn path(self) -> &'static str {
+    fn operation(self) -> Operation {
         match self {
-            Self::Commands => "/api/v1/messaging",
-            Self::Attachments => "/api/v1/messaging/attachments",
+            Self::Commands => Operation::MessagingCommands,
+            Self::Attachments => Operation::MessagingAttachments,
         }
     }
 
@@ -160,7 +161,7 @@ impl Exchange for Messaging {
         );
         let request = Request {
             query: vec![("wire_contract".into(), WIRE_CONTRACT.into())],
-            ..Request::post(self.endpoint.path(), body)
+            ..Request::generated(self.endpoint.operation(), Some(body))?
         }
         .timeout_ms(timeout_ms)
         .response_cap(RESPONSE_CAP)

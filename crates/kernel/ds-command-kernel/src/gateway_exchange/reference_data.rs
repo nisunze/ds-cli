@@ -6,13 +6,13 @@
 //! dataset, version, offset and area asked for and its features match their
 //! digest and count.
 
+use ds_gateway_client::Operation;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/data-distribution";
 const CONTROL_TIMEOUT_MS: u64 = 150_000;
 const PAGE_TIMEOUT_MS: u64 = 120_000;
 pub const PAGE_ROWS: u64 = 1000;
@@ -76,10 +76,21 @@ fn catalogue(body: &Value) -> Result<Vec<Value>, Refusal> {
     Ok(rows.clone())
 }
 
-fn control(action: &str, project: &str, extra: Map<String, Value>, timeout_ms: u64, cap: u64) -> Result<Plan, Refusal> {
+fn control(
+    action: &str,
+    project: &str,
+    extra: Map<String, Value>,
+    timeout_ms: u64,
+    cap: u64,
+) -> Result<Plan, Refusal> {
     let mut body = json!({"action": action, "project_id": project_reference(project)?});
     body.as_object_mut().expect("an object").extend(extra);
-    Ok(Request::post(PATH, body).timeout_ms(timeout_ms).response_cap(cap).into())
+    Ok(
+        Request::generated(Operation::DataDistributionAction, Some(body))?
+            .timeout_ms(timeout_ms)
+            .response_cap(cap)
+            .into(),
+    )
 }
 
 fn resource_id(id: &str) -> Result<Map<String, Value>, Refusal> {

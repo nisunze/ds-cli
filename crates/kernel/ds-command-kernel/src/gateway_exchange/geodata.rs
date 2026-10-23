@@ -3,6 +3,7 @@
 //! sends the bytes, and registering them starts the tiler; a stuck tiling is
 //! retried by registering the stored file again.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
@@ -11,19 +12,19 @@ use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
 pub const INVALID: &str = "geodata_answer_invalid";
 
-fn path(project: Option<&str>) -> &'static str {
+fn operation(project: Option<&str>) -> Operation {
     match project {
-        Some(_) => "/api/v1/project_data",
-        None => "/api/v1/user_data",
+        Some(_) => Operation::ProjectDataAction,
+        None => Operation::UserDataAction,
     }
 }
 
-fn post(action: &str, project: Option<&str>, mut body: Value) -> Request {
+fn post(action: &str, project: Option<&str>, mut body: Value) -> Result<Request, Refusal> {
     body["action"] = action.into();
     if let Some(project) = project {
         body["project_id"] = project.into();
     }
-    Request::post(path(project), body)
+    Request::generated(operation(project), Some(body))
 }
 
 fn invalid() -> Refusal {
@@ -105,7 +106,7 @@ impl Exchange for GeodataList {
     type Output = Vec<GeodataDoc>;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(post("list", self.project.as_deref(), json!({})).into())
+        Ok(post("list", self.project.as_deref(), json!({}))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -128,7 +129,7 @@ impl Exchange for GeodataStart {
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"file_name": self.file_name, "size": self.size,
             "content_type": self.content_type});
-        Ok(post("upload_start", self.project.as_deref(), body).into())
+        Ok(post("upload_start", self.project.as_deref(), body)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -160,7 +161,7 @@ impl Exchange for GeodataRegister {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"blob_path": self.blob_path, "file_name": self.file_name});
-        Ok(post("upload", self.project.as_deref(), body).into())
+        Ok(post("upload", self.project.as_deref(), body)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -182,7 +183,7 @@ impl Exchange for GeodataDelete {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"upload_id": self.upload_id});
-        Ok(post("delete", self.project.as_deref(), body).into())
+        Ok(post("delete", self.project.as_deref(), body)?.into())
     }
 
     fn admit(self, _status: u16, _body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -200,7 +201,7 @@ impl Exchange for GeodataAudit {
     type Output = Vec<AuditDataset>;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(post("audit", Some(&self.project), json!({})).into())
+        Ok(post("audit", Some(&self.project), json!({}))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

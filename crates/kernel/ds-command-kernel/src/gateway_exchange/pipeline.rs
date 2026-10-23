@@ -5,13 +5,11 @@
 //! Brain authorizes and records; tile generation and survey export are edge
 //! compute (`ds tile generate`, `ds data export`) and have no call here.
 
+use ds_gateway_client::Operation;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
-
-const PIPELINE_PATH: &str = "/api/v1/pipeline";
-const TILES_PATH: &str = "/api/v1/tiles";
 
 pub const INPUT_INVALID: &str = "pipeline_input_invalid";
 pub const ANSWER_INVALID: &str = "pipeline_answer_invalid";
@@ -223,21 +221,25 @@ impl PipelineCall {
             }
             extra
         };
-        let read = |path: &str, body: Value| Plan {
-            request: Request::post(path, body)
-                .timeout_ms(READ_MS)
-                .response_cap(STATUS_CAP),
-            retries: READ_RETRIES,
+        let read = |operation: Operation, body: Value| -> Result<Plan, Refusal> {
+            Ok(Plan {
+                request: Request::generated(operation, Some(body))?
+                    .timeout_ms(READ_MS)
+                    .response_cap(STATUS_CAP),
+                retries: READ_RETRIES,
+            })
         };
-        let write = |path: &str, body: Value, timeout_ms: u64| {
-            Plan::from(
-                Request::post(path, body)
+        let write = |operation: Operation, body: Value, timeout_ms: u64| -> Result<Plan, Refusal> {
+            Ok(Plan::from(
+                Request::generated(operation, Some(body))?
                     .timeout_ms(timeout_ms)
                     .response_cap(STATUS_CAP),
-            )
+            ))
         };
         Ok(match self {
-            Self::Status { .. } => read(PIPELINE_PATH, body("pipeline_status", json!({}))),
+            Self::Status { .. } => {
+                read(Operation::DataPipeline, body("pipeline_status", json!({})))?
+            }
             Self::Migrate {
                 target_project,
                 dry_run,
@@ -277,20 +279,20 @@ impl PipelineCall {
                 if let Some(filter) = filter {
                     migration(&mut extra, filter)?;
                 }
-                write(PIPELINE_PATH, body("migrate", extra), MIGRATE_MS)
+                write(Operation::DataPipeline, body("migrate", extra), MIGRATE_MS)?
             }
             Self::TileStatus {
                 tile_type: kind, ..
             } => read(
-                TILES_PATH,
+                Operation::TilesAction,
                 body("status", json!({"tile_type": tile_type(kind)?})),
-            ),
+            )?,
             Self::TileList { include_global, .. } => {
                 let mut extra = json!({});
                 if *include_global == Some(true) {
                     extra["include_global"] = json!(true);
                 }
-                read(TILES_PATH, body("list", extra))
+                read(Operation::TilesAction, body("list", extra))?
             }
             Self::GlobalTileList { domain } => {
                 let mut extra = json!({});
@@ -305,21 +307,21 @@ impl PipelineCall {
                         ))
                     }
                 }
-                read(TILES_PATH, body("global_list", extra))
+                read(Operation::TilesAction, body("global_list", extra))?
             }
             Self::TileAdd {
                 tile_type: kind,
                 source_project,
                 ..
             } => write(
-                TILES_PATH,
+                Operation::TilesAction,
                 body(
                     "add",
                     json!({"tile_type": tile_type(kind)?,
                         "source_project_id": project_reference(source_project)?}),
                 ),
                 READ_MS,
-            ),
+            )?,
             Self::TileRemove { tile_id, scope, .. } => {
                 let mut extra = json!({"tile_id": text(tile_id, "tile")?});
                 match scope.as_deref().map(str::trim) {
@@ -327,7 +329,7 @@ impl PipelineCall {
                     Some(scope @ ("project" | "global")) => extra["scope"] = json!(scope),
                     Some(_) => return Err(input_invalid("A tile scope is project or global.")),
                 }
-                write(TILES_PATH, body("remove", extra), READ_MS)
+                write(Operation::TilesAction, body("remove", extra), READ_MS)?
             }
             Self::GlobalTileAccess {
                 tile_id,
@@ -342,13 +344,13 @@ impl PipelineCall {
                     ));
                 }
                 write(
-                    TILES_PATH,
+                    Operation::TilesAction,
                     body(
                         "global_access",
                         json!({"tile_id": text(tile_id, "tile")?, "access_policy": access_policy}),
                     ),
                     READ_MS,
-                )
+                )?
             }
         })
     }

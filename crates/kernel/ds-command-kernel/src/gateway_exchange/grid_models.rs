@@ -4,12 +4,12 @@
 //! retirement of a head. Brain answers lists page by page; a listing follows
 //! the pages to the end.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/grid/models";
 const PAGE_SIZE: u64 = 500;
 /// A cold Desktop session prepares its route and credentials before a read.
 const READ_TIMEOUT_MS: u64 = 120_000;
@@ -348,10 +348,10 @@ fn invalid(what: &str) -> Refusal {
     )
 }
 
-fn post(action: &str, project: &str, mut body: Value) -> Request {
+fn post(action: &str, project: &str, mut body: Value) -> Result<Request, Refusal> {
     body["action"] = action.into();
     body["project_id"] = project.into();
-    Request::post(PATH, body)
+    Request::generated(Operation::ProjectGridModelsAction, Some(body))
 }
 
 fn read<T: for<'de> Deserialize<'de>>(value: Option<&Value>, what: &str) -> Result<T, Refusal> {
@@ -416,7 +416,7 @@ impl Exchange for GridModelsList {
         if let Some(cursor) = &self.cursor {
             body["cursor"] = cursor.clone().into();
         }
-        Ok(post("list_models", &self.project, body)
+        Ok(post("list_models", &self.project, body)?
             .timeout_ms(READ_TIMEOUT_MS)
             .into())
     }
@@ -451,7 +451,7 @@ impl Exchange for GridModelGet {
     type Output = GridModelSummary;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        let request = post("get_model", &self.project, json!({"model_id": self.model}));
+        let request = post("get_model", &self.project, json!({"model_id": self.model}))?;
         Ok(request.timeout_ms(READ_TIMEOUT_MS).into())
     }
 
@@ -490,7 +490,7 @@ impl Exchange for GridVersionsList {
         if let Some(cursor) = &self.cursor {
             body["cursor"] = cursor.clone().into();
         }
-        Ok(post("list_versions", &self.project, body)
+        Ok(post("list_versions", &self.project, body)?
             .timeout_ms(READ_TIMEOUT_MS)
             .into())
     }
@@ -527,7 +527,7 @@ impl Exchange for GridVersionResolve {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"model_id": self.model, "revision_id": self.revision});
-        Ok(post("get_version", &self.project, body)
+        Ok(post("get_version", &self.project, body)?
             .timeout_ms(READ_TIMEOUT_MS)
             .into())
     }
@@ -567,7 +567,7 @@ impl Exchange for GridExportsList {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"model_id": self.model, "revision_id": self.revision});
-        Ok(post("list_exports", &self.project, body)
+        Ok(post("list_exports", &self.project, body)?
             .timeout_ms(READ_TIMEOUT_MS)
             .into())
     }
@@ -604,7 +604,7 @@ impl Exchange for GridUploadStart {
         if let Some(content_type) = &self.content_type {
             upload["content_type"] = content_type.clone().into();
         }
-        Ok(post("start_upload", &self.project, json!({"upload": upload})).into())
+        Ok(post("start_upload", &self.project, json!({"upload": upload}))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -719,7 +719,7 @@ impl Exchange for GridVersionCreate {
                 .collect();
         }
         let body = json!({"version": version});
-        Ok(post("create_version", &input.ds_project, body).into())
+        Ok(post("create_version", &input.ds_project, body)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -751,7 +751,7 @@ impl Exchange for GridModelDelete {
         let body = json!({"delete": {"model_id": self.model,
             "expected_head_revision_id": self.expected_head_revision_id,
             "expected_model_digest": bare(&self.expected_model_digest), "reason": reason}});
-        Ok(post("delete_model", &self.project, body).into())
+        Ok(post("delete_model", &self.project, body)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

@@ -4,12 +4,12 @@
 //! decides who may read or change them and fences each change by revision;
 //! `installation_inventory` projects what a page means.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/governance";
 /// Brain's own page bound.
 pub const PAGE_LIMIT: u32 = 50;
 const ID_MAX_CHARS: usize = 128;
@@ -125,7 +125,9 @@ impl Exchange for Installations {
         };
         let action = fields.remove("action").unwrap_or(Value::Null);
         let body = json!({"action": action, "data": Value::Object(fields)});
-        Ok(Request::post(PATH, body).response_cap(PAGE_CAP).into())
+        Ok(Request::generated(Operation::Governance, Some(body))?
+            .response_cap(PAGE_CAP)
+            .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

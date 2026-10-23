@@ -4,6 +4,7 @@
 //! (`POST /api/v1/grid/models` `list_models`). The Desktop reads the same
 //! catalogue through Core (`design.model.catalog`).
 
+use ds_gateway_client::Operation as GatewayOperation;
 use serde_json::{json, Value};
 
 use super::retained::Edge;
@@ -13,7 +14,6 @@ use crate::grid_project_catalog::{
     flow_resume, flow_start, FlowResult, FlowStep, Operation, ReadMode, Scope, INVALID,
 };
 
-const PATH: &str = "/api/v1/grid/models";
 /// A listing page holds at most 100 heads of at most 16 KiB.
 const PAGE_CAP: u64 = 4 * 1024 * 1024;
 /// The flow's own bound on steps: a walk of at most 64 pages and its writes.
@@ -30,10 +30,13 @@ impl Exchange for ModelsPage {
     type Output = Value;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(Request::post(PATH, self.body.clone())
-            .timeout_ms(self.timeout_ms)
-            .response_cap(PAGE_CAP)
-            .into())
+        Ok(Request::generated(
+            GatewayOperation::ProjectGridModelsAction,
+            Some(self.body.clone()),
+        )?
+        .timeout_ms(self.timeout_ms)
+        .response_cap(PAGE_CAP)
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

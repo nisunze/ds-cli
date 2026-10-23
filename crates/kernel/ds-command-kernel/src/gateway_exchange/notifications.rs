@@ -5,12 +5,12 @@
 //! admit only well-formed rows, so a cached row can never carry an unsafe
 //! route.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/notifications";
 /// Brain's own page and mutation bounds.
 pub const MAX_PAGE_SIZE: u32 = 100;
 pub const MAX_IDS_PER_MUTATION: usize = 100;
@@ -184,7 +184,7 @@ impl Exchange for Page {
         if let Some(cursor) = self.cursor.as_deref().filter(|cursor| !cursor.is_empty()) {
             body["cursor"] = json!(cursor);
         }
-        Ok(Request::post(PATH, body).into())
+        Ok(Request::generated(Operation::NotificationsAction, Some(body))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -245,7 +245,11 @@ impl Exchange for Marked {
         {
             return Err(input_invalid("A mark names 1 to 100 notifications."));
         }
-        Ok(Request::post(PATH, json!({"action": self.mark, "ids": self.ids})).into())
+        Ok(Request::generated(
+            Operation::NotificationsAction,
+            Some(json!({"action": self.mark, "ids": self.ids})),
+        )?
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -334,7 +338,11 @@ impl Exchange for Config {
     type Output = PushConfig;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(Request::post(PATH, json!({"action": "push_config"})).into())
+        Ok(Request::generated(
+            Operation::NotificationsAction,
+            Some(json!({"action": "push_config"})),
+        )?
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -407,7 +415,7 @@ impl Exchange for Register {
             ));
         }
         let body = json!({"action": "register_push", "subscription": subscription});
-        Ok(Request::post(PATH, body).into())
+        Ok(Request::generated(Operation::NotificationsAction, Some(body))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -456,7 +464,7 @@ impl Exchange for Revoke {
                 ))
             }
         }
-        Ok(Request::post(PATH, Value::Object(body)).into())
+        Ok(Request::generated(Operation::NotificationsAction, Some(Value::Object(body)))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

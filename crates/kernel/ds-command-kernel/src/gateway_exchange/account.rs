@@ -3,15 +3,14 @@
 //! pending device authorization. Brain proves the bearer and owns every
 //! record; these operations name the request and admit the answer.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::{data, project_reference, Admitted, Exchange, Method, Plan, Refusal, Request};
+#[cfg(test)]
+use super::Method;
+use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
 
-const INFO_PATH: &str = "/api/v1/user/info";
-const PROFILE_PATH: &str = "/api/v1/user/profile";
-const CAPABILITIES_PATH: &str = "/api/v1/user/capabilities";
-const DEVICE_APPROVE_PATH: &str = "/api/v1/auth/device/approve";
 const INFO_TIMEOUT_MS: u64 = 15_000;
 /// Resolving a large account's project grants can take minutes.
 const CAPABILITIES_TIMEOUT_MS: u64 = 120_000;
@@ -56,11 +55,7 @@ impl Exchange for IdentityRepair {
                 "An identity repair names the session's UID and email.",
             ));
         }
-        let request = Request {
-            method: Method::Get,
-            body: None,
-            ..Request::post(INFO_PATH, Value::Null)
-        };
+        let request = Request::generated(Operation::GetUserInfo, None)?;
         Ok(super::Plan {
             request: request.timeout_ms(INFO_TIMEOUT_MS),
             retries: 1,
@@ -93,12 +88,7 @@ impl Exchange for Profile {
     type Output = Map<String, Value>;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(Request {
-            method: Method::Get,
-            body: None,
-            ..Request::post(PROFILE_PATH, Value::Null)
-        }
-        .into())
+        Ok(Request::generated(Operation::GetUserProfile, None)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -123,10 +113,10 @@ impl Exchange for ProfileWrite {
                 "A profile write names 1 to 64 fields.",
             ));
         }
-        Ok(Request {
-            method: Method::Put,
-            ..Request::post(PROFILE_PATH, Value::Object(self.fields.clone()))
-        }
+        Ok(Request::generated(
+            Operation::PutUserProfile,
+            Some(Value::Object(self.fields.clone())),
+        )?
         .into())
     }
 
@@ -149,9 +139,11 @@ impl Exchange for Capabilities {
             Some(project) => json!({"project_id": project_reference(project)?}),
             None => json!({}),
         };
-        Ok(Request::post(CAPABILITIES_PATH, body)
-            .timeout_ms(CAPABILITIES_TIMEOUT_MS)
-            .into())
+        Ok(
+            Request::generated(Operation::GetUserCapabilities, Some(body))?
+                .timeout_ms(CAPABILITIES_TIMEOUT_MS)
+                .into(),
+        )
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -317,7 +309,7 @@ impl Exchange for DeviceApproval {
             ));
         }
         let body = serde_json::to_value(decision).map_err(|_| invalid("device decision"))?;
-        Ok(Request::post(DEVICE_APPROVE_PATH, body).into())
+        Ok(Request::generated(Operation::DecideDeviceAuthorization, Some(body))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

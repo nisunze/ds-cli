@@ -13,8 +13,8 @@ use sha2::{Digest, Sha256};
 use std::io::Read;
 
 // Fixed typed call, like transformer_save; no new profile override or schema.
-pub const TRANSFORMER_ANALYSIS_METHOD: &str = "POST";
-pub const TRANSFORMER_ANALYSIS_PATH: &str = "/api/v1/data";
+pub const TRANSFORMER_ANALYSIS_METHOD: &str = ds_gateway_client::Operation::DataInterop.method().as_str();
+pub const TRANSFORMER_ANALYSIS_PATH: &str = ds_gateway_client::Operation::DataInterop.path_template();
 pub const TRANSFORMER_ANALYSIS_ACTION: &str = "get_transformer_analysis";
 pub const TRANSFORMER_ANALYSIS_SHA256_HEADER: &str = "X-DS-Analysis-SHA256";
 pub const TRANSFORMER_ANALYSIS_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;

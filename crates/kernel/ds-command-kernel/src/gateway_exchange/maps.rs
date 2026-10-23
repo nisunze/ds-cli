@@ -3,12 +3,12 @@
 //! operation names the request and admits the answer. A project with no dark
 //! tiles to offer reads as `None`.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
 
-const MAPS2D_PATH: &str = "/api/v1/maps2d";
 /// The answer is a few hundred bytes of configuration.
 const RESPONSE_CAP: u64 = 256 * 1024;
 pub const INVALID: &str = "maps_answer_invalid";
@@ -57,7 +57,7 @@ impl Exchange for GoogleDarkSession {
             "action": "get_google_dark_session",
             "ds_project": project_reference(&self.project)?,
         });
-        Ok(Request::post(MAPS2D_PATH, body)
+        Ok(Request::generated(Operation::Maps2DAction, Some(body))?
             .response_cap(RESPONSE_CAP)
             .into())
     }

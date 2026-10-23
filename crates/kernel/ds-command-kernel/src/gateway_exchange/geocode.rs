@@ -3,12 +3,12 @@
 //! admit what comes back. Global: they carry no project. A deployment without
 //! the key answers "unavailable", which is a state to show, never an error.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/geocode";
 /// Brain's bound on a query, in bytes.
 const QUERY_MAX_BYTES: usize = 256;
 const LANGUAGE_MAX_CHARS: usize = 35;
@@ -128,7 +128,11 @@ impl Exchange for Availability {
     type Output = bool;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(Request::post(PATH, json!({"action": "get_config"})).into())
+        Ok(Request::generated(
+            Operation::GeocodeAction,
+            Some(json!({"action": "get_config"})),
+        )?
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -151,7 +155,9 @@ impl Exchange for Search {
     fn plan(&self) -> Result<Plan, Refusal> {
         let query = self.query.trim();
         if query.is_empty() || query.len() > QUERY_MAX_BYTES {
-            return Err(input_invalid("A place search is between 1 and 256 bytes long."));
+            return Err(input_invalid(
+                "A place search is between 1 and 256 bytes long.",
+            ));
         }
         let mut body = body("search", self.language.as_deref())?;
         body.insert("query".into(), query.into());
@@ -160,7 +166,7 @@ impl Exchange for Search {
             body.insert("bias_lat".into(), bias.lat.into());
             body.insert("bias_lng".into(), bias.lng.into());
         }
-        Ok(Request::post(PATH, Value::Object(body)).into())
+        Ok(Request::generated(Operation::GeocodeAction, Some(Value::Object(body)))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -198,7 +204,7 @@ impl Exchange for Reverse {
         let mut body = body("reverse", self.language.as_deref())?;
         body.insert("lat".into(), at.lat.into());
         body.insert("lng".into(), at.lng.into());
-        Ok(Request::post(PATH, Value::Object(body)).into())
+        Ok(Request::generated(Operation::GeocodeAction, Some(Value::Object(body)))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

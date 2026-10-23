@@ -1041,7 +1041,7 @@ pub fn finish_invocation(
 // ---------------------------------------------------------------------------
 
 /// The ingest path of `domains.sre.client_request_event`.
-pub const CLIENT_EVENT_PATH: &str = "/api/v1/sre/requests";
+pub const CLIENT_EVENT_PATH: &str = ds_gateway_client::Operation::SreClientRequestEvent.path_template();
 /// The registry's response ceiling for that operation.
 pub const CLIENT_EVENT_RESPONSE_LIMIT: usize = 64 * 1024;
 

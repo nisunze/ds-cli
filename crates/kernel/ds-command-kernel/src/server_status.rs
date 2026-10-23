@@ -31,8 +31,8 @@ use crate::layer_document::text;
 pub const SCHEMA: &str = "ds.server-status/v1";
 /// The gateway registry id every host resolves the route from.
 pub const OPERATION: &str = "domains.sre.server_status";
-pub const METHOD: &str = "GET";
-pub const PATH: &str = "/api/v1/sre/server-status";
+pub const METHOD: &str = ds_gateway_client::Operation::SreServerStatus.method().as_str();
+pub const PATH: &str = ds_gateway_client::Operation::SreServerStatus.path_template();
 /// The published document is a few hundred KiB; this is the cap the descriptor
 /// declares, and the bound a host reads under.
 pub const RESPONSE_LIMIT: usize = 4 * 1024 * 1024;

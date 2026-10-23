@@ -1,12 +1,12 @@
 //! Governed platform architecture: the revision the architecture page draws,
 //! in the page's spelling. Brain holds the revisions.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/architecture/planning";
 const SNAPSHOT_CAP: u64 = 8 * 1024 * 1024;
 pub const INVALID: &str = "architecture_answer_invalid";
 
@@ -172,7 +172,11 @@ impl Exchange for SnapshotRead {
             Some(revision) if revision > 0 => json!({"action": "get", "revision": revision}),
             _ => json!({"action": "get"}),
         };
-        Ok(Request::post(PATH, body).response_cap(SNAPSHOT_CAP).into())
+        Ok(
+            Request::generated(Operation::ArchitecturePlanningAction, Some(body))?
+                .response_cap(SNAPSHOT_CAP)
+                .into(),
+        )
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

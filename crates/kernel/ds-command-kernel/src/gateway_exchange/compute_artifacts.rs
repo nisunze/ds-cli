@@ -6,13 +6,13 @@
 //! for. The unsigned `compute-artifact://v1/…` pointer a status answer
 //! carries names one output ([`Locator::parse`]).
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
 use crate::compute_artifact_inventory::{self as inventory, Declaration, Head};
 
-const PATH: &str = "/api/v1/compute_artifacts";
 /// A page holds at most 100 heads, each with at most 100 declarations.
 const PAGE_CAP: u64 = 16 * 1024 * 1024;
 const HEAD_CAP: u64 = 1024 * 1024;
@@ -180,17 +180,27 @@ impl Exchange for ListHeads {
     type Output = HeadsPage;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        let mut body = json!({"action": "list", "project_id": project_reference(&self.project_id)?});
+        let mut body =
+            json!({"action": "list", "project_id": project_reference(&self.project_id)?});
         if let Some(limit) = self.limit {
             if !(1..=LIMIT_MAX).contains(&limit) {
                 return Err(input("page size"));
             }
             body["limit"] = limit.into();
         }
-        if let Some(cursor) = self.cursor.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+        if let Some(cursor) = self
+            .cursor
+            .as_deref()
+            .map(str::trim)
+            .filter(|c| !c.is_empty())
+        {
             body["cursor"] = cursor.into();
         }
-        Ok(Request::post(PATH, body).response_cap(PAGE_CAP).into())
+        Ok(
+            Request::generated(Operation::ComputeArtifactsAction, Some(body))?
+                .response_cap(PAGE_CAP)
+                .into(),
+        )
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -243,9 +253,11 @@ impl Exchange for ReadHead {
     fn plan(&self) -> Result<Plan, Refusal> {
         let mut body = self.0.checked()?;
         body.insert("action".into(), "read".into());
-        Ok(Request::post(PATH, Value::Object(body))
-            .response_cap(HEAD_CAP)
-            .into())
+        Ok(
+            Request::generated(Operation::ComputeArtifactsAction, Some(Value::Object(body)))?
+                .response_cap(HEAD_CAP)
+                .into(),
+        )
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -309,9 +321,11 @@ impl Exchange for ResolveDownload {
         }
         body.insert("action".into(), "download".into());
         body.insert("output_id".into(), self.0.output_id.clone().into());
-        Ok(Request::post(PATH, Value::Object(body))
-            .response_cap(HEAD_CAP)
-            .into())
+        Ok(
+            Request::generated(Operation::ComputeArtifactsAction, Some(Value::Object(body)))?
+                .response_cap(HEAD_CAP)
+                .into(),
+        )
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

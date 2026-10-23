@@ -6,15 +6,15 @@
 //! deletion from the capture outbox, and the audit of entries a person chose
 //! to discard. Brain authorizes each project and form.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::{data, project_reference, Admitted, Exchange, Method, Plan, Refusal, Request};
+#[cfg(test)]
+use super::Method;
+use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
 use crate::survey::hold::{self, Filter, Manifest};
 
-const DATA_PATH: &str = "/api/v1/data";
-const MUTATE_PATH: &str = "/api/v1/entries/mutate";
-const DEADLETTER_PATH: &str = "/api/v1/deadletter";
 /// A whole form of a large project, with every feature's geometry.
 const ENTRIES_CAP: u64 = 256 * 1024 * 1024;
 const ENTRIES_MAX_LINES: usize = 1_000_000;
@@ -46,14 +46,20 @@ impl Exchange for Query {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         project_reference(&self.project)?;
-        if self.body["action"] != hold::QUERY_ACTION || self.body["eds_project_id"] != self.project.as_str() {
-            return Err(input_invalid("A survey read is one query_entries of its project."));
+        if self.body["action"] != hold::QUERY_ACTION
+            || self.body["eds_project_id"] != self.project.as_str()
+        {
+            return Err(input_invalid(
+                "A survey read is one query_entries of its project.",
+            ));
         }
-        Ok(Request::post(DATA_PATH, self.body.clone())
-            .timeout_ms(ENTRIES_TIMEOUT_MS)
-            .response_cap(ENTRIES_CAP)
-            .ndjson(ENTRIES_MAX_LINES)
-            .into())
+        Ok(
+            Request::generated(Operation::DataInterop, Some(self.body.clone()))?
+                .timeout_ms(ENTRIES_TIMEOUT_MS)
+                .response_cap(ENTRIES_CAP)
+                .ndjson(ENTRIES_MAX_LINES)
+                .into(),
+        )
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -259,10 +265,10 @@ impl Exchange for Mutation {
                 "A survey mutation updates, deletes or restores one entry.",
             ));
         }
-        let request = Request {
-            method: Method::Put,
-            ..Request::post(MUTATE_PATH, Value::Object(self.payload.clone()))
-        }
+        let request = Request::generated(
+            Operation::MutateEntryPut,
+            Some(Value::Object(self.payload.clone())),
+        )?
         .timeout_ms(MUTATE_TIMEOUT_MS)
         .response_cap(MUTATE_CAP);
         Ok(request.into())
@@ -298,7 +304,7 @@ impl Exchange for Discarded {
         }
         let body = json!({"action": "submit_client_discarded", "project_id": project,
             "entries": self.entries});
-        Ok(Request::post(DEADLETTER_PATH, body).into())
+        Ok(Request::generated(Operation::DeadletterAction, Some(body))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

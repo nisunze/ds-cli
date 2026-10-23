@@ -11,6 +11,7 @@
 //! start names the original's verified generation, so a thumbnail never
 //! appears for an original that failed.
 
+use ds_gateway_client::Operation as GatewayOperation;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -24,7 +25,6 @@ use crate::survey_photo_outbox::TransportOutcome;
 use crate::survey_photo_transport;
 use crate::transfer::Cause;
 
-const PATH: &str = "/api/v1/media";
 pub const INVALID: &str = "survey_media_answer_invalid";
 
 /// One object's upload, as both of its gateway actions carry it.
@@ -82,7 +82,7 @@ impl Exchange for Inspect {
         let mut body = survey_media_address::wire(&address);
         body["action"] = json!("survey_upload_inspect");
         Ok(Plan {
-            request: Request::post(PATH, body),
+            request: Request::generated(GatewayOperation::MediaAction, Some(body))?,
             retries: 0,
         })
     }
@@ -127,7 +127,11 @@ impl Exchange for Start {
     type Output = Started;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(Request::post(PATH, self.0.body("survey_upload_start").map_err(invalid)?).into())
+        Ok(Request::generated(
+            GatewayOperation::MediaAction,
+            Some(self.0.body("survey_upload_start").map_err(invalid)?),
+        )?
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -151,10 +155,10 @@ impl Exchange for Complete {
     type Output = String;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(Request::post(
-            PATH,
-            self.0.body("survey_upload_complete").map_err(invalid)?,
-        )
+        Ok(Request::generated(
+            GatewayOperation::MediaAction,
+            Some(self.0.body("survey_upload_complete").map_err(invalid)?),
+        )?
         .into())
     }
 

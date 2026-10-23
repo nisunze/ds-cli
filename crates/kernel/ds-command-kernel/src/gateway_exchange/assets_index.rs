@@ -7,6 +7,7 @@
 //! `VALIDATION_FAILED`; that reads as `unavailable`, never as an empty index.
 //! The timeline flow that retains each served page is [`timeline`].
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
@@ -15,7 +16,6 @@ use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request}
 #[cfg(feature = "durable-store")]
 pub mod timeline;
 
-const PATH: &str = "/api/v1/assets";
 /// A cold project index can enumerate many source inventories before its
 /// first stored generation exists; later reads serve that generation.
 const TIMEOUT_MS: u64 = 300_000;
@@ -266,10 +266,13 @@ impl Exchange for IndexList {
         if query.refresh == Some(true) {
             payload.insert("refresh".into(), true.into());
         }
-        Ok(Request::post(PATH, body("list", &self.project, payload)?)
-            .timeout_ms(TIMEOUT_MS)
-            .response_cap(RESPONSE_CAP)
-            .into())
+        Ok(Request::generated(
+            Operation::ProjectAssetsAction,
+            Some(body("list", &self.project, payload)?),
+        )?
+        .timeout_ms(TIMEOUT_MS)
+        .response_cap(RESPONSE_CAP)
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -307,10 +310,13 @@ impl Exchange for IndexGet {
     fn plan(&self) -> Result<Plan, Refusal> {
         let mut payload = Map::new();
         payload.insert("asset_id".into(), self.asset_id.clone().into());
-        Ok(Request::post(PATH, body("get", &self.project, payload)?)
-            .timeout_ms(TIMEOUT_MS)
-            .response_cap(RESPONSE_CAP)
-            .into())
+        Ok(Request::generated(
+            Operation::ProjectAssetsAction,
+            Some(body("get", &self.project, payload)?),
+        )?
+        .timeout_ms(TIMEOUT_MS)
+        .response_cap(RESPONSE_CAP)
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

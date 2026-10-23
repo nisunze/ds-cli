@@ -10,15 +10,14 @@
 //! combined inclusion and collision detection are edge compute and have no
 //! call here.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::{data, project_reference, Admitted, Exchange, Method, Plan, Refusal, Request};
+#[cfg(test)]
+use super::Method;
+use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
 use crate::transformer_status_store;
-
-const DATA_PATH: &str = "/api/v1/data";
-const REPORT_PATH: &str = "/report";
-const CONFIG_PATH: &str = "/config/";
 
 pub const INPUT_INVALID: &str = "design_input_invalid";
 pub const ANSWER_INVALID: &str = "design_answer_invalid";
@@ -607,20 +606,11 @@ fn text<'a>(value: &'a str, what: &str) -> Result<&'a str, Refusal> {
 }
 
 /// The project id as one percent-encoded path segment.
-fn path_segment(project: &str) -> String {
-    use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
-    const SEGMENT: &AsciiSet = &NON_ALPHANUMERIC
-        .remove(b'-')
-        .remove(b'_')
-        .remove(b'.')
-        .remove(b'~');
-    utf8_percent_encode(project, SEGMENT).to_string()
-}
 
-fn post(path: &str, body: Value, timeout_ms: u64, cap: u64) -> Request {
-    Request::post(path, body)
+fn post(operation: Operation, body: Value, timeout_ms: u64, cap: u64) -> Result<Request, Refusal> {
+    Ok(Request::generated(operation, Some(body))?
         .timeout_ms(timeout_ms)
-        .response_cap(cap)
+        .response_cap(cap))
 }
 
 fn read(request: Request) -> Plan {
@@ -723,17 +713,15 @@ impl DesignCall {
             body
         };
         Ok(match self {
-            Self::ProjectConfig { .. } => read(Request {
-                method: Method::Get,
-                path: format!("{CONFIG_PATH}{}", path_segment(project)),
-                query: Vec::new(),
-                body: None,
-                timeout_ms: CONFIG_MS,
-                response_cap_bytes: CONFIG_CAP,
-                lane_header: false,
-                encoding: Default::default(),
-                minimal_headers: false,
-            }),
+            Self::ProjectConfig { .. } => read(
+                Request::generated_parameters(
+                    Operation::DsSystemGetConfig,
+                    &[("eds_project_id", project)],
+                    None,
+                )?
+                .timeout_ms(CONFIG_MS)
+                .response_cap(CONFIG_CAP),
+            ),
             Self::SaveConfigSheet {
                 sheet,
                 rows,
@@ -746,14 +734,14 @@ impl DesignCall {
                     body["expected_data"] = expected.clone();
                 }
                 within_body(&body)?;
-                post(REPORT_PATH, body, READ_MS, RECEIPT_CAP).into()
+                post(Operation::DsSystemReport, body, READ_MS, RECEIPT_CAP)?.into()
             }
             Self::TransformerStatus { .. } => read(post(
-                REPORT_PATH,
+                Operation::DsSystemReport,
                 transformer_status_store::request_body(project, &[]),
                 transformer_status_store::READ_TIMEOUT_SECONDS * 1000,
                 transformer_status_store::MAX_RESPONSE_BYTES as u64,
-            )),
+            )?),
             Self::ReadTransformers {
                 transformers,
                 fields,
@@ -766,7 +754,7 @@ impl DesignCall {
                 if let Some(fields) = fields {
                     body["fields"] = json!(fields);
                 }
-                read(post(DATA_PATH, body, READ_MS, DOCUMENTS_CAP))
+                read(post(Operation::DataInterop, body, READ_MS, DOCUMENTS_CAP)?)
             }
             Self::SaveTransformers { saves, .. } => {
                 if saves.is_empty() || saves.len() > MAX_BATCH {
@@ -780,7 +768,7 @@ impl DesignCall {
                     json!({"transformer_saves": items}),
                 );
                 within_body(&body)?;
-                post(DATA_PATH, body, SAVE_MS, RECEIPT_CAP).into()
+                post(Operation::DataInterop, body, SAVE_MS, RECEIPT_CAP)?.into()
             }
             Self::DigestStatus { digests, .. } => {
                 if digests.is_empty() || digests.len() > MAX_BATCH {
@@ -807,14 +795,14 @@ impl DesignCall {
                     })
                     .collect::<Result<Vec<_>, Refusal>>()?;
                 read(post(
-                    DATA_PATH,
+                    Operation::DataInterop,
                     act(
                         "transformer_digest_status",
                         json!({"transformer_digests": rows}),
                     ),
                     READ_MS,
                     RECEIPT_CAP,
-                ))
+                )?)
             }
             Self::PutDraft {
                 transformer,
@@ -833,7 +821,7 @@ impl DesignCall {
                     body["base_version"] = json!(version);
                 }
                 within_body(&body)?;
-                post(DATA_PATH, body, SAVE_MS, RECEIPT_CAP).into()
+                post(Operation::DataInterop, body, SAVE_MS, RECEIPT_CAP)?.into()
             }
             Self::GetDraft {
                 transformer, user, ..
@@ -853,7 +841,7 @@ impl DesignCall {
                 if let Some(user) = user.as_deref().filter(|u| !u.trim().is_empty()) {
                     body["draft_user"] = json!(text(user, "draft owner")?);
                 }
-                let request = post(DATA_PATH, body, READ_MS, DOCUMENTS_CAP);
+                let request = post(Operation::DataInterop, body, READ_MS, DOCUMENTS_CAP)?;
                 if action == "get_transformer_draft" {
                     read(request)
                 } else {
@@ -861,14 +849,14 @@ impl DesignCall {
                 }
             }
             Self::ListDrafts { transformer, .. } => read(post(
-                DATA_PATH,
+                Operation::DataInterop,
                 act(
                     "list_transformer_drafts",
                     json!({"transformer_name": name(transformer, "transformer")?}),
                 ),
                 READ_MS,
                 RECEIPT_CAP,
-            )),
+            )?),
             Self::Lease {
                 transformer,
                 op,
@@ -902,14 +890,14 @@ impl DesignCall {
                 if *take_over == Some(true) {
                     body["lock_override"] = json!(true);
                 }
-                post(REPORT_PATH, body, READ_MS, RECEIPT_CAP).into()
+                post(Operation::DsSystemReport, body, READ_MS, RECEIPT_CAP)?.into()
             }
             Self::Rename {
                 transformer, to, ..
             } => {
                 let (from, to) = (name(transformer, "transformer")?, name(to, "new name")?);
                 post(
-                    REPORT_PATH,
+                    Operation::DsSystemReport,
                     act(
                         "rename_transformer",
                         json!({"transfo": from, "new_transformer_name": to,
@@ -919,18 +907,18 @@ impl DesignCall {
                     ),
                     BATCH_MS,
                     RECEIPT_CAP,
-                )
+                )?
                 .into()
             }
             Self::DeleteTransformers { transformers, .. } => post(
-                REPORT_PATH,
+                Operation::DsSystemReport,
                 act(
                     "delete_transformer",
                     json!({"transformers": names(transformers, MAX_DELETE)?}),
                 ),
                 BATCH_MS,
                 RECEIPT_CAP,
-            )
+            )?
             .into(),
             Self::CopyTransformers {
                 target_project,
@@ -938,7 +926,7 @@ impl DesignCall {
                 overwrite,
                 ..
             } => post(
-                DATA_PATH,
+                Operation::DataInterop,
                 act(
                     "copy_transformers",
                     json!({"target_project_id": project_reference(target_project)?,
@@ -947,7 +935,7 @@ impl DesignCall {
                 ),
                 BATCH_MS,
                 RECEIPT_CAP,
-            )
+            )?
             .into(),
             Self::CleanupCollision {
                 collision,
@@ -966,7 +954,7 @@ impl DesignCall {
                     return Err(input_invalid("Coverage is a percentage."));
                 }
                 post(
-                    REPORT_PATH,
+                    Operation::DsSystemReport,
                     act(
                         "cleanup_collision_sources",
                         json!({"collision_id": collision,
@@ -982,35 +970,35 @@ impl DesignCall {
                     ),
                     BATCH_MS,
                     RECEIPT_CAP,
-                )
+                )?
                 .into()
             }
             Self::DeleteCombinedReport { prefix, .. } => post(
-                REPORT_PATH,
+                Operation::DsSystemReport,
                 act(
                     "delete_combined_report",
                     json!({"prefix": text(prefix, "combined report")?}),
                 ),
                 READ_MS,
                 RECEIPT_CAP,
-            )
+            )?
             .into(),
             Self::CompoundedReports { artifacts, .. } => {
                 let mut body = act("list_compounded_reports", json!({}));
                 if *artifacts == Some(true) {
                     body["include_artifacts"] = json!(true);
                 }
-                read(post(REPORT_PATH, body, READ_MS, CONFIG_CAP))
+                read(post(Operation::DsSystemReport, body, READ_MS, CONFIG_CAP)?)
             }
             Self::DeleteCompoundedReport { stem, .. } => post(
-                REPORT_PATH,
+                Operation::DsSystemReport,
                 act(
                     "delete_compounded_report",
                     json!({"stem": text(stem, "compounded report")?}),
                 ),
                 READ_MS,
                 RECEIPT_CAP,
-            )
+            )?
             .into(),
         })
     }

@@ -4,10 +4,13 @@
 //! activity store and the published snapshot; these operations name each
 //! request and admit its typed answer.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::{data, Admitted, Exchange, Method, Plan, Refusal, Request};
+#[cfg(test)]
+use super::Method;
+use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 use crate::server_status;
 #[cfg(feature = "durable-store")]
 use {
@@ -15,9 +18,6 @@ use {
     crate::retained_reads::Kind,
 };
 
-const OVERVIEW_PATH: &str = "/api/v1/sre/overview";
-const EVENTS_PATH: &str = "/api/v1/sre/requests";
-const DATA_PATH: &str = "/api/v1/data";
 /// Cloud Monitoring answers within a minute.
 const OVERVIEW_TIMEOUT_MS: u64 = 60_000;
 /// A window is streamed from BigQuery after a freshness sync.
@@ -37,14 +37,6 @@ pub const INPUT_INVALID: &str = "sre_input_invalid";
 pub const SNAPSHOT_MISSING: &str = "not_published";
 /// The snapshot answered is not the box's.
 pub const SNAPSHOT_MALFORMED: &str = "contract_violation";
-
-fn get(path: &str) -> Request {
-    Request {
-        method: Method::Get,
-        body: None,
-        ..Request::post(path, Value::Null)
-    }
-}
 
 fn invalid(what: &str) -> Refusal {
     Refusal::new(
@@ -187,7 +179,9 @@ impl Exchange for Overview {
     type Output = SreOverview;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(get(OVERVIEW_PATH).timeout_ms(OVERVIEW_TIMEOUT_MS).into())
+        Ok(Request::generated(Operation::SreOverview, None)?
+            .timeout_ms(OVERVIEW_TIMEOUT_MS)
+            .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -269,7 +263,7 @@ impl Exchange for Activity {
         }
         let body = json!({"action": "query_table", "table": "sre_requests",
             "days": self.days, "limit": self.limit});
-        Ok(Request::post(DATA_PATH, body)
+        Ok(Request::generated(Operation::DataInterop, Some(body))?
             .timeout_ms(ACTIVITY_TIMEOUT_MS)
             .response_cap(ACTIVITY_CAP)
             .ndjson(self.limit as usize + 1)
@@ -371,7 +365,7 @@ impl Exchange for ServerSnapshot {
     type Output = Value;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(get(server_status::PATH)
+        Ok(Request::generated(Operation::SreServerStatus, None)?
             .timeout_ms(server_status::TIMEOUT_SECONDS * 1000)
             .response_cap(server_status::RESPONSE_LIMIT as u64)
             .into())
@@ -528,7 +522,7 @@ impl Exchange for ClientEvent {
         body.insert("user_visible".into(), json!(event.user_visible));
         body.insert("request_id".into(), json!(self.request_id));
         body.insert("user_action_id".into(), json!(user_action_id));
-        Ok(Request::post(EVENTS_PATH, Value::Object(body)).into())
+        Ok(Request::generated(Operation::SreClientRequestEvent, Some(Value::Object(body)))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

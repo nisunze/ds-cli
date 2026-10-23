@@ -2,8 +2,12 @@
 //! governance page shows, and the three changes it makes to one account.
 //! Brain decides who may read the registry and make each change.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
+
+#[cfg(test)]
+const PATH: &str = Operation::Governance.path_template();
 
 use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 #[cfg(feature = "durable-store")]
@@ -12,7 +16,6 @@ use {
     crate::retained_reads::Kind,
 };
 
-const PATH: &str = "/api/v1/governance";
 /// Role definitions and a platform's user registry.
 const PAGE_CAP: u64 = 4 * 1024 * 1024;
 /// Removing an account from every project runs in batches on Brain.
@@ -112,8 +115,11 @@ where
         })
 }
 
-fn post(action: &str, data: Value) -> Request {
-    Request::post(PATH, json!({"action": action, "data": data}))
+fn post(action: &str, data: Value) -> Result<Request, Refusal> {
+    Request::generated(
+        Operation::Governance,
+        Some(json!({"action": action, "data": data})),
+    )
 }
 
 /// The governance page, as Brain answers it to this caller.
@@ -124,7 +130,7 @@ impl Exchange for PageData {
     type Output = GovernancePage;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(post("page_data", json!({})).response_cap(PAGE_CAP).into())
+        Ok(post("page_data", json!({}))?.response_cap(PAGE_CAP).into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -146,7 +152,7 @@ impl Exchange for SetAppRoles {
         Ok(post(
             "set_app_roles",
             json!({"email": self.email, "roles": self.roles}),
-        )
+        )?
         .into())
     }
 
@@ -169,7 +175,7 @@ impl Exchange for RemoveFromAllProjects {
         let request = post(
             "remove_user_from_all_projects",
             json!({"email": self.email}),
-        );
+        )?;
         Ok(request.timeout_ms(REMOVAL_TIMEOUT_MS).into())
     }
 
@@ -193,7 +199,7 @@ impl Exchange for SetAccessState {
     fn plan(&self) -> Result<Plan, Refusal> {
         let data = json!({"email": self.email, "account_status": self.account_status,
             "reason": self.reason});
-        Ok(post("set_user_access_state", data).into())
+        Ok(post("set_user_access_state", data)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

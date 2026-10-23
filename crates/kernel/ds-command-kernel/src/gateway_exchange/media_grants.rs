@@ -3,6 +3,7 @@
 //! every photo link under it. A grant is held per project for offline
 //! exports and renewed a day before it lapses.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use time::format_description::well_known::Rfc3339;
@@ -77,7 +78,7 @@ impl Exchange for MediaGrantFetch {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"action": "media_scope", "eds_project_id": self.project});
-        Ok(Request::post("/report", body).into())
+        Ok(Request::generated(Operation::DsSystemReport, Some(body))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

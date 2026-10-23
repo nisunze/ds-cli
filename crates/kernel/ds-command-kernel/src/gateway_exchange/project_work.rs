@@ -4,11 +4,11 @@
 //! graph, its permissions and every write; reads may be sent twice within
 //! their deadline, writes never.
 
+use ds_gateway_client::Operation;
 use serde_json::{Map, Value};
 
 use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/pm";
 /// Brain reads at most 1 MiB of a request.
 const REQUEST_MAX_BYTES: usize = 1 << 20;
 /// A project graph of ten thousand tasks with their residuals.
@@ -354,7 +354,8 @@ impl Exchange for ProjectWork {
         if serde_json::to_vec(&body).map_or(true, |bytes| bytes.len() > REQUEST_MAX_BYTES) {
             return Err(input_invalid("A Project Work request is at most 1 MiB."));
         }
-        let request = Request::post(PATH, body).response_cap(RESPONSE_CAP);
+        let request =
+            Request::generated(Operation::PmAction, Some(body))?.response_cap(RESPONSE_CAP);
         Ok(Plan {
             request,
             retries: u32::from(READS.contains(&action)),

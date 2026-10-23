@@ -3,6 +3,7 @@
 //! Rejections are recorded by Brain when it refuses a payload; this read
 //! only reports them.
 
+use ds_gateway_client::Operation;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,6 @@ use serde_json::{json, Value};
 
 use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/deadletter";
 /// Aggregating a large project's trail can take minutes.
 const TIMEOUT_MS: u64 = 300_000;
 pub const INVALID: &str = "deadletter_answer_invalid";
@@ -90,7 +90,9 @@ impl Exchange for Summary {
     fn plan(&self) -> Result<Plan, Refusal> {
         let body =
             json!({"action": "get_summary", "project_id": project_reference(&self.project)?});
-        Ok(Request::post(PATH, body).timeout_ms(TIMEOUT_MS).into())
+        Ok(Request::generated(Operation::DeadletterAction, Some(body))?
+            .timeout_ms(TIMEOUT_MS)
+            .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

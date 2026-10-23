@@ -13,6 +13,7 @@
 //! and answer them or one typed refusal — missing, forbidden, expired, too
 //! large, not the declared bytes, or not readable now.
 
+use ds_gateway_client::Operation;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -20,7 +21,6 @@ use serde_json::{json, Value};
 
 use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/report";
 /// Brain signs a batch in one answer of at most a few kilobytes per path.
 const RESPONSE_CAP: u64 = 4 * 1024 * 1024;
 pub const PATHS_MAX: usize = 500;
@@ -251,7 +251,9 @@ impl Exchange for SignPaths {
             ));
         }
         let body = json!({"action": "sign_url", "paths": self.paths});
-        Ok(Request::post(PATH, body).response_cap(RESPONSE_CAP).into())
+        Ok(Request::generated(Operation::DsSystemReport, Some(body))?
+            .response_cap(RESPONSE_CAP)
+            .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -281,7 +283,9 @@ impl Exchange for SignObject {
     fn plan(&self) -> Result<Plan, Refusal> {
         self.0.check()?;
         let body = json!({"action": "sign_url", "paths": [self.0.path()]});
-        Ok(Request::post(PATH, body).response_cap(RESPONSE_CAP).into())
+        Ok(Request::generated(Operation::DsSystemReport, Some(body))?
+            .response_cap(RESPONSE_CAP)
+            .into())
     }
 
     /// Brain names a path it will not sign in `refused`, with its reason; a

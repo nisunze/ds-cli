@@ -5,12 +5,12 @@
 //! note carries neutral content until it is opened. A change names the
 //! version it edits; a newer one refuses `NOTE_VERSION_CONFLICT`.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/notes";
 /// Pages one listing follows before it stops; each page is Brain-bounded.
 const MAX_PAGES: usize = 20;
 /// Positions one note geometry may carry.
@@ -327,9 +327,9 @@ fn attachment(value: Option<&Value>) -> Result<NoteAttachment, Refusal> {
         .ok_or_else(|| invalid("attachment"))
 }
 
-fn post(action: &str, mut body: Value) -> Request {
+fn post(action: &str, mut body: Value) -> Result<Request, Refusal> {
     body["action"] = action.into();
-    Request::post(PATH, body)
+    Request::generated(Operation::PersonalNotesAction, Some(body))
 }
 
 /// A draft, as the page edits it, in the shape Brain stores.
@@ -422,7 +422,7 @@ impl Exchange for NotesList {
         if let Some(cursor) = &self.cursor {
             body["cursor"] = cursor.clone().into();
         }
-        Ok(post("list", body).into())
+        Ok(post("list", body)?.into())
     }
 
     fn admit(mut self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -463,7 +463,7 @@ impl Exchange for NotesGet {
     type Output = OpenedNote;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(post("get", json!({"id": self.id})).into())
+        Ok(post("get", json!({"id": self.id}))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -509,7 +509,7 @@ impl Exchange for NotesChange {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let request = match self {
-            NotesChange::Create { draft } => post("create", json!({"note": wire_draft(draft)?})),
+            NotesChange::Create { draft } => post("create", json!({"note": wire_draft(draft)?}))?,
             NotesChange::Update {
                 id,
                 expected_version,
@@ -517,7 +517,7 @@ impl Exchange for NotesChange {
             } => post(
                 "update",
                 json!({"id": id, "expected_version": expected_version, "note": wire_draft(draft)?}),
-            ),
+            )?,
             NotesChange::Trash {
                 id,
                 expected_version,
@@ -525,7 +525,7 @@ impl Exchange for NotesChange {
             } => post(
                 if *trashed { "trash" } else { "restore" },
                 json!({"id": id, "expected_version": expected_version}),
-            ),
+            )?,
         };
         Ok(request.into())
     }
@@ -551,7 +551,7 @@ impl Exchange for AttachmentStart {
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"id": self.note_id, "file_name": self.file_name,
             "content_type": self.content_type, "size_bytes": self.size_bytes});
-        Ok(post("start_attachment_upload", body).into())
+        Ok(post("start_attachment_upload", body)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -578,7 +578,7 @@ impl Exchange for AttachmentFinalize {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"id": self.note_id, "attachment_id": self.attachment_id});
-        Ok(post("finalize_attachment_upload", body).into())
+        Ok(post("finalize_attachment_upload", body)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -598,7 +598,7 @@ impl Exchange for AttachmentDownload {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"id": self.note_id, "attachment_id": self.attachment_id});
-        Ok(post("download_attachment_url", body).into())
+        Ok(post("download_attachment_url", body)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -622,7 +622,7 @@ impl Exchange for AttachmentRemove {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"id": self.note_id, "attachment_id": self.attachment_id});
-        Ok(post("remove_attachment", body).into())
+        Ok(post("remove_attachment", body)?.into())
     }
 
     fn admit(self, _status: u16, _body: Value) -> Result<Admitted<Self>, Refusal> {

@@ -34,8 +34,8 @@ pub const SCHEMA: &str = "ds.style-document/v1";
 /// The gateway registry ids every host resolves the routes from.
 pub const UPDATE_OPERATION: &str = "domains.styles.update";
 pub const ACTION_OPERATION: &str = "domains.styles.action";
-pub const METHOD: &str = "POST";
-pub const PATH: &str = "/api/v1/styles";
+pub const METHOD: &str = ds_gateway_client::Operation::StylesAction.method().as_str();
+pub const PATH: &str = ds_gateway_client::Operation::StylesAction.path_template();
 pub const UPDATE_RESPONSE_LIMIT: usize = 1024 * 1024;
 pub const ACTION_RESPONSE_LIMIT: usize = 4 * 1024 * 1024;
 pub const TIMEOUT_SECONDS: u64 = 30;

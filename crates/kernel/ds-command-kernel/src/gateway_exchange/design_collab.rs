@@ -6,6 +6,7 @@
 //! surface does not serve, and admits the answer's `data` object. Reads may be
 //! sent twice within their deadline, writes never.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -234,16 +235,32 @@ impl DesignCollab {
 
     /// The route and deadline this action is served on, or `None` when the
     /// surface does not serve it.
-    fn route(&self) -> Option<(&'static str, u64, bool)> {
+    fn route(&self) -> Option<(Operation, u64, bool)> {
         let action = self.action();
-        let (path, actions, reads) = match self.surface {
-            Surface::Selections => ("/api/v1/design/selections", SELECTIONS, SELECTION_READS),
-            Surface::Attachments => ("/api/v1/design/attachments", ATTACHMENTS, ATTACHMENT_READS),
-            Surface::Annotations => ("/api/v1/design/annotations", ANNOTATIONS, ANNOTATION_READS),
+        let (operation, actions, reads) = match self.surface {
+            Surface::Selections => (
+                Operation::DesignSelectionsAction,
+                SELECTIONS,
+                SELECTION_READS,
+            ),
+            Surface::Attachments => (
+                Operation::DesignAttachmentsAction,
+                ATTACHMENTS,
+                ATTACHMENT_READS,
+            ),
+            Surface::Annotations => (
+                Operation::DesignAnnotationsAction,
+                ANNOTATIONS,
+                ANNOTATION_READS,
+            ),
             Surface::Versions if REVISIONS.contains(&action) => {
-                return Some(("/api/v1/data", DATA_MS, VERSION_READS.contains(&action)));
+                return Some((
+                    Operation::DataInterop,
+                    DATA_MS,
+                    VERSION_READS.contains(&action),
+                ));
             }
-            Surface::Versions => ("/api/v1/design/versions", VERSIONS, VERSION_READS),
+            Surface::Versions => (Operation::DesignVersionsAction, VERSIONS, VERSION_READS),
         };
         if !actions.contains(&action) {
             return None;
@@ -253,7 +270,7 @@ impl DesignCollab {
         } else {
             DEFAULT_MS
         };
-        Some((path, timeout, reads.contains(&action)))
+        Some((operation, timeout, reads.contains(&action)))
     }
 }
 
@@ -262,7 +279,7 @@ impl Exchange for DesignCollab {
 
     fn plan(&self) -> Result<Plan, Refusal> {
         let action = self.action();
-        let (path, timeout, read) = self.route().ok_or_else(|| {
+        let (operation, timeout, read) = self.route().ok_or_else(|| {
             input_invalid(format!(
                 "`{action}` is not an action of design {:?}.",
                 self.surface
@@ -286,13 +303,13 @@ impl Exchange for DesignCollab {
                 "A design collaboration request is at most 1 MiB.",
             ));
         }
-        let cap = if path == "/api/v1/data" {
+        let cap = if operation == Operation::DataInterop {
             SNAPSHOT_CAP
         } else {
             RESPONSE_CAP
         };
         Ok(Plan {
-            request: Request::post(path, body)
+            request: Request::generated(operation, Some(body))?
                 .timeout_ms(timeout)
                 .response_cap(cap),
             retries: u32::from(read),

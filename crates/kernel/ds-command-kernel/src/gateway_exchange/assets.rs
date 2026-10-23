@@ -6,13 +6,13 @@
 //! travels as ds-brain sent it. The index view of the same door is
 //! [`super::assets_index`].
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
 use crate::assets::{Asset, Folder};
 
-const PATH: &str = "/api/v1/assets";
 /// A selected document can arrive over a slow workstation connection.
 const READ_TIMEOUT_MS: u64 = 180_000;
 const PAGE_CAP: u64 = 8 * 1024 * 1024;
@@ -59,17 +59,28 @@ fn body(action: &str, project: &str, payload: Map<String, Value>) -> Result<Valu
     Ok(body)
 }
 
-fn read(action: &str, project: &str, payload: Map<String, Value>, cap: u64) -> Result<Plan, Refusal> {
-    Ok(Request::post(PATH, body(action, project, payload)?)
-        .timeout_ms(READ_TIMEOUT_MS)
-        .response_cap(cap)
-        .into())
+fn read(
+    action: &str,
+    project: &str,
+    payload: Map<String, Value>,
+    cap: u64,
+) -> Result<Plan, Refusal> {
+    Ok(Request::generated(
+        Operation::ProjectAssetsAction,
+        Some(body(action, project, payload)?),
+    )?
+    .timeout_ms(READ_TIMEOUT_MS)
+    .response_cap(cap)
+    .into())
 }
 
 fn write(action: &str, project: &str, payload: Map<String, Value>) -> Result<Plan, Refusal> {
-    Ok(Request::post(PATH, body(action, project, payload)?)
-        .response_cap(ROW_CAP)
-        .into())
+    Ok(Request::generated(
+        Operation::ProjectAssetsAction,
+        Some(body(action, project, payload)?),
+    )?
+    .response_cap(ROW_CAP)
+    .into())
 }
 
 /// What a catalogue page asks for; every member is optional.

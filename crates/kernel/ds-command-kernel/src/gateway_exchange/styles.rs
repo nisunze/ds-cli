@@ -4,10 +4,11 @@
 //! body and what an answer must hold; these operations send them and admit
 //! the answer against what was sent.
 
+use ds_gateway_client::Operation;
 use serde_json::Value;
 
 use super::{Admitted, Exchange, Plan, Refusal, Request};
-use crate::style_document::{self, Action, PATH, TIMEOUT_SECONDS};
+use crate::style_document::{self, Action, TIMEOUT_SECONDS};
 
 pub const INPUT_INVALID: &str = "styles_input_invalid";
 
@@ -93,7 +94,7 @@ impl Exchange for StyleAction {
         let body = self
             .body()
             .map_err(|message| Refusal::new(INPUT_INVALID, message))?;
-        Ok(Request::post(PATH, body)
+        Ok(Request::generated(Operation::StylesAction, Some(body))?
             .timeout_ms(TIMEOUT_SECONDS * 1000)
             .response_cap(self.action().response_limit() as u64)
             .into())

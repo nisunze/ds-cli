@@ -3,6 +3,7 @@
 //! [`crate::layer_document`] owns each request body and what an answer must
 //! hold; these operations send them and admit the answer.
 
+use ds_gateway_client::Operation;
 use serde_json::Value;
 
 use super::{Admitted, Exchange, Plan, Refusal, Request};
@@ -33,7 +34,7 @@ impl Exchange for LayerAction {
         }
         let body = layer_document::request_body(self.action, &self.project, &self.orders, PLATFORM)
             .map_err(|message| Refusal::new(INPUT_INVALID, message))?;
-        Ok(Request::post(layer_document::PATH, body)
+        Ok(Request::generated(Operation::LayersAction, Some(body))?
             .timeout_ms(layer_document::TIMEOUT_SECONDS * 1000)
             .response_cap(self.action.response_limit() as u64)
             .into())

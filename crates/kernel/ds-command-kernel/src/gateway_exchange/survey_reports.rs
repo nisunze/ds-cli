@@ -4,13 +4,12 @@
 //! report that a later mutation made stale is regenerated once, unless the
 //! caller asks only for what is cached.
 
+use ds_gateway_client::Operation;
 use serde::Serialize;
 use serde_json::{json, Value};
 
 use super::{data, project_reference, Admitted, Exchange, Plan, Refusal, Request};
 
-const READ_PATH: &str = "/api/v1/pipeline";
-const RUN_PATH: &str = "/api/v1/data";
 /// A large project syncs and aggregates before answering (48 s observed).
 const TIMEOUT_MS: u64 = 300_000;
 const CAP: u64 = 16 * 1024 * 1024;
@@ -44,11 +43,15 @@ impl Exchange for ReadReports {
     type Output = Cached;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        let mut body = json!({"action": "get_reports", "eds_project_id": project_reference(&self.project)?});
+        let mut body =
+            json!({"action": "get_reports", "eds_project_id": project_reference(&self.project)?});
         if self.include_sync_counts {
             body["include_sync_counts"] = true.into();
         }
-        Ok(Request::post(READ_PATH, body).timeout_ms(TIMEOUT_MS).response_cap(CAP).into())
+        Ok(Request::generated(Operation::DataPipeline, Some(body))?
+            .timeout_ms(TIMEOUT_MS)
+            .response_cap(CAP)
+            .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -77,14 +80,18 @@ impl Exchange for RunReports {
     type Output = Value;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        let mut body = json!({"action": "reports", "eds_project_id": project_reference(&self.project)?});
+        let mut body =
+            json!({"action": "reports", "eds_project_id": project_reference(&self.project)?});
         if self.force {
             body["force"] = true.into();
         }
         if self.include_sync_counts {
             body["include_sync_counts"] = true.into();
         }
-        Ok(Request::post(RUN_PATH, body).timeout_ms(TIMEOUT_MS).response_cap(CAP).into())
+        Ok(Request::generated(Operation::DataInterop, Some(body))?
+            .timeout_ms(TIMEOUT_MS)
+            .response_cap(CAP)
+            .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

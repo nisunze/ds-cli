@@ -194,6 +194,15 @@ impl Request {
     /// Wire coordinates from the generated gateway client. Domain bodies,
     /// response admission, deadlines and retries remain with their owners.
     pub(crate) fn generated(operation: Operation, body: Option<Value>) -> Result<Self, Refusal> {
+        Self::generated_parameters(operation, &[], body)
+    }
+
+    /// Expand admitted path parameters through the generated wire contract.
+    pub(crate) fn generated_parameters(
+        operation: Operation,
+        parameters: &[(&str, &str)],
+        body: Option<Value>,
+    ) -> Result<Self, Refusal> {
         let method = match operation.method() {
             ds_gateway_client::Method::Get => Method::Get,
             ds_gateway_client::Method::Post => Method::Post,
@@ -208,7 +217,7 @@ impl Request {
             }
         };
         let route = operation
-            .plan(&[])
+            .plan(parameters)
             .map_err(|error| Refusal::new("gateway_route_invalid", error.to_string()))?;
         Ok(Self::with_route(method, route.into_path(), body))
     }
@@ -875,3 +884,7 @@ fn failed<C: Exchange>(
 #[cfg(test)]
 #[path = "gateway_exchange_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "gateway_generated_routes_tests.rs"]
+mod generated_routes_tests;

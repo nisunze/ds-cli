@@ -3,6 +3,7 @@
 //! A processing upload lands where a project's processing domain reads it,
 //! and answers its object path.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -44,14 +45,14 @@ impl Exchange for ProcessingStart {
     type Output = UploadSession;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        let path = match self.domain.as_str() {
-            "mv_extrapolation" => "/mv",
-            _ => "/process",
+        let operation = match self.domain.as_str() {
+            "mv_extrapolation" => Operation::DsSystemMv,
+            _ => Operation::DsSystemProcess,
         };
         let body = json!({"action": "upload_start", "eds_project_id": self.project,
             "upload_domain": self.domain, "file_name": self.file_name, "size": self.size,
             "content_type": self.content_type});
-        Ok(Request::post(path, body).into())
+        Ok(Request::generated(operation, Some(body))?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

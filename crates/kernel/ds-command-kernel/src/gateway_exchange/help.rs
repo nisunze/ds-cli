@@ -3,6 +3,7 @@
 //! `help-asset:<id>` reference in an article to its asset's URL or data URI,
 //! so a page renders the content as given and carries no asset table.
 
+use ds_gateway_client::Operation;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
@@ -13,8 +14,6 @@ use serde_json::{json, Value};
 
 use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
-const HELP_PATH: &str = "/api/v1/help";
-const TUTORIALS_PATH: &str = "/api/v1/tutorials";
 /// The application whose help library this client reads.
 pub const APP: &str = "ds_griddesign";
 /// The audience this client is: the GridDesign web client, on every host.
@@ -217,7 +216,7 @@ impl Exchange for HelpArticles {
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"action": "list", "app": APP, "language": language(&self.language)?,
             "requester": REQUESTER, "platform": PLATFORM, "includeAssets": true});
-        Ok(Request::post(HELP_PATH, body)
+        Ok(Request::generated(Operation::HelpAction, Some(body))?
             .response_cap(RESPONSE_CAP)
             .into())
     }
@@ -239,7 +238,7 @@ impl Exchange for TutorialArticles {
     fn plan(&self) -> Result<Plan, Refusal> {
         let body = json!({"action": "list", "language": language(&self.language)?,
             "requester": REQUESTER, "platform": PLATFORM, "includeAssets": true});
-        Ok(Request::post(TUTORIALS_PATH, body)
+        Ok(Request::generated(Operation::TutorialsAction, Some(body))?
             .response_cap(RESPONSE_CAP)
             .into())
     }

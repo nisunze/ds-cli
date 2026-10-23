@@ -10,12 +10,12 @@
 //! fit takes the default section, a colour or size that draws nothing takes
 //! its default, and relief never starts enabled.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
-const PATH: &str = "/api/v1/map_defaults";
 const READ_TIMEOUT_MS: u64 = 120_000;
 pub const INVALID: &str = "map_defaults_answer_invalid";
 
@@ -263,9 +263,12 @@ impl Exchange for Read {
     type Output = MapDefaults;
 
     fn plan(&self) -> Result<Plan, Refusal> {
-        Ok(Request::post(PATH, json!({"action": "get_config"}))
-            .timeout_ms(READ_TIMEOUT_MS)
-            .into())
+        Ok(Request::generated(
+            Operation::MapDefaultsAction,
+            Some(json!({"action": "get_config"})),
+        )?
+        .timeout_ms(READ_TIMEOUT_MS)
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -286,7 +289,11 @@ impl Exchange for Publish {
     fn plan(&self) -> Result<Plan, Refusal> {
         let mut defaults = self.defaults.clone();
         defaults.hillshade.enabled = false;
-        Ok(Request::post(PATH, json!({"action": "update", "data": defaults})).into())
+        Ok(Request::generated(
+            Operation::MapDefaultsAction,
+            Some(json!({"action": "update", "data": defaults})),
+        )?
+        .into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
