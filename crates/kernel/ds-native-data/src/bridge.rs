@@ -156,6 +156,10 @@ fn none() -> String {
     "none".into()
 }
 
+/// The one fallback an attach may name: the provider's own source id, as its
+/// evidence records it (`fallbackSource`).
+pub const TERRARIUM_FALLBACK: &str = "aws_terrarium_30m";
+
 fn decode<T: serde::de::DeserializeOwned>(value: Value) -> Result<T, String> {
     if serde_json::to_vec(&value).map_err(|e| e.to_string())?.len() > 1024 * 1024 {
         return Err("native data arguments exceed the one MiB bound".into());
@@ -175,16 +179,23 @@ pub fn elevation_request(
             "source and out must be absolute local paths",
         ));
     }
-    if input.fallback != "none" {
-        return Err(CommandFailure::invalid(
-            "fallback must be none; Rwanda coverage holes remain explicit".into(),
-        ));
-    }
+    // The Rwanda DEM wherever it covers a whole surface group, else AWS
+    // Terrarium for that group — only when asked for by name. By default a
+    // Rwanda hole stays explicit and unresolved.
+    let use_terrarium_fallback = match input.fallback.as_str() {
+        "none" => false,
+        TERRARIUM_FALLBACK => true,
+        _ => {
+            return Err(CommandFailure::invalid(format!(
+                "fallback must be none or {TERRARIUM_FALLBACK}"
+            )));
+        }
+    };
     let request: elevation::NativeElevationRequest = decode(json!({
         "sourcePath": input.source, "outputPath": input.out,
         "xColumn": input.x_column, "yColumn": input.y_column, "sourceCrs": input.source_crs,
         "separator": input.separator, "commonColumn": input.common_column,
-        "useTerrariumFallback": false,
+        "useTerrariumFallback": use_terrarium_fallback,
     }))?;
     request.validate()?;
     Ok(request)
@@ -483,3 +494,7 @@ mod tests {
         assert_eq!(failure.remedy, "Repair the component.");
     }
 }
+
+#[cfg(test)]
+#[path = "bridge_fallback_tests.rs"]
+mod fallback_tests;

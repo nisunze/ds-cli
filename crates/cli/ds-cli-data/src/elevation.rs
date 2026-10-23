@@ -87,6 +87,17 @@ pub(crate) const FALLBACK_ARG: Arg = Arg {
     choices: &["none"],
     summary: "Only none: Rwanda coverage holes stay explicit.",
 };
+/// Attach alone may name AWS Terrarium for a surface group the Rwanda DEM
+/// does not wholly cover.
+const ATTACH_FALLBACK_ARG: Arg = Arg {
+    name: "fallback",
+    kind: ArgKind::Value,
+    value: "<source>",
+    required: false,
+    default: Some("none"),
+    choices: &["none", ds_native_data::bridge::TERRARIUM_FALLBACK],
+    summary: "none keeps Rwanda holes explicit; aws_terrarium_30m fills them.",
+};
 
 const ABSOLUTE_PATH_REQUIRED: Refusal = Refusal {
     code: "absolute_path_required",
@@ -115,7 +126,7 @@ pub static COMMAND: Command = Command {
     path: &["data", "elevation", "attach"],
     contract: 3,
     summary: "Attach Rwanda DEM elevation to a local point source locally.",
-    purpose: "Uses the shared native application operation and offline ds-network engine to interpolate only the governed Rwanda DEM into a new local GeoJSON. Rwanda coverage holes remain explicit; Terrarium is never substituted. Small jobs may use exact public byte ranges; jobs above 4,000 parsed points make the Desktop component manager install or verify the full local DEM once before retrying. Source/result bytes never enter DS Cloud Run, and no map needs to be open.",
+    purpose: "Interpolates the governed Rwanda DEM into a new local GeoJSON through the shared native operation and offline ds-network engine. Rwanda holes stay explicit unless --fallback aws_terrarium_30m fills each surface group the DEM misses; the receipt counts both. Small jobs may use exact public byte ranges; above 4,000 parsed points the Desktop component manager installs or verifies the full local DEM once. Bytes never enter DS Cloud Run; no map needs to be open.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -128,9 +139,9 @@ pub static COMMAND: Command = Command {
         SOURCE_CRS_ARG,
         SEPARATOR_ARG,
         COMMON_COLUMN_ARG,
-        FALLBACK_ARG,
+        ATTACH_FALLBACK_ARG,
     ],
-    output: "A native receipt with source/output paths and digest, point and sole-Rwanda coverage counts, DEM access mode, zero fallback evidence, and per-layer statistics.",
+    output: "A native receipt with source/output paths and digest, point, Rwanda and fallback counts, DEM access mode, fallback evidence, and per-layer statistics.",
     examples: &[
         Example {
             command: "ds data elevation attach --source /data/poles.csv --out /data/poles-elevation.geojson --x-column longitude --y-column latitude --source-crs wgs84_lonlat --fallback none",
@@ -251,3 +262,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "elevation_fallback_tests.rs"]
+mod fallback_tests;
