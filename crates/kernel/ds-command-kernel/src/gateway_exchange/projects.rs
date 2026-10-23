@@ -4,12 +4,12 @@
 //! applies each action; these operations admit only actions Brain serves and
 //! answer Brain's `data` as served.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::{data, Admitted, Exchange, Method, Plan, Refusal, Request};
+use super::{data, Admitted, Exchange, Plan, Refusal, Request};
 
-const DIRECTORY_PATH: &str = "/api/v1/user/projects";
 /// A large account's directory.
 const DIRECTORY_CAP: u64 = 16 * 1024 * 1024;
 /// Applying a template or copying members can take minutes.
@@ -41,10 +41,8 @@ impl Exchange for Directory {
             ));
         }
         let request = Request {
-            method: Method::Get,
-            body: None,
             query: vec![("status".into(), self.status.clone())],
-            ..Request::post(DIRECTORY_PATH, Value::Null)
+            ..Request::generated(Operation::ListUserProjects, None)?
         }
         .response_cap(DIRECTORY_CAP);
         Ok(Plan {
@@ -90,12 +88,12 @@ pub enum ProjectEndpoint {
 }
 
 impl ProjectEndpoint {
-    fn path(self) -> &'static str {
+    fn operation(self) -> Operation {
         match self {
-            Self::Projects => "/api/v1/projects",
-            Self::Templates => "/api/v1/projects/templates",
-            Self::Access => "/api/v1/projects/access",
-            Self::Governance => "/api/v1/governance",
+            Self::Projects => Operation::ProjectsAction,
+            Self::Templates => Operation::TemplatesAction,
+            Self::Access => Operation::ProjectsAccessAction,
+            Self::Governance => Operation::Governance,
         }
     }
 
@@ -231,7 +229,7 @@ impl Exchange for ProjectAction {
             }
         }
         let body = json!({"action": self.action, "data": Value::Object(fields)});
-        let request = Request::post(self.endpoint.path(), body)
+        let request = Request::generated(self.endpoint.operation(), Some(body))?
             .timeout_ms(ACTION_TIMEOUT_MS)
             .response_cap(ACTION_CAP);
         Ok(Plan {

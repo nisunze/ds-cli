@@ -22,6 +22,7 @@
 use std::fmt::Debug;
 use std::sync::OnceLock;
 
+use ds_gateway_client::Operation;
 use regex::Regex;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -187,11 +188,37 @@ impl Encoding {
 impl Request {
     /// A JSON POST under the default deadline and bound.
     pub fn post(path: &str, body: Value) -> Self {
+        Self::with_route(Method::Post, path.into(), Some(body))
+    }
+
+    /// Wire coordinates from the generated gateway client. Domain bodies,
+    /// response admission, deadlines and retries remain with their owners.
+    pub(crate) fn generated(operation: Operation, body: Option<Value>) -> Result<Self, Refusal> {
+        let method = match operation.method() {
+            ds_gateway_client::Method::Get => Method::Get,
+            ds_gateway_client::Method::Post => Method::Post,
+            ds_gateway_client::Method::Put => Method::Put,
+            ds_gateway_client::Method::Patch => Method::Patch,
+            ds_gateway_client::Method::Delete => Method::Delete,
+            ds_gateway_client::Method::Head => {
+                return Err(Refusal::new(
+                    "gateway_method_unavailable",
+                    "This exchange does not execute HEAD requests.",
+                ));
+            }
+        };
+        let route = operation
+            .plan(&[])
+            .map_err(|error| Refusal::new("gateway_route_invalid", error.to_string()))?;
+        Ok(Self::with_route(method, route.into_path(), body))
+    }
+
+    fn with_route(method: Method, path: String, body: Option<Value>) -> Self {
         Self {
-            method: Method::Post,
-            path: path.into(),
+            method,
+            path,
             query: Vec::new(),
-            body: Some(body),
+            body,
             timeout_ms: DEFAULT_TIMEOUT_MS,
             response_cap_bytes: DEFAULT_RESPONSE_CAP,
             lane_header: false,

@@ -32,6 +32,82 @@ fn action(endpoint: ProjectEndpoint, name: &str, data: Value) -> ProjectAction {
 }
 
 #[test]
+fn generated_directory_plan_and_invalid_input_keep_the_exact_wire_bytes() {
+    let plan = Directory {
+        status: "active".into(),
+    }
+    .plan()
+    .unwrap();
+    assert_eq!(
+        serde_json::to_vec(&plan.request).unwrap(),
+        br#"{"method":"GET","path":"/api/v1/user/projects","query":[["status","active"]],"timeout_ms":30000,"response_cap_bytes":16777216}"#,
+    );
+    assert_eq!(plan.retries, 1);
+    let Step::Refused(refusal) = start(Directory {
+        status: "all".into(),
+    }) else {
+        panic!("invalid input must not request a fetch");
+    };
+    assert_eq!(
+        serde_json::to_vec(&refusal).unwrap(),
+        br#"{"code":"projects_input_invalid","message":"A project list is active, archived, testing or template.","transient":false,"retryable":false}"#,
+    );
+}
+
+#[test]
+fn generated_project_routes_preserve_the_full_request_and_read_write_retry_split() {
+    for (endpoint, action_name, path, retries) in [
+        (ProjectEndpoint::Projects, "create", "/api/v1/projects", 0),
+        (
+            ProjectEndpoint::Templates,
+            "list",
+            "/api/v1/projects/templates",
+            1,
+        ),
+        (
+            ProjectEndpoint::Access,
+            "list_users",
+            "/api/v1/projects/access",
+            1,
+        ),
+        (
+            ProjectEndpoint::Governance,
+            "archive_project",
+            "/api/v1/governance",
+            0,
+        ),
+    ] {
+        let plan = action(endpoint, action_name, json!({"project_id":"p1"}))
+            .plan()
+            .unwrap();
+        let expected = format!(
+            r#"{{"method":"POST","path":"{path}","body":{{"action":"{action_name}","data":{{"project_id":"p1"}}}},"timeout_ms":120000,"response_cap_bytes":16777216}}"#,
+        );
+        assert_eq!(
+            serde_json::to_vec(&plan.request).unwrap(),
+            expected.as_bytes()
+        );
+        assert_eq!(plan.retries, retries);
+    }
+}
+
+#[test]
+fn a_generated_route_with_unbound_parameters_or_unsupported_method_never_becomes_a_request() {
+    assert_eq!(
+        Request::generated(ds_gateway_client::Operation::ReadPrincipalDevice, None)
+            .unwrap_err()
+            .code,
+        "gateway_route_invalid",
+    );
+    assert_eq!(
+        Request::generated(ds_gateway_client::Operation::HeadMediaLink, None)
+            .unwrap_err()
+            .code,
+        "gateway_method_unavailable",
+    );
+}
+
+#[test]
 fn the_directory_is_one_status_and_an_older_brain_holds_none_of_a_new_state() {
     let call = Directory {
         status: "archived".into(),

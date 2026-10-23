@@ -3,6 +3,7 @@
 //! only when Brain serves its action. Brain validates every schema, setting
 //! and grant; these requests answer Brain's `data` as served.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -26,10 +27,10 @@ pub enum FormsEndpoint {
 }
 
 impl FormsEndpoint {
-    fn path(self) -> &'static str {
+    fn operation(self) -> Operation {
         match self {
-            Self::FormFactory => "/api/v1/form-factory",
-            Self::ProjectForms => "/api/v1/project-forms",
+            Self::FormFactory => Operation::FormFactoryV2,
+            Self::ProjectForms => Operation::ProjectForms,
         }
     }
 
@@ -183,7 +184,7 @@ impl Exchange for Forms {
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect(),
         );
-        let request = Request::post(self.endpoint.path(), body)
+        let request = Request::generated(self.endpoint.operation(), Some(body))?
             .timeout_ms(TIMEOUT_MS)
             .response_cap(RESPONSE_CAP);
         Ok(Plan {

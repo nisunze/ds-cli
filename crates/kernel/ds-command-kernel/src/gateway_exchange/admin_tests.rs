@@ -40,6 +40,22 @@ fn pairs(request: &Request) -> Vec<(&str, &str)> {
 }
 
 #[test]
+fn generated_admin_get_keeps_its_exact_query_order_deadline_and_wire_bytes() {
+    let plan = Children {
+        level: "district".into(),
+        parent_code: Some("1".into()),
+        timeout_ms: None,
+    }
+    .plan()
+    .unwrap();
+    assert_eq!(
+        serde_json::to_vec(&plan.request).unwrap(),
+        br#"{"method":"GET","path":"/api/v1/admin/rwanda","query":[["action","children"],["level","district"],["parent_code","1"]],"timeout_ms":30000,"response_cap_bytes":1048576}"#,
+    );
+    assert_eq!(plan.retries, 0);
+}
+
+#[test]
 fn children_are_a_get_by_level_and_parent() {
     let call = Children {
         level: "district".into(),

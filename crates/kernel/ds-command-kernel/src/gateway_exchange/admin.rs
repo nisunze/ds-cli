@@ -3,12 +3,12 @@
 //! its boundary, one unit's name, and the units containing a point. Brain
 //! reads the boundary tables; these reads name the query and admit the rows.
 
+use ds_gateway_client::Operation;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{data, Admitted, Exchange, Method, Plan, Refusal, Request, DEFAULT_TIMEOUT_MS};
+use super::{data, Admitted, Exchange, Plan, Refusal, Request, DEFAULT_TIMEOUT_MS};
 
-const PATH: &str = "/api/v1/admin/rwanda";
 /// Every village of a district with its boundary.
 const BOUNDARIES_CAP: u64 = 64 * 1024 * 1024;
 const MAX_TIMEOUT_MS: u64 = 600_000;
@@ -120,17 +120,15 @@ fn deadline(timeout_ms: Option<u64>) -> Result<u64, Refusal> {
     }
 }
 
-fn read(query: Vec<(&str, String)>, timeout_ms: u64) -> Request {
-    Request {
-        method: Method::Get,
-        body: None,
+fn read(query: Vec<(&str, String)>, timeout_ms: u64) -> Result<Request, Refusal> {
+    Ok(Request {
         query: query
             .into_iter()
             .map(|(key, value)| (key.to_owned(), value))
             .collect(),
-        ..Request::post(PATH, Value::Null)
+        ..Request::generated(Operation::GetRwandaAdmin, None)?
     }
-    .timeout_ms(timeout_ms)
+    .timeout_ms(timeout_ms))
 }
 
 fn boundary_from(value: &Value, fallback_level: &str) -> Result<AdminBoundary, Refusal> {
@@ -178,7 +176,7 @@ impl Exchange for Children {
         {
             query.push(("parent_code", code(parent)?.into()));
         }
-        Ok(read(query, deadline(self.timeout_ms)?).into())
+        Ok(read(query, deadline(self.timeout_ms)?)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -208,7 +206,7 @@ impl Exchange for Boundary {
             ("action", "geometry".into()),
             ("code", code(&self.code)?.into()),
         ];
-        Ok(read(query, deadline(self.timeout_ms)?).into())
+        Ok(read(query, deadline(self.timeout_ms)?)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -233,7 +231,7 @@ impl Exchange for Descendants {
             ("level", level(&self.level)?.into()),
             ("parent_code", code(&self.parent_code)?.into()),
         ];
-        Ok(read(query, deadline(self.timeout_ms)?)
+        Ok(read(query, deadline(self.timeout_ms)?)?
             .response_cap(BOUNDARIES_CAP)
             .into())
     }
@@ -264,7 +262,7 @@ impl Exchange for Name {
             ("action", "query".into()),
             ("code", code(&self.code)?.into()),
         ];
-        Ok(read(query, DEFAULT_TIMEOUT_MS).into())
+        Ok(read(query, DEFAULT_TIMEOUT_MS)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
@@ -301,7 +299,7 @@ impl Exchange for Locate {
             ("lon", self.lon.to_string()),
             ("level", level(&self.level)?.into()),
         ];
-        Ok(read(query, DEFAULT_TIMEOUT_MS).into())
+        Ok(read(query, DEFAULT_TIMEOUT_MS)?.into())
     }
 
     fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {

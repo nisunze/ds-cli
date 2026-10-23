@@ -2060,6 +2060,7 @@ dependencies = [
  "ds-columnar",
  "ds-core-contracts",
  "ds-design-session",
+ "ds-gateway-client",
  "ds-geo",
  "ds-geo-lite",
  "ds-kml",
@@ -2205,6 +2206,13 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "ureq",
+]
+
+[[package]]
+name = "ds-gateway-client"
+version = "0.1.0"
+dependencies = [
+ "percent-encoding",
 ]
 
 [[package]]

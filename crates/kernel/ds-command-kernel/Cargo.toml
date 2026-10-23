@@ -75,6 +75,7 @@ page-geometry = ["dep:ds-geo"]
 vector-tools = []
 
 [dependencies]
+ds-gateway-client = { path = "../ds-gateway-client" }
 ds-core-contracts = { path = "../ds-core-contracts" }
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts" }
 ds-geo = { path = "../../../../ds-network/crates/ds-geo", optional = true }

@@ -1,0 +1,14 @@
+{
+  "name": "ds-gateway-client-codegen",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "check": "node scripts/generate.mjs --check",
+    "test": "node --test --test-isolation=none scripts/generate_tests.mjs"
+  },
+  "devDependencies": {
+    "swagger2openapi": "7.0.8"
+  }
+}

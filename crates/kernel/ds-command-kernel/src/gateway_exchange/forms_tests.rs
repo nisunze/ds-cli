@@ -10,6 +10,32 @@ fn forms(endpoint: FormsEndpoint, request: Value) -> Forms {
 }
 
 #[test]
+fn generated_form_routes_preserve_exact_body_bytes_bounds_and_retry_budgets() {
+    let get = forms(
+        FormsEndpoint::FormFactory,
+        json!({"action":"get","slug":"poles","ignored":null}),
+    )
+    .plan()
+    .unwrap();
+    assert_eq!(
+        serde_json::to_vec(&get.request).unwrap(),
+        br#"{"method":"POST","path":"/api/v1/form-factory","body":{"action":"get","slug":"poles"},"timeout_ms":120000,"response_cap_bytes":33554432}"#,
+    );
+    assert_eq!(get.retries, 1);
+    let activate = forms(
+        FormsEndpoint::ProjectForms,
+        json!({"action":"activate","project_id":"p1"}),
+    )
+    .plan()
+    .unwrap();
+    assert_eq!(
+        serde_json::to_vec(&activate.request).unwrap(),
+        br#"{"method":"POST","path":"/api/v1/project-forms","body":{"action":"activate","project_id":"p1"},"timeout_ms":120000,"response_cap_bytes":33554432}"#,
+    );
+    assert_eq!(activate.retries, 0);
+}
+
+#[test]
 fn a_form_request_is_sent_flat_to_its_endpoint() {
     let plan = forms(
         FormsEndpoint::FormFactory,

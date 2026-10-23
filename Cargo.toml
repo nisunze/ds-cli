@@ -50,6 +50,7 @@ members = [
     "crates/kernel/ds-assets-pdf-host",
     "crates/kernel/ds-cli-exec",
     "crates/kernel/ds-client-core",
+    "crates/kernel/ds-gateway-client",
     "crates/kernel/ds-command-kernel",
     "crates/kernel/ds-compute-runtime",
     "crates/kernel/ds-core-contracts",
