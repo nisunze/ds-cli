@@ -4,8 +4,10 @@ use ds_command_kernel::printing::{identifier, validate, Layout};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-pub const PRINTING_PATH: &str = "/api/v1/printing";
-pub const PRINTING_METHOD: &str = "POST";
+pub const PRINTING_PATH: &str = ds_gateway_client::Operation::PrintingAction.path_template();
+pub const PRINTING_METHOD: &str = ds_gateway_client::Operation::PrintingAction
+    .method()
+    .as_str();
 pub const PRINTING_ACTIONS: [&str; 7] =
     ["list", "get", "create", "update", "save", "delete", "copy"];
 pub const PRINTING_RESPONSE_LIMIT: usize = 1024 * 1024;

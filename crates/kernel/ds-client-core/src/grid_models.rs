@@ -15,7 +15,7 @@ use ds_command_kernel::grid_publication::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 pub const MAX_BYTES: usize = 256 * 1024 * 1024;
-pub const PATH: &str = "/api/v1/grid/models";
+pub const PATH: &str = ds_gateway_client::Operation::ProjectGridModelsAction.path_template();
 /// Catalog pages one revision-position walk may read (100 rows each). A
 /// version with more saves than this reports its count as a lower bound and
 /// claims no ordinal.

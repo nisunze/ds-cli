@@ -76,6 +76,15 @@ fn hex_lower(value: &str, length: usize) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 impl Command {
+    fn generated_operation(&self) -> ds_gateway_client::Operation {
+        match self {
+            Self::Notifications { .. } | Self::Acknowledge { .. } => {
+                ds_gateway_client::Operation::NotificationsAction
+            }
+            _ => ds_gateway_client::Operation::MessagingCommands,
+        }
+    }
+
     /// Installation revocation requires the exact receipt held by this client.
     /// Admission precedes credential restoration; other messaging admission stays with Brain.
     pub fn validate(&self) -> Result<(), ClientError> {
@@ -96,8 +105,19 @@ impl Command {
 
     pub fn path(&self) -> &'static str {
         match self {
-            Self::Notifications { .. } | Self::Acknowledge { .. } => "/api/v1/notifications",
-            _ => "/api/v1/messaging?wire_contract=messages-v1",
+            Self::Notifications { .. } | Self::Acknowledge { .. } => {
+                self.generated_operation().path_template()
+            }
+            _ => {
+                static PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+                PATH.get_or_init(|| {
+                    format!(
+                        "{}?wire_contract=messages-v1",
+                        self.generated_operation().path_template()
+                    )
+                })
+                .as_str()
+            }
         }
     }
     pub fn payload(&self) -> Value {
@@ -338,42 +358,34 @@ pub struct MessagingCall<'a> {
     pub(crate) command: &'a Command,
 }
 impl MessagingCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) fn generated_operation(&self) -> ds_gateway_client::Operation {
+        self.command.generated_operation()
+    }
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: normal,
+        gateway_api_key: normal,
+        client_id: normal,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> &'static str {
         self.command.path()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        self.generated_operation().method().as_str()
     }
-    pub fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub fn response_limit(&self) -> usize {
         MAX_RESPONSE_BYTES
     }
     pub fn timeout_seconds(&self) -> u64 {
         30
     }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> crate::SecretRequestBody {
         crate::SecretRequestBody::new(
             serde_json::to_vec(&self.command.payload()).expect("closed messaging request"),

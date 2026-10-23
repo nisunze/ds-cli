@@ -16,7 +16,7 @@
 //! saves a reviewed plan's layouts.
 use crate::authorized::Authority;
 use crate::profile::ClientProfile;
-use crate::transport::{CallAuthority, SecretRequestBody, CORRELATION_HEADERS};
+use crate::transport::{CallAuthority, SecretRequestBody};
 use crate::{AuthorizedTransport, ClientError, ErrorKind, ServiceRefusal, TransportResponse};
 use ds_command_kernel::printing::identifier;
 use ds_command_kernel::printing::style_migration::{self, LibraryPlan, StoredSetup};
@@ -198,8 +198,16 @@ pub struct PrintStyleKeysCall<'a> {
 }
 
 impl PrintStyleKeysCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
         PRINT_STYLE_KEYS_PATH
@@ -207,39 +215,18 @@ impl PrintStyleKeysCall<'_> {
     pub const fn method(&self) -> &'static str {
         "POST"
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         PRINT_STYLE_KEYS_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         PRINT_STYLE_KEYS_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
+
     pub fn ds_project(&self) -> &str {
         self.project
     }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody::new(self.body.clone())
     }

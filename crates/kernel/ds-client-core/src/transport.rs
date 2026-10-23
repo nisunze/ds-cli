@@ -11,19 +11,11 @@ use zeroize::Zeroize;
 pub const SIGN_IN_ENDPOINT: &str =
     "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword";
 pub const REFRESH_ENDPOINT: &str = "https://securetoken.googleapis.com/v1/token";
-pub use crate::profile::PROJECT_LIST_PATH;
-pub use crate::profile::{ADMIN_BOUNDS_METHOD, ADMIN_BOUNDS_PATH};
-pub use crate::profile::{DATA_DISTRIBUTION_METHOD, DATA_DISTRIBUTION_PATH};
+pub use crate::profile::SRE_EVENTS_ACTIONS;
 pub use crate::profile::{
-    PROJECT_FORMS_ACTION, PROJECT_FORMS_METHOD, PROJECT_FORMS_PATH, PROJECT_FORM_EDITOR_ACTION,
-    SOLAR_SNAPSHOT_METHOD, SOLAR_SNAPSHOT_PATH, SURVEY_ENTRIES_CHANGES_METHOD,
+    PROJECT_FORMS_ACTION, PROJECT_FORM_EDITOR_ACTION, SURVEY_ENTRIES_CHANGES_METHOD,
     SURVEY_ENTRIES_CHANGES_PATH, SURVEY_ENTRIES_SELECT_METHOD, SURVEY_ENTRIES_SELECT_PATH,
-    SURVEY_ENTRY_CREATE_METHOD, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TILES_METHOD, TILES_PATH,
-    TRANSFORMER_CONTEXT_FIELDS, TRANSFORMER_CONTEXT_METHOD, TRANSFORMER_CONTEXT_PATH,
-};
-pub use crate::profile::{PROJECT_REPORT_METHOD, PROJECT_REPORT_PATH};
-pub use crate::profile::{
-    SRE_EVENTS_ACTIONS, SRE_EVENTS_METHOD, SRE_EVENTS_PATH, SRE_OVERVIEW_METHOD, SRE_OVERVIEW_PATH,
+    SURVEY_ENTRY_CREATE_METHOD, SURVEY_QUERY_METHOD, SURVEY_QUERY_PATH, TRANSFORMER_CONTEXT_FIELDS,
 };
 pub const AUTH_RESPONSE_LIMIT: usize = 256 * 1024;
 pub const PROJECT_RESPONSE_LIMIT: usize = 4 * 1024 * 1024;
@@ -119,18 +111,35 @@ pub struct SyncGatewayCall<'a> {
 }
 
 impl SyncGatewayCall<'_> {
+    pub(crate) fn generated_operation(&self) -> ds_gateway_client::Operation {
+        match self.request.operation() {
+            crate::SyncGatewayOperation::InstallHeartbeat => {
+                ds_gateway_client::Operation::EdgeAppInstallHeartbeat
+            }
+            crate::SyncGatewayOperation::ComputeArtifacts
+            | crate::SyncGatewayOperation::ComputeArtifactsOpen
+            | crate::SyncGatewayOperation::ComputeArtifactsFinalize => {
+                ds_gateway_client::Operation::ComputeArtifactsAction
+            }
+        }
+    }
+
     fn entry(&self) -> &'static crate::GatewayOperation {
         crate::gateway_operation(self.request.operation().registry_id())
             .expect("the closed Sync Center operation is generated in the registry")
     }
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
     }
     pub fn path(&self) -> &'static str {
-        self.entry().path
+        self.generated_operation().path_template()
     }
     pub fn method(&self) -> &'static str {
-        self.entry().method
+        self.generated_operation().method().as_str()
     }
     pub fn response_limit(&self) -> usize {
         self.entry().response_cap_bytes as usize
@@ -138,18 +147,7 @@ impl SyncGatewayCall<'_> {
     pub fn timeout_seconds(&self) -> u64 {
         u64::from(self.entry().timeout_s)
     }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(self.request.body()).expect("validated sync JSON"))
     }
@@ -250,18 +248,26 @@ pub struct ProjectListCall<'a> {
 }
 
 impl ProjectListCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::ListUserProjects;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        PROJECT_LIST_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        "GET"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         PROJECT_RESPONSE_LIMIT
     }
@@ -272,29 +278,12 @@ impl ProjectListCall<'_> {
     pub const fn status(&self) -> ProjectStatus {
         self.status
     }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn url(&self) -> String {
         format!(
             "{}{}?status={}",
             self.gateway_origin(),
-            PROJECT_LIST_PATH,
+            self.path(),
             self.status.query_value()
         )
     }
@@ -333,23 +322,30 @@ impl TransformerContextProjection {
 }
 
 impl TransformerContextCall<'_> {
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DsSystemReport;
+
     pub const fn projection(&self) -> TransformerContextProjection {
         self.fields
     }
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
 
     pub const fn path(&self) -> &'static str {
-        TRANSFORMER_CONTEXT_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
 
     pub const fn method(&self) -> &'static str {
-        TRANSFORMER_CONTEXT_METHOD
-    }
-
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
 
     pub const fn response_limit(&self) -> usize {
@@ -358,34 +354,6 @@ impl TransformerContextCall<'_> {
 
     pub const fn timeout_seconds(&self) -> u64 {
         TRANSFORMER_CONTEXT_TIMEOUT_SECONDS
-    }
-
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
     }
 
     pub fn body(&self) -> SecretRequestBody {
@@ -420,45 +388,34 @@ pub struct ProjectFormEditorCall<'a> {
 }
 
 impl ProjectFormEditorCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::ProjectForms;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        PROJECT_FORMS_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        PROJECT_FORMS_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         PROJECT_FORMS_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         PROJECT_FORMS_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         #[derive(Serialize)]
         struct Body<'a> {
@@ -478,45 +435,34 @@ impl ProjectFormEditorCall<'_> {
 }
 
 impl ProjectFormsCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::ProjectForms;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        PROJECT_FORMS_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        PROJECT_FORMS_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         PROJECT_FORMS_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         PROJECT_FORMS_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         #[derive(Serialize)]
         struct Body<'a> {
@@ -546,45 +492,34 @@ pub struct SolarSnapshotCall<'a> {
 }
 
 impl SolarSnapshotCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::SolarAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        SOLAR_SNAPSHOT_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        SOLAR_SNAPSHOT_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         SOLAR_SNAPSHOT_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         SOLAR_SNAPSHOT_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(crate::solar_snapshot::request_body(
             self.ds_project,
@@ -604,8 +539,16 @@ pub struct SurveyQueryCall<'a> {
 }
 
 impl SurveyQueryCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
         SURVEY_QUERY_PATH
@@ -613,36 +556,14 @@ impl SurveyQueryCall<'_> {
     pub const fn method(&self) -> &'static str {
         SURVEY_QUERY_METHOD
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         SURVEY_QUERY_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         SURVEY_QUERY_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(self.query.body_bytes(self.ds_project))
     }
@@ -659,8 +580,16 @@ pub struct SurveyEntriesSelectCall<'a> {
 }
 
 impl SurveyEntriesSelectCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
         SURVEY_ENTRIES_SELECT_PATH
@@ -668,36 +597,14 @@ impl SurveyEntriesSelectCall<'_> {
     pub const fn method(&self) -> &'static str {
         SURVEY_ENTRIES_SELECT_METHOD
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         SURVEY_ENTRIES_SELECT_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         SURVEY_ENTRIES_SELECT_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(self.request.body_bytes(self.ds_project))
     }
@@ -714,8 +621,16 @@ pub struct SurveyEntriesChangesCall<'a> {
 }
 
 impl SurveyEntriesChangesCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
         SURVEY_ENTRIES_CHANGES_PATH
@@ -723,36 +638,14 @@ impl SurveyEntriesChangesCall<'_> {
     pub const fn method(&self) -> &'static str {
         SURVEY_ENTRIES_CHANGES_METHOD
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         SURVEY_ENTRIES_CHANGES_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         SURVEY_ENTRIES_CHANGES_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(self.request.body_bytes(self.ds_project))
     }
@@ -823,39 +716,32 @@ pub struct StatusProcessingCall<'a> {
 }
 
 impl StatusProcessingCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DsSystemProcess;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
     }
     pub const fn path(&self) -> &'static str {
-        crate::STATUS_PROCESSING_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        crate::STATUS_PROCESSING_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         crate::STATUS_PROCESSING_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         crate::STATUS_PROCESSING_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             serde_json::to_vec(self.payload).expect("closed status processing request"),
@@ -870,84 +756,66 @@ pub struct SurveyPhotoCall<'a> {
 }
 
 impl SurveyPhotoCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::MediaAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
     }
     pub const fn path(&self) -> &'static str {
-        crate::survey_photo::PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         crate::survey_photo::RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         120
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(self.payload).expect("closed survey photo request"))
     }
 }
 
 impl ProjectDataCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::ProjectDataAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        crate::PROJECT_DATA_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        crate::PROJECT_DATA_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         crate::LAYERS_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(self.payload).expect("closed GIS request"))
     }
@@ -961,8 +829,20 @@ pub struct SurveyControlCall<'a> {
 }
 
 impl SurveyControlCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) fn generated_operation(&self) -> Option<ds_gateway_client::Operation> {
+        self.route.generated_operation()
+    }
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
         self.route.path()
@@ -970,36 +850,14 @@ impl SurveyControlCall<'_> {
     pub fn method(&self) -> &'static str {
         self.route.method()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed Survey request"))
     }
@@ -1034,45 +892,34 @@ pub struct FeedbackCall<'a> {
 }
 
 impl FeedbackCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::FeedbackAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        "/api/v1/feedback".into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed feedback request"))
     }
@@ -1085,27 +932,38 @@ pub struct SharedAssetsCall<'a> {
 }
 
 impl SharedAssetsCall<'_> {
+    pub(crate) fn generated_operation(&self) -> ds_gateway_client::Operation {
+        if self.semantic_commit_route().is_some() {
+            ds_gateway_client::Operation::DataInterop
+        } else {
+            ds_gateway_client::Operation::ProjectAssetsAction
+        }
+    }
+
     fn semantic_commit_route(&self) -> Option<&'static crate::GatewayOperation> {
         (self.payload["action"] == "finalize_asset_semantic").then(|| {
             crate::gateway_operation("domains.assets.semantic_finalize")
                 .expect("generated closed semantic derivative Bulk route")
         })
     }
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        self.semantic_commit_route()
-            .map_or("/api/v1/assets", |route| route.path)
-            .into()
+        self.generated_operation().path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        self.semantic_commit_route()
-            .map_or("POST", |route| route.method)
+        self.generated_operation().method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub fn response_limit(&self) -> usize {
         self.semantic_commit_route()
             .map_or(8 * 1024 * 1024, |route| route.response_cap_bytes as usize)
@@ -1114,27 +972,7 @@ impl SharedAssetsCall<'_> {
         self.semantic_commit_route()
             .map_or(TILE_TIMEOUT_SECONDS, |route| u64::from(route.timeout_s))
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed shared asset request"))
     }
@@ -1155,18 +993,27 @@ pub struct ProjectManagementCall<'a> {
 }
 
 impl ProjectManagementCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::PmAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        "/api/v1/pm".into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     /// A whole plan with its tasks, records and residuals. Bounded like the
     /// shared-assets read rather than like a tile.
     pub const fn response_limit(&self) -> usize {
@@ -1179,27 +1026,7 @@ impl ProjectManagementCall<'_> {
             30
         }
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             serde_json::to_vec(&self.payload).expect("closed project management request"),
@@ -1214,18 +1041,27 @@ pub struct MemberFormGrantCall<'a> {
 }
 
 impl MemberFormGrantCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::ProjectsAccessAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        "/api/v1/projects/access".into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     /// One finite grant snapshot and exact receipt, capped at 128 KiB.
     pub const fn response_limit(&self) -> usize {
         crate::member_form_grants::MAX_BYTES
@@ -1233,27 +1069,7 @@ impl MemberFormGrantCall<'_> {
     pub const fn timeout_seconds(&self) -> u64 {
         30
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             serde_json::to_vec(&self.payload).expect("closed member form grant request"),
@@ -1277,18 +1093,27 @@ pub struct ProjectPropertiesCall<'a> {
 }
 
 impl ProjectPropertiesCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::ProjectsAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        "/api/v1/projects".into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     /// One project document's receipt: far smaller than a tile or a plan.
     pub const fn response_limit(&self) -> usize {
         crate::project_properties::MAX_RESPONSE_BYTES
@@ -1298,27 +1123,7 @@ impl ProjectPropertiesCall<'_> {
     pub const fn timeout_seconds(&self) -> u64 {
         60
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             serde_json::to_vec(&self.payload).expect("closed project properties request"),
@@ -1337,42 +1142,33 @@ pub struct ProjectDeletionCall<'a> {
 }
 
 impl ProjectDeletionCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::ProjectsAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        crate::project_deletion::PATH.into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         crate::project_deletion::MAX_RESPONSE_BYTES
     }
     pub const fn timeout_seconds(&self) -> u64 {
         crate::project_deletion::TIMEOUT_SECONDS
     }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     /// The action this call sends, for host diagnostics.
     pub fn action(&self) -> &str {
         self.payload["action"].as_str().unwrap_or("")
@@ -1400,45 +1196,34 @@ pub struct DeviceApproveCall<'a> {
 }
 
 impl DeviceApproveCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DecideDeviceAuthorization;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        "/api/v1/auth/device/approve".into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         DEVICE_APPROVE_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         30
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             serde_json::to_vec(&self.payload).expect("closed device approval request"),
@@ -1457,6 +1242,14 @@ pub struct DesignVersionsCall<'a> {
 }
 
 impl DesignVersionsCall<'_> {
+    pub(crate) fn generated_operation(&self) -> ds_gateway_client::Operation {
+        if self.import_route().is_some() {
+            ds_gateway_client::Operation::DataInterop
+        } else {
+            ds_gateway_client::Operation::DesignVersionsAction
+        }
+    }
+
     // Only these closed kernel commands use fixed Bulk operations. The remaining
     // version calls retain the admitted metadata-only Run route.
     fn import_route(&self) -> Option<&'static crate::GatewayOperation> {
@@ -1473,21 +1266,24 @@ impl DesignVersionsCall<'_> {
         };
         Some(crate::gateway_operation(operation).expect("generated closed history Bulk route"))
     }
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        self.import_route()
-            .map_or(crate::profile::DESIGN_VERSIONS_PATH, |route| route.path)
-            .into()
+        self.generated_operation().path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        self.import_route()
-            .map_or(crate::profile::DESIGN_VERSIONS_METHOD, |route| route.method)
+        self.generated_operation().method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub fn response_limit(&self) -> usize {
         self.import_route()
             .map_or(64 * 1024 * 1024, |route| route.response_cap_bytes as usize)
@@ -1496,27 +1292,7 @@ impl DesignVersionsCall<'_> {
         self.import_route()
             .map_or(TILE_TIMEOUT_SECONDS, |route| u64::from(route.timeout_s))
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed design version request"))
     }
@@ -1529,45 +1305,34 @@ pub struct DesignAttachmentsCall<'a> {
 }
 
 impl DesignAttachmentsCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DesignAttachmentsAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        crate::profile::DESIGN_ATTACHMENTS_PATH.into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        crate::profile::DESIGN_ATTACHMENTS_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             serde_json::to_vec(&self.payload).expect("closed design attachment request"),
@@ -1582,45 +1347,34 @@ pub struct DesignTagsCall<'a> {
 }
 
 impl DesignTagsCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DesignAnnotationsAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        "/api/v1/design/annotations".into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed design tag request"))
     }
@@ -1633,47 +1387,36 @@ pub struct DesignMigrationCall<'a> {
 }
 
 impl DesignMigrationCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DataInterop;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     /// The design data plane, the same door the transformer copy path this
     /// endpoint extends already answers on.
     pub fn path(&self) -> String {
-        "/api/v1/data".into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             serde_json::to_vec(&self.payload).expect("closed design migration request"),
@@ -1695,45 +1438,34 @@ pub struct SurveyMigrationCall<'a> {
 }
 
 impl SurveyMigrationCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DataPipeline;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        "/api/v1/pipeline".into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         crate::survey_migration::MAX_RESPONSE_BYTES
     }
     pub const fn timeout_seconds(&self) -> u64 {
         crate::survey_migration::TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             serde_json::to_vec(&self.payload).expect("closed survey migration request"),
@@ -1748,8 +1480,16 @@ pub struct ReportArtifactCall<'a> {
 }
 
 impl ReportArtifactCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
         "/api/v1/report_artifacts".into()
@@ -1757,36 +1497,14 @@ impl ReportArtifactCall<'_> {
     pub fn method(&self) -> &'static str {
         "POST"
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             serde_json::to_vec(&self.payload).expect("closed MV print attachment request"),
@@ -1801,45 +1519,34 @@ pub struct GridModelsCall<'a> {
 }
 
 impl GridModelsCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::ProjectGridModelsAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        crate::grid_models::PATH.into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed grid model request"))
     }
@@ -1852,18 +1559,27 @@ pub struct GlobalTilesCall<'a> {
 }
 
 impl GlobalTilesCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::TilesAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        TILES_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        TILES_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         TILE_RESPONSE_LIMIT
     }
@@ -1872,27 +1588,7 @@ impl GlobalTilesCall<'_> {
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed global tile request"))
     }
@@ -1910,52 +1606,35 @@ pub struct AdminBoundsCall<'a> {
 }
 
 impl AdminBoundsCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::GetRwandaAdmin;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        ADMIN_BOUNDS_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        ADMIN_BOUNDS_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
     pub fn url(&self) -> String {
-        format!(
-            "{}{}?{}",
-            self.gateway_origin(),
-            ADMIN_BOUNDS_PATH,
-            self.query
-        )
+        format!("{}{}?{}", self.gateway_origin(), self.path(), self.query)
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         ADMIN_BOUNDS_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         ADMIN_BOUNDS_TIMEOUT_SECONDS
-    }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
     }
 }
 
@@ -1969,47 +1648,35 @@ pub struct SreOverviewCall<'a> {
 }
 
 impl SreOverviewCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::SreOverview;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        SRE_OVERVIEW_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        SRE_OVERVIEW_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
     pub fn url(&self) -> String {
-        format!("{}{}", self.gateway_origin(), SRE_OVERVIEW_PATH)
+        format!("{}{}", self.gateway_origin(), self.path())
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         SRE_OVERVIEW_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         SRE_OVERVIEW_TIMEOUT_SECONDS
-    }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
     }
 }
 
@@ -2025,21 +1692,30 @@ pub struct SreEventsCall<'a> {
 }
 
 impl SreEventsCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DataInterop;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        SRE_EVENTS_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        SRE_EVENTS_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
     pub const fn action(&self) -> &'static str {
         SRE_EVENTS_ACTIONS[0]
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     /// What the caller must accept. The route streams one JSON object per line
     /// and closes with a summary, so a host that asked for `application/json`
     /// would be asking for a document this route never produces.
@@ -2052,27 +1728,7 @@ impl SreEventsCall<'_> {
     pub const fn timeout_seconds(&self) -> u64 {
         SRE_EVENTS_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed sre event request"))
     }
@@ -2090,18 +1746,27 @@ pub struct SurveyEntriesReadCall<'a> {
 }
 
 impl SurveyEntriesReadCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DataInterop;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        crate::survey_entries_read::SURVEY_ENTRIES_READ_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn accept(&self) -> &'static str {
         "application/x-ndjson"
     }
@@ -2111,27 +1776,7 @@ impl SurveyEntriesReadCall<'_> {
     pub const fn timeout_seconds(&self) -> u64 {
         crate::survey_entries_read::SURVEY_ENTRIES_READ_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed survey entries request"))
     }
@@ -2147,45 +1792,34 @@ pub struct SurveyMediaGrantCall<'a> {
 }
 
 impl SurveyMediaGrantCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DsSystemReport;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        crate::survey_media_fetch::GRANT_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         crate::survey_media_fetch::GRANT_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         crate::survey_media_fetch::GRANT_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed media grant request"))
     }
@@ -2226,45 +1860,34 @@ pub struct InstallsCall<'a> {
 }
 
 impl InstallsCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::Governance;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        "/api/v1/governance".into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         1024 * 1024
     }
     pub const fn timeout_seconds(&self) -> u64 {
         30
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             serde_json::to_vec(&self.payload).expect("closed installation inventory request"),
@@ -2279,18 +1902,27 @@ pub struct GridCatalogCall<'a> {
 }
 
 impl GridCatalogCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::GridCatalogAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
-        "/api/v1/grid/catalog".into()
+        Self::GATEWAY_OPERATION.path_template().into()
     }
     pub fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     /// The reviewed descriptor's cap for this operation.
     pub const fn response_limit(&self) -> usize {
         1024 * 1024
@@ -2299,27 +1931,7 @@ impl GridCatalogCall<'_> {
     pub const fn timeout_seconds(&self) -> u64 {
         30
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed grid catalog request"))
     }
@@ -2333,49 +1945,39 @@ pub struct SolarProjectCall<'a> {
 }
 
 impl SolarProjectCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
-    }
-    pub fn path(&self) -> String {
+    pub(crate) fn generated_operation(&self) -> ds_gateway_client::Operation {
         if self.artifacts {
-            "/api/v1/compute_artifacts".into()
+            ds_gateway_client::Operation::ComputeArtifactsAction
         } else {
-            "/api/v1/solar".into()
+            ds_gateway_client::Operation::SolarAction
         }
     }
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
+    }
+    pub fn path(&self) -> String {
+        self.generated_operation().path_template().into()
+    }
     pub fn method(&self) -> &'static str {
-        "POST"
+        self.generated_operation().method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(serde_json::to_vec(&self.payload).expect("closed Solar project request"))
     }
@@ -2390,45 +1992,34 @@ pub struct StylesCall<'a> {
 }
 
 impl StylesCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::StylesAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        crate::STYLES_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        crate::STYLES_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         crate::LAYERS_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     /// The kernel builds the body it validated: one owner for what a publish
     /// may carry. `authorized::style_edit` admits the payload before the call,
     /// so a refusal here would be a contract the client broke itself.
@@ -2456,45 +2047,34 @@ pub struct LayersCall<'a> {
 }
 
 impl LayersCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::LayersAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        crate::LAYERS_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        crate::LAYERS_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         self.operation.response_limit()
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(self.operation.body(self.ds_project))
     }
@@ -2508,45 +2088,34 @@ pub struct PrintingCall<'a> {
 }
 
 impl PrintingCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::PrintingAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        crate::PRINTING_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        crate::PRINTING_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         crate::PRINTING_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(self.operation.body(self.ds_project))
     }
@@ -2563,48 +2132,37 @@ pub struct DesignSelectionsCall<'a> {
 }
 
 impl DesignSelectionsCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DesignSelectionsAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        crate::DESIGN_SELECTIONS_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        crate::DESIGN_SELECTIONS_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
     pub const fn action(&self) -> &'static str {
         self.operation.action()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         crate::DESIGN_SELECTIONS_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(self.operation.body(self.ds_project))
     }
@@ -2623,48 +2181,37 @@ pub struct DataDistributionCall<'a> {
 }
 
 impl DataDistributionCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DataDistributionAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        DATA_DISTRIBUTION_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        DATA_DISTRIBUTION_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
     pub const fn action(&self) -> &'static str {
         self.operation.action()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         crate::DATA_DISTRIBUTION_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         crate::DATA_DISTRIBUTION_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(self.operation.body(self.ds_project))
     }
@@ -2774,45 +2321,34 @@ pub struct TileCall<'a> {
 }
 
 impl TileCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::TilesAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        TILES_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        TILES_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         TILE_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         TILE_TIMEOUT_SECONDS
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(self.operation.body(self.ds_project))
     }
@@ -2832,48 +2368,37 @@ pub struct ProjectReportCall<'a> {
 }
 
 impl ProjectReportCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::DsSystemReport;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        PROJECT_REPORT_PATH
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        PROJECT_REPORT_METHOD
+        Self::GATEWAY_OPERATION.method().as_str()
     }
     pub const fn action(&self) -> &'static str {
         self.operation.action()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         PROJECT_REPORT_RESPONSE_LIMIT
     }
     pub const fn timeout_seconds(&self) -> u64 {
         self.operation.timeout_seconds()
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(self.operation.body(self.ds_project))
     }
@@ -2893,36 +2418,43 @@ pub struct ProjectConfigurationCall<'a> {
 }
 
 impl ProjectConfigurationCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) fn generated_operation(&self) -> Option<ds_gateway_client::Operation> {
+        match self.request.method {
+            ds_command_kernel::gateway_exchange::Method::Post => {
+                Some(ds_gateway_client::Operation::DsSystemReport)
+            }
+            _ => None,
+        }
+    }
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: normal,
+        client_id: normal,
+        gateway_api_key: normal,
+        bearer_token: normal,
+        canonical_email: normal,
     }
     pub fn path(&self) -> String {
-        self.request.path.clone()
+        self.generated_operation().map_or_else(
+            || self.request.path.clone(),
+            |operation| operation.path_template().to_owned(),
+        )
     }
     pub fn method(&self) -> &'static str {
-        self.request.method.as_str()
+        self.generated_operation().map_or_else(
+            || self.request.method.as_str(),
+            |operation| operation.method().as_str(),
+        )
     }
-    pub fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub fn response_limit(&self) -> usize {
         8 * 1024 * 1024
     }
     pub fn timeout_seconds(&self) -> u64 {
         120
     }
-    pub fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             self.request
@@ -2949,8 +2481,16 @@ pub struct KnownColumnsCall<'a> {
 }
 
 impl KnownColumnsCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        correlation_headers: const,
+        gateway_api_key: normal,
+        client_id: const,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub fn path(&self) -> String {
         format!(
@@ -2965,36 +2505,14 @@ impl KnownColumnsCall<'_> {
             "GET"
         }
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         4 * 1024 * 1024
     }
     pub const fn timeout_seconds(&self) -> u64 {
         60
     }
-    pub const fn correlation_headers(&self) -> [&'static str; 2] {
-        CORRELATION_HEADERS
-    }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub const fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody(
             self.patch
@@ -3005,19 +2523,7 @@ impl KnownColumnsCall<'_> {
 }
 
 pub trait Transport {
-    fn personal_notes(
-        &mut self,
-        _call: crate::personal_notes::PersonalNotesCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-
-    fn messaging(
-        &mut self,
-        _call: crate::messaging::MessagingCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+    crate::__ds_gateway_calls!(declare);
 
     /// Read exact persisted analysis bytes; adapters must retain the response
     /// headers and obey the call's bounded response limit.
@@ -3034,9 +2540,7 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
-    fn feedback(&mut self, _call: FeedbackCall<'_>) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+
     /// One `ds` reliability event ([`crate::reporter`]); its bearer is optional.
     fn sre_client_event(
         &mut self,
@@ -3044,142 +2548,21 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
-    fn shared_assets(
-        &mut self,
-        _call: SharedAssetsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn project_management(
-        &mut self,
-        _call: ProjectManagementCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn member_form_grant(
-        &mut self,
-        _call: MemberFormGrantCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn device_approve(
-        &mut self,
-        _call: DeviceApproveCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn design_attachments(
-        &mut self,
-        _call: DesignAttachmentsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+
     fn design_attachment_upload(
         &mut self,
         _call: crate::design_attachments::UploadCall<'_>,
     ) -> Result<(), TransportError> {
         Err(TransportError::Unreachable)
     }
-    fn design_versions(
-        &mut self,
-        _call: DesignVersionsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn design_tags(
-        &mut self,
-        _call: DesignTagsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn design_migration(
-        &mut self,
-        _call: DesignMigrationCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn survey_migration(
-        &mut self,
-        _call: SurveyMigrationCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
 
-    fn report_artifact(
-        &mut self,
-        _call: ReportArtifactCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn grid_models(
-        &mut self,
-        _call: GridModelsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn grid_catalog(
-        &mut self,
-        _call: GridCatalogCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn installs(&mut self, _call: InstallsCall<'_>) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn project_properties(
-        &mut self,
-        _call: ProjectPropertiesCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn project_deletion(
-        &mut self,
-        _call: ProjectDeletionCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn global_tiles(
-        &mut self,
-        _call: GlobalTilesCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn admin_bounds(
-        &mut self,
-        _call: AdminBoundsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn sre_overview(
-        &mut self,
-        _call: SreOverviewCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn sre_events(
-        &mut self,
-        _call: SreEventsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn survey_entries_read(
-        &mut self,
-        _call: SurveyEntriesReadCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
     fn survey_media_bytes(
         &mut self,
         _call: SurveyMediaBytesCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
-    fn survey_media_grant(
-        &mut self,
-        _call: SurveyMediaGrantCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+
     fn asset_preview_bytes(
         &mut self,
         _call: crate::asset_preview_source::DownloadCall<'_>,
@@ -3227,84 +2610,14 @@ pub trait Transport {
         ))
     }
 
-    fn sync_gateway(
-        &mut self,
-        _call: SyncGatewayCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn project_configuration(
-        &mut self,
-        _call: ProjectConfigurationCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn known_columns(
-        &mut self,
-        _call: KnownColumnsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
     fn sign_in(&mut self, call: SignInCall<'_>) -> Result<TransportResponse, TransportError>;
     fn refresh(&mut self, call: RefreshCall<'_>) -> Result<TransportResponse, TransportError>;
-    fn list_projects(
-        &mut self,
-        call: ProjectListCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn transformer_context(
-        &mut self,
-        call: TransformerContextCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn project_forms(
-        &mut self,
-        call: ProjectFormsCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn project_form_editor(
-        &mut self,
-        call: ProjectFormEditorCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn solar_snapshot(
-        &mut self,
-        call: SolarSnapshotCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn survey_query(
-        &mut self,
-        call: SurveyQueryCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn survey_entries_select(
-        &mut self,
-        call: SurveyEntriesSelectCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn survey_entries_changes(
-        &mut self,
-        call: SurveyEntriesChangesCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn survey_delete(
-        &mut self,
-        _call: crate::SurveyDeleteCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn survey_update(
-        &mut self,
-        _call: crate::SurveyUpdateCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+
     fn survey_entry_create(
         &mut self,
         call: SurveyEntryCreateCall<'_>,
     ) -> Result<TransportResponse, TransportError>;
-    fn project_data(
-        &mut self,
-        call: ProjectDataCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn survey_photo(
-        &mut self,
-        _call: SurveyPhotoCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+
     fn download_solar_artifact(
         &mut self,
         _call: crate::SolarArtifactDownloadCall<'_>,
@@ -3323,61 +2636,12 @@ pub trait Transport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
-    fn status_processing(
-        &mut self,
-        _call: StatusProcessingCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+
     fn upload_bytes(
         &mut self,
         call: crate::UploadBytesCall<'_>,
     ) -> Result<TransportResponse, TransportError>;
-    fn solar_project(
-        &mut self,
-        _call: SolarProjectCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn survey_control(
-        &mut self,
-        call: SurveyControlCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn styles(&mut self, call: StylesCall<'_>) -> Result<TransportResponse, TransportError>;
-    fn layers(&mut self, call: LayersCall<'_>) -> Result<TransportResponse, TransportError>;
-    fn printing(&mut self, _call: PrintingCall<'_>) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn printing_standard(
-        &mut self,
-        _call: crate::PrintingStandardCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn print_style_keys(
-        &mut self,
-        _call: crate::PrintStyleKeysCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn network_documents(
-        &mut self,
-        _call: crate::NetworkDocumentsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn design_selections(
-        &mut self,
-        _call: DesignSelectionsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn data_distribution(
-        &mut self,
-        _call: DataDistributionCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+
     /// Stream one public bundle object into `sink`, writing at most
     /// [`BundleDownloadCall::response_limit`] bytes, with redirects disabled
     /// and no DS credential attached. Verification is the core's
@@ -3389,11 +2653,6 @@ pub trait Transport {
     ) -> Result<(), TransportError> {
         Err(TransportError::Unreachable)
     }
-    fn tiles(&mut self, call: TileCall<'_>) -> Result<TransportResponse, TransportError>;
-    fn project_report(
-        &mut self,
-        call: ProjectReportCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
 }
 
 /// Provider-neutral transport for the fixed authenticated domain operations.
@@ -3403,19 +2662,7 @@ pub trait Transport {
 /// bearer as ordinary `Authorization: Bearer ...` without inferring that it is
 /// a Firebase token.
 pub trait AuthorizedTransport {
-    fn personal_notes(
-        &mut self,
-        _call: crate::personal_notes::PersonalNotesCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-
-    fn messaging(
-        &mut self,
-        _call: crate::messaging::MessagingCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+    crate::__ds_gateway_calls!(declare);
 
     /// Read exact persisted analysis bytes; adapters must retain the response
     /// headers and obey the call's bounded response limit.
@@ -3432,139 +2679,14 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
-    fn feedback(&mut self, _call: FeedbackCall<'_>) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn shared_assets(
-        &mut self,
-        _call: SharedAssetsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn project_management(
-        &mut self,
-        _call: ProjectManagementCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn member_form_grant(
-        &mut self,
-        _call: MemberFormGrantCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn device_approve(
-        &mut self,
-        _call: DeviceApproveCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn design_attachments(
-        &mut self,
-        _call: DesignAttachmentsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+
     fn design_attachment_upload(
         &mut self,
         _call: crate::design_attachments::UploadCall<'_>,
     ) -> Result<(), TransportError> {
         Err(TransportError::Unreachable)
     }
-    fn design_versions(
-        &mut self,
-        _call: DesignVersionsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn design_tags(
-        &mut self,
-        _call: DesignTagsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn design_migration(
-        &mut self,
-        _call: DesignMigrationCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn survey_migration(
-        &mut self,
-        _call: SurveyMigrationCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
 
-    fn report_artifact(
-        &mut self,
-        _call: ReportArtifactCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn grid_models(
-        &mut self,
-        _call: GridModelsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn grid_catalog(
-        &mut self,
-        _call: GridCatalogCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn installs(&mut self, _call: InstallsCall<'_>) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn project_properties(
-        &mut self,
-        _call: ProjectPropertiesCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn project_deletion(
-        &mut self,
-        _call: ProjectDeletionCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn global_tiles(
-        &mut self,
-        _call: GlobalTilesCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn admin_bounds(
-        &mut self,
-        _call: AdminBoundsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn sre_overview(
-        &mut self,
-        _call: SreOverviewCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn sre_events(
-        &mut self,
-        _call: SreEventsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn survey_entries_read(
-        &mut self,
-        _call: SurveyEntriesReadCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn survey_media_grant(
-        &mut self,
-        _call: SurveyMediaGrantCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
     fn asset_preview_bytes(
         &mut self,
         _call: crate::asset_preview_source::DownloadCall<'_>,
@@ -3612,82 +2734,11 @@ pub trait AuthorizedTransport {
         ))
     }
 
-    fn sync_gateway(
-        &mut self,
-        _call: SyncGatewayCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn project_configuration(
-        &mut self,
-        _call: ProjectConfigurationCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn known_columns(
-        &mut self,
-        _call: KnownColumnsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn list_projects(
-        &mut self,
-        call: ProjectListCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn transformer_context(
-        &mut self,
-        call: TransformerContextCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn project_forms(
-        &mut self,
-        call: ProjectFormsCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn project_form_editor(
-        &mut self,
-        call: ProjectFormEditorCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn solar_snapshot(
-        &mut self,
-        call: SolarSnapshotCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn survey_query(
-        &mut self,
-        call: SurveyQueryCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn survey_entries_select(
-        &mut self,
-        call: SurveyEntriesSelectCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn survey_entries_changes(
-        &mut self,
-        call: SurveyEntriesChangesCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn survey_delete(
-        &mut self,
-        _call: crate::SurveyDeleteCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn survey_update(
-        &mut self,
-        _call: crate::SurveyUpdateCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
     fn survey_entry_create(
         &mut self,
         call: SurveyEntryCreateCall<'_>,
     ) -> Result<TransportResponse, TransportError>;
-    fn project_data(
-        &mut self,
-        call: ProjectDataCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn survey_photo(
-        &mut self,
-        _call: SurveyPhotoCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+
     fn download_solar_artifact(
         &mut self,
         _call: crate::SolarArtifactDownloadCall<'_>,
@@ -3706,82 +2757,15 @@ pub trait AuthorizedTransport {
     ) -> Result<TransportResponse, TransportError> {
         Err(TransportError::Unreachable)
     }
-    fn status_processing(
-        &mut self,
-        _call: StatusProcessingCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
+
     fn upload_bytes(
         &mut self,
         call: crate::UploadBytesCall<'_>,
     ) -> Result<TransportResponse, TransportError>;
-    fn solar_project(
-        &mut self,
-        _call: SolarProjectCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn survey_control(
-        &mut self,
-        call: SurveyControlCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
-    fn styles(&mut self, call: StylesCall<'_>) -> Result<TransportResponse, TransportError>;
-    fn layers(&mut self, call: LayersCall<'_>) -> Result<TransportResponse, TransportError>;
-    fn printing(&mut self, _call: PrintingCall<'_>) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn printing_standard(
-        &mut self,
-        _call: crate::PrintingStandardCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn print_style_keys(
-        &mut self,
-        _call: crate::PrintStyleKeysCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn network_documents(
-        &mut self,
-        _call: crate::NetworkDocumentsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn design_selections(
-        &mut self,
-        _call: DesignSelectionsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn data_distribution(
-        &mut self,
-        _call: DataDistributionCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Err(TransportError::Unreachable)
-    }
-    fn tiles(&mut self, call: TileCall<'_>) -> Result<TransportResponse, TransportError>;
-    fn project_report(
-        &mut self,
-        call: ProjectReportCall<'_>,
-    ) -> Result<TransportResponse, TransportError>;
 }
 
 impl<T: Transport> AuthorizedTransport for T {
-    fn personal_notes(
-        &mut self,
-        call: crate::personal_notes::PersonalNotesCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::personal_notes(self, call)
-    }
-
-    fn messaging(
-        &mut self,
-        call: crate::messaging::MessagingCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::messaging(self, call)
-    }
+    crate::__ds_gateway_calls!(bridge);
 
     fn transformer_analysis(
         &mut self,
@@ -3796,136 +2780,14 @@ impl<T: Transport> AuthorizedTransport for T {
     ) -> Result<TransportResponse, TransportError> {
         Transport::transformer_save(self, call)
     }
-    fn feedback(&mut self, call: FeedbackCall<'_>) -> Result<TransportResponse, TransportError> {
-        Transport::feedback(self, call)
-    }
-    fn shared_assets(
-        &mut self,
-        call: SharedAssetsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::shared_assets(self, call)
-    }
-    fn project_management(
-        &mut self,
-        call: ProjectManagementCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::project_management(self, call)
-    }
-    fn member_form_grant(
-        &mut self,
-        call: MemberFormGrantCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::member_form_grant(self, call)
-    }
-    fn device_approve(
-        &mut self,
-        call: DeviceApproveCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::device_approve(self, call)
-    }
-    fn design_attachments(
-        &mut self,
-        call: DesignAttachmentsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::design_attachments(self, call)
-    }
+
     fn design_attachment_upload(
         &mut self,
         call: crate::design_attachments::UploadCall<'_>,
     ) -> Result<(), TransportError> {
         Transport::design_attachment_upload(self, call)
     }
-    fn design_versions(
-        &mut self,
-        call: DesignVersionsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::design_versions(self, call)
-    }
-    fn design_tags(
-        &mut self,
-        call: DesignTagsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::design_tags(self, call)
-    }
-    fn design_migration(
-        &mut self,
-        call: DesignMigrationCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::design_migration(self, call)
-    }
-    fn survey_migration(
-        &mut self,
-        call: SurveyMigrationCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::survey_migration(self, call)
-    }
 
-    fn report_artifact(
-        &mut self,
-        call: ReportArtifactCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::report_artifact(self, call)
-    }
-    fn grid_models(
-        &mut self,
-        call: GridModelsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::grid_models(self, call)
-    }
-    fn grid_catalog(
-        &mut self,
-        call: GridCatalogCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::grid_catalog(self, call)
-    }
-    fn installs(&mut self, call: InstallsCall<'_>) -> Result<TransportResponse, TransportError> {
-        Transport::installs(self, call)
-    }
-    fn project_properties(
-        &mut self,
-        call: ProjectPropertiesCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::project_properties(self, call)
-    }
-    fn project_deletion(
-        &mut self,
-        call: ProjectDeletionCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::project_deletion(self, call)
-    }
-    fn global_tiles(
-        &mut self,
-        call: GlobalTilesCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::global_tiles(self, call)
-    }
-    fn admin_bounds(
-        &mut self,
-        call: AdminBoundsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::admin_bounds(self, call)
-    }
-    fn sre_overview(
-        &mut self,
-        call: SreOverviewCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::sre_overview(self, call)
-    }
-    fn sre_events(&mut self, call: SreEventsCall<'_>) -> Result<TransportResponse, TransportError> {
-        Transport::sre_events(self, call)
-    }
-    fn survey_entries_read(
-        &mut self,
-        call: SurveyEntriesReadCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::survey_entries_read(self, call)
-    }
-    fn survey_media_grant(
-        &mut self,
-        call: SurveyMediaGrantCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::survey_media_grant(self, call)
-    }
     fn asset_preview_bytes(
         &mut self,
         call: crate::asset_preview_source::DownloadCall<'_>,
@@ -3969,108 +2831,13 @@ impl<T: Transport> AuthorizedTransport for T {
         Transport::solar_reference(self, call)
     }
 
-    fn sync_gateway(
-        &mut self,
-        call: SyncGatewayCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::sync_gateway(self, call)
-    }
-    fn project_configuration(
-        &mut self,
-        call: ProjectConfigurationCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::project_configuration(self, call)
-    }
-    fn known_columns(
-        &mut self,
-        call: KnownColumnsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::known_columns(self, call)
-    }
-    fn solar_project(
-        &mut self,
-        call: SolarProjectCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::solar_project(self, call)
-    }
-    fn list_projects(
-        &mut self,
-        call: ProjectListCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::list_projects(self, call)
-    }
-    fn transformer_context(
-        &mut self,
-        call: TransformerContextCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::transformer_context(self, call)
-    }
-    fn project_forms(
-        &mut self,
-        call: ProjectFormsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::project_forms(self, call)
-    }
-    fn project_form_editor(
-        &mut self,
-        call: ProjectFormEditorCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::project_form_editor(self, call)
-    }
-    fn solar_snapshot(
-        &mut self,
-        call: SolarSnapshotCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::solar_snapshot(self, call)
-    }
-    fn survey_query(
-        &mut self,
-        call: SurveyQueryCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::survey_query(self, call)
-    }
-    fn survey_entries_select(
-        &mut self,
-        call: SurveyEntriesSelectCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::survey_entries_select(self, call)
-    }
-    fn survey_entries_changes(
-        &mut self,
-        call: SurveyEntriesChangesCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::survey_entries_changes(self, call)
-    }
-    fn survey_delete(
-        &mut self,
-        call: crate::SurveyDeleteCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::survey_delete(self, call)
-    }
-    fn survey_update(
-        &mut self,
-        call: crate::SurveyUpdateCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::survey_update(self, call)
-    }
     fn survey_entry_create(
         &mut self,
         call: SurveyEntryCreateCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::survey_entry_create(self, call)
     }
-    fn project_data(
-        &mut self,
-        call: ProjectDataCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::project_data(self, call)
-    }
-    fn survey_photo(
-        &mut self,
-        call: SurveyPhotoCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::survey_photo(self, call)
-    }
+
     fn download_solar_artifact(
         &mut self,
         call: crate::SolarArtifactDownloadCall<'_>,
@@ -4089,70 +2856,11 @@ impl<T: Transport> AuthorizedTransport for T {
     ) -> Result<TransportResponse, TransportError> {
         Transport::download_survey_photo(self, call)
     }
-    fn status_processing(
-        &mut self,
-        call: StatusProcessingCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::status_processing(self, call)
-    }
+
     fn upload_bytes(
         &mut self,
         call: crate::UploadBytesCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
         Transport::upload_bytes(self, call)
-    }
-    fn survey_control(
-        &mut self,
-        call: SurveyControlCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::survey_control(self, call)
-    }
-    fn styles(&mut self, call: StylesCall<'_>) -> Result<TransportResponse, TransportError> {
-        Transport::styles(self, call)
-    }
-    fn printing(&mut self, call: PrintingCall<'_>) -> Result<TransportResponse, TransportError> {
-        Transport::printing(self, call)
-    }
-    fn printing_standard(
-        &mut self,
-        call: crate::PrintingStandardCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::printing_standard(self, call)
-    }
-    fn print_style_keys(
-        &mut self,
-        call: crate::PrintStyleKeysCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::print_style_keys(self, call)
-    }
-    fn network_documents(
-        &mut self,
-        call: crate::NetworkDocumentsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::network_documents(self, call)
-    }
-    fn layers(&mut self, call: LayersCall<'_>) -> Result<TransportResponse, TransportError> {
-        Transport::layers(self, call)
-    }
-    fn design_selections(
-        &mut self,
-        call: DesignSelectionsCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::design_selections(self, call)
-    }
-    fn data_distribution(
-        &mut self,
-        call: DataDistributionCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::data_distribution(self, call)
-    }
-    fn tiles(&mut self, call: TileCall<'_>) -> Result<TransportResponse, TransportError> {
-        Transport::tiles(self, call)
-    }
-    fn project_report(
-        &mut self,
-        call: ProjectReportCall<'_>,
-    ) -> Result<TransportResponse, TransportError> {
-        Transport::project_report(self, call)
     }
 }

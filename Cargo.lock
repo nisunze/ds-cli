@@ -2017,6 +2017,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "ds-command-kernel",
+ "ds-gateway-client",
  "ds-network-client",
  "ds-network-contracts",
  "ds-solar-contracts",

@@ -8,7 +8,7 @@
 //! the UI, holding the same JWT, performs it: `ds auth project create|update`
 //! did exactly that until cafbd9e (feedback 44df2bb7, aaaef55b). The owner's
 //! rule is that what the UI can do, the CLI can do; this holds the native
-//! transport to every defaulted route of the kernel it is pinned to.
+//! transport to every defaulted route of its shared typed client.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -31,6 +31,31 @@ fn declared(line: &str) -> Option<&str> {
     Some(&rest[..end])
 }
 
+fn ordinary_routes<'a>(source: &'a str, obligation: Option<&str>) -> BTreeSet<&'a str> {
+    block(source, "macro_rules! __ds_gateway_calls {")
+        .lines()
+        .filter_map(|line| {
+            let (_, row) = line.split_once("; ")?;
+            let mut fields = row.split(',').map(str::trim);
+            let required = fields.next()?;
+            let name = fields.next()?;
+            obligation
+                .is_none_or(|expected| expected == required)
+                .then_some(name)
+        })
+        .collect()
+}
+
+fn implemented<'a>(native: &'a str, compatibility: &'a str) -> BTreeSet<&'a str> {
+    let body = block(native, "impl Transport for NativeTransport {");
+    let mut methods: BTreeSet<_> = body.lines().filter_map(declared).collect();
+    let compact: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+    if compact.contains("ds_client_core::__ds_gateway_calls!(native,gateway_transport::send);") {
+        methods.extend(ordinary_routes(compatibility, None));
+    }
+    methods
+}
+
 #[test]
 fn the_native_transport_sends_every_call_the_shared_client_defines() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -39,6 +64,9 @@ fn the_native_transport_sends_every_call_the_shared_client_defines() {
             .expect("the shared client transport is in this workspace");
     let native = std::fs::read_to_string(manifest.join("src/transport.rs"))
         .expect("the native transport source");
+    let compatibility =
+        std::fs::read_to_string(manifest.join("../../kernel/ds-client-core/src/gateway_compat.rs"))
+            .expect("the closed ordinary gateway method list");
 
     // Routes whose trait body answers Unreachable: the ones the compiler
     // cannot hold an implementation to.
@@ -54,20 +82,29 @@ fn the_native_transport_sends_every_call_the_shared_client_defines() {
             defaulted.insert(name);
         }
     }
+    defaulted.extend(ordinary_routes(&compatibility, Some("optional")));
     assert!(
         defaulted.len() > 20,
         "the trait parse found only {} defaulted routes; the parser is stale",
         defaulted.len()
     );
 
-    let implemented: BTreeSet<&str> = block(&native, "impl Transport for NativeTransport {")
-        .lines()
-        .filter_map(declared)
-        .collect();
-    let missing: Vec<&&str> = defaulted.difference(&implemented).collect();
+    let actual = implemented(&native, &compatibility);
+    let missing: Vec<&&str> = defaulted.difference(&actual).collect();
     assert!(
         missing.is_empty(),
         "the native transport never sends {missing:?}: every command on these routes would \
          refuse auth_transient before a request leaves the machine, while the UI performs it"
     );
+    // Removing the native forwarder must expose the default-Unreachable gap.
+    let without_forwarder = native.replace(
+        "ds_client_core::__ds_gateway_calls!(native, gateway_transport::send);",
+        "",
+    );
+    assert_ne!(
+        without_forwarder, native,
+        "the planted control found no forwarder"
+    );
+    let incomplete = implemented(&without_forwarder, &compatibility);
+    assert!(defaulted.difference(&incomplete).next().is_some());
 }

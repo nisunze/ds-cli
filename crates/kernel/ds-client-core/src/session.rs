@@ -460,18 +460,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         &mut self,
         now_epoch_seconds: u64,
     ) -> Result<ProjectDirectory, ClientError> {
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::list_projects(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::list_projects(profile, transport, authority)
+        })
     }
 
     /// Decide one headless device authorization under the restored USER.
@@ -489,19 +480,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         request: &crate::DeviceApprovalRequest,
         now_epoch_seconds: u64,
     ) -> Result<crate::DeviceApprovalReceipt, ClientError> {
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::device_approval::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::device_approval::run(profile, transport, authority, request)
+        })
     }
 
     /// Execute one closed Sync Center control-plane call with a freshly
@@ -511,19 +492,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         request: &crate::NativeSyncRequest,
         now_epoch_seconds: u64,
     ) -> Result<Value, ClientError> {
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::sync_gateway(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::sync_gateway(profile, transport, authority, request)
+        })
     }
 
     /// Read one transformer through the fixed context projection. Project
@@ -536,20 +507,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<crate::FeederConfiguration, ClientError> {
         crate::authorized::validate_project_report(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::feeder_configuration(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            bounds,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::authorized::feeder_configuration(profile, transport, authority, project, bounds)
+        })
     }
 
     /// Read a persisted analysis under the exact saved-head fence. No local
@@ -570,23 +530,18 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             content_digest,
             analysis_sha256,
         )?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::transformer_analysis::read(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            transformer,
-            analysis_version,
-            content_digest,
-            analysis_sha256,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::transformer_analysis::read(
+                profile,
+                transport,
+                authority,
+                project,
+                transformer,
+                analysis_version,
+                content_digest,
+                analysis_sha256,
+            )
+        })
     }
 
     pub fn transformer_context(
@@ -596,21 +551,16 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<TransformerContext, ClientError> {
         crate::authorized::validate_transformer_context(ds_project, transformer)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::transformer_context(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            transformer,
-            crate::TransformerContextProjection::Full,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::transformer_context(
+                profile,
+                transport,
+                authority,
+                ds_project,
+                transformer,
+                crate::TransformerContextProjection::Full,
+            )
+        })
     }
 
     /// Read persisted transformer layers for report integrity verification.
@@ -622,21 +572,16 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<TransformerContext, ClientError> {
         crate::authorized::validate_transformer_context(ds_project, transformer)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::transformer_context(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            transformer,
-            crate::TransformerContextProjection::Saved,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::transformer_context(
+                profile,
+                transport,
+                authority,
+                ds_project,
+                transformer,
+                crate::TransformerContextProjection::Saved,
+            )
+        })
     }
 
     /// Exact saved layers and governed transformer input in one read.
@@ -647,21 +592,16 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<TransformerContext, ClientError> {
         crate::authorized::validate_transformer_context(ds_project, transformer)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::transformer_context(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            transformer,
-            crate::TransformerContextProjection::Process,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::transformer_context(
+                profile,
+                transport,
+                authority,
+                ds_project,
+                transformer,
+                crate::TransformerContextProjection::Process,
+            )
+        })
     }
 
     /// Read the complete bounded project-form catalogue for one selected
@@ -672,19 +612,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<ProjectFormsSnapshot, ClientError> {
         crate::authorized::validate_project_forms(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::project_forms(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::project_forms(profile, transport, authority, ds_project)
+        })
     }
 
     /// Read one backend-owned settings editor for a form in the selected
@@ -697,20 +627,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<ProjectFormSettingsEditor, ClientError> {
         crate::authorized::validate_project_form_editor(ds_project, form_slug)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::project_form_editor(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            form_slug,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::project_form_editor(
+                profile, transport, authority, ds_project, form_slug,
+            )
+        })
     }
 
     /// Capture one bounded governed Solar input snapshot for a city in the
@@ -723,20 +644,15 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<SolarSnapshot, ClientError> {
         crate::authorized::validate_solar_snapshot(ds_project, template_id)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::solar_snapshot(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            template_id,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::solar_snapshot(
+                profile,
+                transport,
+                authority,
+                ds_project,
+                template_id,
+            )
+        })
     }
 
     /// Run one bounded aggregate over one governed form in the selected
@@ -749,20 +665,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<SurveyQueryResult, ClientError> {
         crate::authorized::validate_survey_query(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::survey_query(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            query,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::survey_query(profile, transport, authority, ds_project, query)
+        })
     }
 
     /// Select one bounded, live spatial receipt from a governed Survey form.
@@ -775,20 +680,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<SurveyEntriesSelection, ClientError> {
         crate::authorized::validate_survey_entries_select(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::survey_entries_select(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::survey_entries_select(
+                profile, transport, authority, ds_project, request,
+            )
+        })
     }
 
     /// Read one immutable-BigQuery-fence page of coalesced Survey mirror
@@ -801,20 +697,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<SurveyEntriesChanges, ClientError> {
         crate::authorized::validate_survey_entries_changes(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::survey_entries_changes(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::survey_entries_changes(
+                profile, transport, authority, ds_project, request,
+            )
+        })
     }
 
     /// Create one Survey entry through the governed, atomically idempotent
@@ -834,20 +721,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             ));
         }
         crate::authorized::validate_survey_entry_create(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::survey_delete::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            request,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::survey_delete::run(profile, transport, authority, project, request)
+        })
     }
 
     pub fn survey_update(
@@ -863,20 +739,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             ));
         }
         crate::authorized::validate_survey_entry_create(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::survey_update::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            request,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::survey_update::run(profile, transport, authority, project, request)
+        })
     }
 
     pub fn survey_entry_create(
@@ -886,20 +751,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<SurveyEntryCreateReceipt, ClientError> {
         crate::authorized::validate_survey_entry_create(project_id)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::survey_entry_create(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project_id,
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::survey_entry_create(
+                profile, transport, authority, project_id, request,
+            )
+        })
     }
 
     /// Read the current managed state for one selected project's survey or
@@ -912,20 +768,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     ) -> Result<crate::TileCatalog, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
 
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::tile_list(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            include_global,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::tile_list(profile, transport, authority, ds_project, include_global)
+        })
     }
 
     pub fn tile_add(
@@ -937,21 +782,16 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     ) -> Result<crate::TileMutation, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
         crate::tiles::validate_catalog_id(source_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::tile_add(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            tile_type,
-            source_project,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::tile_add(
+                profile,
+                transport,
+                authority,
+                ds_project,
+                tile_type,
+                source_project,
+            )
+        })
     }
 
     pub fn tile_remove(
@@ -963,21 +803,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     ) -> Result<crate::TileMutation, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
         crate::tiles::validate_catalog_id(tile_id)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::tile_remove(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            tile_id,
-            scope,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::tile_remove(
+                profile, transport, authority, ds_project, tile_id, scope,
+            )
+        })
     }
 
     pub fn design_selections(
@@ -988,20 +818,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     ) -> Result<crate::DesignSelectionAnswer, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
         request.validate()?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::design_selections(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::design_selections(profile, transport, authority, ds_project, request)
+        })
     }
 
     /// One data-distribution action against the selected project: the
@@ -1014,20 +833,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     ) -> Result<serde_json::Value, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
         request.validate()?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::data_distribution(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::data_distribution(profile, transport, authority, ds_project, request)
+        })
     }
 
     pub fn printing(
@@ -1038,20 +846,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     ) -> Result<serde_json::Value, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
         request.validate_for(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::printing(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::printing(profile, transport, authority, ds_project, request)
+        })
     }
     /// Read only the explicit project's governed standard and A4 documents.
     pub fn printing_standard(
@@ -1062,20 +859,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     ) -> Result<serde_json::Value, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
         request.validate()?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::printing_standard::read(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::printing_standard::read(profile, transport, authority, ds_project, request)
+        })
     }
     /// Plan, census or apply one copy of a project's network documents
     /// (`ds_project` is the destination).
@@ -1086,20 +872,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<serde_json::Value, ClientError> {
         request.validate_for(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::network_documents::call(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::network_documents::call(profile, transport, authority, ds_project, request)
+        })
     }
     /// Plan, census or apply the governed printing-template migration of one
     /// library (`ds_project` empty for the global one).
@@ -1110,20 +885,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<serde_json::Value, ClientError> {
         request.validate_for(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::printing_style_keys::call(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::printing_style_keys::call(profile, transport, authority, ds_project, request)
+        })
     }
     pub fn layer_config(
         &mut self,
@@ -1132,20 +896,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<crate::LayerSnapshot, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::layer_config(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            refresh,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::layer_config(profile, transport, authority, ds_project, refresh)
+        })
     }
     pub fn style_catalog(
         &mut self,
@@ -1153,19 +906,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<crate::StyleSnapshot, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::style_catalog(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::style_catalog(profile, transport, authority, ds_project)
+        })
     }
     pub fn layer_reorder(
         &mut self,
@@ -1175,20 +918,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     ) -> Result<crate::LayerOrderReceipt, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
         crate::layers::validate_orders(orders)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::layer_reorder(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            orders,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::layer_reorder(profile, transport, authority, ds_project, orders)
+        })
     }
     pub fn layer_default_visibility(
         &mut self,
@@ -1198,20 +930,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     ) -> Result<crate::LayerVisibilityDefaultReceipt, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
         crate::layers::validate_visibility_defaults(defaults)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::layer_default_visibility(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            defaults,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::layer_default_visibility(
+                profile, transport, authority, ds_project, defaults,
+            )
+        })
     }
     pub fn project_data(
         &mut self,
@@ -1221,20 +944,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
     ) -> Result<crate::ProjectDataReceipt, ClientError> {
         command.validate()?;
         crate::authorized::validate_tiles(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::project_data(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::authorized::project_data(profile, transport, authority, project, command)
+        })
     }
     pub fn status_processing(
         &mut self,
@@ -1243,20 +955,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<crate::StatusProcessingReceipt, ClientError> {
         crate::authorized::validate_tiles(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::status_processing(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::authorized::status_processing(profile, transport, authority, project, command)
+        })
     }
     pub fn survey_photo(
         &mut self,
@@ -1265,20 +966,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<crate::survey_photo::Receipt, ClientError> {
         crate::authorized::validate_tiles(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::survey_photo::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::survey_photo::run(profile, transport, authority, project, command)
+        })
     }
     pub fn repair_transformer(
         &mut self,
@@ -1287,20 +977,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         input.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::transformer_repair::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            input,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::transformer_repair::run(profile, transport, authority, project, input)
+        })
     }
     pub fn reseal_transformer_digest(
         &mut self,
@@ -1309,20 +988,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         input.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::transformer_reseal::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            input,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::transformer_reseal::run(profile, transport, authority, project, input)
+        })
     }
     pub fn save_transformers(
         &mut self,
@@ -1331,20 +999,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<crate::TransformerSaveReceipt, ClientError> {
         batch.validate(project, self.profile.lane())?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::transformer_save::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            batch,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::transformer_save::run(profile, transport, authority, project, batch)
+        })
     }
     pub fn save_collisions(
         &mut self,
@@ -1353,20 +1010,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<crate::CollisionsPublicationReceipt, ClientError> {
         publication.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::collisions_publish::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            publication,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::collisions_publish::run(profile, transport, authority, project, publication)
+        })
     }
     pub fn feedback(
         &mut self,
@@ -1374,19 +1020,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::feedback::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::feedback::run(profile, transport, authority, command)
+        })
     }
     pub fn shared_assets(
         &mut self,
@@ -1395,20 +1031,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::shared_assets::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::shared_assets::run(profile, transport, authority, project, command)
+        })
     }
     /// One governed catalogue action on the project's assets. `reader`
     /// carries the bytes of an ingest and nothing else. An index form
@@ -1421,21 +1046,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::project_assets::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-            reader,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::project_assets::run(profile, transport, authority, project, command, reader)
+        })
     }
     /// One governed design annotation action — a tag, a group, a grouping,
     /// an enrichment or a comment thread — for one project.
@@ -1446,20 +1059,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::design_annotations::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::design_annotations::run(profile, transport, authority, project, command)
+        })
     }
     /// The project's known-column visibility: read it, or set one field.
     pub fn known_columns(
@@ -1469,20 +1071,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::known_columns::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::known_columns::run(profile, transport, authority, project, command)
+        })
     }
     /// One preview-pinned material propagation through the report gate; the
     /// receipt comes back whole for the kernel to judge.
@@ -1493,20 +1084,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         crate::authorized::validate_project_report(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::material_propagation(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            request,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::authorized::material_propagation(profile, transport, authority, project, request)
+        })
     }
     /// Capture one exact source-authorized PDF grant without reading its bytes.
     pub fn authorize_asset_preview(
@@ -1516,20 +1096,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<crate::asset_preview_source::Grant, ClientError> {
         crate::asset_preview_source::validate_online_request(project, request)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::asset_preview_source::authorize(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            request,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::asset_preview_source::authorize(profile, transport, authority, project, request)
+        })
     }
     /// One asset's row and its verified bytes, through the signed read.
     pub fn read_asset_bytes(
@@ -1538,20 +1107,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         asset_id: &str,
         now: u64,
     ) -> Result<(serde_json::Value, Vec<u8>), ClientError> {
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::project_assets::read_bytes(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            asset_id,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::project_assets::read_bytes(profile, transport, authority, project, asset_id)
+        })
     }
     pub fn transformer_history_import(
         &mut self,
@@ -1565,20 +1123,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
                 "invalid pinned historical import request; use stable version/revision identities and reviewed fences",
             )
         })?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::transformer_history_import::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::transformer_history_import::run(profile, transport, authority, project, command)
+        })
     }
     pub fn design_version_catalog(
         &mut self,
@@ -1592,20 +1139,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
                 "invalid catalog request; use stable version/revision identities and reviewed fences",
             )
         })?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::design_version_catalog::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::design_version_catalog::run(profile, transport, authority, project, command)
+        })
     }
     pub fn design_versions(
         &mut self,
@@ -1619,20 +1155,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
                 "invalid published version request; use distinct vN IDs or --to head",
             )
         })?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::design_versions::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::design_versions::run(profile, transport, authority, project, command)
+        })
     }
     pub fn design_attachments(
         &mut self,
@@ -1641,20 +1166,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::design_attachments::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::design_attachments::run(profile, transport, authority, project, command)
+        })
     }
     /// One attachment revision's receipt and its verified bytes, through the
     /// signed read the `download` action authorizes.
@@ -1670,21 +1184,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             revision: revision.map(str::to_owned),
         }
         .validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::design_attachments::fetch(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            attachment,
-            revision,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::design_attachments::fetch(
+                profile, transport, authority, project, attachment, revision,
+            )
+        })
     }
     pub fn design_tags(
         &mut self,
@@ -1693,20 +1197,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::design_tags::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::design_tags::run(profile, transport, authority, project, command)
+        })
     }
     pub fn design_migration(
         &mut self,
@@ -1715,20 +1208,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::design_migration::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::design_migration::run(profile, transport, authority, project, command)
+        })
     }
     /// Survey data INTO `project` from the command's source, both explicit;
     /// the saved selection is neither read nor changed.
@@ -1739,20 +1221,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::survey_migration::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::survey_migration::run(profile, transport, authority, project, command)
+        })
     }
     pub fn report_artifact(
         &mut self,
@@ -1761,20 +1232,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::report_artifact::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::report_artifact::run(profile, transport, authority, project, command)
+        })
     }
     pub fn remove_report_artifact(
         &mut self,
@@ -1783,20 +1243,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::report_artifact::remove(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::report_artifact::remove(profile, transport, authority, project, command)
+        })
     }
     /// One governed action on the GLOBAL reference publications.
     ///
@@ -1808,19 +1257,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::global_tiles::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::global_tiles::run(profile, transport, authority, command)
+        })
     }
 
     /// One exact read of a national administrative hierarchy.
@@ -1834,19 +1273,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<crate::admin_bounds::Answer, ClientError> {
         command.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::admin_bounds::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::admin_bounds::run(profile, transport, authority, command)
+        })
     }
 
     /// One bounded read of a survey form's entries: every field value and
@@ -1857,20 +1286,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         request: &crate::SurveyEntriesReadRequest,
         now: u64,
     ) -> Result<crate::SurveyEntriesRead, ClientError> {
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::survey_entries_read::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            request,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::survey_entries_read::run(profile, transport, authority, project, request)
+        })
     }
 
     /// One media grant per project whose survey photos this user fetches:
@@ -1881,20 +1299,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         others: &[&str],
         now: u64,
     ) -> Result<crate::MediaGrants, ClientError> {
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::survey_media_fetch::grant(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            others,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::survey_media_fetch::grant(profile, transport, authority, project, others)
+        })
     }
 
     /// The grant a delivered report's photo links are written under: the
@@ -1904,21 +1311,16 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         project: &str,
         now: u64,
     ) -> Result<crate::MediaGrants, ClientError> {
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::survey_media_fetch::grant_for(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            &[],
-            crate::survey_media_fetch::GrantUse::ReportLinks,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::survey_media_fetch::grant_for(
+                profile,
+                transport,
+                authority,
+                project,
+                &[],
+                crate::survey_media_fetch::GrantUse::ReportLinks,
+            )
+        })
     }
 
     /// One `query_entries` body the core's survey hold built, sent under
@@ -1929,20 +1331,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         body: &serde_json::Value,
         now: u64,
     ) -> Result<Vec<u8>, ClientError> {
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::survey_entries_read::query(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            body,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::survey_entries_read::query(profile, transport, authority, project, body)
+        })
     }
 
     /// One bounded read of platform reliability.
@@ -1956,19 +1347,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::sre::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::sre::run(profile, transport, authority, command)
+        })
     }
 
     /// One governed action on the GLOBAL installation inventory.
@@ -1982,19 +1363,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::installs::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::installs::run(profile, transport, authority, command)
+        })
     }
 
     /// Create one project, or edit one project's properties.
@@ -2009,19 +1380,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<crate::project_properties::Receipt, ClientError> {
         command.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::project_properties::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::project_properties::run(profile, transport, authority, command)
+        })
     }
 
     /// One governed whole-project delete action. The project id is an address;
@@ -2033,19 +1394,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::project_deletion::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::project_deletion::run(profile, transport, authority, command)
+        })
     }
 
     /// One selected account-private note action; no project or note catalogue read.
@@ -2055,19 +1406,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         action.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::personal_notes::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            action,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::personal_notes::run(profile, transport, authority, action)
+        })
     }
 
     /// One account-scoped messaging or notification action. Brain authorizes
@@ -2078,19 +1419,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::messaging::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::messaging::run(profile, transport, authority, command)
+        })
     }
 
     /// One governed correspondence action, for one project — the same door
@@ -2102,20 +1433,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         action: &crate::project_correspondence::Action,
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::project_correspondence::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            action,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::project_correspondence::run(profile, transport, authority, project, action)
+        })
     }
 
     /// One governed project-management read, for one project.
@@ -2130,20 +1450,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         command: &crate::project_management::Command,
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::project_management::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::project_management::run(profile, transport, authority, project, command)
+        })
     }
 
     pub fn member_form_grant(
@@ -2152,20 +1461,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         command: &crate::member_form_grants::Request,
         now: u64,
     ) -> Result<crate::member_form_grants::GrantResult, ClientError> {
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::member_form_grants::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::member_form_grants::run(profile, transport, authority, project, command)
+        })
     }
 
     /// One governed action on the GLOBAL library and example catalog.
@@ -2179,19 +1477,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::grid_catalog::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::grid_catalog::run(profile, transport, authority, command)
+        })
     }
     pub fn grid_models(
         &mut self,
@@ -2200,20 +1488,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<crate::grid_models::Receipt, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::grid_models::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::grid_models::run(profile, transport, authority, project, command)
+        })
     }
     pub fn solar_project(
         &mut self,
@@ -2222,20 +1499,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate(project)?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::solar_project::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::solar_project::run(profile, transport, authority, project, command)
+        })
     }
     pub fn survey_control(
         &mut self,
@@ -2244,20 +1510,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
         command.validate()?;
-        self.ensure_fresh_session(now)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::survey_control_run::run(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            project,
-            command,
-        )
+        self.with_authority(now, |profile, transport, authority| {
+            crate::survey_control_run::run(profile, transport, authority, project, command)
+        })
     }
     pub fn style_edit(
         &mut self,
@@ -2268,22 +1523,17 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<crate::StyleEditReceipt, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::style_edit(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            reference,
-            instruction,
-            apply,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::style_edit(
+                profile,
+                transport,
+                authority,
+                ds_project,
+                reference,
+                instruction,
+                apply,
+            )
+        })
     }
     pub fn style_history(
         &mut self,
@@ -2292,20 +1542,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<serde_json::Value, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::styles::history(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            command,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::styles::history(profile, transport, authority, ds_project, command)
+        })
     }
     pub fn style_governance(
         &mut self,
@@ -2314,20 +1553,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<serde_json::Value, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::styles::governance(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            command,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::styles::governance(profile, transport, authority, ds_project, command)
+        })
     }
     pub fn tile_status(
         &mut self,
@@ -2336,20 +1564,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<TileOperationResult, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::tile_status(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            tile_type,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::tile_status(profile, transport, authority, ds_project, tile_type)
+        })
     }
 
     /// Inspect the bounded source shape that the managed tile job would use.
@@ -2360,20 +1577,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<TilePreflight, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::tile_preflight(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            tile_type,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::tile_preflight(profile, transport, authority, ds_project, tile_type)
+        })
     }
 
     /// Request one managed tile run. The server retains admission, source,
@@ -2386,21 +1592,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<TileOperationResult, ClientError> {
         crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::tile_generate(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            tile_type,
-            force,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::tile_generate(
+                profile, transport, authority, ds_project, tile_type, force,
+            )
+        })
     }
 
     /// List the selected project's published compounded archives.
@@ -2410,19 +1606,9 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<CompoundedArchiveCatalog, ClientError> {
         crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::compounded_report_list(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::compounded_report_list(profile, transport, authority, ds_project)
+        })
     }
 
     /// Read the lifecycle inventory of the selected project's transformers,
@@ -2434,20 +1620,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<TransformerInventory, ClientError> {
         crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::transformer_inventory(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            requested,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::transformer_inventory(
+                profile, transport, authority, ds_project, requested,
+            )
+        })
     }
 
     /// Read the status rows of the selected project's transformers, or of the
@@ -2460,20 +1637,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<TransformerStatusList, ClientError> {
         crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::transformer_status(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            requested,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::transformer_status(
+                profile, transport, authority, ds_project, requested,
+            )
+        })
     }
 
     /// Retire or restore exact transformers reversibly. ds-brain owns the
@@ -2486,21 +1654,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<RetirementReceipt, ClientError> {
         crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::authorized::transformer_retirement(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            action,
-            request,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::authorized::transformer_retirement(
+                profile, transport, authority, ds_project, action, request,
+            )
+        })
     }
 
     /// Read one deleted transformer's verified delete backup, fetching its
@@ -2513,21 +1671,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<crate::DeletedBackupRead, ClientError> {
         crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::project_report::deleted_backup_read(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            request,
-            fetch,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::project_report::deleted_backup_read(
+                profile, transport, authority, ds_project, request, fetch,
+            )
+        })
     }
 
     /// Sign the listed artifacts through the authorized signer and hand each
@@ -2540,21 +1688,11 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<Vec<(crate::ArtifactIdentity, crate::ArtifactOutcome)>, ClientError> {
         crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_fresh_session(now_epoch_seconds)?;
-        let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::project_report::download_artifacts(
-            &self.profile,
-            &mut self.transport,
-            crate::authorized::Authority {
-                bearer_token: &session.id_token,
-                uid: &session.stored.uid,
-                email: &session.stored.email,
-                device_id: None,
-            },
-            ds_project,
-            request,
-            sink,
-        )
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::project_report::download_artifacts(
+                profile, transport, authority, ds_project, request, sink,
+            )
+        })
     }
 
     /// Create a deleted transformer again from one pinned, verified backup.
@@ -2565,9 +1703,27 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         now_epoch_seconds: u64,
     ) -> Result<crate::DeletedTransformerRestoration, ClientError> {
         crate::authorized::validate_project_report(ds_project)?;
+        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
+            crate::project_report::deleted_backup_restore(
+                profile, transport, authority, ds_project, request,
+            )
+        })
+    }
+
+    // Keep freshness and capture in one place. Every public method validates its
+    // domain input before entering here; the existing domain owner runs once.
+    fn with_authority<R>(
+        &mut self,
+        now_epoch_seconds: u64,
+        operation: impl FnOnce(
+            &ClientProfile,
+            &mut T,
+            crate::authorized::Authority<'_>,
+        ) -> Result<R, ClientError>,
+    ) -> Result<R, ClientError> {
         self.ensure_fresh_session(now_epoch_seconds)?;
         let session = self.session.as_ref().ok_or_else(signed_out)?;
-        crate::project_report::deleted_backup_restore(
+        operation(
             &self.profile,
             &mut self.transport,
             crate::authorized::Authority {
@@ -2576,8 +1732,6 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
                 email: &session.stored.email,
                 device_id: None,
             },
-            ds_project,
-            request,
         )
     }
 
@@ -2952,3 +2106,7 @@ fn signed_out() -> ClientError {
         "no refresh credential is loaded for this client profile",
     )
 }
+
+#[cfg(test)]
+#[path = "session_authority_tests.rs"]
+mod authority_tests;

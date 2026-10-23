@@ -20,19 +20,24 @@ pub const AUTH_DEVICE_READ_METHOD: &str = "GET";
 pub const AUTH_DEVICE_READ_PATH_TEMPLATE: &str = "/api/v1/auth/devices/{device_id}";
 pub const AUTH_DEVICE_REVOKE_METHOD: &str = "DELETE";
 pub const AUTH_DEVICE_REVOKE_PATH_TEMPLATE: &str = "/api/v1/auth/devices/{device_id}";
-pub const PROJECT_LIST_METHOD: &str = "GET";
-pub const PROJECT_LIST_PATH: &str = "/api/v1/user/projects";
-pub const TRANSFORMER_CONTEXT_METHOD: &str = "POST";
-pub const TRANSFORMER_CONTEXT_PATH: &str = "/report";
+pub const PROJECT_LIST_METHOD: &str = ds_gateway_client::Operation::ListUserProjects
+    .method()
+    .as_str();
+pub const PROJECT_LIST_PATH: &str = ds_gateway_client::Operation::ListUserProjects.path_template();
+pub const TRANSFORMER_CONTEXT_METHOD: &str = ds_gateway_client::Operation::DsSystemReport
+    .method()
+    .as_str();
+pub const TRANSFORMER_CONTEXT_PATH: &str =
+    ds_gateway_client::Operation::DsSystemReport.path_template();
 pub const TRANSFORMER_CONTEXT_ACTION: &str = "get_transformers_data";
 pub const TRANSFORMER_CONTEXT_FIELDS: &str = "full";
 pub const TRANSFORMER_CONTEXT_SAVED_FIELDS: &str = "saved";
-pub const PROJECT_FORMS_METHOD: &str = "POST";
-pub const PROJECT_FORMS_PATH: &str = "/api/v1/project-forms";
+pub const PROJECT_FORMS_METHOD: &str = ds_gateway_client::Operation::ProjectForms.method().as_str();
+pub const PROJECT_FORMS_PATH: &str = ds_gateway_client::Operation::ProjectForms.path_template();
 pub const PROJECT_FORMS_ACTION: &str = "activate";
 pub const PROJECT_FORM_EDITOR_ACTION: &str = "settings_editor";
-pub const SOLAR_SNAPSHOT_METHOD: &str = "POST";
-pub const SOLAR_SNAPSHOT_PATH: &str = "/api/v1/solar";
+pub const SOLAR_SNAPSHOT_METHOD: &str = ds_gateway_client::Operation::SolarAction.method().as_str();
+pub const SOLAR_SNAPSHOT_PATH: &str = ds_gateway_client::Operation::SolarAction.path_template();
 pub const SOLAR_SNAPSHOT_ACTION: &str = "desktop_snapshot";
 pub const SURVEY_QUERY_METHOD: &str = "POST";
 pub const SURVEY_QUERY_PATH: &str = "/api/v1/survey/query";
@@ -44,8 +49,10 @@ pub const SURVEY_ENTRY_CREATE_METHOD: &str = "POST";
 pub const SURVEY_ENTRY_CREATE_PATH: &str =
     "/v1/projects/{firebase_project}/databases/(default)/documents:commit";
 pub const SURVEY_ENTRY_CREATE_OPERATION: &str = "create";
-pub const PROJECT_DATA_METHOD: &str = "POST";
-pub const PROJECT_DATA_PATH: &str = "/api/v1/project_data";
+pub const PROJECT_DATA_METHOD: &str = ds_gateway_client::Operation::ProjectDataAction
+    .method()
+    .as_str();
+pub const PROJECT_DATA_PATH: &str = ds_gateway_client::Operation::ProjectDataAction.path_template();
 pub const PROJECT_DATA_ACTIONS: [&str; 4] = ["list", "upload_start", "upload", "delete"];
 pub const SURVEY_CONTROL_ROUTES: [&str; 7] = [
     "POST /api/v1/form-factory: list,get,get_field_types,create,update,duplicate,publish,unpublish,archive,restore,delete",
@@ -56,11 +63,11 @@ pub const SURVEY_CONTROL_ROUTES: [&str; 7] = [
     "POST /api/v1/projects/from-template",
     "POST /media: survey_upload_inspect,survey_upload_start,survey_upload_complete",
 ];
-pub const STYLES_METHOD: &str = "POST";
-pub const STYLES_PATH: &str = "/api/v1/styles";
+pub const STYLES_METHOD: &str = ds_gateway_client::Operation::StylesAction.method().as_str();
+pub const STYLES_PATH: &str = ds_gateway_client::Operation::StylesAction.path_template();
 pub const STYLES_ACTION: &str = "update_style";
-pub const LAYERS_METHOD: &str = "POST";
-pub const LAYERS_PATH: &str = "/api/v1/layers";
+pub const LAYERS_METHOD: &str = ds_gateway_client::Operation::LayersAction.method().as_str();
+pub const LAYERS_PATH: &str = ds_gateway_client::Operation::LayersAction.path_template();
 pub const LAYERS_ACTIONS: [&str; 5] = [
     "get_config",
     "get_style_catalog",
@@ -70,8 +77,10 @@ pub const LAYERS_ACTIONS: [&str; 5] = [
 ];
 /// The national administrative hierarchy. The country is a path segment, not
 /// a parameter: a second boundary authority is a second reviewed route.
-pub const ADMIN_BOUNDS_METHOD: &str = "GET";
-pub const ADMIN_BOUNDS_PATH: &str = "/api/v1/admin/rwanda";
+pub const ADMIN_BOUNDS_METHOD: &str = ds_gateway_client::Operation::GetRwandaAdmin
+    .method()
+    .as_str();
+pub const ADMIN_BOUNDS_PATH: &str = ds_gateway_client::Operation::GetRwandaAdmin.path_template();
 /// The closed action vocabulary this client may send. The backend also answers
 /// `hierarchy`, `descendants`, `query`, `locate` and the POST `enrich`; none of
 /// them is declared, because each is either an unbounded pull or a second way
@@ -79,17 +88,17 @@ pub const ADMIN_BOUNDS_PATH: &str = "/api/v1/admin/rwanda";
 pub const ADMIN_BOUNDS_ACTIONS: [&str; 2] = ["children", "geometry"];
 /// Platform reliability. Both reads are global — no project selects them and
 /// none is sent — and ds-brain gates both behind `platform.admin`.
-pub const SRE_OVERVIEW_METHOD: &str = "GET";
-pub const SRE_OVERVIEW_PATH: &str = "/api/v1/sre/overview";
+pub const SRE_OVERVIEW_METHOD: &str = ds_gateway_client::Operation::SreOverview.method().as_str();
+pub const SRE_OVERVIEW_PATH: &str = ds_gateway_client::Operation::SreOverview.path_template();
 /// The event window travels the reusable tabular stream, not an endpoint of its
 /// own: `/api/v1/data` answers many actions and exactly one is declared here.
 /// The table it may name is pinned in `crate::sre`, not carried on the profile,
 /// because a table is a body value and this is a route.
-pub const SRE_EVENTS_METHOD: &str = "POST";
-pub const SRE_EVENTS_PATH: &str = "/api/v1/data";
+pub const SRE_EVENTS_METHOD: &str = ds_gateway_client::Operation::DataInterop.method().as_str();
+pub const SRE_EVENTS_PATH: &str = ds_gateway_client::Operation::DataInterop.path_template();
 pub const SRE_EVENTS_ACTIONS: [&str; 1] = ["query_table"];
-pub const TILES_METHOD: &str = "POST";
-pub const TILES_PATH: &str = "/api/v1/tiles";
+pub const TILES_METHOD: &str = ds_gateway_client::Operation::TilesAction.method().as_str();
+pub const TILES_PATH: &str = ds_gateway_client::Operation::TilesAction.path_template();
 /// The closed `/api/v1/tiles` action vocabulary. The first six curate one
 /// project's tiles; the last four govern the product-wide reference
 /// publications, which have no project and are gated by `global_tiles.manage`
@@ -106,8 +115,10 @@ pub const TILES_ACTIONS: [&str; 10] = [
     "global_generate",
     "global_status",
 ];
-pub const PROJECT_REPORT_METHOD: &str = "POST";
-pub const PROJECT_REPORT_PATH: &str = "/report";
+pub const PROJECT_REPORT_METHOD: &str = ds_gateway_client::Operation::DsSystemReport
+    .method()
+    .as_str();
+pub const PROJECT_REPORT_PATH: &str = ds_gateway_client::Operation::DsSystemReport.path_template();
 /// The closed `/report` action vocabulary the core may send: the compounded
 /// deliverable, its archive registry, the transformer inventory, reversible
 /// retirement, and the transformer status rows every headless Design read is
@@ -120,8 +131,11 @@ pub const PROJECT_REPORT_ACTIONS: [&str; 6] = [
     "restore_transformer",
     "list_transformers_status",
 ];
-pub const DESIGN_ATTACHMENTS_METHOD: &str = "POST";
-pub const DESIGN_ATTACHMENTS_PATH: &str = "/api/v1/design/attachments";
+pub const DESIGN_ATTACHMENTS_METHOD: &str = ds_gateway_client::Operation::DesignAttachmentsAction
+    .method()
+    .as_str();
+pub const DESIGN_ATTACHMENTS_PATH: &str =
+    ds_gateway_client::Operation::DesignAttachmentsAction.path_template();
 /// The closed `/api/v1/design/attachments` action vocabulary. The last three
 /// — moving the latest pointer, the project-wide listing and the reverse
 /// "which object versions carry this file" map — are what the operator's
@@ -139,8 +153,11 @@ pub const DESIGN_ATTACHMENTS_ACTIONS: [&str; 10] = [
     "list_project",
     "list_object_versions",
 ];
-pub const DESIGN_VERSIONS_METHOD: &str = "POST";
-pub const DESIGN_VERSIONS_PATH: &str = "/api/v1/design/versions";
+pub const DESIGN_VERSIONS_METHOD: &str = ds_gateway_client::Operation::DesignVersionsAction
+    .method()
+    .as_str();
+pub const DESIGN_VERSIONS_PATH: &str =
+    ds_gateway_client::Operation::DesignVersionsAction.path_template();
 /// The closed `/api/v1/design/versions` action vocabulary. The per-object
 /// summary read and batched create joined in v30; v31 adds catalog metadata
 /// and retires unsafe restore. Snapshot reads/captures/promotions stay on fixed
@@ -157,8 +174,11 @@ pub const DESIGN_VERSIONS_ACTIONS: [&str; 10] = [
     "renumber_version",
     "bind_version_revision",
 ];
-pub const DESIGN_SELECTIONS_METHOD: &str = "POST";
-pub const DESIGN_SELECTIONS_PATH: &str = "/api/v1/design/selections";
+pub const DESIGN_SELECTIONS_METHOD: &str = ds_gateway_client::Operation::DesignSelectionsAction
+    .method()
+    .as_str();
+pub const DESIGN_SELECTIONS_PATH: &str =
+    ds_gateway_client::Operation::DesignSelectionsAction.path_template();
 /// The closed `/api/v1/design/selections` action vocabulary the core may send.
 ///
 /// Saved Transformer Status selections are the one Design decision that is
@@ -168,8 +188,11 @@ pub const DESIGN_SELECTIONS_PATH: &str = "/api/v1/design/selections";
 /// digest that `promote_task` must echo back. Order is part of the profile
 /// identity.
 pub const DESIGN_SELECTIONS_ACTIONS: [&str; 5] = ["list", "get", "save", "archive", "promote_task"];
-pub const DATA_DISTRIBUTION_METHOD: &str = "POST";
-pub const DATA_DISTRIBUTION_PATH: &str = "/api/v1/data-distribution";
+pub const DATA_DISTRIBUTION_METHOD: &str = ds_gateway_client::Operation::DataDistributionAction
+    .method()
+    .as_str();
+pub const DATA_DISTRIBUTION_PATH: &str =
+    ds_gateway_client::Operation::DataDistributionAction.path_template();
 /// The closed `/api/v1/data-distribution` action vocabulary the core may send:
 /// the catalogue a headless seeder plans from, and the derived buildings or
 /// contours acquisition ds-brain relays to the vector tiler. The billed

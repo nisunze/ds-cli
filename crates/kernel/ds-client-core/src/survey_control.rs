@@ -229,22 +229,40 @@ pub(crate) enum SurveyRoute {
     FromTemplate,
 }
 impl SurveyRoute {
+    pub(crate) fn generated_operation(&self) -> Option<ds_gateway_client::Operation> {
+        match self {
+            Self::Factory => Some(ds_gateway_client::Operation::FormFactoryV2),
+            Self::ProjectForms => Some(ds_gateway_client::Operation::ProjectForms),
+            Self::Templates => Some(ds_gateway_client::Operation::TemplatesAction),
+            Self::Projects => Some(ds_gateway_client::Operation::ProjectsAction),
+            Self::FromTemplate => Some(ds_gateway_client::Operation::ProjectFromTemplate),
+            Self::Template(_) => None,
+        }
+    }
+
     pub(crate) fn path(&self) -> String {
         match self {
-            Self::Factory => "/api/v1/form-factory".into(),
-            Self::ProjectForms => "/api/v1/project-forms".into(),
-            Self::Templates => "/api/v1/projects/templates".into(),
+            Self::Factory => ds_gateway_client::Operation::FormFactoryV2
+                .path_template()
+                .into(),
+            Self::ProjectForms => ds_gateway_client::Operation::ProjectForms
+                .path_template()
+                .into(),
+            Self::Templates => ds_gateway_client::Operation::TemplatesAction
+                .path_template()
+                .into(),
+            Self::Projects => ds_gateway_client::Operation::ProjectsAction
+                .path_template()
+                .into(),
+            Self::FromTemplate => ds_gateway_client::Operation::ProjectFromTemplate
+                .path_template()
+                .into(),
             Self::Template(slug) => format!("/api/v1/projects/templates/{slug}"),
-            Self::Projects => "/api/v1/projects".into(),
-            Self::FromTemplate => "/api/v1/projects/from-template".into(),
         }
     }
     pub(crate) fn method(&self) -> &'static str {
-        if matches!(self, Self::Template(_)) {
-            "GET"
-        } else {
-            "POST"
-        }
+        self.generated_operation()
+            .map_or("GET", |operation| operation.method().as_str())
     }
 }
 pub(crate) fn response(response: crate::TransportResponse) -> Result<Value, ClientError> {

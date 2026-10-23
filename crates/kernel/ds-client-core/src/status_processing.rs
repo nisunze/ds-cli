@@ -8,8 +8,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::Read;
 
-pub const STATUS_PROCESSING_PATH: &str = "/process";
-pub const STATUS_PROCESSING_METHOD: &str = "POST";
+pub const STATUS_PROCESSING_PATH: &str =
+    ds_gateway_client::Operation::DsSystemProcess.path_template();
+pub const STATUS_PROCESSING_METHOD: &str = ds_gateway_client::Operation::DsSystemProcess
+    .method()
+    .as_str();
 pub const STATUS_PROCESSING_RESPONSE_LIMIT: usize = 8 * 1024 * 1024;
 pub const STATUS_PROCESSING_TIMEOUT_SECONDS: u64 = 900;
 

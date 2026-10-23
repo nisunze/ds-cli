@@ -18,14 +18,14 @@
 //! The route is hard-coded, not a profile route, so the credential audience
 //! is unchanged.
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::{
-    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, Transport, TransportResponse,
-    authorized::Authority,
+    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind, Transport,
+    TransportResponse,
 };
 
-pub const GRANT_PATH: &str = "/report";
+pub const GRANT_PATH: &str = ds_gateway_client::Operation::DsSystemReport.path_template();
 pub const GRANT_ACTION: &str = "media_scope";
 /// Long enough for a whole form's photos, short enough to be worth nothing
 /// by tomorrow.
@@ -440,36 +440,10 @@ fn sniff(bytes: &[u8]) -> Option<&'static str> {
     match bytes {
         [0xFF, 0xD8, 0xFF, ..] => Some("image/jpeg"),
         [0x89, b'P', b'N', b'G', ..] => Some("image/png"),
-        [
-            b'R',
-            b'I',
-            b'F',
-            b'F',
-            _,
-            _,
-            _,
-            _,
-            b'W',
-            b'E',
-            b'B',
-            b'P',
-            ..,
-        ] => Some("image/webp"),
-        [
-            _,
-            _,
-            _,
-            _,
-            b'f',
-            b't',
-            b'y',
-            b'p',
-            b'h',
-            b'e',
-            b'i',
-            b'c' | b'x',
-            ..,
-        ] => Some("image/heic"),
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some("image/webp"),
+        [_, _, _, _, b'f', b't', b'y', b'p', b'h', b'e', b'i', b'c' | b'x', ..] => {
+            Some("image/heic")
+        }
         _ => None,
     }
 }
@@ -585,16 +559,12 @@ mod tests {
             grants.link_for(legacy).unwrap(),
             "https://brain.example/api/v1/media/link/legacy-p1?o=p1%2Fforms%2Ffield_notes%2Fe1%2FDSC_0570.JPG"
         );
-        assert!(
-            grants
-                .link_for("p9/forms/field_notes/e1/secret.jpg")
-                .is_none()
-        );
-        assert!(
-            grants
-                .link_for("p1/assets/confidential/contract.pdf")
-                .is_none()
-        );
+        assert!(grants
+            .link_for("p9/forms/field_notes/e1/secret.jpg")
+            .is_none());
+        assert!(grants
+            .link_for("p1/assets/confidential/contract.pdf")
+            .is_none());
         assert_eq!(prepare(&grants, legacy).unwrap().0, legacy);
         let document: Value =
             serde_json::from_slice(&grants.report_grant_document().unwrap()).unwrap();

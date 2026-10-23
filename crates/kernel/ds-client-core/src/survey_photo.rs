@@ -10,15 +10,15 @@
 //! with the original's generation and turns as its source. A publish whose
 //! entry already committed resumes with the thumbnail alone.
 use crate::{
-    AuthorizedTransport, ClientError, ClientProfile, ErrorKind, TransportResponse, UploadBytesCall,
-    authorized::Authority,
+    authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
+    TransportResponse, UploadBytesCall,
 };
 use ds_command_kernel::{
     survey_media_address, survey_media_rotation, survey_photo_media as pixels,
     survey_photo_transport as wire,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 pub const SCHEMA: &str = "ds.survey-photo-rotation/v2";
@@ -27,7 +27,7 @@ pub const SCHEMA: &str = "ds.survey-photo-rotation/v2";
 /// and answers `/media` with its own 404 ("not defined by this API"),
 /// which the client read as a refusal — so headless rotation never reached
 /// ds-brain until 2026-09-20.
-pub const PATH: &str = "/api/v1/media";
+pub const PATH: &str = ds_gateway_client::Operation::MediaAction.path_template();
 pub const RESPONSE_LIMIT: usize = 32 * 1024;
 /// The largest form read to find the entry a photo belongs to.
 const ENTRY_READ_LIMIT: usize = crate::survey_entries_read::SURVEY_ENTRIES_READ_MAX_LIMIT;

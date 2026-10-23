@@ -29,7 +29,8 @@ use crate::{authorized::Authority, AuthorizedTransport, ClientError, ClientProfi
 
 /// The route and action, fixed here and not in the client profile: a route
 /// hard-coded in the transport never enters the credential audience.
-pub const SURVEY_ENTRIES_READ_PATH: &str = "/api/v1/data";
+pub const SURVEY_ENTRIES_READ_PATH: &str =
+    ds_gateway_client::Operation::DataInterop.path_template();
 pub const SURVEY_ENTRIES_READ_ACTION: &str = "query_entries";
 pub const SURVEY_ENTRIES_READ_DEFAULT_LIMIT: usize = 500;
 pub const SURVEY_ENTRIES_READ_MAX_LIMIT: usize = 5_000;

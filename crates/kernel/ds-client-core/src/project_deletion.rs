@@ -19,7 +19,7 @@ use crate::{
 };
 
 /// The route every action is sent to.
-pub const PATH: &str = "/api/v1/projects";
+pub const PATH: &str = ds_gateway_client::Operation::ProjectsAction.path_template();
 /// One export page carries at most ~4 MiB of native documents; a plan carries
 /// bounded groups and at most a thousand retained paths.
 pub const MAX_RESPONSE_BYTES: usize = 24 * 1024 * 1024;

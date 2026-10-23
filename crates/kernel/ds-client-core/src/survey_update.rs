@@ -194,18 +194,25 @@ pub struct SurveyUpdateCall<'a> {
     pub(crate) authority: CallAuthority<'a>,
 }
 impl SurveyUpdateCall<'_> {
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::MutateEntryPut;
+
     fn route(&self) -> &'static crate::GatewayOperation {
         crate::gateway_operation("domains.survey_entries.update")
             .expect("generated Survey update route")
     }
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        gateway_api_key: normal,
+        client_id: normal,
+        bearer_token: normal,
+        canonical_email: normal,
     }
     pub fn path(&self) -> &'static str {
-        self.route().path
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub fn method(&self) -> &'static str {
-        self.route().method
+        Self::GATEWAY_OPERATION.method().as_str()
     }
     pub fn response_limit(&self) -> usize {
         self.route().response_cap_bytes as usize
@@ -213,18 +220,7 @@ impl SurveyUpdateCall<'_> {
     pub fn timeout_seconds(&self) -> u64 {
         u64::from(self.route().timeout_s)
     }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
+
     pub fn body(&self) -> SecretRequestBody {
         SecretRequestBody::new(
             serde_json::to_vec(self.payload).expect("validated Survey update payload"),

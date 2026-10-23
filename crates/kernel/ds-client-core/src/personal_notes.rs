@@ -677,42 +677,33 @@ pub struct PersonalNotesCall<'a> {
     pub(crate) action: &'a Action,
 }
 impl PersonalNotesCall<'_> {
-    pub fn gateway_origin(&self) -> &str {
-        self.profile.gateway_origin()
+    pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
+        ds_gateway_client::Operation::PersonalNotesAction;
+
+    crate::gateway_compat::gateway_common_accessors! {
+        gateway_origin: normal,
+        content_type: const,
+        gateway_api_key: normal,
+        client_id: normal,
+        bearer_token: normal,
+        canonical_email: normal,
+        canonical_uid: normal,
+        device_id: normal,
     }
     pub const fn path(&self) -> &'static str {
-        "/api/v1/notes"
+        Self::GATEWAY_OPERATION.path_template()
     }
     pub const fn method(&self) -> &'static str {
-        "POST"
+        Self::GATEWAY_OPERATION.method().as_str()
     }
-    pub const fn content_type(&self) -> &'static str {
-        "application/json"
-    }
+
     pub const fn response_limit(&self) -> usize {
         MAX_RESPONSE_BYTES
     }
     pub const fn timeout_seconds(&self) -> u64 {
         30
     }
-    pub fn gateway_api_key(&self) -> &str {
-        self.profile.gateway_api_key()
-    }
-    pub fn client_id(&self) -> &'static str {
-        self.profile.client_id()
-    }
-    pub fn bearer_token(&self) -> &str {
-        self.authority.bearer_token
-    }
-    pub fn canonical_email(&self) -> &str {
-        self.authority.canonical_email
-    }
-    pub fn canonical_uid(&self) -> &str {
-        self.authority.canonical_uid
-    }
-    pub fn device_id(&self) -> Option<&str> {
-        self.authority.device_id
-    }
+
     pub fn body(&self) -> crate::SecretRequestBody {
         crate::SecretRequestBody::new(
             serde_json::to_vec(&self.action.payload()).expect("closed note request"),
