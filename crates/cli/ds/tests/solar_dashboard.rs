@@ -88,3 +88,52 @@ fn portfolio_dashboard_requires_membership_and_refuses_mixed_selectors_before_io
     let refused = ds(&mixed);
     assert_eq!(refused["error"]["code"], "solar_dashboard_context_invalid");
 }
+
+/// `results read` names sealed report-input sections (`summary`, `costs`, …),
+/// a vocabulary the dashboard's Site/Plant/Finance/BOQ cards do not share.
+/// Every declared choice must reach source verification instead of failing as
+/// an unknown dashboard section; a value outside the choices still refuses
+/// before any IO.
+#[test]
+fn every_result_section_reaches_source_verification() {
+    let read = |section: &str| {
+        ds(&[
+            "solar",
+            "results",
+            "read",
+            "--source",
+            "absent-source",
+            "--project",
+            "p",
+            "--run-id",
+            "r",
+            "--city",
+            "c",
+            "--section",
+            section,
+            "--output",
+            "json",
+        ])
+    };
+    let descriptor = ds(&["capabilities", "solar.results.read", "--output", "json"]);
+    let section = descriptor["data"]["command"]["inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|input| input["name"] == "section")
+        .unwrap()
+        .clone();
+    let choices = section["choices"]
+        .as_array()
+        .expect("declared section choices");
+    assert!(choices.len() >= 9);
+    for choice in choices {
+        let refused = read(choice.as_str().unwrap());
+        assert_eq!(refused["status"], "error");
+        assert_eq!(
+            refused["error"]["code"], "engine_refused",
+            "{choice}: {refused}"
+        );
+    }
+    assert_eq!(read("boq")["error"]["code"], "invalid_choice");
+}

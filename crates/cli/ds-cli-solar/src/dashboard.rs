@@ -125,6 +125,11 @@ pub(crate) fn source(i: &Inputs) -> Result<Value, Failure> {
             "source":i.require("source")?,"project":i.require("project")?,"run":i.require("run-id")?,
             "portfolio":selector(i, "portfolio")?,"membership_revision":selector(i, "membership-revision")?}));
     }
+    city_source(i)
+}
+/// The verified sealed city source, independent of any dashboard section
+/// vocabulary: `solar results read` names raw report-input sections.
+pub(crate) fn city_source(i: &Inputs) -> Result<Value, Failure> {
     if i.value("portfolio").is_some() || i.value("membership-revision").is_some() {
         return Err(Failure::invalid(
             "solar_dashboard_context_invalid",

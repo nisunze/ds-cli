@@ -156,7 +156,9 @@ pub static PORTFOLIO_ANALYSIS_COMMAND: Command = Command {
 };
 
 pub fn results_read(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    let mut source = crate::dashboard::source(inputs)?;
+    // A result section is a sealed report-input key, not a dashboard section:
+    // only the city source is shared with dashboard composition.
+    let mut source = crate::dashboard::city_source(inputs)?;
     let projection = ds_command_kernel::solar_dashboard::read_section(
         &source["report"],
         inputs.require("section")?,
