@@ -107,6 +107,24 @@ fn a_projected_attachment_is_read_through_its_generation_pinned_grant() {
     );
 }
 
+/// A preview names the format the kernel found in the bytes; a projected row
+/// without one was refused as `format: null`.
+#[test]
+fn a_projected_attachment_carries_the_format_recognised_in_its_bytes() {
+    const PDF: &[u8] = b"%PDF-1.4\n%%EOF\n";
+    let mut transport = grant(PDF.len() as u64);
+    transport.bytes = PDF.to_vec();
+    let (row, _) = read(&mut transport, "att").expect("read");
+    assert_eq!(row["format"], "pdf");
+    assert_eq!(row["kind"], "doc");
+    let mut opaque = grant(4);
+    opaque.bytes = vec![0, 1, 2, 3];
+    opaque.grant["data"]["source"]["original_name"] = json!("blob.bin");
+    let (row, _) = read(&mut opaque, "att").expect("read");
+    assert_eq!(row["format"], "unknown");
+    assert_eq!(row["kind"], "other");
+}
+
 #[test]
 fn a_foreign_unpinned_resized_or_mismatched_grant_is_refused() {
     let mut other_project = grant(4);

@@ -11,13 +11,13 @@ use serde_json::{Value, json};
 const ATTACHMENT: Arg = Arg::value(
     "attachment",
     "<attachment-id>",
-    "Exact task attachment id reviewed with `ds pm task read`.",
+    "Exact task attachment id, from an attachment entry of `ds pm task read --timeline`.",
 )
 .required();
 const VERSION: Arg = Arg::value(
     "expected-version",
     "<version>",
-    "Exact attachment version reviewed before detaching; a changed version is refused.",
+    "The attachment's version as that entry's detail.version states it; a changed version is refused.",
 )
 .required();
 const INVALID: Refusal = Refusal {

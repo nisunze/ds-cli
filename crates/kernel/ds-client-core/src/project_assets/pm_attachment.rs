@@ -10,6 +10,7 @@ use crate::{
     authorized::Authority, shared_assets::DownloadCall, AuthorizedTransport, ClientError,
     ClientProfile, ErrorKind, ProjectManagementCall,
 };
+use ds_command_kernel::assets::recognise;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -80,10 +81,13 @@ pub(super) fn read_bytes<T: AuthorizedTransport>(
             "the fetched bytes do not match the attachment's advertised digest",
         ));
     }
+    // The attachment has no catalogue classification, so its format and kind
+    // are what the kernel recognises in the verified bytes, as for any asset.
+    let found = recognise(source["original_name"].as_str(), &bytes.body, size);
     let row = json!({"asset_id": format!("{PREFIX}{id}"), "project_id": project,
         "name": source["original_name"], "content_type": source["content_type"],
         "bytes": size, "version": source["version"], "generation": generation,
-        "digest": digest});
+        "digest": digest, "format": found.format.as_str(), "kind": found.kind.as_str()});
     // The response scrubs its body on drop; the verified bytes are taken out.
     Ok((row, std::mem::take(&mut bytes.body)))
 }
