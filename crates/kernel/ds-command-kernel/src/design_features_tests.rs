@@ -1,4 +1,50 @@
 use super::*;
+use ds_network_contracts::grid_unit::{
+    encode_reply, GridArg, GridRefusal, GridRequest, GridResult,
+};
+
+/// The Network owner's answer to one admitted `selectFeatures` frame: the
+/// unit's handler over ds-geo (a dev-dependency; the Kernel links none).
+fn owner_reply(frame: &[u8]) -> Vec<u8> {
+    let request = GridRequest::decode(frame).unwrap();
+    let [GridArg::Text(selector), GridArg::Bytes(layers)] = &request.args[..] else {
+        panic!("selectFeatures takes the selector text and the layers bytes");
+    };
+    let reply = (|| {
+        let invalid =
+            |error: serde_json::Error| GridRefusal::new("invalid_json", error.to_string());
+        let selector: FeatureSelector = serde_json::from_str(selector).map_err(invalid)?;
+        let layers: BTreeMap<String, Value> = serde_json::from_slice(layers).map_err(invalid)?;
+        ds_geo::feature_selection::select_geojson_features(&layers, selector)
+            .map(|selection| GridResult::Text(serde_json::to_string(&selection).unwrap()))
+            .map_err(|error| GridRefusal {
+                code: error.code().into(),
+                message: error.to_string(),
+                detail: Some(error.details().to_string()),
+            })
+    })();
+    encode_reply(request.operation, &reply)
+}
+
+/// The page path end to end: the Kernel's effect, the owner's reply, the
+/// Kernel's outcome.
+fn execute(input: &[u8]) -> String {
+    match page_effect(input) {
+        Ok(effect) => page_outcome(input, &owner_reply(&effect.payload)),
+        Err(outcome) => outcome,
+    }
+}
+
+/// The in-process selection the page path must equal.
+fn select(
+    source: DesignFeatureSourceContext,
+    layers: &BTreeMap<String, Value>,
+    selector: FeatureSelector,
+) -> Result<DesignFeaturesSelectResponse, DesignFeaturesSelectFault> {
+    source.validate()?;
+    let selection = ds_geo::feature_selection::select_geojson_features(layers, selector)?;
+    Ok(DesignFeaturesSelectResponse { source, selection })
+}
 
 fn source() -> DesignFeatureSourceContext {
     DesignFeatureSourceContext::TransformerSnapshot {

@@ -2,25 +2,25 @@
 //! lasso, the plan-view grid lasso and the map-data transformer import all
 //! ask "which of these features does this polygon select?".
 //!
-//! The transport is `ds_geo::area_selection` and its predicate the one
-//! `ds_geo_lite::region` rule. This module owns the typed application
-//! operation, its bounded admission and the reply decoder.
+//! The selection runs in the governed Network unit (`selectLayersByArea`
+//! through the grid unit envelope, `grid_engine`), over `ds-geo`'s projection
+//! and the one `ds_geo_lite::region` rule. This module owns the typed request
+//! admission and the reply decoder; it links no Network algorithm.
 //!
 //! The request crosses as the caller's JSON text and the reply returns as JSON
 //! text, exactly the bytes the retired Network export exchanged: selected
 //! features keep every value, and every object's keys are in sorted order at
 //! every level (the order that export's maps always had), so a host that reads
 //! the first matching key or derives column order sees the same answer.
-pub use ds_geo::area_selection::{
+pub use ds_network_contracts::area_selection::{
     PolygonIntersectInput as AreaSelectionRequest,
     PolygonIntersectLayerInput as AreaSelectionLayer,
     PolygonIntersectLayerOutput as AreaSelectionLayerResult,
-    PolygonIntersectOutput as AreaSelectionResult,
+    PolygonIntersectOutput as AreaSelectionResult, MAX_AREA_SELECTION_FEATURES,
 };
 
-/// The most features one selection may carry across all of its layers.
-pub const MAX_AREA_SELECTION_FEATURES: usize = 1_000_000;
-
+/// The Network unit operation that answers an area selection.
+pub const UNIT_METHOD: &str = "selectLayersByArea";
 #[derive(Clone, Debug, PartialEq)]
 pub enum AreaSelectionError {
     InvalidRequest(String),
@@ -56,7 +56,7 @@ pub fn validate_request(request: &AreaSelectionRequest) -> Result<(), AreaSelect
             "{features} features exceed the {MAX_AREA_SELECTION_FEATURES} feature limit"
         )));
     }
-    ds_geo::area_selection::selector_rings(&request.polygon)
+    ds_network_contracts::area_selection::selector_rings(&request.polygon)
         .map(|_| ())
         .map_err(AreaSelectionError::InvalidRequest)
 }
@@ -67,26 +67,6 @@ pub fn decode_request(bytes: &[u8]) -> Result<AreaSelectionRequest, AreaSelectio
         .map_err(|error| AreaSelectionError::InvalidRequest(error.to_string()))?;
     validate_request(&request)?;
     Ok(request)
-}
-
-/// Select every feature the polygon selects under the request's predicate.
-pub fn select(request: &AreaSelectionRequest) -> Result<AreaSelectionResult, AreaSelectionError> {
-    validate_request(request)?;
-    let mut result = ds_geo::area_selection::filter_layers_by_polygon_intersects(request.clone())
-        .map_err(AreaSelectionError::InvalidRequest)?;
-    for layer in &mut result.layers {
-        layer
-            .features
-            .iter_mut()
-            .for_each(serde_json::Value::sort_all_objects);
-    }
-    Ok(result)
-}
-
-/// The reply text for one JSON request text.
-pub fn select_json(bytes: &[u8]) -> Result<String, AreaSelectionError> {
-    let result = select(&decode_request(bytes)?)?;
-    serde_json::to_string(&result).map_err(|error| invalid_response(error.to_string()))
 }
 
 /// Accept a reply only when it answers this request: the same layers in the
@@ -165,11 +145,7 @@ mod browser {
     use super::*;
     use wasm_bindgen::prelude::*;
 
-    #[wasm_bindgen(js_name = selectLayersByArea)]
-    pub fn run(input: &[u8]) -> Result<String, JsError> {
-        select_json(input).map_err(|error| JsError::new(&error.to_string()))
-    }
-
+    /// Admit the Network unit's reply text for this request text.
     #[wasm_bindgen(js_name = decodeAreaSelection)]
     pub fn decode(input: &[u8], reply: &str) -> Result<String, JsError> {
         decode_response_json(input, reply).map_err(|error| JsError::new(&error.to_string()))

@@ -1652,10 +1652,8 @@ pub mod upload_cleaning;
 pub mod geometry_operation;
 
 /// Polygon area selection over caller-supplied GeoJSON layers.
-#[cfg(feature = "page-geometry")]
 pub mod area_selection;
 /// New line work an incoming line layer adds to an authoritative base.
-#[cfg(feature = "page-geometry")]
 pub mod line_extension;
 /// Bounded GeoPackage geometry decoding and layer admission for browser hosts.
 pub mod gpkg_geometry;

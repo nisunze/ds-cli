@@ -2,18 +2,18 @@
 //! the retired Network lasso export did, byte for byte on the JSON wire,
 //! refuses malformed selectors, and its decoder refuses replies that do not
 //! answer the request.
+#[path = "support/page_owner.rs"]
+mod page_owner;
 use ds_command_kernel::area_selection::{
-    decode_response, decode_response_json, select, select_json, AreaSelectionLayer,
-    AreaSelectionRequest,
+    decode_response, decode_response_json, AreaSelectionLayer, AreaSelectionRequest,
 };
 use ds_geo_lite::region::RegionPredicate;
+use page_owner::{select, select_json};
 use serde_json::{json, Value};
 
 /// The lasso selection oracle, the Kernel's own copy of the semantics Network
 /// also tests; the Kernel never reads another repository's sources.
-const ORACLE: &str = include_str!(
-    "fixtures/spatial-selection-semantics.json"
-);
+const ORACLE: &str = include_str!("fixtures/spatial-selection-semantics.json");
 
 fn oracle() -> Value {
     serde_json::from_str(ORACLE).unwrap()

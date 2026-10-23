@@ -4,8 +4,8 @@
 //! retains explicit source identity, admits the selector, and admits the
 //! response against that same captured source. The selection itself is the
 //! Network owner's: native Core sends it to the Network engine as one closed
-//! `feature_selection` operation; the browser build still links the selector
-//! (`page-geometry`) until the page reaches it through its Network unit.
+//! `feature_selection` operation, and the page sends it to its Network unit as
+//! `selectFeatures` through the grid unit envelope (`page_effect`/`page_outcome`).
 //! A working-copy base version is provenance, never proof of a persisted
 //! revision or a write fence.
 use std::{collections::BTreeMap, error::Error, fmt};
@@ -210,18 +210,6 @@ fn category(error: &serde_json::Error) -> &'static str {
     }
 }
 
-/// The browser operation's in-page selection over the linked Network selector.
-#[cfg(feature = "page-geometry")]
-pub fn select(
-    source: DesignFeatureSourceContext,
-    layers: &BTreeMap<String, Value>,
-    selector: FeatureSelector,
-) -> Result<DesignFeaturesSelectResponse, DesignFeaturesSelectFault> {
-    source.validate()?;
-    let selection = ds_geo::feature_selection::select_geojson_features(layers, selector)?;
-    Ok(DesignFeaturesSelectResponse { source, selection })
-}
-
 /// The Network engine operation and its one staged input for a native
 /// selection: the closed selector and the captured layers' exact JSON bytes.
 /// Core stages these; it never evaluates a selector clause itself.
@@ -298,32 +286,129 @@ enum Outcome {
     },
 }
 
-#[cfg(feature = "page-geometry")]
-pub fn execute(input: &[u8]) -> String {
-    let outcome = if input.len() > MAX_INPUT_BYTES {
-        Outcome::Refused {
+/// The Network unit operation that selects for the page.
+pub const UNIT_METHOD: &str = "selectFeatures";
+
+fn admit_page_request(input: &[u8]) -> Result<DesignFeaturesSelectRequest, Outcome> {
+    if input.len() > MAX_INPUT_BYTES {
+        return Err(Outcome::Refused {
             source: None,
             refusal: DesignFeaturesSelectFault::input_too_large(input.len()),
-        }
-    } else {
-        match serde_json::from_slice::<DesignFeaturesSelectRequest>(input) {
-            Err(error) => Outcome::Refused {
+        });
+    }
+    let request =
+        serde_json::from_slice::<DesignFeaturesSelectRequest>(input).map_err(|error| {
+            Outcome::Refused {
                 source: None,
                 refusal: DesignFeaturesSelectFault::invalid_json(error),
-            },
-            Ok(request) => {
-                let source = request.source.clone();
-                match select(request.source, &request.layers, request.selector) {
-                    Ok(response) => Outcome::Selected { response },
-                    Err(refusal) => Outcome::Refused {
-                        source: Some(source),
-                        refusal,
-                    },
+            }
+        })?;
+    request
+        .source
+        .validate()
+        .map_err(|refusal| Outcome::Refused {
+            source: Some(request.source.clone()),
+            refusal,
+        })?;
+    Ok(request)
+}
+
+/// The page's selection step one: the Network unit effect for this request,
+/// or the refused outcome (the worker carries it unchanged) when the request
+/// is not admitted. The selector and layers cross as their JSON text.
+pub fn page_effect(input: &[u8]) -> Result<crate::grid_engine::GridEffect, String> {
+    let request = admit_page_request(input).map_err(encode_outcome)?;
+    let refused = |refusal: DesignFeaturesSelectFault| {
+        encode_outcome(Outcome::Refused {
+            source: Some(request.source.clone()),
+            refusal,
+        })
+    };
+    let selector = serde_json::to_string(&request.selector)
+        .map_err(|e| refused(DesignFeaturesSelectFault::invalid_json(e)))?;
+    let layers = serde_json::to_vec(&request.layers)
+        .map_err(|e| refused(DesignFeaturesSelectFault::invalid_json(e)))?;
+    crate::grid_engine::request(
+        "model",
+        UNIT_METHOD,
+        vec![
+            crate::grid_engine::GridArg::Text(selector),
+            crate::grid_engine::GridArg::Bytes(layers),
+        ],
+    )
+    .map_err(|refusal| {
+        refused(DesignFeaturesSelectFault::new(
+            refusal.code,
+            refusal.message,
+            json!({}),
+        ))
+    })
+}
+
+/// The page's selection step two: the outcome the worker carries for the
+/// unit's reply to this request. Sample properties and geometry are the
+/// request's own values (their member order is the caller's, as the in-page
+/// selection returned them); the unit decides which features and receipt.
+pub fn page_outcome(input: &[u8], reply: &[u8]) -> String {
+    let request = match admit_page_request(input) {
+        Ok(request) => request,
+        Err(outcome) => return encode_outcome(outcome),
+    };
+    let source = request.source.clone();
+    let refused = |refusal| Outcome::Refused {
+        source: Some(source.clone()),
+        refusal,
+    };
+    let outcome = match crate::grid_engine::decode("model", UNIT_METHOD, reply) {
+        Ok(crate::grid_engine::GridResult::Text(text)) => {
+            match serde_json::from_str::<FeatureSelectionResult>(&text) {
+                Ok(mut selection) => {
+                    held_samples(&mut selection, &request.layers);
+                    Outcome::Selected {
+                        response: DesignFeaturesSelectResponse {
+                            source: source.clone(),
+                            selection,
+                        },
+                    }
                 }
+                Err(error) => refused(DesignFeaturesSelectFault::new(
+                    "selection_response_incompatible",
+                    "feature-selection result has missing required fields or incompatible types",
+                    json!({"category":category(&error),"line":error.line(),"column":error.column()}),
+                )),
             }
         }
+        Ok(_) => refused(DesignFeaturesSelectFault::incompatible(
+            "feature-selection reply is not the selection text",
+        )),
+        Err(refusal) => refused(engine_refusal(
+            &refusal.code,
+            &refusal.message,
+            refusal
+                .detail
+                .as_deref()
+                .and_then(|detail| serde_json::from_str(detail).ok()),
+        )),
     };
     encode_outcome(outcome)
+}
+
+/// Replace each sample's properties and geometry with the held feature's.
+fn held_samples(selection: &mut FeatureSelectionResult, layers: &BTreeMap<String, Value>) {
+    for sample in &mut selection.sample {
+        let held = layers
+            .get(&sample.layer)
+            .and_then(|layer| layer.get("features"))
+            .and_then(Value::as_array)
+            .and_then(|features| features.get(sample.index));
+        let Some(feature) = held else { continue };
+        if let Some(properties) = feature.get("properties").and_then(Value::as_object) {
+            sample.properties = properties.clone();
+        }
+        if sample.geometry.is_some() {
+            sample.geometry = feature.get("geometry").cloned();
+        }
+    }
 }
 
 /// Serialize a native typed success using the same outcome as the worker.
@@ -485,9 +570,31 @@ pub mod browser {
             json!({"category":"data","detail":error.to_string()}),
         ))
     }
-    #[wasm_bindgen(js_name = designFeaturesSelect)]
-    pub fn execute_wasm(input: &[u8]) -> String {
-        execute(input)
+    /// Step one of a page selection: `{ unit, entry, payload }` for the
+    /// Network unit, or `{ outcome }` when the request is refused.
+    #[wasm_bindgen(js_name = designFeaturesSelectEffect, unchecked_return_type = "{ unit: 'network'; entry: 'grid.model'; payload: Uint8Array } | { outcome: string }")]
+    pub fn effect_wasm(input: &[u8]) -> Result<JsValue, JsValue> {
+        let out = js_sys::Object::new();
+        let set = |key: &str, value: &JsValue| {
+            js_sys::Reflect::set(&out, &JsValue::from_str(key), value).map(|_| ())
+        };
+        match page_effect(input) {
+            Ok(effect) => {
+                set("unit", &JsValue::from_str(effect.unit))?;
+                set("entry", &JsValue::from_str("grid.model"))?;
+                set(
+                    "payload",
+                    &js_sys::Uint8Array::from(effect.payload.as_slice()).into(),
+                )?;
+            }
+            Err(outcome) => set("outcome", &JsValue::from_str(&outcome))?,
+        }
+        Ok(out.into())
+    }
+    /// Step two: the outcome text for the unit's reply to this request.
+    #[wasm_bindgen(js_name = designFeaturesSelectOutcome)]
+    pub fn outcome_wasm(input: &[u8], reply: &[u8]) -> String {
+        page_outcome(input, reply)
     }
     #[wasm_bindgen(js_name = encodeDesignFeaturesSelect)]
     pub fn encode_wasm(request: Ts<DesignFeaturesSelectRequest>) -> Result<Vec<u8>, JsValue> {
@@ -511,6 +618,6 @@ pub mod browser {
     }
 }
 
-#[cfg(all(test, feature = "page-geometry"))]
+#[cfg(test)]
 #[path = "design_features_tests.rs"]
 mod tests;

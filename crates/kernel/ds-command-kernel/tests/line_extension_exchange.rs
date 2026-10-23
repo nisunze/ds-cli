@@ -1,10 +1,12 @@
 //! The typed line extension difference answers exactly what the retired
 //! Network export answered, refuses malformed requests by name, and its
 //! decoder refuses replies that do not answer the request.
+#[path = "support/page_owner.rs"]
+mod page_owner;
 use ds_command_kernel::line_extension::{
-    decode_response, decode_response_json, difference, difference_json,
-    LineExtensionDifferenceInput,
+    decode_response, decode_response_json, LineExtensionDifferenceInput,
 };
+use page_owner::{difference, difference_json};
 use serde_json::{json, Value};
 
 const M: f64 = 0.000_009;

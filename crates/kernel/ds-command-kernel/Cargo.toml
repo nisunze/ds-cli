@@ -156,6 +156,9 @@ ds-template-test-support = { path = "../ds-template-test-support" }
 wasm-bindgen-test = "0.3"
 # Client-state scenarios hold scripted gateway answers on oneshot channels.
 futures-channel = "0.3"
+# The Network owners the page reaches through its unit, as the reply oracle
+# of the Kernel's admission tests; the Kernel itself links no ds-geo.
+ds-geo = { path = "../../../../ds-network/crates/ds-geo" }
 
 # Native tests drive the client state on futures' local pool.
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
@@ -166,14 +169,6 @@ sha2 = "0.10"
 serde_json = "1"
 
 # The page's geometry and table exchanges run with the page owners linked.
-[[test]]
-name = "area_selection_exchange"
-required-features = ["page-geometry"]
-
-[[test]]
-name = "line_extension_exchange"
-required-features = ["page-geometry"]
-
 [[test]]
 name = "selection_field_exchange"
 required-features = ["page-geometry"]

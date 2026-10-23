@@ -1,18 +1,21 @@
 //! Extract the new line work an incoming line layer adds to an authoritative
 //! base layer: aligned already-built portions are removed and remaining
-//! endpoints are healed onto the base. The topology algorithm and its wire
-//! types belong to `ds_geo::line_difference`; this module owns the typed
-//! application operation, its refusals and the reply decoder.
+//! endpoints are healed onto the base. The topology algorithm runs in the
+//! governed Network unit (`lineExtensionDifference` through the grid unit
+//! envelope, `grid_engine`); this module owns the typed request admission,
+//! its refusals and the reply decoder, and links no Network algorithm.
 //!
 //! The request crosses as the caller's JSON text and the reply returns as JSON
 //! text with every object's keys in sorted order — the bytes the retired
 //! Network export produced — so the layer the host materializes keeps the
 //! same column order and values.
-pub use ds_geo::line_difference::{LineExtensionDifferenceInput, LineExtensionDifferenceOutput};
+pub use ds_network_contracts::line_extension::{
+    LineExtensionDifferenceInput, LineExtensionDifferenceOutput, MAX_LINE_EXTENSION_FEATURES,
+};
 use serde_json::Value;
 
-/// The most features one request may carry across source and base.
-pub const MAX_LINE_EXTENSION_FEATURES: usize = 500_000;
+/// The Network unit operation that answers a line extension.
+pub const UNIT_METHOD: &str = "lineExtensionDifference";
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LineExtensionError {
@@ -53,23 +56,6 @@ pub fn decode_request(bytes: &[u8]) -> Result<LineExtensionDifferenceInput, Line
         .map_err(|error| LineExtensionError::InvalidRequest(error.to_string()))?;
     validate_request(&input)?;
     Ok(input)
-}
-
-/// Run the owning topology algorithm; its refusals are request refusals.
-pub fn difference(
-    input: &LineExtensionDifferenceInput,
-) -> Result<LineExtensionDifferenceOutput, LineExtensionError> {
-    validate_request(input)?;
-    let mut output = ds_geo::line_difference::line_extension_difference(input.clone())
-        .map_err(LineExtensionError::InvalidRequest)?;
-    output.layer.sort_all_objects();
-    Ok(output)
-}
-
-/// The reply text for one JSON request text.
-pub fn difference_json(bytes: &[u8]) -> Result<String, LineExtensionError> {
-    let output = difference(&decode_request(bytes)?)?;
-    serde_json::to_string(&output).map_err(|error| invalid_response(error.to_string()))
 }
 
 fn finite_line(feature: &Value) -> bool {
@@ -170,11 +156,7 @@ mod browser {
     use super::*;
     use wasm_bindgen::prelude::*;
 
-    #[wasm_bindgen(js_name = lineExtensionDifference)]
-    pub fn run(input: &[u8]) -> Result<String, JsError> {
-        difference_json(input).map_err(|error| JsError::new(&error.to_string()))
-    }
-
+    /// Admit the Network unit's reply text for this request text.
     #[wasm_bindgen(js_name = decodeLineExtensionDifference)]
     pub fn decode(input: &[u8], reply: &str) -> Result<String, JsError> {
         decode_response_json(input, reply).map_err(|error| JsError::new(&error.to_string()))
