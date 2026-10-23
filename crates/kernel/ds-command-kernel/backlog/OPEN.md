@@ -16,7 +16,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 24 |
-| [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 7 |
+| [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 8 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 13 |
 | [10. Voltage drop](#10-voltage-drop) | 5 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 10 |
@@ -277,6 +277,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - Expose cloud-conflict review as bounded JSON for both DS Grid and LV, with exact local/base/cloud identity, before/after facts, complete change counts, explicit omitted details and useful resolution choices. Existing Grid CLI comparison lists changed IDs but lacks field values; the Grid menu lists revision/digest pins without a content review. Preserve working copies and current head/digest overwrite guards. Advice must distinguish two-way differences from a merge proved against an actual base; provide the same native review facts through CLI/MCP and the JSON view.
 
 - **Bounded cloud-head reads**: the affected `fill_in_gishubi` cloud-head read produced no output for more than ten minutes. Provide a bounded result or named stalled-acquisition refusal while preserving retained local artifacts. Reproduction receipts: `ds-command-kernel/_discardable/artifact-inventory-refresh/root-installed-publications-stalled.json`; publication recovery is tracked in [SEEDING.md](SEEDING.md#8-sync-publication-and-edge-outbox).
+
+- `d6f052b0` (ds-brain survey stream): `query_entries` reads a project form whose binding is disabled (`enabled:false`, which `EnsureSyncedAll` never mirrors) and reports a BigQuery 404 as that form's summary error (`internal/bulk/handlers/data_interop.go` `handleQueryEntries` → `StreamMirrorEntries`; log 2026-10-23T20:18:08Z, Gisagara `edcl_customers_as_built_survey`). Core names it `survey_form_disabled` after the failure (ds-cli `d87a43f1`). Next step (Brain): refuse or annotate a non-participating form with a typed per-form code before querying BigQuery, with a handler test; decided by the Brain lane's next deploy.
 
 ## 9. LV processing, sizing and headless intake
 
