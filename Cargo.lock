@@ -2230,8 +2230,6 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "tsify",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -2510,6 +2508,7 @@ dependencies = [
 name = "ds-network-contracts"
 version = "0.1.0"
 dependencies = [
+ "ds-columnar",
  "ds-geo-lite",
  "ds-grid-model",
  "ds-profile-grid",

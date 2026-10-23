@@ -1,7 +1,10 @@
+#[path = "support/table_owner.rs"]
+mod table_owner;
 use ds_command_kernel::selection_field::{
-    SelectionFieldError, SelectionFieldQuery, decode_selection_field_profile, selection_field_info,
+    decode_selection_field_profile, SelectionFieldError, SelectionFieldQuery,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
+use table_owner::selection_field_info;
 
 fn rows(values: &[Value]) -> Vec<Map<String, Value>> {
     values

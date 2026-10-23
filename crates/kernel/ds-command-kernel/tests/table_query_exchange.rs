@@ -1,9 +1,12 @@
+#[path = "support/table_owner.rs"]
+mod table_owner;
 use ds_command_kernel::table_query::{
-    TableFilterMode, TableFilterQuery, TableFilterResult, TableProfilesQuery, TableProfilesResult,
-    filter_rows, profile_rows, validate_filter_result, validate_profiles_result,
+    validate_filter_result, validate_profiles_result, TableFilterMode, TableFilterQuery,
+    TableFilterResult, TableProfilesQuery, TableProfilesResult,
 };
 use ds_geo::table::{ColumnFilterInput, FilterOp};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
+use table_owner::{filter_rows, profile_rows};
 
 fn rows() -> Vec<Map<String, Value>> {
     [
@@ -75,12 +78,10 @@ fn profiles_keep_existing_kind_authority_and_full_range_past_the_value_cap() {
 #[test]
 fn invalid_operations_and_incompatible_indices_are_refused() {
     assert!(serde_json::from_value::<TableFilterQuery>(json!({"mode":"invented"})).is_err());
-    assert!(
-        serde_json::from_value::<TableFilterQuery>(
-            json!({"filters":[{"column":"n","op":"invented"}]})
-        )
-        .is_err()
-    );
+    assert!(serde_json::from_value::<TableFilterQuery>(
+        json!({"filters":[{"column":"n","op":"invented"}]})
+    )
+    .is_err());
     for response in [
         TableFilterResult {
             indices: vec![3],

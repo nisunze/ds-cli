@@ -483,10 +483,11 @@ fn acquisition_plan_is_bounded_and_withdrawn_catalogs_stay_visible() {
 /// Moved from module_engine_tests.rs, which ds-module-admission also compiles
 /// and which therefore cannot name Kernel-only owners such as `table_edit`.
 #[test]
-#[cfg(feature = "page-geometry")]
 fn different_contract_metadata_admits_the_same_working_typed_exchange() {
     use crate::module_engine::{admit_ui_identity, parse_ui_identity};
-    use crate::table_edit::{decode_request, decode_response, execute, TableEditRequest};
+    use crate::table_edit::{
+        decode_request, decode_response, AddColumnEditResult, TableEditRequest, TableEditResponse,
+    };
     // Owner ruling and module-releases.md: metadata equality is not the
     // compatibility criterion. Preserve all producer-integrity checks.
     for version in [1, 2] {
@@ -503,7 +504,15 @@ fn different_contract_metadata_admits_the_same_working_typed_exchange() {
         }))
         .unwrap();
         let request = decode_request(&serde_json::to_vec(&request).unwrap()).unwrap();
-        let reply = execute(&request).unwrap();
+        // The Network table owner's plan (ds-geo, a dev-dependency here).
+        let TableEditRequest::AddColumn(input) = &request else {
+            unreachable!("an add_column request")
+        };
+        let reply = TableEditResponse::AddColumn(AddColumnEditResult {
+            plan: ds_geo::table::add_column(input.clone()).unwrap(),
+            default_value: ds_geo::table::coerce_value(&input.default_value, input.data_type)
+                .unwrap(),
+        });
         let decoded = decode_response(&request, &serde_json::to_vec(&reply).unwrap()).unwrap();
         assert_eq!(
             serde_json::to_value(decoded).unwrap()["result"]["default_value"],

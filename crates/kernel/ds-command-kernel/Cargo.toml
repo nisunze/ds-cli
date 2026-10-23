@@ -38,8 +38,6 @@ wasm = [
     "ds-geo-lite/bindings",
     "ds-core-contracts/bindings",
     "ds-network-contracts/bindings",
-    "page-geometry",
-    "ds-geo/bindings",
     "ds-design-session/enable_dataframes",
     "ds-columnar/artifacts",
     "ds-columnar/bindings",
@@ -65,11 +63,6 @@ wasm = [
 # never its UI. The WASM build runs it on wasm-bindgen-futures; a native host
 # initializes any_spawner with its own runtime.
 client-state = ["durable-store", "dep:reactive_graph", "dep:any_spawner"]
-# The page's in-browser geometry and table owners (area selection, line
-# extension, feature selection, attribute-table filter/edit/profiles) over
-# Network's ds-geo, until the page reaches them through its Network unit.
-# Native Core links no ds-geo: its feature selection is a Network engine task.
-page-geometry = ["dep:ds-geo"]
 # The vector tools' host half (browser windows): the effect to the Network
 # unit's runner and the reply check; the runner and its IPC backend stay there.
 vector-tools = []
@@ -78,7 +71,6 @@ vector-tools = []
 ds-gateway-client = { path = "../ds-gateway-client" }
 ds-core-contracts = { path = "../ds-core-contracts" }
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts" }
-ds-geo = { path = "../../../../ds-network/crates/ds-geo", optional = true }
 ds-design-session = { path = "../ds-design-session" }
 ds-columnar = { path = "../../shared/ds-columnar", default-features = false }
 ds-profile-policy = { path = "../ds-profile-policy" }
@@ -156,19 +148,6 @@ any_spawner = { version = "0.3.0", features = ["futures-executor"] }
 [build-dependencies]
 sha2 = "0.10"
 serde_json = "1"
-
-# The page's geometry and table exchanges run with the page owners linked.
-[[test]]
-name = "selection_field_exchange"
-required-features = ["page-geometry"]
-
-[[test]]
-name = "table_edit_exchange"
-required-features = ["page-geometry"]
-
-[[test]]
-name = "table_query_exchange"
-required-features = ["page-geometry"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false

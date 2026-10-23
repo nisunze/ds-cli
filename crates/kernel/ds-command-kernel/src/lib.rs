@@ -357,9 +357,7 @@ pub fn project_design_extent_wasm(input: &[u8]) -> Result<String, wasm_bindgen::
 }
 pub mod reference_cache;
 pub mod grid_crs;
-#[cfg(feature = "page-geometry")]
 pub mod selection_field;
-#[cfg(feature = "page-geometry")]
 pub mod table_query;
 pub mod domain_value;
 /// The one rule every input door applies to a geometry (owner ruling,
@@ -1623,7 +1621,6 @@ pub mod design_cell_vocabulary;
 
 pub mod geojson_comparison;
 
-#[cfg(feature = "page-geometry")]
 pub mod table_edit;
 
 pub mod layer_export;

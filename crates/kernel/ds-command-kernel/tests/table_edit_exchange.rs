@@ -1,11 +1,14 @@
+#[path = "support/table_owner.rs"]
+mod table_owner;
 use ds_command_kernel::table_edit::{
-    decode_request, decode_response, execute, TableEditRequest, TableEditResponse,
+    decode_request, decode_response, TableEditRequest, TableEditResponse,
 };
 use ds_geo::table::{
     AddColumnInput, CalculateFieldInput, CalculateGeometryPropertiesInput, CalculateOperation,
     ReplaceInput, ReplaceOptions, ReplaceScope, TableDataType,
 };
 use serde_json::{json, Map, Value};
+use table_owner::execute;
 fn rows() -> Vec<Map<String, Value>> {
     serde_json::from_value(
         json!([{"name":"Pole-1","notes":"pole note"},{"name":"Pole-2","notes":"fine"}]),
