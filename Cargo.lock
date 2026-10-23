@@ -2223,12 +2223,10 @@ dependencies = [
  "ds-design-session",
  "ds-geo-lite",
  "ds-network-contracts",
- "polars-arrow",
  "regex",
  "serde",
  "serde_json",
  "tsify",
- "uuid",
  "wasm-bindgen",
 ]
 
@@ -2712,12 +2710,7 @@ name = "ds-solar-io"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
  "ds-solar-contracts",
- "fs2",
- "serde",
- "serde_json",
- "tempfile",
  "tracing",
 ]
 
