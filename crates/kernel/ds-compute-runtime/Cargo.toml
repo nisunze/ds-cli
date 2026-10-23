@@ -15,8 +15,7 @@ ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contra
 ds-network-client = { path = "../ds-network-client" }
 ds-cli-exec = { path = "../ds-cli-exec" }
 ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
-ds-solar-io = { path = "../../../../ds-solar/crates/ds-solar-io" }
-ds-solar-process = { path = "../../../../ds-solar/crates/ds-solar-process" }
+ds-solar-host = { path = "../../kernel/ds-solar-host" }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 base64 = "0.22"

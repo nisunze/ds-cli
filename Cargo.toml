@@ -10,6 +10,7 @@ members = [
     "crates/kernel/ds-design-session",
     "crates/kernel/ds-solar-native",
     "crates/kernel/ds-solar-reference-host",
+    "crates/kernel/ds-solar-host",
     "crates/kernel/ds-terrain-host",
     "crates/kernel/ds-elevation-host",
     "crates/kernel/ds-native-data",

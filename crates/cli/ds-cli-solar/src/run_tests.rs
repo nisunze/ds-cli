@@ -57,7 +57,7 @@ fn contract_three_is_discoverable_and_preserves_defaults_and_four_hour_deadline(
 
     assert!(matches!(availability(), Availability::Available));
     assert_eq!(RUN_TIMEOUT, Duration::from_secs(4 * 60 * 60));
-    assert_eq!(RUN_TIMEOUT, ds_solar_process::MAX_BATCH_TIMEOUT);
+    assert_eq!(RUN_TIMEOUT, ds_solar_host::process::MAX_BATCH_TIMEOUT);
     let parsed = parse(
         &COMMAND,
         &["--prepared".into(), "p".into(), "--out".into(), "o".into()],

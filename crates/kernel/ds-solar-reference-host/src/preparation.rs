@@ -24,8 +24,8 @@ use ds_solar_contracts::{
 };
 
 use crate::provider::{ReferenceBundleProvider, ReferenceRequest};
-use ds_solar_io::cache::ReferenceCache;
-use ds_solar_io::reference::{self, OpenedBundle};
+use ds_solar_host::cache::ReferenceCache;
+use ds_solar_host::reference::{self, OpenedBundle};
 
 /// Where a resolved bundle came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,8 +81,8 @@ pub struct ReferencePreparer<'a> {
 }
 
 impl<'a> ReferencePreparer<'a> {
-    fn policy(&self) -> ds_solar_io::preparation::ReferencePreparer {
-        let mut policy = ds_solar_io::preparation::ReferencePreparer::new();
+    fn policy(&self) -> ds_solar_host::preparation::ReferencePreparer {
+        let mut policy = ds_solar_host::preparation::ReferencePreparer::new();
         if let Some(pin) = &self.pin {
             policy = policy.with_pin(pin.clone());
         }

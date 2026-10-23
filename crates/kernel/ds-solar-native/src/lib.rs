@@ -13,7 +13,7 @@ pub mod sync;
 pub mod workspace;
 pub mod workspace_selection;
 pub use ds_solar_contracts::{BundleBytes, SolarError, SolarErrorCode, SolarResult};
-pub use ds_solar_io::delivery::bundle_from_delivery;
+pub use ds_solar_host::delivery::bundle_from_delivery;
 pub use ds_solar_reference_host::provider::{ReferenceBundleProvider, ReferenceRequest};
 /// Private producer handoff; no signed URLs or credentials enter authored requests.
 pub struct CapturedCitySnapshot {
@@ -146,7 +146,7 @@ impl NativeHost {
             || self.engine_lane.is_none()
         {
             return ds_cli_exec::addons::SOLAR
-                .capture_pinned(&ds_solar_process::installed_engine_path()?)
+                .capture_pinned(&ds_solar_host::process::installed_engine_path()?)
                 .map_err(|error| format!("{}: {error}", error.code()));
         }
         let lane = self.engine_lane.as_deref().expect("managed host lane");

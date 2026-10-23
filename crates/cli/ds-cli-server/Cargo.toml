@@ -10,7 +10,7 @@ ds-network-client.workspace = true
 ds-network-contracts.workspace = true
 ds-cli-exec.workspace = true
 ds-update-runtime = { path = "../../kernel/ds-update-runtime" }
-ds-solar-process = { path = "../../../../ds-solar/crates/ds-solar-process" }
+ds-solar-host = { path = "../../kernel/ds-solar-host" }
 ds-cli-auth.workspace = true
 ds-design-workspace.workspace = true
 ds-command-kernel.workspace = true

@@ -148,7 +148,7 @@ fn retained_native_receipt_guards_capture_and_real_batch_portfolio_adoption() {
         let result = CapturedEngine::<()>::capture(selected, |_| {
             called = true;
             change_same_metadata(&path);
-            Err(ds_solar_process::ProcessFailure::from(
+            Err(ds_solar_host::process::ProcessFailure::from(
                 "original fixture refusal".to_string(),
             ))
         });
@@ -182,7 +182,7 @@ fn retained_native_receipt_guards_capture_and_real_batch_portfolio_adoption() {
         },
         concurrency: Some(1),
     };
-    let expected = ds_solar_process::BatchEngine::capture(&binary, tmp.path(), 1, &cancel)
+    let expected = ds_solar_host::process::BatchEngine::capture(&binary, tmp.path(), 1, &cancel)
         .unwrap()
         .calculate(&request, &cancel, None)
         .unwrap();
@@ -218,7 +218,7 @@ fn retained_native_receipt_guards_capture_and_real_batch_portfolio_adoption() {
             };
             let error = if portfolio {
                 let engine = CapturedEngine::capture(selected, |path| {
-                    ds_solar_process::PortfolioEngine::capture(path, &root, 1, &cancel)
+                    ds_solar_host::process::PortfolioEngine::capture(path, &root, 1, &cancel)
                 })
                 .unwrap();
                 // An invalid current pointer cannot invalidate/reselect accepted work.
@@ -250,7 +250,7 @@ fn retained_native_receipt_guards_capture_and_real_batch_portfolio_adoption() {
                 .err()
             } else {
                 let engine = CapturedEngine::capture(selected, |path| {
-                    ds_solar_process::BatchEngine::capture(path, &root, 1, &cancel)
+                    ds_solar_host::process::BatchEngine::capture(path, &root, 1, &cancel)
                 })
                 .unwrap();
                 fs::write(base.join("solar/canary/selection.json"), b"{torn").unwrap();

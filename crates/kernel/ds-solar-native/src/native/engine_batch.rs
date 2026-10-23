@@ -1,7 +1,7 @@
 //! Commit verified worker bytes through the existing native artifact lifecycle.
 use super::*;
 use ds_solar_contracts::ArtifactEntry;
-use ds_solar_process::VerifiedBatch;
+use ds_solar_host::process::VerifiedBatch;
 
 fn read(
     output: &VerifiedBatch,

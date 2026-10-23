@@ -19,7 +19,25 @@ pub fn calculate(calculation: LocalCalculation<'_>) -> Result<()> {
         .with_charts(calculation.charts)
         .with_documents(true)
         .with_report_drafts(calculation.drafts.to_vec());
-    options.input_maps = calculation.input_maps;
+    // The workspace holds Core's host documents; this tooling's in-process
+    // runtime takes its own document type with the same entry and bytes.
+    options.input_maps = calculation
+        .input_maps
+        .into_iter()
+        .map(|(city, maps)| {
+            let maps = maps
+                .into_iter()
+                .map(|(uri, map)| {
+                    let document = ds_solar_runtime::GeneratedDocument {
+                        entry: map.entry,
+                        bytes: map.bytes,
+                    };
+                    (uri, document)
+                })
+                .collect();
+            (city, maps)
+        })
+        .collect();
     let output = run_cities(
         &SolarRuntime::new(),
         calculation.prepared,

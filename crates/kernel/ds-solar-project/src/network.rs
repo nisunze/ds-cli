@@ -149,7 +149,7 @@ impl Workspace {
     pub(crate) fn input_maps(
         &self,
         city: &ds_solar_contracts::SolarCityInput,
-    ) -> Result<std::collections::BTreeMap<String, ds_solar_io::output::GeneratedDocument>> {
+    ) -> Result<std::collections::BTreeMap<String, ds_solar_host::output::GeneratedDocument>> {
         fn collect(value: &Value, refs: &mut Vec<Value>) {
             if value["kind"] == "solar_network_media" {
                 refs.push(value.clone());
@@ -194,7 +194,7 @@ impl Workspace {
             let uri = format!("gs://{bucket}/{object}?generation={generation}");
             result.insert(
                 uri,
-                ds_solar_io::output::GeneratedDocument::new(
+                ds_solar_host::output::GeneratedDocument::new(
                     format!("maps/{hash}.{ext}"),
                     media,
                     bytes,

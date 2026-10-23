@@ -3,7 +3,7 @@
 use crate::{preparation::ReferencePreparer, provider::ReferenceBundleProvider};
 use anyhow::{Result, ensure};
 use ds_solar_contracts::{BundleBytes, SolarCityInput, SolarResult};
-use ds_solar_io::cache::{DirectoryReferenceCache, ReferenceCache};
+use ds_solar_host::cache::{DirectoryReferenceCache, ReferenceCache};
 use std::path::Path;
 
 pub fn read_bundle(directory: &Path) -> Result<BundleBytes> {
@@ -13,9 +13,9 @@ pub fn read_bundle(directory: &Path) -> Result<BundleBytes> {
         "reference bundle directory must be regular, not a link"
     );
     let read = |name: &str| {
-        ds_solar_io::files::read(
+        ds_solar_host::files::read(
             &directory.join(name),
-            ds_solar_io::MAX_REFERENCE_ARTIFACT_BYTES,
+            ds_solar_host::MAX_REFERENCE_ARTIFACT_BYTES,
         )
     };
     Ok(BundleBytes {

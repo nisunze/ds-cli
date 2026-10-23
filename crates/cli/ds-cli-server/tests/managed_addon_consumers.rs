@@ -171,7 +171,7 @@ fn qualified_addons_capture_exact_lane_and_keep_old_program_without_task_or_netw
             let cancel = Default::default();
             assert_eq!(
                 serde_json::to_value(
-                    ds_solar_process::PreparedEngine::capture(
+                    ds_solar_host::process::PreparedEngine::capture(
                         old.executable(),
                         scratch.path(),
                         1,
@@ -183,9 +183,9 @@ fn qualified_addons_capture_exact_lane_and_keep_old_program_without_task_or_netw
                 .unwrap()["source_sha"],
                 info["source_sha"]
             );
-            ds_solar_process::BatchEngine::capture(old.executable(), scratch.path(), 1, &cancel)
+            ds_solar_host::process::BatchEngine::capture(old.executable(), scratch.path(), 1, &cancel)
                 .unwrap();
-            ds_solar_process::PortfolioEngine::capture(
+            ds_solar_host::process::PortfolioEngine::capture(
                 old.executable(),
                 scratch.path(),
                 1,

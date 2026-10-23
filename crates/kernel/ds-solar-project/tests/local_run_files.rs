@@ -7,7 +7,7 @@ use ds_solar_contracts::{
     ArtifactRole, BatchArtifact, BatchCity, BatchRunIdentity, PreparedSolarCityInput,
     SolarArtifactBatch, SolarError, digest,
 };
-use ds_solar_io::cache::{DirectoryReferenceCache, ReferenceCache};
+use ds_solar_host::cache::{DirectoryReferenceCache, ReferenceCache};
 use ds_solar_project::{
     files::{self, RunFailure, commit_artifact_run},
     preparation::{MAX_PREPARED_INPUT_BYTES, load_prepared, load_prepared_for_run},

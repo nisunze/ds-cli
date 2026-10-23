@@ -3,7 +3,7 @@ use ds_solar_reference_host::ReferencePreparer;
 #[path = "../../ds-solar-reference-host/tests/common/mod.rs"]
 mod common;
 use ds_solar_contracts::version::GOVERNED_CITY_INTAKE_SCHEMA_VERSION;
-use ds_solar_io::cache::{DirectoryReferenceCache, ReferenceCache};
+use ds_solar_host::cache::{DirectoryReferenceCache, ReferenceCache};
 use ds_solar_project::{
     intake::{GovernedCityIntake, GovernedIntakeAuthority},
     preparation::{prepare_cached, prepared_publication_claim, validate_governed_intake},

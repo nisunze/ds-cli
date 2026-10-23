@@ -106,8 +106,8 @@ pub fn plan(host: &NativeHost, project: &str, command: PlanCommand) -> Result<Va
         return Err("Reference request exceeds its byte bound".into());
     }
     let mut result = receipt(project, &command.city_id, &fingerprint, &input)?;
-    ds_solar_io::files::write(&command.output, &bytes).map_err(|e| e.to_string())?;
-    ds_solar_io::files::sync_dir(parent).map_err(|e| e.to_string())?;
+    ds_solar_host::files::write(&command.output, &bytes).map_err(|e| e.to_string())?;
+    ds_solar_host::files::sync_dir(parent).map_err(|e| e.to_string())?;
     result["request_file"] = json!(command.output);
     Ok(result)
 }
@@ -304,7 +304,7 @@ mod tests {
         );
         let bundle = tmp.path().join("bundle");
         std::fs::create_dir(&bundle).unwrap();
-        for name in ds_solar_io::cache::ARTIFACT_NAMES {
+        for name in ds_solar_host::cache::ARTIFACT_NAMES {
             std::fs::copy(
                 fixture("reference/aderm_bere").join(name),
                 bundle.join(name),

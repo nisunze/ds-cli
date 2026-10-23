@@ -422,7 +422,7 @@ pub static ENGINE: Command = Command {
 };
 pub fn engine(_: &Inputs, _: &Context) -> Result<Value, Failure> {
     let identity = ds_compute_runtime::solar_engine_identity().map_err(|error| {
-        if error.kind == ds_solar_process::ProcessFailureKind::Unavailable {
+        if error.kind == ds_solar_host::process::ProcessFailureKind::Unavailable {
             Failure::unavailable("solar_engine_missing", error.message)
                 .remedy("install the Solar addon or set DS_SOLAR_ENGINE_BIN to a compatible engine")
         } else {

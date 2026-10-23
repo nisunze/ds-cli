@@ -1497,7 +1497,7 @@ dependencies = [
  "ds-network",
  "ds-report-artifacts",
  "ds-solar-contracts",
- "ds-solar-io",
+ "ds-solar-host",
  "ds-sync-store",
  "rusqlite",
  "serde",
@@ -1582,7 +1582,6 @@ dependencies = [
  "ds-project-data",
  "ds-report-host",
  "ds-solar-contracts",
- "ds-solar-io",
  "ds-solar-reference-host",
  "ds-sync-runtime",
  "ds-sync-store",
@@ -1883,8 +1882,8 @@ dependencies = [
  "ds-network-contracts",
  "ds-report-artifacts",
  "ds-solar-contracts",
+ "ds-solar-host",
  "ds-solar-native",
- "ds-solar-process",
  "ds-sync-runtime",
  "ds-sync-store",
  "ds-update-runtime",
@@ -1936,8 +1935,7 @@ dependencies = [
  "ds-command-kernel",
  "ds-compute-runtime",
  "ds-solar-contracts",
- "ds-solar-io",
- "ds-solar-process",
+ "ds-solar-host",
  "ds-solar-project",
  "fs2",
  "libc",
@@ -2115,8 +2113,7 @@ dependencies = [
  "ds-network-client",
  "ds-network-contracts",
  "ds-solar-contracts",
- "ds-solar-io",
- "ds-solar-process",
+ "ds-solar-host",
  "ds-sync-store",
  "ds-tile-runtime",
  "rayon",
@@ -2658,6 +2655,7 @@ dependencies = [
  "ds-solar-addon",
  "ds-solar-contracts",
  "ds-solar-engine",
+ "ds-solar-host",
  "ds-solar-portfolio",
  "ds-solar-project",
  "ds-solar-reference-host",
@@ -2699,6 +2697,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-solar-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "ds-solar-contracts",
+ "fs2",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "ds-solar-io"
 version = "0.1.0"
 dependencies = [
@@ -2721,8 +2735,7 @@ dependencies = [
  "ds-command-kernel",
  "ds-compute-runtime",
  "ds-solar-contracts",
- "ds-solar-io",
- "ds-solar-process",
+ "ds-solar-host",
  "ds-solar-project",
  "ds-solar-reference-host",
  "ds-solar-runtime",
@@ -2748,20 +2761,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-solar-process"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "ds-solar-contracts",
- "ds-solar-io",
- "libc",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
-]
-
-[[package]]
 name = "ds-solar-project"
 version = "0.1.0"
 dependencies = [
@@ -2771,7 +2770,7 @@ dependencies = [
  "ds-command-kernel",
  "ds-report-artifacts",
  "ds-solar-contracts",
- "ds-solar-io",
+ "ds-solar-host",
  "ds-solar-reference-host",
  "fs2",
  "rusqlite",
@@ -2788,7 +2787,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "ds-solar-contracts",
- "ds-solar-io",
+ "ds-solar-host",
  "ds-solar-runtime",
  "reqwest 0.12.28",
  "serde",

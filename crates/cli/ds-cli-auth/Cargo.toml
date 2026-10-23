@@ -11,7 +11,6 @@ publish.workspace = true
 [dependencies]
 ds-native-host = { workspace = true }
 ds-update-runtime = { path = "../../kernel/ds-update-runtime" }
-ds-solar-io = { path = "../../../../ds-solar/crates/ds-solar-io" }
 ds-solar-reference-host = { workspace = true }
 ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
 base64 = { workspace = true }

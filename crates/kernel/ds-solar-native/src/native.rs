@@ -44,8 +44,8 @@ use ds_solar_contracts::{
     WeatherPin,
     artifact_names::{PORTFOLIO_CALCULATION_NAME, PORTFOLIO_CONTRIBUTION_NAME},
 };
-use ds_solar_io::Concurrency;
-use ds_solar_io::{cache::DirectoryReferenceCache, cancel::CancelToken};
+use ds_solar_host::Concurrency;
+use ds_solar_host::{cache::DirectoryReferenceCache, cancel::CancelToken};
 use ds_solar_reference_host::{
     BundleResolution, HttpReferenceProvider, ReferenceBundleProvider, ReferencePreparer, Refresh,
 };
@@ -716,7 +716,7 @@ struct CitySink {
     index: usize,
 }
 
-impl ds_solar_io::progress::ProgressSink for CitySink {
+impl ds_solar_host::progress::ProgressSink for CitySink {
     fn emit(&self, event: ds_solar_contracts::ProgressEvent) {
         use ds_solar_contracts::ProgressPhase;
         let state = self.app.state();
@@ -758,10 +758,10 @@ struct RunObserver {
     sinks: BTreeMap<String, CitySink>,
 }
 
-impl ds_solar_process::BatchProgressSink for RunObserver {
+impl ds_solar_host::process::BatchProgressSink for RunObserver {
     fn emit(&self, event: ds_solar_contracts::prepared_batch::PreparedBatchProgress) {
         if let Some(sink) = self.sinks.get(&event.city_id) {
-            ds_solar_io::progress::ProgressSink::emit(sink, event.event);
+            ds_solar_host::progress::ProgressSink::emit(sink, event.event);
         }
     }
 }
@@ -1443,10 +1443,10 @@ pub fn solar_native_calculate(
     // must not leave a durable run reservation behind.
     let scratch = secure_private_directory(&app.data_dir()?.join("solar-workers"))?;
     let engine = CapturedEngine::capture(app.capture_engine()?, |path| {
-        ds_solar_process::BatchEngine::capture(
+        ds_solar_host::process::BatchEngine::capture(
             path,
             &scratch,
-            ds_solar_io::compute_parallelism(),
+            ds_solar_host::compute_parallelism(),
             &cancel,
         )
     })?;
@@ -1650,7 +1650,7 @@ fn execute_run(
     generate_documents: bool,
     report_drafts: Vec<String>,
     concurrency: Concurrency,
-    engine: CapturedEngine<ds_solar_process::BatchEngine>,
+    engine: CapturedEngine<ds_solar_host::process::BatchEngine>,
     cancel: &CancelToken,
 ) -> Result<RunReport, String> {
     let started = std::time::Instant::now();
@@ -2965,7 +2965,7 @@ struct CapturedEngine<T> {
 impl<T> CapturedEngine<T> {
     fn capture(
         selection: ds_cli_exec::CapturedExternal,
-        capture: impl FnOnce(&Path) -> Result<T, ds_solar_process::ProcessFailure>,
+        capture: impl FnOnce(&Path) -> Result<T, ds_solar_host::process::ProcessFailure>,
     ) -> Result<Self, String> {
         let process = selection
             .with_verified_executable(capture)
@@ -2984,14 +2984,14 @@ impl<T> CapturedEngine<T> {
 fn capture_portfolio_engine(
     app: &AppHandle,
     cancel: &CancelToken,
-) -> Result<CapturedEngine<ds_solar_process::PortfolioEngine>, String> {
+) -> Result<CapturedEngine<ds_solar_host::process::PortfolioEngine>, String> {
     portfolio_cancel_checkpoint(cancel)?;
     let scratch = secure_private_directory(&app.data_dir()?.join("solar-workers"))?;
     CapturedEngine::capture(app.capture_engine()?, |path| {
-        ds_solar_process::PortfolioEngine::capture(
+        ds_solar_host::process::PortfolioEngine::capture(
             path,
             &scratch,
-            ds_solar_io::compute_parallelism(),
+            ds_solar_host::compute_parallelism(),
             cancel,
         )
     })
@@ -3010,7 +3010,7 @@ fn calculate_portfolio_with_cancel(
     app: AppHandle,
     command: PortfolioCalculateCommand,
     cancel: CancelToken,
-    engine: CapturedEngine<ds_solar_process::PortfolioEngine>,
+    engine: CapturedEngine<ds_solar_host::process::PortfolioEngine>,
 ) -> Result<PortfolioRunReport, String> {
     let state = app.state();
     let workspace = resolve_workspace_handle(&app, &command.workspace_handle)?;
@@ -3146,7 +3146,7 @@ fn calculate_portfolio_with_cancel(
             .calculate(&request, &cancel)
             .map_err(|error| match &error.refusal {
                 Some(refusal) => format!("{} ({})", refusal.message, refusal.code.as_str()),
-                None if error.kind == ds_solar_process::ProcessFailureKind::Cancelled => {
+                None if error.kind == ds_solar_host::process::ProcessFailureKind::Cancelled => {
                     "Solar portfolio calculation was cancelled (cancelled)".into()
                 }
                 None => error.to_string(),
@@ -4093,7 +4093,7 @@ pub struct NativeEngineIdentity {
 }
 
 pub fn solar_native_engine() -> Result<NativeEngineIdentity, String> {
-    native_engine_identity(ds_solar_process::installed_engine_path()?)
+    native_engine_identity(ds_solar_host::process::installed_engine_path()?)
 }
 
 pub fn solar_native_engine_for_host(app: &AppHandle) -> Result<NativeEngineIdentity, String> {
@@ -4104,7 +4104,7 @@ pub fn solar_native_engine_for_host(app: &AppHandle) -> Result<NativeEngineIdent
 
 fn native_engine_identity(path: PathBuf) -> Result<NativeEngineIdentity, String> {
     let identity =
-        ds_solar_process::selected_engine_identity(&path).map_err(|error| error.to_string())?;
+        ds_solar_host::process::selected_engine_identity(&path).map_err(|error| error.to_string())?;
     Ok(NativeEngineIdentity {
         name: identity.name,
         version: identity.version,
@@ -7219,7 +7219,7 @@ mod tests {
             &CalculationOptions::default()
                 .with_run_id("run-test")
                 .full_output(),
-            Concurrency::serial(),
+            ds_solar_runtime::Concurrency::serial(),
             "ds-solar-fixtures",
             "solar",
         )
@@ -7251,10 +7251,10 @@ mod tests {
             concurrency: Some(1),
         };
         let cancel = CancelToken::new();
-        let engine = ds_solar_process::BatchEngine::capture(
-            &ds_solar_process::installed_engine_path().unwrap(),
+        let engine = ds_solar_host::process::BatchEngine::capture(
+            &ds_solar_host::process::installed_engine_path().unwrap(),
             &root,
-            ds_solar_io::compute_parallelism(),
+            ds_solar_host::compute_parallelism(),
             &cancel,
         )
         .unwrap();

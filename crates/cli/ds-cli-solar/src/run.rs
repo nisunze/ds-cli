@@ -11,8 +11,8 @@ use ds_solar_contracts::prepared_batch::{
     PREPARED_BATCH_REQUEST_SCHEMA, PreparedBatchOptions, PreparedBatchProgress,
     PreparedBatchRequest,
 };
-use ds_solar_io::cancel::CancelToken;
-use ds_solar_process::{BatchEngine, ProcessFailure, ProcessFailureKind};
+use ds_solar_host::cancel::CancelToken;
+use ds_solar_host::process::{BatchEngine, ProcessFailure, ProcessFailureKind};
 use std::collections::BTreeSet;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -404,7 +404,7 @@ fn execute_batch(
     };
     let attempted = Cell::new(false);
     let result = engine.with_verified_executable(|path| {
-        let task = BatchEngine::capture(path, scratch.path(), ds_solar_io::compute_parallelism(), &cancel).map_err(process_failure)?;
+        let task = BatchEngine::capture(path, scratch.path(), ds_solar_host::compute_parallelism(), &cancel).map_err(process_failure)?;
         let timeout = remaining(deadline)?;
         attempted.set(true);
         task.calculate_with_timeout(&request, &cancel, Some(&progress), timeout).map_err(process_failure)

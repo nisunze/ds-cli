@@ -4,7 +4,7 @@ use ds_solar_reference_host::{FixtureReferenceProvider, ReferencePreparer};
 mod fixtures;
 
 use ds_solar_contracts::ReferencePin;
-use ds_solar_runtime::DirectoryReferenceCache;
+use ds_solar_host::cache::DirectoryReferenceCache;
 use serde_json::{Value, json};
 use std::{path::Path, process::Command};
 

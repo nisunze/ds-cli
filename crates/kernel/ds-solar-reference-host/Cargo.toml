@@ -10,7 +10,7 @@ publish.workspace = true
 
 [dependencies]
 ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
-ds-solar-io = { path = "../../../../ds-solar/crates/ds-solar-io" }
+ds-solar-host = { path = "../ds-solar-host" }
 anyhow.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde.workspace = true

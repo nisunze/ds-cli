@@ -91,7 +91,7 @@ impl HttpReferenceProvider {
                 response.status()
             )));
         }
-        if artifact.bytes as u64 > ds_solar_io::MAX_REFERENCE_ARTIFACT_BYTES {
+        if artifact.bytes as u64 > ds_solar_host::MAX_REFERENCE_ARTIFACT_BYTES {
             return Err(SolarError::reference_unit_invalid(
                 "Reference artifact exceeds 16 MiB",
             ));
@@ -174,8 +174,8 @@ impl ReferenceBundleProvider for HttpReferenceProvider {
             )));
         }
 
-        if published.artifacts.len() != ds_solar_io::cache::ARTIFACT_NAMES.len()
-            || ds_solar_io::cache::ARTIFACT_NAMES.iter().any(|name| {
+        if published.artifacts.len() != ds_solar_host::cache::ARTIFACT_NAMES.len()
+            || ds_solar_host::cache::ARTIFACT_NAMES.iter().any(|name| {
                 published
                     .artifacts
                     .iter()
@@ -185,7 +185,7 @@ impl ReferenceBundleProvider for HttpReferenceProvider {
             })
             || published.artifacts.iter().any(|a| {
                 a.bytes == 0
-                    || a.bytes as u64 > ds_solar_io::MAX_REFERENCE_ARTIFACT_BYTES
+                    || a.bytes as u64 > ds_solar_host::MAX_REFERENCE_ARTIFACT_BYTES
                     || a.sha256.len() != 64
                     || !a.sha256.bytes().all(|b| b.is_ascii_hexdigit())
             })
@@ -195,7 +195,7 @@ impl ReferenceBundleProvider for HttpReferenceProvider {
             ));
         }
         let mut artifacts = BundleBytes::default();
-        for name in ds_solar_io::cache::ARTIFACT_NAMES {
+        for name in ds_solar_host::cache::ARTIFACT_NAMES {
             let listed = published
                 .artifacts
                 .iter()
@@ -217,7 +217,7 @@ impl ReferenceBundleProvider for HttpReferenceProvider {
         }
         // The manifest that arrived must agree with the inventory that
         // announced it, or the two halves of the answer disagree.
-        let opened = ds_solar_io::reference::open(&artifacts)?;
+        let opened = ds_solar_host::reference::open(&artifacts)?;
         if opened.reference_unit.manifest.source_key != published.source_key
             || opened.reference_unit.manifest.bundle_digest != published.bundle_digest
         {

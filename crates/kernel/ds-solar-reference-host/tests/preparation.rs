@@ -14,7 +14,7 @@ use ds_solar_contracts::{
     BundleBytes, MATERIAL_DERIVED_FROM, MATERIAL_DERIVED_FROM_PROPOSED, MATERIAL_DETAIL_FIELDS,
     MaterialEvidence, ReferencePin, SolarErrorCode, SolarResult,
 };
-use ds_solar_io::cache::{DirectoryReferenceCache, InMemoryReferenceCache, ReferenceCache};
+use ds_solar_host::cache::{DirectoryReferenceCache, InMemoryReferenceCache, ReferenceCache};
 use ds_solar_reference_host::{
     preparation::{BundleResolution, ReferencePreparer, Refresh},
     provider::{ReferenceBundleProvider, ReferenceRequest},
@@ -79,7 +79,7 @@ fn explicit_held_bundle_admission_matches_application_preparation_and_refuses_an
         .with_provider(&provider)
         .prepare(input.clone(), common::PREPARED_AT)
         .unwrap();
-    let pure = ds_solar_io::preparation::ReferencePreparer::new()
+    let pure = ds_solar_host::preparation::ReferencePreparer::new()
         .prepare(input.clone(), &bytes, common::PREPARED_AT)
         .unwrap();
     assert_eq!(provider.calls(), 1);
@@ -87,7 +87,7 @@ fn explicit_held_bundle_admission_matches_application_preparation_and_refuses_an
         serde_json::to_value(application.input).unwrap(),
         serde_json::to_value(pure).unwrap()
     );
-    let wrong_site = ds_solar_io::preparation::ReferencePreparer::new()
+    let wrong_site = ds_solar_host::preparation::ReferencePreparer::new()
         .prepare(
             input,
             &common::reference_bytes("aderm_gagal"),

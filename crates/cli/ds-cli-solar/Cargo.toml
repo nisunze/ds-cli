@@ -18,8 +18,7 @@ ds-cli-report = { workspace = true }
 ds-cli-server = { workspace = true }
 ds-command-kernel = { workspace = true }
 ds-solar-contracts = { workspace = true }
-ds-solar-process = { path = "../../../../ds-solar/crates/ds-solar-process" }
-ds-solar-io = { path = "../../../../ds-solar/crates/ds-solar-io", default-features = false }
+ds-solar-host = { path = "../../kernel/ds-solar-host" }
 ds-solar-project = { path = "../../kernel/ds-solar-project", default-features = false }
 ds-compute-runtime = { path = "../../kernel/ds-compute-runtime" }
 libc = { workspace = true }

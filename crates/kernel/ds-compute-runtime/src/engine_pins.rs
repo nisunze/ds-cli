@@ -63,11 +63,11 @@ pub(crate) fn capture(
         }
         EngineKind::SolarPrepared => {
             // Preserve Solar's established owner limit in the admitted width.
-            workers = workers.min(ds_solar_io::compute_parallelism());
+            workers = workers.min(ds_solar_host::compute_parallelism());
             let development_override = std::env::var_os("DS_SOLAR_ENGINE_BIN").is_some();
             let selected = if development_override {
                 ds_cli_exec::addons::SOLAR
-                    .capture_pinned(&ds_solar_process::installed_engine_path()?)
+                    .capture_pinned(&ds_solar_host::process::installed_engine_path()?)
             } else {
                 match module_base {
                     Some(base) => ds_cli_exec::addons::SOLAR.capture_for_lane_in(&job.lane, base),
@@ -80,7 +80,7 @@ pub(crate) fn capture(
             selected
                 .with_verified_executable(|executable| -> Result<_, String> {
                     let sha = sha256_file(executable)?;
-                    let identity = ds_solar_process::selected_engine_identity(executable)
+                    let identity = ds_solar_host::process::selected_engine_identity(executable)
                         .map_err(|e| e.to_string())?;
                     if sha256_file(executable)? != sha {
                         return Err("compute_engine_changed_during_capture".into());
@@ -148,7 +148,7 @@ pub(crate) fn solar(
     job: &Job,
     scratch: &Path,
     cancel: &CancelToken,
-) -> Result<ds_solar_process::PreparedEngine, String> {
+) -> Result<ds_solar_host::process::PreparedEngine, String> {
     compute_jobs::validate_engine_pin(job).map_err(str::to_owned)?;
     let pin = job
         .engine_pin
@@ -163,14 +163,14 @@ pub(crate) fn solar(
         return Err("compute_engine_pin_identity_invalid".into());
     }
     let executable = Path::new(&pin.executable);
-    if pin.workers > ds_solar_io::compute_parallelism() {
+    if pin.workers > ds_solar_host::compute_parallelism() {
         return Err("compute_engine_pin_budget_unavailable: restore the admitted Solar worker share; input and exact engine pin are retained".into());
     }
     if !executable.is_absolute() || sha256_file(executable)? != pin.executable_sha256 {
         return Err("compute_engine_pin_changed".into());
     }
     let engine =
-        ds_solar_process::PreparedEngine::capture(executable, scratch, pin.workers, cancel)
+        ds_solar_host::process::PreparedEngine::capture(executable, scratch, pin.workers, cancel)
             .map_err(|e| e.to_string())?;
     if engine.identity() != &identity || sha256_file(executable)? != pin.executable_sha256 {
         return Err("compute_engine_pin_changed".into());

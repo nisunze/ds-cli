@@ -40,8 +40,9 @@ use ds_solar_contracts::{
 };
 use ds_solar_runtime::{
     CalculationOptions, CollectingProgressSink, Concurrency, DirectoryDebugSink,
-    DirectoryReferenceCache, SolarRuntime, run_cities, run_portfolio,
+    SolarRuntime, run_cities, run_portfolio,
 };
+use ds_solar_host::cache::DirectoryReferenceCache;
 use sha2::{Digest, Sha256};
 
 /// JSON and artifact bounds are enforced before allocation. The batch schema

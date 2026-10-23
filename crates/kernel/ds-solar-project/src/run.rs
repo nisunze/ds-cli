@@ -7,7 +7,7 @@ use ds_solar_contracts::{
     PreparedSolarCityInput, SolarArtifactBatch, SolarCityInput, digest,
     network_form::ResolvedInformation,
 };
-use ds_solar_io::{cache::DirectoryReferenceCache, output::GeneratedDocument};
+use ds_solar_host::{cache::DirectoryReferenceCache, output::GeneratedDocument};
 use ds_solar_reference_host::ReferencePreparer;
 use fs2::FileExt;
 use rusqlite::{OptionalExtension, TransactionBehavior, params};

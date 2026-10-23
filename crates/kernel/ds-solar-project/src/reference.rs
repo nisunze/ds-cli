@@ -2,7 +2,7 @@
 use crate::{Workspace, files, timestamp};
 use anyhow::{Result, ensure};
 use ds_solar_contracts::{BundleBytes, SolarCityInput};
-use ds_solar_io::cache::DirectoryReferenceCache;
+use ds_solar_host::cache::DirectoryReferenceCache;
 use ds_solar_reference_host::ReferencePreparer;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -66,7 +66,7 @@ pub fn import(
         input.content_digest == expected,
         "Solar city changed during reference acquisition"
     );
-    let bundle = ds_solar_io::delivery::bundle_from_delivery(&ws.identity.project_id, payload)?;
+    let bundle = ds_solar_host::delivery::bundle_from_delivery(&ws.identity.project_id, payload)?;
     commit_bundle(&ws, city, cache, expected, input, bundle)
 }
 /// Read only the four declared local artifacts after project/revision admission.
@@ -166,7 +166,7 @@ mod tests {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../../ds-solar/fixtures/reference")
             .join(city);
-        for name in ds_solar_io::cache::ARTIFACT_NAMES {
+        for name in ds_solar_host::cache::ARTIFACT_NAMES {
             std::fs::copy(fixture.join(name), directory.join(name)).unwrap();
         }
         directory

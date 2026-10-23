@@ -47,7 +47,7 @@ use ds_network_contracts::lv_processing::{
     decode_native_lv_request, LEGACY_NATIVE_LV_REQUEST_SCHEMA_V1, NATIVE_LV_REQUEST_SCHEMA_V1,
 };
 use ds_solar_contracts::{CalculationTimings, PreparedSolarCityInput, SolarCalculationResult};
-use ds_solar_io::{cancel::CancelToken, output::OutputFile};
+use ds_solar_host::{cancel::CancelToken, output::OutputFile};
 use ds_sync_store::{JobCaller, Recovery, Store};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -65,8 +65,8 @@ pub use ds_command_kernel::execution_context::Limits;
 
 /// The actual standalone Solar engine admitted by this native host.
 pub fn solar_engine_identity(
-) -> Result<ds_solar_contracts::EngineIdentity, ds_solar_process::ProcessFailure> {
-    ds_solar_process::installed_engine_identity()
+) -> Result<ds_solar_contracts::EngineIdentity, ds_solar_host::process::ProcessFailure> {
+    ds_solar_host::process::installed_engine_identity()
 }
 
 pub fn now_ms() -> u64 {

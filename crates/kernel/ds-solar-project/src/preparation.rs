@@ -6,7 +6,7 @@ use crate::intake::{
 };
 use anyhow::{Context, Result, bail};
 use ds_solar_contracts::{PreparedSolarCityInput, version::GOVERNED_CITY_INTAKE_SCHEMA_VERSION};
-use ds_solar_io::cache::DirectoryReferenceCache;
+use ds_solar_host::cache::DirectoryReferenceCache;
 use ds_solar_reference_host::ReferencePreparer;
 use serde::{Deserialize, Serialize};
 use std::{

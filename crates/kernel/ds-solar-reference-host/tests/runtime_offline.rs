@@ -1,7 +1,7 @@
 //! Preparation effects stop at the application boundary; Run receives held inputs.
 mod common;
 use ds_solar_contracts::{BundleBytes, SolarErrorCode, SolarResult};
-use ds_solar_io::cache::{InMemoryReferenceCache, ReferenceCache};
+use ds_solar_host::cache::{InMemoryReferenceCache, ReferenceCache};
 use ds_solar_reference_host::{ReferenceBundleProvider, ReferencePreparer, ReferenceRequest};
 use ds_solar_runtime::{CalculationOptions, SolarRuntime};
 use std::sync::atomic::{AtomicUsize, Ordering};

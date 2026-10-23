@@ -13,7 +13,7 @@ use ds_solar_contracts::{
     BundleBytes, CityIdentity, RunOptions, SnapshotRevision, SolarArtifactBatch,
     SolarCalculationResult, SolarCityInput, SolarPortfolioResult, digest,
 };
-use ds_solar_runtime::{DirectoryReferenceCache, ReferenceCache};
+use ds_solar_host::cache::{DirectoryReferenceCache, ReferenceCache};
 
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/fixtures")

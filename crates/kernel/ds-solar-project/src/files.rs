@@ -26,7 +26,7 @@ pub fn ordinary_dir(path: &Path) -> Result<()> {
     }
     Ok(())
 }
-pub use ds_solar_io::files::{ordinary_file, read, sync_dir, write};
+pub use ds_solar_host::files::{ordinary_file, read, sync_dir, write};
 pub fn private_dir(path: &Path) -> Result<()> {
     let builder = fs::DirBuilder::new();
     #[cfg(unix)]

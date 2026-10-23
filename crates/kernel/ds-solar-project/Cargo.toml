@@ -15,7 +15,7 @@ base64 = "0.22"
 anyhow.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
 ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
-ds-solar-io = { path = "../../../../ds-solar/crates/ds-solar-io" }
+ds-solar-host = { path = "../ds-solar-host" }
 ds-solar-reference-host = { path = "../ds-solar-reference-host" }
 ds-command-kernel = { path = "../ds-command-kernel" }
 ds-report-artifacts = { path = "../ds-report-artifacts" }

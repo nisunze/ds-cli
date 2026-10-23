@@ -2,7 +2,7 @@
 use ds_solar_contracts::{
     CityIdentity, EngineIdentity, RunOptions, SnapshotRevision, SolarCityInput,
 };
-use ds_solar_io::{
+use ds_solar_host::{
     cache::{DirectoryReferenceCache, ReferenceCache},
     preparation::ReferencePreparer,
 };

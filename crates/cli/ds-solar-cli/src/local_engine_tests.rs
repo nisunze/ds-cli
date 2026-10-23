@@ -9,7 +9,7 @@ use ds_solar_contracts::{
 };
 use ds_solar_project::{ProjectIdentity, Workspace, run::RunRequest};
 use ds_solar_reference_host::{FixtureReferenceProvider, ReferencePreparer};
-use ds_solar_runtime::DirectoryReferenceCache;
+use ds_solar_host::cache::DirectoryReferenceCache;
 use serde_json::json;
 use std::{collections::BTreeMap, path::PathBuf};
 
