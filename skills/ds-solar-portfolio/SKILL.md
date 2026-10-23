@@ -72,7 +72,7 @@ is not a portfolio run; never present it as one.
 
 ## Run and observe
 
-Run the native `prepare` operation through `solar.application` for every
+Run the native `prepare_captured` operation through `solar.application` for every
 ordered member first; DS Core owns freshness, and a member that is not ready is
 a refusal. Then start the portfolio with `portfolio_start`, using the frozen
 portfolio id and exact membership revision, and one graph strategy the live
@@ -80,11 +80,11 @@ schema declares. If Core reports a changed revision, list again and have the
 user confirm the new ordered membership; never retry with it silently.
 
 Currency, horizon and discount rate are governed prepared-input facts, not
-launch flags. Language and report intent belong to a later report operation;
-do not invent or pass them to portfolio calculation.
+launch flags. Pass language and report intents only where the live schema
+requires them (`portfolio_start` names its drafts); invent no other option.
 
 Treat the launch response as a job receipt, not a result. Observe that exact
-run id with `portfolio_progress`. A portfolio is
+job id with `portfolio_progress`. A portfolio is
 ready only when the run receipt reports a committed aggregate for every
 declared member. Any missing, failed, stale, digest-mismatched, or extra city
 means there is no valid portfolio artifact; report the complete refusal rather

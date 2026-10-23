@@ -51,9 +51,9 @@ Discover the existing cities and retain the exact context ids in
 the operator's order. Refuse duplicate, missing, or substituted cities. Read
 current readiness rather than assuming a previous run left usable inputs.
 
-Prepare only the requested contexts. Preparation may refresh authenticated
-weather or reference data inside DS Core; the skill never
-handles provider credentials, cache paths, or raw cache records. Require a
+Prepare only the requested contexts. Preparation reads only the verified
+reference cache; a miss refuses `reference_unit_invalid` (headless route below).
+Never handle provider credentials, cache paths, or raw cache records. Require a
 successful prepared receipt for every requested city before launching compute.
 If any city is not ready, report its exact refusal; never run the successful
 subset silently.
@@ -102,7 +102,8 @@ publication only through the separate discovered final-submit command and only
 when the user explicitly asks to submit that exact run and city. Do not present
 a draft as final or claim an imported final is published.
 
-Discover Sync Center status when publication matters. Pending or failed uploads
+Read publication with `ds core sync status --project <id>` or `ds core activity
+--project <id>` (Desktop: `ds desktop sync status`). Pending or failed uploads
 do not invalidate sealed calculations; only a published receipt proves sync.
 
 ## Keep the headless route separate
@@ -111,9 +112,10 @@ For headless city runs, discover capture, preparation and artifact-runner
 contracts. Preserve captured project/root authority. Prepare only from a
 verified local reference cache named by the live command, never provider URLs,
 weather tokens, API keys, browser caches, fixtures or invented flags.
-For a fresh server, seed the captured cities into a local Solar workspace and
-discover reference acquisition. It derives the site/equipment request, uses the
-explicit project authority, and verifies the cache before preparation. Never pass
+On a cache miss, discover `reference_plan` and `reference_import` (local
+workspace: `solar.reference.plan`/`.import`): the plan exports the city's
+site/equipment request and digest; import verifies four sealed artifacts into
+the cache; then prepare again. There is no remote acquisition. Never pass
 provider credentials or substitute fixture bundles.
 
 Preparation also emits a validated `ds.solar.server-submission/v1` envelope.
