@@ -333,10 +333,11 @@ fn ds_system_clean_name(value: &str) -> String {
     name.trim_matches('_').to_string()
 }
 
-/// The layers exactly as a save transmits them: each LV feature names its
-/// transformer document (`transfo`, and `name` on the `tr` layer). An analysed
-/// room and the MV room travel unchanged. `None` when a feature is not an
-/// object the transmission could stamp.
+/// The layers exactly as a save transmits them (ds-web
+/// `withTransformerDocumentFields`): the room's own `transfo` and `tr.name`
+/// travel as staged, and only an LV feature with no `transfo` names its
+/// transformer document. An analysed room and the MV room travel unchanged.
+/// `None` when a feature is not an object the transmission could stamp.
 fn transmitted(
     layers: &Map<String, Value>,
     transformer: &str,
@@ -348,7 +349,7 @@ fn transmitted(
     if analysed || transformer == MV_ROOM || document.is_empty() {
         return Some(layers.clone());
     }
-    let stamp = |feature: Value, tr: bool| -> Option<Value> {
+    let stamp = |feature: Value| -> Option<Value> {
         let Value::Object(mut feature) = feature else {
             return None;
         };
@@ -357,9 +358,13 @@ fn transmitted(
             Some(Value::Object(properties)) => properties,
             Some(_) => return None,
         };
-        properties.insert("transfo".into(), json!(document));
-        if tr {
-            properties.insert("name".into(), json!(document));
+        let missing = match properties.get("transfo") {
+            None | Some(Value::Null) => true,
+            Some(Value::String(label)) => label.trim().is_empty(),
+            Some(_) => false,
+        };
+        if missing {
+            properties.insert("transfo".into(), json!(document));
         }
         feature.insert("properties".into(), Value::Object(properties));
         Some(Value::Object(feature))
@@ -373,11 +378,9 @@ fn transmitted(
                 Some(Value::Array(features)) => features,
                 Some(_) => return None,
             };
-            // ds-web `canonicalName(layer) === 'tr'`.
-            let tr = name.trim().eq_ignore_ascii_case("tr");
             let stamped = features
                 .into_iter()
-                .map(|feature| stamp(feature, tr))
+                .map(stamp)
                 .collect::<Option<Vec<_>>>()?;
             collection.insert("features".into(), Value::Array(stamped));
             Some((name.clone(), Value::Object(collection)))

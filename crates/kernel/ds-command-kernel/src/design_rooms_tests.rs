@@ -78,19 +78,20 @@ fn acquire(expected: Value, consume: Value) -> Value {
 #[test]
 fn the_header_digest_is_ds_webs_transmitted_content_digest() {
     // Pinned against ds-web's own modules (content-digest.ts, transformer-name.ts
-    // and api/design.ts withTransformerDocumentFields) over the same room.
+    // and api/design.ts withTransformerDocumentFields) over the same room, in
+    // ds-web src/tests/room-save-keeps-labels.test.ts.
     let layers = layers();
     let layers = layers.as_object().unwrap();
     for (name, digest, bytes) in [
         (
             "tr_1",
-            "01f764799f5561997348ad32855fd6ed90e776b951e58e0f9c4e17a95b7285b1",
-            469,
+            "62692439d8d0366fd22b20acc5af3527346cd297c3ef3f6513854949ba87fc02",
+            468,
         ),
         (
             "kigali_ex_12",
-            "3e28882208f21f01555503e23a3992569bf15ada17381e7eb787eaa9893b1efd",
-            521,
+            "8400f8fe0fd00867c631a977033daef8fee053077d40db2c9428c4d7a694e7eb",
+            507,
         ),
         (
             "mv_data",
@@ -173,7 +174,7 @@ fn an_edited_room_round_trips_with_its_header_metadata_and_generation() {
     let header = header(&mut db, "Tr_1");
     assert_eq!(
         header["local_content_digest"],
-        "01f764799f5561997348ad32855fd6ed90e776b951e58e0f9c4e17a95b7285b1"
+        "62692439d8d0366fd22b20acc5af3527346cd297c3ef3f6513854949ba87fc02"
     );
     assert_eq!(
         header["server_content_digest"],
@@ -571,3 +572,41 @@ fn delete_discards_only_the_named_rooms() {
 }
 
 const DIGEST_FIXTURE: &str = r#"{"lv_poles":{"type":"FeatureCollection","features":[{"type":"Feature","id":"p2","geometry":{"type":"Point","coordinates":[29.7318,-2.765,1.5]},"properties":{"transfo":"TR-1","pole_number":"P2","stay":1,"dev_angle":0.1,"tiny":1e-7,"huge":1e21,"z":"zulu \"quoted\" \\ back\tslash\n<&>","unicode":"élan – 日本 😀","nil":null,"flag":false}},{"type":"Feature","id":"p1","geometry":{"type":"Point","coordinates":[29.73,-2.76]},"properties":{"transfo":"TR-1","pole_number":"P1","stay":0,"height":9,"ratio":0.000001,"neg":-1234567.5}}]},"customers":{"type":"FeatureCollection","features":[]}}"#;
+
+/// 79dbbecf / 36f93262: a room save transmits the room's own `transfo` and
+/// `tr.name`; a null `tr.name` stays null and only a missing `transfo` names
+/// the document.
+#[test]
+fn a_room_save_transmits_the_rooms_own_labels() {
+    let room = json!({
+        "tr": {"type":"FeatureCollection","features":[{"type":"Feature","geometry":null,
+            "properties":{"transfo":"UPGRADE_BAZENGA","name":"UPGRADE_BAZENGA"}}]},
+        "lv_poles": {"type":"FeatureCollection","features":[
+            {"type":"Feature","geometry":null,"properties":{"id":"p1","transfo":"UPGRADE_BAZENGA"}},
+            {"type":"Feature","geometry":null,"properties":{"id":"p2","transfo":" "}},
+            {"type":"Feature","geometry":null,"properties":null}]}
+    });
+    let sent = transmitted(room.as_object().unwrap(), "updrade_bazenga", false).unwrap();
+    let props = |layer: &str, i: usize| sent[layer]["features"][i]["properties"].clone();
+    assert_eq!(
+        props("tr", 0),
+        json!({"transfo":"UPGRADE_BAZENGA","name":"UPGRADE_BAZENGA"})
+    );
+    assert_eq!(
+        props("lv_poles", 0),
+        json!({"id":"p1","transfo":"UPGRADE_BAZENGA"})
+    );
+    assert_eq!(
+        props("lv_poles", 1),
+        json!({"id":"p2","transfo":"UPDRADE_BAZENGA"})
+    );
+    assert_eq!(props("lv_poles", 2), json!({"transfo":"UPDRADE_BAZENGA"}));
+
+    let null_name = json!({"tr": {"type":"FeatureCollection","features":[{"type":"Feature",
+        "geometry":null,"properties":{"name":null,"transfo":"AGAHEHE"}}]}});
+    let sent = transmitted(null_name.as_object().unwrap(), "agahehe", false).unwrap();
+    assert_eq!(
+        sent["tr"]["features"][0]["properties"],
+        json!({"name":null,"transfo":"AGAHEHE"})
+    );
+}
