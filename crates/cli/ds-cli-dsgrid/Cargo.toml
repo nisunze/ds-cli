@@ -21,9 +21,11 @@ ds-network-client = { workspace = true }
 # can publish a revision under the identity it already holds. That family is
 # one named semantic operation each, over the shared paired-session surface.
 ds-cli-desktop = { workspace = true }
-# Pure model vocabulary only: ids, table kinds and the manifest shape. No
-# decode, session, engine or exchange code is reachable through it.
-ds-grid-model = { workspace = true }
+# The model vocabulary (ids, table kinds, the manifest shape) comes only
+# through `ds_network_contracts::grid_model`, which compiles ds-grid-model
+# without its algorithms or table codec (DECOUPLING-013). Reading, validating,
+# transforming or writing model data is the Network engine's, behind a typed
+# task; ds/tests/core_links_model_types_only.rs refuses a direct link again.
 serde = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 serde_json = { workspace = true }
@@ -50,4 +52,5 @@ windows-sys = { workspace = true }
 # the normal/build closure of `ds`.
 ds-grid-engine = { workspace = true }
 ds-grid-exchange = { workspace = true }
+ds-grid-model = { workspace = true }
 schemars = "1.2.2"

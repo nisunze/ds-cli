@@ -33,7 +33,7 @@ const FORMAT: &str = "dsgrid";
 /// verbatim manifest. Unknown fields are the owner's and are ignored here.
 #[derive(serde::Deserialize)]
 struct ManifestView {
-    model: ds_grid_model::GridManifest,
+    model: ds_network_contracts::grid_model::GridManifest,
     members: std::collections::BTreeMap<String, MemberView>,
 }
 
@@ -356,7 +356,9 @@ pub fn render(data: &Value) -> String {
         model["fingerprint"].as_str().unwrap_or("")
     ));
     if data["tables_verified"] == false {
-        out.push_str("  tables NOT verified (manifest only); run `ds dsgrid validate` to verify them\n");
+        out.push_str(
+            "  tables NOT verified (manifest only); run `ds dsgrid validate` to verify them\n",
+        );
     }
 
     for key in ["tables", "members"] {
@@ -413,7 +415,7 @@ fn note_truncation(into: &mut Vec<Value>, field: &str, withheld: usize, limit: u
     }
 }
 
-fn extent_json(extent: ds_grid_model::Extent3) -> Value {
+fn extent_json(extent: ds_network_contracts::grid_model::Extent3) -> Value {
     json!({
         "min_x_m": extent.min_x_m,
         "min_y_m": extent.min_y_m,

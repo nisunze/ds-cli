@@ -7,11 +7,11 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_model::{AlignmentId, CriterionSetId};
 use ds_network_client::{CapturedNetworkClient, NetworkFailure};
 use ds_network_contracts::grid::{
     NATIVE_GRID_QUERY_SCHEMA_V1, NativeGridQueryRequestV1, NativeGridQuerySourcePin,
 };
+use ds_network_contracts::grid_model::{AlignmentId, CriterionSetId};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};

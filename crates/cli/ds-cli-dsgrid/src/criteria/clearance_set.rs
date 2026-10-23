@@ -6,7 +6,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_grid_model::CriterionSetId;
+use ds_network_contracts::grid_model::CriterionSetId;
 use ds_network_contracts::grid_operation::{StandardInputV1, TypedMutationVerbV1};
 use serde_json::Value;
 

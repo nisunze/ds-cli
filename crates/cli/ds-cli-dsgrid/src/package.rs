@@ -164,7 +164,7 @@ pub fn declared_model_id(bytes: &[u8]) -> Option<String> {
 /// The canonical serialized token for a table kind — taken from the model
 /// crate's own serde representation rather than re-spelled here, so a table
 /// renamed upstream is renamed in this output too.
-pub fn table_token(kind: ds_grid_model::TableKind) -> String {
+pub fn table_token(kind: ds_network_contracts::grid_model::TableKind) -> String {
     serde_json::to_value(kind)
         .ok()
         .and_then(|value| value.as_str().map(str::to_owned))

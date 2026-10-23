@@ -318,7 +318,7 @@ struct SupplementalManifest {
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SupplementalRecord {
-    resource_id: ds_grid_model::ResourceId,
+    resource_id: ds_network_contracts::grid_model::ResourceId,
     invariant_leaf: String,
     path: String,
     expected_sha256: String,
