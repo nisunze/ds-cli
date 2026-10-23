@@ -50,6 +50,7 @@ pub fn decode_unit_reply(
 mod browser {
     use super::*;
     use crate::grid_engine::browser::effect_value;
+    use tsify::Tsify;
     use wasm_bindgen::prelude::*;
 
     fn refuse(error: LayerExportError) -> JsError {
@@ -64,6 +65,21 @@ mod browser {
                 "could not assemble the effect".into(),
             ))
         })
+    }
+
+    /// The bounded container check of exported bytes a worker returned.
+    #[wasm_bindgen(js_name = decodeLayerExport)]
+    pub fn decode_bytes(
+        format: tsify::Ts<LayerExportFormat>,
+        output: &[u8],
+    ) -> Result<tsify::Ts<LayerExportReceipt>, JsError> {
+        let format = format
+            .to_rust()
+            .map_err(|error| refuse(LayerExportError::InvalidRequest(error.to_string())))?;
+        decode_reply(format, output)
+            .map_err(refuse)?
+            .into_ts()
+            .map_err(|error| refuse(LayerExportError::InvalidResponse(error.to_string())))
     }
 
     /// The checked file bytes of the unit's reply.

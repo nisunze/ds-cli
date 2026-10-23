@@ -90,6 +90,22 @@ mod browser {
             .map_err(|_| refuse(invalid_response("could not assemble the effect")))
     }
 
+    /// Validate a reply a worker already decoded against its request.
+    #[wasm_bindgen(js_name = decodeUploadBatch)]
+    pub fn decode_object(
+        input: tsify::Ts<UploadBatchRequest>,
+        reply: tsify::Ts<UploadBatchResponse>,
+    ) -> Result<tsify::Ts<UploadBatchResponse>, JsError> {
+        let request = request(input)?;
+        let reply = reply
+            .to_rust()
+            .map_err(|error| refuse(invalid_response(error.to_string())))?;
+        validate_response(&request, reply)
+            .map_err(refuse)?
+            .into_ts()
+            .map_err(|error| refuse(invalid_response(error.to_string())))
+    }
+
     /// Decode and validate the unit's reply to one staged chunk.
     #[wasm_bindgen(js_name = decodeUploadBatchReply)]
     pub fn decode(

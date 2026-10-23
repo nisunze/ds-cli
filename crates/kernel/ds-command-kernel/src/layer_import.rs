@@ -404,6 +404,51 @@ export interface PageDataEffect { unit: 'network'; entry: 'grid.model' | 'grid.s
         )
     }
 
+    fn heads(chunks: &[js_sys::Uint8Array]) -> Vec<(usize, [u8; 6], [u8; 6])> {
+        chunks
+            .iter()
+            .map(|chunk| {
+                let length = chunk.length() as usize;
+                let mut head = [0u8; 6];
+                let mut tail = [0u8; 6];
+                if length >= 6 {
+                    chunk.subarray(0, 6).copy_to(&mut head);
+                    chunk
+                        .subarray((length - 6) as u32, length as u32)
+                        .copy_to(&mut tail);
+                }
+                (length, head, tail)
+            })
+            .collect()
+    }
+
+    /// Validate a reader reply already decoded by a worker against its
+    /// request; chunk bytes stay in place.
+    #[wasm_bindgen(js_name = decodeLayerImport, unchecked_return_type = "LayerImportReply")]
+    pub fn decode_reply_object(
+        input: &[u8],
+        response: tsify::Ts<LayerImportResponse>,
+        chunks: Vec<js_sys::Uint8Array>,
+    ) -> Result<JsValue, JsError> {
+        let request = decode_request(input).map_err(js_error)?;
+        let response = from_js(&response.js_value(), LayerImportError::InvalidResponse)?;
+        let response = validate_response(&request, response, &heads(&chunks)).map_err(js_error)?;
+        let array: js_sys::Array = chunks.into_iter().map(JsValue::from).collect();
+        pair("response", to_js(&response)?, array.into())
+    }
+
+    /// Validate one stream step already decoded; chunk bytes stay in place.
+    #[wasm_bindgen(js_name = decodeGeoJsonStreamStep, unchecked_return_type = "GeoJsonStreamStep")]
+    pub fn decode_stream_step(
+        update: tsify::Ts<GeoJsonStreamUpdate>,
+        chunks: Vec<js_sys::Uint8Array>,
+    ) -> Result<JsValue, JsError> {
+        let update = from_js(&update.js_value(), LayerImportError::InvalidResponse)?;
+        let update = validate_stream_update(update, &heads(&chunks)).map_err(js_error)?;
+        let array: js_sys::Array = chunks.into_iter().map(JsValue::from).collect();
+        pair("update", to_js(&update)?, array.into())
+    }
+
     /// The Network unit effect for one GeoJSON stream step: `open` with the
     /// source name, `push` with bytes, or `finish`.
     #[wasm_bindgen(js_name = geoJsonStreamEffect, unchecked_return_type = "PageDataEffect")]
