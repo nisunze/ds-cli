@@ -44,11 +44,11 @@ data-authority owner. The Tauri shell remains an IO host.
 ## 2. Layering (no cycles)
 
 ```
-                    routing/operations.json          ONE reviewed descriptor
-                     │                    │
-        generated TS manifest      generated Rust table
-                     │                    │
-ds-command-kernel    │              ds-client-core
+         ds-gateway-client/spec/gateway-swagger.yaml  wire catalogue
+                              │
+                    generated portable operations
+                       │                    │
+ds-command-kernel      │              ds-client-core
   deterministic      │                identity, lane, profile digest,
   CONTRACTS,         │                session, refresh-store port,
   zero IO,           │                typed operation bodies (§3)
@@ -72,12 +72,17 @@ Placement, and why it is not the other way round:
   2026-10-20, [architecture sentence 4](../../../../../../ds-architecture/architecture/development-philosophy.md#architecture-in-nine-sentences)).
   The step machines it runs stay pure, so the same typed exchanges run
   natively in Core: identical bytes in the browser, the shell and the CLI.
-- **`ds-client-core` holds the gateway operation registry**, not the kernel.
-  The registry carries identity — and `ds-client-core::profile` already hashes
+- **`ds-gateway-client` holds generated wire coordinates** for both executors.
+  Its checked-in Swagger snapshot is explicitly copied from the gateway owner,
+  converted to OpenAPI and projected without inventing missing body schemas.
+  Native profile aliases and Kernel exchanges use its closed operation IDs.
+- **`ds-client-core` holds the native policy registry** generated from
+  `ds-command-kernel/routing/operations.json`. The registry carries identity —
+  and `ds-client-core::profile` already hashes
   every route, method and action constant, in a fixed order, into
-  `profile_sha256`. Putting the registry anywhere else would create a second
-  source for those constants and guarantee drift. It already depends on
-  `ds-command-kernel`; the edge stays one-way.
+  `profile_sha256`. This policy includes actions, authority, retry and bounds
+  absent from the API specification; wire generation does not duplicate it.
+  It already depends on `ds-command-kernel`; the edge stays one-way.
 - **The browser reaches the registry through Rust in WASM** (owner, 2026-10-19,
   [development philosophy §6](../../../../../../ds-architecture/architecture/development-philosophy.md#6-the-frontend-is-designed-as-if-it-were-rust)):
   `gateway_exchange` and each domain's typed exchanges construct the request,
@@ -102,14 +107,17 @@ failure.
 
 ## 3. The operation registry
 
-One reviewed descriptor, `ds-web/routing/operations.json`, is the single source.
-The generator emits two artefacts from the same bytes:
+The reviewed policy descriptor is
+`ds-command-kernel/routing/operations.json`. Its generated native registry is
+`ds-client-core/src/gateway/registry.rs`; legacy generated TypeScript consumers
+remain only until their domains migrate to Rust. The gateway wire catalogue is
+the separate `ds-gateway-client` specification described in §2. It governs
+declared methods and paths; existing typed domain validators admit bodies and
+receipts where the specification does not describe them.
 
-1. the existing content-hashed TypeScript route manifest, and
-2. a Rust table compiled into `ds-command-kernel::gateway`.
-
-A parity test fails the build when they diverge. Feature code names an
-operation id; it never names an origin, a method, or a path.
+Generation checks and consumer parity tests refuse drift. Feature code names
+an operation ID; a route absent from the API specification uses an explicit
+typed fallback and remains visible in the migration map.
 
 Each entry declares exactly:
 

@@ -1,8 +1,8 @@
 # ds-gateway-client
 
 Portable generated gateway operation IDs, methods, parameter metadata and path
-planning for use below `ds-command-kernel` and `ds-client-core`. The first slice
-migrates Kernel project, admin and form reads. It has no
+planning below `ds-command-kernel` and `ds-client-core`. Declared Kernel routes
+and ordinary native gateway requests use this catalogue. It has no
 HTTP, credential, database, engine, CLI or UI dependency.
 
 The copied gateway specification declares 114 paths and 126 non-CORS operations.
@@ -54,5 +54,8 @@ Those are provenance/integrity facts, never compatibility gates for a peer.
 duplicate operation IDs, path mismatch, external reference, unspecified schema
 and invalid-command controls. Rust tests are separate in `src/lib_tests.rs` and
 cover path escape refusal, closed dispatch, compile-time route coordinates and
-unchanged policy refusal forwarding. Real Kernel/native migration still requires
-its owning tests, zero-call held/offline controls and installed read acceptance.
+unchanged policy refusal forwarding. Kernel tests also cover query/body/header
+and retry parity, missing parameters and explicitly absent report-artifact routes.
+Native tests preserve specialized effects and capture authority before dispatch.
+Owning tests and real design/forms/PM reads qualify these consumers; regeneration
+alone does not qualify a migration.
