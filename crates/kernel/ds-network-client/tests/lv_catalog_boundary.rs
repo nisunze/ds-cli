@@ -130,3 +130,44 @@ fn the_actual_engine_answers_the_catalogue_it_offers() {
         .unwrap();
     assert!(std::ptr::eq(catalogue, again));
 }
+
+#[test]
+fn a_setting_the_actual_engine_does_not_offer_is_refused_before_staging() {
+    let scratch = tempfile::tempdir().unwrap();
+    let error = ds_network_client::process_lv_with_order(
+        &request(json!({"teleport_poles": true})),
+        1,
+        scratch.path(),
+        &|| false,
+        JsonObjectOrder::Insertion,
+    )
+    .unwrap_err();
+    assert_eq!(error.code(), "lv_process_setting_not_offered");
+    assert!(
+        error.to_string().contains("`teleport_poles`") && error.to_string().contains("`T1`"),
+        "{error}"
+    );
+    // An offered key of another kind is refused the same way, by name.
+    let error = ds_network_client::process_lv_with_order(
+        &request(json!({"renumber_lines": 1})),
+        1,
+        scratch.path(),
+        &|| false,
+        JsonObjectOrder::Insertion,
+    )
+    .unwrap_err();
+    assert_eq!(error.code(), "lv_process_setting_not_offered");
+    assert!(error.to_string().contains("only as a boolean"), "{error}");
+    assert_eq!(
+        fs::read_dir(scratch.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("ds-network-run-"))
+            .count(),
+        0,
+        "no LV run was staged"
+    );
+}
