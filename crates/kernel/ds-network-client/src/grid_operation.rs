@@ -53,6 +53,16 @@ impl CapturedNetworkClient {
                 "captured Network does not admit this Grid file operation",
             ));
         }
+        // A reader's member order is part of what a source call returns.
+        if call.requires_insertion_order()
+            && self.identity.json_object_order
+                != ds_network_contracts::engine::JsonObjectOrder::Insertion
+        {
+            return Err(NetworkFailure::new(
+                "network_serialization_incompatible",
+                "this source call keeps its reader's member order and needs an insertion-order engine",
+            ));
+        }
         if call.reads_package() != model.is_some() {
             return Err(NetworkFailure::new(
                 "grid_task_input_invalid",

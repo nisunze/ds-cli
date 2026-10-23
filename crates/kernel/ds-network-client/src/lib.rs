@@ -14,6 +14,7 @@ mod mv_projection;
 mod mv_report;
 mod profile;
 mod report_engineering;
+mod source_io;
 mod staging;
 pub use captured::{CapturedNetworkClient, NetworkEnginePin};
 pub use design_snapshot::{
@@ -41,6 +42,7 @@ pub use lv_publication::{LvAnalysisValidationOutcome, LvPublicationOutcome};
 pub use profile::{ProfileCheckpoint, ProfileOutcome, ProfileSession};
 pub use report_engineering::ReportEngineeringOutcome;
 use sha2::{Digest, Sha256};
+pub use source_io::SOURCE_UNREADABLE;
 pub use staging::private_disk_stage;
 use std::{
     ffi::OsString,
