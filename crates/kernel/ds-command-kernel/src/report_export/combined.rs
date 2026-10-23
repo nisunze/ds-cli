@@ -629,6 +629,9 @@ pub struct VerifiedCombined {
     pub geometry_changed: bool,
     /// Engineering findings the workbook carries; a count, never a refusal.
     pub engineering_blockers: u64,
+    /// The facts the workbook itemizes as Dirty Categories; `None` from a
+    /// Reporter that predates them.
+    pub dirty_facts: Option<super::engineering::DirtyFactsSummary>,
     pub phase_timings: Value,
     pub elapsed_ms: u64,
 }
@@ -845,6 +848,7 @@ pub fn verify_result(
         engineering_blockers: result["engineering_preflight"]["blockers"]
             .as_u64()
             .unwrap_or(0),
+        dirty_facts: dirty_facts(&result)?,
         phase_timings: result["phase_timings"].clone(),
         elapsed_ms: result["elapsed_ms"].as_u64().unwrap_or(0),
     })
@@ -876,7 +880,7 @@ pub fn run_receipt(facts: &ReceiptFacts<'_>) -> Result<Value, String> {
     if pins != facts.pins {
         return Err("Combined receipt rooms must be in the staged order".into());
     }
-    Ok(json!({
+    let mut receipt = json!({
         "schema": RECEIPT_SCHEMA,
         "task": TASK,
         "status": "completed",
@@ -912,11 +916,37 @@ pub fn run_receipt(facts: &ReceiptFacts<'_>) -> Result<Value, String> {
         "media_grant_sha256": facts.media_grant_sha256,
         // Missing or invalid engineering facts the workbook itemizes on its
         // Dirty Categories sheet: counted findings of a complete set.
-        "engineering_findings": facts.result.engineering_blockers,
+        // An older Reporter counted them as `blockers`; a current one refuses
+        // on any blocker, so the sum is exact for both.
+        "engineering_findings": facts.result.engineering_blockers
+            + facts.result.dirty_facts.as_ref().map_or(0, |facts| facts.features as u64),
         // The Reporter declares that the cloud-owned optional review layer is
         // not part of a local run; the receipt says so instead of implying it.
         "transformer_reviews": "not_included",
-    }))
+    });
+    // Only a Reporter that itemizes them adds the member.
+    if let Some(dirty) = &facts.result.dirty_facts {
+        receipt["dirty_facts"] = json!(dirty);
+    }
+    Ok(receipt)
+}
+
+/// The facts the result itemizes as Dirty Categories, summarized, or `None`
+/// from a Reporter that predates them. A malformed member refuses: Core reads it.
+fn dirty_facts(
+    result: &Value,
+) -> Result<Option<super::engineering::DirtyFactsSummary>, CombinedRefusal> {
+    let Some(value) = result["engineering_preflight"].get("dirty_facts") else {
+        return Ok(None);
+    };
+    let facts: super::engineering::DirtyFacts = serde_json::from_value(value.clone())
+        .map_err(|_| CombinedRefusal::invalid("The combined result dirty facts are malformed"))?;
+    if !facts.valid() {
+        return Err(CombinedRefusal::invalid(
+            "The combined result dirty facts are invalid or exceed their bounds",
+        ));
+    }
+    Ok(Some(facts.summary()))
 }
 
 /// The project's combined-report collision policy, read from its sealed

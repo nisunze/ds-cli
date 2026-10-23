@@ -493,6 +493,32 @@ impl External {
         }
     }
 
+    /// Discovery for an addon whose lane is the call's own input (the
+    /// Reporter): present when the development override names it or any
+    /// admitted lane holds a verified managed selection; otherwise the
+    /// packaged default's answer with its remedy. Metadata and receipts only,
+    /// never execution; the call still captures its lane and refuses precisely.
+    pub fn availability_for_any_lane(&self) -> Availability {
+        self.availability_for_any_lane_in(managed_modules::module_base())
+    }
+
+    pub(crate) fn availability_for_any_lane_in(
+        &self,
+        base: Result<PathBuf, Failure>,
+    ) -> Availability {
+        let managed = std::env::var_os(self.env_override).is_none()
+            && base.is_ok_and(|base| {
+                ["stable", "canary"]
+                    .into_iter()
+                    .any(|lane| matches!(managed_modules::selected(self, &base, lane), Ok(Some(_))))
+            });
+        if managed {
+            Availability::Available
+        } else {
+            self.availability()
+        }
+    }
+
     /// Invoke one named subcommand with typed arguments.
     ///
     /// `subcommand` is a `&'static str` on purpose: it comes from a `ds`

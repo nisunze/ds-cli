@@ -222,7 +222,7 @@ pub static COMMAND: Command = Command {
         "lv summary",
     ],
     requires: Requires::Server,
-    availability: ds_cli_auth::native_availability,
+    availability: crate::reporter_availability,
 };
 
 fn invalid(message: impl Into<String>) -> Failure {
@@ -750,6 +750,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             None => json!({"observed": false, "warningCount": null, "warnings": []}),
         },
         "engineeringBlockers": outcome.result.engineering_blockers,
+        // Missing or invalid facts the workbook itemizes on its Dirty
+        // Categories sheet; null from a Reporter that predates them.
+        "engineeringDirtyFacts": outcome.result.dirty_facts,
         "transformerNatures": natures.is_some(),
         "mediaReferences": media.reference_count,
         "transformerReviews": "not_included",
@@ -773,10 +776,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             found.len()
         ));
     }
-    if outcome.result.engineering_blockers > 0 {
+    let findings = outcome.result.engineering_blockers
+        + outcome
+            .result
+            .dirty_facts
+            .as_ref()
+            .map_or(0, |facts| facts.features as u64);
+    if findings > 0 {
         warnings.push(format!(
-            "the combined workbook carries {} engineering finding(s); review them before delivery",
-            outcome.result.engineering_blockers
+            "the combined workbook carries {findings} engineering finding(s) on its Dirty Categories sheet (engineeringDirtyFacts names each transformer's fields); review them before delivery"
         ));
     }
     output["warnings"] = json!(warnings);

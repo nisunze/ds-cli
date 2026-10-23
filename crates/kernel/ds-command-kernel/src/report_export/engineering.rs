@@ -5,7 +5,7 @@
 //! types and the bounds in [`EngineeringPreflight::valid`] still decide.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EngineeringPreflight {
@@ -23,6 +23,101 @@ pub struct EngineeringPreflight {
     pub omitted_quantity_details: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub network_engineering: Vec<Value>,
+    /// Missing or invalid facts the workbook itemizes as Dirty Categories
+    /// (Reporter 36765d4). Absent on older Reporters, whose `blockers`
+    /// counted the same facts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dirty_facts: Option<DirtyFacts>,
+}
+/// Facts a report publishes as Dirty Categories instead of quantities.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DirtyFacts {
+    /// One row per transformer, layer, field and code, every feature counted.
+    pub rows: Vec<DirtyFactRow>,
+    /// The first features with their identity; the rest are counted.
+    pub findings: Vec<Finding>,
+    pub omitted_details: usize,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DirtyFactRow {
+    pub transformer: Option<String>,
+    pub layer: String,
+    pub field: String,
+    pub code: String,
+    /// The InfoTable section the fact feeds.
+    pub section: String,
+    pub features: usize,
+}
+/// What a receipt states about the Dirty Categories: every counted feature,
+/// and per transformer its count and the `layer.field` names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DirtyFactsSummary {
+    pub features: usize,
+    pub transformers: Vec<DirtyFactsTransformer>,
+    /// Transformers counted in `features` but not listed.
+    pub omitted_transformers: usize,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DirtyFactsTransformer {
+    pub transformer: String,
+    pub features: usize,
+    pub fields: Vec<String>,
+}
+/// The most transformers and fields one summary names; counts stay exact.
+const MAX_SUMMARY_TRANSFORMERS: usize = 50;
+const MAX_SUMMARY_FIELDS: usize = 16;
+const MAX_DIRTY_ROWS: usize = 65_536;
+
+impl DirtyFacts {
+    /// Every feature with a missing or invalid fact.
+    pub fn features(&self) -> Option<usize> {
+        self.rows
+            .iter()
+            .try_fold(0_usize, |sum, row| sum.checked_add(row.features))
+    }
+    pub(super) fn valid(&self) -> bool {
+        let text = |s: &str| !s.is_empty() && s.len() <= 2048 && !s.chars().any(char::is_control);
+        self.rows.len() <= MAX_DIRTY_ROWS
+            && self.findings.len() <= 100
+            && self.features().is_some_and(|features| {
+                self.findings.len().checked_add(self.omitted_details) == Some(features)
+            })
+            && self.rows.iter().all(|row| {
+                row.features > 0
+                    && row.transformer.as_deref().is_none_or(text)
+                    && [&row.layer, &row.field, &row.code, &row.section]
+                        .into_iter()
+                        .all(|value| text(value))
+            })
+            && self.findings.iter().all(|row| row.valid())
+    }
+    pub fn summary(&self) -> DirtyFactsSummary {
+        let mut grouped: BTreeMap<String, (usize, BTreeSet<String>)> = BTreeMap::new();
+        for row in &self.rows {
+            let entry = grouped
+                .entry(
+                    row.transformer
+                        .clone()
+                        .unwrap_or_else(|| "unattributed".into()),
+                )
+                .or_default();
+            entry.0 += row.features;
+            entry.1.insert(format!("{}.{}", row.layer, row.field));
+        }
+        DirtyFactsSummary {
+            features: self.features().unwrap_or(usize::MAX),
+            omitted_transformers: grouped.len().saturating_sub(MAX_SUMMARY_TRANSFORMERS),
+            transformers: grouped
+                .into_iter()
+                .take(MAX_SUMMARY_TRANSFORMERS)
+                .map(|(transformer, (features, fields))| DirtyFactsTransformer {
+                    transformer,
+                    features,
+                    fields: fields.into_iter().take(MAX_SUMMARY_FIELDS).collect(),
+                })
+                .collect(),
+        }
+    }
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SourceLayer {
@@ -54,6 +149,22 @@ pub struct Finding {
     pub feature_id: Option<Value>,
     pub feature_index: usize,
     pub recorded: Option<Value>,
+}
+impl Finding {
+    fn valid(&self) -> bool {
+        let text = |s: &str| !s.is_empty() && s.len() <= 2048 && !s.chars().any(char::is_control);
+        text(&self.code)
+            && text(&self.layer)
+            && text(&self.field)
+            && self.transformer.as_deref().is_none_or(text)
+            && self
+                .feature_id
+                .as_ref()
+                .is_none_or(|value| value.is_string() || value.is_number())
+            && self.recorded.as_ref().is_none_or(|value| {
+                serde_json::to_vec(value).is_ok_and(|bytes| bytes.len() <= 8192)
+            })
+    }
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct QuantityLineage {
@@ -129,19 +240,8 @@ impl EngineeringPreflight {
                     .into_iter()
                     .all(|n| n <= row.source_rows)
             })
-            && self.findings.iter().all(|row| {
-                text(&row.code)
-                    && text(&row.layer)
-                    && text(&row.field)
-                    && optional(&row.transformer)
-                    && row
-                        .feature_id
-                        .as_ref()
-                        .is_none_or(|value| value.is_string() || value.is_number())
-                    && row.recorded.as_ref().is_none_or(|value| {
-                        serde_json::to_vec(value).is_ok_and(|bytes| bytes.len() <= 8192)
-                    })
-            })
+            && self.findings.iter().all(Finding::valid)
+            && self.dirty_facts.as_ref().is_none_or(DirtyFacts::valid)
             && self.quantity_lineage.iter().all(|row| {
                 text(&row.section)
                     && text(&row.description)

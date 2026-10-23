@@ -79,6 +79,15 @@ pub const ENGINE_TASK_UNKNOWN: ds_cli_contract::spec::Refusal = ds_cli_contract:
     remedy: "install a Reporter for the selected --lane that registers the task named in detail.task",
 };
 
+/// A command that always runs the Reporter: the restored native session, then a
+/// Reporter installed for some lane, so discovery agrees with invocation.
+pub(crate) fn reporter_availability() -> ds_cli_contract::spec::Availability {
+    match ds_cli_auth::native_availability() {
+        ds_cli_contract::spec::Availability::Available => ds_cli_exec::reporter::available(),
+        unavailable => unavailable,
+    }
+}
+
 fn capture_engine(inputs: &ds_cli_contract::Inputs) -> Result<Reporter, ds_cli_contract::Failure> {
     capture_engine_at(inputs, &ds_cli_exec::addons::managed_module_base()?)
 }

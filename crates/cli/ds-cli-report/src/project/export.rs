@@ -506,8 +506,9 @@ pub static COMMAND: Command = Command {
 /// Native identity supplies the lane; engine admission belongs to the request.
 fn availability() -> Availability {
     // The declared command has no selected input lane during discovery.
-    // Resolve that captured native lane at consumption, without a probe here.
-    ds_cli_auth::native_availability()
+    // Resolve that captured native lane at consumption, without a probe here;
+    // discovery only asks whether any lane holds a Reporter.
+    crate::reporter_availability()
 }
 
 /// The Reporter as this host's report engine: every method is one closed

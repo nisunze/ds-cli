@@ -111,6 +111,13 @@ pub struct Reply {
     completed: Completed,
 }
 
+/// Discovery: a Reporter is installed for some lane (or the development
+/// override names one). Commands that always run the Reporter declare this,
+/// so `ds capabilities` agrees with what invocation finds.
+pub fn available() -> ds_core_contracts::Availability {
+    REPORTER.availability_for_any_lane()
+}
+
 impl Reporter {
     /// Capture the explicit installed lane (or the deliberate development override).
     pub fn capture_for_lane(lane: &str) -> Result<Self, Failure> {

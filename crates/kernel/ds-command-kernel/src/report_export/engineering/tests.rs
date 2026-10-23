@@ -182,3 +182,63 @@ fn native_artifact_file_and_schema_must_match_one_exact_owner_pair() {
         assert!(!valid_network_engineering(&row), "{file} / {schema}");
     }
 }
+
+fn dirty_facts() -> Value {
+    json!({
+        "rows": [
+            {"transformer": "tx_a", "layer": "lv_poles", "field": "stay", "code": "engineering_attribute_missing", "section": "stay_info_df", "features": 2},
+            {"transformer": null, "layer": "tr", "field": "tr_size", "code": "engineering_attribute_invalid", "section": "transfo_size_info_df", "features": 1},
+        ],
+        "findings": [
+            {"code": "engineering_attribute_missing", "layer": "lv_poles", "field": "stay", "transformer": "tx_a", "feature_id": "p1", "feature_index": 0, "recorded": null},
+            {"code": "engineering_attribute_missing", "layer": "lv_poles", "field": "stay", "transformer": "tx_a", "feature_id": 7, "feature_index": 1, "recorded": ""},
+        ],
+        "omitted_details": 1,
+    })
+}
+
+/// Reporter 36765d4's additive `dirty_facts` is read, bounded and kept;
+/// the transformer report's batch row counts it from the written receipt.
+#[test]
+fn dirty_facts_are_admitted_bounded_and_counted() {
+    let mut document: Value = serde_json::from_slice(HISTORICAL).unwrap();
+    document["dirty_facts"] = dirty_facts();
+    let admitted: EngineeringPreflight = serde_json::from_value(document.clone()).unwrap();
+    assert!(admitted.valid());
+    assert_eq!(serde_json::to_value(&admitted).unwrap(), document);
+    let summary = admitted.dirty_facts.as_ref().unwrap().summary();
+    assert_eq!(summary.features, 3);
+    assert_eq!(
+        serde_json::to_value(&summary).unwrap(),
+        json!({"features": 3, "omitted_transformers": 0, "transformers": [
+            {"transformer": "tx_a", "features": 2, "fields": ["lv_poles.stay"]},
+            {"transformer": "unattributed", "features": 1, "fields": ["tr.tr_size"]},
+        ]})
+    );
+    for (path, value) in [
+        ("/dirty_facts/omitted_details", json!(2)),
+        ("/dirty_facts/rows/1/features", json!(0)),
+        ("/dirty_facts/rows/0/code", json!("bad\ncode")),
+        ("/dirty_facts/findings/0/feature_id", json!({"id": 1})),
+    ] {
+        let mut invalid = document.clone();
+        *invalid.pointer_mut(path).unwrap() = value;
+        let parsed: EngineeringPreflight = serde_json::from_value(invalid).unwrap();
+        assert!(!parsed.valid(), "{path}");
+    }
+    let row = |receipt: Value| {
+        serde_json::to_value(crate::report_export::BatchResult::ok("tx_a", "r".into(), 1).with_dirty_facts(&receipt))
+            .unwrap()
+    };
+    let counted = row(json!({"engineering_preflight": document}));
+    assert_eq!(counted["dirty_facts"]["features"], 3);
+    // Absent, empty or unreadable: the row keeps its historical shape.
+    for receipt in [
+        json!({}),
+        json!({"engineering_preflight": serde_json::from_slice::<Value>(HISTORICAL).unwrap()}),
+        json!({"engineering_preflight": {"dirty_facts": {"rows": [], "findings": [], "omitted_details": 0}}}),
+        json!({"engineering_preflight": {"dirty_facts": "unreadable"}}),
+    ] {
+        assert!(row(receipt).get("dirty_facts").is_none());
+    }
+}

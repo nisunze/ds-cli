@@ -234,7 +234,7 @@ was given.",
 };
 
 fn availability() -> Availability {
-    Availability::Available
+    ds_cli_exec::reporter::available()
 }
 
 /// The content flags, so "did the caller mix --request with content" is

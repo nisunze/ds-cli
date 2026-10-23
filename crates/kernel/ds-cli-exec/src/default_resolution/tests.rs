@@ -419,3 +419,25 @@ fn default_reporter_capture_and_fixed_launches_preserve_only_the_closed_host_lan
         std::env::remove_var(REPORTER.env_override);
     }
 }
+
+/// a1964c7d: discovery of an addon whose lane is a call input admits any
+/// installed lane, reads only metadata and receipts, and otherwise keeps the
+/// packaged default's answer with its remedy.
+#[test]
+fn any_lane_discovery_admits_an_installed_lane_without_executing_it() {
+    let fixture = Fixture::new();
+    assert_eq!(
+        OWNER.availability_for_any_lane_in(Ok(fixture.base.clone())),
+        OWNER.availability()
+    );
+    fixture.install();
+    assert_eq!(
+        OWNER.availability_for_any_lane_in(Ok(fixture.base.clone())),
+        Availability::Available
+    );
+    assert!(!fixture.root.join("executed").exists());
+    assert_eq!(
+        OWNER.availability_for_any_lane_in(Err(Failure::invalid("base", "absent"))),
+        OWNER.availability()
+    );
+}

@@ -32,8 +32,10 @@ a delta needs pole-level detail.
 - **Transformer lines** — `Transformer Sizing`: `Selected kVA` per
   transformer with the demand it was sized from, protection (fuse link, LV
   breaker, outgoing CBs) and the admin bounds. A BOQ transformer line that
-  disagrees with `Selected kVA` is a planning decision (`plan_kva`) or an
-  existing unit, not an arithmetic error; say which. Fill-in transformers
+  disagrees with `Selected kVA` is a planning decision (`plan_kva`), the
+  saved `tr_size` or an existing unit, not an arithmetic error; say which.
+  `Recommended kVA` is the demand-only size, flagged where it differs; it
+  is a review signal, never a supply quantity. Fill-in transformers
   reuse an existing unit and are absent from `Transfo Size` on purpose.
 - **Unresolved rows** — `Dirty Categories`: values excluded or
   fallback-mapped by category validation. Every dirty row is quantity the

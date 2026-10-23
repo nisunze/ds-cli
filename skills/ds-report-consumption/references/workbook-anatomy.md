@@ -131,9 +131,11 @@ marks. Columns, left to right:
   (× every `growth_forecast_tr` rate).
 - Sizing: Existing kVA (`None` when no installed unit), Demand kVA
   (× `simultaneity_factor_tr`; ds-network's own design demand, the figure
-  its sizing selects with), Selected kVA (`plan_kva`, else `ex_tr_size`, else
-  the smallest `transfo_sizes` row at or above max(demand,
-  `minimum_tr_size`)).
+  its sizing selects with), Selected kVA (the size the supply counts:
+  `plan_kva`; a fill-in's `ex_tr_size`; else the saved `tr_size`; else
+  `ex_tr_size`; else the smallest `transfo_sizes` row at or above
+  max(demand, `minimum_tr_size`)), Recommended kVA (that demand-only size,
+  flagged amber where it differs from Selected kVA; never a supply).
 - Protection, from that row: Primary / Secondary kV, Vector Group, I1 / I2
   (rated currents), Fuse Link A (30 or 15 kV column), LV CB A,
   Transformer–DB Cable.

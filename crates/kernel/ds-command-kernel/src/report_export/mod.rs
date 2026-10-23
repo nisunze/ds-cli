@@ -2461,6 +2461,10 @@ pub struct BatchResult {
     /// appended none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub survey_layers: Option<Vec<SurveyLayerReceipt>>,
+    /// The facts this run's workbook itemizes as Dirty Categories. Absent
+    /// when it itemizes none or its Reporter predates them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dirty_facts: Option<engineering::DirtyFactsSummary>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<Value>,
 }
@@ -2475,8 +2479,20 @@ impl BatchResult {
             failed_formats: None,
             survey_layers_omitted: None,
             survey_layers: None,
+            dirty_facts: None,
             error: None,
         }
+    }
+
+    /// Count the Dirty Categories facts of this run, read from the receipt
+    /// the Kernel wrote from the verified engineering preflight.
+    pub fn with_dirty_facts(mut self, receipt: &Value) -> Self {
+        self.dirty_facts = receipt
+            .pointer("/engineering_preflight/dirty_facts")
+            .and_then(|value| serde_json::from_value::<engineering::DirtyFacts>(value.clone()).ok())
+            .filter(|facts| facts.valid() && !facts.rows.is_empty())
+            .map(|facts| facts.summary());
+        self
     }
 
     /// Name the survey forms this otherwise-complete run's sheet does not
@@ -2515,6 +2531,7 @@ impl BatchResult {
             failed_formats: None,
             survey_layers_omitted: None,
             survey_layers: None,
+            dirty_facts: None,
             error: Some(error),
         }
     }

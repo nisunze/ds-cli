@@ -1197,7 +1197,8 @@ where
                         )
                         .with_failed_formats(run.failed.clone())
                         .with_survey_layers_omitted(run.survey_layers_omitted.clone())
-                        .with_survey_layers(run.survey_layers.clone()),
+                        .with_survey_layers(run.survey_layers.clone())
+                        .with_dirty_facts(&run.receipt),
                     );
                     runs.push(run);
                 }

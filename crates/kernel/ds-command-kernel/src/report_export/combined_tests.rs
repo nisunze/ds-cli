@@ -494,3 +494,72 @@ fn combined_replies_admit_same_family_revisions_and_refuse_other_families() {
         .unwrap_err()
         .contains("family"));
 }
+
+/// Reporter 36765d4 itemizes missing or invalid facts as Dirty Categories
+/// (`engineering_preflight.dirty_facts`) instead of blockers. The receipt
+/// counts them and names each transformer's fields (owner 21 Oct: count
+/// findings in the receipt); an older Reporter's result keeps its shape.
+#[test]
+fn the_receipt_counts_the_dirty_categories_facts() {
+    let fixture = Fixture::new("Rwanda");
+    let mut result = fixture.result();
+    result["engineering_preflight"] = json!({"blockers": 0, "dirty_facts": {
+        "rows": [
+            {"transformer": "tx_a", "layer": "lv_poles", "field": "stay", "code": "engineering_attribute_missing", "section": "stay_info_df", "features": 3},
+            {"transformer": "tx_a", "layer": "lv_poles", "field": "earthing", "code": "engineering_attribute_missing", "section": "earthing_info_df", "features": 1},
+            {"transformer": "tx_b", "layer": "service_cables", "field": "cable_size", "code": "engineering_attribute_invalid", "section": "service_cable_info_df", "features": 2},
+        ],
+        "findings": [
+            {"code": "engineering_attribute_missing", "layer": "lv_poles", "field": "stay", "transformer": "tx_a", "feature_id": "p1", "feature_index": 0, "recorded": null},
+        ],
+        "omitted_details": 5,
+    }});
+    let verified = fixture.verify(&result).unwrap();
+    let dirty = verified.dirty_facts.clone().expect("the itemized facts");
+    assert_eq!(dirty.features, 6);
+    assert_eq!(dirty.omitted_transformers, 0);
+    assert_eq!(
+        serde_json::to_value(&dirty.transformers).unwrap(),
+        json!([
+            {"transformer": "tx_a", "features": 4, "fields": ["lv_poles.earthing", "lv_poles.stay"]},
+            {"transformer": "tx_b", "features": 2, "fields": ["service_cables.cable_size"]},
+        ])
+    );
+    let pins: Vec<_> = fixture.rooms.iter().map(|(_, pin)| pin.clone()).collect();
+    let receipt = |verified: &VerifiedCombined| {
+        run_receipt(&ReceiptFacts {
+            scope: &fixture.scope,
+            pins: &pins,
+            client_run_id: &format!("report-{}", "1".repeat(32)),
+            engine: &fixture.engine,
+            result: verified,
+            artifact_dir: IDENTITY,
+            now_ms: 1,
+            transformer_natures: None,
+            media_grant_sha256: None,
+        })
+        .unwrap()
+    };
+    let current = receipt(&verified);
+    assert_eq!(current["engineering_findings"], 6);
+    assert_eq!(current["dirty_facts"]["features"], 6);
+    assert_eq!(current["dirty_facts"]["transformers"][1]["transformer"], "tx_b");
+    // An older Reporter: no member, and the receipt has none either.
+    let older = receipt(&fixture.verify(&fixture.result()).unwrap());
+    assert!(older.get("dirty_facts").is_none());
+    assert_eq!(older["engineering_findings"], 2);
+    // A member Core reads must be well formed and account for every feature.
+    for (path, value) in [
+        ("/engineering_preflight/dirty_facts/omitted_details", json!(4)),
+        ("/engineering_preflight/dirty_facts/rows/0/features", json!(0)),
+        ("/engineering_preflight/dirty_facts/rows/0/layer", json!("")),
+        ("/engineering_preflight/dirty_facts/rows", json!({})),
+    ] {
+        let mut corrupt = result.clone();
+        *corrupt.pointer_mut(path).unwrap() = value;
+        assert!(
+            matches!(fixture.verify(&corrupt), Err(CombinedRefusal::Invalid { .. })),
+            "{path}"
+        );
+    }
+}
