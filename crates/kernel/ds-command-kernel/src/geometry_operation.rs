@@ -2,7 +2,7 @@
 //! edits on the main thread and bulk profile sampling in the compute pool.
 //!
 //! The algorithms stay with their owners — the portable `ds-geo-lite`
-//! primitives and `ds-geo`'s metric oriented extent. This module owns the
+//! primitives, including the metric oriented extent. This module owns the
 //! typed request and reply, request admission and the reply decoder; a host
 //! never selects an engine export or forwards packed arguments by name.
 use ds_geo_lite::measurement::{measure_frame, MeasureFrameInput};
@@ -578,7 +578,7 @@ pub fn execute(
         }
         Request::OrientedExtentBuffered(input) => {
             let flat: Vec<f64> = input.positions.iter().flatten().copied().collect();
-            let ring = ds_geo::oriented_extent::oriented_extent_buffered(&flat, input.buffer_m)
+            let ring = ds_geo_lite::extent::oriented_extent_buffered(&flat, input.buffer_m)
                 .map_err(invalid_request)?;
             Response::OrientedExtentBuffered(ring_result(
                 ring.chunks_exact(2)

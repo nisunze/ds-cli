@@ -211,6 +211,7 @@ fn category(error: &serde_json::Error) -> &'static str {
 }
 
 /// The browser operation's in-page selection over the linked Network selector.
+#[cfg(feature = "page-geometry")]
 pub fn select(
     source: DesignFeatureSourceContext,
     layers: &BTreeMap<String, Value>,
@@ -297,6 +298,7 @@ enum Outcome {
     },
 }
 
+#[cfg(feature = "page-geometry")]
 pub fn execute(input: &[u8]) -> String {
     let outcome = if input.len() > MAX_INPUT_BYTES {
         Outcome::Refused {
@@ -509,6 +511,6 @@ pub mod browser {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "page-geometry"))]
 #[path = "design_features_tests.rs"]
 mod tests;

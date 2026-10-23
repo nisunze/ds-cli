@@ -271,7 +271,8 @@ fn filter_request(inputs: &Inputs, confirmed: bool) -> Result<Value, Failure> {
             "Native table query exceeds 64 KiB.",
         ));
     }
-    let query: ds_geo::table::TableIdFilterQuery = serde_json::from_str(raw).map_err(|error| {
+    let query: ds_network_contracts::table_filter::TableIdFilterQuery = serde_json::from_str(raw)
+        .map_err(|error| {
         Failure::invalid(
             "invalid_profile_model_request",
             format!("Native table query: {error}"),

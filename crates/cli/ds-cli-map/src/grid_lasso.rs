@@ -5,7 +5,7 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_geo::table::{ColumnFilterInput, FilterOp, FilterSortInput, filter_sort_indices};
+use ds_network_contracts::table_filter::{ColumnFilterInput, FilterOp, validate_column_filter};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -116,7 +116,7 @@ struct GeoJsonPolygon {
 
 // The wasm ProfileTableFilterQuery is private. Its closed control envelope is
 // admitted here, with the operator enum and ordered-bound validation delegated
-// to the same ds-geo kernel. No rows, candidates or hits are computed here.
+// to the Network table-filter contract. No rows, candidates or hits are computed here.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProfileTableFilterQuery {
@@ -282,7 +282,7 @@ fn polygon(raw: &str, space: &str) -> Result<Value, Failure> {
         Ok(json!(points))
     } else {
         let geometry = json!({"type":"Polygon", "coordinates":[points]});
-        ds_geo::admission::admit_geometry(&geometry)
+        ds_geo_lite::admission::admit_geometry(&geometry)
             .map_err(|error| invalid(format!("invalid native Plan polygon: {error}")))?;
         Ok(geometry)
     }
@@ -332,12 +332,11 @@ fn filter(raw: &str) -> Result<Value, Failure> {
             value2: filter.value2,
         });
     }
-    filter_sort_indices(FilterSortInput {
-        rows: vec![],
-        filters,
-        sort: None,
-    })
-    .map_err(|error| invalid(format!("invalid native filter: {error}")))?;
+    // The ordered-bound admission the table owner applies before any row.
+    for filter in &filters {
+        validate_column_filter(filter)
+            .map_err(|error| invalid(format!("invalid native filter: {error}")))?;
+    }
     // Preserve the caller's admitted query, including omitted optional fields.
     serde_json::from_str(raw).map_err(|_| invalid("filter must be JSON"))
 }

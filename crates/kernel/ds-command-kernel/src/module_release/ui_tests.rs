@@ -483,6 +483,7 @@ fn acquisition_plan_is_bounded_and_withdrawn_catalogs_stay_visible() {
 /// Moved from module_engine_tests.rs, which ds-module-admission also compiles
 /// and which therefore cannot name Kernel-only owners such as `table_edit`.
 #[test]
+#[cfg(feature = "page-geometry")]
 fn different_contract_metadata_admits_the_same_working_typed_exchange() {
     use crate::module_engine::{admit_ui_identity, parse_ui_identity};
     use crate::table_edit::{decode_request, decode_response, execute, TableEditRequest};

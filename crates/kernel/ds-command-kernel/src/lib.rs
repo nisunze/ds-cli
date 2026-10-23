@@ -357,7 +357,9 @@ pub fn project_design_extent_wasm(input: &[u8]) -> Result<String, wasm_bindgen::
 }
 pub mod reference_cache;
 pub mod grid_crs;
+#[cfg(feature = "page-geometry")]
 pub mod selection_field;
+#[cfg(feature = "page-geometry")]
 pub mod table_query;
 #[cfg(feature = "page-data")]
 pub mod domain_value;
@@ -1634,6 +1636,7 @@ pub mod design_cell_vocabulary;
 
 pub mod geojson_comparison;
 
+#[cfg(feature = "page-geometry")]
 pub mod table_edit;
 
 #[cfg(feature = "page-data")]
@@ -1649,8 +1652,10 @@ pub mod upload_cleaning;
 pub mod geometry_operation;
 
 /// Polygon area selection over caller-supplied GeoJSON layers.
+#[cfg(feature = "page-geometry")]
 pub mod area_selection;
 /// New line work an incoming line layer adds to an authoritative base.
+#[cfg(feature = "page-geometry")]
 pub mod line_extension;
 /// Bounded GeoPackage geometry decoding and layer admission for browser hosts.
 pub mod gpkg_geometry;

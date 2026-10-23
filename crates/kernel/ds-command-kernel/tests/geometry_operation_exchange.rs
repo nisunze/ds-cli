@@ -350,7 +350,7 @@ fn profile_sampling_matches_the_retired_pooled_exports_exactly() {
     else {
         panic!("extent reply")
     };
-    let ring = ds_geo::oriented_extent::oriented_extent_buffered(&flat(&positions), 20.0).unwrap();
+    let ring = ds_geo_lite::extent::oriented_extent_buffered(&flat(&positions), 20.0).unwrap();
     assert_eq!(extent.ring, Some(pairs(&ring)));
 }
 

@@ -24,8 +24,7 @@ ds-command-kernel = { workspace = true }
 ds-network-contracts.workspace = true
 serde_json = { workspace = true }
 serde = { workspace = true }
-ds-geo-lite = { workspace = true, features = ["vector_types"] }
-ds-geo = { workspace = true }
+ds-geo-lite = { workspace = true, features = ["vector_types", "overlay"] }
 ds-layer-store = { path = "../../kernel/ds-layer-store" }
 ds-layer-ops.workspace = true
 

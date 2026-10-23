@@ -38,6 +38,7 @@ wasm = [
     "ds-geo-lite/bindings",
     "ds-core-contracts/bindings",
     "ds-network-contracts/bindings",
+    "page-geometry",
     "ds-geo/bindings",
     "ds-design-session/enable_dataframes",
     "ds-columnar/artifacts",
@@ -73,6 +74,11 @@ client-state = ["durable-store", "dep:reactive_graph", "dep:any_spawner"]
 # browser build carries them: native Core links no Network crate beyond its
 # contracts and reaches cleaning and file IO through the Network engine.
 page-data = ["dep:ds-cleaning", "dep:ds-io"]
+# The page's in-browser geometry and table owners (area selection, line
+# extension, feature selection, attribute-table filter/edit/profiles) over
+# Network's ds-geo, until the page reaches them through its Network unit.
+# Native Core links no ds-geo: its feature selection is a Network engine task.
+page-geometry = ["dep:ds-geo"]
 # Chunk-level upload cleaning over Arrow IPC. The browser build carries it;
 # Core never stages upload chunks and keeps its build dataframe-free.
 upload-batch-ipc = ["page-data", "ds-cleaning/arrow_ipc"]
@@ -81,12 +87,12 @@ upload-batch-ipc = ["page-data", "ds-cleaning/arrow_ipc"]
 layer-import = ["page-data", "ds-cleaning/arrow_ipc"]
 # The vector tool catalogue and runner over Arrow IPC layers (browser
 # windows). Core runs no vector tools and stays free of the IPC backend.
-vector-tools = ["ds-geo/browser-polars-ipc", "ds-geo-lite/sampling"]
+vector-tools = ["page-geometry", "ds-geo/browser-polars-ipc", "ds-geo-lite/sampling"]
 
 [dependencies]
 ds-core-contracts = { path = "../ds-core-contracts" }
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts" }
-ds-geo = { path = "../../../../ds-network/crates/ds-geo" }
+ds-geo = { path = "../../../../ds-network/crates/ds-geo", optional = true }
 ds-cleaning = { path = "../../../../ds-network/crates/ds-cleaning", default-features = false, optional = true }
 # The file writers own every exported byte (layer and dashboard exports).
 ds-io = { path = "../../../../ds-network/crates/ds-io", optional = true }
@@ -158,6 +164,27 @@ any_spawner = { version = "0.3.0", features = ["futures-executor"] }
 [build-dependencies]
 sha2 = "0.10"
 serde_json = "1"
+
+# The page's geometry and table exchanges run with the page owners linked.
+[[test]]
+name = "area_selection_exchange"
+required-features = ["page-geometry"]
+
+[[test]]
+name = "line_extension_exchange"
+required-features = ["page-geometry"]
+
+[[test]]
+name = "selection_field_exchange"
+required-features = ["page-geometry"]
+
+[[test]]
+name = "table_edit_exchange"
+required-features = ["page-geometry"]
+
+[[test]]
+name = "table_query_exchange"
+required-features = ["page-geometry"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false

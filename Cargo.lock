@@ -1776,7 +1776,6 @@ dependencies = [
  "ds-cli-desktop",
  "ds-cli-server",
  "ds-command-kernel",
- "ds-geo",
  "ds-geo-lite",
  "ds-layer-ops",
  "ds-layer-store",
