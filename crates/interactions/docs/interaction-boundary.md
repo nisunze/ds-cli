@@ -99,8 +99,9 @@ repository and is captured by the owner's exact source revision; the lock digest
 does not pretend to pin its source bytes. WASM packaging tools and final artifact
 digests belong to the release receipt, outside this Rust identity.
 
-The component's committed `release/ui-wasm-source.json` declares an empty external
-source closure. The producer admits its exact normal/build closure, including the
-same-repository geometry, and refuses undeclared external dependencies. It captures
+The component's `release/wasm-unit.json` declares an empty external capture. The
+producer admits its exact normal/build closure, including the same-repository
+geometry, and refuses undeclared external dependencies; the release boundary gate
+refuses any foreign crate except contracts before compiling. It captures
 compiler and Cargo configuration, injects that configuration digest, and compares
 the actual WASM export before minting a publication receipt.

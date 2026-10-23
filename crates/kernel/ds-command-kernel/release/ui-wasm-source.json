@@ -1,9 +1,0 @@
-{
-  "schema": "ds.ui-wasm-source/v1",
-  "component": "command-kernel",
-  "source_revisions": {
-    "ds-solar": "b41a63c98c43fb6100760ba499b1f26ecb9a1ebc",
-    "ds-network-reporter": "99a7fb1bf6decad440bc154991806772972e0572",
-    "ds-network": "e2009d1bd2cfe74cfd5b7a1b9cf58ce284fcd69a"
-  }
-}

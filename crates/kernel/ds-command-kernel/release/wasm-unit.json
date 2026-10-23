@@ -24,11 +24,6 @@
     "ds-network-reporter",
     "ds-network"
   ],
-  "sourcePins": {
-    "file": "crates/kernel/ds-command-kernel/release/ui-wasm-source.json",
-    "schema": "ds.ui-wasm-source/v1",
-    "component": "command-kernel"
-  },
   "targets": {
     "web-local": {
       "features": [

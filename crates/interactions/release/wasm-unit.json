@@ -12,10 +12,5 @@
     "DS_INTERACTIONS_SOURCE_SHA": "owner",
     "DS_UI_BUILD_CONFIG_SHA256": "manifest"
   },
-  "capture": [],
-  "sourcePins": {
-    "file": "crates/interactions/release/ui-wasm-source.json",
-    "schema": "ds.ui-wasm-source/v1",
-    "component": "interactions"
-  }
+  "capture": []
 }

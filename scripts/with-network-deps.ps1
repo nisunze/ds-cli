@@ -1,4 +1,4 @@
-# Run one command with the independently pinned Network sibling.
+# Run one command with the Network sibling at Cargo's path (never pinned).
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
@@ -17,10 +17,6 @@ $CommonGitDir = (& git -C $RepoRoot rev-parse --path-format=absolute --git-commo
 if ($LASTEXITCODE -ne 0 -or -not $CommonGitDir) {
     throw 'with-network-deps: could not resolve the common Git directory'
 }
-$ExpectedNetworkSha = (Get-Content -LiteralPath (Join-Path $RepoRoot 'pins\ds-network.rev') -Raw).Trim()
-if ($ExpectedNetworkSha -notmatch '^[0-9a-f]{40}$') {
-    throw 'with-network-deps: pins/ds-network.rev is not one exact Git SHA'
-}
 $MainCheckout = Split-Path -Parent $CommonGitDir
 $NetworkCheckout = Join-Path (Split-Path -Parent $MainCheckout) 'ds-network'
 $RequiredNetworkLink = Join-Path (Split-Path -Parent $RepoRoot) 'ds-network'
@@ -36,14 +32,6 @@ foreach ($Crate in @('ds-grid-model', 'ds-grid-engine', 'ds-grid-exchange', 'ds-
 $NetworkOrigin = (& git -C $NetworkCheckout remote get-url origin).Trim()
 if ($LASTEXITCODE -ne 0 -or $NetworkOrigin -notlike '*nisunze/ds-network.git') {
     throw "with-network-deps: $NetworkCheckout is not the nisunze/ds-network checkout"
-}
-$NetworkSha = (& git -C $NetworkCheckout rev-parse HEAD).Trim()
-if ($LASTEXITCODE -ne 0 -or $NetworkSha -ne $ExpectedNetworkSha) {
-    throw "with-network-deps: ds-network must be pinned to $ExpectedNetworkSha"
-}
-$NetworkStatus = @(& git -C $NetworkCheckout status --porcelain --untracked-files=normal -- Cargo.toml Cargo.lock crates)
-if ($LASTEXITCODE -ne 0 -or $NetworkStatus.Count -ne 0) {
-    throw 'with-network-deps: ds-network Cargo inputs differ from its pinned commit'
 }
 $CreatedLinks = @()
 function Ensure-DependencyLink([string] $RequiredLink, [string] $Checkout, [string] $Label) {

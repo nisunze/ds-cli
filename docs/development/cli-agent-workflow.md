@@ -205,9 +205,9 @@ on, reporting parity that no longer exists.
 
 When this checkout is a linked git worktree, use
 `scripts/with-network-deps.sh cargo <subcommand>` for verification. It admits
-the committed native pins at Cargo's sibling paths, including isolated release
-worktrees, and creates a validated temporary link only when that path is absent.
-It refuses mismatched or edited native inputs and removes only its own link.
+the `nisunze/ds-network` checkout at Cargo's sibling path (never a pinned
+revision: components never pin each other) and creates a validated temporary
+link only when that path is absent. It removes only its own link.
 Do not substitute a copy, vendored fixture, or mutable canonical checkout.
 
 On Windows use `& .\scripts\with-network-deps.ps1 -Executable cargo -Arguments
