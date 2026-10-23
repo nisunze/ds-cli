@@ -459,7 +459,7 @@ impl<'a> CoreSource<'a> {
 
     fn surface(&mut self) -> Result<&mut ds_elevation_host::RwandaSampler, SharedFailure> {
         if self.surface.is_none() {
-            self.surface = Some(ds_elevation_host::RwandaSampler::new().map_err(|error| {
+            self.surface = Some(ds_elevation_host::RwandaSampler::for_lane(self.lane).map_err(|error| {
                 unavailable(format!("the Rwanda DEM could not be opened: {error}"))
             })?);
         }

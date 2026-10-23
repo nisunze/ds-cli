@@ -155,6 +155,8 @@ pub static COMMAND: Command = Command {
         },
     ],
     refusals: &[
+        crate::ELEVATION_ENGINE_MISSING,
+        crate::ELEVATION_ENGINE_INCOMPATIBLE,
         crate::NATIVE_DATA_REFUSED,
         crate::NATIVE_DATA_FAILED,
         ABSOLUTE_PATH_REQUIRED,

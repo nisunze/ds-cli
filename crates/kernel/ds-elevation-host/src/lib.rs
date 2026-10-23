@@ -1,24 +1,30 @@
-//! Native, bounded provider I/O for an independent elevation comparison.
+//! Native, bounded provider I/O for elevation work on this machine: the
+//! host half (DECOUPLING-013).
 //!
-//! Both sources are sampled at every input XY. Neither is a fallback for the
-//! other. Raw samples are preserved: no datum conversion, correction, or model
-//! mutation is implied by the difference. URLs and the Rwanda version are fixed.
+//! The governed Rwanda index and exact public TIFF ranges, and AWS Terrarium
+//! tiles, are fetched here with byte evidence; the Network engine samples,
+//! compares and writes. Both comparison sources are sampled at every input
+//! XY and neither is a fallback for the other. URLs and the Rwanda version
+//! are fixed.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, File, OpenOptions};
-use std::io::{Cursor, Read, Write};
-use std::path::Path;
+use std::fs;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use ds_elevation::{
-    DEFAULT_DECODED_BLOCK_CACHE, RwandaBlockCache, RwandaBlockProvider, RwandaBlockRequest,
-    RwandaDem,
+use ds_geo::projection::GridModelCrs;
+use ds_network_client::{CapturedNetworkClient, ElevationCompleted, Needed, NetworkFailure};
+use ds_network_contracts::elevation::{
+    COMPARISON_ARTIFACT, CompareRequestV1, ComparisonReceiptV1, DemAccessV1,
+    ELEVATION_REQUEST_SCHEMA_V1, ElevationRequestV1, ElevationResultV1, ElevationTaskV1,
+    HeldRastersV1, rwanda_block_file, terrarium_tile_file,
 };
-use ds_geo::projection::{GridModelCrs, wgs84_to_nix_itrf2005};
-use image::{ImageFormat, RgbaImage};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+pub use ds_network_contracts::elevation::FetchEvidenceV1 as FetchEvidence;
+pub type ComparisonReceipt = ComparisonReceiptV1;
 
 pub const POINT_LIMIT: usize = 4_000;
 /// Single-source raster sampling batches have their own admission limit;
@@ -28,22 +34,10 @@ pub const SOURCE_BYTE_LIMIT: u64 = 32 * 1024 * 1024;
 const TILE_BYTE_LIMIT: usize = 2 * 1024 * 1024;
 const BLOCK_BYTE_LIMIT: usize = 32 * 1024 * 1024;
 const FETCH_BYTE_LIMIT: usize = 256 * 1024 * 1024;
-const ZOOM: u32 = 15;
-const WORLD_PIXELS: i64 = (1_i64 << ZOOM) * 256;
-const MERCATOR_LATITUDE_LIMIT: f64 = 85.05112878;
 const RWANDA_BASE: &str = "https://storage.googleapis.com/edcl/reference/rwanda_dem/2026-08-28";
 const INDEX_SIZE: usize = 184_412;
 const INDEX_SHA256: &str = "c0bdd9c9058a999cebb5b34e1f4f39b3056f24dcf28892227833983f923f10e7";
 const TIFF_SIZE: u64 = 882_872_744;
-const COLUMNS: &[&str] = &[
-    "comparison_longitude_deg",
-    "comparison_latitude_deg",
-    "rwanda_elevation_m",
-    "terrarium_nearest_elevation_m",
-    "terrarium_bilinear_elevation_m",
-    "delta_nearest_minus_rwanda_m",
-    "delta_bilinear_minus_rwanda_m",
-];
 
 #[derive(Debug, Clone, Copy)]
 pub enum SourceCrs {
@@ -62,7 +56,7 @@ impl SourceCrs {
         }
     }
 
-    fn canonical(self) -> String {
+    pub fn canonical(self) -> String {
         match self {
             Self::Wgs84Lonlat => "EPSG:4326".into(),
             Self::Projected(crs) => crs.canonical_definition(),
@@ -128,6 +122,9 @@ pub enum ComparisonError {
     Provider(String),
     #[error("elevation source integrity failed: {0}")]
     Integrity(String),
+    /// The Network engine that computes elevation is absent or too old.
+    #[error("{code}: {message}")]
+    Engine { code: &'static str, message: String },
 }
 
 impl ComparisonError {
@@ -142,17 +139,9 @@ impl ComparisonError {
             Self::Io(_) => "elevation_io",
             Self::Provider(_) => "elevation_provider_failed",
             Self::Integrity(_) => "elevation_integrity_failed",
+            Self::Engine { code, .. } => code,
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct FetchEvidence {
-    pub url: String,
-    pub range: Option<String>,
-    pub status: u16,
-    pub bytes: usize,
-    pub sha256: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -165,139 +154,22 @@ pub struct SourceEvidence {
     pub tile_zoom: Option<u32>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct ComparisonReceipt {
-    pub schema: &'static str,
-    pub source_path: String,
-    pub source_bytes: usize,
-    pub source_sha256: String,
-    pub source_crs: String,
-    pub output_path: String,
-    pub output_bytes: usize,
-    pub output_sha256: String,
-    pub point_count: usize,
-    pub rwanda_count: usize,
-    pub terrarium_nearest_count: usize,
-    pub terrarium_bilinear_count: Option<usize>,
-    pub paired_nearest_count: usize,
-    pub paired_bilinear_count: Option<usize>,
-    pub rwanda_missing_count: usize,
-    pub terrarium_nearest_missing_count: usize,
-    pub terrarium_bilinear_missing_count: Option<usize>,
-    pub sources: Vec<SourceEvidence>,
-    pub correction_applied: bool,
-    pub fallback_applied: bool,
-    pub model_changed: bool,
-    pub missing_representation: &'static str,
-    pub difference_definition: &'static str,
-    pub rwanda_tiff_full_object_bytes: u64,
-    pub rwanda_tiff_full_object_sha256: Option<&'static str>,
-    pub fetches: Vec<FetchEvidence>,
-}
-
-struct Input {
-    bytes: Vec<u8>,
-    headers: csv::StringRecord,
-    rows: Vec<csv::StringRecord>,
-    points: Vec<[f64; 2]>,
-}
-
-fn input(source: &Path, out: &Path, options: &ComparisonOptions) -> Result<Input, ComparisonError> {
-    if fs::symlink_metadata(out).is_ok() {
-        return Err(ComparisonError::OutputExists);
-    }
-    let metadata = fs::symlink_metadata(source).map_err(io_error)?;
-    if !metadata.is_file() || metadata.file_type().is_symlink() {
-        return Err(ComparisonError::InvalidInput(
-            "source must be a regular CSV file".into(),
-        ));
-    }
-    if metadata.len() > SOURCE_BYTE_LIMIT {
-        return Err(ComparisonError::SourceByteLimit);
-    }
-    let mut bytes = Vec::new();
-    File::open(source)
-        .map_err(io_error)?
-        .take(SOURCE_BYTE_LIMIT + 1)
-        .read_to_end(&mut bytes)
-        .map_err(io_error)?;
-    if bytes.len() as u64 > SOURCE_BYTE_LIMIT {
-        return Err(ComparisonError::SourceByteLimit);
-    }
-    let mut reader = csv::Reader::from_reader(bytes.as_slice());
-    let headers = reader.headers().map_err(csv_error)?.clone();
-    let mut seen = BTreeSet::new();
-    for header in &headers {
-        if !seen.insert(header) || header.is_empty() {
-            return Err(ComparisonError::InvalidInput(
-                "CSV headers must be unique and nonempty".into(),
-            ));
-        }
-        if COLUMNS.contains(&header) {
-            return Err(ComparisonError::OutputColumnCollision(header.into()));
-        }
-    }
-    let column = |name: &str| {
-        headers
-            .iter()
-            .position(|header| header == name)
-            .ok_or_else(|| ComparisonError::InvalidInput(format!("CSV has no {name:?} column")))
-    };
-    let x = column(&options.x_column)?;
-    let y = column(&options.y_column)?;
-    if x == y {
-        return Err(ComparisonError::InvalidInput(
-            "X and Y must name different columns".into(),
-        ));
-    }
-    let mut rows = Vec::new();
-    let mut points = Vec::new();
-    for (index, row) in reader.records().enumerate() {
-        let row = row.map_err(csv_error)?;
-        if rows.len() == POINT_LIMIT {
-            return Err(ComparisonError::PointLimit);
-        }
-        let number = |column: usize| {
-            row[column].trim().parse::<f64>().map_err(|_| {
-                ComparisonError::InvalidInput(format!(
-                    "CSV row {} has invalid coordinates",
-                    index + 2
-                ))
-            })
-        };
-        points.push(options.source_crs.wgs84([number(x)?, number(y)?])?);
-        rows.push(row);
-    }
-    if rows.is_empty() {
-        return Err(ComparisonError::InvalidInput(
-            "CSV has no point rows".into(),
-        ));
-    }
-    Ok(Input {
-        bytes,
-        headers,
-        rows,
-        points,
-    })
-}
-
 fn io_error(error: std::io::Error) -> ComparisonError {
     ComparisonError::Io(error.to_string())
-}
-fn csv_error(error: csv::Error) -> ComparisonError {
-    ComparisonError::InvalidInput(error.to_string())
 }
 fn sha256(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
-struct Response {
-    status: u16,
-    content_range: Option<String>,
-    body: Vec<u8>,
+/// One bounded provider answer.
+pub struct Response {
+    pub status: u16,
+    pub content_range: Option<String>,
+    pub body: Vec<u8>,
 }
 
-trait Transport {
+/// The fixed provider reads; tests substitute a fixture.
+pub trait Transport {
     fn get(
         &mut self,
         url: &str,
@@ -306,7 +178,7 @@ trait Transport {
     ) -> Result<Response, ComparisonError>;
 }
 
-struct HttpTransport {
+pub struct HttpTransport {
     agent: ureq::Agent,
 }
 impl HttpTransport {
@@ -423,18 +295,100 @@ fn validate_range(
     Ok(())
 }
 
-struct RwandaProvider<'a, T> {
-    fetcher: &'a mut Fetcher<T>,
-    total: u64,
-    failure: Option<ComparisonError>,
+struct IndexContract<'a> {
+    size: usize,
+    digest: &'a str,
+    tiff_size: u64,
 }
-impl<T: Transport> RwandaBlockProvider for RwandaProvider<'_, T> {
-    fn read_compressed_block(
-        &mut self,
-        request: &RwandaBlockRequest,
-    ) -> Result<Vec<u8>, ds_elevation::ElevationError> {
-        let read = (|| {
-            let limit = usize::try_from(request.length)
+
+const INDEX_CONTRACT: IndexContract<'static> = IndexContract {
+    size: INDEX_SIZE,
+    digest: INDEX_SHA256,
+    tiff_size: TIFF_SIZE,
+};
+
+/// The public rasters one job holds: the pinned index, the exact TIFF ranges
+/// and the Terrarium tiles the engine named, each with fetch evidence.
+pub struct PublicRasters<T: Transport = HttpTransport> {
+    fetcher: Fetcher<T>,
+    dir: tempfile::TempDir,
+    contract: IndexContract<'static>,
+    index: bool,
+}
+
+impl PublicRasters<HttpTransport> {
+    /// An empty holding; the index is fetched when a job first reads Rwanda.
+    pub fn new() -> Result<Self, ComparisonError> {
+        Self::with(HttpTransport::new(), INDEX_CONTRACT)
+    }
+}
+
+impl<T: Transport> PublicRasters<T> {
+    fn with(transport: T, contract: IndexContract<'static>) -> Result<Self, ComparisonError> {
+        let dir = tempfile::Builder::new()
+            .prefix("ds-elevation-rasters-")
+            .tempdir()
+            .map_err(io_error)?;
+        for sub in ["blocks", "tiles"] {
+            fs::create_dir(dir.path().join(sub)).map_err(io_error)?;
+        }
+        Ok(Self {
+            fetcher: Fetcher {
+                transport,
+                evidence: Vec::new(),
+                bytes: 0,
+            },
+            dir,
+            contract,
+            index: false,
+        })
+    }
+
+    /// The governed index, pinned by length and SHA-256.
+    pub fn ensure_index(&mut self) -> Result<(), ComparisonError> {
+        if self.index {
+            return Ok(());
+        }
+        let index = self.fetcher.get(
+            &format!("{RWANDA_BASE}/rwanda_dem10m_nix.blockindex.json"),
+            None,
+            self.contract.size,
+        )?;
+        if index.status != 200
+            || index.body.len() != self.contract.size
+            || format!("{:x}", Sha256::digest(&index.body)) != self.contract.digest
+        {
+            return Err(ComparisonError::Integrity(
+                "governed Rwanda block index length or digest mismatch".into(),
+            ));
+        }
+        fs::write(self.index_path(), &index.body).map_err(io_error)?;
+        self.index = true;
+        Ok(())
+    }
+
+    fn index_path(&self) -> PathBuf {
+        self.dir.path().join("index.json")
+    }
+
+    pub fn held(&self) -> HeldRastersV1 {
+        HeldRastersV1 {
+            rwanda_index: self.index.then(|| self.index_path()),
+            rwanda_cog: None,
+            rwanda_blocks: Some(self.dir.path().join("blocks")),
+            terrarium_tiles: Some(self.dir.path().join("tiles")),
+            dem_access: DemAccessV1::DirectRange,
+            full_local_required_above_points: RWANDA_BATCH_POINT_LIMIT as u32,
+        }
+    }
+
+    /// Fetch exactly what one engine round named.
+    pub fn acquire(&mut self, needed: &Needed) -> Result<(), ComparisonError> {
+        if needed.rwanda_index {
+            self.ensure_index()?;
+        }
+        for block in &needed.rwanda_blocks {
+            let limit = usize::try_from(block.length)
                 .map_err(|_| ComparisonError::Integrity("TIFF block length overflow".into()))?;
             if limit == 0 || limit > BLOCK_BYTE_LIMIT {
                 return Err(ComparisonError::Integrity(
@@ -443,193 +397,183 @@ impl<T: Transport> RwandaBlockProvider for RwandaProvider<'_, T> {
             }
             let response = self.fetcher.get(
                 &format!("{RWANDA_BASE}/rwanda_dem10m_nix.tif"),
-                Some((request.offset, request.length)),
+                Some((block.offset, block.length)),
                 limit,
             )?;
-            validate_range(&response, request.offset, request.length, self.total)?;
-            Ok(response.body)
-        })();
-        read.map_err(|error: ComparisonError| {
-            let message = error.to_string();
-            self.failure = Some(error);
-            ds_elevation::ElevationError::Provider {
-                provider_id: "rwanda_dem_10m".into(),
-                message,
-            }
-        })
-    }
-}
-
-#[derive(Clone, Copy)]
-struct PixelPlan {
-    nearest: (i64, i64),
-    corners: [(i64, i64); 4],
-    dx: f64,
-    dy: f64,
-}
-fn pixels(point: [f64; 2]) -> Option<PixelPlan> {
-    if point[1].abs() > MERCATOR_LATITUDE_LIMIT {
-        return None;
-    }
-    let lat = point[1].to_radians();
-    let x = (point[0] + 180.0) / 360.0 * WORLD_PIXELS as f64;
-    let y = (1.0 - (lat.tan() + 1.0 / lat.cos()).ln() / std::f64::consts::PI)
-        * 0.5
-        * WORLD_PIXELS as f64;
-    let cx = x - 0.5;
-    let cy = y - 0.5;
-    let (ix, iy) = (cx.floor() as i64, cy.floor() as i64);
-    Some(PixelPlan {
-        nearest: (
-            (x.floor() as i64).clamp(0, WORLD_PIXELS - 1),
-            (y.floor() as i64).clamp(0, WORLD_PIXELS - 1),
-        ),
-        corners: [(ix, iy), (ix + 1, iy), (ix, iy + 1), (ix + 1, iy + 1)],
-        dx: cx - cx.floor(),
-        dy: cy - cy.floor(),
-    })
-}
-fn tile(pixel: (i64, i64)) -> Option<((u32, u32), (u32, u32))> {
-    if !(0..WORLD_PIXELS).contains(&pixel.1) {
-        return None;
-    }
-    let x = pixel.0.rem_euclid(WORLD_PIXELS) as u32;
-    let y = pixel.1 as u32;
-    Some(((x / 256, y / 256), (x % 256, y % 256)))
-}
-fn height(pixel: &image::Rgba<u8>) -> Option<f64> {
-    (pixel[3] != 0).then(|| {
-        f64::from(pixel[0]) * 256.0 + f64::from(pixel[1]) + f64::from(pixel[2]) / 256.0 - 32768.0
-    })
-}
-
-type TerrariumReadings = (Vec<Option<f64>>, Vec<Option<f64>>);
-
-fn terrarium<T: Transport>(
-    fetcher: &mut Fetcher<T>,
-    points: &[[f64; 2]],
-    bilinear: bool,
-) -> Result<TerrariumReadings, ComparisonError> {
-    let plans = points
-        .iter()
-        .map(|point| pixels(*point))
-        .collect::<Vec<_>>();
-    let mut requests = BTreeSet::new();
-    for plan in plans.iter().flatten() {
-        if let Some((key, _)) = tile(plan.nearest) {
-            requests.insert(key);
-        }
-        if bilinear {
-            for corner in plan.corners {
-                if let Some((key, _)) = tile(corner) {
-                    requests.insert(key);
-                }
-            }
-        }
-    }
-    // At most five tiles per input point; hold only the tiles actually requested,
-    // with an explicit decoded-memory admission bound.
-    if requests.len() > 512 {
-        return Err(ComparisonError::Integrity(
-            "Terrarium decoded tile budget exceeded (512 tiles)".into(),
-        ));
-    }
-    let mut tiles: BTreeMap<(u32, u32), RgbaImage> = BTreeMap::new();
-    for (x, y) in requests {
-        let response = fetcher.get(
-            &format!("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{ZOOM}/{x}/{y}.png"),
-            None,
-            TILE_BYTE_LIMIT,
-        )?;
-        if response.status != 200 {
-            return Err(ComparisonError::Integrity(
-                "Terrarium tile requires HTTP 200".into(),
-            ));
-        }
-        let dimensions =
-            image::ImageReader::with_format(Cursor::new(&response.body), ImageFormat::Png)
-                .into_dimensions()
-                .map_err(|error| {
-                    ComparisonError::Integrity(format!("Terrarium PNG header: {error}"))
-                })?;
-        if dimensions != (256, 256) {
-            return Err(ComparisonError::Integrity(
-                "Terrarium tile must be 256 by 256 pixels".into(),
-            ));
-        }
-        let image = image::load_from_memory_with_format(&response.body, ImageFormat::Png)
-            .map_err(|error| ComparisonError::Integrity(format!("Terrarium PNG: {error}")))?
-            .to_rgba8();
-        tiles.insert((x, y), image);
-    }
-    let at = |pixel| {
-        let (key, (x, y)) = tile(pixel)?;
-        height(tiles.get(&key)?.get_pixel(x, y))
-    };
-    let nearest = plans
-        .iter()
-        .map(|plan| plan.and_then(|plan| at(plan.nearest)))
-        .collect();
-    let smooth = plans
-        .iter()
-        .map(|plan| {
-            if !bilinear {
-                return None;
-            }
-            let plan = (*plan)?;
-            let [a, b, c, d] = plan.corners.map(at);
-            let (a, b, c, d) = (a?, b?, c?, d?);
-            Some(
-                (a * (1.0 - plan.dx) + b * plan.dx) * (1.0 - plan.dy)
-                    + (c * (1.0 - plan.dx) + d * plan.dx) * plan.dy,
+            validate_range(
+                &response,
+                block.offset,
+                block.length,
+                self.contract.tiff_size,
+            )?;
+            fs::write(
+                self.dir
+                    .path()
+                    .join("blocks")
+                    .join(rwanda_block_file(block)),
+                &response.body,
             )
-        })
-        .collect();
-    Ok((nearest, smooth))
+            .map_err(io_error)?;
+        }
+        // At most five tiles per input point; the engine bounds its decode.
+        if needed.terrarium_tiles.len() > 512 {
+            return Err(ComparisonError::Integrity(
+                "Terrarium decoded tile budget exceeded (512 tiles)".into(),
+            ));
+        }
+        for tile in &needed.terrarium_tiles {
+            let response = self.fetcher.get(
+                &format!(
+                    "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{}/{}/{}.png",
+                    tile.z, tile.x, tile.y
+                ),
+                None,
+                TILE_BYTE_LIMIT,
+            )?;
+            if response.status != 200 {
+                return Err(ComparisonError::Integrity(
+                    "Terrarium tile requires HTTP 200".into(),
+                ));
+            }
+            fs::write(
+                self.dir
+                    .path()
+                    .join("tiles")
+                    .join(terrarium_tile_file(tile)),
+                &response.body,
+            )
+            .map_err(io_error)?;
+        }
+        Ok(())
+    }
+
+    pub fn evidence(&self) -> &[FetchEvidence] {
+        &self.fetcher.evidence
+    }
+
+    pub fn scratch(&self) -> &Path {
+        self.dir.path()
+    }
 }
 
-struct IndexContract<'a> {
-    size: usize,
-    digest: &'a str,
-    tiff_size: u64,
+/// A Network failure in the comparison vocabulary: the engine's own refusal
+/// code where it names one, else the engine's absence or age.
+pub fn engine_error(failure: NetworkFailure) -> ComparisonError {
+    let message = failure.message.clone();
+    match failure.owner_code().unwrap_or(failure.code()) {
+        "elevation_invalid_input" | "elevation_request_invalid" => {
+            ComparisonError::InvalidInput(message)
+        }
+        "elevation_source_too_large" => ComparisonError::SourceByteLimit,
+        "elevation_point_limit" => ComparisonError::PointLimit,
+        "elevation_rwanda_batch_point_limit" => ComparisonError::RwandaBatchPointLimit,
+        "elevation_output_exists" => ComparisonError::OutputExists,
+        "elevation_output_column_collision" => ComparisonError::OutputColumnCollision(message),
+        "elevation_io" => ComparisonError::Io(message),
+        "network_engine_missing" | "module_removed" => ComparisonError::Engine {
+            code: "network_engine_missing",
+            message,
+        },
+        "network_engine_incompatible" => ComparisonError::Engine {
+            code: "network_engine_incompatible",
+            message,
+        },
+        _ => ComparisonError::Integrity(message),
+    }
 }
 
-/// A single-source Rwanda raster session with bounded acquisition and decoded
-/// block caching across batches. It never requests Terrarium or changes Z.
+/// Why a job stopped: this host could not hold a raster, or the engine refused.
+#[derive(Debug)]
+pub enum JobError {
+    Acquisition(ComparisonError),
+    Engine(NetworkFailure),
+}
+
+impl From<JobError> for ComparisonError {
+    fn from(error: JobError) -> Self {
+        match error {
+            JobError::Acquisition(error) => error,
+            JobError::Engine(failure) => engine_error(failure),
+        }
+    }
+}
+
+/// Run one engine job to completion over public rasters.
+pub fn run_job<T: Transport>(
+    client: &CapturedNetworkClient,
+    rasters: &mut PublicRasters<T>,
+    task: ElevationTaskV1,
+    on_round: &mut dyn FnMut(&mut ElevationRequestV1, &[FetchEvidence]),
+) -> Result<ElevationCompleted, JobError> {
+    let mut request = ElevationRequestV1 {
+        schema: ELEVATION_REQUEST_SCHEMA_V1.into(),
+        execution_host: "headless".into(),
+        rasters: rasters.held(),
+        task,
+    };
+    let scratch = rasters.scratch().to_path_buf();
+    let mut failure = None;
+    let completed =
+        client.elevation(
+            &mut request,
+            &scratch,
+            &|| false,
+            &mut |request, needed| match rasters.acquire(needed) {
+                Ok(()) => {
+                    request.rasters = rasters.held();
+                    on_round(request, rasters.evidence());
+                    Ok(())
+                }
+                Err(error) => {
+                    failure = Some(error);
+                    Err(NetworkFailure::acquisition(
+                        "a public raster could not be held",
+                    ))
+                }
+            },
+        );
+    completed.map_err(|error| match failure.take() {
+        Some(acquisition) => JobError::Acquisition(acquisition),
+        None => JobError::Engine(error),
+    })
+}
+
+/// Capture the Network engine for headless elevation work.
+pub fn capture_engine(lane: Option<&str>) -> Result<CapturedNetworkClient, ComparisonError> {
+    match lane {
+        Some(lane) => CapturedNetworkClient::capture_for_lane(lane, 1, &|| false),
+        None => CapturedNetworkClient::capture(1, &|| false),
+    }
+    .map_err(engine_error)
+}
+
+/// A single-source Rwanda raster session: bounded public acquisition held
+/// across batches, sampled by the Network engine. It never requests
+/// Terrarium or changes Z.
 pub struct RwandaSampler {
-    dem: RwandaDem,
-    cache: RwandaBlockCache,
-    fetcher: Fetcher<HttpTransport>,
+    rasters: PublicRasters,
+    client: CapturedNetworkClient,
+    batch: usize,
 }
 
 impl RwandaSampler {
     pub fn new() -> Result<Self, ComparisonError> {
-        let mut fetcher = Fetcher {
-            transport: HttpTransport::new(),
-            evidence: Vec::new(),
-            bytes: 0,
-        };
-        let index = fetcher.get(
-            &format!("{RWANDA_BASE}/rwanda_dem10m_nix.blockindex.json"),
-            None,
-            INDEX_SIZE,
-        )?;
-        if index.status != 200
-            || index.body.len() != INDEX_SIZE
-            || format!("{:x}", Sha256::digest(&index.body)) != INDEX_SHA256
-        {
-            return Err(ComparisonError::Integrity(
-                "governed Rwanda block index length or digest mismatch".into(),
-            ));
-        }
-        let dem = RwandaDem::from_index_json(&index.body)
-            .map_err(|error| ComparisonError::Integrity(error.to_string()))?;
-        let cache = RwandaBlockCache::new(DEFAULT_DECODED_BLOCK_CACHE)
-            .map_err(|error| ComparisonError::Integrity(error.to_string()))?;
+        Self::open(None)
+    }
+
+    /// A sampler whose engine is the one installed for `lane`.
+    pub fn for_lane(lane: &str) -> Result<Self, ComparisonError> {
+        Self::open(Some(lane))
+    }
+
+    fn open(lane: Option<&str>) -> Result<Self, ComparisonError> {
+        let client = capture_engine(lane)?;
+        let mut rasters = PublicRasters::new()?;
+        rasters.ensure_index()?;
         Ok(Self {
-            dem,
-            cache,
-            fetcher,
+            rasters,
+            client,
+            batch: 0,
         })
     }
 
@@ -642,29 +586,38 @@ impl RwandaSampler {
         if points.len() > RWANDA_BATCH_POINT_LIMIT {
             return Err(ComparisonError::RwandaBatchPointLimit);
         }
-        let mut nix = Vec::with_capacity(points.len());
         for point in points {
-            let point = SourceCrs::Wgs84Lonlat.wgs84(*point)?;
-            let (x, y) = wgs84_to_nix_itrf2005(point[0], point[1]);
-            nix.push([x, y]);
+            SourceCrs::Wgs84Lonlat.wgs84(*point)?;
         }
-        let mut provider = RwandaProvider {
-            fetcher: &mut self.fetcher,
-            total: TIFF_SIZE,
-            failure: None,
-        };
-        self.dem
-            .sample_with_cache(&mut provider, &mut self.cache, &nix)
-            .map_err(|error| {
-                provider
-                    .failure
-                    .take()
-                    .unwrap_or_else(|| ComparisonError::Integrity(error.to_string()))
-            })
+        self.batch += 1;
+        let path = self
+            .rasters
+            .scratch()
+            .join(format!("points-{}.json", self.batch));
+        fs::write(
+            &path,
+            serde_json::to_vec(points).map_err(|error| ComparisonError::Io(error.to_string()))?,
+        )
+        .map_err(io_error)?;
+        let completed = run_job(
+            &self.client,
+            &mut self.rasters,
+            ElevationTaskV1::Sample {
+                points: path.clone(),
+            },
+            &mut |_, _| {},
+        );
+        let _ = fs::remove_file(&path);
+        match completed.map_err(ComparisonError::from)?.result {
+            ElevationResultV1::Sample { samples } if samples.len() == points.len() => Ok(samples),
+            _ => Err(ComparisonError::Integrity(
+                "the Network engine answered another sampling request".into(),
+            )),
+        }
     }
 
     pub fn acquisition_evidence(&self) -> &[FetchEvidence] {
-        &self.fetcher.evidence
+        self.rasters.evidence()
     }
 
     pub fn source_evidence() -> SourceEvidence {
@@ -686,96 +639,62 @@ pub fn compare_file(
     out: &Path,
     options: &ComparisonOptions,
 ) -> Result<ComparisonReceipt, ComparisonError> {
-    compare_with(
-        source,
-        out,
-        options,
-        HttpTransport::new(),
-        IndexContract {
-            size: INDEX_SIZE,
-            digest: INDEX_SHA256,
-            tiff_size: TIFF_SIZE,
-        },
-    )
+    if fs::symlink_metadata(out).is_ok() {
+        return Err(ComparisonError::OutputExists);
+    }
+    let client = capture_engine(None)?;
+    let mut rasters = PublicRasters::new()?;
+    rasters.ensure_index()?;
+    compare_with(&client, &mut rasters, source, out, options)
 }
 
 fn compare_with<T: Transport>(
+    client: &CapturedNetworkClient,
+    rasters: &mut PublicRasters<T>,
     source: &Path,
     out: &Path,
     options: &ComparisonOptions,
-    transport: T,
-    contract: IndexContract<'_>,
 ) -> Result<ComparisonReceipt, ComparisonError> {
-    let input = input(source, out, options)?;
-    let mut fetcher = Fetcher {
-        transport,
-        evidence: Vec::new(),
-        bytes: 0,
-    };
-    let index = fetcher.get(
-        &format!("{RWANDA_BASE}/rwanda_dem10m_nix.blockindex.json"),
-        None,
-        contract.size,
-    )?;
-    if index.status != 200
-        || index.body.len() != contract.size
-        || format!("{:x}", Sha256::digest(&index.body)) != contract.digest
-    {
+    let completed = run_job(
+        client,
+        rasters,
+        ElevationTaskV1::Compare {
+            request: CompareRequestV1 {
+                source: source.to_path_buf(),
+                output: out.to_path_buf(),
+                source_crs: options.source_crs.canonical(),
+                x_column: options.x_column.clone(),
+                y_column: options.y_column.clone(),
+                terrarium_bilinear: options.terrarium_bilinear,
+            },
+        },
+        &mut |_, _| {},
+    )
+    .map_err(ComparisonError::from)?;
+    let ElevationResultV1::Compare { receipt } = completed.result.clone() else {
         return Err(ComparisonError::Integrity(
-            "governed Rwanda block index length or digest mismatch".into(),
+            "the Network engine answered another elevation task".into(),
+        ));
+    };
+    let mut receipt = *receipt;
+    let artifact = completed.artifact(COMPARISON_ARTIFACT);
+    let mut bytes = Vec::new();
+    fs::File::open(&artifact)
+        .and_then(|file| file.take(SOURCE_BYTE_LIMIT * 4 + 1).read_to_end(&mut bytes))
+        .map_err(io_error)?;
+    if bytes.len() != receipt.output_bytes || sha256(&bytes) != receipt.output_sha256 {
+        return Err(ComparisonError::Integrity(
+            "the engine's comparison differs from its own evidence".into(),
         ));
     }
-    let dem = RwandaDem::from_index_json(&index.body)
-        .map_err(|error| ComparisonError::Integrity(error.to_string()))?;
-    let nix = input
-        .points
-        .iter()
-        .map(|point| {
-            let (x, y) = wgs84_to_nix_itrf2005(point[0], point[1]);
-            [x, y]
-        })
-        .collect::<Vec<_>>();
-    let mut provider = RwandaProvider {
-        fetcher: &mut fetcher,
-        total: contract.tiff_size,
-        failure: None,
-    };
-    let rwanda = dem.sample(&mut provider, &nix).map_err(|error| {
-        provider
-            .failure
-            .take()
-            .unwrap_or_else(|| ComparisonError::Integrity(error.to_string()))
-    })?;
-    let (nearest, bilinear) = terrarium(&mut fetcher, &input.points, options.terrarium_bilinear)?;
-    let mut writer = csv::Writer::from_writer(Vec::new());
-    let mut headers = input.headers.clone();
-    for column in COLUMNS {
-        headers.push_field(column);
-    }
-    writer.write_record(&headers).map_err(csv_error)?;
-    let value = |value: Option<f64>| value.map(|value| value.to_string()).unwrap_or_default();
-    for (index, row) in input.rows.iter().enumerate() {
-        let mut row = row.clone();
-        row.push_field(&input.points[index][0].to_string());
-        row.push_field(&input.points[index][1].to_string());
-        for sample in [
-            rwanda[index],
-            nearest[index],
-            bilinear[index],
-            nearest[index].zip(rwanda[index]).map(|(t, r)| t - r),
-            bilinear[index].zip(rwanda[index]).map(|(t, r)| t - r),
-        ] {
-            row.push_field(&value(sample));
-        }
-        writer.write_record(&row).map_err(csv_error)?;
-    }
-    let output = writer
-        .into_inner()
-        .map_err(|error| ComparisonError::Io(error.to_string()))?;
-    let mut file = OpenOptions::new()
+    fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(out)
+        .and_then(|mut file| {
+            use std::io::Write;
+            file.write_all(&bytes).and_then(|()| file.sync_all())
+        })
         .map_err(|error| {
             if error.kind() == std::io::ErrorKind::AlreadyExists {
                 ComparisonError::OutputExists
@@ -783,494 +702,10 @@ fn compare_with<T: Transport>(
                 io_error(error)
             }
         })?;
-    if let Err(error) = file.write_all(&output).and_then(|_| file.sync_all()) {
-        drop(file);
-        let _ = fs::remove_file(out);
-        return Err(io_error(error));
-    }
-    let count = input.points.len();
-    let populated =
-        |samples: &[Option<f64>]| samples.iter().filter(|sample| sample.is_some()).count();
-    let paired = |samples: &[Option<f64>]| {
-        samples
-            .iter()
-            .zip(&rwanda)
-            .filter(|(a, b)| a.is_some() && b.is_some())
-            .count()
-    };
-    let rc = populated(&rwanda);
-    let nc = populated(&nearest);
-    let bc = populated(&bilinear);
-    let mut sources = vec![
-        SourceEvidence {
-            id: "rwanda_dem_10m",
-            dataset: "Rwanda DEM 2026-08-28",
-            interpolation: "bilinear_pixel_centres_four_valid_corners",
-            vertical_datum: "unknown",
-            nominal_resolution_m: Some(10.0),
-            tile_zoom: None,
-        },
-        SourceEvidence {
-            id: "aws_terrarium_30m",
-            dataset: "elevation-tiles-prod/terrarium",
-            interpolation: "nearest_legacy_containing_pixel",
-            vertical_datum: "unknown",
-            nominal_resolution_m: Some(30.0),
-            tile_zoom: Some(ZOOM),
-        },
-    ];
-    if options.terrarium_bilinear {
-        sources.push(SourceEvidence {
-            id: "aws_terrarium_30m",
-            dataset: "elevation-tiles-prod/terrarium",
-            interpolation: "bilinear_pixel_centres_four_valid_corners_across_tiles",
-            vertical_datum: "unknown",
-            nominal_resolution_m: Some(30.0),
-            tile_zoom: Some(ZOOM),
-        });
-    }
-    Ok(ComparisonReceipt {
-        schema: "ds-elevation.compare/v1",
-        source_path: source.display().to_string(),
-        source_bytes: input.bytes.len(),
-        source_sha256: sha256(&input.bytes),
-        source_crs: options.source_crs.canonical(),
-        output_path: out.display().to_string(),
-        output_bytes: output.len(),
-        output_sha256: sha256(&output),
-        point_count: count,
-        rwanda_count: rc,
-        terrarium_nearest_count: nc,
-        terrarium_bilinear_count: options.terrarium_bilinear.then_some(bc),
-        paired_nearest_count: paired(&nearest),
-        paired_bilinear_count: options.terrarium_bilinear.then_some(paired(&bilinear)),
-        rwanda_missing_count: count - rc,
-        terrarium_nearest_missing_count: count - nc,
-        terrarium_bilinear_missing_count: options.terrarium_bilinear.then_some(count - bc),
-        sources,
-        correction_applied: false,
-        fallback_applied: false,
-        model_changed: false,
-        missing_representation: "blank_csv_cells",
-        difference_definition: "Terrarium minus Rwanda, metres; raw uncalibrated difference",
-        rwanda_tiff_full_object_bytes: contract.tiff_size,
-        rwanda_tiff_full_object_sha256: None,
-        fetches: fetcher.evidence,
-    })
+    receipt.fetches = rasters.evidence().to_vec();
+    Ok(receipt)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use flate2::{Compression, write::ZlibEncoder};
-    use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    struct Temp(PathBuf);
-    impl Temp {
-        fn new(name: &str) -> Self {
-            let root = std::env::var_os("TMPDIR")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("out/elevation-host-tests"));
-            let path = root.join(format!(
-                "{name}-{}-{}",
-                std::process::id(),
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ));
-            fs::create_dir_all(&path).unwrap();
-            Self(path)
-        }
-    }
-    impl Drop for Temp {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
-
-    fn png(mut at: impl FnMut(u32, u32) -> Option<f64>) -> Vec<u8> {
-        let mut raw = Vec::with_capacity(256 * 256 * 4);
-        for y in 0..256 {
-            for x in 0..256 {
-                if let Some(z) = at(x, y) {
-                    let packed = ((z + 32768.0) * 256.0).round() as u32;
-                    raw.extend_from_slice(&[
-                        ((packed >> 16) & 255) as u8,
-                        ((packed >> 8) & 255) as u8,
-                        (packed & 255) as u8,
-                        255,
-                    ]);
-                } else {
-                    raw.extend_from_slice(&[128, 0, 0, 0]);
-                }
-            }
-        }
-        let mut bytes = Vec::new();
-        PngEncoder::new(&mut bytes)
-            .write_image(&raw, 256, 256, ExtendedColorType::Rgba8)
-            .unwrap();
-        bytes
-    }
-
-    struct Fixture {
-        index: Vec<u8>,
-        block: Vec<u8>,
-        transparent: bool,
-        fail_terrarium: bool,
-        plane_origin: Option<(i64, i64)>,
-    }
-    impl Fixture {
-        fn new() -> Self {
-            let (x, y) = wgs84_to_nix_itrf2005(30.0, -2.0);
-            let mut compressor = ZlibEncoder::new(Vec::new(), Compression::default());
-            for value in [1600.0_f32, 1601.0, 1602.0, 1603.0] {
-                compressor.write_all(&value.to_le_bytes()).unwrap();
-            }
-            let block = compressor.finish().unwrap();
-            let index = serde_json::to_vec(&serde_json::json!({
-                "width":2,"height":2,"geotransform":[x-5.0,10.0,0.0,y+5.0,0.0,-10.0],
-                "nodata":-9999.0,"block":[2,2],"blocks":[{"i":0,"j":0,"offset":64,"length":block.len()}]
-            })).unwrap();
-            Self {
-                index,
-                block,
-                transparent: false,
-                fail_terrarium: false,
-                plane_origin: None,
-            }
-        }
-        fn contract(&self) -> (usize, String, u64) {
-            (
-                self.index.len(),
-                format!("{:x}", Sha256::digest(&self.index)),
-                64 + self.block.len() as u64,
-            )
-        }
-    }
-
-    #[test]
-    fn single_source_rwanda_batch_limit_is_independent_and_precedes_acquisition() {
-        let fixture = Fixture::new();
-        let mut sampler = RwandaSampler {
-            dem: RwandaDem::from_index_json(&fixture.index).unwrap(),
-            cache: RwandaBlockCache::new(DEFAULT_DECODED_BLOCK_CACHE).unwrap(),
-            fetcher: Fetcher {
-                transport: HttpTransport::new(),
-                evidence: Vec::new(),
-                bytes: 0,
-            },
-        };
-        // These valid WGS84 queries lie outside the fixture's Rwanda grid, so
-        // its public API must return real coverage gaps without any HTTP.
-        let outside = vec![[0.0, 0.0]; RWANDA_BATCH_POINT_LIMIT];
-        let heights = sampler.sample_wgs84(&outside).unwrap();
-        assert_eq!(heights.len(), RWANDA_BATCH_POINT_LIMIT);
-        assert!(heights.iter().all(Option::is_none));
-        assert!(sampler.acquisition_evidence().is_empty());
-        let oversized = vec![[30.0, -2.0]; RWANDA_BATCH_POINT_LIMIT + 1];
-        let error = sampler.sample_wgs84(&oversized).unwrap_err();
-        assert_eq!(error.code(), "elevation_rwanda_batch_point_limit");
-        assert!(error.to_string().contains("20000"));
-        assert!(!error.to_string().contains("4000"));
-        assert!(sampler.acquisition_evidence().is_empty());
-    }
-    impl Transport for Fixture {
-        fn get(
-            &mut self,
-            url: &str,
-            range: Option<(u64, u64)>,
-            _limit: usize,
-        ) -> Result<Response, ComparisonError> {
-            if url.ends_with("blockindex.json") {
-                assert!(range.is_none());
-                return Ok(Response {
-                    status: 200,
-                    content_range: None,
-                    body: self.index.clone(),
-                });
-            }
-            if url.ends_with(".tif") {
-                assert_eq!(range, Some((64, self.block.len() as u64)));
-                let total = 64 + self.block.len() as u64;
-                return Ok(Response {
-                    status: 206,
-                    content_range: Some(format!("bytes 64-{}/{total}", total - 1)),
-                    body: self.block.clone(),
-                });
-            }
-            assert!(url.starts_with("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/15/"));
-            assert!(range.is_none());
-            if self.fail_terrarium {
-                return Err(ComparisonError::Provider(
-                    "fixture transport failure".into(),
-                ));
-            }
-            let body = if self.transparent {
-                png(|_, _| None)
-            } else if let Some((ox, oy)) = self.plane_origin {
-                let parts = url
-                    .trim_end_matches(".png")
-                    .rsplit('/')
-                    .take(2)
-                    .collect::<Vec<_>>();
-                let ty = parts[0].parse::<i64>().unwrap();
-                let tx = parts[1].parse::<i64>().unwrap();
-                png(|x, y| {
-                    Some(
-                        100.0
-                            + 2.0 * (tx * 256 + i64::from(x) - ox) as f64
-                            + 3.0 * (ty * 256 + i64::from(y) - oy) as f64,
-                    )
-                })
-            } else {
-                png(|_, _| Some(1700.0))
-            };
-            Ok(Response {
-                status: 200,
-                content_range: None,
-                body,
-            })
-        }
-    }
-
-    fn run_fixture(
-        source: &Path,
-        out: &Path,
-        options: &ComparisonOptions,
-        fixture: Fixture,
-    ) -> Result<ComparisonReceipt, ComparisonError> {
-        let (size, digest, tiff_size) = fixture.contract();
-        compare_with(
-            source,
-            out,
-            options,
-            fixture,
-            IndexContract {
-                size,
-                digest: &digest,
-                tiff_size,
-            },
-        )
-    }
-
-    #[test]
-    fn samples_sources_independently_and_preserves_original_columns() {
-        let dir = Temp::new("independent");
-        let source = dir.0.join("input.csv");
-        let out = dir.0.join("output.csv");
-        fs::write(
-            &source,
-            "id,alignment,station_m,x,y\na,route1,0,30,-2\nb,route2,10,30.1,-2.1\n",
-        )
-        .unwrap();
-        let receipt =
-            run_fixture(&source, &out, &ComparisonOptions::default(), Fixture::new()).unwrap();
-        assert_eq!(receipt.point_count, 2);
-        assert_eq!(receipt.rwanda_count, 1);
-        assert_eq!(receipt.terrarium_nearest_count, 2);
-        assert_eq!(receipt.terrarium_bilinear_count, Some(2));
-        assert_eq!(receipt.paired_nearest_count, 1);
-        assert!(!receipt.correction_applied && !receipt.fallback_applied && !receipt.model_changed);
-        assert!(receipt.rwanda_tiff_full_object_sha256.is_none());
-        let mut reader = csv::Reader::from_path(&out).unwrap();
-        let headers = reader.headers().unwrap().clone();
-        let records = reader.records().map(Result::unwrap).collect::<Vec<_>>();
-        assert_eq!(records[0].get(0), Some("a"));
-        assert_eq!(records[0].get(1), Some("route1"));
-        assert_eq!(records[0].get(2), Some("0"));
-        let at = |row: usize, name: &str| {
-            records[row]
-                .get(headers.iter().position(|header| header == name).unwrap())
-                .unwrap()
-        };
-        assert_eq!(at(0, "comparison_longitude_deg"), "30");
-        assert_eq!(at(0, "comparison_latitude_deg"), "-2");
-        assert_eq!(at(0, "rwanda_elevation_m"), "1600");
-        assert_eq!(at(0, "delta_nearest_minus_rwanda_m"), "100");
-        assert_eq!(at(1, "rwanda_elevation_m"), "");
-        assert_eq!(at(1, "terrarium_nearest_elevation_m"), "1700");
-        assert_eq!(at(1, "delta_nearest_minus_rwanda_m"), "");
-        assert!(receipt.fetches.iter().any(|fetch| fetch.range.is_some()));
-        assert!(
-            receipt
-                .fetches
-                .iter()
-                .all(|fetch| fetch.sha256.starts_with("sha256:"))
-        );
-    }
-
-    #[test]
-    fn transparent_terrarium_is_missing_and_never_replaced_by_rwanda() {
-        let dir = Temp::new("alpha");
-        let source = dir.0.join("input.csv");
-        let out = dir.0.join("output.csv");
-        fs::write(&source, "x,y\n30,-2\n").unwrap();
-        let mut fixture = Fixture::new();
-        fixture.transparent = true;
-        let receipt = run_fixture(&source, &out, &ComparisonOptions::default(), fixture).unwrap();
-        assert_eq!(receipt.rwanda_count, 1);
-        assert_eq!(receipt.terrarium_nearest_missing_count, 1);
-        assert_eq!(receipt.terrarium_bilinear_missing_count, Some(1));
-        assert_eq!(receipt.paired_nearest_count, 0);
-    }
-
-    #[test]
-    fn provider_failure_produces_no_partial_comparison() {
-        let dir = Temp::new("failure");
-        let source = dir.0.join("input.csv");
-        let out = dir.0.join("output.csv");
-        fs::write(&source, "x,y\n30,-2\n").unwrap();
-        let mut fixture = Fixture::new();
-        fixture.fail_terrarium = true;
-        assert_eq!(
-            run_fixture(&source, &out, &ComparisonOptions::default(), fixture)
-                .unwrap_err()
-                .code(),
-            "elevation_provider_failed"
-        );
-        assert!(!out.exists());
-    }
-
-    #[test]
-    fn range_status_header_length_and_total_are_exact() {
-        let valid = || Response {
-            status: 206,
-            content_range: Some("bytes 10-13/100".into()),
-            body: vec![1; 4],
-        };
-        assert!(validate_range(&valid(), 10, 4, 100).is_ok());
-        let mut response = valid();
-        response.status = 200;
-        assert!(validate_range(&response, 10, 4, 100).is_err());
-        let mut response = valid();
-        response.content_range = Some("bytes 10-13/101".into());
-        assert!(validate_range(&response, 10, 4, 100).is_err());
-        let mut response = valid();
-        response.body.pop();
-        assert!(validate_range(&response, 10, 4, 100).is_err());
-        assert!(validate_range(&valid(), u64::MAX, 4, 100).is_err());
-        assert!(validate_range(&valid(), 10, 0, 100).is_err());
-    }
-
-    fn pixel_to_wgs84(x: f64, y: f64) -> [f64; 2] {
-        [
-            x / WORLD_PIXELS as f64 * 360.0 - 180.0,
-            (std::f64::consts::PI * (1.0 - 2.0 * y / WORLD_PIXELS as f64))
-                .sinh()
-                .atan()
-                .to_degrees(),
-        ]
-    }
-
-    #[test]
-    fn bilinear_plane_uses_neighbour_tiles_in_both_directions() {
-        let (ox, oy) = (19000 * 256, 17000 * 256);
-        let point = pixel_to_wgs84(ox as f64 + 0.25, oy as f64 + 0.75);
-        let mut fixture = Fixture::new();
-        fixture.plane_origin = Some((ox, oy));
-        let mut fetcher = Fetcher {
-            transport: fixture,
-            evidence: Vec::new(),
-            bytes: 0,
-        };
-        let (nearest, bilinear) = terrarium(&mut fetcher, &[point], true).unwrap();
-        // Raster centres are at integer world pixels + 0.5. The continuous
-        // plane at this query is -0.25 X, +0.25 Y from pixel (ox,oy).
-        assert!((bilinear[0].unwrap() - 100.25).abs() < 1.0e-6);
-        assert_eq!(nearest[0], Some(100.0));
-        assert_eq!(fetcher.evidence.len(), 2);
-        assert!(
-            fetcher
-                .evidence
-                .iter()
-                .any(|fetch| fetch.url.contains("/18999/17000.png"))
-        );
-        // A query straddling both boundaries needs all four neighbouring tiles.
-        let point = pixel_to_wgs84(ox as f64 + 0.25, oy as f64 + 0.25);
-        let mut fixture = Fixture::new();
-        fixture.plane_origin = Some((ox, oy));
-        let mut fetcher = Fetcher {
-            transport: fixture,
-            evidence: Vec::new(),
-            bytes: 0,
-        };
-        let (_, bilinear) = terrarium(&mut fetcher, &[point], true).unwrap();
-        assert!((bilinear[0].unwrap() - 98.75).abs() < 1.0e-6);
-        assert_eq!(fetcher.evidence.len(), 4);
-    }
-
-    #[test]
-    fn output_collision_and_existing_file_fail_before_provider_work() {
-        let dir = Temp::new("collision");
-        let source = dir.0.join("input.csv");
-        let out = dir.0.join("output.csv");
-        fs::write(&source, "x,y,rwanda_elevation_m\n30,-2,99\n").unwrap();
-        assert_eq!(
-            run_fixture(&source, &out, &ComparisonOptions::default(), Fixture::new())
-                .unwrap_err()
-                .code(),
-            "elevation_output_column_collision"
-        );
-        fs::write(&source, "x,y\n30,-2\n").unwrap();
-        fs::write(&out, "original").unwrap();
-        assert_eq!(
-            run_fixture(&source, &out, &ComparisonOptions::default(), Fixture::new())
-                .unwrap_err()
-                .code(),
-            "elevation_output_exists"
-        );
-        assert_eq!(fs::read_to_string(out).unwrap(), "original");
-    }
-
-    #[test]
-    fn projection_uses_existing_crs_authority_and_limit_is_hard() {
-        let crs = GridModelCrs::parse("EPSG:32735").unwrap();
-        let xy = crs.from_map([30.0, -2.0]).unwrap();
-        let converted = SourceCrs::parse("EPSG:32735").unwrap().wgs84(xy).unwrap();
-        assert!((converted[0] - 30.0).abs() < 1.0e-7);
-        assert!((converted[1] + 2.0).abs() < 1.0e-7);
-        assert!(SourceCrs::parse("EPSG:4083").is_err());
-        let dir = Temp::new("point-limit");
-        let source = dir.0.join("input.csv");
-        let out = dir.0.join("output.csv");
-        fs::write(
-            &source,
-            format!("x,y\n{}", "30,-2\n".repeat(POINT_LIMIT + 1)),
-        )
-        .unwrap();
-        assert_eq!(
-            run_fixture(&source, &out, &ComparisonOptions::default(), Fixture::new())
-                .unwrap_err()
-                .code(),
-            "elevation_point_limit"
-        );
-        assert!(!out.exists());
-    }
-
-    #[test]
-    fn index_digest_mismatch_is_a_failure_without_output() {
-        let dir = Temp::new("index");
-        let source = dir.0.join("input.csv");
-        let out = dir.0.join("output.csv");
-        fs::write(&source, "x,y\n30,-2\n").unwrap();
-        let fixture = Fixture::new();
-        let (size, _, tiff_size) = fixture.contract();
-        let error = compare_with(
-            &source,
-            &out,
-            &ComparisonOptions::default(),
-            fixture,
-            IndexContract {
-                size,
-                digest: "incorrect",
-                tiff_size,
-            },
-        )
-        .unwrap_err();
-        assert_eq!(error.code(), "elevation_integrity_failed");
-        assert!(!out.exists());
-    }
-}
+#[path = "lib_tests.rs"]
+mod tests;

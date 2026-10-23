@@ -172,6 +172,8 @@ pub static PLAN_COMMAND: Command = Command {
         },
     ],
     refusals: &[
+        crate::ELEVATION_ENGINE_MISSING,
+        crate::ELEVATION_ENGINE_INCOMPATIBLE,
         crate::NATIVE_DATA_REFUSED,
         crate::NATIVE_DATA_FAILED,
         AREA_REQUIRED,
@@ -221,6 +223,8 @@ pub static EXTRACT_COMMAND: Command = Command {
         },
     ],
     refusals: &[
+        crate::ELEVATION_ENGINE_MISSING,
+        crate::ELEVATION_ENGINE_INCOMPATIBLE,
         crate::NATIVE_DATA_REFUSED,
         crate::NATIVE_DATA_FAILED,
         AREA_REQUIRED,

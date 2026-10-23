@@ -2,6 +2,7 @@
 mod captured;
 mod design_snapshot;
 mod differential;
+mod elevation;
 mod grid;
 mod grid_apply;
 mod grid_apply_batch;
@@ -18,6 +19,7 @@ mod report_engineering;
 mod source_io;
 mod staging;
 pub use captured::{CapturedNetworkClient, NetworkEnginePin};
+pub use elevation::{ElevationCompleted, Needed, MAX_ELEVATION_ROUNDS};
 pub use design_snapshot::{
     design_snapshot_engine_pin, process_design_snapshot, DesignSnapshotEnginePin,
     DesignSnapshotOutcome,

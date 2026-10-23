@@ -74,6 +74,18 @@ pub(crate) const NATIVE_DATA_FAILED: Refusal = Refusal {
     remedy: "resolve the named resource or file failure, then retry the same explicit request",
 };
 
+/// Elevation and terrain are computed in the Network engine (DECOUPLING-013).
+pub(crate) const ELEVATION_ENGINE_MISSING: Refusal = Refusal {
+    code: "network_engine_missing",
+    when: "no Network engine is installed or selected to compute elevation",
+    remedy: "install or activate a compatible Network engine",
+};
+pub(crate) const ELEVATION_ENGINE_INCOMPATIBLE: Refusal = Refusal {
+    code: "network_engine_incompatible",
+    when: "the selected Network engine does not serve elevation_v1",
+    remedy: "update the Network engine for this lane",
+};
+
 /// Terminal mechanics preserve the application's typed code, class and facts.
 fn native_data_failure(error: ds_native_data::bridge::CommandFailure) -> ds_cli_contract::Failure {
     use ds_native_data::bridge::FailureClass;

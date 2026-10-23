@@ -78,6 +78,8 @@ pub static COMMAND: Command = Command {
         runnable: false,
     }],
     refusals: &[
+        crate::ELEVATION_ENGINE_MISSING,
+        crate::ELEVATION_ENGINE_INCOMPATIBLE,
         Refusal {
             code: "elevation_invalid_input",
             when: "CSV coordinates, field selection or CRS are invalid, empty or unsupported",
@@ -181,6 +183,17 @@ fn failure(error: ComparisonError) -> Failure {
         ComparisonError::Integrity(_) => Failure::failed(
             "elevation_integrity_failed",
             "Public elevation evidence failed verification",
+        ),
+        ComparisonError::Engine {
+            code: "network_engine_incompatible",
+            ..
+        } => Failure::unavailable(
+            "network_engine_incompatible",
+            "The Network engine does not serve elevation_v1",
+        ),
+        ComparisonError::Engine { .. } => Failure::unavailable(
+            "network_engine_missing",
+            "No Network engine is installed to compare elevations",
         ),
     }
     .with_message(error.to_string());

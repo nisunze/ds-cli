@@ -13,7 +13,9 @@ uuid = { version = "1", features = ["v4"] }
 fs2 = "0.4.3"
 ds-columnar = { path = "../../../../ds-network/crates/ds-columnar" }
 ds-io = { path = "../../../../ds-network/crates/ds-io" }
-ds-elevation = { path = "../../../../ds-network/crates/ds-elevation" }
+ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
+ds-network-client = { path = "../ds-network-client" }
+tempfile = "3"
 ds-geo = { path = "../../../../ds-network/crates/ds-geo" }
 ds-update-runtime = { path = "../ds-update-runtime" }
 ds-layer-store = { path = "../ds-layer-store" }
@@ -31,5 +33,3 @@ crc32c = "0.6"
 libc = { workspace = true }
 
 [dev-dependencies]
-tempfile = "3"
-ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }

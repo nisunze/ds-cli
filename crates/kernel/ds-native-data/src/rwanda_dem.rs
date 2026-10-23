@@ -48,7 +48,7 @@ const PROVENANCE_SHA256: &str = "c3b5ac0cea71817203ff256abe7534b1fd19120680f9e6d
 const COG_CRC32C: u32 = 0x31da_d180;
 const BLOCK_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
 const BLOCK_CACHE_MAX_ENTRIES: u32 = 1_536;
-const FULL_LOCAL_REQUIRED_ABOVE_POINTS: u32 = 4_000;
+pub(crate) const FULL_LOCAL_REQUIRED_ABOVE_POINTS: u32 = 4_000;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -9,10 +9,10 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
-ds-elevation = { path = "../../../../ds-network/crates/ds-elevation" }
+ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
+ds-network-client = { path = "../ds-network-client" }
+tempfile = "3"
 ds-geo = { path = "../../../../ds-network/crates/ds-geo" }
-csv = "1"
-image = { version = "0.25", default-features = false, features = ["png"] }
 ureq = "3.3.0"
 serde = { workspace = true }
 serde_json = { workspace = true }

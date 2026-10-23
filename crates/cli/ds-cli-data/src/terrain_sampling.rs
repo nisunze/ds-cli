@@ -27,7 +27,10 @@ pub static DESCRIBE: Command = Command {
         note: "Discover the native request and adjustable defaults.",
         runnable: true,
     }],
-    refusals: &[],
+    refusals: &[
+        crate::ELEVATION_ENGINE_MISSING,
+        crate::ELEVATION_ENGINE_INCOMPATIBLE,
+    ],
     reference: Some("docs/reference/data.md"),
     search: &["defaults", "tolerance", "reproducible"],
     requires: Requires::Server,
@@ -74,6 +77,8 @@ pub static SAMPLE: Command = Command {
         },
     ],
     refusals: &[
+        crate::ELEVATION_ENGINE_MISSING,
+        crate::ELEVATION_ENGINE_INCOMPATIBLE,
         Refusal {
             code: "terrain_request_invalid",
             when: "The native request, route, CRS or settings are malformed or exceed algorithm limits",
@@ -132,7 +137,7 @@ pub static SAMPLE: Command = Command {
 };
 
 pub fn run_describe(_inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    Ok(ds_terrain_host::describe())
+    ds_terrain_host::describe().map_err(failure)
 }
 
 pub fn run_sample(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -180,6 +185,14 @@ fn failure(error: SamplingFileError) -> Failure {
         "terrain_integrity_failed" => Failure::failed(
             "terrain_integrity_failed",
             "Rwanda acquisition integrity failed",
+        ),
+        "network_engine_missing" => Failure::unavailable(
+            "network_engine_missing",
+            "No Network engine is installed to sample terrain",
+        ),
+        "network_engine_incompatible" => Failure::unavailable(
+            "network_engine_incompatible",
+            "The Network engine does not serve elevation_v1",
         ),
         _ => Failure::failed("terrain_sampling_failed", "Native terrain sampling failed"),
     }

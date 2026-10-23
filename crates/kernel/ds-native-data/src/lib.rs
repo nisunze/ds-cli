@@ -9,6 +9,7 @@ pub mod bridge;
 mod columnar;
 pub mod compute;
 pub mod elevation;
+mod engine_host;
 pub mod point_cloud;
 pub mod rwanda_dem;
 

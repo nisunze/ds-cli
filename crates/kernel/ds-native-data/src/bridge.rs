@@ -44,7 +44,7 @@ impl CommandFailure {
     fn area(message: String) -> Self {
         Self::invalid_code("area_required", message)
     }
-    fn failed(message: String) -> Self {
+    pub(crate) fn failed(message: String) -> Self {
         Self { class: FailureClass::Failed, code: FAILED_CODE, message, remedy: "Resolve the named native resource or file failure, then retry the same explicit request.".into(), detail: json!({}) }
     }
 }
@@ -394,12 +394,12 @@ pub fn attach(
     arguments: Value,
 ) -> Result<CommandOutcome, CommandFailure> {
     let request = elevation_request(arguments)?;
-    projected(elevation::interpolate(context, request).map_err(CommandFailure::failed)?)
+    projected(elevation::interpolate_typed(context, request)?)
 }
 
 pub fn plan(context: &RequestContext, arguments: Value) -> Result<CommandOutcome, CommandFailure> {
     let request = point_cloud_plan_request(arguments)?;
-    projected(point_cloud::plan(context, request).map_err(CommandFailure::failed)?)
+    projected(point_cloud::plan_typed(context, request)?)
 }
 
 pub fn extract(
@@ -408,7 +408,7 @@ pub fn extract(
     arguments: Value,
 ) -> Result<CommandOutcome, CommandFailure> {
     let request = point_cloud_extract_request(arguments)?;
-    projected(point_cloud::extract(context, state, request).map_err(CommandFailure::failed)?)
+    projected(point_cloud::extract_typed(context, state, request)?)
 }
 
 #[cfg(test)]

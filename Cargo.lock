@@ -2195,28 +2195,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "ds-elevation"
-version = "0.1.0"
-dependencies = [
- "ds-geo",
- "flate2",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
-]
-
-[[package]]
 name = "ds-elevation-host"
 version = "0.1.0"
 dependencies = [
- "csv",
- "ds-elevation",
  "ds-geo",
+ "ds-network-client",
+ "ds-network-contracts",
  "flate2",
- "image",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "thiserror 2.0.20",
  "ureq",
 ]
@@ -2454,10 +2443,10 @@ dependencies = [
  "crc32c",
  "csv",
  "ds-columnar",
- "ds-elevation",
  "ds-geo",
  "ds-io",
  "ds-layer-store",
+ "ds-network-client",
  "ds-network-contracts",
  "ds-update-runtime",
  "fs2",
@@ -2879,24 +2868,10 @@ dependencies = [
 name = "ds-terrain-host"
 version = "0.1.0"
 dependencies = [
- "csv",
  "ds-elevation-host",
- "ds-geo",
- "ds-geo-lite",
- "ds-terrain-sampling",
- "schemars",
- "serde",
+ "ds-network-client",
+ "ds-network-contracts",
  "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "ds-terrain-sampling"
-version = "0.1.0"
-dependencies = [
- "schemars",
- "serde",
  "thiserror 2.0.20",
 ]
 
