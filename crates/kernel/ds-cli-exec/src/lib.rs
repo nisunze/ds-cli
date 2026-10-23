@@ -36,6 +36,7 @@ mod default_resolution;
 mod managed_modules;
 mod process_tree;
 pub mod reporter;
+pub mod solar;
 mod session;
 pub use session::NetworkProfileProcess;
 

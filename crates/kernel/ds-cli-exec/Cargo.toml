@@ -12,6 +12,7 @@ publish.workspace = true
 ds-core-contracts = { workspace = true }
 ds-command-kernel = { workspace = true }
 ds-network-contracts = { workspace = true }
+ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 
