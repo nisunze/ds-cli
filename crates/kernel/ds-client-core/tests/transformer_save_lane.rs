@@ -56,6 +56,7 @@ fn batch() -> TransformerSaveBatch {
             transformer_name: "T1".into(),
             base_version: 7,
             source_content_digest,
+            base_content_digest: None,
             source_layers: projection.source_layers,
             gdfs: projection.gdfs,
             config_dfs: projection.config_dfs,

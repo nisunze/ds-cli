@@ -34,7 +34,14 @@ pub struct TransformerSaveBatch {
 pub struct TransformerSaveItem {
     pub transformer_name: String,
     pub base_version: u64,
+    /// Digest of `source_layers`, the layers the result was processed from.
     pub source_content_digest: String,
+    /// The saved head this result replaces, when it was processed from other
+    /// layers (an uploaded design). Absent, the source is the head: a
+    /// reprocess. Either way the head must still be `base_version` with this
+    /// digest, so a head that moved since it was read is never overwritten.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_content_digest: Option<String>,
     pub source_layers: BTreeMap<String, Value>,
     pub gdfs: BTreeMap<String, Value>,
     pub config_dfs: BTreeMap<String, Value>,
@@ -132,6 +139,10 @@ impl TransformerSaveBatch {
                 || item.base_version == 0
                 || item.base_version >= i64::MAX as u64
                 || !valid_sha(&item.source_content_digest)
+                || item
+                    .base_content_digest
+                    .as_deref()
+                    .is_some_and(|base| !valid_sha(base))
                 || !token(&item.operation_id)
                 || item.config_dfs.is_empty()
                 || item.config_dfs.len() > 64
@@ -300,8 +311,11 @@ fn preflight(
     {
         return Ok(true);
     }
-    if metadata.version() != Some(item.base_version) || actual_digest != item.source_content_digest
-    {
+    let head = item
+        .base_content_digest
+        .as_deref()
+        .unwrap_or(&item.source_content_digest);
+    if metadata.version() != Some(item.base_version) || actual_digest != head {
         return Err(invalid("transformer_save_source_changed"));
     }
     Ok(false)

@@ -15,6 +15,7 @@ fn item_with_nature(nature: &str) -> TransformerSaveItem {
         transformer_name: "T1".into(),
         base_version: 7,
         source_content_digest: digest(&projection.source_layers).unwrap(),
+        base_content_digest: None,
         source_layers: projection.source_layers,
         gdfs: projection.gdfs,
         config_dfs: projection.config_dfs,
@@ -68,6 +69,59 @@ fn save_fences_source_and_retries_already_published_result() {
     .is_err());
     assert!(preflight(&item, &snapshot(&item, &item.gdfs, 8), &result_digest).unwrap());
     assert!(preflight(&item, &snapshot(&item, &item.gdfs, 6), &result_digest).is_err());
+}
+/// An uploaded design is processed from its own layers, not the saved head.
+/// It replaces exactly the head that was read: same version, same digest.
+#[test]
+fn supplied_design_replaces_only_the_head_it_was_read_against() {
+    let mut head = item().source_layers;
+    head.get_mut("tr").unwrap()["features"][0]["properties"]["head_only"] = json!(true);
+    let mut item = item();
+    let result_digest = digest(&item.gdfs).unwrap();
+    // Without a head fence the source must be the head: a reprocess.
+    assert_eq!(
+        preflight(&item, &snapshot(&item, &head, 7), &result_digest)
+            .unwrap_err()
+            .to_string(),
+        "transformer_save_source_changed"
+    );
+    item.base_content_digest = Some(digest(&head).unwrap());
+    assert!(!preflight(&item, &snapshot(&item, &head, 7), &result_digest).unwrap());
+    // A head that moved since it was read is never overwritten.
+    for (layers, version) in [(&head, 8), (&item.source_layers, 7)] {
+        assert_eq!(
+            preflight(&item, &snapshot(&item, layers, version), &result_digest)
+                .unwrap_err()
+                .to_string(),
+            "transformer_save_source_changed"
+        );
+    }
+    // A retry after the replacement was published is answered unchanged.
+    assert!(preflight(&item, &snapshot(&item, &item.gdfs, 8), &result_digest).unwrap());
+    // The head fence never travels: the save body carries the result only.
+    let body: Value = serde_json::from_slice(
+        &TransformerSaveBatch {
+            project_id: "project".into(),
+            items: vec![item.clone()],
+        }
+        .wire_body()
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(body["transformer_saves"][0]
+        .get("base_content_digest")
+        .is_none());
+    item.base_content_digest = Some("not-a-digest".into());
+    assert_eq!(
+        TransformerSaveBatch {
+            project_id: "project".into(),
+            items: vec![item],
+        }
+        .validate("project", DeploymentLane::Stable)
+        .unwrap_err()
+        .to_string(),
+        "transformer_save_invalid_item"
+    );
 }
 #[test]
 #[ignore = "requires an explicitly retained native Network save-validation executable"]

@@ -299,6 +299,8 @@ fn run_expected_project(inputs: &Inputs, expected_project: Option<&str>) -> Resu
                 transformer_name: transformer.to_owned(),
                 base_version,
                 source_content_digest,
+                // The export's source is the saved head: a reprocess.
+                base_content_digest: None,
                 source_layers,
                 gdfs: projection.gdfs,
                 config_dfs: projection.config_dfs,

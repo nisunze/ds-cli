@@ -12817,6 +12817,7 @@ fn native_lv_save_atomically_sends_exact_analysis_and_refuses_replaced_readback(
         transformer_name: "T1".into(),
         base_version: 7,
         source_content_digest: layers_content_digest(&projection.source_layers).unwrap(),
+        base_content_digest: None,
         source_layers: projection.source_layers,
         gdfs: projection.gdfs,
         config_dfs: projection.config_dfs,
@@ -12952,6 +12953,7 @@ fn native_lv_save_missing_engine_refuses_without_project_reads() {
             &projection.source_layers,
         )
         .unwrap(),
+        base_content_digest: None,
         source_layers: projection.source_layers,
         gdfs: projection.gdfs,
         config_dfs: projection.config_dfs,

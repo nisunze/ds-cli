@@ -178,13 +178,18 @@ pub(crate) fn process_file(
                     failure
                 }
             })?;
-    let base_version = context.snapshot().metadata().version().ok_or_else(|| {
-        Failure::conflict(
+    let metadata = context.snapshot().metadata();
+    // The upload replaces exactly the head read here: its version and digest.
+    let (Some(base_version), Some(base_content_digest)) =
+        (metadata.version(), metadata.content_digest())
+    else {
+        return Err(Failure::conflict(
             "transformer_context_unfenced",
-            "The transformer context has no server version fence.",
+            "The transformer context has no server version and content fences.",
         )
-        .remedy("Refresh or migrate the transformer until the context call returns both fences.")
-    })?;
+        .remedy("Refresh or migrate the transformer until the context call returns both fences."));
+    };
+    let base_content_digest = base_content_digest.to_owned();
     let config = ds_cli_auth::settings_configuration_receipt(
         lane,
         project,
@@ -263,7 +268,11 @@ pub(crate) fn process_file(
         .result;
     let source_content_digest = layers_content_digest(&projection.source_layers)
         .map_err(|error| invalid(error.to_string()))?;
-    let digest = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(&request));
+    // One operation per upload over one exact head: a retry keeps its key,
+    // the same file over a head that moved since is a new operation.
+    let mut key = request.clone();
+    key.extend_from_slice(format!("\n{base_version}\n{base_content_digest}").as_bytes());
+    let digest = format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(&key));
     let operation_id = format!("intake-{}", &digest[..40]);
     let saved = ds_cli_auth::save_transformers(
         lane,
@@ -273,6 +282,7 @@ pub(crate) fn process_file(
                 transformer_name: transformer.clone(),
                 base_version,
                 source_content_digest,
+                base_content_digest: Some(base_content_digest),
                 source_layers: projection.source_layers,
                 gdfs: projection.gdfs,
                 config_dfs: projection.config_dfs,
