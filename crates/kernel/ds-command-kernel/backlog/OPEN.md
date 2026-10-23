@@ -138,6 +138,11 @@ Found by a read-only trace of `ds solar` against installed canary (2026-10-20), 
   - Python tooling still in ds-cli (no-Python rule): `scripts/check.py` and eight `scripts/test-*.py`, `scripts/worktree-index.py`, `crates/kernel/ds-command-kernel/scripts/native_host_network_trace.py`, and eleven PLS desktop adapter/lab `.py` files. Port each to Rust/Node or delete it; check the PLS bundle pins first.
   - `ds-solar-cli` `prepared_task` includes its test source from `../ds-solar` (cross-repository source reach); give ds-cli its own copy or move the test to ds-solar.
 
+- **Parked 23 Oct (lanes stopped to keep six lanes on LV/PM/reporting; restart from these lines):**
+  - Independence round 2 (contract 4, deploy blocker): remaining equality gates — `ds-command-kernel/src/module_release.rs` schema (~239) and protocol (~259, ~282) equality and core_release equivalents; Solar batch schema equality (`ds-solar-cli/src/run.rs` ~472, `ds-command-kernel/src/solar_batch.rs` ~65) and opaque digest comparison of Solar results/portfolios; edge-authority token `schema != 1`; combined report `schema_version` equality; ~20 `deny_unknown_fields` engine REPLY types in ds-network-contracts (requests stay closed); ds-brain `module_wasm_release.go` ~127 and input-receipt schema equality. Each needs an additive-accepted / missing-refused test.
+  - Data (feedback dfd060, 86d184, 829e8d, ed8b6d, de978f): Core fetches building footprints once per project area (no Brain) — Kernel `ds-project-data/src/datasets.rs` still binds buildings to the retired provider `ds-brain:query_print_context`; finish the paused project-datasets work (revisions, publication); `ds data elevation attach` evidence mismatch; held datasets reported `ready=false`.
+  - Feedback crash metadata (9b8aad, 75e5f3): auto-filed crashes and occurrences must carry version/source/channel/OS, command id, argument names and the panic file:line (never the message); `feedback.list` must declare its `--limit` bound (1..=50).
+
 ## 3. Template creation code
 
 - **Template creation fixtures and UI binding**: complete representative transformer-outlier fixtures and any missing selectable-copy UI binding over the declared CLI contract. Keep explicit template identity and copy choices in the owner; Tchad layout contents and project parameters belong in [SEEDING.md](SEEDING.md#3-template-projects).
