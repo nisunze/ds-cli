@@ -24,7 +24,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "plan-profile"],
     contract: 9,
     summary: "Render DS Grid plan/profile sheets from a pinned model or scene.",
-    purpose: "Resolve the project's adopted MV setup and render a digest/revision-pinned model or same-revision projections into its ordered local publication. Exact alignment IDs narrow projection scope; model mode prints the complete model and refuses alignment/template-job preview flags. Text, logos, scales, fonts and issue policy inherit that setup. Missing inputs refuse before output. --request alone runs a native request without project reads. --preview-layout renders a saved or draft template sample into the scoped native disk cache with exact fences and 24h or 7d retention; nothing is saved. Responses carry file receipts and station metadata.",
+    purpose: "Resolve the project's adopted MV setup and render a digest/revision-pinned model or same-revision projections into its ordered local publication. Exact alignment IDs narrow projection scope; model mode prints the complete model and refuses alignment/template-job preview flags. Text, logos, scales, fonts and issue policy inherit that setup. Missing inputs refuse before output. --request alone runs a native request without project reads. --preview-layout renders a saved or draft template sample into the fenced, scoped disk cache (24h or 7d); nothing is saved. Responses carry file receipts and station metadata.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,

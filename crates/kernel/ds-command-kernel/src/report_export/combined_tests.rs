@@ -443,3 +443,54 @@ fn voltage_drop_states_become_warnings_never_refusals() {
         [("tx_missing", "missing"), ("tx_stale", "stale")]
     );
 }
+
+/// Contract 4: a combined reply is read by its family (task and prefix) and
+/// the members this reader uses. A newer revision with added members is
+/// admitted; a missing revision member or another family is refused by name.
+#[test]
+fn combined_replies_admit_same_family_revisions_and_refuse_other_families() {
+    let refusal = |result: Result<VerifiedCombined, CombinedRefusal>| match result {
+        Err(CombinedRefusal::Invalid { message }) => message,
+        other => panic!("expected an invalid refusal, got {:?}", other.map(|_| ())),
+    };
+    let fixture = Fixture::new("Rwanda");
+    let mut newer = fixture.result();
+    newer["schema_version"] = json!(RESULT_SCHEMA_VERSION + 1);
+    newer["added_member"] = json!({"from": "a newer Reporter"});
+    newer["artifacts"][0]["added_member"] = json!(true);
+    let verified = fixture.verify(&newer).unwrap();
+    assert_eq!(verified.artifacts.len(), 3);
+    let mut older = fixture.result();
+    older["schema_version"] = json!(RESULT_SCHEMA_VERSION - 1);
+    assert!(fixture.verify(&older).is_ok());
+
+    let mut missing = fixture.result();
+    missing.as_object_mut().unwrap().remove("schema_version");
+    assert!(refusal(fixture.verify(&missing)).contains("schema_version"));
+    let mut zero = fixture.result();
+    zero["schema_version"] = json!(0);
+    assert!(refusal(fixture.verify(&zero)).contains("schema_version"));
+    let mut other_task = fixture.result();
+    other_task["task"] = json!("export_transformer_report");
+    assert!(refusal(fixture.verify(&other_task)).contains("family"));
+    let mut other_prefix = fixture.result();
+    other_prefix["prefix"] = json!("transformer");
+    assert!(refusal(fixture.verify(&other_prefix)).contains("family"));
+    let mut no_artifacts = fixture.result();
+    no_artifacts.as_object_mut().unwrap().remove("artifacts");
+    assert!(fixture.verify(&no_artifacts).is_err());
+
+    let document = |value: Value| serde_json::to_vec(&value).unwrap();
+    let media = json!({"schema_version": MEDIA_SCOPE_SCHEMA_VERSION + 1, "task": MEDIA_TASK, "status": "completed", "reference_count": 1, "source_projects": ["project-a"], "transformers_scanned": 2, "features_scanned": 9, "added_member": [1]});
+    assert!(verify_media_scope(&document(media.clone()), 2).is_ok());
+    let mut unversioned = media.clone();
+    unversioned.as_object_mut().unwrap().remove("schema_version");
+    assert!(verify_media_scope(&document(unversioned), 2)
+        .unwrap_err()
+        .contains("schema_version"));
+    let mut foreign = media;
+    foreign["task"] = json!(TASK);
+    assert!(verify_media_scope(&document(foreign), 2)
+        .unwrap_err()
+        .contains("family"));
+}

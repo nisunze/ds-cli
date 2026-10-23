@@ -44,10 +44,20 @@ pub const IDENTITY: &str = "combined_transformer";
 /// A combined publication spans many saved revisions, so its batch carries
 /// no single transformer revision.
 pub const PUBLICATION_REVISION: i64 = 0;
-/// The Reporter's combined result document version this module reads.
+/// The combined result revision this module was written against. A reply's
+/// revision is provenance, never a gate: the family (task and prefix) and the
+/// members this module reads decide compatibility.
 pub const RESULT_SCHEMA_VERSION: u64 = 4;
-/// The Reporter's media-scope result document version this module reads.
+/// The media-scope result revision this module was written against; provenance only.
 pub const MEDIA_SCOPE_SCHEMA_VERSION: u64 = 2;
+
+/// A reply's required revision member: present as a positive integer. Any
+/// same-family revision is admitted; its members are checked by their reader.
+fn reply_revision(reply: &Value) -> Option<u64> {
+    reply["schema_version"]
+        .as_u64()
+        .filter(|revision| *revision > 0)
+}
 /// The receipt a host writes beside the combined artifacts.
 pub const RECEIPT_SCHEMA: &str = "ds.report-combined-run/v1";
 /// The canonical preimage of a combined run's input fingerprint.
@@ -468,9 +478,13 @@ pub fn verify_media_scope(document: &[u8], rooms: usize) -> Result<MediaScope, S
         return Err("The combined media scope omits its counts or projects".into());
     };
     let unique: BTreeSet<&String> = source_projects.iter().collect();
-    if count("schema_version") != Some(MEDIA_SCOPE_SCHEMA_VERSION)
-        || value["task"] != MEDIA_TASK
-        || value["status"] != "completed"
+    if reply_revision(&value).is_none() {
+        return Err("The combined media scope omits its schema_version member".into());
+    }
+    if value["task"] != MEDIA_TASK {
+        return Err("The combined media scope belongs to another Reporter task family".into());
+    }
+    if value["status"] != "completed"
         || count("transformers_scanned") != Some(rooms as u64)
         || source_projects.len() > MAX_MEDIA_PROJECTS
         || unique.len() != source_projects.len()
@@ -646,11 +660,19 @@ pub fn verify_result(
     let result: Value = serde_json::from_slice(document).map_err(|error| {
         CombinedRefusal::invalid(format!("The combined result is malformed: {error}"))
     })?;
-    if result["schema_version"].as_u64() != Some(RESULT_SCHEMA_VERSION)
-        || result["task"] != TASK
-        || result["prefix"] != IDENTITY
-        || result["country"] != scope.country.as_str()
-    {
+    // The task and prefix name the family; a revision of it is provenance.
+    // Every member this reader uses is checked below, and added ones are ignored.
+    if reply_revision(&result).is_none() {
+        return Err(CombinedRefusal::invalid(
+            "The combined result omits its schema_version member",
+        ));
+    }
+    if result["task"] != TASK || result["prefix"] != IDENTITY {
+        return Err(CombinedRefusal::invalid(
+            "The combined result belongs to another Reporter task family (task or prefix)",
+        ));
+    }
+    if result["country"] != scope.country.as_str() {
         return Err(CombinedRefusal::invalid(
             "The combined result does not answer this request",
         ));
