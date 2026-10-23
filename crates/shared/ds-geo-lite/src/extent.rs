@@ -55,6 +55,52 @@ pub fn oriented_buffered(metric: &[[f64; 2]], buffer_m: f64) -> Vec<[f64; 2]> {
     }
     result
 }
+
+/// Enclose WGS84 points by the minimum-area metric rectangle, then expand its
+/// four sides by `buffer_m`. Empty input has no extent. A point or collinear
+/// cloud uses its exact degenerate rectangle before expansion.
+///
+/// The WGS84 admission and the local metric frame around [`oriented_buffered`];
+/// `coords` are interleaved longitude/latitude pairs and so is the ring.
+#[cfg(feature = "projection")]
+pub fn oriented_extent_buffered(coords: &[f64], buffer_m: f64) -> Result<Vec<f64>, String> {
+    use crate::projection::ProjectionMetadata;
+    if coords.len() > 2_000_000 || !coords.len().is_multiple_of(2) {
+        return Err("extent requires at most one million longitude/latitude pairs".into());
+    }
+    if !buffer_m.is_finite() || !(0.0..=1_000_000.0).contains(&buffer_m) {
+        return Err("extent buffer must be finite and between 0 and 1000000 metres".into());
+    }
+    let points: Vec<[f64; 2]> = coords.chunks_exact(2).map(|p| [p[0], p[1]]).collect();
+    if points.iter().any(|p| {
+        !p[0].is_finite()
+            || !p[1].is_finite()
+            || !(-180.0..=180.0).contains(&p[0])
+            || !(-90.0..=90.0).contains(&p[1])
+    }) {
+        return Err("extent coordinates must be finite WGS84 longitude/latitude".into());
+    }
+    if points.is_empty() {
+        return Ok(Vec::new());
+    }
+    let projection = ProjectionMetadata::from_lonlat_coords(points.iter().copied());
+    let metric: Vec<[f64; 2]> = points
+        .iter()
+        .map(|p| projection.project_coord(*p))
+        .collect();
+    if metric.iter().flatten().any(|v| !v.is_finite()) {
+        return Err("extent projection is not finite".into());
+    }
+    let mut result = Vec::with_capacity(10);
+    for metric_point in oriented_buffered(&metric, buffer_m) {
+        let point = projection.unproject_coord(metric_point);
+        if point.iter().any(|v| !v.is_finite()) {
+            return Err("extent inverse projection is not finite".into());
+        }
+        result.extend(point);
+    }
+    Ok(result)
+}
 #[cfg(test)]
 mod tests {
     use super::*;

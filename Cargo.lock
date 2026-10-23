@@ -2228,6 +2228,7 @@ dependencies = [
  "arrow-schema",
  "ds-design-session",
  "ds-geo-lite",
+ "ds-network-contracts",
  "polars-arrow",
  "regex",
  "serde",
