@@ -533,10 +533,12 @@ fn publish_with(
 }
 
 pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    // The package is validated by the Network engine of the request's lane.
+    let lane = inputs.require("lane")?;
     publish_with(
         inputs,
         context,
-        grid_publication::prepare,
+        |request, bytes| grid_publication::prepare(request, bytes, lane),
         |lane, project, command| {
             ds_cli_auth::grid_models_for_project(lane, project, command)
                 .map(|receipt| receipt.data)

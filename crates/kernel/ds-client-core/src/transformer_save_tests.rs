@@ -77,8 +77,8 @@ fn save_binds_project_config_and_result_digest_without_source_or_force_fields_on
         project_id: "project".into(),
         items: vec![item.clone()],
     };
-    batch.validate("project").unwrap();
-    assert!(batch.validate("other").is_err());
+    batch.validate("project", DeploymentLane::Stable).unwrap();
+    assert!(batch.validate("other", DeploymentLane::Stable).is_err());
     check_config(&item, &serde_json::to_value(&item.config_dfs).unwrap()).unwrap();
     assert!(check_config(
         &item,
@@ -96,7 +96,7 @@ fn save_binds_project_config_and_result_digest_without_source_or_force_fields_on
     assert!(saved.get("force_version_conflict").is_none());
     assert!(saved.get("source_layers").is_none());
     batch.items[0].source_layers = item.gdfs;
-    assert!(batch.validate("project").is_err());
+    assert!(batch.validate("project", DeploymentLane::Stable).is_err());
 }
 #[test]
 fn save_refuses_duplicate_items_and_oversized_payloads() {
@@ -105,7 +105,7 @@ fn save_refuses_duplicate_items_and_oversized_payloads() {
         project_id: "project".into(),
         items: vec![item.clone(), item.clone()],
     };
-    assert!(batch.validate("project").is_err());
+    assert!(batch.validate("project", DeploymentLane::Stable).is_err());
     batch.items = vec![item];
     let held = "x".repeat(3 * 1024 * 1024);
     batch.items[0].gdfs.get_mut("lv_poles").unwrap()["features"][0]["properties"]["retained"] =
@@ -119,7 +119,7 @@ fn save_refuses_duplicate_items_and_oversized_payloads() {
     batch.items[0].gdfs.get_mut("lv_poles").unwrap()["features"][0]["properties"]["oversized"] =
         json!("x".repeat(MAX_SAVE_BYTES));
     assert!(batch.wire_body().unwrap().len() > MAX_SAVE_BYTES);
-    assert!(batch.validate("project").is_err());
+    assert!(batch.validate("project", DeploymentLane::Stable).is_err());
 }
 #[test]
 #[ignore = "requires an explicitly retained native Network save-validation executable"]
@@ -133,7 +133,7 @@ fn native_calculated_analysis_is_required_and_bound_and_a_reservation_is_refused
         project_id: "project".into(),
         items: vec![item.clone()],
     };
-    batch.validate("project").unwrap();
+    batch.validate("project", DeploymentLane::Stable).unwrap();
     let mut raw = serde_json::to_value(&item).unwrap();
     raw.as_object_mut().unwrap().remove("voltage_drop");
     assert!(serde_json::from_value::<TransformerSaveItem>(raw).is_err());
@@ -168,7 +168,7 @@ fn native_calculated_analysis_is_required_and_bound_and_a_reservation_is_refused
                 project_id: "project".into(),
                 items: vec![changed]
             }
-            .validate("project")
+            .validate("project", DeploymentLane::Stable)
             .is_err(),
             "mutation {mutate}"
         );
@@ -185,7 +185,7 @@ fn native_calculated_analysis_is_required_and_bound_and_a_reservation_is_refused
         project_id: "project".into(),
         items: vec![reserved],
     }
-    .validate("project")
+    .validate("project", DeploymentLane::Stable)
     .unwrap_err();
     assert_eq!(
         error.to_string(),
@@ -205,10 +205,10 @@ fn hydrated_nature_preserves_the_source_fence_but_other_source_changes_fail() {
         project_id: "project".into(),
         items: vec![item],
     };
-    batch.validate("project").unwrap();
+    batch.validate("project", DeploymentLane::Stable).unwrap();
     batch.items[0].process_input.gdfs.get_mut("tr").unwrap()["features"][0]["properties"]
         ["transfo_size"] = json!(50);
-    assert!(batch.validate("project").is_err());
+    assert!(batch.validate("project", DeploymentLane::Stable).is_err());
 }
 #[test]
 fn oversized_detailed_analysis_is_refused_without_truncation() {
@@ -219,7 +219,7 @@ fn oversized_detailed_analysis_is_refused_without_truncation() {
         project_id: "project".into(),
         items: vec![item]
     }
-    .validate("project")
+    .validate("project", DeploymentLane::Stable)
     .is_err());
 }
 #[test]

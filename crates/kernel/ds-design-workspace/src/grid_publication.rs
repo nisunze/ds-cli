@@ -59,9 +59,10 @@ pub fn combined_model_id(identity: &str) -> Result<String, String> {
     Ok(identity.replacen('.', "-", 1))
 }
 
-/// The project revision ID publication assigns to these exact package bytes.
-pub fn publication_revision(bytes: &[u8]) -> Result<String, String> {
-    let facts = publication_facts(bytes, NativeGridPublicationModeV1::Inspect)?;
+/// The project revision ID publication assigns to these exact package bytes,
+/// validated by the Network engine of `lane`.
+pub fn publication_revision(bytes: &[u8], lane: &str) -> Result<String, String> {
+    let facts = publication_facts(bytes, NativeGridPublicationModeV1::Inspect, lane)?;
     revision_identifier(&facts.source_revision_id)
         .ok_or_else(|| "grid_publication_revision_invalid".to_owned())
 }
@@ -69,12 +70,17 @@ pub fn publication_revision(bytes: &[u8]) -> Result<String, String> {
 fn publication_facts(
     bytes: &[u8],
     mode: NativeGridPublicationModeV1,
+    lane: &str,
 ) -> Result<NativeGridPublicationFactsV1, String> {
     if bytes.is_empty() || bytes.len() > MAX_MODEL_BYTES {
         return Err("model_too_large: expected a nonempty package up to 256 MiB".into());
     }
     let scratch = crate::network_staging::private_stage()?;
-    let client = CapturedNetworkClient::capture(1, &|| false).map_err(publication_failure)?;
+    // The request's own installed lane validates its package: a Canary
+    // publication never runs on the packaged Stable engine (or the reverse);
+    // an explicit development override stays explicit.
+    let client =
+        CapturedNetworkClient::capture_for_lane(lane, 1, &|| false).map_err(publication_failure)?;
     let request = NativeGridPublicationRequestV1 {
         schema: NATIVE_GRID_PUBLICATION_SCHEMA_V1.into(),
         source: NativeGridQuerySourcePin {
@@ -106,14 +112,15 @@ fn publication_failure(error: ds_network_client::NetworkFailure) -> String {
 
 /// User publication is a submodel operation. Combined publication belongs
 /// exclusively to the reconciled, atomic linked-generation boundary below.
-pub fn prepare(request: &Request, bytes: &[u8]) -> Result<Intent, String> {
-    prepare_inner(request, bytes, false)
+pub fn prepare(request: &Request, bytes: &[u8], lane: &str) -> Result<Intent, String> {
+    prepare_inner(request, bytes, false, lane)
 }
 
 fn prepare_inner(
     request: &Request,
     bytes: &[u8],
     reconciled_generation: bool,
+    lane: &str,
 ) -> Result<Intent, String> {
     if bytes.is_empty() || bytes.len() > MAX_MODEL_BYTES {
         return Err("model_too_large: expected a nonempty package up to 256 MiB".into());
@@ -123,7 +130,7 @@ fn prepare_inner(
     } else {
         NativeGridPublicationModeV1::UserPublish
     };
-    let facts = publication_facts(bytes, mode)?;
+    let facts = publication_facts(bytes, mode, lane)?;
     if request.model_id.is_some() && request.display_name.is_some() {
         return Err(
             "project_model_rename_unsupported: publish cannot rename an existing model".into(),
@@ -219,12 +226,13 @@ pub fn prepare_linked(
     bytes: &[u8],
     model_id: &str,
     expected_head: &str,
+    lane: &str,
 ) -> Result<Intent, String> {
     let mut captured = request.clone();
     captured.model_id = (!expected_head.is_empty()).then(|| model_id.to_owned());
     captured.expected_head_revision_id =
         (!expected_head.is_empty()).then(|| expected_head.to_owned());
-    let mut intent = prepare_inner(&captured, bytes, true)?;
+    let mut intent = prepare_inner(&captured, bytes, true, lane)?;
     intent.model_id = model_id.to_owned();
     intent
         .plan(&request.project, bytes)

@@ -38,9 +38,9 @@ fn immutable_library_adoption_and_detach_publish_distinct_revisions_with_project
     let original_snapshot = unpack(&source).unwrap().snapshot;
     assert_eq!(unpack(&attached.bytes).unwrap().snapshot, original_snapshot);
     assert_eq!(unpack(&detached.bytes).unwrap().snapshot, original_snapshot);
-    let base = publication_revision(&source).unwrap();
-    let adopted = publication_revision(&attached.bytes).unwrap();
-    let removed = publication_revision(&detached.bytes).unwrap();
+    let base = publication_revision(&source, "stable").unwrap();
+    let adopted = publication_revision(&attached.bytes, "stable").unwrap();
+    let removed = publication_revision(&detached.bytes, "stable").unwrap();
     assert_ne!(base, adopted);
     assert_ne!(adopted, removed);
     assert_ne!(base, removed);
@@ -51,7 +51,7 @@ fn immutable_library_adoption_and_detach_publish_distinct_revisions_with_project
         expected_head_revision_id: Some(base.clone()),
         ..Default::default()
     };
-    let intent = prepare(&request, &attached.bytes).unwrap();
+    let intent = prepare(&request, &attached.bytes, "stable").unwrap();
     assert_eq!(intent.project, "reviewed-project");
     assert_eq!(intent.model_id, "reviewed-model");
     assert_eq!(intent.expected_head_revision_id, base);
@@ -66,7 +66,7 @@ fn immutable_library_adoption_and_detach_publish_distinct_revisions_with_project
     );
     assert_eq!(
         intent.source_revision_id,
-        prepare(&request, &attached.bytes)
+        prepare(&request, &attached.bytes, "stable")
             .unwrap()
             .source_revision_id
     );
@@ -74,7 +74,7 @@ fn immutable_library_adoption_and_detach_publish_distinct_revisions_with_project
         expected_head_revision_id: None,
         ..request
     };
-    assert!(prepare(&missing, &attached.bytes)
+    assert!(prepare(&missing, &attached.bytes, "stable")
         .unwrap_err()
         .starts_with("publish_expected_head_required"));
 }

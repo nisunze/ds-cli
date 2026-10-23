@@ -1308,7 +1308,7 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         batch: &crate::TransformerSaveBatch,
         now: u64,
     ) -> Result<crate::TransformerSaveReceipt, ClientError> {
-        batch.validate(project)?;
+        batch.validate(project, self.profile.lane())?;
         self.ensure_fresh_session(now)?;
         let session = self.session.as_ref().ok_or_else(signed_out)?;
         crate::transformer_save::run(

@@ -3,7 +3,7 @@
 //! configuration and published readback. It never acquires a project override.
 use crate::{
     authorized::{self, Authority},
-    AuthorizedTransport, ClientError, ClientProfile, ErrorKind,
+    AuthorizedTransport, ClientError, ClientProfile, DeploymentLane, ErrorKind,
 };
 use ds_command_kernel::report_export::jcs::layers_content_digest;
 use ds_network_client::CapturedNetworkClient;
@@ -110,7 +110,9 @@ fn validate_layers(layers: &BTreeMap<String, Value>) -> Result<(), ClientError> 
     Ok(())
 }
 impl TransformerSaveBatch {
-    pub fn validate(&self, project: &str) -> Result<(), ClientError> {
+    /// Validate the batch and, with the Network engine of the request's own
+    /// `lane`, the analysis each item carries.
+    pub fn validate(&self, project: &str, lane: DeploymentLane) -> Result<(), ClientError> {
         if self.project_id != project
             || !token(project)
             || self.items.is_empty()
@@ -153,7 +155,10 @@ impl TransformerSaveBatch {
             return Err(invalid("transformer_save_payload_too_large"));
         }
         let stage = private_network_stage()?;
-        let engine = CapturedNetworkClient::capture(1, &|| false).map_err(network_failure)?;
+        // A Canary save never validates on the packaged Stable engine (or the
+        // reverse); an explicit development override stays explicit.
+        let engine = CapturedNetworkClient::capture_for_lane(lane.token(), 1, &|| false)
+            .map_err(network_failure)?;
         engine
             .validate_lv_analysis(
                 &NativeLvAnalysisValidationRequestV1 {
@@ -334,7 +339,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
     project: &str,
     batch: &TransformerSaveBatch,
 ) -> Result<TransformerSaveReceipt, ClientError> {
-    batch.validate(project)?;
+    batch.validate(project, profile.lane())?;
     let config = authorized::feeder_configuration(
         profile,
         transport,

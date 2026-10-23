@@ -1715,7 +1715,7 @@ impl DeviceApiAuthorization<'_> {
         batch: &crate::TransformerSaveBatch,
         now: u64,
     ) -> Result<crate::TransformerSaveReceipt, ClientError> {
-        batch.validate(project)?;
+        batch.validate(project, self.profile.lane())?;
         self.ensure_active(now)?;
         crate::transformer_save::run(self.profile, transport, self.authority(), project, batch)
     }

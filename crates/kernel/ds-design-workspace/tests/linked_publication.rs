@@ -28,27 +28,41 @@ fn linked_publication_captures_explicit_creation_and_existing_head_with_native_l
         display_name: Some("Combined".into()),
         ..Default::default()
     };
-    let created = prepare_linked(&request, &bytes, "explicit-project-model", "").unwrap();
+    let created = prepare_linked(&request, &bytes, "explicit-project-model", "", "stable").unwrap();
     assert_eq!(created.model_id, "explicit-project-model");
     assert_eq!(created.expected_head_revision_id, "");
     assert_eq!(created.manifest_model_id, "native-composite");
     assert_eq!(created.manifest_model_revision, 17);
     request.display_name = None;
-    let existing =
-        prepare_linked(&request, &bytes, "explicit-project-model", "reviewed-head").unwrap();
+    let existing = prepare_linked(
+        &request,
+        &bytes,
+        "explicit-project-model",
+        "reviewed-head",
+        "stable",
+    )
+    .unwrap();
     assert_eq!(existing.expected_head_revision_id, "reviewed-head");
     assert_eq!(existing.source_revision_id, created.source_revision_id);
     request.display_name = Some("Rename".into());
-    assert!(
-        prepare_linked(&request, &bytes, "explicit-project-model", "reviewed-head")
-            .unwrap_err()
-            .contains("rename_unsupported")
-    );
-    assert!(
-        prepare_linked(&request, b"invalid package", "explicit-project-model", "")
-            .unwrap_err()
-            .contains("model_invalid")
-    );
+    assert!(prepare_linked(
+        &request,
+        &bytes,
+        "explicit-project-model",
+        "reviewed-head",
+        "stable"
+    )
+    .unwrap_err()
+    .contains("rename_unsupported"));
+    assert!(prepare_linked(
+        &request,
+        b"invalid package",
+        "explicit-project-model",
+        "",
+        "stable"
+    )
+    .unwrap_err()
+    .contains("model_invalid"));
 }
 
 #[test]
@@ -89,12 +103,12 @@ fn the_combined_models_binding_and_publication_revision_are_derived() {
         display_name: Some(COMBINED_DISPLAY_NAME.into()),
         ..Default::default()
     };
-    let created = prepare_linked(&request, &bytes, &model_id, "").unwrap();
+    let created = prepare_linked(&request, &bytes, &model_id, "", "stable").unwrap();
     assert_eq!(
-        publication_revision(&bytes).unwrap(),
+        publication_revision(&bytes, "stable").unwrap(),
         created.plan("project-1", &bytes).unwrap().revision_id
     );
-    assert!(publication_revision(b"invalid package")
+    assert!(publication_revision(b"invalid package", "stable")
         .unwrap_err()
         .contains("model_invalid"));
 }
@@ -131,21 +145,24 @@ fn ordinary_publication_refuses_protected_combined_but_derived_publication_and_r
         display_name: Some("Combined model".into()),
         ..Default::default()
     };
-    let error = ds_design_workspace::grid_publication::prepare(&request, bytes).unwrap_err();
+    let error =
+        ds_design_workspace::grid_publication::prepare(&request, bytes, "stable").unwrap_err();
     assert!(error.starts_with("composite_model_protected:"), "{error}");
     assert!(error.contains("north") && error.contains("south"));
     let derived =
         ds_design_workspace::grid_publication::combined_model_id(&checkpoint.state.graph.composite)
             .unwrap();
     assert_eq!(
-        prepare_linked(&request, bytes, &derived, "")
+        prepare_linked(&request, bytes, &derived, "", "stable")
             .unwrap()
             .model_id,
         derived
     );
-    assert!(ds_design_workspace::grid_publication::publication_revision(bytes).is_ok());
-    assert!(
-        ds_design_workspace::grid_publication::prepare(&request, &encoded.packages["north"])
-            .is_ok()
-    );
+    assert!(ds_design_workspace::grid_publication::publication_revision(bytes, "stable").is_ok());
+    assert!(ds_design_workspace::grid_publication::prepare(
+        &request,
+        &encoded.packages["north"],
+        "stable"
+    )
+    .is_ok());
 }
