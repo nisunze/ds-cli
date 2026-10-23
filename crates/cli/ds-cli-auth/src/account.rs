@@ -131,7 +131,7 @@ pub static CONNECT_COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Project,
     summary: "Sign in: connect this machine to your DS account through the Desktop.",
-    purpose: "The one sign-in. Begins a protected device link for the lane, shows the request id and device fingerprint a person approves in the signed-in DS GridDesign Desktop (Account > Link a trusted device), waits for that approval, then completes the link. Nothing is typed but this command. Run it again to resume: a connected lane answers already_connected, a pending request keeps waiting, an approved one completes. With --timeout 0 (the machine-host default) it never waits: a new request returns at once, and a resumed one is checked once, so running it again after approving completes the link.",
+    purpose: "The one sign-in. Begins a protected device link for the lane, shows the request id and device fingerprint a person approves in the signed-in DS GridDesign Desktop (Account > Link a trusted device), waits for that approval, then completes the link. Nothing is typed but this command. Run it again to resume: a connected lane answers already_connected, a pending request keeps waiting, an approved one completes. With --timeout 0 (the machine-host default) it never waits, but still checks a resumed request once.",
     effect: Effect::LocalAuthState,
     authority: Authority::None,
     execution: Execution::Sync,
