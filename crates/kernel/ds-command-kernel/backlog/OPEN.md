@@ -13,9 +13,9 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 8 |
 | [2. Green `run` and release gates](#2-green-run-and-release-gates) | 17 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
-| [4. Print template and style code](#4-print-template-and-style-code) | 2 |
-| [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
-| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 24 |
+| [4. Print template and style code](#4-print-template-and-style-code) | 4 |
+| [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 7 |
+| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 25 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 8 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 14 |
 | [10. Voltage drop](#10-voltage-drop) | 5 |
@@ -206,6 +206,10 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - **Reusable MV and LV front matter and project previews** (owner, 2026-10-12): complete the existing native print-layout preview through the common disk Artifact, hashed request lease, retention and reader for every supported paper/semantic family. MV front matter and LV A0 cover/index, transformer locations and sizes, saved voltage-drop details and project overview must use explicit authored roles and admitted held sources. Project overview extent comes from the selected native project MV model(s) and authorized design footprint; no transformer substitute or open-model cross-project leakage. Reuse the saved analysis/combined report owner for engineering tables without recalculation or invented fields. Bind thin UI consumers after headless CLI/MCP proof; ready pages remain consumable and navigation leaves producers running. Missing source inputs name an explicit acquisition need. Prove offline repeated reads, coalesced rendering, exact identity/CRS/revision/style pins, unchanged existing printing/pens and two distinct project families. Template curation and fictional branding are in SEEDING §3–4.
 
+- **Governed default pens: faint intermediate contours, grey buildings, unsubordinated existing MV** (`a4113ec8`, `757dfbf2`, 23 Oct): every Gisagara A0 prints intermediate contours from `print_context/contours_intermediate_print` (`#D5CFC6`, opacity 0.42, width 0.491, dash 2/2: near white at fit-to-screen) and buildings from `print_context/buildings_context_print` (fill `#d6d3d1` at 0.32, outline `#78716c`), not restrained green; existing MV is a solid dark-blue pen beside the red proposed MV. These are standard print-style seed values (ds-brain `internal/services/standard_style_seed.v1.json`), not renderer code. Next: revise the three seeds (owner reviews the pen values), apply them per project with `ds style catalogue seed plan|apply` (real projects need the owner), and re-check one Gisagara A0 at 100 dpi (`scratch/claude-linux-prod-20261022/lane-fbprint-1023/gis-a0-2/contours-1.png`).
+
+- **Monochrome prints have no governed pens for transformer layouts** (`f41debca`, 23 Oct): `ink_mode: monochrome` resolves ink=monochrome keys, but the seed's 146 monochrome documents cover only the LV-standard vocabulary (`lv_line`, `lv_pole`, `building`, `contour_index`, `mv_line`, ...), none of the ~60 entity classes transformer layouts bind. A Gisagara A0 local proof refuses `style_resolution_unknown: no governed style declares (airports, cold_existing, print, project); ink=monochrome`. Next: author monochrome pens per layout entity class (owner reviews hollow/filled poles and dashed cable sizes), seed them, migrate Northern Hub's A3 to style keys (`report layout style-keys plan` says `migrate`), then prove `upgrade_janja`.
+
 ## 5. Print renderer and booklet code
 
 Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templates, previews and booklets).
@@ -219,6 +223,10 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - **LV sheet categories disagree with its quantity table** (same proof): the map pens and legend follow saved `lv_lines.cable_size` (agahehe: 3×35 and 3×50 only), the "LV NETWORK INFORMATION" table follows `computed_properties.cable_size` (3×70 2 340 m), and pole categories follow `spans.cable_size` (3×70 1 384 m). One sheet must state one size per line; decide the saved-versus-computed source in the Network owner and print it everywhere.
 
 - **Voltage-drop prints depend on platform fonts**: the combined A3 template (`assets/voltage_drop_combined/vd-combined.html`) names installed fonts, so Windows prints Liberation Sans and Consolas where Linux prints Ubuntu Sans and DejaVu Sans Mono (2026-10-20 page-by-page comparison); the A4 bundles Ubuntu Sans but its `<code>` spans use the platform monospace, so A4 pages 1 and 8 wrap differently. Bundle the A4's fonts (and one monospace) into both renders, then refresh the raster anchors.
+
+- **`--preview-layout` refuses on both real projects** (23 Oct, installed eaf7eb82 + Reporter 4fcb70b; owner rule: print preview is live): Gisagara `fill_in_bukorota` with its saved A0 refuses `style_resolution_invalid: held print capture must match the exact layout references and resolution revision`; with `--refresh` the Reporter ends `print_style_unresolved: legend layer tr requires an authored physical style or held governed style key`. Nyamagabe `fill_in_buhoro` with its saved A0 ends `print_renderer_defaults_missing`. The PDF export of the same layouts prints (95/95 and 1/1). `ds_report_host::preview::transformer_page_with_styles_retained` rewrites the receipt with `report_export::preview::with_layout` and overlays only `layout.style_refs`. Next: diff its engine request against the PDF path for governed `style_keys` (`tr`) and the sealed `printing_renderer_defaults`; evidence `scratch/claude-linux-prod-20261022/lane-fbprint-1023/gis-prev-2.json`, `nyam-prev-1.json`. This blocks `db129935` and `5828fac5` acceptance.
+
+- **`report project export` has no progress or cancel** (`4515ad0f`): a 95-member Gisagara PDF dry run ran 12 min 16 s (acquire 10.8 s, render 724 s) and said nothing until its final envelope. Add a per-member acquire/render progress stream (as `dsgrid run --progress` does), bounded cancellation, and an early typed refusal for a known missing prerequisite.
 
 ## 7. Report compute, export and combined output
 
@@ -269,6 +277,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - `9d0f28da` (major): installed ds-canary 0.1.6 refuses `report project settings --project czgmdwth_gisagara --lane stable` and `report layout get` with `auth_response_unreadable`, although all 31 config sheets read through `design config sheets`; the closed-contract break sits in the report-settings read (printing catalogue or receipt decode). Reproduce on a native-profile build of current source, fix the decode, and prove both reads plus a typed refusal for a genuinely unreadable response.
 
 - Never-landed (owner 2026-10-02, land adapted to run): Generic archive-group readers: kernel, ds-cli (890bac3) and ds-web (54a65730) read the `group_count`/`groups` ds-brain writes, not `district_count` only.
+
+- **`report project map-inputs` has no saved MV model selector** (`19711659`): `--mv-model` adds a local `.dsgrid` draft and every current head is always captured. Add an exact `--model <id>@<revision>` selection kept apart from context heads, de-duplicate a draft whose digest matches a saved head, and fit the extent to the selected design. It sits behind the sheet-text line above: a governed transformer layout refuses `print_text_missing: ... prints {paper}` first (Gisagara agahehe, 23 Oct), which also hides `05ee8bc3` (computed tables) and `234742aa`.
 
 ## 8. Sync, publication and edge outbox
 

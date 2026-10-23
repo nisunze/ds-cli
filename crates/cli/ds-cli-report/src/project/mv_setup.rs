@@ -306,10 +306,29 @@ pub(crate) fn project_print_context_with_identity(
         .map_err(|e| Failure::invalid("print_project_crs_invalid", e))?;
     let configuration = scoped.into_result();
     Ok((
-        configuration.document["sheets"].clone(),
+        sheets_with_sealed_symbols(&configuration.document),
         project_crs,
         identity,
     ))
+}
+
+/// The configuration's sheets plus the printing icons ds-brain sealed into
+/// the same document's reporter receipt. MV context pages and key plans draw
+/// governed symbol styles (a transformer's `ds-transformer`) with them, as LV
+/// sheets do; the plain sheets never carry the icons.
+pub(crate) fn sheets_with_sealed_symbols(document: &Value) -> Value {
+    let mut sheets = document["sheets"].clone();
+    if sheets.get("printing_symbol_assets").is_none()
+        && let Some(sealed) = document["network_reporter_input_receipt"]["sheets_json"]
+            .as_str()
+            .and_then(|json| serde_json::from_str::<Value>(json).ok())
+            .and_then(|sealed| sealed.get("printing_symbol_assets").cloned())
+            .filter(Value::is_object)
+        && sheets.is_object()
+    {
+        sheets["printing_symbol_assets"] = sealed;
+    }
+    sheets
 }
 /// The project's governed style table, as MV paper and renderer bindings read it.
 pub(crate) fn style_table(
@@ -725,3 +744,6 @@ mod tests {
         assert_eq!(failure.remedy_text(), Some(expected.remedy.as_str()));
     }
 }
+#[cfg(test)]
+#[path = "mv_setup_tests.rs"]
+mod sealed_symbol_tests;

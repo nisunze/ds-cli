@@ -380,6 +380,19 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             .ok()
             .and_then(|b| serde_json::from_slice::<Value>(&b).ok());
         if !completed.succeeded() || document.is_none() {
+            // The destination is never created on failure, so the answer
+            // itself carries the Reporter's own reason: its bounded message
+            // and any refusal receipt it wrote.
+            let refusal = if completed.succeeded() {
+                Failure::failed("engine_refused", "reporter returned no print receipt")
+                    .detail(json!({"engine": completed.stderr()}))
+            } else {
+                completed.refusal()
+            };
+            let mut detail = refusal.detail_value().cloned().unwrap_or_else(|| json!({}));
+            detail["variant"] = json!(variant.name);
+            detail["committed"] = json!(false);
+            detail["receipt"] = json!(document);
             return Err(Failure::failed(
                 "engine_refused",
                 format!(
@@ -388,9 +401,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                     output_root.display()
                 ),
             )
-            .detail(
-                json!({"variant":variant.name,"receipt_path":receipt_path,"engine":document}),
-            ));
+            .detail(detail));
         }
         let mut document = document.expect("checked above");
         relocate_paths(&mut document, staging.path(), &output_root);
