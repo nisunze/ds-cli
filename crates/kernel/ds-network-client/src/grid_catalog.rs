@@ -32,7 +32,7 @@ impl CapturedNetworkClient {
         )?;
         let result = &outcome.result;
         let data = &result.data;
-        if result.schema != GRID_CATALOG_RESULT_SCHEMA_V1
+        if !crate::same_family(&result.schema, GRID_CATALOG_RESULT_SCHEMA_V1)
             || result.kind != request.kind
             || result.engine_version.is_empty()
             || result.engine_version.len() > 128

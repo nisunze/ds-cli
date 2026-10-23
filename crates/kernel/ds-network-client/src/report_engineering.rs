@@ -108,12 +108,15 @@ impl CapturedNetworkClient {
         let receipt: NetworkReceiptV1 = serde_json::from_str(&completed.stdout)
             .map_err(|e| NetworkFailure::new("network_receipt_invalid", e.to_string()))?;
         let input_sha256 = digest_bytes(&input);
-        if receipt.schema != "ds.network.task-result/v1"
+        if !crate::same_family(&receipt.schema, "ds.network.task-result/v1")
             || receipt.input_sha256 != input_sha256
             || !same_identity(&receipt.engine_identity, &self.identity)?
             || receipt.result_input_sha256.is_some()
             || receipt.artifact.file != "engineering.json"
-            || receipt.artifact.schema != REPORT_ENGINEERING_RESULT_SCHEMA_V1
+            || !crate::same_family(
+                &receipt.artifact.schema,
+                REPORT_ENGINEERING_RESULT_SCHEMA_V1,
+            )
             || receipt.artifact.byte_count == 0
             || receipt.artifact.byte_count > MAX_REPORT_ENGINEERING_RESULT_BYTES
             || !valid_hex(&receipt.artifact.sha256, 64)

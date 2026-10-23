@@ -59,7 +59,7 @@ impl CapturedNetworkClient {
         }
         let result = &outcome.result;
         super::grid::validate_source(&result.source, &request.source, model)?;
-        if result.schema != MV_REPORT_RESULT_SCHEMA_V1
+        if !crate::same_family(&result.schema, MV_REPORT_RESULT_SCHEMA_V1)
             || result.json_object_order != request.json_object_order
             || result.source_crs.is_empty()
             || result.source_crs.len() > 128

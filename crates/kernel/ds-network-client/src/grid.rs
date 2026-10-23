@@ -57,7 +57,7 @@ impl CapturedNetworkClient {
                 && result.container.detail.is_some()
                 && result.model.is_none()
         };
-        if result.schema != NATIVE_GRID_READ_RESULT_SCHEMA_V1
+        if !crate::same_family(&result.schema, NATIVE_GRID_READ_RESULT_SCHEMA_V1)
             || result.package_sha256 != digest_bytes(model)
             || result.issue_limit != request.issue_limit
             || result.advisory_limit != request.advisory_limit
@@ -115,7 +115,7 @@ impl CapturedNetworkClient {
             },
             model,
         )?;
-        if outcome.result.schema != "ds.grid.native-inspection/v1"
+        if !crate::same_family(&outcome.result.schema, "ds.grid.native-inspection/v1")
             || outcome.result.model_schema == 0
         {
             return Err(invalid_result("inspection has an incompatible schema"));
@@ -158,7 +158,7 @@ impl CapturedNetworkClient {
         )?;
         let result = &outcome.result;
         validate_source(&result.source, &request.source, model)?;
-        if result.schema != NATIVE_GRID_QUERY_RESULT_SCHEMA_V1
+        if !crate::same_family(&result.schema, NATIVE_GRID_QUERY_RESULT_SCHEMA_V1)
             || result
                 .operation
                 .get("operation_id")
@@ -192,7 +192,7 @@ impl CapturedNetworkClient {
             None,
             false,
         )?;
-        if outcome.result.schema != NATIVE_GRID_MANIFEST_SCHEMA_V1
+        if !crate::same_family(&outcome.result.schema, NATIVE_GRID_MANIFEST_SCHEMA_V1)
             || outcome.result.package_sha256 != digest_bytes(model)
             || outcome.result.decoded
         {
@@ -226,7 +226,7 @@ impl CapturedNetworkClient {
         )?;
         let result = &outcome.result;
         validate_source(&result.source, &request.source, model)?;
-        if result.schema != NATIVE_GRID_PUBLICATION_RESULT_SCHEMA_V1
+        if !crate::same_family(&result.schema, NATIVE_GRID_PUBLICATION_RESULT_SCHEMA_V1)
             || result
                 .source_revision_id
                 .strip_prefix("rev:")
@@ -416,11 +416,11 @@ impl CapturedNetworkClient {
         }
         let receipt: NetworkReceiptV1 = serde_json::from_str(&completed.stdout)
             .map_err(|e| NetworkFailure::new("network_receipt_invalid", e.to_string()))?;
-        if receipt.schema != "ds.network.task-result/v1"
+        if !crate::same_family(&receipt.schema, "ds.network.task-result/v1")
             || receipt.input_sha256 != input_sha256
             || !same_identity(&receipt.engine_identity, &self.identity)?
             || receipt.artifact.file != artifact_name
-            || receipt.artifact.schema != artifact_schema
+            || !crate::same_family(&receipt.artifact.schema, artifact_schema)
             || receipt.artifact.byte_count == 0
             || receipt.artifact.byte_count > maximum
             || !valid_hex(&receipt.artifact.sha256, 64)

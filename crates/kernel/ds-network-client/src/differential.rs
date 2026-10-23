@@ -86,7 +86,8 @@ impl CapturedNetworkClient {
             }
             _ => false,
         };
-        if outcome.result.schema != DIFFERENTIAL_PLAN_RESULT_SCHEMA_V1 || !shape {
+        if !crate::same_family(&outcome.result.schema, DIFFERENTIAL_PLAN_RESULT_SCHEMA_V1) || !shape
+        {
             return Err(NetworkFailure::new(
                 "network_result_invalid",
                 "differential plan has an invalid schema or vocabulary",

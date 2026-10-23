@@ -108,11 +108,11 @@ impl CapturedNetworkClient {
         }
         let receipt: NetworkReceiptV1 = serde_json::from_str(&completed.stdout)
             .map_err(|e| NetworkFailure::new("network_receipt_invalid", e.to_string()))?;
-        if receipt.schema != "ds.network.task-result/v1"
+        if !crate::same_family(&receipt.schema, "ds.network.task-result/v1")
             || receipt.input_sha256 != input_sha256
             || !same_identity(&receipt.engine_identity, identity)?
             || receipt.artifact.file != "output.json"
-            || receipt.artifact.schema != DESIGN_SNAPSHOT_OUTPUT_SCHEMA_V1
+            || !crate::same_family(&receipt.artifact.schema, DESIGN_SNAPSHOT_OUTPUT_SCHEMA_V1)
             || receipt.artifact.byte_count == 0
             || receipt.artifact.byte_count > MAX_NATIVE_LV_OUTPUT_BYTES
             || !valid_hex(&receipt.artifact.sha256, 64)
@@ -156,8 +156,8 @@ impl CapturedNetworkClient {
         }
         let result = decode_design_snapshot_result(&artifact_bytes, &prepared.transformer_name)
             .map_err(|e| NetworkFailure::new("network_result_invalid", e.to_string()))?;
+        // The engine's reply: members a newer engine adds are accepted unread.
         #[derive(serde::Deserialize)]
-        #[serde(deny_unknown_fields)]
         struct RawResult<'a> {
             schema: String,
             transformer_name: String,
@@ -166,7 +166,7 @@ impl CapturedNetworkClient {
         }
         let raw: RawResult<'_> = serde_json::from_slice(&artifact_bytes)
             .map_err(|e| NetworkFailure::new("network_result_invalid", e.to_string()))?;
-        if raw.schema != DESIGN_SNAPSHOT_OUTPUT_SCHEMA_V1
+        if !crate::same_family(&raw.schema, DESIGN_SNAPSHOT_OUTPUT_SCHEMA_V1)
             || raw.transformer_name != prepared.transformer_name
         {
             return Err(NetworkFailure::new(

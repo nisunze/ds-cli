@@ -76,7 +76,7 @@ impl CapturedNetworkClient {
             timeout,
         )?;
         let prepared = &result.result;
-        if prepared.schema != PROFILE_PREPARED_OPEN_SCHEMA
+        if !crate::same_family(&prepared.schema, PROFILE_PREPARED_OPEN_SCHEMA)
             || prepared.package_sha256 != digest_bytes(package)
             || prepared.coordinate_system.is_empty()
             || prepared
@@ -428,7 +428,7 @@ impl ProfileSession {
         let outcome = result?;
         let restored: NativeProfileAuthoredRestoreV1 =
             serde_json::from_slice(&outcome.bytes).map_err(|e| invalid(e.to_string()))?;
-        if restored.schema != PROFILE_AUTHORED_RESTORE_SCHEMA
+        if !crate::same_family(&restored.schema, PROFILE_AUTHORED_RESTORE_SCHEMA)
             || restored.model_id != self.model_id
             || restored.history != self.history
             || self.history != parsed.history
@@ -1057,7 +1057,7 @@ impl ProfileSession {
             "ds.network.profile-result/v1"
         };
         if artifact.file != expected_name
-            || artifact.schema != expected_schema
+            || !crate::same_family(&artifact.schema, expected_schema)
             || artifact.byte_count > MAX_PROFILE_ARTIFACT_BYTES
             || !valid_hex(&artifact.sha256, 64)
         {
@@ -1171,7 +1171,7 @@ impl ProfileSession {
                 _ => None,
             };
             if snapshot.is_some_and(|snapshot| {
-                snapshot.schema != PROFILE_SNAPSHOT_SCHEMA
+                !crate::same_family(&snapshot.schema, PROFILE_SNAPSHOT_SCHEMA)
                     || snapshot.model_id != self.model_id
                     || snapshot.history != reply.history
             }) {
@@ -1272,7 +1272,9 @@ fn decode_reply(
             return Err(invalid(error.to_string()));
         }
     };
-    if reply.schema != PROFILE_REPLY_SCHEMA || !same_identity(&reply.engine_identity, identity)? {
+    if !crate::same_family(&reply.schema, PROFILE_REPLY_SCHEMA)
+        || !same_identity(&reply.engine_identity, identity)?
+    {
         return Err(invalid(
             "Profile reply schema or captured engine identity differs",
         ));

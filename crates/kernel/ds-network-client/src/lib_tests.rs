@@ -98,3 +98,59 @@ fn an_engine_lacking_a_required_fact_is_the_typed_engine_incompatible_refusal() 
     wrong["protocolMajor"] = serde_json::json!("2");
     assert!(serde_json::from_value::<EngineIdentity>(wrong).is_err());
 }
+
+/// Contract 4: a newer engine's receipt, result and refusal revisions of the
+/// same family are read; another family is refused and a receipt missing a
+/// required member is a typed decode refusal.
+#[test]
+fn newer_reply_revisions_are_read_by_family() {
+    let current: EngineIdentity = serde_json::from_value(identity_value()).unwrap();
+    let input_sha256 = "c".repeat(64);
+    let receipt = |schema: &str, artifact_schema: &str| {
+        serde_json::json!({
+            "outcome":"completed","schema":schema,
+            "inputSha256": input_sha256, "engineIdentity": identity_value(),
+            "artifact":{"file":"result.json","byteCount":12,"sha256":"d".repeat(64),
+                "schema":artifact_schema}})
+    };
+    let newer: NetworkReceiptV1 = serde_json::from_value(receipt(
+        "ds.network.task-result/v2",
+        "ds.lv.process.result/v3",
+    ))
+    .unwrap();
+    assert!(validate_receipt(&newer, &current, &input_sha256, "ds.lv.process.result/v1").is_ok());
+    for (schema, artifact) in [
+        ("ds.network.task-refusal/v1", "ds.lv.process.result/v1"),
+        ("ds.network.task-result/v1", "ds.grid.native-read-result/v1"),
+    ] {
+        let other: NetworkReceiptV1 = serde_json::from_value(receipt(schema, artifact)).unwrap();
+        assert!(
+            validate_receipt(&other, &current, &input_sha256, "ds.lv.process.result/v1").is_err()
+        );
+    }
+    let mut missing = receipt("ds.network.task-result/v2", "ds.lv.process.result/v1");
+    missing.as_object_mut().unwrap().remove("inputSha256");
+    assert!(serde_json::from_value::<NetworkReceiptV1>(missing).is_err());
+
+    let refusal = |schema: &str| {
+        serde_json::json!({"schema": schema, "code": "module_removed", "error": "gone",
+            "engineIdentity": identity_value(), "futureHint": true})
+        .to_string()
+    };
+    let read = read_refusal(&refusal("ds.network.task-refusal/v2"), &current).unwrap();
+    assert_eq!(read.owner_code.as_deref(), Some("module_removed"));
+    assert_eq!(
+        read_refusal(&refusal("ds.network.task-result/v1"), &current)
+            .unwrap_err()
+            .code,
+        "network_refusal_invalid"
+    );
+    assert!(same_family(
+        "ds.mv.report-result/v2",
+        "ds.mv.report-result/v1"
+    ));
+    assert!(!same_family(
+        "ds.mv.report-result/v1",
+        "ds.mv.projection-result/v1"
+    ));
+}

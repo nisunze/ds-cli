@@ -98,13 +98,15 @@ impl CapturedNetworkClient {
             self.saved_lv_task(SavedTask::Validate { request: &input }, scratch, cancel)?;
         let result: NativeLvAnalysisValidationResultV1 = serde_json::from_slice(&bytes)
             .map_err(|error| NetworkFailure::new("network_result_invalid", error.to_string()))?;
-        if result.schema != NATIVE_LV_ANALYSIS_VALIDATION_RESULT_SCHEMA_V1
-            || result.transformer_names
-                != request
-                    .jobs
-                    .iter()
-                    .map(|job| job.source.transformer_name.clone())
-                    .collect::<Vec<_>>()
+        if !crate::same_family(
+            &result.schema,
+            NATIVE_LV_ANALYSIS_VALIDATION_RESULT_SCHEMA_V1,
+        ) || result.transformer_names
+            != request
+                .jobs
+                .iter()
+                .map(|job| job.source.transformer_name.clone())
+                .collect::<Vec<_>>()
         {
             return Err(NetworkFailure::new(
                 "network_result_invalid",
@@ -209,12 +211,12 @@ impl CapturedNetworkClient {
         let receipt: NetworkReceiptV1 = serde_json::from_str(&completed.stdout)
             .map_err(|error| NetworkFailure::new("network_receipt_invalid", error.to_string()))?;
         let input_sha = digest_bytes(input);
-        if receipt.schema != "ds.network.task-result/v1"
+        if !crate::same_family(&receipt.schema, "ds.network.task-result/v1")
             || receipt.input_sha256 != input_sha
             || !same_identity(&receipt.engine_identity, &self.identity)?
             || receipt.result_input_sha256 != result_sha
             || receipt.artifact.file != artifact
-            || receipt.artifact.schema != schema
+            || !crate::same_family(&receipt.artifact.schema, schema)
             || receipt.artifact.byte_count == 0
             || receipt.artifact.byte_count > MAX_NATIVE_LV_OUTPUT_BYTES
             || !valid_hex(&receipt.artifact.sha256, 64)

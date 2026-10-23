@@ -41,7 +41,7 @@ impl CapturedNetworkClient {
         )?;
         let result = &metadata.result;
         let artifact = &result.artifact;
-        if result.schema != GRID_CREATE_RESULT_SCHEMA_V1
+        if !crate::same_family(&result.schema, GRID_CREATE_RESULT_SCHEMA_V1)
             || result.engine_version.is_empty()
             || result.engine_version.len() > 128
             || result.engine_version.chars().any(char::is_control)

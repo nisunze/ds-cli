@@ -420,17 +420,23 @@ fn same_identity(left: &EngineIdentity, right: &EngineIdentity) -> Result<bool, 
         .map_err(|e| NetworkFailure::new("network_engine_identity_invalid", e.to_string()))?;
     Ok(a == b)
 }
+/// A Network reply's `schema` names its document family. The `/vN` revision a
+/// newer engine writes is provenance (contract 4): the typed members each
+/// reader checks decide, and another family is still another document.
+pub(crate) fn same_family(actual: &str, expected: &str) -> bool {
+    schema_family(actual) == schema_family(expected)
+}
 fn validate_receipt(
     receipt: &NetworkReceiptV1,
     identity: &EngineIdentity,
     input_sha256: &str,
     expected_result_schema: &str,
 ) -> Result<bool, NetworkFailure> {
-    if receipt.schema != "ds.network.task-result/v1"
+    if !crate::same_family(&receipt.schema, "ds.network.task-result/v1")
         || receipt.input_sha256 != input_sha256
         || !same_identity(&receipt.engine_identity, identity)?
         || receipt.artifact.file != "result.json"
-        || receipt.artifact.schema != expected_result_schema
+        || !crate::same_family(&receipt.artifact.schema, expected_result_schema)
         || receipt.artifact.byte_count == 0
         || receipt.artifact.byte_count > MAX_NATIVE_LV_OUTPUT_BYTES
         || !valid_hex(&receipt.artifact.sha256, 64)
@@ -451,7 +457,7 @@ fn validate_result(
     let expected_result_schema =
         ds_network_contracts::lv_processing::native_lv_result_schema_for_request(&request.schema)
             .map_err(NetworkFailure::native)?;
-    if result.schema != expected_result_schema
+    if !crate::same_family(&result.schema, expected_result_schema)
         || result.engine_core_version != identity.core_version
         || result.jobs.len() != request.jobs.len()
         || result
@@ -477,7 +483,7 @@ fn validate_result(
 fn read_refusal(bytes: &str, identity: &EngineIdentity) -> Result<NetworkFailure, NetworkFailure> {
     let refusal: NetworkTaskRefusalV1 = serde_json::from_str(bytes)
         .map_err(|e| NetworkFailure::new("network_refusal_invalid", e.to_string()))?;
-    if refusal.schema != "ds.network.task-refusal/v1"
+    if !crate::same_family(&refusal.schema, "ds.network.task-refusal/v1")
         || refusal.code.is_empty()
         || refusal.code.len() > 128
         || refusal.error.len() > 4096

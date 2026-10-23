@@ -41,7 +41,7 @@ impl CapturedNetworkClient {
                 "write admission has an invalid denial",
             ));
         }
-        if result.schema != GRID_WRITE_ADMISSION_RESULT_SCHEMA_V1
+        if !crate::same_family(&result.schema, GRID_WRITE_ADMISSION_RESULT_SCHEMA_V1)
             || result.operation != request.operation
             || result.model_schema != 5
             || result.engine_version.is_empty()

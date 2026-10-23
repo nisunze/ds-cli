@@ -34,7 +34,7 @@ impl CapturedNetworkClient {
         )?;
         let result = &metadata.result;
         let projection = &result.projection;
-        if result.schema != GRID_APPLY_RESULT_SCHEMA_V1
+        if !crate::same_family(&result.schema, GRID_APPLY_RESULT_SCHEMA_V1)
             || result.source.package_sha256 != digest_bytes(model)
             || result.source.package_sha256 != request.source.package_sha256
             || result.source.model_id != request.source.model_id
