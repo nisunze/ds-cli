@@ -20,11 +20,7 @@ const REFUSALS: &[Refusal] = &[
         when: "no Network engine is installed to answer its LV processor catalogue",
         remedy: "install the matching Network engine addon",
     },
-    Refusal {
-        code: "network_engine_incompatible",
-        when: "the installed Network engine publishes no LV processor catalogue (lv_processor_catalog_v1)",
-        remedy: "install a Network engine that offers its LV processor catalogue",
-    },
+    crate::lv::catalogue::UPDATE_REQUIRED,
 ];
 
 const CATALOG: Arg = Arg::switch(

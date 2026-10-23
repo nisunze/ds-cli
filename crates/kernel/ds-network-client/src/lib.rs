@@ -181,13 +181,18 @@ fn process_lv_captured(
             "scratch must be an ordinary directory",
         ));
     }
-    // Core compiles no LV processor catalogue: the captured engine says what
-    // it offers, and a setting it does not offer refuses before any staging.
-    captured
-        .lv_processor_catalog(scratch, cancel)?
-        .offer()
-        .admit_request(&request)
-        .map_err(lv_catalog::offer_failure)?;
+    // Core compiles no LV processor catalogue: an engine that answers one
+    // says what it offers, and a setting it does not offer refuses before any
+    // staging. An engine released before the catalogue still admits the
+    // request by its own catalogue and refuses with its typed answer, so an
+    // older engine keeps working with this Core.
+    if captured.offers_lv_processor_catalog() {
+        captured
+            .lv_processor_catalog(scratch, cancel)?
+            .offer()
+            .admit_request(&request)
+            .map_err(lv_catalog::offer_failure)?;
+    }
     let run = tempfile::Builder::new()
         .prefix("ds-network-run-")
         .tempdir_in(scratch)

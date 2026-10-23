@@ -50,7 +50,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[
         Refusal {code:"network_engine_missing",when:"the compatible native Network engine is absent",remedy:"install the matching Network engine addon"},
-        Refusal {code:"network_engine_incompatible",when:"the captured Network executable lacks the required protocol or capability, including its LV processor catalogue (lv_processor_catalog_v1)",remedy:"install the compatible Network engine"},
+        Refusal {code:"network_engine_incompatible",when:"the captured Network executable lacks the required protocol or capability",remedy:"install the compatible Network engine"},
         Refusal {code:"network_serialization_incompatible",when:"the captured engine differs from this consumer's preserved JSON byte profile",remedy:"install the insertion-order Network component for this host"},
         Refusal {code:"network_engine_path_invalid",when:"the explicit development engine path is not absolute",remedy:"set DS_NETWORK_ENGINE_BIN to an absolute compatible executable path"},
         Refusal {code:"network_engine_invalid",when:"the captured executable cannot be read within its byte bound",remedy:"install an intact compatible Network component"},
@@ -398,6 +398,9 @@ pub(crate) fn map_network_error(error: ds_network_client::NetworkFailure) -> Fai
             Failure::invalid(code, message)
         }
         "lv_processor_catalog_invalid" => Failure::failed(code, message),
+        // Only a preset to resolve needs the catalogue an older engine lacks.
+        "network_engine_update_required" => Failure::failed(code, message)
+            .remedy(super::catalogue::UPDATE_REQUIRED.remedy),
         "network_engine_incompatible"
         | "network_serialization_incompatible"
         | "network_engine_path_invalid"

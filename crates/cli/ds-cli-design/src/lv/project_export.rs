@@ -231,11 +231,7 @@ pub static COMMAND: Command = Command {
             "--preset needs the lane's Network engine catalogue and no Network engine is installed for the lane",
             "install the matching Network engine addon"
         ),
-        refusal!(
-            "network_engine_incompatible",
-            "--preset needs the lane's Network engine catalogue and that engine publishes none (lv_processor_catalog_v1)",
-            "install a Network engine that offers its LV processor catalogue"
-        ),
+        super::catalogue::UPDATE_REQUIRED,
     ],
     reference: Some("docs/reference/design.md"),
     search: &[],

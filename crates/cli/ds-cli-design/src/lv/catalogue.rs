@@ -16,6 +16,11 @@ pub(crate) const SETTING_NOT_OFFERED: Refusal = Refusal {
     when: "a job carries a setting the installed Network engine's LV processor catalogue does not offer, or a value of another kind",
     remedy: "drop or correct that setting (`ds design process settings --catalog` lists what the installed engine offers), or install a Network engine that offers it",
 };
+pub(crate) const UPDATE_REQUIRED: Refusal = Refusal {
+    code: "network_engine_update_required",
+    when: "a preset must be resolved and the installed Network engine predates its LV processor catalogue (lv_processor_catalog_v1)",
+    remedy: "update the Network engine to a release that offers its LV processor catalogue",
+};
 pub(crate) const CATALOGUE_INVALID: Refusal = Refusal {
     code: "lv_processor_catalog_invalid",
     when: "the installed Network engine answers a malformed LV processor catalogue",

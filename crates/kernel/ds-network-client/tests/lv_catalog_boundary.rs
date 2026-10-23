@@ -1,6 +1,7 @@
 //! Core admits an LV process request against the captured engine's own LV
-//! processor catalogue. An engine that publishes none is refused before any
-//! LV work is staged, and the real engine's answer is the offer.
+//! processor catalogue when the engine answers one; an engine released before
+//! it still processes (its own admission decides) and only preset resolution
+//! refuses `network_engine_update_required`.
 #![cfg(unix)]
 use ds_network_contracts::engine::JsonObjectOrder;
 use serde_json::{json, Value};
@@ -53,7 +54,7 @@ fn request(settings: Value) -> Vec<u8> {
 const OLDER: &str = r#"{"schema":"ds.engine-build/v1","module":"network","engineIdentity":{"schema":"ds.network-engine/v1","jsonObjectOrder":"insertion","protocolMajor":1,"protocolMinor":0,"coreVersion":"older-engine","sourceSha":null,"dependencyClosureSha256":null,"environment":"native","runtime":{"environment":"native","logicalCpus":1,"internalWorkerThreads":1},"capabilities":["lv_processing_v1","grid_file_operations_v1"]}}"#;
 
 #[test]
-fn an_engine_without_the_catalogue_task_is_refused_before_any_lv_work() {
+fn an_engine_without_the_catalogue_task_still_processes_and_only_preset_resolution_refuses() {
     let root = tempfile::tempdir().unwrap();
     let engine = root.path().join("ds-network");
     let tasks = root.path().join("tasks");
@@ -67,11 +68,9 @@ fn an_engine_without_the_catalogue_task_is_refused_before_any_lv_work() {
     .unwrap();
     fs::set_permissions(&engine, fs::Permissions::from_mode(0o700)).unwrap();
     isolated("isolated_older_engine", &engine);
-    assert!(
-        !tasks.exists(),
-        "the older engine ran a task: {:?}",
-        fs::read_to_string(&tasks)
-    );
+    // The request went to the older engine as before (its own admission
+    // decides); Core never asked it for a catalogue it cannot answer.
+    assert_eq!(fs::read_to_string(&tasks).unwrap(), "lv-process\n");
 }
 
 #[test]
@@ -86,15 +85,26 @@ fn isolated_older_engine() {
         JsonObjectOrder::Insertion,
     )
     .unwrap_err();
-    assert_eq!(error.code(), "network_engine_incompatible");
+    // This fixture engine answers no lv-process receipt; a real one does.
     assert!(
-        error.to_string().contains("lv_processor_catalog_v1"),
+        !matches!(
+            error.code(),
+            "network_engine_incompatible"
+                | "network_engine_update_required"
+                | "lv_process_setting_not_offered"
+        ),
         "{error}"
     );
-    assert_eq!(
-        fs::read_dir(scratch.path()).unwrap().count(),
-        0,
-        "nothing staged"
+    // Only a preset to resolve needs the catalogue the older engine lacks.
+    let client = ds_network_client::CapturedNetworkClient::capture(1, &|| false).unwrap();
+    assert!(!client.offers_lv_processor_catalog());
+    let refused = client
+        .lv_processor_catalog(scratch.path(), &|| false)
+        .unwrap_err();
+    assert_eq!(refused.code(), "network_engine_update_required");
+    assert!(
+        refused.to_string().contains("lv_processor_catalog_v1"),
+        "{refused}"
     );
 }
 

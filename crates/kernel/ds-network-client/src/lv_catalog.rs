@@ -38,8 +38,16 @@ pub(crate) fn offer_failure(error: LvProcessorRefusal) -> NetworkFailure {
 }
 
 impl CapturedNetworkClient {
-    /// The captured engine's LV processor catalogue. An engine that does not
-    /// advertise `lv_processor_catalog_v1` is refused before any staging.
+    /// Whether the captured engine answers its LV processor catalogue.
+    pub fn offers_lv_processor_catalog(&self) -> bool {
+        self.identity
+            .capabilities
+            .contains(&GridOperationV1::LvProcessorCatalog.capability())
+    }
+
+    /// The captured engine's LV processor catalogue. Only a caller that must
+    /// resolve from it (a preset) needs it: an engine released before
+    /// `lv_processor_catalog_v1` is `network_engine_update_required`.
     pub fn lv_processor_catalog(
         &self,
         scratch: &Path,
@@ -49,12 +57,12 @@ impl CapturedNetworkClient {
             return Ok(catalogue);
         }
         let call = GridOperationV1::LvProcessorCatalog;
-        if !self.identity.capabilities.contains(&call.capability()) {
+        if !self.offers_lv_processor_catalog() {
             return Err(NetworkFailure::new(
-                "network_engine_incompatible",
-                "the captured Network engine publishes no LV processor catalogue \
-                 (lv_processor_catalog_v1), so no LV process request can be admitted; \
-                 install a Network engine that offers it",
+                "network_engine_update_required",
+                "the captured Network engine was released before its LV processor catalogue \
+                 (lv_processor_catalog_v1), so no preset can be resolved from it; update the \
+                 Network engine",
             ));
         }
         let outcome = self.grid_operation(&call, None, &[], scratch, cancel)?;
