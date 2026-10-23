@@ -8,7 +8,8 @@ fn run(action: &str, domain: Value, value: Value) -> Value {
 }
 #[test]
 fn single_values_share_cleaning_rules() {
-    let d = json!({"type":"categorical_number","values":[50,100],"aliases":{"small":50},"unit":"kVA"});
+    let d =
+        json!({"type":"categorical_number","values":[50,100],"aliases":{"small":50},"unit":"kVA"});
     assert_eq!(run("clean", d.clone(), json!("SMALL")), json!(50.0));
     assert_eq!(run("confirms", d.clone(), json!("50kVA")), json!(true));
     assert_eq!(run("other", d.clone(), json!("75 kVA")), json!(75.0));

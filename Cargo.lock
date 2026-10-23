@@ -1540,6 +1540,7 @@ name = "ds-cleaning"
 version = "0.1.0"
 dependencies = [
  "ds-geo-lite",
+ "ds-network-contracts",
  "ds-upload-rules",
  "polars",
  "polars-io",
@@ -2369,6 +2370,7 @@ dependencies = [
  "ds-geo-lite",
  "ds-graph",
  "ds-kml",
+ "ds-network-contracts",
  "encoding_rs",
  "flate2",
  "quick-xml 0.41.0",
@@ -2522,6 +2524,7 @@ dependencies = [
  "ds-geo-lite",
  "ds-grid-model",
  "ds-profile-grid",
+ "ds-upload-rules",
  "schemars",
  "serde",
  "serde_json",
