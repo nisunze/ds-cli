@@ -265,7 +265,7 @@ mod tests {
     use serde_json::json;
     fn source() -> (Snapshot, Layout, Value) {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/printing-source-bindings.json"
+            "../../../../kernel/ds-command-kernel/tests/fixtures/printing-source-bindings.json"
         ))
         .unwrap();
         let snapshot = Snapshot {
@@ -289,7 +289,7 @@ mod tests {
                 dash_mm: Some(vec![2., 1.]),
             }),
         };
-        for id in super::super::map::MV_PRINT_LAYER_IDS {
+        for id in super::super::context::MV_PRINT_LAYER_IDS {
             layout.style_refs.insert(id.into(), format!("held/{id}"));
         }
         layout.context_layers = vec![context];
@@ -302,7 +302,7 @@ mod tests {
     #[test]
     fn sealed_receipt_uses_actual_keys_revisions_and_renderer_without_resolving() {
         let fixture: Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/printing-source-bindings.json"
+            "../../../../kernel/ds-command-kernel/tests/fixtures/printing-source-bindings.json"
         ))
         .unwrap();
         let bindings: Vec<style_resolution::Binding> =
@@ -454,7 +454,7 @@ mod tests {
         // Inline physical pens already own the model layers. The selected
         // source also derives a corridor, whose governed choice is absent.
         layout.style_refs.clear();
-        for id in super::super::map::MV_PRINT_LAYER_IDS {
+        for id in super::super::context::MV_PRINT_LAYER_IDS {
             layout
                 .styles
                 .insert(id.into(), super::super::PrintStyle::default());

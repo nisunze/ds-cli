@@ -1274,7 +1274,7 @@ adds a reviewed value to existing projects and the Network Template; it is not r
 as part of rendering.
 
 `report_messages` owns `ds.report-messages/v1`, whose one default catalogue is
-[data/report-messages.json](../data/report-messages.json). Each locale supplies
+[ds-report-contracts/data/report-messages.json](../../../shared/ds-report-contracts/data/report-messages.json). Each locale supplies
 exactly the English reference key set, nonempty values and identical named
 placeholders. `en` and `fr` ship; another locale is a document change. A project
 may supply the same complete document as the existing JSON-valued

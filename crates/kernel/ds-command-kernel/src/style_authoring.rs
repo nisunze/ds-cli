@@ -100,31 +100,11 @@ pub struct PatternRecipe {
     pub stroke: f64,
 }
 
-pub fn normalize_style_color(value: &str) -> Option<String> {
-    let value = value.trim();
-    ((value.len() == 7 || value.len() == 9)
-        && value.starts_with('#')
-        && value[1..].bytes().all(|c| c.is_ascii_hexdigit()))
-    .then(|| value.to_ascii_uppercase())
-}
-fn object(value: &Value) -> Result<&Map<String, Value>, String> {
-    value
-        .as_object()
-        .ok_or_else(|| "style must be an object".into())
-}
-fn bucket<'a>(style: &'a mut Value, key: &str) -> Result<&'a mut Map<String, Value>, String> {
-    let root = style.as_object_mut().ok_or("style must be an object")?;
-    let value = root.entry(key).or_insert_with(|| json!({}));
-    value
-        .as_object_mut()
-        .ok_or_else(|| format!("{key} must be an object"))
-}
-fn kind(style: &Value) -> Result<&str, String> {
-    object(style)?;
-    style["type"]
-        .as_str()
-        .ok_or_else(|| "style type is required".into())
-}
+// Colour spelling, casing and number normalisation are the print contract's rules.
+pub use ds_report_contracts::style_document::{
+    apply_casing, normalize_json_numbers, normalize_style_color, widen_line_width,
+};
+use ds_report_contracts::style_document::{bucket, kind, object};
 fn channel_for(style: &Value, key: &str) -> Result<Channel, String> {
     style_channels(kind(style)?)
         .into_iter()
@@ -383,87 +363,6 @@ pub fn apply_line_type(
     }
     Ok(style)
 }
-fn output_indices(value: &Value) -> Result<Vec<usize>, String> {
-    let expr = value
-        .as_array()
-        .ok_or("line-width is not a widenable expression")?;
-    let n = expr.len();
-    match expr.first().and_then(Value::as_str) {
-        Some("interpolate") if n >= 5 && (n - 3) % 2 == 0 => Ok((4..n).step_by(2).collect()),
-        Some("step") if n >= 5 && n % 2 == 1 => Ok((2..n).step_by(2).collect()),
-        Some("match") if n >= 5 && n % 2 == 1 => Ok((3..n - 1)
-            .step_by(2)
-            .chain(std::iter::once(n - 1))
-            .collect()),
-        Some("case") if n >= 4 && n % 2 == 0 => Ok((2..n - 1)
-            .step_by(2)
-            .chain(std::iter::once(n - 1))
-            .collect()),
-        _ => Err("line-width operator or branch list is not widenable without guessing".into()),
-    }
-}
-pub fn widen_line_width(value: &Value, delta: f64) -> Result<Value, String> {
-    if !delta.is_finite() {
-        return Err("width delta must be finite".into());
-    }
-    if value.is_null() {
-        return Ok(json!(1. + delta));
-    }
-    if let Some(v) = value.as_f64() {
-        let widened = v + delta;
-        if !widened.is_finite() {
-            return Err("line width is not finite".into());
-        }
-        return Ok(json!(widened));
-    }
-    let indices = output_indices(value)?;
-    let mut next = value.clone();
-    for index in indices {
-        let v = value[index]
-            .as_f64()
-            .ok_or("line-width branch is not a number")?;
-        if !(v + delta).is_finite() {
-            return Err("line-width overflow".into());
-        }
-        next[index] = json!(v + delta);
-    }
-    Ok(next)
-}
-pub fn apply_casing(mut style: Value, color: &str, width: f64) -> Result<Value, String> {
-    if kind(&style)? != "line" {
-        return Err("a casing requires a line style".into());
-    }
-    if !width.is_finite() || width <= 0. || width > 20. {
-        return Err("casing width must be greater than 0 and no more than 20".into());
-    }
-    let widened = widen_line_width(&style["paint"]["line-width"], width * 2.)?;
-    let mut boundary = style
-        .get("boundary")
-        .filter(|v| v.is_object())
-        .cloned()
-        .unwrap_or_else(|| json!({}));
-    // Boundaries have an implicit line type in the governed style document.
-    boundary.as_object_mut().expect("object").remove("type");
-    boundary["paint"] = json!({"line-color":color,"line-width":widened});
-    let layout = bucket(&mut boundary, "layout")?;
-    let visibility = if layout.get("visibility") == Some(&json!("none")) {
-        "none"
-    } else {
-        "visible"
-    };
-    layout.insert("visibility".into(), json!(visibility));
-    layout.insert("line-cap".into(), json!("round"));
-    layout.insert("line-join".into(), json!("round"));
-    for key in ["filter", "minzoom", "maxzoom"] {
-        if let Some(value) = style.get(key).filter(|v| key == "filter" || v.is_number()) {
-            boundary[key] = value.clone();
-        } else {
-            boundary.as_object_mut().expect("object").remove(key);
-        }
-    }
-    style["boundary"] = boundary;
-    Ok(style)
-}
 pub fn apply_pattern(mut style: Value, recipe: Option<&PatternRecipe>) -> Result<Value, String> {
     kind(&style)?;
     let metadata = bucket(&mut style, "metadata")?;
@@ -536,19 +435,6 @@ pub fn transform_style(input: &[u8]) -> Result<String, String> {
     serde_json::to_string(&style).map_err(|_| "cannot serialize style".into())
 }
 
-pub(crate) fn normalize_json_numbers(value: &mut Value) {
-    match value {
-        Value::Number(n) if n.is_f64() => {
-            let v = n.as_f64().expect("float");
-            if v.fract() == 0. && v.abs() <= 9_007_199_254_740_991. {
-                *value = json!(v as i64);
-            }
-        }
-        Value::Array(values) => values.iter_mut().for_each(normalize_json_numbers),
-        Value::Object(values) => values.values_mut().for_each(normalize_json_numbers),
-        _ => {}
-    }
-}
 
 #[cfg(test)]
 mod tests {

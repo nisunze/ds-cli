@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn logo_resolution_is_required_bounded_and_integer() {
         let value: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/governed-renderer-defaults.json"
+            "../../../../kernel/ds-command-kernel/tests/fixtures/governed-renderer-defaults.json"
         ))
         .unwrap();
         for dpi in [72, 300, 1200] {
@@ -284,7 +284,7 @@ mod tests {
     #[test]
     fn defaults_are_complete_closed_and_refuse_a_wrong_source_or_digest() {
         let value: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/governed-renderer-defaults.json"
+            "../../../../kernel/ds-command-kernel/tests/fixtures/governed-renderer-defaults.json"
         ))
         .unwrap();
         let document = serde_json::json!({"type":"line","paint":{},"layout":{},"metadata":{"print_renderer_defaults":value}});
@@ -292,7 +292,7 @@ mod tests {
             key: key(),
             style_ref: "test/renderer_defaults_print".into(),
             revision_id: "a".repeat(64),
-            content_sha256: crate::style_plan::style_digest(&document),
+            content_sha256: crate::style_document::style_digest(&document),
             scope: "catalogue".into(),
             document,
             presentation_tier: None,
@@ -303,7 +303,7 @@ mod tests {
         binding.key = key();
         binding.document["metadata"]["print_renderer_defaults"]["table"]["unknown"] =
             serde_json::json!(true);
-        binding.content_sha256 = crate::style_plan::style_digest(&binding.document);
+        binding.content_sha256 = crate::style_document::style_digest(&binding.document);
         assert!(admit(&binding).unwrap_err().contains("unknown field"));
         binding.document["metadata"]["print_renderer_defaults"]["table"]
             .as_object_mut()
@@ -313,7 +313,7 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("halo_mm");
-        binding.content_sha256 = crate::style_plan::style_digest(&binding.document);
+        binding.content_sha256 = crate::style_document::style_digest(&binding.document);
         assert!(admit(&binding).unwrap_err().contains("missing field"));
     }
 }

@@ -1,7 +1,6 @@
 //! Map-independent LV document and edit contracts. No storage, transport or compute.
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const SCHEMA: &str = "ds.design.snapshot/v1";
@@ -271,26 +270,7 @@ pub enum Mutation {
     },
 }
 
-pub fn digest(value: &impl Serialize) -> Result<String, String> {
-    fn ordered(v: Value) -> Value {
-        match v {
-            Value::Object(m) => Value::Object(
-                m.into_iter()
-                    .collect::<BTreeMap<_, _>>()
-                    .into_iter()
-                    .map(|(k, v)| (k, ordered(v)))
-                    .collect(),
-            ),
-            Value::Array(a) => Value::Array(a.into_iter().map(ordered).collect()),
-            v => v,
-        }
-    }
-    let bytes = serde_json::to_vec(&ordered(
-        serde_json::to_value(value).map_err(|e| e.to_string())?,
-    ))
-    .map_err(|e| e.to_string())?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
-}
+pub use ds_report_contracts::canonical::digest;
 
 pub fn identifier(value: &str) -> Result<(), String> {
     if value.is_empty()
@@ -790,22 +770,8 @@ pub struct RowAllows {
 /// same rows, so they refuse at this one size and never at a smaller one.
 pub const MAX_STATUS_REGISTER_BYTES: usize = 32 * 1024 * 1024;
 
-/// The browser's `canonicalName` (`api/design.ts`) and the canonicalisation
-/// `project_control`/`report` already applied, which are the same rule: trim,
-/// lowercase, and every other byte becomes `_`.
-pub fn canonical_row_name(name: &str) -> String {
-    name.trim()
-        .to_ascii_lowercase()
-        .chars()
-        .map(|character| {
-            if character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_' {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
+/// The browser's `canonicalName` (`api/design.ts`), owned by the print contract.
+pub use ds_report_contracts::canonical::canonical_row_name;
 
 /// Classify a row by its canonical name alone — the only input this has.
 pub fn row_kind(name: &str) -> RowKind {

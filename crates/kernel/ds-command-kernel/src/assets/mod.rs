@@ -73,8 +73,8 @@ pub const MAX_PREVIEW_INPUT_BYTES: u64 = 32 * MIB;
 pub const MAX_PDF_BYTES: u64 = 32 * MIB;
 /// §4.2 docx / odt (doc and rtf share it: recognised, never decoded).
 pub const MAX_DOCUMENT_BYTES: u64 = 8 * MIB;
-/// §4.2 xlsx / ods (xls shares it: recognised, never decoded).
-pub const MAX_WORKBOOK_BYTES: u64 = 8 * MIB;
+/// §4.2 xlsx / ods, rows and columns shown per grid: the shared workbook reader's bounds.
+pub use ds_xlsx_read::{MAX_GRID_COLUMNS, MAX_GRID_ROWS, MAX_WORKBOOK_BYTES};
 /// §4.2 csv / tsv.
 pub const MAX_DELIMITED_BYTES: u64 = 8 * MIB;
 /// §4.2 eml / msg.
@@ -92,10 +92,6 @@ pub const MAX_CONTAINER_DEPTH: usize = 8;
 /// §4.2: features a geo preview may carry (matches the `ds map` scene bound);
 /// above it the preview is refused and promotion is the honest alternative.
 pub const MAX_GEO_FEATURES: u64 = 20_000;
-/// §4.2: rows shown per grid (sheet, csv, tsv).
-pub const MAX_GRID_ROWS: usize = 200;
-/// §4.2: columns shown per grid.
-pub const MAX_GRID_COLUMNS: usize = 40;
 /// §4.2: blocks in a decoded document (docx / odt).
 pub const MAX_DOC_BLOCKS: usize = 200;
 /// §4.2: bytes of one inline image carried in a document preview.
@@ -1437,18 +1433,8 @@ fn with_action(action: &str, value: serde_json::Result<Value>) -> Result<Value, 
     Ok(value)
 }
 
-/// Refuses `actual` over `bound`, naming both: "preview input is 34,603,008
-/// bytes; the pdf bound is 32 MiB".
-pub fn check_bytes(what: &str, actual: u64, bound_label: &str, bound: u64) -> Result<(), String> {
-    if actual > bound {
-        return Err(format!(
-            "{what} is {} bytes; the {bound_label} bound is {}",
-            thousands(actual),
-            describe_bytes(bound)
-        ));
-    }
-    Ok(())
-}
+// Byte bounds are named by the shared workbook reader's one rule.
+pub use ds_xlsx_read::{check_bytes, describe_bytes, thousands};
 
 /// The §4.2 per-format cap as a named refusal.
 pub fn check_format_cap(len: u64, format: Format) -> Result<(), String> {
@@ -1458,30 +1444,6 @@ pub fn check_format_cap(len: u64, format: Format) -> Result<(), String> {
         format.as_str(),
         format_cap_bytes(format),
     )
-}
-
-/// "32 MiB", "64 KiB" or "200,000 bytes" — whichever is exact.
-pub fn describe_bytes(bytes: u64) -> String {
-    if bytes > 0 && bytes.is_multiple_of(MIB) {
-        format!("{} MiB", bytes / MIB)
-    } else if bytes > 0 && bytes.is_multiple_of(1024) {
-        format!("{} KiB", bytes / 1024)
-    } else {
-        format!("{} bytes", thousands(bytes))
-    }
-}
-
-/// Decimal digits grouped by thousands: 34603008 → "34,603,008".
-pub fn thousands(value: u64) -> String {
-    let digits = value.to_string();
-    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
-    for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index).is_multiple_of(3) {
-            grouped.push(',');
-        }
-        grouped.push(digit);
-    }
-    grouped
 }
 
 /// Standard alphabet, padding optional: what `btoa` and `Buffer` both emit.

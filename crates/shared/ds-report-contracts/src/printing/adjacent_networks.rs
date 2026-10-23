@@ -176,7 +176,7 @@ pub fn required_fields(
             result
                 .entry(source.into())
                 .or_default()
-                .extend(crate::pinned_context::referenced_fields(&effective));
+                .extend(crate::style_document::referenced_fields(&effective));
             // Existing neighbours use this exact foreground document and all
             // its overrides. Retain its categorical/size/label fields before
             // native projection, including fields hidden by the context pen.
@@ -200,7 +200,7 @@ pub fn required_fields(
                     result
                         .entry(source.into())
                         .or_default()
-                        .extend(crate::pinned_context::referenced_fields(&effective));
+                        .extend(crate::style_document::referenced_fields(&effective));
                 }
             }
             if source == "lv_poles" {
@@ -404,7 +404,7 @@ pub fn attach(
         .unwrap_or_else(|| json!({"coverage":null,"sources":[],"layers":{}}));
     let area = doc.get("coverage").filter(|area| !area.is_null()).cloned();
     if let Some(area) = &area {
-        crate::reference_cache::validate_area(area)?;
+        crate::area::validate_area(area)?;
     }
     let mut layers: BTreeMap<String, Value> = serde_json::from_value(doc["layers"].clone())
         .map_err(|e| format!("invalid adjacent print context: {e}"))?;
@@ -443,8 +443,8 @@ pub fn attach(
                     continue;
                 }
                 if let Some(owner) = feature["properties"]["transfo"].as_str() {
-                    if crate::design::canonical_row_name(owner)
-                        != crate::design::canonical_row_name(&room.transformer)
+                    if crate::canonical::canonical_row_name(owner)
+                        != crate::canonical::canonical_row_name(&room.transformer)
                     {
                         return Err(format!(
                             "{} {source} carries another transformer's ownership",
@@ -1169,7 +1169,7 @@ mod tests {
     fn configured_context_preserves_primary_pens_and_focus_camera() {
         let mut layout = super::super::default_layout();
         let baseline: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/governed-physical-print-baselines.json"
+            "../../../../kernel/ds-command-kernel/tests/fixtures/governed-physical-print-baselines.json"
         ))
         .unwrap();
         let foreground =

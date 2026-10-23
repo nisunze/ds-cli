@@ -516,16 +516,7 @@ pub fn model_room(owner: &str, project: &str, model: Model) -> Result<Value, Str
     )))
 }
 
-/// The layers one MV projection prints as, in the order [`mv_layers`] emits
-/// them: alignments, structures, canonical angle points, and prohibited zones.
-/// A context retained from this projection carries
-/// exactly these ids.
-pub const MV_PRINT_LAYER_IDS: [&str; 4] = [
-    "dsgrid_mv_lines",
-    "dsgrid_mv_structures",
-    "dsgrid_mv_angle_points",
-    "dsgrid_mv_prohibited_zones",
-];
+pub use ds_report_contracts::printing::context::MV_PRINT_LAYER_IDS;
 
 pub fn mv_layers(projection: Value, model: Model, bounds: [f64; 4]) -> Result<Value, String> {
     let [w, s, e, n] = bounds;

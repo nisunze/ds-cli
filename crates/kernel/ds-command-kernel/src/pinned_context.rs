@@ -933,40 +933,9 @@ pub fn merge(request: MergeRequest) -> Result<Merged, String> {
     })
 }
 
-/// Every property name a style document reads, anywhere in it: `["get", f]`
-/// and `["has", f]`, inside a `coalesce`, a `match`, a `case`, a label
-/// `concat`, an `icon-image`, a second categorical dimension's halo or a
-/// filter. The walk is generic on purpose — parsing only the shapes today's
-/// emitters produce would silently drop a field and paint the layer wrong.
-/// Fields read by a resolved style; shared by screen and print projections.
-pub fn referenced_fields(document: &Value) -> BTreeSet<String> {
-    let mut fields = BTreeSet::new();
-    collect_fields(document, &mut fields);
-    fields
-}
-
-fn collect_fields(document: &Value, into: &mut BTreeSet<String>) {
-    match document {
-        Value::Array(items) => {
-            if let Some(Value::String(operator)) = items.first() {
-                if (operator == "get" || operator == "has") && items.len() >= 2 {
-                    if let Some(Value::String(field)) = items.get(1) {
-                        into.insert(field.clone());
-                    }
-                }
-            }
-            for item in items {
-                collect_fields(item, into);
-            }
-        }
-        Value::Object(map) => {
-            for value in map.values() {
-                collect_fields(value, into);
-            }
-        }
-        _ => {}
-    }
-}
+/// Every property name a style document reads (the print contract owns the walk).
+pub use ds_report_contracts::style_document::referenced_fields;
+use ds_report_contracts::style_document::collect_fields;
 
 /// `stringifyProperty` in `pinning/materialize.ts`: a scalar as written, a
 /// structure as its JSON. The renderer reads strings.

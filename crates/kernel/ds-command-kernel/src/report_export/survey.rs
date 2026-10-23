@@ -38,13 +38,9 @@ use serde_json::{json, Map, Value};
 
 use crate::survey::hold::{self, Manifest, View};
 
-/// The wire schema of the document a host stages beside a transformer's room
-/// and the engine reads digest-bound (`survey_layers_asset`).
-pub const SURVEY_LAYERS_SCHEMA: &str = "ds.survey-layers/v1";
-/// The most features one staged document may carry, over every form.
-pub const MAX_SURVEY_LAYER_FEATURES: usize = 100_000;
-/// The most bytes one staged document may occupy: the engine's bound.
-pub const MAX_SURVEY_LAYERS_BYTES: u64 = 64 * 1024 * 1024;
+// The staged document's schema, bounds and layer naming are the export contract.
+pub use ds_report_contracts::report_export::survey::*;
+
 /// Degrees added around a room's extent when choosing the held rows a run
 /// stages. The engine clips to the bounding rectangle exactly; this only
 /// bounds the bytes. The rectangle is the transformer's points buffered by
@@ -79,31 +75,6 @@ pub fn survey_layer_unrefreshed_reason(detail: &str) -> String {
         .take(160)
         .collect();
     format!("survey layer: the held copy could not be refreshed ({detail})")
-}
-
-/// The layer one appended form becomes: `survey_` and the slug, lowercased,
-/// every character outside `[a-z0-9_]` replaced by `_`, underscores trimmed;
-/// `survey_form` when nothing is left. The cloud handler and the engine's
-/// local path both call this, so the layer a report carries has one name.
-pub fn survey_layer_name(form_slug: &str) -> String {
-    let cleaned = form_slug
-        .trim()
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' {
-                c.to_ascii_lowercase()
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('_')
-        .to_string();
-    if cleaned.is_empty() {
-        "survey_form".into()
-    } else {
-        format!("survey_{cleaned}")
-    }
 }
 
 /// The forms a project's receipt appends to a delivered transformer report,
@@ -377,15 +348,6 @@ pub struct SurveyLayerReceipt {
     pub staged: u64,
     /// Features on the layer. A form with none inside the rectangle adds no
     /// layer, as in the cloud, and says so here with zero.
-    pub features: u64,
-}
-
-/// What the engine says it appended for one form. Additive members from a
-/// newer engine are accepted (owner 22 Oct).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct SurveyLayerResult {
-    pub form: String,
-    pub layer: String,
     pub features: u64,
 }
 

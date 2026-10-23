@@ -380,7 +380,6 @@ pub mod report;
 pub mod report_export;
 pub mod solar_batch;
 pub mod solar_network_form;
-mod solar_network_seed;
 mod solar_portfolio;
 
 #[cfg(feature = "wasm")]
@@ -435,12 +434,6 @@ pub use project_control::{
     MAX_PROJECT_CONTROL_ROOMS, PROJECT_CONTROL_ARTIFACT_DOWNLOAD_SCHEMA,
     PROJECT_CONTROL_BULK_PLAN_SCHEMA, PROJECT_CONTROL_REPORT_PLAN_SCHEMA,
     PROJECT_CONTROL_ROOM_PLAN_SCHEMA,
-};
-
-pub use solar_network_seed::{
-    plan_solar_network_seed, solar_network_seed_request_schema, SolarNetworkSeedError,
-    MAX_SOLAR_NETWORK_SEED_BYTES, MV_ALIGNMENT_FACTS_SCHEMA, SOLAR_NETWORK_SEED_PLAN_SCHEMA,
-    SOLAR_NETWORK_SEED_REQUEST_SCHEMA,
 };
 
 pub use solar_portfolio::{
@@ -898,7 +891,7 @@ mod wasm {
 
     use super::{
         plan_project_control_artifact_download, plan_project_control_bulk_action,
-        plan_project_control_report_download, plan_project_control_rooms, plan_solar_network_seed,
+        plan_project_control_report_download, plan_project_control_rooms,
         plan_solar_portfolio_mutation, solar_portfolio_membership_identity,
         validate_solar_portfolio_catalog, validate_solar_portfolio_mutation_receipt,
         validate_solar_portfolio_result,
@@ -988,11 +981,6 @@ mod wasm {
     pub fn solar_portfolio_mutation_receipt(input_json: &[u8]) -> Result<String, JsValue> {
         validate_solar_portfolio_mutation_receipt(input_json)
             .map_err(|error| JsValue::from_str(&error.to_string()))
-    }
-
-    #[wasm_bindgen(js_name = planSolarNetworkSeed)]
-    pub fn solar_network_seed(input_json: &[u8]) -> Result<String, JsValue> {
-        plan_solar_network_seed(input_json).map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
     #[wasm_bindgen(js_name = solarNetworkForm)]

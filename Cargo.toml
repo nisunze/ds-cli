@@ -73,7 +73,9 @@ members = [
     "crates/kernel/ds-update-runtime",
     "crates/shared/ds-columnar",
     "crates/shared/ds-geo-lite",
+    "crates/shared/ds-report-contracts",
     "crates/shared/ds-upload-rules",
+    "crates/shared/ds-xlsx-read",
 ]
 
 [workspace.package]

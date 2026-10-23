@@ -16,12 +16,43 @@
 //! preview never acquires or projects context; what is not retained is a
 //! named omission.
 
-use super::preview::Refusal;
 use super::{Layout, PrintContextLayer, PrintContextSource, PrintCorridor};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+
+/// The layers one MV projection prints as, in the order the Kernel's `printing::map::mv_layers` emits
+/// them: alignments, structures, canonical angle points, and prohibited zones.
+/// A context retained from this projection carries
+/// exactly these ids.
+pub const MV_PRINT_LAYER_IDS: [&str; 4] = [
+    "dsgrid_mv_lines",
+    "dsgrid_mv_structures",
+    "dsgrid_mv_angle_points",
+    "dsgrid_mv_prohibited_zones",
+];
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Refusal {
+    pub code: String,
+    pub message_key: String,
+    #[serde(default)]
+    pub params: std::collections::BTreeMap<String, String>,
+}
+
+/// One keyed refusal with its message parameters, as every printing
+/// decision reports it.
+pub fn refusal(code: &str, key: &str, params: &[(&str, &str)]) -> Refusal {
+    Refusal {
+        code: code.into(),
+        message_key: key.into(),
+        params: params
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect(),
+    }
+}
 
 /// Catalogue layers a default selection never includes: cadastral parcels
 /// clutter an engineering sheet at every scale a network is drawn at.
@@ -200,7 +231,7 @@ pub fn expanded_layer_ids(layer: &PrintContextLayer) -> Vec<String> {
             vec!["contours_intermediate".into(), "contours_index".into()]
         }
         PrintContextSource::ProjectDsgridMv { ref corridor, .. } => {
-            let mut ids = super::map::MV_PRINT_LAYER_IDS
+            let mut ids = MV_PRINT_LAYER_IDS
                 .iter()
                 .map(|id| (*id).to_owned())
                 .collect::<Vec<_>>();
@@ -469,7 +500,7 @@ pub fn retained_parameters(source: &PrintContextSource) -> Result<String, String
 /// host names an omission of the layer under them.
 pub fn printed_layer_ids(layer: &PrintContextLayer) -> Vec<String> {
     match layer.source {
-        PrintContextSource::ProjectDsgridMv { .. } => super::map::MV_PRINT_LAYER_IDS
+        PrintContextSource::ProjectDsgridMv { .. } => MV_PRINT_LAYER_IDS
             .iter()
             .map(|id| (*id).to_owned())
             .collect(),
@@ -541,7 +572,7 @@ pub fn retained_admission(
 /// One refusal a host may show for an omitted derived layer, keyed like the
 /// other printing decisions: the reason travels as the `reason` parameter.
 pub fn omission_refusal(layer: &PrintContextLayer, reason: &str) -> Refusal {
-    super::preview::refusal(
+    refusal(
         "print_context_omitted",
         "printing_context_omitted",
         &[("label", &layer.label), ("reason", reason)],
@@ -800,7 +831,7 @@ mod tests {
         };
         layout.context_layers = vec![mv];
         // Existing MV roles already carry their governed authored references.
-        for id in super::super::map::MV_PRINT_LAYER_IDS {
+        for id in super::MV_PRINT_LAYER_IDS {
             layout
                 .style_refs
                 .insert(id.into(), format!("print_context/{id}_print"));
@@ -869,10 +900,10 @@ mod tests {
         };
         layout.context_layers = vec![mv];
         let missing = missing_context_style_keys(&layout);
-        assert_eq!(missing.len(), super::super::map::MV_PRINT_LAYER_IDS.len());
+        assert_eq!(missing.len(), super::MV_PRINT_LAYER_IDS.len());
         assert!(!missing.contains_key("dsgrid_mv_corridor"));
         assert!(!missing.contains_key("contours_index"));
-        for id in super::super::map::MV_PRINT_LAYER_IDS {
+        for id in super::MV_PRINT_LAYER_IDS {
             assert_eq!(missing[id], style_key(id, "project_model", "mv_context"));
         }
     }
@@ -985,7 +1016,7 @@ mod tests {
         // Reuse must keep all four emitted model layers, including an empty
         // prohibited-zones collection when this model has none.
         let mv = derived_layers().remove(0);
-        let mut held = retained(&mv, &super::super::map::MV_PRINT_LAYER_IDS);
+        let mut held = retained(&mv, &super::MV_PRINT_LAYER_IDS);
         held.layers["dsgrid_mv_angle_points"]["features"] = serde_json::json!([{
             "type": "Feature", "id": "model-a:\"node-a\"",
             "geometry": {"type": "Point", "coordinates": [30.1, -1.9]},

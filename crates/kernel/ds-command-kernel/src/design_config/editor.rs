@@ -487,50 +487,14 @@ pub fn apply(request: Request) -> Result<Value, String> {
     })
 }
 
-fn js_string(value: &Value) -> String {
-    match value {
-        Value::Null => String::new(),
-        Value::String(s) => s.clone(),
-        Value::Array(a) => a
-            .iter()
-            .map(|v| {
-                if v.is_null() {
-                    String::new()
-                } else {
-                    js_string(v)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(","),
-        Value::Object(_) => "[object Object]".into(),
-        _ => value.to_string(),
-    }
-}
+use ds_report_contracts::catalogue_aliases::{js_string, valid_alias};
 fn keys(value: &Value) -> Vec<String> {
     value
         .as_object()
         .map(|m| m.keys().cloned().collect())
         .unwrap_or_default()
 }
-fn valid_alias(key: &str) -> bool {
-    !matches!(key, "" | "nan" | "none" | "null" | "undefined" | "\\")
-}
-pub fn alias_list(value: &Value) -> Vec<String> {
-    let values: Vec<Value> = match value {
-        Value::Array(a) => a.clone(),
-        Value::String(s) => s.split("##").map(|s| json!(s)).collect(),
-        _ => vec![],
-    };
-    let mut seen = BTreeSet::new();
-    values
-        .iter()
-        .filter_map(|v| {
-            let text = js_string(v).trim().to_owned();
-            let key = text.to_lowercase();
-            (valid_alias(&key) && seen.insert(key)).then_some(text)
-        })
-        .collect()
-}
+pub use ds_report_contracts::catalogue_aliases::alias_list;
 pub fn scalar(raw: &Value) -> Value {
     let Some(text) = raw.as_str() else {
         return raw.clone();

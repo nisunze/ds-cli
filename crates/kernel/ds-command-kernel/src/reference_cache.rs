@@ -88,19 +88,8 @@ pub fn feature_bounds(feature: &Value) -> Option<[f64; 4]> {
     ds_geo_lite::viewport::geojson_bounds(feature)
 }
 
-/// Admit an area a request names: a GeoJSON Polygon or MultiPolygon (bare or
-/// as a Feature's geometry) that DS admits as a geometry — valid where BigQuery
-/// would refuse it, and not an inverted or full-globe polygon. The refusal
-/// names the rule and the ring (`crate::geometry_admission`).
-pub fn validate_area(area: &Value) -> Result<(), String> {
-    ds_geo_lite::spatial_predicate::validate_area(area)?;
-    let geometry = if area["type"] == "Feature" {
-        &area["geometry"]
-    } else {
-        area
-    };
-    crate::geometry_admission::admit_geometry(geometry).map_err(|refusal| refusal.to_string())
-}
+/// Admit an area a request names (the print contract owns the rule).
+pub use ds_report_contracts::area::validate_area;
 
 pub fn area_bounds(area: &Value) -> Result<[f64; 4], String> {
     ds_geo_lite::spatial_predicate::area_bounds(area)

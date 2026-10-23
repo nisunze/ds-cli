@@ -73,7 +73,7 @@ pub struct Preview {
 /// A proven local authoring preview remains one page. A caller-supplied output
 /// list cannot select this purpose; the receipt must carry the existing
 /// nonpublishable preview provenance and its exact one-layout byte pin.
-pub(super) fn plan_outputs(
+pub fn plan_outputs(
     sheets: &Value,
     selection: Option<&DesignOutputSelection>,
     provenance: &proof::Provenance,

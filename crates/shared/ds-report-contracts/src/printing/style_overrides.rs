@@ -273,7 +273,7 @@ pub fn apply(document: &Value, change: &PrintStyleOverride, paper: &str) -> Resu
         ) {
             let casing = (outer - inner) / 2.;
             if casing > 0. {
-                style = crate::style_authoring::apply_casing(style, color, casing)?;
+                style = crate::style_document::apply_casing(style, color, casing)?;
             }
         }
     }
@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn governed_physical_pens_preserve_exact_baselines_and_refuse_partial_or_parallel_policy() {
         let held: Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/governed-physical-print-baselines.json"
+            "../../../../kernel/ds-command-kernel/tests/fixtures/governed-physical-print-baselines.json"
         ))
         .unwrap();
         for row in held["documents"].as_array().unwrap() {

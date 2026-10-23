@@ -310,39 +310,6 @@ mod tests {
         (layout, layers)
     }
     #[test]
-    fn requests_expose_the_same_column_policy_and_validated_layout() {
-        let (layout, layers) = fixture();
-        let request = json!({"op":"table_columns","layout":layout,"element_id":"customers-table","layers":layers});
-        let result: Value = serde_json::from_str(
-            &super::super::evaluate(&serde_json::to_vec(&request).unwrap()).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(result["phase"], "design");
-        assert!(result["columns"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|c| c["key"] == "meter_number" && c["reason"] == "as_built_only"));
-        let request = json!({"op":"table_column_selection","layout":layout,"element_id":"customers-table","layers":layers,"columns":["names"]});
-        let result: Value = serde_json::from_str(
-            &super::super::evaluate(&serde_json::to_vec(&request).unwrap()).unwrap(),
-        )
-        .unwrap();
-        let selected: Layout = serde_json::from_value(result["layout"].clone()).unwrap();
-        assert_eq!(
-            selected
-                .elements
-                .last()
-                .unwrap()
-                .table
-                .as_ref()
-                .unwrap()
-                .columns,
-            ["names"]
-        );
-        super::super::validate(&selected).unwrap();
-    }
-    #[test]
     fn phase_and_real_values_determine_availability() {
         let (layout, layers) = fixture();
         let c = catalog(&layout, "customers-table", &layers).unwrap();

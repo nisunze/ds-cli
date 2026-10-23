@@ -491,33 +491,4 @@ mod tests {
         assert!(denominator(4999., Some(300.), Some(&limits), false).is_err());
         assert!(denominator(6000., None, Some(&limits), false).is_err());
     }
-    #[test]
-    fn requests_author_the_same_policy_and_prepare_only_selected_draft_context() {
-        use crate::printing::{context, default_layout, evaluate};
-        use serde_json::{json, Value};
-        let layout = default_layout();
-        let run = |request: Value| -> Result<Value, String> {
-            serde_json::from_str(&evaluate(&serde_json::to_vec(&request).unwrap())?)
-                .map_err(|e| e.to_string())
-        };
-        let result = run(json!({"op":"set_fit_policy","layout":layout,"network_fit":{"source_layers":["poles","lv_lines"],"clearance_mm":3},"scale_limits":{"min_denominator":1000,"max_denominator":10000}})).unwrap();
-        assert_eq!(
-            result["layout"]["network_fit"]["clearance_mm"].as_f64(),
-            Some(3.)
-        );
-        assert!(run(json!({"op":"set_fit_policy","layout":layout,"network_fit":null,"scale_limits":{"min_denominator":10000,"max_denominator":1000}})).is_err());
-        let selected =
-            context::toggle(layout, context::derived_layers().remove(2), true, None).unwrap();
-        for online in [false, true] {
-            let result =
-                run(json!({"op":"preview_context_preparation","layout":selected,"online":online}))
-                    .unwrap();
-            assert_eq!(result["acquire_missing"], false);
-            assert_eq!(result["contexts"].as_array().unwrap().len(), 1);
-            assert_eq!(
-                result["contexts"][0]["source"]["kind"],
-                "elevation_contours"
-            );
-        }
-    }
 }

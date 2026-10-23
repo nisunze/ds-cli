@@ -120,55 +120,8 @@ fn hazards(rows: &Value, stored: Option<String>, scoped: bool) -> Value {
     Value::Object(answer)
 }
 
-/// Unambiguous reporting aliases, normalized once for all catalogue readers.
-/// An alias claimed by different canonical names is omitted, regardless of order.
-pub fn alias_map(rows: &Value) -> BTreeMap<String, String> {
-    let mut aliases = BTreeMap::new();
-    let mut ambiguous = BTreeSet::new();
-    for row in rows.as_array().into_iter().flatten() {
-        let Some(clean) = canonical(row) else {
-            continue;
-        };
-        for name in super::alias_list(field(row, "misspelled_names", "misspellednames"))
-            .into_iter()
-            .chain(std::iter::once(clean.clone()))
-        {
-            let key = name.trim().to_lowercase();
-            if aliases
-                .insert(key.clone(), clean.clone())
-                .is_some_and(|previous| previous != clean)
-            {
-                ambiguous.insert(key);
-            }
-        }
-    }
-    for key in ambiguous {
-        aliases.remove(&key);
-    }
-    aliases
-}
-
-fn field<'a>(row: &'a Value, canonical: &str, sanitized: &str) -> &'a Value {
-    row.get(canonical)
-        .or_else(|| {
-            row.as_object()?.iter().find_map(|(key, value)| {
-                (key.to_ascii_lowercase()
-                    .chars()
-                    .filter(char::is_ascii_alphanumeric)
-                    .collect::<String>()
-                    == sanitized)
-                    .then_some(value)
-            })
-        })
-        .unwrap_or(&Value::Null)
-}
-
-/// One catalogue row's canonical name, or `None` when the row declares none.
-/// A row with no canonical name groups nothing and validates nothing.
-pub fn canonical(row: &Value) -> Option<String> {
-    let name = field(row, "clean_name", "cleanname").as_str()?.trim();
-    (!name.is_empty()).then(|| name.to_owned())
-}
+pub use ds_report_contracts::catalogue_aliases::{alias_map, canonical};
+use ds_report_contracts::catalogue_aliases::field;
 
 fn text(value: &Value) -> String {
     value.as_str().unwrap_or_default().trim().to_owned()

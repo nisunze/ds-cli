@@ -16,7 +16,7 @@ fn styles(ids: &[&str]) -> Snapshot {
         .iter()
         .map(|id| {
             let document = json!({"type":"line","paint":{"line-color":"#3a6ea5"},"layout":{}});
-            let digest = crate::style_plan::style_digest(&document);
+            let digest = crate::style_document::style_digest(&document);
             Binding {
                 key: style_key(id).unwrap(),
                 style_ref: format!("print_context/{id}_print"),

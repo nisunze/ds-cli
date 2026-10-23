@@ -72,6 +72,6 @@ fn digest(value: &str) -> bool {
 /// Same normalized canonical JSON used by the style API's immutable receipts.
 pub fn content_digest(document: &Value) -> Result<String, String> {
     let mut document = document.clone();
-    crate::style_authoring::normalize_json_numbers(&mut document);
-    crate::design::digest(&document)
+    crate::style_document::normalize_json_numbers(&mut document);
+    crate::canonical::digest(&document)
 }

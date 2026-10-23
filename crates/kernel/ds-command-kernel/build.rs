@@ -41,6 +41,7 @@ fn main() {
         root.join("../ds-kml"),
         root.join("../ds-profile-policy"),
         root.join("../../shared/ds-geo-lite"),
+        root.join("../../shared/ds-report-contracts"),
     ] {
         println!("cargo:rerun-if-changed={}", dir.display());
         sources(&dir, &mut paths);

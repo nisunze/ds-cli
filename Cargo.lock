@@ -2066,9 +2066,11 @@ dependencies = [
  "ds-kml",
  "ds-network-contracts",
  "ds-profile-policy",
+ "ds-report-contracts",
  "ds-solar-contracts",
  "ds-template-test-support",
  "ds-upload-rules",
+ "ds-xlsx-read",
  "futures-channel",
  "futures-util",
  "gloo-timers",
@@ -2606,6 +2608,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "ds-report-contracts"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "ds-geo-lite",
+ "image",
+ "imagesize",
+ "regex",
+ "ryu",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "time",
+]
+
+[[package]]
 name = "ds-report-host"
 version = "0.1.0"
 dependencies = [
@@ -2909,6 +2928,14 @@ dependencies = [
  "serde_json",
  "tsify",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "ds-xlsx-read"
+version = "0.1.0"
+dependencies = [
+ "quick-xml 0.41.0",
+ "zip 2.4.2",
 ]
 
 [[package]]

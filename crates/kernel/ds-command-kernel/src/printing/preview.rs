@@ -15,8 +15,6 @@
 //! reads for that transformer is one the engine may print, and which server
 //! version it carries. The host hands the room's facts as it found them;
 //! this module never fetches a missing room.
-use super::catalogue::{Classification, Purpose};
-use super::page_role::PageRole;
 use super::Layout;
 use crate::report_formats::PrintArtifactFormat;
 use schemars::JsonSchema;
@@ -65,47 +63,16 @@ pub enum Subject {
     },
 }
 
-/// The kind of subject a template previews against.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum SubjectKind {
-    Layout,
-    Transformer,
-    MvModels,
-    Extent,
-}
+pub use ds_report_contracts::printing::catalogue::SubjectKind;
 
-impl SubjectKind {
-    pub fn key(self) -> &'static str {
-        match self {
-            Self::Layout => "layout",
-            Self::Transformer => "transformer",
-            Self::MvModels => "mv_models",
-            Self::Extent => "extent",
-        }
-    }
-    /// Explicit role narrows front matter to captured page or geographic input.
-    pub fn of(classification: Classification) -> Self {
-        match classification.purpose {
-            Purpose::FrontMatter
-                if matches!(classification.role, PageRole::KeyMap | PageRole::KeyPlan) =>
-            {
-                Self::Extent
-            }
-            Purpose::FrontMatter => Self::Layout,
-            Purpose::MvModel => Self::MvModels,
-            Purpose::Project => Self::Extent,
-            Purpose::LvTransformer | Purpose::VoltageDrop => Self::Transformer,
-        }
-    }
-    /// The canonical command that renders a preview for this subject.
-    pub fn render_command(self) -> Option<&'static str> {
-        match self {
-            Self::Layout => Some("report.layout.render"),
-            Self::Transformer => Some(TRANSFORMER_PREVIEW_COMMAND),
-            Self::MvModels => Some(super::mv_preview::COMMAND_ID),
-            Self::Extent => None,
-        }
+/// The canonical command that renders a preview for a subject (a Kernel
+/// command id, so it stays with the Kernel's preview operations).
+pub fn render_command(kind: SubjectKind) -> Option<&'static str> {
+    match kind {
+        SubjectKind::Layout => Some("report.layout.render"),
+        SubjectKind::Transformer => Some(TRANSFORMER_PREVIEW_COMMAND),
+        SubjectKind::MvModels => Some(super::mv_preview::COMMAND_ID),
+        SubjectKind::Extent => None,
     }
 }
 
@@ -161,13 +128,7 @@ pub struct Facts {
     pub screen_px_per_mm: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct Refusal {
-    pub code: String,
-    pub message_key: String,
-    #[serde(default)]
-    pub params: std::collections::BTreeMap<String, String>,
-}
+pub use ds_report_contracts::printing::context::Refusal;
 
 /// The bitmap a host draws the page at: whole device pixels, and the scale
 /// the SVG's millimetre units are multiplied by to reach them.
@@ -223,18 +184,7 @@ pub fn raster(page_mm: [f64; 2], screen_px_per_mm: Option<f64>) -> Raster {
     }
 }
 
-/// One keyed refusal with its message parameters, as every printing
-/// decision reports it.
-pub(super) fn refusal(code: &str, key: &str, params: &[(&str, &str)]) -> Refusal {
-    Refusal {
-        code: code.into(),
-        message_key: key.into(),
-        params: params
-            .iter()
-            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-            .collect(),
-    }
-}
+pub(super) use ds_report_contracts::printing::context::refusal;
 
 pub fn plan(facts: &Facts) -> Result<Plan, String> {
     super::validate(&facts.layout)?;
@@ -397,7 +347,7 @@ pub fn plan(facts: &Facts) -> Result<Plan, String> {
         raster: raster(facts.layout.page_mm, facts.screen_px_per_mm),
         print_style_refs: refs,
         subject: expected,
-        render_command: expected.render_command().map(str::to_owned),
+        render_command: render_command(expected).map(str::to_owned),
     })
 }
 

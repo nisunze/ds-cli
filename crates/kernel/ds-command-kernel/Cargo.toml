@@ -85,6 +85,10 @@ ds-profile-policy = { path = "../ds-profile-policy" }
 # Single-cell value domains and upload grouping the page answers synchronously.
 ds-upload-rules = { path = "../../shared/ds-upload-rules" }
 ds-kml = { path = "../ds-kml" }
+# The report and printing contract the Reporter shares (DECOUPLING-014).
+ds-report-contracts = { path = "../../shared/ds-report-contracts" }
+# The bounded OOXML reader asset previews share with the Reporter.
+ds-xlsx-read = { path = "../../shared/ds-xlsx-read" }
 ryu = "1"
 schemars = "1.2.2"
 base64 = "0.22"

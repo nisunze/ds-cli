@@ -1,4 +1,5 @@
 use super::*;
+use crate::reference_cache::AreaSelection;
 
 #[test]
 fn sheet_capture_edges_are_outward_quantized_for_room_queries() {

@@ -23,17 +23,23 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 
-use crate::reference_cache::AreaSelection;
 
-pub const SCHEMA: &str = "ds.project-dataset-cache/v1";
+// The coverage, its rectangle arithmetic and each dataset's acquisition rule are
+// the project-dataset exchange shared with the Reporter (ds-report-contracts).
+pub use ds_report_contracts::project_datasets::{
+    acquisition_selection, acquisition_selects, Coverage, Rect, BUILDINGS_DATASET_ID,
+    CLOUD_READ_PROVIDER, CONTOURS_DATASET_ID, MAX_COVERAGE_CELLS, PROVIDER_BOUNDARY_MARGIN_DEG,
+    REFERENCE_CACHE_PROVIDER, SCHEMA,
+};
+use ds_report_contracts::project_datasets::{digest_of, round_out, MAX_LATITUDE};
+#[cfg(test)]
+use ds_report_contracts::project_datasets::round;
 
 /// Bounds chosen so a large national project stays interactive. Each is a hard
 /// refusal or an explicit, reported simplification — never a silent truncation.
 pub const MAX_EXTENTS: usize = 5_000;
 pub const MAX_GRID_CELLS: usize = 4_000_000;
-pub const MAX_COVERAGE_CELLS: usize = 4_096;
 /// A fused cluster is queried as one envelope only while that envelope stays
 /// under this area. Above it the plan queries the members' own buffered
 /// rectangles instead: a district of chained sites must never become one
@@ -62,26 +68,6 @@ const MAX_FOOTPRINT_REFERENCE_CHARS: usize = 64;
 /// the longest a governed acquisition can run — the tiler's own building fetch
 /// deadline is four minutes — so expiry only ever lands on work that is gone.
 pub const ACQUISITION_TICKET_TTL_MS: i64 = 30 * 60 * 1_000;
-/// 1e-9° is ~0.1 mm. Rounding inputs once keeps every downstream decomposition
-/// exact on the rounded values and makes digests reproducible across hosts.
-const QUANTUM: f64 = 1e9;
-const MAX_LATITUDE: f64 = 85.0;
-
-fn round(value: f64) -> f64 {
-    (value * QUANTUM).round() / QUANTUM
-}
-
-/// Quantising a buffered edge must never move it inward: half a quantum of
-/// shrinkage is enough to make a "500 m" buffer measure 499.99995 m, and a
-/// coverage that is fractionally short is a coverage that lies.
-fn round_out(value: f64, outward_is_up: bool) -> f64 {
-    let scaled = value * QUANTUM;
-    if outward_is_up {
-        scaled.ceil() / QUANTUM
-    } else {
-        scaled.floor() / QUANTUM
-    }
-}
 
 /// Declared fidelity of what lands in the room. Vector tiles are a rendering
 /// contract and may be lossy, so a tile extract is never allowed to pass itself
@@ -423,99 +409,6 @@ pub struct Extent {
     pub bounds: Option<[f64; 4]>,
 }
 
-/// A canonical set of disjoint axis-aligned rectangles whose union is the
-/// covered region. Disconnected design clusters stay disconnected, so a
-/// coverage can never collapse into one enormous envelope spanning unrelated
-/// sites; and held coverage accumulated over many acquisitions stays exact,
-/// because the difference and union arithmetic below is exact.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct Coverage {
-    #[serde(default)]
-    pub cells: Vec<[f64; 4]>,
-}
-
-impl Coverage {
-    pub fn rects(&self) -> Result<Vec<Rect>, String> {
-        if self.cells.len() > MAX_COVERAGE_CELLS {
-            return Err("coverage exceeds its cell limit".into());
-        }
-        self.cells.iter().copied().map(Rect::from_bounds).collect()
-    }
-    fn from_rects(rects: Vec<Rect>) -> Self {
-        let mut cells: Vec<[f64; 4]> = rects.into_iter().map(|rect| rect.bounds()).collect();
-        cells.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        Self { cells }
-    }
-    pub fn is_empty(&self) -> bool {
-        self.cells.is_empty()
-    }
-    /// GeoJSON projection of the same exact set, one Polygon per cell.
-    pub fn geometry(&self) -> Option<Value> {
-        if self.cells.is_empty() {
-            return None;
-        }
-        let polygons: Vec<Value> = self
-            .cells
-            .iter()
-            .map(|&[w, s, e, n]| json!([[[w, s], [e, s], [e, n], [w, n], [w, s]]]))
-            .collect();
-        Some(json!({"type": "MultiPolygon", "coordinates": polygons}))
-    }
-    fn digest(&self) -> String {
-        digest_of(&json!({"schema": SCHEMA, "cells": self.cells}))
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Rect {
-    pub w: f64,
-    pub s: f64,
-    pub e: f64,
-    pub n: f64,
-}
-
-impl Rect {
-    fn from_bounds(bounds: [f64; 4]) -> Result<Self, String> {
-        let [w, s, e, n] = bounds;
-        if !bounds.iter().all(|value| value.is_finite())
-            || w > e
-            || s > n
-            || !(-180.0..=180.0).contains(&w)
-            || !(-180.0..=180.0).contains(&e)
-            || !(-90.0..=90.0).contains(&s)
-            || !(-90.0..=90.0).contains(&n)
-        {
-            return Err("a coverage rectangle must be finite, ordered WGS84 bounds".into());
-        }
-        Ok(Self {
-            w: round(w),
-            s: round(s),
-            e: round(e),
-            n: round(n),
-        })
-    }
-    fn bounds(self) -> [f64; 4] {
-        [self.w, self.s, self.e, self.n]
-    }
-    fn degenerate(self) -> bool {
-        self.w >= self.e || self.s >= self.n
-    }
-    fn contains(self, x: f64, y: f64) -> bool {
-        self.w <= x && x <= self.e && self.s <= y && y <= self.n
-    }
-    fn intersects(self, other: Self) -> bool {
-        self.w <= other.e && other.w <= self.e && self.s <= other.n && other.s <= self.n
-    }
-    fn union(self, other: Self) -> Self {
-        Self {
-            w: self.w.min(other.w),
-            s: self.s.min(other.s),
-            e: self.e.max(other.e),
-            n: self.n.max(other.n),
-        }
-    }
-}
 
 // WGS84 local scale. Accurate to well under a metre at project latitudes, and
 // applied conservatively below so a requested buffer is never short.
@@ -745,27 +638,6 @@ fn decompose(include: &[Rect], exclude: &[Rect]) -> Result<(Vec<Rect>, bool), St
     Ok((output, false))
 }
 
-fn digest_of(value: &Value) -> String {
-    format!("{:x}", Sha256::digest(canonical(value).as_bytes()))
-}
-
-/// Key-sorted JSON so a digest depends on content, never on map order.
-fn canonical(value: &Value) -> String {
-    match value {
-        Value::Object(map) => {
-            let entries: Vec<String> = map
-                .iter()
-                .map(|(key, child)| format!("{}:{}", Value::String(key.clone()), canonical(child)))
-                .collect();
-            format!("{{{}}}", entries.join(","))
-        }
-        Value::Array(items) => {
-            let entries: Vec<String> = items.iter().map(canonical).collect();
-            format!("[{}]", entries.join(","))
-        }
-        other => other.to_string(),
-    }
-}
 
 /// Content identity of one acquired feature.
 ///
@@ -1066,115 +938,6 @@ pub fn extend(held: &Coverage, completed: &Coverage) -> Result<Coverage, String>
     Ok(Coverage::from_rects(merged))
 }
 
-/// Canonical dataset ids a room knows how to acquire and refresh.
-pub const BUILDINGS_DATASET_ID: &str = "google_open_buildings";
-pub const CONTOURS_DATASET_ID: &str = "elevation_contours";
-
-/// The area rule this dataset's provider selects features with.
-///
-/// A refresh removes the rows an area already holds before the replacement
-/// lands, so it MUST remove them under the same rule the provider fetches
-/// under. Removing more than the provider will return loses a real building —
-/// a footprint crossing the edge of the area is exactly that case — and
-/// removing less leaves a duplicate of one behind. There is therefore no
-/// default here: a dataset whose rule is not recorded cannot be held or
-/// refreshed, and refusing is better than guessing at something destructive.
-///
-/// * `google_open_buildings` selects by **intersection**. Its governed door is
-///   Earth Engine `listFeatures`, whose `region` is an intersects predicate,
-///   and no further centre test is applied downstream — the provider's own
-///   receipt records `region_predicate: "upstream listFeatures region
-///   (intersects)"`.
-/// * `elevation_contours` selects by **intersection**: contours are generated
-///   for the area and clipped to it.
-///
-/// A provider that selects by centre — Microsoft's building index does, and
-/// records `region_predicate: "centroid inside AOI"` — must be registered here
-/// as `CentroidInside` before any of its rows may enter a room.
-///
-/// National reference subsets are addressed by per-resource digests, so their
-/// rule is recorded against the *provider*: the desktop reference cache selects
-/// rows whose geometry intersects the area (`reference_cache::intersects_area`),
-/// which is the same rule its subsets are admitted and refreshed under.
-pub const REFERENCE_CACHE_PROVIDER: &str = "desktop:reference_resource_cache";
-
-/// The cloud-resident datasets (foundation-datasets contract R2/R3) seed a
-/// project's cells through ds-brain's bounded read, whose boundary bound is
-/// `ST_INTERSECTS(geometry, boundary)`: a parcel crossing the cell's edge
-/// belongs to that cell, exactly as a footprint does. Recorded against the
-/// provider because the datasets are addressed by catalogue digests.
-pub const CLOUD_READ_PROVIDER: &str = "brain_data_distribution";
-
-pub fn acquisition_selection(dataset_id: &str, provider: &str) -> Result<AreaSelection, String> {
-    match (dataset_id, provider) {
-        (BUILDINGS_DATASET_ID | CONTOURS_DATASET_ID, _) => Ok(AreaSelection::Intersects),
-        (_, REFERENCE_CACHE_PROVIDER | CLOUD_READ_PROVIDER) => Ok(AreaSelection::Intersects),
-        (other, provider) => Err(format!(
-            "dataset `{other}` from provider `{provider}` does not record the area rule its provider selects with; register it in acquisition_selection before a room may hold or refresh it"
-        )),
-    }
-}
-
-/// How far outside the requested area a provider's intersects predicate may
-/// still say yes, in degrees (about one metre at project latitudes).
-///
-/// The providers decide intersection on the sphere with their own error
-/// margin — Earth Engine's `region` is geodesic and tolerant to roughly a
-/// metre — while the kernel decides it exactly in the plane. A footprint whose
-/// edge lies within centimetres of the area's boundary is therefore an
-/// upstream yes and a local no, and the seed that met one refused a whole
-/// acquisition over a row the provider selected correctly. The margin is the
-/// provider's rule written down, not a relaxation of it: a row farther out
-/// than any provider margin is still the overfetch or boundary defect the
-/// refusal exists to catch.
-///
-/// The desktop reference cache has no margin: its index answers this very
-/// predicate (`reference_cache::intersects_area`) exactly, in the plane.
-pub const PROVIDER_BOUNDARY_MARGIN_DEG: f64 = 1e-5;
-
-/// Does this dataset's acquisition select `feature` for `area`?
-///
-/// Admitting an acquired row and deleting the row it replaces are the same
-/// question, so they are the same call. Nothing may re-answer it locally. An
-/// intersects rule carries the provider's boundary margin, so a row the
-/// provider selected at its edge is selected here at the same edge — on
-/// admission and on the deletion that replaces it.
-///
-/// The margin grows a row's bounds, not its geometry, so it selects a road
-/// whose bounds cross into the area where the road itself does not. A remote
-/// provider may return that road; the desktop reference cache never does, so
-/// a margin there would delete, on any later tile's replacement, a road an
-/// earlier seed holds and the index never hands back. It selects exactly.
-pub fn acquisition_selects(
-    dataset_id: &str,
-    provider: &str,
-    feature: &Value,
-    area: &Value,
-) -> Result<bool, String> {
-    let selection = acquisition_selection(dataset_id, provider)?;
-    if crate::reference_cache::selects_area(feature, area, selection)? {
-        return Ok(true);
-    }
-    if selection != AreaSelection::Intersects || provider == REFERENCE_CACHE_PROVIDER {
-        return Ok(false);
-    }
-    // Within the margin: the feature's bounds, grown by the margin, meet the
-    // area. Bounds are a superset of the geometry, so this admits nothing the
-    // exact test would refuse by more than the margin plus the feature's own
-    // extent — a nearby building, never a distant one.
-    let Some([w, s, e, n]) = crate::reference_cache::feature_bounds(feature) else {
-        return Ok(false);
-    };
-    let m = PROVIDER_BOUNDARY_MARGIN_DEG;
-    let grown = serde_json::json!({
-        "type": "Feature",
-        "properties": {},
-        "geometry": {"type": "Polygon", "coordinates": [[
-            [w - m, s - m], [e + m, s - m], [e + m, n + m], [w - m, n + m], [w - m, s - m]
-        ]]}
-    });
-    crate::reference_cache::selects_area(&grown, area, AreaSelection::Intersects)
-}
 
 /// Reject an oversized or malformed source receipt outright.
 ///

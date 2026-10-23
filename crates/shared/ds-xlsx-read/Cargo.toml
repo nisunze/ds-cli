@@ -1,0 +1,14 @@
+[package]
+name = "ds-xlsx-read"
+description = "The bounded OOXML workbook reader shared by the Kernel's asset previews and the Reporter's structure-description binding: cached cell values, one bounded grid per sheet, no formula evaluation, no IO."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = { version = "0.41", default-features = false, features = ["encoding"] }

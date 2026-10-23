@@ -99,7 +99,7 @@ fn exact_binary64(number: &Number) -> Result<f64, String> {
 /// ECMAScript `Number::toString`: the shortest digit string that round-trips,
 /// in fixed notation between 1e-6 (inclusive) and 1e21 (exclusive), otherwise
 /// scientific with a signed exponent. The digits use the same Ryu formatter as the native edge authority.
-pub(crate) fn ecmascript_number(value: f64) -> String {
+pub fn ecmascript_number(value: f64) -> String {
     if value == 0.0 {
         return "0".to_string();
     }

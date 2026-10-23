@@ -1254,31 +1254,8 @@ pub fn plan_style_edit(
         payload,
     })
 }
-/// Canonical authored JSON digest; catalogue-provided digests take precedence
-/// where a seeded document and its stored head have separate provenance.
-pub fn style_digest(document: &Value) -> String {
-    use sha2::{Digest, Sha256};
-    fn canonical(value: &Value) -> Value {
-        match value {
-            Value::Object(object) => Value::Object(
-                object
-                    .iter()
-                    .map(|(k, v)| (k.clone(), canonical(v)))
-                    .collect::<std::collections::BTreeMap<_, _>>()
-                    .into_iter()
-                    .collect(),
-            ),
-            Value::Array(values) => Value::Array(values.iter().map(canonical).collect()),
-            _ => value.clone(),
-        }
-    }
-    let mut document = document.clone();
-    normalize_json_numbers(&mut document);
-    format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(&canonical(&document)).expect("JSON style"))
-    )
-}
+/// Canonical authored JSON digest (the print contract owns the rule).
+pub use ds_report_contracts::style_document::style_digest;
 
 /// Bounded headless description of one style, plus what its layer's fields
 /// actually carry.

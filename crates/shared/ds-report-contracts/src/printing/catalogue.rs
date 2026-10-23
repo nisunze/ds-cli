@@ -1,6 +1,6 @@
 //! Explicit template organization shared by native and web consumers.
 //! Names, paper formats and retired layout fields never decide classification.
-use super::{page_role::PageRole, preview::SubjectKind, PaperSpec};
+use super::{page_role::PageRole, PaperSpec};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -663,24 +663,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn classification_edit_preserves_body_and_clear_restores_legacy_shape() {
-        let original = serde_json::to_value(super::super::default_layout()).unwrap();
-        assert!(original.get("classification").is_none());
-        let run = |request| -> Result<serde_json::Value, String> {
-            let bytes = serde_json::to_vec(&request).unwrap();
-            let output = super::super::evaluate(&bytes)?;
-            serde_json::from_str(&output).map_err(|e| e.to_string())
-        };
-        let classified = run(json!({"op":"set_classification","layout":original,"classification":{"purpose":"lv_transformer","role":"network"}})).unwrap();
-        let mut expected = original.clone();
-        expected["classification"] = json!({"purpose":"lv_transformer","role":"network"});
-        assert_eq!(classified["layout"], expected);
-        assert_eq!(run(json!({"op":"set_classification","layout":classified["layout"],"classification":null})).unwrap()["layout"], original);
-        assert!(run(json!({"op":"set_classification","layout":original,"classification":{"purpose":"a4","role":"report"}})).is_err());
-        assert!(run(json!({"op":"set_classification","layout":original,"classification":{"purpose":"project","role":"guess","paper":"A0"}})).is_err());
-    }
-
     fn governed_capture() -> (Value, Value) {
         let html = "<!doctype html><html><body>Governed document source</body></html>";
         let payload = json!({"html":html,"status_layout":{"paper":{"size":"A4","orientation":"portrait"}},"logo_slots":[]});
@@ -744,87 +726,6 @@ mod tests {
     }
 
     #[test]
-    fn mv_sheets_hold_only_the_a3_landscape_plan_and_profile_sheet() {
-        let rows = serde_json::from_value(json!([
-            {"id":"district","name":"Nyaruguru MV district map","paper":{"size":"A3","orientation":"landscape"},"classification":{"purpose":"mv_model","role":"network"}},
-            {"id":"portrait","name":"Nyamagabe MV district map","paper":{"size":"A3","orientation":"portrait"},"classification":{"purpose":"mv_model","role":"plan_profile"}},
-            {"id":"pp","name":"MV plan and profile","paper":{"size":"A3","orientation":"landscape"},"classification":{"purpose":"mv_model","role":"plan_profile"}},
-            {"id":"overview","name":"Project overview","paper":{"size":"A3","orientation":"landscape"},"classification":{"purpose":"project","role":"overview"}}
-        ]))
-        .unwrap();
-        let out = serde_json::to_value(project(rows, None, None).unwrap()).unwrap();
-        let mv = &out["groups"][0];
-        assert_eq!(mv["purpose"], "mv_model");
-        assert_eq!(mv["roles"].as_array().unwrap().len(), 1);
-        assert_eq!(mv["roles"][0]["role"], "plan_profile");
-        let sheets = mv["roles"][0]["templates"].as_array().unwrap();
-        assert_eq!(sheets.len(), 1);
-        assert_eq!(sheets[0]["id"], "pp");
-        assert_eq!(sheets[0]["subject"], "mv_models");
-        assert!(sheets[0].get("mismatch").is_none());
-        assert_eq!(
-            out["groups"][1]["roles"][0]["templates"][0]["subject"],
-            "extent"
-        );
-        // Stored mismatches stay listed, flagged, as Unclassified.
-        let unclassified = &out["groups"][2];
-        assert_eq!(unclassified["label"], "Unclassified");
-        let flagged = unclassified["roles"][0]["templates"].as_array().unwrap();
-        assert_eq!(flagged.len(), 2);
-        for template in flagged {
-            assert_eq!(
-                template["mismatch"]["code"],
-                "print_classification_mv_requires_plan_profile"
-            );
-            assert_eq!(template["mismatch"]["stored"]["purpose"], "mv_model");
-            assert!(template.get("subject").is_none());
-        }
-        // Authoring admits MV Sheets only for a layout carrying an MV setup.
-        let set = |layout: &Value, classification: Value| {
-            super::super::evaluate(
-                &serde_json::to_vec(&json!({"op":"set_classification","layout":layout,"classification":classification}))
-                    .unwrap(),
-            )
-        };
-        let plain = serde_json::to_value(super::super::default_layout()).unwrap();
-        for role in ["network", "plan_profile"] {
-            assert!(set(&plain, json!({"purpose":"mv_model","role":role}))
-                .unwrap_err()
-                .starts_with("print_classification_invalid: MV Sheets hold only"));
-        }
-        assert!(set(&plain, json!({"purpose":"project","role":"overview"})).is_ok());
-        let mv_layout: Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/mv-global-canonical.json"
-        ))
-        .unwrap();
-        let classified: Value = serde_json::from_str(
-            &set(
-                &mv_layout,
-                json!({"purpose":"mv_model","role":"plan_profile"}),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(
-            classified["layout"]["classification"],
-            json!({"purpose":"mv_model","role":"plan_profile"})
-        );
-        assert!(set(&mv_layout, json!({"purpose":"mv_model","role":"network"})).is_err());
-    }
-
-    #[test]
-    fn front_matter_admits_only_front_matter_roles() {
-        let layout = serde_json::to_value(super::super::default_layout()).unwrap();
-        let run = |classification: Value| {
-            super::super::evaluate(&serde_json::to_vec(&json!({"op":"set_classification","layout":layout,"classification":classification})).unwrap())
-        };
-        assert!(run(json!({"purpose":"front_matter","role":"key_map"})).is_ok());
-        assert!(run(json!({"purpose":"front_matter","role":"plan_profile"}))
-            .unwrap_err()
-            .starts_with("print_classification_invalid"));
-    }
-
-    #[test]
     fn governed_a4_keeps_document_identity_separate_from_a_layout_with_same_id() {
         let (capture, response) = governed_capture();
         let rows =
@@ -856,5 +757,40 @@ mod tests {
         changed["project_id"] = json!("another_project");
         assert!(read_governed(a4.location.clone(), changed).is_err());
         assert!(read_governed(Location::Layout { id: A4_ID.into() }, Value::Null).is_err());
+    }
+}
+
+/// The kind of subject a template previews against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SubjectKind {
+    Layout,
+    Transformer,
+    MvModels,
+    Extent,
+}
+
+impl SubjectKind {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Layout => "layout",
+            Self::Transformer => "transformer",
+            Self::MvModels => "mv_models",
+            Self::Extent => "extent",
+        }
+    }
+    /// Explicit role narrows front matter to captured page or geographic input.
+    pub fn of(classification: Classification) -> Self {
+        match classification.purpose {
+            Purpose::FrontMatter
+                if matches!(classification.role, PageRole::KeyMap | PageRole::KeyPlan) =>
+            {
+                Self::Extent
+            }
+            Purpose::FrontMatter => Self::Layout,
+            Purpose::MvModel => Self::MvModels,
+            Purpose::Project => Self::Extent,
+            Purpose::LvTransformer | Purpose::VoltageDrop => Self::Transformer,
+        }
     }
 }
