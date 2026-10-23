@@ -171,7 +171,7 @@ fn layer_digest() -> String {
     ))
     .unwrap()
 }
-fn preflight(lane: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
+fn preflight(lane: &str) -> Result<Option<ds_cli_report::Reporter>, Failure> {
     stage("preflight")?;
     CALLS.with(|c| c.borrow_mut().preflight_lanes.push(lane.to_owned()));
     Ok(None)
@@ -202,7 +202,7 @@ fn held_renderer_policy(lane: &str, project: &str) -> Result<Value, Failure> {
 fn print(
     inputs: &Inputs,
     _: &Context,
-    _: Option<&ds_cli_exec::CapturedExternal>,
+    _: Option<&ds_cli_report::Reporter>,
 ) -> Result<Value, Failure> {
     stage("print")?;
     let lane = inputs.require("lane")?;
@@ -399,7 +399,7 @@ fn retry_preflight_keeps_captured_successful_save_evidence_without_effects() {
     let temp = tempfile::tempdir().unwrap();
     let directory = temp.path().join("run");
     run_with(&inputs(&directory, &[]), &context(true), &MOCK).unwrap();
-    fn missing(_: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
+    fn missing(_: &str) -> Result<Option<ds_cli_report::Reporter>, Failure> {
         Err(Failure::unavailable("reporter_browser_missing", "gone")
             .remedy("configure chromium for reporter"))
     }
@@ -432,14 +432,14 @@ fn print_preflight_refuses_before_directory_or_project_effects() {
         reset();
         let temp = tempfile::tempdir().unwrap();
         let directory = temp.path().join("run");
-        fn missing_reporter(_: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
+        fn missing_reporter(_: &str) -> Result<Option<ds_cli_report::Reporter>, Failure> {
             Err(Failure::unavailable("reporter_engine_missing", "missing")
                 .remedy("install reporter"))
         }
-        fn missing_task(_: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
+        fn missing_task(_: &str) -> Result<Option<ds_cli_report::Reporter>, Failure> {
             Err(Failure::unavailable("unknown_task", "missing").remedy("update reporter"))
         }
-        fn missing_browser(_: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
+        fn missing_browser(_: &str) -> Result<Option<ds_cli_report::Reporter>, Failure> {
             Err(Failure::unavailable("reporter_browser_missing", "missing")
                 .remedy("configure chromium for reporter"))
         }

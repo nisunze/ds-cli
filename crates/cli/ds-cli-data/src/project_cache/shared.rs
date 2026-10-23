@@ -15,6 +15,7 @@
 //! this file only performs the effects.
 
 use super::*;
+use ds_cli_exec::reporter::Task as ReporterTask;
 use ds_command_kernel::project_dataset_revisions::{
     self as chain, google_open_buildings as google, tasks,
 };
@@ -22,12 +23,10 @@ use ds_project_data::revisions::{
     self as shared, Head, Output, Publication, Publish, Published, SharedFailure, SourceBatch,
 };
 use ds_sync_runtime::{Gateway, SyncRoute};
-use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::time::Duration;
 
 const ENGINE_TIMEOUT: Duration = Duration::from_secs(45 * 60);
-const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(20);
 const PUBLIC_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 /// The largest publisher tile Core reads (the densest level-6 tiles are a
 /// few hundred megabytes).
@@ -274,7 +273,7 @@ impl shared::RevisionHost for NativeRevisions {
 /// Core's own acquisition for the two derived datasets.
 pub(super) struct CoreSource<'a> {
     pub(super) lane: &'a str,
-    engine: Option<ds_cli_exec::CapturedExternal>,
+    engine: Option<ds_cli_exec::reporter::Reporter>,
     /// Publisher tiles downloaded by this run.
     pub(super) tiles_fetched: usize,
     pub(super) cells_derived: usize,
@@ -292,35 +291,30 @@ impl<'a> CoreSource<'a> {
         }
     }
 
-    /// The Reporter, captured once and only when work needs it, and checked
-    /// to publish the offline task this seed calls.
-    pub(super) fn engine(&mut self) -> Result<&ds_cli_exec::CapturedExternal, SharedFailure> {
+    /// The Reporter, captured once through the Kernel's Reporter client and
+    /// only when work needs it, and checked to register the offline tasks this
+    /// seed calls.
+    pub(super) fn engine(&mut self) -> Result<&ds_cli_exec::reporter::Reporter, SharedFailure> {
         if self.engine.is_none() {
-            let base = ds_cli_exec::addons::managed_module_base()
+            let captured = ds_cli_exec::reporter::Reporter::capture_for_lane(self.lane)
                 .map_err(|failure| host("reporter_engine_missing", failure.message().to_owned()))?;
-            let captured = ds_cli_exec::addons::REPORTER
-                .capture_for_lane_in(self.lane, &base)
-                .map_err(|failure| host("reporter_engine_missing", failure.message().to_owned()))?;
-            let catalogue = captured
-                .call_json("task-schemas", &[], DISCOVERY_TIMEOUT)
-                .map_err(|failure| {
-                    host("reporter_engine_incompatible", failure.message().to_owned())
-                })?;
             for task in [
-                tasks::FOOTPRINTS_SUBCOMMAND,
-                tasks::CONTOUR_PLAN_SUBCOMMAND,
-                tasks::CONTOURS_SUBCOMMAND,
+                ReporterTask::PreparePublisherFootprints,
+                ReporterTask::PlanContourLattice,
+                ReporterTask::DeriveContours,
             ] {
-                let published = catalogue["tasks"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .any(|entry| entry["subcommand"] == task && entry["network"] == "none");
-                if !published {
+                let entry = captured.require(task).map_err(|failure| {
+                    host(
+                        "reporter_engine_incompatible",
+                        format!("{}; update Reporter", failure.message()),
+                    )
+                })?;
+                if entry["network"] != "none" {
                     return Err(host(
                         "reporter_engine_incompatible",
                         format!(
-                            "the installed Reporter does not publish the offline {task} task; update Reporter"
+                            "the installed Reporter does not publish the offline {} task; update Reporter",
+                            task.name()
                         ),
                     ));
                 }
@@ -333,11 +327,9 @@ impl<'a> CoreSource<'a> {
     /// The engine release a revision is published under.
     pub(super) fn engine_release(&mut self) -> Result<(String, String), SharedFailure> {
         let engine = self.engine()?;
-        let document = engine
-            .call_json("build-info", &[], DISCOVERY_TIMEOUT)
-            .map_err(|failure| {
-                host("reporter_engine_incompatible", failure.message().to_owned())
-            })?;
+        let document = engine.build_info().map_err(|failure| {
+            host("reporter_engine_incompatible", failure.message().to_owned())
+        })?;
         let identity = ds_command_kernel::report_export::engine_identity(&document)
             .map_err(|error| host("reporter_engine_incompatible", error))?;
         Ok((identity.engine_version, identity.build_manifest_sha256))
@@ -345,11 +337,12 @@ impl<'a> CoreSource<'a> {
 
     fn task<R: serde::Serialize, T: serde::de::DeserializeOwned>(
         &mut self,
-        subcommand: &'static str,
+        task: ReporterTask,
         request: &R,
         scratch: &Path,
         name: &str,
     ) -> Result<T, SharedFailure> {
+        let subcommand = task.subcommand();
         let request_path = scratch.join(format!("{name}-request.json"));
         let result_path = scratch.join(format!("{name}-result.json"));
         std::fs::write(
@@ -358,19 +351,13 @@ impl<'a> CoreSource<'a> {
                 .map_err(|error| ds_project_data::Failure::Store(error.to_string()))?,
         )
         .map_err(|error| ds_project_data::Failure::Store(error.to_string()))?;
-        let args = [
-            OsString::from("--request"),
-            request_path.clone().into(),
-            OsString::from("--result"),
-            result_path.clone().into(),
-        ];
         let completed = self
             .engine()?
-            .call(subcommand, &args, ENGINE_TIMEOUT)
+            .run(task, &request_path, &result_path, ENGINE_TIMEOUT)
             .map_err(|failure| host("engine_refused", failure.message().to_owned()))?;
         let _ = std::fs::remove_file(&request_path);
         if !completed.succeeded() {
-            let message = completed.stderr.trim().to_owned();
+            let message = completed.stderr().trim().to_owned();
             let code = [
                 "publisher_input_invalid",
                 "publisher_input_malformed",
@@ -435,7 +422,7 @@ impl<'a> CoreSource<'a> {
             out_dir: out_dir.clone(),
         };
         let result: tasks::FootprintsResult = self.task(
-            tasks::FOOTPRINTS_SUBCOMMAND,
+            ReporterTask::PreparePublisherFootprints,
             &request,
             scratch,
             "footprints",
@@ -495,7 +482,7 @@ impl<'a> CoreSource<'a> {
         for (index, cell) in cells.iter().enumerate() {
             let points_path = scratch.join(format!("contour-points-{index}.json"));
             let plan: tasks::ContourPlanResult = self.task(
-                tasks::CONTOUR_PLAN_SUBCOMMAND,
+                ReporterTask::PlanContourLattice,
                 &tasks::ContourPlanRequest {
                     schema: tasks::CONTOUR_PLAN_REQUEST.into(),
                     cell: *cell,
@@ -537,7 +524,7 @@ impl<'a> CoreSource<'a> {
             .map_err(|error| ds_project_data::Failure::Store(error.to_string()))?;
             let out = scratch.join(format!("contour-page-{index}.geojsonl"));
             let result: tasks::ContoursResult = self.task(
-                tasks::CONTOURS_SUBCOMMAND,
+                ReporterTask::DeriveContours,
                 &tasks::ContoursRequest {
                     schema: tasks::CONTOURS_REQUEST.into(),
                     dataset_id: dataset.id.clone(),
@@ -905,7 +892,7 @@ pub(super) fn reporter_converter(
             .ok_or_else(|| Error::Store("the conversion has no staging directory".into()))?;
         source
             .task(
-                tasks::FOOTPRINTS_SUBCOMMAND,
+                ReporterTask::PreparePublisherFootprints,
                 request,
                 &scratch,
                 "publisher-input",

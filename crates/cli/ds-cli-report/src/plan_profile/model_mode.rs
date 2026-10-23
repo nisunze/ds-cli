@@ -30,10 +30,10 @@ pub(super) enum RenderTask {
     Model,
 }
 impl RenderTask {
-    pub(super) fn subcommand(self) -> &'static str {
+    pub(super) fn reporter_task(self) -> crate::ReporterTask {
         match self {
-            Self::Projection => "render-grid-plan-profile",
-            Self::Model => "render-grid-plan-profile-model",
+            Self::Projection => crate::ReporterTask::RenderGridPlanProfile,
+            Self::Model => crate::ReporterTask::RenderGridPlanProfileModel,
         }
     }
 }

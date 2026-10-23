@@ -140,8 +140,14 @@ fn model_and_projection_requests_share_governed_setup_and_allowed_assets_exactly
         Some(Path::new("/plan.json")),
     );
     let (model_task, mut model) = bind_request(common.clone(), Some(&source), None, None);
-    assert_eq!(projection_task.subcommand(), "render-grid-plan-profile");
-    assert_eq!(model_task.subcommand(), "render-grid-plan-profile-model");
+    assert_eq!(
+        projection_task.reporter_task().subcommand(),
+        "render-grid-plan-profile"
+    );
+    assert_eq!(
+        model_task.reporter_task().subcommand(),
+        "render-grid-plan-profile-model"
+    );
     assert_eq!(model["expected_model_sha256"], digest);
     assert_eq!(model["expected_authored_revision"], "revision-native");
     assert!(model.get("scene_path").is_none());
@@ -174,14 +180,14 @@ fn staged_dispatch_uses_only_fixed_model_or_projection_task_and_identical_reques
     let request_path = dir.path().join("request-copy");
     let quote = |path: &Path| path.to_string_lossy().replace('\'', "'\\''");
     let script = format!(
-        "#!/bin/sh\ntask=\"$1\"; shift\nwhile [ $# -gt 0 ]; do case \"$1\" in --request) request=\"$2\"; shift 2;; --result) result=\"$2\"; shift 2;; *) exit 9;; esac; done\nprintf '%s' \"$task\" > '{}'\ncp \"$request\" '{}'\nprintf '%s' '{{\"status\":\"ok\"}}' > \"$result\"\n",
+        "#!/bin/sh\nif [ \"$1\" = task-schemas ]; then printf '%s' '{{\"tasks\":[{{\"name\":\"render_grid_plan_profile\",\"subcommand\":\"render-grid-plan-profile\"}},{{\"name\":\"render_grid_plan_profile_model\",\"subcommand\":\"render-grid-plan-profile-model\"}}]}}'; exit 0; fi\ntask=\"$1\"; shift\nwhile [ $# -gt 0 ]; do case \"$1\" in --request) request=\"$2\"; shift 2;; --result) result=\"$2\"; shift 2;; *) exit 9;; esac; done\nprintf '%s' \"$task\" > '{}'\ncp \"$request\" '{}'\nprintf '%s' '{{\"status\":\"ok\"}}' > \"$result\"\n",
         quote(&task_path),
         quote(&request_path)
     );
     fs::write(&executable, script).unwrap();
     use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
-    let engine = DS_REPORT.capture_pinned(&executable).unwrap();
+    let engine = crate::Reporter::capture_pinned(&executable).unwrap();
     for task in [RenderTask::Projection, RenderTask::Model] {
         let staged = Staged::new(None).unwrap();
         let bytes =
@@ -191,7 +197,10 @@ fn staged_dispatch_uses_only_fixed_model_or_projection_task_and_identical_reques
             staged.render(&engine, bytes.clone(), task).unwrap()["status"],
             "ok"
         );
-        assert_eq!(fs::read_to_string(&task_path).unwrap(), task.subcommand());
+        assert_eq!(
+            fs::read_to_string(&task_path).unwrap(),
+            task.reporter_task().subcommand()
+        );
         assert_eq!(fs::read(&request_path).unwrap(), bytes);
     }
 }

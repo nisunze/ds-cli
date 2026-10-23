@@ -26,6 +26,11 @@ impl Harness {
             &engine,
             r#"#!/bin/sh
 set -eu
+# The Kernel Reporter client admits the task from the catalogue first.
+if test "${1:-}" = task-schemas; then
+    printf '%s' '{"tasks":[{"name":"render_mv_frontmatter","subcommand":"render-mv-frontmatter"}]}'
+    exit 0
+fi
 test "$#" = 5
 test "$1" = render-mv-frontmatter
 test "$2" = --request

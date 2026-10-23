@@ -1,7 +1,6 @@
 //! `ds report voltage-drop-combined` — one local A3 overview from the
 //! reporter's typed, roster-pinned voltage-drop task.
 
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -12,7 +11,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, ExitClass, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DS_REPORT, ENGINE_LANE, EXPORT_TIMEOUT, capture_engine};
+use crate::{ENGINE_LANE, EXPORT_TIMEOUT, ReporterTask, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "report.voltage-drop-combined",
@@ -54,6 +53,7 @@ pub static COMMAND: Command = Command {
     refusals: &[
         crate::ENGINE_MISSING,
         crate::ENGINE_RECEIPT_INVALID,
+        crate::ENGINE_TASK_UNKNOWN,
         Refusal {
             code: "path_not_absolute",
             when: "--request or --result is a relative path",
@@ -107,13 +107,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .remedy("choose a fresh receipt path"));
     }
     let engine = capture_engine(inputs)?;
-    let args = vec![
-        OsString::from("--request"),
-        request.into(),
-        OsString::from("--result"),
-        result.clone().into(),
-    ];
-    let completed = engine.call("render-voltage-drop-combined", &args, EXPORT_TIMEOUT);
+    let completed = engine.run(
+        ReporterTask::RenderVoltageDropCombined,
+        &request,
+        &result,
+        EXPORT_TIMEOUT,
+    );
     // Read even after a process-level error: the owner may have written a
     // refusal before the process timed out or could no longer be waited on.
     let document = std::fs::read(&result)
@@ -138,9 +137,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     };
     let completed = completed.map_err(receipt_detail)?;
     if !completed.succeeded() {
-        return Err(receipt_detail(
-            DS_REPORT.failure_from(&completed, "render-voltage-drop-combined"),
-        ));
+        return Err(receipt_detail(completed.refusal()));
     }
     let valid = document.as_ref().is_ok_and(|document| {
         document["schema"] == "ds.voltage-drop-combined.render-receipt/v1"
@@ -152,7 +149,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "reporter returned no complete combined voltage-drop receipt",
         )
         .remedy("inspect detail.receipt or result_path and the reporter version; use fresh output paths")
-        .detail(json!({"engine": completed.stderr}))));
+        .detail(json!({"engine": completed.stderr()}))));
     }
     let mut document = document.expect("the complete receipt was checked above");
     if retained {

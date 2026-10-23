@@ -11,8 +11,6 @@
 //! engine that owns them, at the version actually installed, so they cannot
 //! be stale.
 
-use std::ffi::OsString;
-
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -20,7 +18,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DISCOVERY_TIMEOUT, ENGINE_LANE, capture_engine};
+use crate::{ENGINE_LANE, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "report.tasks",
@@ -82,8 +80,8 @@ fn availability() -> Availability {
 
 /// Fetch the engine's published schemas. Shared with `ds report export`,
 /// which checks task admission against the same captured engine before rendering.
-pub fn schemas(engine: &ds_cli_exec::CapturedExternal) -> Result<Value, Failure> {
-    engine.call_json("task-schemas", &[] as &[OsString], DISCOVERY_TIMEOUT)
+pub fn schemas(engine: &crate::Reporter) -> Result<Value, Failure> {
+    engine.task_catalogue().cloned()
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {

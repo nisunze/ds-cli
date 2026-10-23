@@ -29,10 +29,6 @@ const SPAWN_OWNERS: &[(&str, &str)] = &[
         "captured verified Network executable runs only fixed profile-session with private request/output paths and an admitted positive worker budget; no caller executable or argv, managed identity revalidated before spawn",
     ),
     (
-        "crates/cli/ds-cli-report/src/project/export.rs",
-        "captured Reporter executable runs only fixed render-grid-plan-profile over host-owned retained request/result paths; no caller executable or argv, owner retains the render lock and failure journal",
-    ),
-    (
         "crates/kernel/ds-assets-pdf-host/src/lib.rs",
         "native Assets PDF text owner runs only fixed /usr/bin/prlimit plus /usr/bin/pdfinfo or /usr/bin/pdftotext, closed decoder choice and validated numeric page, over private governed bytes with memory/CPU/deadline/output limits; no caller executable, argv, environment or URL",
     ),
@@ -50,8 +46,9 @@ const SPAWN_OWNERS: &[(&str, &str)] = &[
     ),
     (
         "crates/kernel/ds-cli-exec/src/lib.rs",
-        "the audited engine boundary: one named `&'static str` subcommand per call, \
-         for the owners that chose process separation (ds-report, ds-solar)",
+        "the audited engine boundary: one named `&'static str` subcommand per call (waited, \
+         or launched detached over host-owned result paths), for the owners that chose \
+         process separation (ds-report through its Kernel Reporter client, ds-solar)",
     ),
     (
         "crates/cli/ds-cli-pls/src/desktop/run.rs",
@@ -271,4 +268,83 @@ fn solar_background_worker_has_a_closed_self_invocation() {
         assert!(source.contains(&format!("\"{flag}\"")));
     }
     assert!(!source.contains("args: &["));
+}
+
+/// Contract 5: Core reaches an engine only through the Kernel's one
+/// engine-call owner for it — `ds_cli_exec::reporter::Reporter` (closed
+/// tasks, catalogue admission before work) and `ds_network_client` for
+/// Network. A CLI crate that captures an engine external, reads an engine's
+/// discovery documents, maps an engine refusal or declares its own engine
+/// executable bypasses that owner and fails here.
+const ENGINE_BYPASS_TOKENS: &[&str] = &[
+    "addons::REPORTER",
+    "addons::NETWORK",
+    "ds_cli_exec::External",
+    "CapturedExternal",
+    "call_json(",
+    ".failure_from(",
+];
+
+/// CLI files that still hold the Solar engine's captured executable
+/// directly. Solar's Kernel client is the queued next step (Kernel OPEN.md,
+/// section 1); this inventory may only shrink. Reporter and Network have no
+/// exception.
+const SOLAR_PENDING: &[&str] = &[
+    "crates/cli/ds-cli-solar/src/calculate_prepared.rs",
+    "crates/cli/ds-cli-solar/src/engine.rs",
+    "crates/cli/ds-cli-solar/src/lib.rs",
+    "crates/cli/ds-cli-solar/src/run.rs",
+];
+
+fn engine_bypass_files() -> BTreeSet<String> {
+    let root = workspace_root();
+    let mut sources = Vec::new();
+    for crate_dir in std::fs::read_dir(root.join("crates/cli")).expect("crates/cli exists") {
+        let source = crate_dir.expect("a crate directory").path().join("src");
+        if source.is_dir() {
+            rust_sources(&source, &mut sources);
+        }
+    }
+    let mut found = BTreeSet::new();
+    for path in sources {
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        if name.ends_with("_tests.rs") || name == "tests.rs" {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("a UTF-8 source file");
+        let shipped = text.split("#[cfg(test)]").next().unwrap_or_default();
+        if ENGINE_BYPASS_TOKENS
+            .iter()
+            .any(|token| shipped.contains(token))
+        {
+            found.insert(
+                path.strip_prefix(&root)
+                    .expect("inside the workspace")
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+    found
+}
+
+#[test]
+fn cli_crates_reach_engines_only_through_the_kernel_engine_call_owners() {
+    let found = engine_bypass_files();
+    let pending: BTreeSet<String> = SOLAR_PENDING.iter().map(|p| (*p).to_owned()).collect();
+    let bypasses: Vec<&String> = found.difference(&pending).collect();
+    assert!(
+        bypasses.is_empty(),
+        "these CLI files capture or call an engine outside the Kernel engine-call owner: \
+         {bypasses:?}\nCall `ds_cli_exec::reporter::Reporter` (Reporter) or \
+         `ds_network_client` (Network) instead; see docs/contracts/process-boundary-contract.md."
+    );
+    let stale: Vec<&String> = pending.difference(&found).collect();
+    assert!(
+        stale.is_empty(),
+        "these pinned Solar entries no longer bypass the Kernel owner; remove them: {stale:?}"
+    );
 }

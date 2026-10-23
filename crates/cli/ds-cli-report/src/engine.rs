@@ -7,7 +7,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DISCOVERY_TIMEOUT, ENGINE_LANE, capture_engine};
+use crate::{ENGINE_LANE, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "report.engine",
@@ -53,8 +53,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     run_captured(capture_engine(inputs)?)
 }
 
-pub(crate) fn run_captured(engine: ds_cli_exec::CapturedExternal) -> Result<Value, Failure> {
-    let identity = engine.call_json("build-info", &[], DISCOVERY_TIMEOUT)?;
+pub(crate) fn run_captured(engine: crate::Reporter) -> Result<Value, Failure> {
+    let identity = engine.build_info()?;
     Ok(json!({
         "binary": "reporter",
         "path": engine.executable().display().to_string(),

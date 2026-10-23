@@ -7,6 +7,7 @@ use std::{io::Read, path::PathBuf};
 
 pub(crate) const REFUSALS: &[Refusal] = &[
     crate::ENGINE_RECEIPT_INVALID,
+    crate::ENGINE_TASK_UNKNOWN,
     crate::project::NATIVE_PROFILE,
     crate::project::NATIVE_PROFILE_DIGEST,
     crate::project::NATIVE_PROFILE_UNSAFE,

@@ -2,7 +2,6 @@
 //! ds-network-reporter owns the workbook; this command only passes its typed
 //! request and returns its machine-readable receipt.
 
-use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -15,7 +14,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DS_REPORT, ENGINE_LANE, EXPORT_TIMEOUT, capture_engine};
+use crate::{ENGINE_LANE, EXPORT_TIMEOUT, ReporterTask, capture_engine};
 
 const SOURCE_MISSING: Refusal = Refusal {
     code: "spatial_receipt_missing",
@@ -83,6 +82,7 @@ pub static COMMAND: Command = Command {
     refusals: &[
         crate::ENGINE_MISSING,
         crate::ENGINE_RECEIPT_INVALID,
+        crate::ENGINE_TASK_UNKNOWN,
         SOURCE_MISSING,
         OUTPUT_EXISTS,
         REQUEST_FAILED,
@@ -167,13 +167,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         );
     }
     drop(file);
-    let args = [
-        OsString::from("--request"),
-        request_path.clone().into(),
-        OsString::from("--result"),
-        result_path.clone().into(),
-    ];
-    let completed = engine.call("export-spatial-sector-counts", &args, EXPORT_TIMEOUT);
+    let completed = engine.run(
+        ReporterTask::ExportSpatialSectorCounts,
+        &request_path,
+        &result_path,
+        EXPORT_TIMEOUT,
+    );
     let _ = std::fs::remove_file(&request_path);
     let completed = completed?;
     let document = std::fs::read(&result_path)
@@ -181,7 +180,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
     let _ = std::fs::remove_file(&result_path);
     if !completed.succeeded() {
-        return Err(DS_REPORT.failure_from(&completed, "export-spatial-sector-counts"));
+        return Err(completed.refusal());
     }
     let document = document.ok_or_else(|| {
         Failure::failed(ENGINE_REFUSED.code, "reporter returned no workbook receipt")

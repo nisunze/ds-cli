@@ -432,6 +432,7 @@ const COMPOUNDED_PARTS: &[&[Refusal]] = &[
         combined::ARCHIVE_TOO_LARGE,
         combined::STORE_UNREADABLE,
         crate::ENGINE_RECEIPT_INVALID,
+        crate::ENGINE_TASK_UNKNOWN,
     ],
     &grouping::REFUSALS,
     &[grouping::GROUPS_PARTIAL],

@@ -324,7 +324,7 @@ fn isolated_managed_reporter_consumers() {
     assert_eq!(
         export::run_with_capture(
             &invalid,
-            || -> Result<ds_cli_exec::CapturedExternal, ds_cli_contract::Failure> {
+            || -> Result<crate::Reporter, ds_cli_contract::Failure> {
                 panic!("invalid input must precede capture")
             },
         )

@@ -67,7 +67,7 @@ mod held_preview;
 
 use super::reuse::{self, Decision, OutputPlan, RunScope};
 use super::{LANE_ARG, TRANSFORMER_ARG};
-use crate::{DISCOVERY_TIMEOUT, DS_REPORT, EXPORT_TIMEOUT};
+use crate::EXPORT_TIMEOUT;
 
 const OUT_DIR_ARG: Arg = Arg::value(
     "out-dir",
@@ -365,6 +365,7 @@ pub(super) const REFUSALS: &[Refusal] = &[
     super::INVALID_SCOPE,
     super::RESERVED_IDENTITY,
     ENGINE_MISSING,
+    crate::ENGINE_TASK_UNKNOWN,
     CONTRACT_MISMATCH,
     TIMED_OUT,
     ENGINE_REFUSED,
@@ -509,76 +510,68 @@ fn availability() -> Availability {
     ds_cli_auth::native_availability()
 }
 
-/// `ds-report`, reached through the audited process boundary: one static
-/// subcommand per method, typed paths as arguments, never an argument vector
-/// from the host crate.
+/// The Reporter as this host's report engine: every method is one closed
+/// task of the Kernel's Reporter client, over typed request/result paths.
+/// This adapter names no subcommand and starts no process itself.
 pub(crate) struct CliEngine;
 
 impl CliEngine {
     /// The caller has already captured its native account/profile context.
     pub(crate) fn capture(lane: &str) -> Result<CapturedCliEngine, HostFailure> {
-        DS_REPORT
-            .capture_for_lane(lane)
+        crate::Reporter::capture_for_lane(lane)
             .map(CapturedCliEngine)
             .map_err(failure_to_host)
     }
 }
 
-pub(crate) struct CapturedCliEngine(ds_cli_exec::CapturedExternal);
+pub(crate) struct CapturedCliEngine(crate::Reporter);
 
 impl CapturedCliEngine {
     fn render(
         &self,
-        task: &'static str,
+        task: crate::ReporterTask,
         request: &Path,
         result: &Path,
     ) -> Result<EngineExit, HostFailure> {
         let completed = self
             .0
-            .call(
-                task,
-                &[
-                    "--request".into(),
-                    request.into(),
-                    "--result".into(),
-                    result.into(),
-                ],
-                EXPORT_TIMEOUT,
-            )
+            .run(task, request, result, EXPORT_TIMEOUT)
             .map_err(failure_to_host)?;
         Ok(EngineExit {
             succeeded: completed.succeeded(),
-            summary: bounded_summary(&completed.stderr, &completed.stdout),
+            summary: bounded_summary(completed.stderr(), completed.stdout()),
         })
     }
 }
 
 impl ReportEngine for CapturedCliEngine {
     fn build_info(&self) -> Result<Value, HostFailure> {
-        self.0
-            .call_json("build-info", &[], DISCOVERY_TIMEOUT)
-            .map_err(failure_to_host)
+        self.0.build_info().map_err(failure_to_host)
     }
     fn export_transformer_report(
         &self,
         request: &Path,
         result: &Path,
     ) -> Result<EngineExit, HostFailure> {
-        self.render("export-transformer-report", request, result)
+        self.render(
+            crate::ReporterTask::ExportTransformerReport,
+            request,
+            result,
+        )
     }
     fn render_print_layout(
         &self,
         request: &Path,
         result: &Path,
     ) -> Result<EngineExit, HostFailure> {
-        self.render("render-print-layout", request, result)
+        self.render(crate::ReporterTask::RenderPrintLayout, request, result)
     }
     fn render_grid_plan_profile(
         &self,
         request: &Path,
         result: &Path,
     ) -> Result<EngineExit, HostFailure> {
-        self.render("render-grid-plan-profile", request, result)
+        self.render(crate::ReporterTask::RenderGridPlanProfile, request, result)
     }
     fn export_combined_transformer_report(
         &self,
@@ -586,7 +579,7 @@ impl ReportEngine for CapturedCliEngine {
         result: &Path,
     ) -> Result<EngineExit, HostFailure> {
         self.render(
-            ds_command_kernel::report_export::combined::SUBCOMMAND,
+            crate::ReporterTask::ExportCombinedTransformerReport,
             request,
             result,
         )
@@ -597,7 +590,7 @@ impl ReportEngine for CapturedCliEngine {
         result: &Path,
     ) -> Result<EngineExit, HostFailure> {
         self.render(
-            ds_command_kernel::report_export::combined::MEDIA_SUBCOMMAND,
+            crate::ReporterTask::DiscoverCombinedMediaReferences,
             request,
             result,
         )
@@ -608,21 +601,11 @@ impl ReportEngine for CapturedCliEngine {
         result: &Path,
         _input_sha256: &str,
     ) -> Result<(), HostFailure> {
-        let executable = self.0.executable();
         // One fixed task over host-owned durable paths. Reporter owns its
         // process lock and failure journal, so CLI exit releases only a viewer.
-        std::process::Command::new(executable)
-            .arg("render-grid-plan-profile")
-            .arg("--request")
-            .arg(request)
-            .arg("--result")
-            .arg(result)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|error| HostFailure::new("engine_refused", error.to_string()))?;
-        Ok(())
+        self.0
+            .launch(crate::ReporterTask::RenderGridPlanProfile, request, result)
+            .map_err(failure_to_host)
     }
 }
 /// Exact saved analysis admitted for one room; no producer work occurs here.
@@ -922,7 +905,10 @@ pub(crate) fn host_failure(failure: HostFailure) -> Failure {
         }
         "callee_timed_out" => Failure::failed("callee_timed_out", message).remedy(TIMED_OUT.remedy),
         "reporter_engine_missing" => {
-            Failure::unavailable("reporter_engine_missing", message).remedy(DS_REPORT.remedy)
+            Failure::unavailable("reporter_engine_missing", message).remedy(ENGINE_MISSING.remedy)
+        }
+        "unknown_task" => {
+            Failure::unavailable("unknown_task", message).remedy(crate::ENGINE_TASK_UNKNOWN.remedy)
         }
         "print_context_unsupported" => Failure::invalid("print_context_unsupported", message)
             .remedy(CONTEXT_UNSUPPORTED.remedy),

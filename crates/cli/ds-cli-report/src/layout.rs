@@ -1254,18 +1254,14 @@ pub fn render(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let request = scratch.path().join("request.json");
     let result = scratch.path().join("result.json");
     ds_layer_store::private::write(&request, raw).map_err(invalid)?;
-    let completed = engine.call(
-        "render-print-layout",
-        &[
-            "--request".into(),
-            request.into_os_string(),
-            "--result".into(),
-            result.clone().into_os_string(),
-        ],
+    let completed = engine.run(
+        crate::ReporterTask::RenderPrintLayout,
+        &request,
+        &result,
         crate::EXPORT_TIMEOUT,
     )?;
     if !completed.succeeded() {
-        return Err(invalid(completed.stderr));
+        return Err(invalid(completed.stderr()));
     }
     serde_json::from_slice(&bytes(
         result

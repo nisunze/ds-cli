@@ -3,7 +3,6 @@
 //! only binds a shared, pinned request to named ink variants.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use ds_cli_contract::outcome::Failure;
@@ -15,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::{EXPORT_TIMEOUT, capture_engine};
+use crate::{EXPORT_TIMEOUT, ReporterTask, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "report.plan-profile-config",
@@ -54,7 +53,7 @@ pub static COMMAND: Command = Command {
         note: "Render every named variant from one pinned configuration; see docs/reference/report.md for the schema.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 13 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 14 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             crate::project::mv_setup::REFUSAL,
@@ -102,6 +101,7 @@ pub static COMMAND: Command = Command {
             },
             crate::ENGINE_MISSING,
             crate::ENGINE_RECEIPT_INVALID,
+            crate::ENGINE_TASK_UNKNOWN,
         ],
     ]),
     reference: Some("docs/reference/report.md"),
@@ -365,13 +365,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             .map_err(|e| Failure::internal("request_write_failed", e.to_string()))?;
         ds_layer_store::private::write(&request_path, request_bytes)
             .map_err(|e| Failure::failed("request_write_failed", e.to_string()))?;
-        let args = vec![
-            OsString::from("--request"),
-            request_path.into(),
-            OsString::from("--result"),
-            result_path.clone().into(),
-        ];
-        let completed = match engine.call("render-grid-plan-profile", &args, EXPORT_TIMEOUT) {
+        let completed = match engine.run(
+            ReporterTask::RenderGridPlanProfile,
+            &request_path,
+            &result_path,
+            EXPORT_TIMEOUT,
+        ) {
             Ok(completed) => completed,
             Err(error) => {
                 return Err(error.detail(json!({"variant":variant.name,"committed":false})));

@@ -7,14 +7,14 @@ fn captured_cli_report_adapter_keeps_one_program_for_probe_and_typed_render() {
     let old = directory.path().join("reporter-old");
     let new = directory.path().join("reporter-new");
     for (path, version) in [(&old, "old"), (&new, "new")] {
-        std::fs::write(path, format!("#!/bin/sh\ncase \"$1\" in\nbuild-info) printf '%s\\n' '{{\"fixture\":\"{version}\"}}';;\nrender-print-layout) printf '%s' '{version}' > \"$3\";;\n*) exit 2;;\nesac\n")).unwrap();
+        std::fs::write(path, format!("#!/bin/sh\ncase \"$1\" in\nbuild-info) printf '%s\\n' '{{\"fixture\":\"{version}\"}}';;\ntask-schemas) printf '%s' '{{\"tasks\":[{{\"name\":\"render_print_layout\",\"subcommand\":\"render-print-layout\"}}]}}';;\nrender-print-layout) printf '%s' '{version}' > \"$3\";;\n*) exit 2;;\nesac\n")).unwrap();
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
-    let captured = CapturedCliEngine(DS_REPORT.capture_pinned(&old).unwrap());
+    let captured = CapturedCliEngine(crate::Reporter::capture_pinned(&old).unwrap());
     assert_eq!(captured.build_info().unwrap()["fixture"], "old");
     // A later capture sees a different program; the accepted adapter keeps
     // using its own path for every fixed task and its final identity check.
-    let later = CapturedCliEngine(DS_REPORT.capture_pinned(&new).unwrap());
+    let later = CapturedCliEngine(crate::Reporter::capture_pinned(&new).unwrap());
     assert_eq!(later.build_info().unwrap()["fixture"], "new");
     let request = directory.path().join("request");
     let result = directory.path().join("result");
@@ -828,7 +828,8 @@ fn every_host_code_is_mapped_and_documented() {
         ds_report_host::CODE_ENGINE_IDENTITY_CHANGED,
         ds_report_host::CODE_ENGINE_IDENTITY_INVALID,
         ds_report_host::CODE_ADMIN_BOUNDS_UNAVAILABLE,
-        DS_REPORT.missing_code,
+        "reporter_engine_missing",
+        ds_cli_exec::reporter::TASK_UNSUPPORTED,
         "callee_timed_out",
     ] {
         let failure = host_failure(HostFailure::new(code, "why").with_detail(json!({"k": 1})));

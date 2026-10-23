@@ -26,6 +26,11 @@ impl Harness {
             &engine,
             r#"#!/bin/sh
 set -eu
+# The Kernel Reporter client admits the task from the catalogue first.
+if test "${1:-}" = task-schemas; then
+    printf '%s' '{"tasks":[{"name":"render_voltage_drop_combined","subcommand":"render-voltage-drop-combined"}]}'
+    exit 0
+fi
 test "$#" = 5
 test "$1" = render-voltage-drop-combined
 test "$2" = --request

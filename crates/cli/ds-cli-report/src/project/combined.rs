@@ -41,7 +41,7 @@ use serde_json::{Value, json};
 use super::export::PublicationQueue;
 use super::grouping::{self, GROUP_BY_ARG, WHERE_ARG};
 use super::{LANE_ARG, PROJECT_ARG, TRANSFORMER_ARG};
-use crate::{DISCOVERY_TIMEOUT, DS_REPORT, EXPORT_TIMEOUT};
+use crate::EXPORT_TIMEOUT;
 
 pub(super) const FILE_LEVEL_ARG: Arg = Arg::value(
     "file-level",
@@ -172,9 +172,8 @@ fn refused(refusal: decisions::Refusal) -> Failure {
         decisions::GROUPING_INVALID => GROUPING_INVALID,
         decisions::ARCHIVE_TOO_LARGE => ARCHIVE_TOO_LARGE,
         decisions::COMPOSITION_INVALID => {
-            return Failure::invalid("compounded_composition_invalid", refusal.message).remedy(
-                "correct the JSON: schema, transformers, archive_layout and force",
-            );
+            return Failure::invalid("compounded_composition_invalid", refusal.message)
+                .remedy("correct the JSON: schema, transformers, archive_layout and force");
         }
         _ => INPUTS_INVALID,
     };
@@ -590,16 +589,12 @@ fn bundle(
     ),
     Failure,
 > {
-    let engine = DS_REPORT.capture_for_lane(lane)?;
-    let identity = ds_command_kernel::report_export::engine_identity(&engine.call_json(
-        "build-info",
-        &[],
-        DISCOVERY_TIMEOUT,
-    )?)
-    .map_err(|error| {
-        Failure::failed("callee_contract_mismatch", error)
-            .remedy("install matching ds and Reporter releases")
-    })?;
+    let engine = crate::Reporter::capture_for_lane(lane)?;
+    let identity = ds_command_kernel::report_export::engine_identity(&engine.build_info()?)
+        .map_err(|error| {
+            Failure::failed("callee_contract_mismatch", error)
+                .remedy("install matching ds and Reporter releases")
+        })?;
     let request = stage.join("bundle-request.json");
     let result = stage.join("bundle-result.json");
     std::fs::write(
@@ -607,18 +602,14 @@ fn bundle(
         serde_json::to_vec(&plan.request).expect("a bundle plan encodes"),
     )
     .map_err(|error| store_unreadable(error.to_string()))?;
-    let completed = engine.call(
-        "export-compounded-report",
-        &[
-            "--request".into(),
-            request.into(),
-            "--result".into(),
-            result.clone().into(),
-        ],
+    let completed = engine.run(
+        crate::ReporterTask::ExportCompoundedReport,
+        &request,
+        &result,
         EXPORT_TIMEOUT,
     )?;
     if !completed.succeeded() {
-        return Err(DS_REPORT.failure_from(&completed, "export-compounded-report"));
+        return Err(completed.refusal());
     }
     let document: Value = std::fs::read(&result)
         .ok()
@@ -626,7 +617,7 @@ fn bundle(
         .ok_or_else(|| {
             Failure::failed("engine_refused", "the Reporter returned no bundle receipt")
                 .remedy("read error.detail.engine for the Reporter's own code and message")
-                .detail(json!({"engine": completed.stderr}))
+                .detail(json!({"engine": completed.stderr()}))
         })?;
     Ok((
         decisions::admit_receipt(plan, &document).map_err(refused)?,

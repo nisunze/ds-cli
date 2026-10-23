@@ -35,6 +35,7 @@ pub mod addons;
 mod default_resolution;
 mod managed_modules;
 mod process_tree;
+pub mod reporter;
 mod session;
 pub use session::NetworkProfileProcess;
 
@@ -239,6 +240,36 @@ impl CapturedExternal {
                 self.reporter_network_lane,
                 cancel,
                 Some(stderr_observer),
+            )
+        })
+    }
+
+    /// Start one fixed task over host-owned durable paths and return without
+    /// waiting: the engine owns its own lock and failure journal, so the
+    /// calling process may leave first. The managed receipt is verified
+    /// before the spawn; streams are discarded and the result file answers.
+    pub fn launch_detached(
+        &self,
+        subcommand: &'static str,
+        args: &[OsString],
+    ) -> Result<(), Failure> {
+        self.verify_managed()?;
+        let mut command = Command::new(&self.executable);
+        command
+            .arg(subcommand)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        self.owner
+            .configure_reporter_lane(&mut command, self.reporter_network_lane);
+        command.spawn().map(drop).map_err(|error| {
+            Failure::failed(
+                "engine_refused",
+                format!(
+                    "`{} {subcommand}` could not start: {error}",
+                    self.owner.name
+                ),
             )
         })
     }
@@ -1285,7 +1316,6 @@ mod tests {
         fs::remove_dir(root).unwrap();
     }
 }
-
 
 #[cfg(test)]
 mod supervised_tests {

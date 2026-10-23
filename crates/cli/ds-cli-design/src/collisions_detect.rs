@@ -11,7 +11,6 @@
 //! result whose basis moved. Contract: ds-network-reporter
 //! `docs/contracts/collisions.md`.
 
-use std::ffi::OsString;
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -36,12 +35,10 @@ pub const FILE_SCHEMA: &str = "ds.design-collisions-file/v1";
 const REQUEST_SCHEMA: &str = "ds.reporter.detect-collisions-request/v1";
 const ENGINE_RESULT_SCHEMA: &str = "ds.reporter.detect-collisions-result/v1";
 const PUBLICATION_SCHEMA: &str = "ds.collisions-publication/v1";
-const SUBCOMMAND: &str = "detect-collisions";
 /// A project's roster bound, shared with the engine and ds-brain.
 const MAX_TRANSFORMERS: usize = 2_000;
 /// The engine's result and Core's result file; the save route admits 32 MiB.
 const MAX_RESULT_BYTES: u64 = 64 * 1024 * 1024;
-const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(20);
 const DETECT_TIMEOUT: Duration = Duration::from_secs(20 * 60);
 /// How many names a bounded receipt lists before it counts the rest.
 const LISTED: usize = 20;
@@ -296,24 +293,26 @@ fn result_invalid(detail: impl Into<String>) -> Failure {
     Failure::invalid(RESULT_INVALID.code, detail.into()).remedy(RESULT_INVALID.remedy)
 }
 
-fn capture_engine(lane: &str) -> Result<ds_cli_exec::CapturedExternal, Failure> {
-    ds_cli_report::DS_REPORT.capture_for_lane_in(lane, &ds_cli_exec::addons::managed_module_base()?)
+fn capture_engine(lane: &str) -> Result<ds_cli_report::Reporter, Failure> {
+    ds_cli_report::Reporter::capture_for_lane(lane)
 }
 
 /// The room layers the engine's own published request schema admits. The
 /// engine owns its input contract; Core projects rooms by it rather than by a
 /// hand copy, and an engine without the task refuses as incompatible.
-fn engine_input_layers(engine: &ds_cli_exec::CapturedExternal) -> Result<Vec<String>, Failure> {
-    let catalogue = engine.call_json("task-schemas", &[], DISCOVERY_TIMEOUT)?;
-    let task = catalogue["tasks"]
-        .as_array()
-        .and_then(|tasks| tasks.iter().find(|task| task["subcommand"] == SUBCOMMAND))
-        .ok_or_else(|| {
-            Failure::unavailable(
-                ENGINE_INCOMPATIBLE.code,
-                "the installed Reporter does not publish the detect-collisions task",
-            )
-            .remedy(ENGINE_INCOMPATIBLE.remedy)
+fn engine_input_layers(engine: &ds_cli_report::Reporter) -> Result<Vec<String>, Failure> {
+    let task = engine
+        .require(ds_cli_report::ReporterTask::DetectCollisions)
+        .map_err(|failure| {
+            if failure.code() == ds_cli_exec::reporter::TASK_UNSUPPORTED {
+                Failure::unavailable(
+                    ENGINE_INCOMPATIBLE.code,
+                    "the installed Reporter does not publish the detect-collisions task",
+                )
+                .remedy(ENGINE_INCOMPATIBLE.remedy)
+            } else {
+                failure
+            }
         })?;
     let schema = &task["request_schema"];
     let layers: Vec<String> = schema["properties"]["transformers"]["items"]["properties"]["layers"]
@@ -536,15 +535,14 @@ pub fn detect(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let request_sha256 = format!("{:x}", request.digest.clone().finalize());
     drop(request);
 
-    let args = [
-        OsString::from("--request"),
-        request_path.clone().into(),
-        OsString::from("--result"),
-        result_path.clone().into(),
-    ];
-    let completed = engine.call(SUBCOMMAND, &args, DETECT_TIMEOUT)?;
+    let completed = engine.run(
+        ds_cli_report::ReporterTask::DetectCollisions,
+        &request_path,
+        &result_path,
+        DETECT_TIMEOUT,
+    )?;
     if !completed.succeeded() {
-        return Err(ds_cli_report::DS_REPORT.failure_from(&completed, SUBCOMMAND));
+        return Err(completed.refusal());
     }
     let engine_result = read_bounded_json(&result_path)?;
     if engine_result["schema"] != ENGINE_RESULT_SCHEMA

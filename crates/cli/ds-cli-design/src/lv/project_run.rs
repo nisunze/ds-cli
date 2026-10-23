@@ -267,10 +267,10 @@ struct Owners {
     export: Handler,
     process: Handler,
     save: fn(&Inputs, &Context, &str) -> Result<Value, Failure>,
-    preflight: fn(&str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure>,
+    preflight: fn(&str) -> Result<Option<ds_cli_report::Reporter>, Failure>,
     analysis: SavedAnalysisRead,
     renderer_policy: fn(&str, &str) -> Result<Value, Failure>,
-    print: fn(&Inputs, &Context, Option<&ds_cli_exec::CapturedExternal>) -> Result<Value, Failure>,
+    print: fn(&Inputs, &Context, Option<&ds_cli_report::Reporter>) -> Result<Value, Failure>,
 }
 const OWNERS: Owners = Owners {
     export: project_export::run,
@@ -313,11 +313,8 @@ fn require_owned_a4(config: &Value, project: &str) -> Result<(), Failure> {
     Ok(())
 }
 
-pub(super) fn print_preflight(
-    lane: &str,
-) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
-    let engine = ds_cli_report::DS_REPORT
-        .capture_for_lane_in(lane, &ds_cli_exec::addons::managed_module_base()?)?;
+pub(super) fn print_preflight(lane: &str) -> Result<Option<ds_cli_report::Reporter>, Failure> {
+    let engine = ds_cli_report::Reporter::capture_for_lane(lane)?;
     ds_cli_report::export::voltage_drop_project_a4_preflight_captured(&engine)?;
     ds_cli_report::export::voltage_drop_browser_preflight().map_err(|message| {
         Failure::unavailable("reporter_browser_missing", message).remedy(PRINT_REFUSALS[0].remedy)
@@ -328,7 +325,7 @@ pub(super) fn print_preflight(
 fn print_captured(
     inputs: &Inputs,
     _: &Context,
-    engine: Option<&ds_cli_exec::CapturedExternal>,
+    engine: Option<&ds_cli_report::Reporter>,
 ) -> Result<Value, Failure> {
     let engine =
         engine.ok_or_else(|| incomplete("A4 print requires its preflight Reporter capture."))?;
@@ -633,7 +630,7 @@ struct PrintRun<'a> {
 fn print_saved(
     owners: &Owners,
     context: &Context,
-    reporter: Option<&ds_cli_exec::CapturedExternal>,
+    reporter: Option<&ds_cli_report::Reporter>,
     run: PrintRun<'_>,
 ) -> Result<Value, Failure> {
     let input: Value =

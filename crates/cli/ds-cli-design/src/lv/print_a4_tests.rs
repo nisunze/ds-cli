@@ -68,7 +68,7 @@ fn inputs(directory: &Path, extra: &[&str]) -> Inputs {
 }
 
 /// Stands in for the Reporter: reaching it proves every local check passed.
-fn reached(lane: &str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure> {
+fn reached(lane: &str) -> Result<Option<ds_cli_report::Reporter>, Failure> {
     Err(Failure::unavailable("preflight_reached", lane.to_owned()))
 }
 

@@ -4,7 +4,6 @@
 //! task and returns that task's document; all validation, grouping, and
 //! calculation remain in the shared Rust command kernel used by WASM.
 
-use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -37,6 +36,7 @@ pub static COMMAND: Command = Command {
             "<path>",
             "Keep the immutable plan here; must not already exist.",
         ),
+        ds_cli_report::ENGINE_LANE,
     ],
     output: "The deterministic local seed plan, source receipt, city summaries, and complete Solar city documents; mutated is false.",
     examples: &[Example {
@@ -50,6 +50,8 @@ pub static COMMAND: Command = Command {
             when: "the packaged ds-report process is unavailable",
             remedy: "install the complete ds release, or set DS_REPORT_BIN for development",
         },
+        ds_cli_report::ENGINE_RECEIPT_INVALID,
+        ds_cli_report::ENGINE_TASK_UNKNOWN,
         Refusal {
             code: "request_not_found",
             when: "the typed request file does not exist",
@@ -69,7 +71,7 @@ pub static COMMAND: Command = Command {
     reference: Some("docs/reference/solar.md"),
     search: &[],
     requires: Requires::Server,
-    availability: || ds_cli_report::DS_REPORT.availability(),
+    availability: || ds_cli_contract::spec::Availability::Available,
 };
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -90,15 +92,13 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             format!("`{}` already exists", result.display()),
         ));
     }
-    let args = vec![
-        OsString::from("--request"),
-        request.into(),
-        OsString::from("--result"),
-        result.clone().into(),
-    ];
-    let completed = ds_cli_report::DS_REPORT.call(
-        "plan-solar-network-seed",
-        &args,
+    // The request names its own lane; a seed never borrows the packaged one.
+    let engine =
+        ds_cli_report::Reporter::capture_for_lane(inputs.value("lane").unwrap_or("stable"))?;
+    let completed = engine.run(
+        ds_cli_report::ReporterTask::PlanSolarNetworkSeed,
+        &request,
+        &result,
         ds_cli_report::EXPORT_TIMEOUT,
     )?;
     let mut document = std::fs::read(&result)
@@ -108,14 +108,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         let _ = std::fs::remove_file(&result);
     }
     if !completed.succeeded() {
-        return Err(ds_cli_report::DS_REPORT.failure_from(&completed, "plan-solar-network-seed"));
+        return Err(completed.refusal());
     }
     let Some(mut document) = document.take() else {
         return Err(Failure::failed(
             "engine_refused",
             "reporter returned no Solar network seed plan",
         )
-        .detail(json!({"engine": completed.stderr})));
+        .detail(json!({"engine": completed.stderr()})));
     };
     if document.get("mutated").and_then(Value::as_bool) != Some(false) {
         return Err(Failure::failed(

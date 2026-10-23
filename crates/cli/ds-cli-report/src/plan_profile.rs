@@ -2,7 +2,6 @@
 //! reporter's typed task. The engine owns every projection and drawing byte.
 
 use std::collections::BTreeMap;
-use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -14,7 +13,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::{DS_REPORT, EXPORT_TIMEOUT, capture_engine};
+use crate::{EXPORT_TIMEOUT, capture_engine};
 mod assets;
 mod context;
 mod model_mode;
@@ -159,7 +158,7 @@ pub static COMMAND: Command = Command {
         note: "Render the adopted publication for one alignment from held engine projections.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 31 }>(&[
+    refusals: &crate::project::joined::<{ crate::project::NATIVE_READ_REFUSALS.len() + 32 }>(&[
         crate::project::NATIVE_READ_REFUSALS,
         &[
             Refusal {
@@ -229,6 +228,7 @@ pub static COMMAND: Command = Command {
             },
             crate::ENGINE_MISSING,
             crate::ENGINE_RECEIPT_INVALID,
+            crate::ENGINE_TASK_UNKNOWN,
             Refusal {
                 code: "engine_refused",
                 when: "reporter refuses setup, held assets or geometry pairing",
@@ -791,19 +791,18 @@ impl Staged {
     /// One `render-grid-plan-profile` call over these exact request bytes.
     fn render(
         &self,
-        engine: &ds_cli_exec::CapturedExternal,
+        engine: &crate::Reporter,
         bytes: Vec<u8>,
         task: RenderTask,
     ) -> Result<Value, Failure> {
         ds_layer_store::private::write(&self.request_path, bytes)
             .map_err(|e| Failure::failed("request_write_failed", e.to_string()))?;
-        let args = vec![
-            OsString::from("--request"),
-            self.request_path.clone().into(),
-            OsString::from("--result"),
-            self.result_path.clone().into(),
-        ];
-        let completed = engine.call(task.subcommand(), &args, EXPORT_TIMEOUT);
+        let completed = engine.run(
+            task.reporter_task(),
+            &self.request_path,
+            &self.result_path,
+            EXPORT_TIMEOUT,
+        );
         let _ = std::fs::remove_file(&self.request_path);
         let completed = completed?;
         let document = std::fs::read(&self.result_path)
@@ -813,7 +812,7 @@ impl Staged {
             let _ = std::fs::remove_file(&self.result_path);
         }
         if !completed.succeeded() {
-            return Err(DS_REPORT.failure_from(&completed, task.subcommand()));
+            return Err(completed.refusal());
         }
         document
             .ok_or_else(|| Failure::failed("engine_refused", "reporter returned no print receipt"))

@@ -33,6 +33,11 @@ fn request_mode_renders_the_exact_request_without_a_project() {
         r#"#!/bin/sh
 set -eu
 printf '%s\n' "$1" >> "$TEST_CALLS"
+# The Kernel Reporter client admits the task from the catalogue first.
+if test "$1" = task-schemas; then
+    printf '%s' '{"tasks":[{"name":"render_grid_plan_profile","subcommand":"render-grid-plan-profile"}]}'
+    exit 0
+fi
 test "$1" = render-grid-plan-profile
 test "$#" = 5
 test "$2" = --request
@@ -94,8 +99,10 @@ printf '%s' '{"project_id":"global_fixture","model_revision":"r1","alignments":1
     std::fs::write(&request, b"{not json").unwrap();
     let (_, answer) = plan_profile(root, &["--request", path]);
     assert_eq!(answer["error"]["code"], "print_request_invalid");
+    // One catalogue admission and one render: every refusal above preceded
+    // the engine.
     let calls = std::fs::read_to_string(root.join("calls")).unwrap();
-    assert_eq!(calls.lines().count(), 1, "{calls}");
+    assert_eq!(calls, "task-schemas\nrender-grid-plan-profile\n");
 }
 
 #[test]

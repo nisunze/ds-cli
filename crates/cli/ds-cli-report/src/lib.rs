@@ -54,10 +54,12 @@ pub mod voltage_drop_combined;
 use std::time::Duration;
 
 use ds_cli_contract::spec::Domain;
-pub use ds_cli_exec::addons::REPORTER as DS_REPORT;
+/// Every Reporter task goes through the Kernel's one Reporter client: a closed
+/// task, typed request/result files and catalogue admission before work.
+pub use ds_cli_exec::reporter::{Reporter, Task as ReporterTask};
 
 /// Local consumers select a native lane without account/project acquisition.
-const ENGINE_LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE
+pub const ENGINE_LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE
     .summary("Native addon lane; stable is the default. No account or project is read.");
 
 const ENGINE_MISSING: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
@@ -65,15 +67,19 @@ const ENGINE_MISSING: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Re
     when: "the selected lane has no managed Reporter addon",
     remedy: "install Reporter for the selected --lane",
 };
-const ENGINE_RECEIPT_INVALID: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
+pub const ENGINE_RECEIPT_INVALID: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
     code: "module_receipt_invalid",
     when: "the selected lane's managed receipt or executable bytes are invalid",
     remedy: "repair or roll back Reporter in the selected lane",
 };
+/// The captured Reporter does not register the task this command runs.
+pub const ENGINE_TASK_UNKNOWN: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
+    code: "unknown_task",
+    when: "the selected lane's Reporter does not register this command's task",
+    remedy: "install a Reporter for the selected --lane that registers the task named in detail.task",
+};
 
-fn capture_engine(
-    inputs: &ds_cli_contract::Inputs,
-) -> Result<ds_cli_exec::CapturedExternal, ds_cli_contract::Failure> {
+fn capture_engine(inputs: &ds_cli_contract::Inputs) -> Result<Reporter, ds_cli_contract::Failure> {
     capture_engine_at(inputs, &ds_cli_exec::addons::managed_module_base()?)
 }
 
@@ -81,8 +87,8 @@ fn capture_engine(
 fn capture_engine_at(
     inputs: &ds_cli_contract::Inputs,
     base: &std::path::Path,
-) -> Result<ds_cli_exec::CapturedExternal, ds_cli_contract::Failure> {
-    DS_REPORT.capture_for_lane_in(inputs.value("lane").unwrap_or("stable"), base)
+) -> Result<Reporter, ds_cli_contract::Failure> {
+    Reporter::capture_for_lane_in(inputs.value("lane").unwrap_or("stable"), base)
 }
 
 #[cfg(test)]

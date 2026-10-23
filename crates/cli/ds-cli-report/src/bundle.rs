@@ -1,6 +1,5 @@
 //! `ds report bundle` — package digest-pinned report artifacts.
 
-use std::ffi::OsString;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -11,7 +10,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{DS_REPORT, ENGINE_LANE, EXPORT_TIMEOUT, capture_engine};
+use crate::{ENGINE_LANE, EXPORT_TIMEOUT, ReporterTask, capture_engine};
 
 pub static COMMAND: Command = Command {
     id: "report.bundle",
@@ -46,6 +45,7 @@ pub static COMMAND: Command = Command {
     refusals: &[
         crate::ENGINE_MISSING,
         crate::ENGINE_RECEIPT_INVALID,
+        crate::ENGINE_TASK_UNKNOWN,
         Refusal {
             code: "request_not_found",
             when: "the request file is missing",
@@ -91,13 +91,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ));
     }
     let engine = capture_engine(inputs)?;
-    let args = vec![
-        OsString::from("--request"),
-        request.into(),
-        OsString::from("--result"),
-        result.clone().into(),
-    ];
-    let completed = engine.call("export-compounded-report", &args, EXPORT_TIMEOUT)?;
+    let completed = engine.run(
+        ReporterTask::ExportCompoundedReport,
+        &request,
+        &result,
+        EXPORT_TIMEOUT,
+    )?;
     let mut document = std::fs::read(&result)
         .ok()
         .and_then(|body| serde_json::from_slice::<Value>(&body).ok());
@@ -105,12 +104,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         let _ = std::fs::remove_file(&result);
     }
     if !completed.succeeded() {
-        return Err(DS_REPORT.failure_from(&completed, "export-compounded-report"));
+        return Err(completed.refusal());
     }
     let Some(mut document) = document.take() else {
         return Err(
             Failure::failed("engine_refused", "reporter returned no bundle receipt")
-                .detail(json!({"engine": completed.stderr})),
+                .detail(json!({"engine": completed.stderr()})),
         );
     };
     if keep {

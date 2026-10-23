@@ -20,7 +20,6 @@
 //! writes to a fresh file it owns and removes it afterwards — it never
 //! deletes a path the caller chose.
 
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -31,17 +30,13 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Map, Value, json};
 
-use crate::{DS_REPORT, ENGINE_LANE, EXPORT_TIMEOUT, capture_engine};
+use crate::{ENGINE_LANE, EXPORT_TIMEOUT, ReporterTask, capture_engine};
 
 const TASKS: &[&str] = &["transformer", "combined", "voltage-drop", "lv-standard"];
 const INPUT_SHAPES: &[&str] = &["firestore_rest", "plain_local"];
 
-/// The engine subcommand behind each `--task`. Named here, in source, and
-/// never assembled from caller input.
-const TRANSFORMER_SUBCOMMAND: &str = "export-transformer-report";
-const COMBINED_SUBCOMMAND: &str = "export-combined-transformer-report";
-const VOLTAGE_DROP_SUBCOMMAND: &str = "render-voltage-drop-result";
-const LV_STANDARD_SUBCOMMAND: &str = "export-lv-standard";
+// The Reporter task behind each `--task` is chosen in source (`run_with_capture`)
+// and never assembled from caller input.
 
 pub static COMMAND: Command = Command {
     id: "report.export",
@@ -176,7 +171,7 @@ was given.",
         },
         Refusal {
             code: "unknown_task",
-            when: "the installed reporter does not publish the selected voltage-drop or LV standard task",
+            when: "the installed reporter does not register the selected task",
             remedy: "install a reporter exposing the selected task in report tasks",
         },
         crate::ENGINE_MISSING,
@@ -257,28 +252,19 @@ const CONTENT_FLAGS: &[&str] = &[
 ];
 
 /// Check governed A4 admission against the renderer already held by this run.
-pub fn voltage_drop_project_a4_preflight_captured(
-    engine: &ds_cli_exec::CapturedExternal,
-) -> Result<(), Failure> {
-    let schemas = crate::tasks::schemas(engine)?;
-    let admitted = schemas["tasks"].as_array().is_some_and(|tasks| {
-        tasks.iter().any(|task| {
-            task["name"] == "render_voltage_drop_result"
-                && task["subcommand"] == VOLTAGE_DROP_SUBCOMMAND
-                && task["request_schema"]["anyOf"]
-                    .as_array()
-                    .is_some_and(|branches| {
-                        branches.iter().any(|branch| {
-                            let required =
-                                branch["properties"]["network_config"]["required"].as_array();
-                            required.is_some_and(|fields| {
-                                fields.iter().any(|field| field == "printing_a4")
-                                    && fields.iter().any(|field| field == "printing_context")
-                            })
-                        })
-                    })
-        })
-    });
+pub fn voltage_drop_project_a4_preflight_captured(engine: &crate::Reporter) -> Result<(), Failure> {
+    let task = engine.require(crate::ReporterTask::RenderVoltageDropResult)?;
+    let admitted = task["request_schema"]["anyOf"]
+        .as_array()
+        .is_some_and(|branches| {
+            branches.iter().any(|branch| {
+                let required = branch["properties"]["network_config"]["required"].as_array();
+                required.is_some_and(|fields| {
+                    fields.iter().any(|field| field == "printing_a4")
+                        && fields.iter().any(|field| field == "printing_context")
+                })
+            })
+        });
     if !admitted {
         return Err(Failure::unavailable("unknown_task", "The installed reporter lacks governed project A4 capture admission")
             .remedy("install the reporter advertising the owned A4 capture schema before computing or saving"));
@@ -308,23 +294,6 @@ pub fn voltage_drop_browser_preflight() -> Result<(), String> {
         {
             return Err("The configured reporter browser is not executable.".to_owned());
         }
-    }
-    Ok(())
-}
-
-fn require_task(
-    engine: &ds_cli_exec::CapturedExternal,
-    name: &str,
-    subcommand: &str,
-) -> Result<(), Failure> {
-    let schemas = crate::tasks::schemas(engine)?;
-    if !schemas["tasks"].as_array().is_some_and(|tasks| {
-        tasks
-            .iter()
-            .any(|task| task["name"] == name && task["subcommand"] == subcommand)
-    }) {
-        return Err(Failure::unavailable("unknown_task", format!("the installed reporter does not expose {name}"))
-            .remedy(format!("install a reporter exposing {name}; no alternate rendering or recomputation fallback is permitted")));
     }
     Ok(())
 }
@@ -377,10 +346,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 }
 
 /// Reuse an already captured renderer through the same validation and cleanup.
-pub fn run_captured(
-    inputs: &Inputs,
-    engine: &ds_cli_exec::CapturedExternal,
-) -> Result<Value, Failure> {
+pub fn run_captured(inputs: &Inputs, engine: &crate::Reporter) -> Result<Value, Failure> {
     run_with_capture(inputs, || Ok(engine))
 }
 
@@ -389,14 +355,14 @@ pub(crate) fn run_with_capture<E>(
     capture: impl FnOnce() -> Result<E, Failure>,
 ) -> Result<Value, Failure>
 where
-    E: std::borrow::Borrow<ds_cli_exec::CapturedExternal>,
+    E: std::borrow::Borrow<crate::Reporter>,
 {
     let task = inputs.require("task")?;
-    let subcommand = match task {
-        "transformer" => TRANSFORMER_SUBCOMMAND,
-        "combined" => COMBINED_SUBCOMMAND,
-        "voltage-drop" => VOLTAGE_DROP_SUBCOMMAND,
-        "lv-standard" => LV_STANDARD_SUBCOMMAND,
+    let reporter_task = match task {
+        "transformer" => ReporterTask::ExportTransformerReport,
+        "combined" => ReporterTask::ExportCombinedTransformerReport,
+        "voltage-drop" => ReporterTask::RenderVoltageDropResult,
+        "lv-standard" => ReporterTask::ExportLvStandard,
         other => {
             return Err(Failure::internal(
                 "unmapped_task",
@@ -503,26 +469,11 @@ where
         }
     };
 
-    let args: Vec<OsString> = vec![
-        OsString::from("--request"),
-        request_path.clone().into(),
-        OsString::from("--result"),
-        result_path.clone().into(),
-    ];
-
+    // The Kernel Reporter client admits the task from the captured Reporter's
+    // own catalogue before the process starts.
     let completed = capture().and_then(|engine| {
-        let engine: &ds_cli_exec::CapturedExternal = std::borrow::Borrow::borrow(&engine);
-        if task == "voltage-drop" {
-            require_task(
-                engine,
-                "render_voltage_drop_result",
-                VOLTAGE_DROP_SUBCOMMAND,
-            )?;
-        }
-        if task == "lv-standard" {
-            require_task(engine, "export_lv_standard", LV_STANDARD_SUBCOMMAND)?;
-        }
-        engine.call(subcommand, &args, EXPORT_TIMEOUT)
+        let engine: &crate::Reporter = std::borrow::Borrow::borrow(&engine);
+        engine.run(reporter_task, &request_path, &result_path, EXPORT_TIMEOUT)
     });
     if !request_owned {
         let _ = std::fs::remove_file(&request_path);
@@ -541,7 +492,7 @@ where
     let Some(mut document) = document else {
         // No document at all means the engine failed before doing any work —
         // a bad request, a missing input file, an unusable output directory.
-        if let Some(code) = ds_command_kernel::report_messages::refusal_code(&completed.stderr) {
+        if let Some(code) = ds_command_kernel::report_messages::refusal_code(completed.stderr()) {
             let sentence = "Report locale or catalogue refused";
             let failure = match code {
                 "report_locale_missing" => Failure::invalid("report_locale_missing", sentence),
@@ -561,9 +512,9 @@ where
                 }
                 _ => Failure::invalid("engine_refused", "Reporter refused the request"),
             };
-            return Err(failure.remedy("Use project_settings.report_locale and a complete report catalogue; inspect the named refusal").detail(json!({"engine":completed.stderr})));
+            return Err(failure.remedy("Use project_settings.report_locale and a complete report catalogue; inspect the named refusal").detail(json!({"engine":completed.stderr()})));
         }
-        return Err(DS_REPORT.failure_from(&completed, subcommand));
+        return Err(completed.refusal());
     };
 
     if let (true, Some(object)) = (caller_owned, document.as_object_mut()) {

@@ -1,6 +1,6 @@
 //! Retained project A4 PDFs: opening reads; explicit Refresh captures and publishes.
 //! Rendering and publication remain the reporter and shared native owners.
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::io::Read;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -157,9 +157,13 @@ pub static REFRESH: Command = Command {
         note: "Creates a new immutable rendered revision and downloads those same bytes.",
         runnable: false,
     }],
-    refusals: &crate::project::joined::<{ REFUSALS.len() + 2 }>(&[
+    refusals: &crate::project::joined::<{ REFUSALS.len() + 3 }>(&[
         REFUSALS,
-        &[crate::ENGINE_MISSING, crate::ENGINE_RECEIPT_INVALID],
+        &[
+            crate::ENGINE_MISSING,
+            crate::ENGINE_RECEIPT_INVALID,
+            crate::ENGINE_TASK_UNKNOWN,
+        ],
     ]),
     reference: Some("docs/reference/report.md"),
     search: &["printing", "refresh preview", "voltage drop"],
@@ -295,10 +299,8 @@ fn binding(capture: &SavedA4Capture, transformer: &str) -> Result<Binding, Failu
     Ok(binding)
 }
 
-fn release_engine(
-    renderer: &ds_cli_exec::CapturedExternal,
-) -> Result<report_export::EngineIdentity, Failure> {
-    let raw = renderer.call_json("build-info", &[], crate::DISCOVERY_TIMEOUT)?;
+fn release_engine(renderer: &crate::Reporter) -> Result<report_export::EngineIdentity, Failure> {
+    let raw = renderer.build_info()?;
     let engine = report_export::engine_identity(&raw).map_err(|error| {
         Failure::unavailable(ENGINE_INVALID.code, error).remedy(ENGINE_INVALID.remedy)
     })?;
@@ -373,21 +375,17 @@ pub fn refresh(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     }
     ds_layer_store::private::write(&request, bytes).map_err(render_failed)?;
     guard()?;
-    let completed = renderer.call(
-        "render-voltage-drop-result",
-        &[
-            OsString::from("--request"),
-            request.into_os_string(),
-            OsString::from("--result"),
-            result.clone().into_os_string(),
-        ],
+    let completed = renderer.run(
+        crate::ReporterTask::RenderVoltageDropResult,
+        &request,
+        &result,
         crate::EXPORT_TIMEOUT,
     )?;
     let receipt = read_receipt(&result)?;
     if !completed.succeeded() {
         return Err(
             render_failed("The actual renderer refused this captured preview.")
-                .detail(json!({"renderer_receipt":receipt,"exit_status":completed.status})),
+                .detail(json!({"renderer_receipt":receipt,"exit_status":completed.status()})),
         );
     }
     crate::export::verify_voltage_drop_pdf(

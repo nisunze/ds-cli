@@ -63,10 +63,10 @@ pub(super) struct Print {
     transformer: String,
     pdf: PathBuf,
     lane: String,
-    reporter: ds_cli_exec::CapturedExternal,
+    reporter: ds_cli_report::Reporter,
 }
 
-type Preflight = fn(&str) -> Result<Option<ds_cli_exec::CapturedExternal>, Failure>;
+type Preflight = fn(&str) -> Result<Option<ds_cli_report::Reporter>, Failure>;
 
 fn invalid(message: impl Into<String>) -> Failure {
     Failure::invalid(INPUT_INVALID.code, message).remedy(INPUT_INVALID.remedy)
