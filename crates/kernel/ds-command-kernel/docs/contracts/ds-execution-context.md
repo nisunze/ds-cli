@@ -313,8 +313,8 @@ expired as waiting and a row nothing can claim as neither; and it reopens a
 queue by counting the rows that carry a context and reading only the ones that
 do not, so a long-lived Server does not pay its whole queue in memory to
 restart. `ds-compute-runtime` admits through the kernel and makes no network call
-(its prepared Solar branch links only contracts, IO and the fixed native
-`ds-solar-process` adapter; the actual normal dependency graph is guarded by
+(its prepared Solar branch links only contracts and Core's own `ds-solar-host`
+process adapter and host IO; the actual normal dependency graph is guarded by
 `tests/engine_free.rs`). The captured standalone engine receives the sealed
 prepared request under a bounded per-job CPU budget. Cancellation kills and
 reaps its worker before execution returns and lease renewal stops; output is

@@ -38,6 +38,9 @@ fn normal_dependency_graph_has_no_embedded_computation_or_report_owner() {
         "ds-solar-project",
         "ds-solar-native",
         "ds-solar-addon",
+        // DECOUPLING-013: the addon transport and host IO are Core's own.
+        "ds-solar-io",
+        "ds-solar-process",
     ] {
         assert!(
             !graph
@@ -49,7 +52,7 @@ fn normal_dependency_graph_has_no_embedded_computation_or_report_owner() {
     assert!(
         graph
             .lines()
-            .any(|line| line.starts_with("ds-solar-process "))
+            .any(|line| line.starts_with("ds-solar-host "))
     );
     assert!(
         graph
