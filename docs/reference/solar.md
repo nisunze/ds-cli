@@ -81,8 +81,12 @@ are verified and preserved. Each context admits 32 active workers and retains
 at most 64 private journals; terminal journal expiration is explicit.
 
 Use `prepare_captured` on Server to select city IDs without constructing snapshots.
-The captured native authority obtains their governed inputs and references inside
-the worker. Poll `prepare_progress`; completed preparation survives restart and
+The captured native authority obtains their governed inputs inside the worker;
+references come only from the workspace's verified cache. A miss settles the city
+`reference_unit_invalid`: discover `reference_plan`, seal its request's four
+artifacts, `reference_import` them, then prepare again. Read publication with
+`ds core sync status --project <id>` or `ds core activity --project <id>`.
+Poll `prepare_progress`; completed preparation survives restart and
 unfinished work returns `preparation_interrupted` with committed city states
 preserved. `prepare_cancel` cooperatively stops further acquisition and input
 commit. Discover `prepare` separately for authored snapshots and manual composition.
@@ -326,7 +330,11 @@ a snapshot for editing. Every command takes `--workspace DIR`.
 `project run --cache DIR --run-id ID --city CITY --charts --draft apd` prepares,
 calculates and produces drafts offline. Repeat `--city` and `--draft`; supported
 drafts are apd, network, plant and financial. The cache must already contain the
-exact reference data. `project result --run-id ID`, `project status` and
+exact reference data. The `--lane` Solar addon (stable by default) calculates the
+captured run through the same fixed prepared-batch task as `ds solar run`; the
+workspace owner verifies and commits the closed batch, and a missing addon
+refuses `solar_engine_missing` before any workspace effect. These local drafts
+are not a shared publication. `project result --run-id ID`, `project status` and
 `project outbox` inspect local state without Desktop or authentication.
 
 `project sync --project <exact-project> --lane stable --background --yes` launches the fixed native

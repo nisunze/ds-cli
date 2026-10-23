@@ -273,6 +273,108 @@ fn run_with_capture(
     })?;
     remaining(deadline)?;
     let engine = capture()?;
+    let lane = inputs.value("lane").unwrap_or("stable");
+    let (completion, failed) = execute_batch(&request, &engine, Path::new(out), lane, deadline)?;
+    if !failed.is_empty() {
+        return Err(Failure::failed("engine_refused", format!("{} of {} cities failed; local output was committed",failed.len(),request.prepared.len()))
+            .detail(json!({"completion":completion,"failed_city_ids":failed,"failure_details":"inspect failures.json in the completed output"}))
+            .remedy("inspect the completed local output and failures.json before explicitly retrying failed cities into a new directory"));
+    }
+    let batch = read_batch_receipt(
+        &PathBuf::from(out).join("batch.json"),
+        inputs.value("run-id"),
+    )
+    .map_err(|error| completed_failure(error, &completion))?;
+    let artifacts = batch["artifacts"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .take(MAX_RECEIPT_ARTIFACTS)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let artifact_count = batch["artifacts"].as_array().map_or(0, Vec::len);
+    let mut receipt = completion;
+    receipt["prepared"] = json!(prepared_path);
+    receipt["cities"] = if cities.is_empty() {
+        json!("all")
+    } else {
+        json!(cities)
+    };
+    receipt["concurrency"] = json!(concurrency_text);
+    receipt["charts"] = json!(inputs.switch("charts"));
+    receipt["artifact_count"] = json!(artifact_count);
+    receipt["artifacts"] = json!(artifacts);
+    if artifact_count > MAX_RECEIPT_ARTIFACTS {
+        receipt["more"] = json!({"artifacts_omitted":artifact_count-MAX_RECEIPT_ARTIFACTS,"reason":"bounded_batch_inventory","next":"inspect the engine-owned batch.json in --out for the complete local inventory"});
+    }
+    Ok(receipt)
+}
+
+/// `solar project run`'s calculation of one captured workspace run: the same
+/// fixed prepared-batch task `solar run` sends the selected Solar addon, by
+/// typed request and reply, committed as one closed batch at the destination
+/// the workspace chose. Failed cities stay in the committed `failures.json`;
+/// the workspace verifies the batch against its captured inputs.
+pub(crate) fn calculate_captured(
+    engine: &ds_cli_exec::CapturedExternal,
+    lane: &str,
+    calculation: ds_solar_project::run::LocalCalculation<'_>,
+) -> Result<(), Failure> {
+    use base64::Engine as _;
+    let input_maps = calculation
+        .input_maps
+        .into_iter()
+        .map(|(city, maps)| {
+            let maps = maps
+                .into_iter()
+                .map(|(uri, document)| {
+                    let map = ds_solar_contracts::prepared_batch::PreparedBatchMap {
+                        entry: document.entry,
+                        body_base64: base64::engine::general_purpose::STANDARD
+                            .encode(document.bytes),
+                    };
+                    (uri, map)
+                })
+                .collect();
+            (city, maps)
+        })
+        .collect();
+    let request = PreparedBatchRequest {
+        schema_version: PREPARED_BATCH_REQUEST_SCHEMA.into(),
+        project_id: calculation.project_id.into(),
+        root: calculation.root.into(),
+        prepared: calculation.prepared.to_vec(),
+        options: PreparedBatchOptions {
+            run_id: Some(calculation.run_id.into()),
+            render_charts: calculation.charts,
+            generate_documents: true,
+            report_drafts: calculation.drafts.to_vec(),
+            input_maps,
+        },
+        concurrency: Some(calculation.concurrency),
+    };
+    BatchEngine::validate_request(&request).map_err(|error| {
+        Failure::invalid("prepared_batch_invalid", format!("captured run refused before engine execution: {}", error.message))
+    })?;
+    let deadline = Instant::now()
+        .checked_add(RUN_TIMEOUT)
+        .ok_or_else(timeout_failure)?;
+    execute_batch(&request, engine, calculation.destination, lane, deadline).map(|_| ())
+}
+
+/// Execute one admitted prepared batch on the captured addon and commit its
+/// verified closed artifacts at `out`. Returns the completion identity and the
+/// ids of cities that failed; their successful siblings are committed too.
+fn execute_batch(
+    request: &PreparedBatchRequest,
+    engine: &ds_cli_exec::CapturedExternal,
+    out: &Path,
+    lane: &str,
+    deadline: Instant,
+) -> Result<(Value, Vec<String>), Failure> {
     let engine_path = engine.executable().to_path_buf();
     let scratch = tempfile::tempdir().map_err(|error| {
         Failure::failed(
@@ -316,7 +418,7 @@ fn run_with_capture(
     let completion = json!({
         "out":out, "batch_id":verified.output.batch.batch_id, "batch_digest":verified.output.batch.batch_digest,
         "run_id":verified.output.batch.run.run_id, "engine":verified.engine,
-        "engine_path":engine_path, "lane":inputs.value("lane").unwrap_or("stable"),
+        "engine_path":engine_path, "lane":lane,
         "network":false, "request_sha256":verified.request_sha256,
         "completion_build_manifest_sha256":verified.completion_build_manifest_sha256,
     });
@@ -346,7 +448,7 @@ fn run_with_capture(
         })?;
     remaining(deadline).map_err(|error| completed_failure(error, &completion))?;
     ds_solar_project::files::commit_artifact_run(
-        Path::new(out),
+        out,
         &verified.output.batch,
         &failures,
         Some(&progress),
@@ -374,42 +476,8 @@ fn run_with_capture(
             &completion,
         )
     })?;
-    if !failures.is_empty() {
-        return Err(Failure::failed("engine_refused", format!("{} of {} cities failed; local output was committed",failures.len(),verified.output.cities.len()))
-            .detail(json!({"completion":completion,"failed_city_ids":failures.iter().map(|f|f.city_id).collect::<Vec<_>>(),"failure_details":"inspect failures.json in the completed output"}))
-            .remedy("inspect the completed local output and failures.json before explicitly retrying failed cities into a new directory"));
-    }
-    let batch = read_batch_receipt(
-        &PathBuf::from(out).join("batch.json"),
-        inputs.value("run-id"),
-    )
-    .map_err(|error| completed_failure(error, &completion))?;
-    let artifacts = batch["artifacts"]
-        .as_array()
-        .map(|items| {
-            items
-                .iter()
-                .take(MAX_RECEIPT_ARTIFACTS)
-                .cloned()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let artifact_count = batch["artifacts"].as_array().map_or(0, Vec::len);
-    let mut receipt = completion;
-    receipt["prepared"] = json!(prepared_path);
-    receipt["cities"] = if cities.is_empty() {
-        json!("all")
-    } else {
-        json!(cities)
-    };
-    receipt["concurrency"] = json!(concurrency_text);
-    receipt["charts"] = json!(inputs.switch("charts"));
-    receipt["artifact_count"] = json!(artifact_count);
-    receipt["artifacts"] = json!(artifacts);
-    if artifact_count > MAX_RECEIPT_ARTIFACTS {
-        receipt["more"] = json!({"artifacts_omitted":artifact_count-MAX_RECEIPT_ARTIFACTS,"reason":"bounded_batch_inventory","next":"inspect the engine-owned batch.json in --out for the complete local inventory"});
-    }
-    Ok(receipt)
+    let failed = failures.iter().map(|f| f.city_id.to_owned()).collect();
+    Ok((completion, failed))
 }
 
 fn read_batch_receipt(path: &Path, expected_run_id: Option<&str>) -> Result<Value, Failure> {
