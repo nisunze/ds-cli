@@ -177,6 +177,8 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 ## 7. Report compute, export and combined output
 
+- **Transformer Sizing sheet vs saved size** (owner ruling 23 Oct): supply uses the saved `tr_size` when `plan_kva` is absent (already true). Change the Sizing sheet so its demand-based size (100 kVA minimum) is a flagged recommendation column where it differs from the saved size (21 Gisagara sites, e.g. upgrade_rwatano 250 saved vs 100 sized), never a supply quantity.
+
 - **Reporter refuses additive `printing_context` members** (`c7958c2b`, found 23 Oct): ds-network-reporter `src/held_input.rs` `printing_text_from` refuses the whole report when any `printing_context` value is not text, even one no layout prints. The sealed Gisagara receipt now carries text only and exports (Linux, `report project export --dry-run`), so nothing fails today. Next: refuse only a non-text value a layout `{key}` actually binds, naming that key, and ignore unused members; decided by the Reporter owner.
 
 - **Local layout proof fails late on unsealed governed symbols** (`09b78d74` residue, 23 Oct): `report project export --print-layout <gisagara A0 body> --project arjgpydw_nyam --transformer fill_in_kabuhoro --dry-run` ends `export_blocked` "print symbol `ds-transformer` is missing from held symbol_assets" (evidence `scratch/claude-linux-prod-20261022/lane-report-1023/nyam-a0g.json`); `complete_proof_print_styles` (ds-cli-report `project/export.rs`) checks icons only for `style_refs`, not for governed `style_keys` bindings. The adopted project layout prints. Next: refuse before render naming each binding icon the sealed `printing_symbol_assets` lacks (or seal it from the governed binding).
