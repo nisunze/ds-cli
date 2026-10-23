@@ -22,8 +22,10 @@ observation exports remain available through the local reporter.
 
 `report project export --held-export <json-file>` accepts the closed
 `ds.report-held-export/v1` capture with explicit SHP, KMZ and/or XLSX selection.
-It checks the held room against its governed saved revision and content digest,
-and checks the original configuration receipt against the admitted project.
+It reads only what this device holds: the held room's revision and content digest
+must equal the saved revision in the held status observation, and the original
+configuration receipt must equal the held configuration. Nothing held refuses with
+`design_status_not_held` or `project_config_not_held`; no live read is made.
 Dirty, unsaved or changed sources refuse before computation; reporting never
 saves a design. This mode does not run an unrelated project reconciliation.
 Core verifies the installed reference asset, uses the managed Reporter, and
@@ -224,198 +226,65 @@ documents. The reporter performs no download.
 
 ## Background project reports
 
-`ds report project scope|compounded|archives` is the other door of this
-domain: no local engine, no map, no Desktop. The commands restore the native
-user for `--lane stable|canary`, use the required `--project <exact-id>` on
-each request, and call the governed report service's fixed
-contract. ds-brain owns everything that follows — it resolves the exact scope
-(every active saved transformer, or the `--transformer` names given), reuses
-fresh individual report artifacts, regenerates missing or stale ones with the
-cloud reporter, composes the overall and optional per-district combined sets,
-streams one ZIP with its manifest and writes a registry row. Retired
-transformers (`ds design transformer retire`) are never in scope. The reserved
-computed identities — `collisions`, `combined_transformer` and its aliases
-(`all_transformers`, `combined_transformers`) — are report output, never
-participants: `scope` and `compounded` refuse them locally with
-`reserved_transformer_identity` before any credential is restored.
+`ds report project scope|compounded|archives` work on the project named by the
+required `--project <exact-id>`, for the native user of `--lane stable|canary`,
+with no map and no Desktop. Every report is computed on this machine; ds-brain
+only authorizes, stores and lists.
+
+`compounded` composes the Compounded Report ZIP here. The scope is every active
+saved transformer, or the `--transformer` names given (each must be active).
+Each participating room contributes the individual report set this machine
+committed with `ds report project export`, checked against the room's saved
+revision; the overall combined set (and, with `--combine-per-group`, one per
+first-level group) is computed here by the same owner `ds report project
+combined` runs. The kernel's `report::compounded` owner files the tree from the
+applied `report_archive` grouping (`--file-level` is the legacy spelling of
+its depth), the Reporter's closed `export-compounded-report` task builds the ZIP
+with its `manifest.json` by request and response, and the ZIP is sealed into
+the publication queue as `export-compounded_report`. `ds report outbox drain`
+(or the Sync Center) publishes it through the compute-artifact door; ds-brain
+admits one ZIP of at most 64 MiB. Retired transformers are never in scope. The
+reserved computed identities — `collisions`, `combined_transformer` and its
+aliases — are report output, never participants: `scope` and `compounded`
+refuse them locally with `reserved_transformer_identity`.
 
 ```bash
 ds report project scope --project <exact-id> --output json                      # the plan
-ds report project compounded --project <exact-id> --file-level sector --yes      # publish
-ds report project archives --project <exact-id> --output json                   # the registry
+ds report project export --project <exact-id> --out-dir ./reports --output json # current room reports
+ds report project compounded --project <exact-id> --file-level sector --yes      # compose and queue
+ds report outbox drain --project <exact-id> --yes --output json                # publish
+ds report publication show --engine network_reporter --operation export-compounded_report --project <exact-id> --output json
 ```
 
-`ds report project compute` is the cloud twin of `ds report project export`:
-the same individual transformer report, computed by the cloud reporter and
-published to the project by the governed service (what the application's
-"Export reports" button asks; ds-brain action `export_reports_only`).
-`--transformer` names the scope; omitted, every active saved transformer is
-named from the same inventory `scope` reads, because the route takes exact
-names. The service skips a transformer whose report is fresh,
-refuses one another editor holds a lease on (`auth_input_invalid`, HTTP 423,
-the holder named), and answers per transformer. A run with any errored row
-exits non-zero as `report_compute_partial`, with the whole receipt in
-`detail`, so a script that asked for N reports never reads N-1 as success.
-
-```bash
-ds report project compute --transformer akagerero --lane canary --yes --output json
-ds design status --project example_rwanda --transformer akagerero --lane canary --output json   # the report the cloud stamped
-```
-
-`compounded` is `artifact_write` and needs `--yes`: it publishes a durable
-archive of record. Its receipt carries `status` (`success` or `partial`), the
-archive `prefix` (the registry stem), cloud locators, individual artifact
-coverage, the missing individuals with typed causes, bounded errors and
-`registry_write_failed`. A receipt advertising an archive for zero individual
-artifacts is refused as unreadable, as the application refuses it. The scope
-rules, layout vocabulary and archive tree are ds-brain's
-`ds-brain/docs/contracts/compounded-reports.md`. The separate Combined Report
-is the `combined_transformer` data report (Excel and spatial outputs). The
-Compounded Report is a ZIP snapshot containing individual artifacts and a
-combined set; publishing it does not update the Combined Report row.
-
-## The project's output policy
-
-Which files a report produces, and where each one may be produced, is one
-decision and `ds-command-kernel::report_formats` makes it. These two commands
-are its headless door; the Settings page in the application is the other, and
-both get the same answer because neither computes it.
-
-```bash
-ds report project settings --project <exact-id> --output json                 # output policy and readiness
-ds report project crs --project <exact-id> --output json                      # existing projection authority only
-ds report project outputs set --project <exact-id> --selection outputs.json --yes
-```
-
-`settings` reads the named project's fresh configuration and hands its
-sheets to the kernel. The reply is the kernel's, unedited: `source` (the
-project's own export row, or the report defaults when it has none), the stored
-`setting` row exactly as saved, the `outputs` it resolves to with their formats
-and file suffixes, the `papers` of each named printout, `ready`, any `issues`,
-and a `refusal` naming a `code`, a `message_key` and the `mode` the settings
-were read in. The message key is deliberate: the GUI resolves it in the
-operator's language, `ds` prints the code and the kernel's own findings, and
-neither composes a sentence of its own. A project stores its selection in
-whatever shape it has ever stored one — a comma or semicolon string, a token
-array, a truthy map, or the versioned `ds.design-output-selection/v1` document
-— and all of them read here.
-
-`outputs set` takes that versioned document (`ds report layout schema` returns
-its schema under `output_selection`). It is validated against the kernel's
-closed type *before* any credential is restored, so a malformed selection costs
-no round trip. A selection naming a printing setup this project does not
-hold is refused the same way, before the write: naming a global template is not
-adopting it, and `print_setup_not_adopted` names `ds report layout copy` as the
-way to adopt one. A selection that cannot execute is never saved as though it
-could. The kernel then writes it into the project's settings sheet —
-into whichever of the five export-row aliases the project already uses
-(`design_export_format`, `design_export_formats`, `transformer_export_formats`,
-`tr_export_formats`, `report_formats`, in any case and with hyphens), or a new
-`design_export_format` row when it has none — and every other settings row is
-preserved byte for byte. The patched sheet is saved through the same
-`save_config` request the application sends, then read back fresh and verified;
-a save whose read-back disagrees is reported as unreadable rather than as
-success.
-
-A selection's `execution` map is where each output may run: keys are an exact
-output id (`pdf__detail`), an output class (`print`, `geospatial`, `tabular`),
-or `*`, and the value is a subset of `["desktop","web"]`. An output no key
-names may run on both. The map is saved as authored, and ds-brain admits an
-export against it — the kernel decides what the policy says, the service
-decides whether this request is allowed.
-
-```json
-{
-  "schema": "ds.design-output-selection/v1",
-  "prints": [{ "layout_id": "detail", "enabled": true, "formats": ["pdf", "png"] }],
-  "geospatial": ["gpkg"],
-  "tabular": ["xlsx"],
-  "execution": { "pdf__detail": ["desktop"], "geospatial": ["web"] }
-}
-```
-
-A Compounded Report archive consumes the project's applied `report_archive` consumer
-grouping: that plan, not this request, is the folder and section authority.
-`ds design consumer-grouping read|preview|apply --purpose report_archive` is
-where it is inspected, re-planned and applied, and a project without it is one
-of the causes the service reports here as `auth_input_invalid`.
-
-The receipt does not confirm the foldering. `--file-level sector|district` and
-`--combine-per-group` are a request: when no group value resolves, the
-requested layout silently collapses to `_unassigned` folders while the run
-still reports `success`, which the archives registry row exposes as
-`group_count: 0` under an applied plan and `ds` derives there as
-`layout_collapsed`.
-
-**Archive rows carry the archive's grouping as the kernel reads it** (command
-contract 3). `group_count` and `groups` are the first-level group labels the
-archive covers (`_unassigned` excluded), and `grouping` says where they came
-from: `kind` is `plan` (an applied `report_archive` plan, whose identity —
-`purpose`, ordered `definition_ids`, `plan_digest`, `projection_sha256`,
-`revision`, `member_count`, `unassigned_count` and the plan's own all-level
-`group_count` — is under `plan`, and whose first definition id is `key`),
-`flat` (no plan was applied; the archive is flat by contract, never
-`layout_collapsed`, with the service's sentence in `detail`), `recorded`,
-`legacy_district` (an archive written before grouping plans: its
-`district_count`/`districts` fill `group_count`/`groups`, `key: "district"`)
-or `unrecorded`. Generic fields win on presence; the district pair is read only
-when none is present. A contradictory record (count and labels disagree, a flat
-archive naming groups, a malformed plan block) refuses the listing as
-unreadable instead of guessing. The decoding is
-`ds-command-kernel::report::archive_groups`, the same one the application uses.
-Contract 2 rows carried `district_count`/`districts`; those keys are gone.
-
-**Both commands describe the layout in the report layer's own vocabulary.**
-`archive_layout` carries the recorded spelling plus `level`, `level_key`,
-`label_key` and `label_level_key` — the same keys the application renders, from
-`ds-command-kernel::report`. Two spellings describe one choice: `file_level` is
-current and `transformer_grouping` is the legacy twin older archives were
-written with, and the kernel folds them (`district_sector` reads as a
-sector-level archive; an unrecognised or absent level is the default,
-transformer). Until 2026-09-11 `ds report project archives` ignored the legacy
-spelling entirely and reported a foldered archive as having no layout at all,
-which is how one archive came to be described two ways.
-
-Current archives also record ds-brain's generic knobs — `group_depth` (how many
-of the applied plan's levels the tree descends; null is every level),
-`transformer_folders` and `combine_per_group` — and `archives` carries them on
-`archive_layout` beside the legacy spellings. When either of the first two is
-recorded the kernel resolves the level from them first (depth 0 is `root`, or
-`flat` with transformer folders; depth 1 is `district`; deeper is `sector`;
-every level is `transformer` with folders, else `sector`), because ds-brain
-writes the legacy words only for older readers. `layout_collapsed` reads that
-resolved level: `root` and `flat` request no group folders unless a combined
-report per group was asked for.
-
-The registry's `download_url` is freshly signed by the service with about an
-hour of validity, but has been observed arriving with seconds left, so a caller
-must never assume a returned URL is still usable. `ds` reads each URL's own
-expiry out of its signature (`Expires`, or `X-Goog-Date` plus
-`X-Goog-Expires`) and reports it as `download_url_expires_at`,
-`download_url_seconds_remaining` and `download_url_expired`; check that before
-fetching, and list again for a fresh signature.
+`compounded` is `artifact_write` and needs `--yes`. Its receipt carries
+`status`, the archive `prefix`, `archives` (the sealed archive's locator),
+`publication` (operation, batch, publish id and the drain to run), the inputs
+it packaged (room revisions and batches, combined sets, grouping identity) and
+individual coverage. The JSON `--composition` is the closed
+`ds.compounded-report/v1` object (`schema`, `transformers`, `archive_layout`
+{`group_depth`, `transformer_folders`, `combine_per_group`}, `force`); `force`
+is recorded only, because an individual report is produced by `report project
+export`, never by this command. Individual reports computed on another machine
+are not packaged yet: export them here first. The separate Combined Report is
+the `combined_transformer` data report; the Compounded Report is a ZIP snapshot
+and publishing it does not update the Combined Report row.
 
 ## When the Compounded Report refuses
 
 `ds report project compounded` packages one archive out of the rooms' own
 reports, so a room whose report is not current can only contribute an
-out-of-date file. It used to be dropped from the archive without a word —
-that is how one project's archive combined nothing and another's carried
-June's files. The run now refuses instead, and the refusal names every room
-it will not package plus the one command that fixes them:
+out-of-date file. The run refuses instead, before anything is composed, and
+the refusal names every room it will not package plus the one command that
+fixes them:
 
 | refusal | what the rooms are waiting for | the command it prints |
 |---|---|---|
-| `combined_inputs_publication_pending` | computed on a device, still in the publication queue | `ds report outbox drain` |
-| `combined_inputs_not_current` | missing, stale, failed, or given up on by the queue | `ds report project export --transformer …` |
-| `combined_inputs_empty` | current, and genuinely holding nothing | `ds report project scope` |
+| `combined_inputs_not_current` | no report held on this machine, or one older than the saved revision | `ds report project export --transformer …` |
 | `combined_no_inputs` | nothing in scope at all | `ds report project scope` |
+| `combined_readiness_unavailable` | the saved revisions could not be read | retry while connected |
 
-A pending room is never answered with a re-export: exporting it again would
-seal a second artifact beside the one already waiting, which is the hoarding
-the queue exists to end. The room list is bounded, and the reply says how
-many more rooms there are and whether the printed command reaches all of
-them.
+The room list is bounded, and the reply says how many more rooms there are
+and whether the printed command reaches all of them.
 
 ## Grouped Compounded Reports: one archive per city, tag or administrative level
 
@@ -576,8 +445,8 @@ assembles a ZIP at a path the caller names, from local documents whose digests
 it verifies, and contacts nothing.
 
 `report project compounded` is the contrast: `artifact_write`, because the ZIP
-it publishes lands in the project's cloud registry where every member reads it
-as the delivery. `scope`, `settings` and `archives` are `local_auth_state` like
+it queues is published to the project where every member reads it as the
+delivery. `scope`, `settings` and `archives` are `local_auth_state` like
 every headless read — they may rotate the native credential, and write nothing
 else. `report project outputs set` is `global_write`: it changes saved project
 settings every member's next export reads.

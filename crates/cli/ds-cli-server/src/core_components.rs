@@ -29,7 +29,7 @@ pub(crate) const COMPONENT: Arg = Arg::value(
 pub(crate) const RUNTIME: Arg = Arg::value(
     "runtime",
     "<native|wasm>",
-    "Native engine or UI WASM installation; native remains the default.",
+    "Native engine, or a WASM unit (UI units and the Network page engine unit); native remains the default.",
 )
 .choices(&["native", "wasm"])
 .default("native");
@@ -52,8 +52,8 @@ pub(crate) const REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "module_not_installed",
-        when: "no UI component selection exists",
-        remedy: "explicitly stage and activate a published UI unit",
+        when: "no UI or Network page unit selection exists",
+        remedy: "explicitly stage and activate a published UI or Network page unit (core component stage, then activate)",
     },
     Refusal {
         code: "module_artifact_invalid",
@@ -63,7 +63,7 @@ pub(crate) const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "module_release_component_invalid",
         when: "the runtime does not admit the selected component",
-        remedy: "select native for Solar, Reporter or Network; select wasm for Interactions or UI Kernel",
+        remedy: "select native for Solar, Reporter or the Network addon; select wasm for Interactions, UI Kernel or the Network page engine unit",
     },
     Refusal {
         code: "invalid_choice",
@@ -202,7 +202,7 @@ pub static REMOVE: Command = Command {
     path: &["core", "component", "remove"],
     contract: 2,
     summary: "Remove one managed component selection from this machine.",
-    purpose: "Runtime wasm removes an installed UI selection locally, keeping its bytes and previous receipt for rollback, without login or a running Core. Native (default) confirms removal of one component and lane at an explicitly held generation through that lane's running Core: it fences job admission, checks that every pending job holds an immutable engine capture, and commits a removed-v2 selection. Uncaptured legacy jobs refuse; captured jobs and installed versions remain. Generation zero may fence an absent selection. Details: docs/reference/core.md.",
+    purpose: "Runtime wasm removes an installed UI selection locally, keeping its bytes and previous receipt for rollback. Native (default) confirms removal of one component and lane at a held generation through that lane's running Core: it fences job admission, checks that every pending job holds an immutable engine capture, and commits removed-v2. Uncaptured legacy jobs refuse; captured jobs and installed versions remain.",
     chapter: Chapter::Workstation,
     effect: Effect::MachineWrite,
     authority: Authority::None,
@@ -340,6 +340,9 @@ fn removal_request(inputs: &Inputs) -> Result<RemovalRequest, Failure> {
 }
 
 pub fn remove(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::engine_units::requested(inputs)? {
+        return crate::engine_units::remove(inputs);
+    }
     if crate::ui_components::requested(inputs)? {
         return crate::ui_components::remove(inputs);
     }
@@ -485,6 +488,9 @@ fn remove_on_runtime(
 }
 
 pub fn selection(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::engine_units::requested(inputs)? {
+        return crate::engine_units::selection(inputs);
+    }
     if crate::ui_components::requested(inputs)? {
         return crate::ui_components::selection(inputs);
     }
@@ -658,7 +664,7 @@ mod tests {
         assert!(!SELECTION.requires_confirmation());
         assert_eq!(
             REMOVE.args.iter().map(|arg| arg.name).collect::<Vec<_>>(),
-            ["component", "channel", "runtime", "expected-generation"]
+            ["component", "channel", "runtime", "scope", "expected-generation"]
         );
         assert_eq!(
             SELECTION
@@ -666,7 +672,7 @@ mod tests {
                 .iter()
                 .map(|arg| arg.name)
                 .collect::<Vec<_>>(),
-            ["component", "channel", "runtime"]
+            ["component", "channel", "runtime", "scope"]
         );
         let descriptor = ds_cli_contract::help::command_json(&REMOVE);
         assert_eq!(descriptor["confirmation_required"], true);

@@ -241,6 +241,11 @@ static DSGRID_ENTRIES: &[Entry] = &[
         render: ds_cli_dsgrid::apply_receipt::render,
     },
     Entry {
+        command: &ds_cli_dsgrid::spotting_preview::COMMAND,
+        handler: ds_cli_dsgrid::spotting_preview::run,
+        render: ds_cli_dsgrid::spotting_preview::render,
+    },
+    Entry {
         command: &ds_cli_dsgrid::apply::COMMAND,
         handler: ds_cli_dsgrid::apply::run,
         render: ds_cli_dsgrid::apply::render,
@@ -572,11 +577,6 @@ static REPORT_ENTRIES: &[Entry] = &[
         command: &ds_cli_report::retained_preview::REFRESH,
         handler: ds_cli_report::retained_preview::refresh,
         render: ds_cli_report::retained_preview::render,
-    },
-    Entry {
-        command: &ds_cli_report::project::compute::COMMAND,
-        handler: ds_cli_report::project::compute::run,
-        render: ds_cli_report::project::compute::render,
     },
     Entry {
         command: &ds_cli_report::project::archives::COMMAND,
@@ -1326,6 +1326,11 @@ static SURVEY_ENTRIES: &[Entry] = &[
         command: &ds_cli_survey::local::STATUS_COMMAND,
         handler: ds_cli_survey::local::status,
         render: ds_cli_survey::local::render,
+    },
+    Entry {
+        command: &ds_cli_survey::dashboard::COMMAND,
+        handler: ds_cli_survey::dashboard::run,
+        render: ds_cli_survey::dashboard::render,
     },
     Entry {
         command: &ds_cli_survey::changes::COMMAND,
@@ -3727,7 +3732,6 @@ pub fn dispatch(entry: &Entry, tokens: &[String], context: &Context) -> Result<V
     match entry.command.id {
         "report.project.compounded" => ds_cli_report::project::combined::preflight(&inputs)?,
         "report.project.combined" => ds_cli_report::project::combined_export::preflight(&inputs)?,
-        "report.project.compute" => ds_cli_report::project::compute::preflight(&inputs)?,
         "report.project.export" => ds_cli_report::project::export::preflight(&inputs)?,
         "report.project.outputs.set" => ds_cli_report::project::settings::preflight_set(&inputs)?,
         "report.project.publish" => ds_cli_report::project::publish::preflight(&inputs)?,

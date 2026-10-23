@@ -2429,7 +2429,7 @@ impl NativeTransport {
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let body = call.body();
         let url = project_report_url(local_go::api_origin(call.gateway_origin())?);
-        let mut request = local_go::api_agent()?
+        let request = local_go::api_agent()?
             .post(url)
             .header("Accept", call.content_type())
             .header("Content-Type", call.content_type())
@@ -2440,12 +2440,6 @@ impl NativeTransport {
             .header("x-api-key", call.gateway_api_key())
             .header("Authorization", &bearer)
             .header("X-Forwarded-Authorization", &bearer);
-        // The header is transport, not a choice: ds-brain routes the report
-        // actions on it and, without it, falls back to the demolished Python
-        // path. The core names the fixed value and the adapter sends it.
-        if let Some(lane) = call.processing_lane() {
-            request = request.header(call.processing_lane_header(), lane);
-        }
         let result = request
             .config()
             .max_redirects(0)

@@ -78,6 +78,6 @@ pub fn validate_calculation_identity(id: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub use ds_profile_policy::profile_queries::{
+pub use ds_network_contracts::profile_queries::{
     QueryArguments, QueryCursor, QueryKind, QuerySource, DEFAULT_QUERY_LIMIT,
 };

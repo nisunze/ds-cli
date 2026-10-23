@@ -77,6 +77,155 @@ pub fn capture(
     })
 }
 
+/// The application executor that runs every LV batch: installed DS Core,
+/// which runs the separately released Network engine executable.
+pub const CORE_PROCESSOR: &str = "ds-core";
+/// The stored process-path marker (`process_metadata.lane`): data other
+/// consumers read; never read back here for a decision.
+pub const PROCESSING_LANE: &str = "fast";
+
+/// Who executed an LV batch, read from the executor's own receipt (Core's
+/// `design.lv.process` command data). Additive receipt fields are ignored; a
+/// missing optional member stays absent. No host stamps or infers it.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+pub struct LvProcessProvenance {
+    pub processor: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_core_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable_sha256: Option<String>,
+    #[serde(default)]
+    pub development_override: bool,
+}
+
+impl LvProcessProvenance {
+    pub fn from_core_receipt(data: &Value) -> Self {
+        let text = |key: &str| {
+            data.get(key)
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty() && value.len() <= 256)
+                .map(str::to_owned)
+        };
+        Self {
+            processor: CORE_PROCESSOR.into(),
+            engine_core_version: text("engine_core_version"),
+            executable_sha256: text("executable_sha256"),
+            development_override: data
+                .get("development_override")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        }
+    }
+}
+
+/// An admitted LV batch with its executor provenance and, per job in input
+/// order, the persisted process verdict (`null` for a failed job).
+#[derive(Clone, Debug, serde::Serialize)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+#[cfg_attr(
+    all(feature = "wasm", target_arch = "wasm32"),
+    tsify(hashmap_as_object, missing_as_null)
+)]
+pub struct LvProcessRun {
+    pub jobs: Vec<ds_network_contracts::lv::LvProcessBatchJobOutput>,
+    pub provenance: LvProcessProvenance,
+    #[cfg_attr(
+        all(feature = "wasm", target_arch = "wasm32"),
+        tsify(type = "(Record<string, unknown> | null)[]")
+    )]
+    pub process_metadata: Vec<Option<serde_json::Map<String, Value>>>,
+}
+
+impl LvProcessRun {
+    pub fn new(output: LvProcessBatchOutput, provenance: LvProcessProvenance) -> Self {
+        let process_metadata = output
+            .jobs
+            .iter()
+            .map(|job| {
+                job.output
+                    .as_ref()
+                    .filter(|_| job.ok)
+                    .map(|result| process_metadata(result, &provenance))
+            })
+            .collect();
+        Self {
+            jobs: output.jobs,
+            provenance,
+            process_metadata,
+        }
+    }
+}
+
+/// The persisted verdict of one successful job: `error` when the engine
+/// reported an error-severity warning, `warning` when an actionable warning
+/// (severity `warning` or unstated) remains, otherwise `success`; per-layer
+/// result counts; the settings the engine used and the executor provenance.
+/// `drafting_source` stays the retry vocabulary (`ds-web`: drafted from the
+/// design room), never the compute owner.
+pub fn process_metadata(
+    output: &ds_network_contracts::lv::LvProcessOutput,
+    provenance: &LvProcessProvenance,
+) -> serde_json::Map<String, Value> {
+    use serde_json::json;
+    let severity = |warning: &&ds_network_contracts::lv::NetworkWarning| {
+        warning.severity.trim().to_lowercase()
+    };
+    let first_error = output.warnings.iter().find(|w| severity(w) == "error");
+    let first_warning = output
+        .warnings
+        .iter()
+        .find(|w| matches!(severity(w).as_str(), "" | "warning"));
+    let status = match (first_error, first_warning) {
+        (Some(_), _) => "error",
+        (None, Some(_)) => "warning",
+        (None, None) => "success",
+    };
+    let counts: serde_json::Map<String, Value> = output
+        .gdfs
+        .iter()
+        .map(|(layer, collection)| {
+            let count = collection
+                .get("features")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            (layer.clone(), json!(count))
+        })
+        .collect();
+    let mut metadata = serde_json::Map::new();
+    metadata.insert("status".into(), json!(status));
+    metadata.insert("drafting_source".into(), json!("ds-web"));
+    metadata.insert("processor".into(), json!(provenance.processor));
+    if let Some(version) = &provenance.engine_core_version {
+        metadata.insert("engine_core_version".into(), json!(version));
+    }
+    metadata.insert("lane".into(), json!(PROCESSING_LANE));
+    metadata.insert(
+        "settings".into(),
+        serde_json::to_value(&output.settings_used).unwrap_or(Value::Null),
+    );
+    metadata.insert("result_counts".into(), Value::Object(counts));
+    if !output.warnings.is_empty() {
+        metadata.insert(
+            "warnings".into(),
+            serde_json::to_value(&output.warnings).unwrap_or(Value::Null),
+        );
+    }
+    if let Some(error) = first_error {
+        metadata.insert(
+            "error".into(),
+            serde_json::to_value(error).unwrap_or(Value::Null),
+        );
+        metadata.insert("error_message".into(), json!(error.message));
+    } else if let Some(warning) = first_warning {
+        metadata.insert(
+            "warning".into(),
+            serde_json::to_value(warning).unwrap_or(Value::Null),
+        );
+    }
+    metadata
+}
+
 pub fn capture_bytes(project: &str, input: &[u8]) -> Result<CapturedLvProcess, CommandRefusal> {
     if input.len() > MAX_NATIVE_LV_INPUT_BYTES {
         return Err(native_fault(NativeLvError::InputTooLarge {
@@ -130,6 +279,17 @@ impl CapturedLvProcess {
         })?;
         self.validate_response(&output)?;
         Ok(output)
+    }
+
+    /// Core's envelope as one admitted run: the batch result, the executor's
+    /// own provenance receipt and each successful job's persisted verdict.
+    pub fn decode_core_run(&self, value: Value) -> Result<LvProcessRun, CommandRefusal> {
+        let provenance = value
+            .get("data")
+            .map(LvProcessProvenance::from_core_receipt)
+            .unwrap_or_else(|| LvProcessProvenance::from_core_receipt(&Value::Null));
+        let output = self.decode_core_response(value)?;
+        Ok(LvProcessRun::new(output, provenance))
     }
 
     pub fn decode_core_response(
@@ -274,7 +434,7 @@ pub mod browser {
         pub async fn run_wasm(
             self,
             host: CapabilityHost,
-        ) -> Result<tsify::Ts<LvProcessBatchOutput>, JsValue> {
+        ) -> Result<tsify::Ts<LvProcessRun>, JsValue> {
             let output = run_captured_lv(&host, &self).await?;
             use tsify::Tsify;
             output.into_ts().map_err(|_| {
@@ -312,3 +472,7 @@ pub mod browser {
 #[cfg(test)]
 #[path = "design_lv_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "design_lv_run_tests.rs"]
+mod run_tests;

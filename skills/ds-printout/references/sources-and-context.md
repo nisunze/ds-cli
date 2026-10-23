@@ -25,11 +25,14 @@ reference data.
 Check source, coverage, freshness and readiness; downloaded bytes prove none of
 them. Ready-empty, incomplete and stale differ.
 
-Context is machine-local: national catalogue layers are installed once per
+Context is held per machine: national catalogue layers are installed once per
 machine from their published bundle and subset per project; buildings and
-contours are acquired per project through the governed provider door. Seed
-missing context through `data.project-cache.seed` or the first print's `--seed`;
-a second unchanged seed acquires nothing.
+contours are seeded once per project as shared revisions that every member
+replays (Core fetches only ground nobody published, the Reporter converts it
+offline). Seed missing context through `data.project-cache.seed`; a print reads
+held context and names that seed when buildings or contours are missing. A
+second unchanged seed acquires nothing; a publisher or DEM version change is
+reported stale and re-acquired only by an explicit `--refresh`.
 
 Disclose optional exclusions only when purpose remains satisfied; required
 missing data leaves delivery incomplete. Do not seed every dataset by habit or

@@ -2,8 +2,9 @@
 //! sign-in, account creation, Google sign-in, the password-reset mail and the
 //! session refresh. The Firebase project and its public key are constants of
 //! the build ([`crate::gateway_target`]); every session answer is validated by
-//! [`crate::validate_firebase_login_response`] before the page sees it, and a
-//! refusal carries Firebase's code and the sentence a person reads.
+//! [`crate::validate_firebase_login_response`] and bound by the Kernel's own
+//! session ([`crate::auth_session`]), never handed to the page, and a refusal
+//! carries Firebase's code and the sentence a person reads.
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -349,12 +350,12 @@ pub fn refreshed(
     }
 }
 
+/// The browser's Firebase exchanges. Every session they open is bound by the
+/// Kernel's own session (`crate::auth_session`); none crosses to the page.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use futures_util::StreamExt;
     use js_sys::Reflect;
-    use serde::Serialize;
-    use tsify::Tsify;
     use wasm_bindgen::prelude::*;
 
     use super::{refreshed, refusal, session, sign_in_methods, AuthRefusal, Call, Refreshed};
@@ -367,15 +368,6 @@ mod exports {
 
     #[wasm_bindgen(typescript_custom_section)]
     const FIREBASE_AUTH: &'static str = r#"
-/** A validated Firebase session, as the page binds it. */
-export interface FirebaseSession {
-    schema: 'ds.auth.login-result/v1';
-    user: { uid: string; email: string; displayName?: string; photoUrl?: string };
-    idToken: string;
-    refreshToken: string;
-    expiresAtEpochSeconds: number;
-}
-
 /** How a Firebase sign-in call rejects. */
 export interface FirebaseAuthRefusal extends Error {
     code: string;
@@ -384,21 +376,6 @@ export interface FirebaseAuthRefusal extends Error {
 }
 "#;
 
-    /// What a refresh found.
-    #[derive(Serialize, Tsify)]
-    #[serde(tag = "kind", rename_all = "snake_case")]
-    pub enum FirebaseRefresh {
-        /// The same account's new session.
-        Refreshed {
-            #[tsify(type = "FirebaseSession")]
-            session: serde_json::Value,
-        },
-        /// The session ends: revoked, expired, disabled, or another account.
-        Ended,
-        /// No answer this time; keep the held session.
-        Unavailable,
-    }
-
     fn configured() -> Result<(&'static str, &'static str), AuthRefusal> {
         match (FIREBASE_API_KEY, FIREBASE_PROJECT) {
             (Some(key), Some(project)) => Ok((key, project)),
@@ -406,7 +383,7 @@ export interface FirebaseAuthRefusal extends Error {
         }
     }
 
-    fn now_epoch_seconds() -> u64 {
+    pub(crate) fn now_epoch_seconds() -> u64 {
         (js_sys::Date::now() / 1000.0).max(0.0) as u64
     }
 
@@ -454,7 +431,11 @@ export interface FirebaseAuthRefusal extends Error {
         .await
     }
 
-    fn rejection(refused: &AuthRefusal, methods: Option<Option<Vec<String>>>) -> JsValue {
+    /// The refusal as the `Error` the page catches (`FirebaseAuthRefusal`).
+    pub(crate) fn rejection(
+        refused: &AuthRefusal,
+        methods: Option<Option<Vec<String>>>,
+    ) -> JsValue {
         let error = js_sys::Error::new(&refused.message);
         error.set_name("FirebaseAuthRefusal");
         let _ = Reflect::set(&error, &"code".into(), &refused.code.as_str().into());
@@ -472,16 +453,13 @@ export interface FirebaseAuthRefusal extends Error {
         error.into()
     }
 
-    fn session_value(login: &crate::ValidatedLogin) -> Result<JsValue, JsValue> {
-        let json = login
-            .to_browser_json()
-            .map_err(|_| rejection(&AuthRefusal::invalid_identity(), None))?;
-        js_sys::JSON::parse(&json)
-    }
-
-    /// Run a session-opening call: the validated session, or the refusal,
-    /// with the account's sign-in methods when the refusal asks for them.
-    async fn open(call: Call<'_>, expected_email: Option<&str>) -> Result<JsValue, JsValue> {
+    /// Run a session-opening call: the validated login, or the refusal as
+    /// the page's `Error`, with the account's sign-in methods when the
+    /// refusal asks for them.
+    pub(crate) async fn open(
+        call: Call<'_>,
+        expected_email: Option<&str>,
+    ) -> Result<crate::ValidatedLogin, JsValue> {
         call.validate()
             .map_err(|refused| rejection(&refused, None))?;
         let (key, project) = configured().map_err(|refused| rejection(&refused, None))?;
@@ -489,9 +467,8 @@ export interface FirebaseAuthRefusal extends Error {
             return Err(rejection(&AuthRefusal::network(), None));
         };
         if (200..300).contains(&status) {
-            let login = session(&body, expected_email, project, now_epoch_seconds())
-                .map_err(|refused| rejection(&refused, None))?;
-            return session_value(&login);
+            return session(&body, expected_email, project, now_epoch_seconds())
+                .map_err(|refused| rejection(&refused, None));
         }
         let refused = refusal(&body, call.fallback());
         let methods = match (&call, call.asks_for_methods(&refused.code)) {
@@ -508,46 +485,51 @@ export interface FirebaseAuthRefusal extends Error {
         Err(rejection(&refused, methods))
     }
 
-    /// Sign in with an email and password.
-    #[wasm_bindgen(js_name = firebaseSignIn, unchecked_return_type = "FirebaseSession")]
-    pub async fn firebase_sign_in(email: String, password: String) -> Result<JsValue, JsValue> {
-        open(
-            Call::SignIn {
-                email: &email,
-                password: &password,
-            },
-            Some(&email),
-        )
-        .await
+    /// Whether the platform reports any network link (`navigator.onLine`).
+    fn link_up() -> bool {
+        Reflect::get(&js_sys::global(), &"navigator".into())
+            .and_then(|navigator| Reflect::get(&navigator, &"onLine".into()))
+            .ok()
+            .and_then(|online| online.as_bool())
+            .unwrap_or(true)
     }
 
-    /// Create an account and sign in to it.
-    #[wasm_bindgen(js_name = firebaseSignUp, unchecked_return_type = "FirebaseSession")]
-    pub async fn firebase_sign_up(email: String, password: String) -> Result<JsValue, JsValue> {
-        open(
-            Call::SignUp {
-                email: &email,
-                password: &password,
-            },
-            Some(&email),
+    /// Refresh the session of `uid` and `email` with its refresh token.
+    pub(crate) async fn refresh(
+        refresh_token: &str,
+        uid: &str,
+        email: &str,
+    ) -> crate::auth_session::Refreshed {
+        use crate::auth_session::Refreshed as Session;
+        if refresh_token
+            .len()
+            .saturating_add(uid.len())
+            .saturating_add(email.len())
+            > ANSWER_CAP
+        {
+            return Session::Ended;
+        }
+        let Ok((key, project)) = configured() else {
+            return Session::Unavailable;
+        };
+        let answer = post(
+            format!("{}?key={key}", super::SECURE_TOKEN),
+            "application/x-www-form-urlencoded",
+            super::refresh_body(refresh_token),
+            REFRESH_TIMEOUT_MS,
         )
-        .await
-    }
-
-    /// Exchange a Google ID token for a Firebase session.
-    #[wasm_bindgen(js_name = firebaseSignInWithGoogle, unchecked_return_type = "FirebaseSession")]
-    pub async fn firebase_sign_in_with_google(
-        id_token: String,
-        request_uri: String,
-    ) -> Result<JsValue, JsValue> {
-        open(
-            Call::Google {
-                id_token: &id_token,
-                request_uri: &request_uri,
-            },
-            None,
-        )
-        .await
+        .await;
+        match answer {
+            None if !link_up() => Session::Offline,
+            None => Session::Unavailable,
+            Some((status, body)) => {
+                match refreshed(status, &body, uid, email, project, now_epoch_seconds()) {
+                    Refreshed::Session(login) => Session::Session(login),
+                    Refreshed::Ended => Session::Ended,
+                    Refreshed::Unavailable => Session::Unavailable,
+                }
+            }
+        }
     }
 
     /// Send the password-reset mail.
@@ -563,49 +545,6 @@ export interface FirebaseAuthRefusal extends Error {
             Some((status, _)) if (200..300).contains(&status) => Ok(()),
             Some((_, body)) => Err(rejection(&refusal(&body, reset.fallback()), None)),
         }
-    }
-
-    /// Refresh the session of `uid` and `email` with its refresh token.
-    #[wasm_bindgen(js_name = firebaseRefresh, unchecked_return_type = "FirebaseRefresh")]
-    pub async fn firebase_refresh(
-        refresh_token: String,
-        uid: String,
-        email: String,
-    ) -> Result<JsValue, JsValue> {
-        if refresh_token
-            .len()
-            .saturating_add(uid.len())
-            .saturating_add(email.len())
-            > ANSWER_CAP
-        {
-            return Err(rejection(&AuthRefusal::oversized_input(), None));
-        }
-        let (key, project) = configured().map_err(|refused| rejection(&refused, None))?;
-        let answer = post(
-            format!("{}?key={key}", super::SECURE_TOKEN),
-            "application/x-www-form-urlencoded",
-            super::refresh_body(&refresh_token),
-            REFRESH_TIMEOUT_MS,
-        )
-        .await;
-        let outcome = match answer {
-            None => FirebaseRefresh::Unavailable,
-            Some((status, body)) => {
-                match refreshed(status, &body, &uid, &email, project, now_epoch_seconds()) {
-                    Refreshed::Session(login) => FirebaseRefresh::Refreshed {
-                        session: serde_json::from_str(
-                            &login
-                                .to_browser_json()
-                                .map_err(|_| rejection(&AuthRefusal::invalid_identity(), None))?,
-                        )
-                        .map_err(|_| rejection(&AuthRefusal::invalid_identity(), None))?,
-                    },
-                    Refreshed::Ended => FirebaseRefresh::Ended,
-                    Refreshed::Unavailable => FirebaseRefresh::Unavailable,
-                }
-            }
-        };
-        crate::gateway_exchange::browser::typed(&outcome)
     }
 }
 

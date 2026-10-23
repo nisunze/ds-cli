@@ -1,31 +1,47 @@
-//! `ds report project compounded` publishes a ZIP containing individual
-//! reports and an overall combined data set. The distinct `combined_transformer`
-//! report is updated through its own export path.
+//! `ds report project compounded` — the project's Compounded Report ZIP,
+//! composed on this machine and queued for governed publication.
 //!
-//! The other change is that this command REFUSES.
+//! Nothing here is computed in the cloud. The scope comes from the lifecycle
+//! inventory; each participating transformer contributes the current
+//! individual report set this machine committed (`ds report project export`
+//! sealed it), checked against the transformer's saved revision; the overall
+//! combined data set — and one per first-level applied group when asked — is
+//! computed here by the same owner `ds report project combined` runs. The
+//! kernel (`report::compounded`) plans the archive tree from the applied
+//! `report_archive` grouping, the Reporter's closed `export-compounded-report`
+//! task builds the ZIP by request and response, and the ZIP is sealed into the
+//! Sync queue as `export-compounded_report`, which Sync publishes through the
+//! compute-artifact door. ds-brain only stores it.
 //!
-//! The governed service can publish an archive over a scope it has quietly
-//! shrunk: a room whose report is missing, months old, or sealed on somebody's
-//! PC and never drained contributes nothing, and the archive is still labelled
-//! a success. An operator then hands over a Compounded Report that is missing
-//! half a project, or that contains June's files, believing it is the answer.
-//! So the receipt is read through
-//! [`ds_command_kernel::combined_readiness`] — the same predicate the Desktop
-//! dialog refuses from, so the two cannot disagree — and a Compounded Report
-//! whose inputs are not current fails, naming the rooms and the command that
-//! makes them current.
+//! The command REFUSES rather than shrink the archive: a room whose report is
+//! missing here, or older than its saved revision, fails through
+//! [`ds_command_kernel::combined_readiness`] — the predicate the Desktop
+//! dialog refuses from — naming the rooms and the command that makes them
+//! current. Nothing is sealed.
 
-use ds_cli_auth::{CompoundedReportRequest, ReportFileLevel};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use ds_cli_auth::TransformerSet;
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Chapter, Command, Effect, Example, Execution, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use ds_command_kernel::combined_readiness::{self, RoomInput};
+use ds_command_kernel::report::PublicationState;
+use ds_command_kernel::report::compounded::{
+    self as decisions, CombinedSet, Composition, GroupPaths, Layout, Member, PlanInput, StagedFile,
+};
+use ds_report_artifacts::{ArtifactReadAuthority, VerifiedSidecarArtifact};
+use ds_sync_runtime::reports::{SealOutcome, SealRequest};
 use serde_json::{Value, json};
 
+use super::export::PublicationQueue;
 use super::grouping::{self, GROUP_BY_ARG, WHERE_ARG};
 use super::{LANE_ARG, PROJECT_ARG, TRANSFORMER_ARG};
+use crate::{DISCOVERY_TIMEOUT, DS_REPORT, EXPORT_TIMEOUT};
 
 pub(super) const FILE_LEVEL_ARG: Arg = Arg::value(
     "file-level",
@@ -40,14 +56,19 @@ pub(super) const COMBINE_PER_GROUP_ARG: Arg = Arg::switch(
 );
 pub(super) const FORCE_ARG: Arg = Arg::switch(
     "force",
-    "Regenerate every individual artifact instead of reusing fresh ones.",
+    "Recorded in the composition; individual reports come only from `report project export`.",
+);
+const STATE_DIR_ARG: Arg = Arg::value(
+    "core-state-dir",
+    "<absolute-path>",
+    "Publication queue root; the same absolute path as ds core serve when overridden.",
 );
 
 pub(super) const ARGS: &[Arg] = &[
     Arg::value(
         "composition",
         "<json>",
-        "Dynamic ds.compounded-report/v1 JSON object; same server contract as the project JSON editor. Use instead of scope/layout/force flags.",
+        "ds.compounded-report/v1 JSON object (schema, transformers, archive_layout, force). Use instead of scope/layout/force flags.",
     ),
     TRANSFORMER_ARG,
     GROUP_BY_ARG,
@@ -55,33 +76,58 @@ pub(super) const ARGS: &[Arg] = &[
     FILE_LEVEL_ARG,
     COMBINE_PER_GROUP_ARG,
     FORCE_ARG,
+    STATE_DIR_ARG,
     LANE_ARG,
     PROJECT_ARG,
 ];
 
 pub(super) const PURPOSE: &str = "\
-Publish a project ZIP and registry row through the governed service. \
-Applied report_archive grouping supplies district/sector folders; retired \
-or noncurrent rooms refuse before ZIP publication or registry write. Waits up to ten minutes. --group-by/--where \
-produce one archive per leaf group (_unassigned holds untagged rooms). \
---composition uses the server JSON schema/template from report project archives \
-and replaces scope/grouping/layout/force flags. The service records the resolved \
-recipe. Explicit project required; no URL or action override.";
+Compose the project ZIP on this machine and queue it for governed publication. \
+Each active transformer contributes the current individual report held here \
+(`report project export`); the combined set (and one per first-level group with \
+--combine-per-group) is computed here. Applied report_archive grouping supplies \
+the folders; Sync publishes the ZIP as export-compounded_report (`report outbox drain`). \
+A missing or older room report refuses before any archive. --group-by/--where give one \
+archive per leaf group (_unassigned holds untagged rooms). --composition takes \
+the ds.compounded-report/v1 JSON instead of scope/layout/force flags. \
+Explicit project required; no URL or action override.";
 
 pub(super) const OUTPUT: &str = "\
-Lane, named project ID, requested scope, and \
-`archive_layout` — the layout asked for, never the tree achieved: \
-unresolved administrative values collapse to `_unassigned/`, and `ds report \
-project archives` confirms the tree built. Then the receipt: status, \
-`prefix`, cloud locators, individual coverage, missing individuals with \
-causes, bounded errors and registry-write failure. Grouped: `grouping` \
-and one `groups` receipt per archive.";
+Lane, named project ID, requested scope, and `archive_layout` — the layout \
+asked for, never the tree achieved: unresolved administrative values collapse \
+to `_unassigned/`. Then the receipt: status, `prefix`, `archives` (the sealed \
+archive's locator), `publication` (operation, batch, publish id; `ds report \
+outbox drain` publishes it and `ds report publication show` reads it \
+back), individual coverage, missing individuals with \
+causes (empty: a missing room refuses), errors and registry-write failure. \
+Grouped: `grouping` and one `groups` receipt per archive.";
+
+pub(super) const GROUPING_INVALID: Refusal = Refusal {
+    code: "compounded_grouping_invalid",
+    when: "the applied report_archive grouping plan is malformed or files a transformer twice",
+    remedy: "read it with `ds design consumer-grouping read` and apply it again",
+};
+pub(super) const INPUTS_INVALID: Refusal = Refusal {
+    code: "compounded_inputs_invalid",
+    when: "the inputs cannot form one archive: shared path, unpinned file, or a receipt not from this plan",
+    remedy: "report this build with the detail; nothing was sealed",
+};
+pub(super) const ARCHIVE_TOO_LARGE: Refusal = Refusal {
+    code: "compounded_archive_too_large",
+    when: "the composed ZIP exceeds the 64 MiB the project publication door admits",
+    remedy: "narrow --transformer or use --group-by; nothing was sealed",
+};
+pub(super) const STORE_UNREADABLE: Refusal = Refusal {
+    code: "compounded_store_unreadable",
+    when: "the committed report store or a held report could not be read and verified",
+    remedy: "regenerate the named room with `ds report project export --transformer <name>`, then retry",
+};
 
 pub static COMMAND: Command = Command {
     id: "report.project.compounded",
     path: &["report", "project", "compounded"],
     contract: 1,
-    summary: "Publish a Compounded Report ZIP, or one per tag group (needs --yes).",
+    summary: "Compose a Compounded Report ZIP here and queue it (needs --yes).",
     purpose: PURPOSE,
     chapter: Chapter::Reports,
     effect: Effect::ArtifactWrite,
@@ -92,7 +138,7 @@ pub static COMMAND: Command = Command {
     examples: &[
         Example {
             command: "ds report project compounded --file-level sector --yes --output json --project <exact-id>",
-            note: "`ds report project archives` then confirms the foldering built.",
+            note: "`ds report outbox drain --project <exact-id>` then publishes it.",
             runnable: false,
         },
         Example {
@@ -114,32 +160,78 @@ pub static COMMAND: Command = Command {
     availability: ds_cli_auth::native_availability,
 };
 
-pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
-    if let Some(request) = composition_request(inputs)? {
-        return publish(
-            inputs.require("lane")?,
-            inputs.require("project")?,
-            &request,
-        );
+/// One archive request: the closed composition, plus the legacy level it
+/// was spelled with (the receipt reports what was asked for).
+struct Request {
+    composition: Composition,
+    file_level: Option<&'static str>,
+}
+
+fn refused(refusal: decisions::Refusal) -> Failure {
+    let declared = match refusal.code {
+        decisions::GROUPING_INVALID => GROUPING_INVALID,
+        decisions::ARCHIVE_TOO_LARGE => ARCHIVE_TOO_LARGE,
+        decisions::COMPOSITION_INVALID => {
+            return Failure::invalid("compounded_composition_invalid", refusal.message).remedy(
+                "correct the JSON: schema, transformers, archive_layout and force",
+            );
+        }
+        _ => INPUTS_INVALID,
+    };
+    match declared.code {
+        "compounded_grouping_invalid" => {
+            Failure::conflict("compounded_grouping_invalid", refusal.message)
+        }
+        "compounded_archive_too_large" => {
+            Failure::conflict("compounded_archive_too_large", refusal.message)
+        }
+        _ => Failure::failed("compounded_inputs_invalid", refusal.message),
     }
-    let file_level = ReportFileLevel::parse(inputs.require("file-level")?)
-        .expect("the command parser enforces the file-level choices");
-    let combine_per_group = inputs.switch("combine-per-group");
-    let force = inputs.switch("force");
+    .remedy(declared.remedy)
+}
+
+fn store_unreadable(message: impl Into<String>) -> Failure {
+    Failure::failed("compounded_store_unreadable", message).remedy(STORE_UNREADABLE.remedy)
+}
+
+fn level_token(level: &str) -> &'static str {
+    match level {
+        "sector" => "sector",
+        "district" => "district",
+        "root" => "root",
+        _ => "transformer",
+    }
+}
+
+pub fn run(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     let (lane, project) = (inputs.require("lane")?, inputs.require("project")?);
+    let state = inputs.value("core-state-dir").map(Path::new);
+    if let Some(composition) = composition_request(inputs)? {
+        let request = Request {
+            composition,
+            file_level: None,
+        };
+        return publish(lane, project, state, &request, context);
+    }
+    let level = level_token(inputs.require("file-level")?);
+    let layout =
+        Layout::from_file_level(level, inputs.switch("combine-per-group")).map_err(refused)?;
+    let force = inputs.switch("force");
     if let Some(requested) = grouping::requested(inputs)? {
         return run_grouped(
-            lane,
-            project,
-            &requested,
-            file_level,
-            combine_per_group,
-            force,
+            lane, project, state, &requested, layout, level, force, context,
         );
     }
     let transformers = super::transformer_set(inputs)?;
-    let request = CompoundedReportRequest::new(transformers, file_level, combine_per_group, force);
-    publish(lane, project, &request)
+    let request = Request {
+        composition: Composition {
+            transformers: transformers.names().to_vec(),
+            archive_layout: layout,
+            force,
+        },
+        file_level: Some(level),
+    };
+    publish(lane, project, state, &request, context)
 }
 
 /// Refuse conflicting grouped and transformer scopes before reconciliation.
@@ -153,7 +245,7 @@ pub fn preflight(inputs: &Inputs) -> Result<(), Failure> {
     Ok(())
 }
 
-fn composition_request(inputs: &Inputs) -> Result<Option<CompoundedReportRequest>, Failure> {
+fn composition_request(inputs: &Inputs) -> Result<Option<Composition>, Failure> {
     let Some(raw) = inputs.value("composition") else {
         return Ok(None);
     };
@@ -172,33 +264,38 @@ fn composition_request(inputs: &Inputs) -> Result<Option<CompoundedReportRequest
         )
         .remedy("pass composition or ordinary flags"));
     }
-    let invalid = |message: String| {
-        Failure::invalid("compounded_composition_invalid", message)
-        .remedy("read the composition schema/template from the project's archive listing and correct the JSON")
-    };
-    if raw.len() > 64 * 1024 {
-        return Err(invalid("composition exceeds 64 KiB".into()));
+    if raw.len() > decisions::MAX_COMPOSITION_BYTES {
+        return Err(refused(decisions::Refusal {
+            code: decisions::COMPOSITION_INVALID,
+            message: "composition exceeds 64 KiB".into(),
+        }));
     }
-    let value = serde_json::from_str(raw).map_err(|e| invalid(e.to_string()))?;
-    CompoundedReportRequest::from_composition(value)
-        .map(Some)
-        .map_err(|e| invalid(e.to_string()))
+    let value: Value = serde_json::from_str(raw).map_err(|error| {
+        refused(decisions::Refusal {
+            code: decisions::COMPOSITION_INVALID,
+            message: error.to_string(),
+        })
+    })?;
+    Composition::parse(&value).map(Some).map_err(refused)
 }
 
 /// One leaf tag group per archive, run one after another through the SAME
 /// publish a single run uses, each over that group's explicit scope.
 ///
-/// Every group's scope is validated before the first archive is published.
+/// Every group's scope is validated before the first archive is composed.
 /// A refusal about one group's rooms lets the next group run; any other
 /// refusal would refuse every group alike, so the rest are left `not_run`.
 /// A run that did not publish every group never exits zero.
+#[allow(clippy::too_many_arguments)]
 fn run_grouped(
     lane: &str,
     project: &str,
+    state: Option<&Path>,
     requested: &grouping::Requested,
-    file_level: ReportFileLevel,
-    combine_per_group: bool,
+    layout: Layout,
+    level: &'static str,
     force: bool,
+    context: &Context,
 ) -> Result<Value, Failure> {
     let grouped = grouping::resolve(lane, project, requested)?;
     let scopes = grouping::group_scopes(&grouped.plan)?;
@@ -211,8 +308,15 @@ fn run_grouped(
             receipts.push(grouping::not_run(group));
             continue;
         }
-        let request = CompoundedReportRequest::new(scope, file_level, combine_per_group, force);
-        match publish(lane, project, &request) {
+        let request = Request {
+            composition: Composition {
+                transformers: scope.names().to_vec(),
+                archive_layout: layout,
+                force,
+            },
+            file_level: Some(level),
+        };
+        match publish(lane, project, state, &request, context) {
             Ok(output) => receipts.push(grouping::published(group, &output)),
             Err(failure) => {
                 receipts.push(grouping::refused(group, &failure));
@@ -234,7 +338,7 @@ fn run_grouped(
     let fields = json!({
         "scope": {"mode": "grouped", "requested": []},
         "grouping": summary,
-        "archive_layout": archive_layout(file_level.token(), combine_per_group),
+        "archive_layout": archive_layout(level, layout.combine_per_group),
         "force": force,
         "published_count": published,
         "groups": receipts,
@@ -253,68 +357,547 @@ fn not_run_count(receipts: &[Value]) -> usize {
         .count()
 }
 
-/// One Compounded Report archive over one request's scope, read for what it
-/// does not contain.
-fn publish(lane: &str, project: &str, request: &CompoundedReportRequest) -> Result<Value, Failure> {
-    let file_level = request.file_level();
-    let combine_per_group = request.combine_per_district();
-    let force = request.force();
-    let headless = ds_cli_auth::compounded_report_for_project(lane, project, request)?;
-    let receipt = headless.result();
-    let mut output = super::project_receipt(&headless);
-    let causes: Vec<Value> = receipt
-        .missing_individual_artifact_causes()
+/// A run's private scratch beside the Core state it publishes into: on disk,
+/// never tmpfs, and removed on every path.
+struct Stage(PathBuf);
+
+impl Stage {
+    fn begin(queue: &PublicationQueue, run: &str) -> Result<Self, Failure> {
+        let parent = queue
+            .root
+            .parent()
+            .ok_or_else(|| store_unreadable("the publication queue has no state directory"))?;
+        let path = parent.join("compounded-staging").join(run);
+        std::fs::create_dir_all(&path).map_err(|error| {
+            Failure::failed(
+                "report_staging_failed",
+                format!("{}: {error}", path.display()),
+            )
+            .remedy(super::export::STAGING_FAILED.remedy)
+        })?;
+        Ok(Self(path))
+    }
+}
+
+impl Drop for Stage {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn now_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis())
+        .unwrap_or_default()
+}
+
+/// The current saved revision of every transformer the status rows name.
+fn saved_revisions(lane: &str, project: &str) -> Result<BTreeMap<String, i64>, Failure> {
+    let status =
+        ds_cli_auth::transformer_status_for_project(lane, project, &TransformerSet::default())
+            .map_err(|failure| {
+                Failure::unavailable(
+                    super::COMBINED_READINESS_UNAVAILABLE.code,
+                    format!(
+                        "the saved transformer revisions could not be read ({}: {}), so no held report can be called current",
+                        failure.code(),
+                        failure.message()
+                    ),
+                )
+                .remedy(super::COMBINED_READINESS_UNAVAILABLE.remedy)
+            })?;
+    Ok(status
+        .result()
+        .rows()
         .iter()
-        .map(|cause| {
-            json!({
-                "transformer": cause.transformer(),
-                "code": cause.code(),
-                "detail": cause.detail(),
-            })
+        .filter_map(|row| {
+            super::hold::head_version(row.row())
+                .as_i64()
+                .map(|version| (row.name().to_owned(), version))
+        })
+        .collect())
+}
+
+fn cause(name: &str, code: &str, detail: String) -> Value {
+    json!({"transformer": name, "code": code, "detail": detail})
+}
+
+/// Each participating room's current committed individual set, staged and
+/// verified byte for byte; a room without one is a readiness cause.
+fn individual_sets(
+    queue: &PublicationQueue,
+    owner: &str,
+    project: &str,
+    names: &[String],
+    revisions: &BTreeMap<String, i64>,
+    stage: &Path,
+) -> Result<(Vec<Member>, Vec<Value>), Failure> {
+    let batches =
+        ds_report_artifacts::list_project_publication_batches_from_root(&queue.root, project)
+            .map_err(store_unreadable)?;
+    let (mut members, mut causes) = (Vec::new(), Vec::new());
+    for name in names {
+        let operation = format!("export-{name}");
+        // Newest first: the room's standing committed generation.
+        let Some(batch) = batches.iter().find(|batch| {
+            batch.owner_uid == owner
+                && batch.operation == operation
+                && batch.variant == "default"
+                && batch.printing_preview.is_none()
+                && !batch.outputs.is_empty()
+        }) else {
+            causes.push(cause(
+                name,
+                "report_not_published",
+                "this machine holds no individual report for the room".into(),
+            ));
+            continue;
+        };
+        let directory = stage.join("individual").join(name);
+        std::fs::create_dir_all(&directory).map_err(|error| store_unreadable(error.to_string()))?;
+        let mut files = Vec::with_capacity(batch.outputs.len());
+        let mut revision = None;
+        for output in &batch.outputs {
+            let authority = ArtifactReadAuthority {
+                owner_uid: owner.to_owned(),
+                project_id: project.to_owned(),
+                operation: operation.clone(),
+                variant: "default".to_owned(),
+                output_id: output.output_id.clone(),
+                sha256: output.sha256.clone(),
+                size_bytes: output.size_bytes,
+                content_type: output.content_type.clone(),
+            };
+            let opened = ds_report_artifacts::open_artifact_from_root_with_gate(
+                &queue.root,
+                &output.locator,
+                |receipt| authority.authorize(receipt, &output.locator),
+            )
+            .map_err(|error| store_unreadable(format!("{name}: {error}")))?;
+            let held = opened.committed.transformer_revision;
+            if revision.is_some_and(|seen| seen != held) {
+                return Err(store_unreadable(format!(
+                    "{name}: one committed set names two revisions"
+                )));
+            }
+            revision = Some(held);
+            if revisions.get(name) != Some(&held) {
+                // Stale or unknown: no byte of this room is copied.
+                break;
+            }
+            let target = directory.join(&output.filename);
+            crate::inventory_copy::copy_verified(
+                opened.file,
+                &target,
+                &output.sha256,
+                output.size_bytes,
+                &|| Ok(()),
+            )
+            .map_err(|failure| store_unreadable(format!("{name}: {}", failure.message())))?;
+            files.push(StagedFile {
+                filename: output.filename.clone(),
+                source: target.display().to_string(),
+                sha256: output.sha256.clone(),
+                size_bytes: output.size_bytes,
+            });
+        }
+        let held = revision.unwrap_or_default();
+        match revisions.get(name) {
+            Some(saved) if *saved == held => members.push(Member {
+                transformer: name.clone(),
+                revision: held,
+                batch_id: batch.batch_id.clone(),
+                files,
+            }),
+            Some(saved) => causes.push(cause(
+                name,
+                "report_stale",
+                format!(
+                    "the held report is of revision {held}; the saved design is at revision {saved}"
+                ),
+            )),
+            None => causes.push(cause(
+                name,
+                "report_revision_unknown",
+                "the room's saved revision could not be read".into(),
+            )),
+        }
+    }
+    Ok((members, causes))
+}
+
+/// One combined data set, computed here by the `report project combined`
+/// owner over exactly these rooms, as a local package (it seals nothing).
+fn combined_set(
+    lane: &str,
+    project: &str,
+    state: Option<&Path>,
+    names: &[String],
+    group: Option<String>,
+    out: &Path,
+    context: &Context,
+) -> Result<CombinedSet, Failure> {
+    let mut tokens = vec![
+        "--project".to_owned(),
+        project.to_owned(),
+        "--lane".to_owned(),
+        lane.to_owned(),
+        "--out-dir".to_owned(),
+        out.display().to_string(),
+        "--dry-run".to_owned(),
+    ];
+    if let Some(state) = state {
+        tokens.extend(["--core-state-dir".to_owned(), state.display().to_string()]);
+    }
+    for name in names {
+        tokens.extend(["--transformer".to_owned(), name.clone()]);
+    }
+    let inputs = ds_cli_contract::args::parse(&super::combined_export::COMMAND, &tokens)?;
+    let result = super::combined_export::run(&inputs, context)?;
+    let directory = PathBuf::from(result["outDir"].as_str().unwrap_or_default());
+    let files = result["artifacts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|artifact| {
+            let filename = artifact["filename"].as_str().unwrap_or_default().to_owned();
+            StagedFile {
+                source: directory.join(&filename).display().to_string(),
+                filename,
+                sha256: artifact["sha256"].as_str().unwrap_or_default().to_owned(),
+                size_bytes: artifact["sizeBytes"].as_u64().unwrap_or_default(),
+            }
         })
         .collect();
+    Ok(CombinedSet {
+        group,
+        transformers: names.to_vec(),
+        files,
+    })
+}
+
+/// The Reporter's closed bundle task, by request and response, and the
+/// identity of the build that ran it.
+fn bundle(
+    lane: &str,
+    plan: &decisions::BundlePlan,
+    stage: &Path,
+) -> Result<
+    (
+        decisions::BundleReceipt,
+        ds_command_kernel::report_export::EngineIdentity,
+    ),
+    Failure,
+> {
+    let engine = DS_REPORT.capture_for_lane(lane)?;
+    let identity = ds_command_kernel::report_export::engine_identity(&engine.call_json(
+        "build-info",
+        &[],
+        DISCOVERY_TIMEOUT,
+    )?)
+    .map_err(|error| {
+        Failure::failed("callee_contract_mismatch", error)
+            .remedy("install matching ds and Reporter releases")
+    })?;
+    let request = stage.join("bundle-request.json");
+    let result = stage.join("bundle-result.json");
+    std::fs::write(
+        &request,
+        serde_json::to_vec(&plan.request).expect("a bundle plan encodes"),
+    )
+    .map_err(|error| store_unreadable(error.to_string()))?;
+    let completed = engine.call(
+        "export-compounded-report",
+        &[
+            "--request".into(),
+            request.into(),
+            "--result".into(),
+            result.clone().into(),
+        ],
+        EXPORT_TIMEOUT,
+    )?;
+    if !completed.succeeded() {
+        return Err(DS_REPORT.failure_from(&completed, "export-compounded-report"));
+    }
+    let document: Value = std::fs::read(&result)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or_else(|| {
+            Failure::failed("engine_refused", "the Reporter returned no bundle receipt")
+                .remedy("read error.detail.engine for the Reporter's own code and message")
+                .detail(json!({"engine": completed.stderr}))
+        })?;
+    Ok((
+        decisions::admit_receipt(plan, &document).map_err(refused)?,
+        identity,
+    ))
+}
+
+/// One Compounded Report archive over one request's scope.
+fn publish(
+    lane: &str,
+    project: &str,
+    state: Option<&Path>,
+    request: &Request,
+    context: &Context,
+) -> Result<Value, Failure> {
+    let composition = &request.composition;
+    let identity = ds_cli_auth::headless_identity_for_named_project(lane)?;
+    let fence = ds_cli_auth::capture_layer_scope_fence_for_project(lane, project)?;
+    super::export::verify_publish_scope(lane, &fence, fence.uid(), project)?;
+    let queue = PublicationQueue::open(lane, state)?;
+
+    // Scope: every active saved transformer, or the exact active names asked.
+    let requested =
+        TransformerSet::new(composition.transformers.iter().cloned()).map_err(|error| {
+            Failure::invalid("invalid_transformer_scope", error.to_string())
+                .remedy(super::INVALID_SCOPE.remedy)
+        })?;
+    let inventory =
+        ds_cli_auth::transformer_inventory_for_project(lane, project, &TransformerSet::default())?;
+    if inventory.identity() != &identity || inventory.project_id() != project {
+        return Err(Failure::conflict(
+            super::export::PUBLISH_SCOPE_CHANGED.code,
+            "the account or project changed while reading the scope",
+        )
+        .remedy(super::export::PUBLISH_SCOPE_CHANGED.remedy));
+    }
+    let names =
+        super::combined_export::scope_names(&super::hold::rows(inventory.result()), &requested)?;
+    if names.is_empty() {
+        return Err(Failure::conflict(
+            super::COMBINED_NO_INPUTS.code,
+            "no active LV transformer is in scope; no archive was composed",
+        )
+        .remedy(super::COMBINED_NO_INPUTS.remedy)
+        .next("ds report project scope"));
+    }
+
+    // Currency: each room's committed set against its saved revision.
+    let revisions = saved_revisions(lane, project)?;
+    let run = format!("{}-{}", std::process::id(), now_ms());
+    let stage = Stage::begin(&queue, &run)?;
+    let (members, causes) = individual_sets(
+        &queue,
+        identity.uid(),
+        project,
+        &names,
+        &revisions,
+        &stage.0,
+    )?;
+    if let Some(failure) = readiness_refusal(&causes)? {
+        return Err(failure);
+    }
+
+    // The tree, and the combined sets computed here.
+    let groups = if composition.archive_layout.needs_grouping() {
+        let plan = ds_cli_auth::applied_report_archive_grouping(lane, project)?;
+        decisions::group_paths(plan.result().as_ref()).map_err(refused)?
+    } else {
+        GroupPaths::default()
+    };
+    let mut combined = vec![combined_set(
+        lane,
+        project,
+        state,
+        &names,
+        None,
+        &stage.0.join("combined"),
+        context,
+    )?];
+    if composition.archive_layout.combine_per_group {
+        for (index, (group, scope)) in decisions::first_level_groups(&groups, &names)
+            .into_iter()
+            .enumerate()
+        {
+            combined.push(combined_set(
+                lane,
+                project,
+                state,
+                &scope,
+                Some(group),
+                &stage.0.join(format!("combined-group-{index}")),
+                context,
+            )?);
+        }
+    }
+    let output = stage.0.join(decisions::ARCHIVE_FILENAME);
+    let plan = decisions::plan(&PlanInput {
+        project,
+        composition,
+        participating: &names,
+        members: &members,
+        groups: &groups,
+        combined: &combined,
+        output: &output.display().to_string(),
+    })
+    .map_err(refused)?;
+    let (receipt, engine) = bundle(identity.lane(), &plan, &stage.0)?;
+
+    // Seal: bytes, receipts and the queue row in one acknowledged step.
+    if engine
+        .publication_state()
+        .map_err(|error| store_unreadable(error.to_string()))?
+        != PublicationState::Pending
+    {
+        return Err(Failure::conflict(
+            super::export::PUBLISH_LOCAL_ONLY.code,
+            "the reporter build is local-only and cannot enter the Server publication queue",
+        )
+        .remedy(super::export::PUBLISH_LOCAL_ONLY.remedy));
+    }
+    let guard = || -> Result<(), String> {
+        let now = ds_cli_auth::headless_identity_for_named_project(lane)
+            .map_err(|failure| failure.message().to_owned())?;
+        if now != identity {
+            return Err("the signed-in account changed before the archive was sealed".into());
+        }
+        super::export::verify_publish_scope(lane, &fence, fence.uid(), project)
+            .map_err(|failure| failure.message().to_owned())
+    };
+    let (cached, mut publication) = seal_archive(
+        &queue,
+        identity.uid(),
+        project,
+        &engine,
+        &plan,
+        &receipt,
+        &output,
+        &run,
+        &guard,
+    )?;
+
+    let mut output = super::project_receipt(&inventory);
+    publication["operation"] = json!(decisions::OPERATION);
+    publication["engine"] = json!("network_reporter");
+    publication["sha256"] = json!(receipt.sha256);
+    publication["size_bytes"] = json!(receipt.bytes);
+    publication["next"] = json!(format!("ds report outbox drain --project {project}"));
     let fields = json!({
         "scope": {
-            "mode": if request.transformers().is_empty() { "all_active" } else { "explicit" },
-            "requested": request.transformers().names(),
+            "mode": if composition.transformers.is_empty() { "all_active" } else { "explicit" },
+            "requested": composition.transformers,
         },
-        "archive_layout": request.composition().map(|c| c["archive_layout"].clone())
-            .unwrap_or_else(|| archive_layout(file_level.token(), combine_per_group)),
-        "composition": receipt.composition(),
-        "force": force,
-        "status": receipt.status().token(),
-        "prefix": receipt.prefix(),
-        "archives": receipt.archive_paths(),
-        "cached": receipt.cached(),
-        "individual_artifact_transformer_count": receipt.individual_artifact_transformer_count(),
-        "missing_individual_artifact_count": receipt.missing_individual_artifact_count(),
-        "missing_individual_artifacts": receipt.missing_individual_artifacts(),
-        "missing_individual_artifact_causes": causes.clone(),
-        "errors": receipt.errors(),
-        "registry_write_failed": receipt.registry_write_failed(),
-        "registry_write_error": receipt.registry_write_error(),
+        "archive_layout": match request.file_level {
+            Some(level) => archive_layout(level, composition.archive_layout.combine_per_group),
+            None => composition.archive_layout.describe(),
+        },
+        "composition": composition.recorded(&names),
+        "force": composition.force,
+        "status": "success",
+        "prefix": plan.prefix,
+        "archives": publication["locators"].clone(),
+        "cached": cached,
+        "individual_artifact_transformer_count": members.len(),
+        "missing_individual_artifact_count": 0,
+        "missing_individual_artifacts": [],
+        "missing_individual_artifact_causes": [],
+        "errors": [],
+        "registry_write_failed": false,
+        "registry_write_error": null,
+        "publication": publication,
+        "engine": {"release": engine.engine_version, "build_manifest_sha256": engine.build_manifest_sha256},
+        "inputs": {
+            "input_base_fingerprint": plan.input_fingerprint,
+            "transformers": members.iter().map(|member| json!({
+                "name": member.transformer, "revision": member.revision, "batch_id": member.batch_id,
+                "files": member.files.len(),
+            })).collect::<Vec<_>>(),
+            "combined_sets": combined.len(),
+            "grouping": groups.identity.clone().unwrap_or_else(|| json!({"applied": false})),
+            "entries": plan.entry_count,
+        },
     });
     output
         .as_object_mut()
         .expect("receipt is an object")
         .extend(fields.as_object().expect("fields are an object").clone());
-
-    // The receipt is read for what it does NOT contain. A published archive
-    // with missing rooms is not a Compounded Report an operator may hand over;
-    // succeeding here is how a project was delivered with June's files in it.
-    if let Some(failure) = readiness_refusal(&causes, &output)? {
-        return Err(failure);
-    }
     Ok(output)
 }
 
-/// Turn the service's per-room causes into the kernel's readiness question.
+/// Seal the composed archive into the publication queue as
+/// `export-compounded_report`: bytes, receipts and the queue row in one
+/// acknowledged step. Sync publishes it through the compute-artifact door.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn seal_archive(
+    queue: &PublicationQueue,
+    owner: &str,
+    project: &str,
+    engine: &ds_command_kernel::report_export::EngineIdentity,
+    plan: &decisions::BundlePlan,
+    receipt: &decisions::BundleReceipt,
+    output: &Path,
+    run: &str,
+    guard: &dyn Fn() -> Result<(), String>,
+) -> Result<(bool, Value), Failure> {
+    let held_file =
+        std::fs::File::open(output).map_err(|error| store_unreadable(error.to_string()))?;
+    let artifacts = [VerifiedSidecarArtifact {
+        format: decisions::ARCHIVE_FORMAT.to_owned(),
+        filename: decisions::ARCHIVE_FILENAME.to_owned(),
+        size_bytes: receipt.bytes,
+        sha256: receipt.sha256.clone(),
+        paper_size: None,
+        presentation: None,
+        held_file,
+    }];
+    // The publication receipt grammar names every report run `report-…`.
+    let client_run_id = format!("report-{}-{run}", plan.prefix);
+    let sealed = ds_sync_runtime::reports::seal(
+        &queue.store,
+        &queue.fence,
+        &queue.root,
+        &SealRequest {
+            owner_uid: owner,
+            project_id: project,
+            engine_version: &engine.engine_version,
+            engine_build_manifest_sha256: &engine.build_manifest_sha256,
+            transformer: decisions::IDENTITY,
+            transformer_revision: ds_command_kernel::report_export::combined::PUBLICATION_REVISION,
+            input_base_fingerprint: &plan.input_fingerprint,
+            room_content_sha256: &receipt.sha256,
+            client_run_id: &client_run_id,
+            artifacts: &artifacts,
+            expected_formats: &[decisions::ARCHIVE_FORMAT],
+            deadline: Instant::now() + Duration::from_secs(30),
+            guard,
+        },
+    )
+    .map_err(|error| {
+        Failure::failed(super::export::PUBLISH_ROOT.code, error)
+            .remedy(super::export::PUBLISH_ROOT.remedy)
+    })?;
+    Ok(match sealed {
+        SealOutcome::Sealed(sealed) => (
+            false,
+            json!({
+                "queued": true,
+                "already_recorded": false,
+                "batch_id": sealed.receipt.batch_id,
+                "client_publish_id": sealed.receipt.client_publish_id,
+                "locators": sealed.artifacts.iter().map(|artifact| artifact.locator.clone()).collect::<Vec<_>>(),
+            }),
+        ),
+        SealOutcome::AlreadyRecorded { replay_key, state } => (
+            true,
+            json!({
+                "queued": true,
+                "already_recorded": true,
+                "client_publish_id": replay_key,
+                "state": state.as_str(),
+                "locators": [],
+            }),
+        ),
+    })
+}
+
+/// Turn the per-room causes into the kernel's readiness question.
 ///
-/// The publication vocabulary is READ, not redefined here: a room the service
-/// reports as pending publication carries that through to the predicate, which
-/// is what makes "drain the queue" the remedy instead of a re-export that
-/// would seal a second artifact beside the first.
-fn readiness_rooms(causes: &[Value]) -> Vec<RoomInput> {
+/// A room this machine holds no report for, and a room whose held report is
+/// older than its saved revision, both read as "no current report here"; the
+/// predicate's remedy for them is `ds report project export`.
+pub(super) fn readiness_rooms(causes: &[Value]) -> Vec<RoomInput> {
     causes
         .iter()
         .map(|cause| {
@@ -323,19 +906,11 @@ fn readiness_rooms(causes: &[Value]) -> Vec<RoomInput> {
                 .unwrap_or_default()
                 .to_string();
             match cause["code"].as_str().unwrap_or_default() {
-                "report_publication_pending" => RoomInput {
-                    name,
-                    publication: Some("pending".into()),
-                    ..Default::default()
-                },
                 "report_stale" => RoomInput {
                     name,
                     report_state: Some("stale".into()),
                     ..Default::default()
                 },
-                // Every other cause — a failed export, an unusable pointer, a
-                // room that was never published — is "no current report here".
-                // The predicate's remedy for all of them is the same command.
                 _ => RoomInput {
                     name,
                     report_state: Some("none".into()),
@@ -346,9 +921,8 @@ fn readiness_rooms(causes: &[Value]) -> Vec<RoomInput> {
         .collect()
 }
 
-/// A defensive check for an older owner returning a partial publication as 200.
-/// Readiness refusals now come from the owner before it publishes anything.
-fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure>, Failure> {
+/// The refusal a set of unready rooms produces, before anything is composed.
+pub(super) fn readiness_refusal(causes: &[Value]) -> Result<Option<Failure>, Failure> {
     if causes.is_empty() {
         return Ok(None);
     }
@@ -364,17 +938,6 @@ fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure
     let Some(refusal) = verdict.get("refusal").filter(|value| !value.is_null()) else {
         return Ok(None);
     };
-    if receipt["archives"]
-        .as_array()
-        .is_some_and(|archives| !archives.is_empty())
-    {
-        return Err(Failure::unavailable(
-            "auth_response_unreadable",
-            "The report owner published an archive with unready inputs. Its receipt violates the atomic publication contract; do not deliver this archive.",
-        )
-        .remedy("update the report owner, make the inputs current, and retry")
-        .detail(json!({"readiness": verdict, "published": {"prefix": receipt["prefix"], "archives": receipt["archives"]}})));
-    }
     let command = refusal["command"]
         .as_str()
         .unwrap_or("ds report project scope");
@@ -393,13 +956,10 @@ fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure
     if more > 0 {
         message.push_str(&format!(" and {more} more"));
     }
-    message.push_str(". No archive was published.");
+    message.push_str(". No archive was composed.");
     // The kernel decides WHICH refusal applies; each one is constructed here
-    // from its own declared `Refusal`, so `ds capabilities` lists every code
-    // this command can emit and nothing has to infer them from a variable. A
-    // token this build does not know is NOT passed through as an undocumented
-    // code — it becomes the conservative one, "these rooms are not current",
-    // whose remedy is a fresh run and is never wrong.
+    // from its own declared `Refusal`. A token this build does not know is
+    // the conservative one, "these rooms are not current".
     let failure = match refusal["token"].as_str().unwrap_or_default() {
         "combined_inputs_publication_pending" => {
             Failure::conflict(super::COMBINED_INPUTS_PUBLICATION_PENDING.code, message)
@@ -413,9 +973,7 @@ fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure
             .remedy(format!("run `{command}`, then run this command again"))
             .next(command.to_string())
             .next("ds report project scope")
-            .detail(json!({
-                "readiness": verdict,
-            })),
+            .detail(json!({"readiness": verdict, "causes": causes})),
     ))
 }
 
@@ -428,8 +986,7 @@ fn readiness_refusal(causes: &[Value], receipt: &Value) -> Result<Option<Failure
 pub(super) fn archive_layout(file_level: &str, combine_per_group: bool) -> Value {
     // The vocabulary is the shared fold's; the RECORDED members are this
     // receipt's own and win, so describing an archive can never restate what
-    // was asked for. (`describe` echoes `combine_per_group` from the layout it
-    // was handed, which is the registry's spelling and not this flag.)
+    // was asked for.
     let mut layout = super::archive_layout_vocabulary(Some(file_level), None, combine_per_group);
     let recorded = json!({
         "file_level": file_level,
@@ -448,8 +1005,7 @@ pub fn render(data: &Value) -> String {
     }
     let mut out = String::new();
     out.push_str(&format!(
-        "project {} ({}) · {} · {} · Compounded Report {} · {} individual artifact(s), {} missing\n",
-        data["project"]["project_name"].as_str().unwrap_or("?"),
+        "project {} · {} · {} · Compounded Report {} · {} individual artifact(s), {} missing\n",
         data["project"]["ds_project"].as_str().unwrap_or("?"),
         data["lane"].as_str().unwrap_or("?"),
         data["status"].as_str().unwrap_or("?"),
@@ -466,20 +1022,8 @@ pub fn render(data: &Value) -> String {
             out.push_str(&format!("  {}\n", archive.as_str().unwrap_or("?")));
         }
     }
-    if let Some(causes) = data["missing_individual_artifact_causes"].as_array() {
-        for cause in causes {
-            out.push_str(&format!(
-                "  missing {:<28} {}\n",
-                cause["transformer"].as_str().unwrap_or("?"),
-                cause["detail"]
-                    .as_str()
-                    .or_else(|| cause["code"].as_str())
-                    .unwrap_or("?"),
-            ));
-        }
-    }
-    if data["registry_write_failed"].as_bool().unwrap_or(false) {
-        out.push_str("  registry row not written; future runs will not see this archive\n");
+    if let Some(next) = data["publication"]["next"].as_str() {
+        out.push_str(&format!("  queued for Sync; publish now with `{next}`\n"));
     }
     out
 }
@@ -508,251 +1052,5 @@ fn render_grouped(data: &Value) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn json_composition_preflight_accepts_one_recipe_and_refuses_competing_scope_before_publication()
-     {
-        let recipe = r#"{"schema":"ds.compounded-report/v1","transformers":["tx_a"],"archive_layout":{"group_depth":null,"transformer_folders":true,"combine_per_group":false},"force":false}"#;
-        let base = ["--project", "project_a", "--composition", recipe];
-        let parse = |tokens: Vec<String>| ds_cli_contract::args::parse(&COMMAND, &tokens).unwrap();
-        let valid = parse(base.iter().map(|v| (*v).into()).collect());
-        assert!(preflight(&valid).is_ok());
-        assert_eq!(
-            composition_request(&valid)
-                .unwrap()
-                .unwrap()
-                .transformers()
-                .names(),
-            &["tx_a"]
-        );
-        for extra in [
-            vec!["--transformer", "tx_b"],
-            vec!["--group-by", "district"],
-            vec!["--file-level", "root"],
-            vec!["--force"],
-            vec!["--combine-per-group"],
-        ] {
-            let tokens = base
-                .iter()
-                .chain(extra.iter())
-                .map(|v| (*v).into())
-                .collect();
-            let refusal = preflight(&parse(tokens)).unwrap_err();
-            assert_eq!(refusal.code(), "compounded_composition_conflict");
-            assert!(refusal.remedy_text().is_some());
-        }
-        for raw in ["[]", "{", r#"{"transformers":["combined_transformer"]}"#] {
-            let inputs = parse(
-                ["--project", "project_a", "--composition", raw]
-                    .iter()
-                    .map(|v| (*v).into())
-                    .collect(),
-            );
-            assert_eq!(
-                preflight(&inputs).unwrap_err().code(),
-                "compounded_composition_invalid"
-            );
-        }
-    }
-
-    /// Each archive is one line naming its group, so an operator can see
-    /// which city a prefix belongs to without opening JSON.
-    #[test]
-    fn a_grouped_run_renders_one_line_per_group_archive() {
-        let data = json!({
-            "project": {"ds_project": "p1"}, "lane": "canary", "published_count": 2,
-            "grouping": {"transformer_count": 20},
-            "groups": [
-                {"path": [{"key": "city", "value": "bere"}], "transformer_count": 12,
-                 "status": "success", "prefix": "run-bere"},
-                {"path": [{"key": "city", "value": "_unassigned"}], "transformer_count": 8,
-                 "status": "success", "prefix": "run-rest"},
-            ],
-        });
-        let rendered = render(&data);
-        assert!(
-            rendered.contains("2 Compounded Report archive(s) of 2 group(s)"),
-            "{rendered}"
-        );
-        assert!(rendered.contains("city=bere"), "{rendered}");
-        assert!(rendered.contains("run-bere"), "{rendered}");
-        assert!(rendered.contains("city=_unassigned"), "{rendered}");
-    }
-
-    /// Grouping and naming transformers are alternatives, and every grouping
-    /// refusal is one this command declares.
-    #[test]
-    fn the_grouping_flags_are_declared_once_with_their_refusals() {
-        for flag in ["group-by", "where", "transformer"] {
-            assert!(COMMAND.arg(flag).is_some(), "--{flag}");
-        }
-        let declared: Vec<&str> = COMMAND.refusals.iter().map(|r| r.code).collect();
-        for code in [
-            "combined_group_scope_conflict",
-            "combined_groups_too_many",
-            "combined_groups_empty",
-            "combined_groups_partial",
-            // Read from the published receipt; declared here since 09-26.
-            "combined_inputs_not_current",
-        ] {
-            assert!(declared.contains(&code), "{code} undeclared");
-        }
-    }
-
-    fn cause(name: &str, code: &str) -> Value {
-        json!({"transformer": name, "code": code, "detail": ""})
-    }
-
-    /// The archive has its own command.
-    #[test]
-    fn the_archive_command_is_named_compounded() {
-        assert_eq!(COMMAND.id, "report.project.compounded");
-        assert_eq!(COMMAND.path, &["report", "project", "compounded"]);
-        assert!(
-            COMMAND.summary.contains("Compounded Report ZIP"),
-            "{}",
-            COMMAND.summary
-        );
-    }
-
-    /// Rooms whose reports are sealed on a PC and not drained must be told to
-    /// DRAIN, not to export again — exporting seals a second artifact beside
-    /// the first, which is the hoarding this campaign removes.
-    #[test]
-    fn pending_rooms_refuse_with_the_drain_command() {
-        let causes = vec![cause("tx_a", "report_publication_pending")];
-        let failure = readiness_refusal(&causes, &json!({}))
-            .expect("the predicate answers")
-            .expect("a pending room refuses");
-        assert_eq!(failure.code(), "combined_inputs_publication_pending");
-        assert!(failure.message().contains("tx_a"), "{}", failure.message());
-        assert!(
-            failure
-                .next_commands()
-                .contains(&"ds report outbox drain".to_string()),
-            "{:?}",
-            failure.next_commands()
-        );
-    }
-
-    /// A refused preparation names the rooms without a publication receipt.
-    #[test]
-    fn unready_inputs_refuse_and_name_rooms_without_publication() {
-        let causes = vec![
-            cause("tx_a", "report_not_published"),
-            cause("tx_b", "report_stale"),
-        ];
-        let receipt = json!({});
-        let failure = readiness_refusal(&causes, &receipt)
-            .expect("the predicate answers")
-            .expect("missing rooms refuse");
-        assert_eq!(failure.code(), "combined_inputs_not_current");
-        assert!(failure.message().contains("tx_a"), "{}", failure.message());
-        assert!(failure.message().contains("tx_b"), "{}", failure.message());
-        assert!(
-            failure
-                .remedy_text()
-                .unwrap_or_default()
-                .contains("ds report project export --transformer tx_a --transformer tx_b"),
-            "{:?}",
-            failure.remedy_text()
-        );
-        let detail = failure.detail_value().expect("detail travels");
-        assert!(detail.get("published").is_none());
-    }
-
-    #[test]
-    fn a_locator_bearing_receipt_is_never_a_readiness_refusal() {
-        let causes = vec![cause("tx_b", "report_stale")];
-        let receipt = json!({"prefix": "run-1", "archives": ["gs://b/run-1.zip"]});
-        let failure = readiness_refusal(&causes, &receipt).unwrap_err();
-        assert_eq!(failure.code(), "auth_response_unreadable");
-        let detail = failure.detail_value().unwrap();
-        assert_eq!(detail["published"]["archives"], receipt["archives"]);
-    }
-
-    /// A complete run is not turned into a refusal by the gate.
-    #[test]
-    fn a_complete_run_is_not_refused() {
-        assert!(
-            readiness_refusal(&[], &json!({}))
-                .expect("the predicate answers")
-                .is_none()
-        );
-    }
-
-    /// The receipt reports what was ASKED FOR. The shared vocabulary echoes a
-    /// registry layout's own `combine_per_group`, which this receipt does not
-    /// carry — so merging the vocabulary over the recorded members used to
-    /// report every `--combine-per-group` run as `false`.
-    #[test]
-    fn the_requested_grouping_survives_the_shared_vocabulary() {
-        for requested in [true, false] {
-            let layout = archive_layout("transformer", requested);
-            assert_eq!(
-                layout["combine_per_group"],
-                json!(requested),
-                "the receipt must report the grouping the caller asked for"
-            );
-            assert_eq!(layout["file_level"], json!("transformer"));
-            // The vocabulary still arrives beside it, in keys.
-            assert_eq!(layout["level_key"], "pctl_layout_transformer");
-        }
-        assert_eq!(
-            archive_layout("district", true)["label_key"],
-            "pctl_layout_per_district"
-        );
-    }
-
-    /// The `archive_layout` key is pinned by the contract, so the honesty has
-    /// to live in the prose beside it: the receipt reports what was asked
-    /// for, and only the registry says what was built.
-    #[test]
-    fn the_descriptor_calls_archive_layout_a_request_not_a_tree() {
-        assert!(
-            COMMAND
-                .output
-                .contains("the layout asked for, never the tree achieved"),
-            "{}",
-            COMMAND.output
-        );
-        assert!(
-            COMMAND.output.contains("`_unassigned/`"),
-            "{}",
-            COMMAND.output
-        );
-        assert!(
-            COMMAND.output.contains("ds report project archives"),
-            "{}",
-            COMMAND.output
-        );
-        assert!(
-            COMMAND
-                .purpose
-                .to_ascii_lowercase()
-                .contains("applied report_archive grouping"),
-            "{}",
-            COMMAND.purpose
-        );
-        assert!(
-            FILE_LEVEL_ARG.summary.starts_with("Requested folder level"),
-            "{}",
-            FILE_LEVEL_ARG.summary
-        );
-    }
-
-    /// The refusal a reader sees first is the one line the render prints.
-    #[test]
-    fn the_render_says_compounded_report() {
-        let data = json!({
-            "project": {"project_name": "p", "ds_project": "p1"},
-            "lane": "stable", "status": "success", "prefix": "run-1",
-            "individual_artifact_transformer_count": 2,
-            "missing_individual_artifact_count": 0,
-        });
-        let rendered = render(&data);
-        assert!(rendered.contains("Compounded Report"), "{rendered}");
-    }
-}
+#[path = "combined_tests.rs"]
+mod tests;

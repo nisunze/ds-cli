@@ -41,6 +41,8 @@ use std::path::{Path, PathBuf};
 
 mod local_source;
 mod remote_context;
+mod shared;
+use shared::{SharedSeeding, shared_seed_row};
 
 const NETWORK_ENGINE_MISSING: Refusal = Refusal {
     code: "network_engine_missing",
@@ -69,23 +71,23 @@ const PROJECT_ARG: Arg = Arg::value(
 const MV_MODEL_ARG: Arg = Arg::value(
     "mv-model",
     "<absolute.dsgrid>",
-    "Optional exact local DS Grid draft whose route also needs geographic coverage; the receipt pins its SHA-256. Seed still authorizes --project.",
+    "Local DS Grid draft whose route also needs coverage; the receipt pins its SHA-256.",
 );
 
 const LOCAL_SOURCE_ARG: Arg = Arg::value(
     "local-source",
     "<manifest.json>",
-    "Native ds.local-analytical-source/v1 JSON manifest (64 KiB) selecting one project asset revision and completed coverage. --dataset, when given, must match its id.",
+    "ds.local-analytical-source/v1 manifest (64 KiB) selecting one project asset revision and coverage; --dataset must match its id.",
 );
 const PUBLISHER_INPUT_ARG: Arg = Arg::value(
     "publisher-input",
     "<manifest.json>",
-    "Native pinned Google CSV.gz/Microsoft GeoJSONL.gz manifest; converts and seeds gaps. Exclusive with --local-source/--dataset.",
+    "Pinned Google CSV.gz/Microsoft GeoJSONL.gz manifest; converts and seeds gaps. Exclusive with --local-source/--dataset.",
 );
 
 const REMOTE_CONTEXT_ARG: Arg = Arg::switch(
     "remote-context",
-    "Retired: buildings/contours are no longer computed in the cloud. Always refuses with native_compute_required; supply them with --local-source or --publisher-input.",
+    "Retired: always refuses with native_compute_required; plain seed already replays shared revisions and acquires here.",
 );
 
 const LANE_ARG: ds_cli_contract::spec::Arg =
@@ -95,7 +97,7 @@ const LANE_ARG: ds_cli_contract::spec::Arg =
 // refresh is warm again.
 const REFRESH_ARG: Arg = Arg::switch(
     "refresh",
-    "Re-acquire every planned tile, held or not, for rows seeded before a fix; held rows stay until replaced.",
+    "Re-acquire every planned tile from its source; buildings/contours republish as a refresh revision. Held rows stay until replaced.",
 );
 
 const SUMMARY_ARG: Arg = Arg::switch(
@@ -150,26 +152,26 @@ macro_rules! refusal {
 refusal!(
     INVALID_SCOPE,
     "project_dataset_scope_invalid",
-    "the named dataset is not one this client can hold, the project declares no dataset, or seed source modes conflict",
-    "pass a --dataset id listed by `ds data project-cache status`, or omit it to seed what the project declares"
+    "the dataset is not holdable, the project declares none, or source modes conflict",
+    "pass a --dataset id from `ds data project-cache status`, or omit it"
 );
 refusal!(
     NO_DESIGN_EXTENT,
     "project_has_no_extent",
-    "the project holds no active transformer design or governed MV route to derive coverage from",
+    "the project has no active transformer design or MV route to derive coverage from",
     "save a transformer design or publish an MV model head, then seed"
 );
 refusal!(
     PROVIDER_UNAVAILABLE,
     "dataset_provider_unavailable",
     "the governed provider could not answer the acquisition",
-    "restore the connection and retry; previously held data is kept and never partially claimed as ready"
+    "restore the connection and retry; held data is kept, never claimed partly ready"
 );
 refusal!(
     ACQUISITION_FAILED,
     "project_dataset_acquisition_failed",
     "the provider or the room refused one acquisition cell; held data is intact",
-    "fix the cause named on the dataset's row and retry; only the missing coverage is acquired again"
+    "fix the cause on the dataset's row and retry"
 );
 refusal!(
     LOCAL_RESOURCE_REQUIRED,
@@ -205,7 +207,7 @@ refusal!(
     SEED_INCOMPLETE,
     "project_dataset_seed_incomplete",
     "a selected dataset failed or has incomplete coverage",
-    "inspect detail.result and acquire its missing inputs; completed holdings remain"
+    "inspect detail.result and acquire the missing inputs"
 );
 refusal!(
     BUNDLE_UNAVAILABLE,
@@ -216,8 +218,56 @@ refusal!(
 refusal!(
     REMOTE_CONTEXT_RETIRED,
     "native_compute_required",
-    "--remote-context was given: buildings and contours are no longer computed in the cloud",
-    "supply pinned inputs with --local-source or --publisher-input; no cloud fallback exists"
+    "--remote-context was given; buildings and contours are not computed in the cloud",
+    "omit it: seed reuses shared revisions and acquires only what nobody published"
+);
+refusal!(
+    REVISION_INVALID,
+    "project_dataset_revision_invalid",
+    "a published dataset revision is malformed or differs from its pins",
+    "report the project and dataset; held data is kept"
+);
+refusal!(
+    REVISION_STALE,
+    "project_dataset_revision_stale",
+    "other members kept publishing revisions while this seed re-planned",
+    "seed again; it replays what landed and publishes only what is still missing"
+);
+refusal!(
+    PUBLICATION_REFUSED,
+    "project_dataset_publication_refused",
+    "the account may not read or publish this project's shared datasets",
+    "check the account's access to the project; held data is kept"
+);
+refusal!(
+    REPORTER_MISSING,
+    "reporter_engine_missing",
+    "a seed needs the Reporter engine to convert or derive data and none is installed",
+    "install Reporter for the selected --lane; nothing is acquired without it"
+);
+refusal!(
+    REPORTER_INCOMPATIBLE,
+    "reporter_engine_incompatible",
+    "the installed Reporter does not publish the offline footprint or contour tasks",
+    "update Reporter for the selected --lane"
+);
+refusal!(
+    SURFACE_UNCOVERED,
+    "contour_surface_uncovered",
+    "the Rwanda DEM does not cover the project area contours were asked for",
+    "seed contours only inside Rwanda's surface"
+);
+refusal!(
+    ENGINE_REFUSED,
+    "engine_refused",
+    "the Reporter refused one conversion or derivation",
+    "read the dataset row's error for the engine's own message"
+);
+refusal!(
+    ENGINE_RESPONSE_INVALID,
+    "engine_response_invalid",
+    "the Reporter answered another request or bytes that differ from its digests",
+    "repair or update Reporter for the selected --lane"
 );
 refusal!(
     RETIRED,
@@ -228,7 +278,7 @@ refusal!(
 refusal!(
     CATALOG_UNAVAILABLE,
     "catalog_unavailable",
-    "ds-brain's reference catalogue could not be read or is not a valid published catalogue",
+    "the reference catalogue could not be read or is invalid",
     "retry when connected; held rooms are still reported by status"
 );
 refusal!(
@@ -283,8 +333,8 @@ refusal!(
 refusal!(
     PROJECT_CONTEXT_CHANGED,
     "project_context_changed",
-    "the native account, audience or credential changed while consuming the named project's local input",
-    "retry the same explicit project and manifest under the intended native account"
+    "the account, audience or credential changed while consuming the project's local input",
+    "retry the same project and manifest under the intended account"
 );
 refusal!(
     NATIVE_STATE_UNSAFE,
@@ -332,13 +382,13 @@ refusal!(
     AUTH_INPUT,
     "auth_input_invalid",
     "ds-brain refused the request",
-    "read the message; the area is the kernel's own plan, so a repeated refusal is a deployment mismatch"
+    "read the message; a repeated refusal is a deployment mismatch"
 );
 refusal!(
     AUTH_REJECTED,
     "auth_rejected",
-    "the gateway rejects the verified request, the user lacks project access, or the project is archived",
-    "verify the account and its project access; device credentials need the bulk lane's deployed verifier"
+    "the gateway rejects the request, project access is missing, or the project is archived",
+    "verify the account and its project access"
 );
 refusal!(
     AUTH_REVOKED,
@@ -452,6 +502,14 @@ const STATUS_REFUSALS: &[Refusal] = &[
 const SEED_REFUSALS: &[Refusal] = &[
     NETWORK_ENGINE_MISSING,
     REMOTE_CONTEXT_RETIRED,
+    REVISION_INVALID,
+    REVISION_STALE,
+    PUBLICATION_REFUSED,
+    REPORTER_MISSING,
+    REPORTER_INCOMPATIBLE,
+    SURFACE_UNCOVERED,
+    ENGINE_REFUSED,
+    ENGINE_RESPONSE_INVALID,
     NETWORK_ENGINE_INCOMPATIBLE,
     INVALID_SCOPE,
     RETIRED,
@@ -526,7 +584,7 @@ pub static STATUS_COMMAND: Command = Command {
     path: &["data", "project-cache", "status"],
     contract: 1,
     summary: "Report the project's held extracts of canonical geographic datasets.",
-    purpose: "Reports each dataset's requested/completed coverage, features, index, source versions and errors under the explicit project. --local-source reads its exact principal/project/revision room offline, without catalogue, provider, input artifact or freshness reads. Otherwise reads the catalogue; held rooms still report when it is unavailable. Missing data is never acquired.",
+    purpose: "Reports each dataset's requested/completed coverage, features, index, source versions and errors under the explicit project. --local-source reads its exact principal/project/revision room offline. Otherwise reads the catalogue; held rooms still report when it is unavailable. Missing data is never acquired.",
     chapter: Chapter::Data,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
@@ -568,7 +626,7 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Seeds design/MV coverage under authorized --project. --local-source selects analytical input; --publisher-input converts pinned Google CSV.gz/Microsoft GeoJSONL.gz. Both skip catalogue/remote compute. Buildings/contours require local input; --remote-context is retired and refuses. Seeds declared datasets plus what it holds. --refresh repeats. Incomplete results refuse with detail.result.",
+    purpose: "Seeds design/MV coverage under --project. Buildings and contours are seeded once per project: published revisions replay first, Core fetches only uncovered Google Open Buildings tiles or samples the Rwanda DEM, the Reporter converts offline, and the delta is published as the next revision. Seeds declared datasets plus what it holds. --local-source/--publisher-input select pinned inputs instead. --refresh re-acquires and republishes. Incomplete results refuse with detail.result.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
@@ -583,8 +641,13 @@ pub static SEED_COMMAND: Command = Command {
         REFRESH_ARG,
         LANE_ARG,
     ],
-    output: "Per dataset: acquired cells, coverage, features, holding, warnings/errors and optional `selected_source` pins; plus `refresh`, `failed`, `complete` and captured transformer/MV sources.",
+    output: "Per dataset: acquired cells, coverage, features, holding, warnings/errors, optional `selected_source` pins, and for buildings/contours `shared` (head revision, replayed and published revisions, source cells, freshness); plus `refresh`, `failed`, `complete` and captured transformer/MV sources.",
     examples: &[
+        Example {
+            command: "ds data project-cache seed --project gisagara --dataset google_open_buildings --yes --output json",
+            note: "Seed building footprints once for the project: replay published revisions, fetch only uncovered tiles, publish the delta.",
+            runnable: false,
+        },
         Example {
             command: "ds data project-cache seed --project gisagara --publisher-input ./publisher.json --yes --output json",
             note: "Convert pinned inputs and seed; reuse returned source_manifest offline.",
@@ -1237,8 +1300,8 @@ fn query_dataset(
     }))
 }
 
-/// Bounded canonical cloud reads remain governed. Derived footprints and
-/// contours require native local producer inputs, including during export seed.
+/// Bounded canonical cloud reads remain governed. Footprints and contours
+/// are seeded through shared project revisions ([`run_seed`]), never here.
 pub struct CliProvider<'a> {
     pub lane: &'a str,
     pub project: &'a str,
@@ -1330,14 +1393,29 @@ impl CliProvider<'_> {
                 .map_err(Cause::AcquisitionFailed)?;
             return Ok(decoded_page(decoded));
         }
-        Err(
-            ds_project_data::datasets::local_resource_need(dataset).unwrap_or_else(|| {
-                Cause::AcquisitionFailed(format!(
-                    "{} has no admitted local provider input",
+        // Footprints and contours are seeded once per project through its
+        // shared revisions (`data.project-cache.seed`); a print, which lends
+        // only this door, reads what this machine already holds.
+        Err(match dataset.id.as_str() {
+            policy::BUILDINGS_DATASET_ID | policy::CONTOURS_DATASET_ID => {
+                let source = if dataset.id == policy::BUILDINGS_DATASET_ID {
+                    "Google Open Buildings footprints"
+                } else {
+                    "Rwanda DEM contours"
+                };
+                Cause::LocalResourceRequired(format!(
+                    "{source} ({}, parameters {}) are seeded once per project through its shared revisions: run `ds data project-cache seed --project {} --dataset {} --yes`; this read uses what the machine holds",
+                    dataset.id,
+                    serde_json::to_string(&dataset.parameters).unwrap_or_default(),
+                    self.project,
                     dataset.id
                 ))
-            }),
-        )
+            }
+            _ => Cause::AcquisitionFailed(format!(
+                "{} has no admitted acquisition owner on this door",
+                dataset.id
+            )),
+        })
     }
 }
 
@@ -1602,7 +1680,8 @@ fn local_seed(
         )
     };
     verify()?;
-    let (entry, producer) = local_source::materialize(&root, scope, selected)?;
+    let mut convert = shared::reporter_converter(lane);
+    let (entry, producer) = local_source::materialize(&root, scope, selected, &mut convert)?;
     verify()?;
     let row = local_source::seed(&root, scope, &entry, &extents, refresh, verify)?;
     let complete = row["covered"] == true;
@@ -1682,6 +1761,8 @@ fn catalog_seed(
     let mut fetch = bundle_fetch(lane);
     let mut rows = Vec::new();
     let mut failed = 0_usize;
+    // Opened only when a shared dataset is seeded, removed with the run.
+    let mut seeding: Option<SharedSeeding> = None;
     for target in targets {
         let resolved = match declared.iter().find(|d| d.dataset.id == target) {
             Some(found) => Some(found.clone()),
@@ -1697,6 +1778,28 @@ fn catalog_seed(
             }));
             continue;
         };
+        if matches!(
+            entry.source,
+            ds_project_data::DeclaredSource::Buildings
+                | ds_project_data::DeclaredSource::Contours(_)
+        ) {
+            let row = shared_seed_row(
+                &mut seeding,
+                lane,
+                &root,
+                scope,
+                &entry,
+                &policy,
+                &extents,
+                refresh,
+                rooms.contains_key(&entry.dataset.id),
+            );
+            if row.get("error").is_some() {
+                failed += 1;
+            }
+            rows.push(row);
+            continue;
+        }
         let mut hosts = Hosts {
             provider: &mut provider,
             fetch: &mut fetch,

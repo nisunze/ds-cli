@@ -2257,6 +2257,51 @@ fn open_builds_layer_tables_in_source_order() {
 
 #[cfg(feature = "enable_dataframes")]
 #[test]
+fn mount_scope_builds_layer_tables_in_source_order() {
+    // A permutation, so neither id order nor a hasher's order can pass for it.
+    let ids: Vec<String> = (0..12).map(|n| format!("pole-{}", n * 7 % 12)).collect();
+    let mut features: Vec<Value> = ids
+        .iter()
+        .map(|id| {
+            json!({ "type": "Feature", "id": id, "properties": { "label": id },
+                    "geometry": { "type": "Point", "coordinates": [30.0, -2.0] } })
+        })
+        .collect();
+    // A repeated id keeps its first row and takes the later value.
+    features.push(
+        json!({ "type": "Feature", "id": "pole-7", "properties": { "label": "last" },
+                          "geometry": { "type": "Point", "coordinates": [30.1, -2.1] } }),
+    );
+    let mut h = SessionHandle::open(Vec::new());
+    let layers = vec![SessionLayerInput {
+        name: "lv_poles".to_string(),
+        geojson: json!({ "type": "FeatureCollection", "features": features }),
+    }];
+    assert_eq!(h.mount_scope_layers("design", layers).unwrap(), 12);
+
+    let window = h.get_rows("design:lv_poles", 0, 20).unwrap().unwrap();
+    let order: Vec<&str> = window
+        .rows
+        .iter()
+        .map(|row| row.feature_id.as_str())
+        .collect();
+    assert_eq!(order, ids.iter().map(String::as_str).collect::<Vec<_>>());
+    for (index, row) in window.rows.iter().enumerate() {
+        assert_eq!(row.row_index, index);
+    }
+    let repeated = &window.rows[ids.iter().position(|id| id == "pole-7").unwrap()];
+    assert_eq!(repeated.properties["label"], json!("last"));
+    assert_eq!(
+        h.get_row("design:lv_poles", "pole-0")
+            .unwrap()
+            .unwrap()
+            .row_index,
+        0
+    );
+}
+
+#[cfg(feature = "enable_dataframes")]
+#[test]
 fn table_rows_stay_synchronized_after_mutations() {
     let mut h = SessionHandle::open(vec![pt_with_props(
         "lv_poles/pole-1",

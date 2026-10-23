@@ -11,7 +11,7 @@ pub static CREATE: Command = Command {
         "pm.note.create",
         &["pm", "note", "create"],
         "Create a sourced project note for deliberate shared memory.",
-        "Consumes one closed Write JSON with operation_id, id, reason and draft(subject, body, tags, memory). Record meaningful rulings, corrections and verified outcomes deliberately; no automatic filing runs. Memory carries explicit provenance, scope, individually sourced claims and evidence. An observation may have no claims, which does not imply consensus or complete context. Proposals and model inference never become accepted user decisions. Optional known writer model/version/strength are self-declared metadata distinct from authenticated author. Creation omits expected_version; exact retries use the same operation identity. No correspondence is sent and no private content is copied implicitly.",
+        "Consumes one closed Write JSON with operation_id, id, reason and draft(subject, body, tags, memory). Record rulings, corrections and verified outcomes deliberately; nothing is filed automatically. Memory carries provenance, scope, sourced claims and evidence. An observation may have no claims, which does not imply consensus. Model inference never becomes an accepted user decision. Optional writer model/version/strength are self-declared, distinct from the author. Creation omits expected_version; retries reuse the operation id. No correspondence is sent.",
         Effect::GlobalWrite,
         crate::authored_args![
             crate::note_memory::INPUT,

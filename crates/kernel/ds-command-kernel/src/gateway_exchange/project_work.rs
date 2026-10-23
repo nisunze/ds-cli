@@ -160,12 +160,154 @@ pub struct ProjectWork {
     pub request: Map<String, Value>,
 }
 
+/// The export the page calls, and the exchange it runs, for
+/// [`crate::capabilities::admit_export`].
+pub const EXPORT: &str = "projectWork";
+pub const EXCHANGE: &str = "project_work";
+
+/// The capability one committed command performs, by its kind.
+pub fn command_capability(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        "create_task" => "pm.task.create",
+        "assign_task" | "request_assignment" => "pm.task.assign",
+        "accept_assignment" | "decline_assignment" => "pm.task.respond",
+        "update_task_fields" | "set_delivery_state" | "set_review_state"
+        | "set_closeout_state" | "move_task" | "resize_task" => "pm.task.update",
+        "set_progress" => "pm.task.progress",
+        "delete_task" => "pm.task.delete",
+        "add_dependency" | "update_dependency" | "remove_dependency" => "pm.task.dependency",
+        "reparent_task" | "reorder_task" => "pm.task.arrange",
+        "reopen_task" => "pm.task.reopen",
+        "set_calendar" => "pm.calendar.set",
+        "add_residual_item" | "update_residual_item" | "resolve_residual_item"
+        | "promote_residual_item" => "pm.residual.edit",
+        _ => return None,
+    })
+}
+
+/// The capability one request performs, by its action and, where one action
+/// serves several, the members that tell them apart. A commit is admitted
+/// command by command ([`command_capability`]).
+pub fn capability(request: &Map<String, Value>) -> Option<&'static str> {
+    let action = request
+        .get("action")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let member = |key: &str| request.get(key).is_some_and(|value| !value.is_null());
+    let entity = request
+        .get("data")
+        .and_then(|data| data.get("linked_entity_type"))
+        .and_then(Value::as_str);
+    Some(match action {
+        PUBLIC_INDEX => "pm.project.list",
+        "get_graph" => "pm.plan",
+        "get_context" if member("record_id") => "pm.record.read",
+        "get_context" if member("task_id") || member("residual_id") => "pm.task.read",
+        "get_context" => "pm.overview",
+        "get_assignees" => "pm.member.list",
+        "get_work_catalog" => "pm.template.list",
+        "preview_work_template" => "pm.template.preview",
+        "apply_work_template" => "pm.template.apply",
+        "deletion_inventory" => "pm.deletion.inventory",
+        "deletion_read" => "pm.deletion.read",
+        "deletion_restore" => "pm.deletion.restore",
+        "create_record" | "record_create" => "pm.record.create",
+        "update_record" | "record_update" => "pm.record.update",
+        "record_read" => "pm.record.read",
+        "record_list" => "pm.record.list",
+        "record_reply" => "pm.record.reply",
+        "record_thread" => "pm.record.thread",
+        "start_attachment_upload" | "restart_attachment_upload" | "finalize_attachment_upload"
+            if entity == Some("record") =>
+        {
+            "pm.record.attach"
+        }
+        "start_attachment_upload" | "restart_attachment_upload" | "finalize_attachment_upload" => {
+            "pm.task.attach"
+        }
+        "detach_task_attachment" => "pm.task.detach",
+        "update_attachment" => "pm.attachment.update",
+        "download_attachment_url" => "pm.attachment.download",
+        "save_intelligence_artifact" | "update_intelligence_artifact" => "pm.intelligence.save",
+        "create_comment" | "update_comment" => "pm.task.comment",
+        "create_work_episode" | "update_work_episode" | "task_log_hours" => "pm.task.log-hours",
+        "task_block" => "pm.task.block",
+        "task_unblock" => "pm.task.unblock",
+        "task_read" => "pm.task.read",
+        "task_request_admission" => "pm.task.request-admission",
+        "task_admit" => "pm.task.admit",
+        "task_decline_admission" => "pm.task.decline",
+        "party_list" => "pm.party.list",
+        "party_create" => "pm.party.create",
+        "party_update" => "pm.party.update",
+        "copy_document" => "pm.document.copy",
+        "mail_thread_ingest" => "pm.mail-thread.ingest",
+        "note_checklist_edit" => "pm.note.checklist.edit",
+        "note_checklist_read" => "pm.note.checklist.read",
+        "project_note_write" => "pm.note.update",
+        "project_note_read" => "pm.note.read",
+        "project_note_query" => "pm.note.query",
+        "project_note_context" => "pm.note.context",
+        "project_note_versions" => "pm.note.versions",
+        "project_note_backup" => "pm.note.backup",
+        "project_note_retire" => "pm.note.retire",
+        "project_note_restore" => "pm.note.restore",
+        "project_note_consolidate" => "pm.note.consolidate",
+        _ => return None,
+    })
+}
+
 impl ProjectWork {
     fn action(&self) -> &str {
         self.request
             .get("action")
             .and_then(Value::as_str)
             .unwrap_or_default()
+    }
+
+    /// Admit this request from the page: its capability's row, and for a
+    /// commit every command's, must name [`EXPORT`] and be supported on this
+    /// build's platform. Answers the capabilities admitted.
+    pub fn admit_in_page(&self, platform: &str) -> Result<Vec<&'static str>, Refusal> {
+        let action = self.action();
+        let admit = |id: &'static str| {
+            crate::capabilities::admit_export_on(platform, id, EXPORT, EXCHANGE)
+                .map(|capability| capability.id)
+                .map_err(|refused| Refusal::new(refused.code, refused.message))
+        };
+        let commands: Vec<&Value> = match action {
+            "commit_command" => self.request.get("command").into_iter().collect(),
+            "commit_batch" => self
+                .request
+                .get("commands")
+                .and_then(Value::as_array)
+                .map(|commands| commands.iter().collect())
+                .unwrap_or_default(),
+            _ => {
+                let id = capability(&self.request).ok_or_else(|| {
+                    input_invalid(format!("`{action}` is not a Project Work action the page runs."))
+                })?;
+                return admit(id).map(|id| vec![id]);
+            }
+        };
+        if commands.is_empty() {
+            return Err(input_invalid("A Project Work commit names its commands."));
+        }
+        let mut admitted = Vec::new();
+        for command in commands {
+            let kind = command
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let id = command_capability(kind).ok_or_else(|| {
+                input_invalid(format!("`{kind}` is not a Project Work command the page runs."))
+            })?;
+            let id = admit(id)?;
+            if !admitted.contains(&id) {
+                admitted.push(id);
+            }
+        }
+        Ok(admitted)
     }
 }
 
@@ -283,7 +425,10 @@ mod exports {
     ) -> Result<JsValue, JsValue> {
         let request: Map<String, Value> = tsify::serde_wasm_bindgen::from_value(request)
             .map_err(|error| js_sys::Error::new(&error.to_string()))?;
-        typed(&run(&host, ProjectWork { request }).await?)
+        let call = ProjectWork { request };
+        call.admit_in_page(crate::capabilities::PLATFORM)
+            .map_err(|refusal| rejection(&refusal))?;
+        typed(&run(&host, call).await?)
     }
     /// The project's graph this device holds, at once and offline.
     #[wasm_bindgen(js_name = projectWorkGraphHeld, unchecked_return_type = "unknown")]

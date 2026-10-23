@@ -63,12 +63,12 @@ const ENGINE_LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE
 const ENGINE_MISSING: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
     code: "reporter_engine_missing",
     when: "the selected lane has no managed Reporter addon",
-    remedy: "install Reporter for the selected --lane; use DS_REPORT_BIN only for explicit development",
+    remedy: "install Reporter for the selected --lane",
 };
 const ENGINE_RECEIPT_INVALID: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
     code: "module_receipt_invalid",
     when: "the selected lane's managed receipt or executable bytes are invalid",
-    remedy: "repair or roll back Reporter in the selected lane; no alternate engine is substituted",
+    remedy: "repair or roll back Reporter in the selected lane",
 };
 
 fn capture_engine(
@@ -146,7 +146,6 @@ pub static DOMAIN: Domain = Domain {
         &project::scope::COMMAND,
         &project::combined::COMMAND,
         &project::combined_export::COMMAND,
-        &project::compute::COMMAND,
         &project::archives::COMMAND,
         &project::settings::COMMAND,
         &project::crs::COMMAND,

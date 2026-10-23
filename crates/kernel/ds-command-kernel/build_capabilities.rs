@@ -7,12 +7,17 @@
 //! check` rewrites it canonically and gives every row that lacks a declared
 //! platform the value `pending:<platform>_not_yet_supported`, adding that
 //! reason, so declaring a platform never means editing every row by hand.
+//!
+//! A row the page runs in-page names its one typed owner: `export`, the
+//! wasm-bindgen JS name the page calls. The gate reads the crate's own
+//! sources ([`wasm_exports`]), so a row naming an export the Kernel does not
+//! define fails here, before any WASM link.
 
 use serde_json::{Map, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
     env, fs,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 pub const SCHEMA: &str = "ds.capabilities/v1";
@@ -20,6 +25,8 @@ const MANIFEST: &str = "routing/capabilities.json";
 const REWRITE: &str = "DS_CAPABILITIES_REWRITE";
 /// The executors the Kernel has code for; a platform names the ones it has.
 const EXECUTORS: [&str; 3] = ["core", "kernel", "network_unit"];
+/// A row's members that are not platform values, in canonical order.
+const ROW_MEMBERS: [&str; 2] = ["export", "run"];
 const RUN_MEMBERS: [&str; 6] = [
     "input",
     "wrap",
@@ -36,8 +43,11 @@ fn fail(message: impl std::fmt::Display) -> ! {
 
 /// What the manifest is checked against outside itself.
 pub struct Environment<'a> {
-    /// `src/gateway_exchange/<name>.rs` exists.
+    /// The Kernel module a `kernel` cell names exists: a gateway exchange
+    /// `src/gateway_exchange/<name>.rs`, or an in-page operation `src/<name>.rs`.
     pub exchange: &'a dyn Fn(&str) -> bool,
+    /// The sources that define this wasm-bindgen export (empty: none does).
+    pub export: &'a dyn Fn(&str) -> Vec<String>,
     /// Cargo.toml declares the feature.
     pub feature_declared: &'a dyn Fn(&str) -> bool,
     /// This build enables the feature.
@@ -55,6 +65,8 @@ pub struct Platform {
 pub struct Row {
     /// The value for each platform the row names, by platform id.
     pub values: BTreeMap<String, String>,
+    /// The wasm-bindgen JS name the page calls to run this row in-page.
+    pub export: Option<String>,
     run: Option<Map<String, Value>>,
 }
 
@@ -198,15 +210,18 @@ pub fn parse(json: &str) -> Manifest {
         let id = name(id, "a capability", true);
         let what = format!("`{id}`");
         let mut values = BTreeMap::new();
+        let mut export = None;
         let mut run = None;
         for (key, value) in object(row, &what) {
             if key == "run" {
                 run = Some(object(value, &format!("{what} run")).clone());
+            } else if key == "export" {
+                export = Some(text(Some(value), &format!("{what} export")));
             } else {
                 values.insert(key.clone(), text(Some(value), &format!("{what} on {key}")));
             }
         }
-        (id, Row { values, run })
+        (id, Row { values, export, run })
     })
     .collect();
     Manifest {
@@ -317,6 +332,9 @@ pub fn render(manifest: &Manifest) -> String {
                     .filter(|(key, _)| !manifest.platforms.iter().any(|p| &p.id == *key))
                     .map(|(key, value)| format!("{}: {}", quoted(key), quoted(value))),
             );
+            if let Some(export) = &row.export {
+                members.push(format!("\"export\": {}", quoted(export)));
+            }
             if let Some(run) = &row.run {
                 let mut fields: Vec<String> = RUN_MEMBERS
                     .iter()
@@ -411,7 +429,7 @@ fn route(
                     let exchange = name(exchange, &format!("{what} exchange"), false);
                     if !(environment.exchange)(&exchange) {
                         fail(format!(
-                            "{what} names the Kernel exchange `{exchange}`, which src/gateway_exchange does not have"
+                            "{what} names the Kernel module `{exchange}`, which src/gateway_exchange does not have, nor src"
                         ));
                     }
                     Some(exchange)
@@ -497,6 +515,9 @@ pub fn compile(json: &str, environment: &Environment) -> String {
     let ids: BTreeSet<&str> = platforms.iter().map(|p| p.id.as_str()).collect();
     if ids.len() != platforms.len() {
         fail("a platform is declared twice");
+    }
+    if let Some(member) = ROW_MEMBERS.iter().find(|member| ids.contains(*member)) {
+        fail(format!("a platform may not be named `{member}`, a row member"));
     }
     let mut features = BTreeSet::new();
     for platform in platforms {
@@ -601,10 +622,12 @@ pub fn compile(json: &str, environment: &Environment) -> String {
             .run
             .as_ref()
             .map_or_else(|| "None".to_owned(), |run| run_spec(id, run, on_core));
+        let export = export_owner(id, row, platforms, environment);
         rows.push(format!(
-            "    Capability {{ id: {}, routes: [{}], run: {run} }},",
+            "    Capability {{ id: {}, routes: [{}], run: {run}, export: {} }},",
             literal(id),
-            columns.join(", ")
+            columns.join(", "),
+            optional(export.map(str::to_owned))
         ));
     }
     if let Some(unused) = manifest.reasons.keys().find(|key| !used.contains(*key)) {
@@ -637,12 +660,41 @@ pub fn compile(json: &str, environment: &Environment) -> String {
             ids.join(" | ")
         }
     };
+    // The rows each export runs in this build's page: its Kernel and Network
+    // unit cells, and where the platform runs the row on Core beside the
+    // page, the page's own in-page run of it through the same typed owner.
+    let in_page = |row: &Row| {
+        let value = &row.values[&served.id];
+        in_page_cell(value) || (value == "core" && served.executors.iter().any(|e| e == "kernel"))
+    };
+    let mut by_export: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for (id, row) in &manifest.capabilities {
+        if let Some(export) = &row.export {
+            let ids = by_export.entry(export).or_default();
+            if in_page(row) {
+                ids.push(quoted(id));
+            }
+        }
+    }
+    let exports: Vec<String> = by_export
+        .iter()
+        .map(|(export, ids)| {
+            let union = if ids.is_empty() {
+                "never".to_owned()
+            } else {
+                ids.join(" | ")
+            };
+            format!("    {export}: {union};")
+        })
+        .collect();
     let types = format!(
         "/** Generated from routing/capabilities.json for {platform}; do not edit. */\n\
          export type CapabilityId = {all};\n\
          export type CoreCapabilityId = {core};\n\
          export type RunnableCapabilityId = {runnable};\n\
-         export type SupportedCapabilityId = {supported};\n",
+         export type SupportedCapabilityId = {supported};\n\
+         /** For each Kernel export, the capabilities this page runs through it. */\n\
+         export interface CapabilityExports {{\n{exports}\n}}\n",
         platform = served.id,
         all = union(&|_| true),
         core = union(&|route| route == "core"),
@@ -650,11 +702,28 @@ pub fn compile(json: &str, environment: &Environment) -> String {
         supported = union(&|route| route == "core"
             || route == "network_unit"
             || route.starts_with("kernel:")),
+        exports = exports.join("\n"),
     );
+    let executors: Vec<String> = platforms
+        .iter()
+        .map(|platform| {
+            format!(
+                "&[{}]",
+                platform
+                    .executors
+                    .iter()
+                    .map(|executor| executor_variant(executor))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+        .collect();
     format!(
         "// Generated by build.rs from {MANIFEST}; do not edit.\n\
          /// Every declared platform, in manifest order.\n\
          pub const PLATFORMS: [&str; {count}] = [{platforms}];\n\
+         /// Each platform's executors, in manifest order.\n\
+         static EXECUTORS: [&[Executor]; {count}] = [{executors}];\n\
          /// The platform this Kernel build serves.\n\
          pub const PLATFORM: &str = {served};\n\
          const PLATFORM_INDEX: usize = {served_index};\n\
@@ -670,12 +739,361 @@ pub fn compile(json: &str, environment: &Environment) -> String {
             .map(|p| literal(&p.id))
             .collect::<Vec<_>>()
             .join(", "),
+        executors = executors.join(", "),
         served = literal(&served.id),
         route_count = routes.len(),
         routes = routes.join(",\n    "),
         rows = rows.join("\n"),
         types = literal(&types),
     )
+}
+
+/// A cell the page runs itself: the in-page Kernel or its Network unit.
+fn in_page_cell(value: &str) -> bool {
+    value.starts_with("kernel:") || value == "network_unit"
+}
+
+/// A JS identifier, as wasm-bindgen exports it.
+fn js_identifier(text: &str) -> bool {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+        && text.len() <= 96
+}
+
+/// The row's one typed owner in the page. A row runs on the Kernel on some
+/// platform exactly when it names one, and that export must be one the
+/// crate's sources define, once.
+fn export_owner<'a>(
+    id: &str,
+    row: &'a Row,
+    platforms: &[Platform],
+    environment: &Environment,
+) -> Option<&'a str> {
+    let in_page: Vec<&str> = platforms
+        .iter()
+        .filter(|platform| in_page_cell(&row.values[&platform.id]))
+        .map(|platform| platform.id.as_str())
+        .collect();
+    let Some(export) = row.export.as_deref() else {
+        if !in_page.is_empty() {
+            fail(format!(
+                "`{id}` runs in the page on {} but names no `export`, the wasm-bindgen JS name the page calls",
+                in_page.join(" and ")
+            ));
+        }
+        return None;
+    };
+    if in_page.is_empty() {
+        fail(format!(
+            "`{id}` names the export `{export}`, but no platform runs it in the page"
+        ));
+    }
+    if !js_identifier(export) {
+        fail(format!("`{id}` export `{export}` is not a JS identifier"));
+    }
+    match (environment.export)(export).as_slice() {
+        [] => fail(format!(
+            "`{id}` names the export `{export}`, which no Kernel source exports"
+        )),
+        [_] => Some(export),
+        many => fail(format!(
+            "`{id}` names the export `{export}`, which {} all export",
+            many.join(", ")
+        )),
+    }
+}
+
+/// The wasm-bindgen exports one Rust source defines at module level: free
+/// functions, structs and enums (not class members inside an `impl`, not
+/// `extern` imports, not parameter attributes, not the `start` function or
+/// custom sections), each by its `js_name` or else its Rust identifier, with
+/// the line its attribute starts on. A token scan that skips comments,
+/// strings, raw strings and char literals, so a brace inside any of them
+/// never shifts a block.
+pub fn wasm_exports(source: &str) -> Vec<(String, usize)> {
+    let bytes = source.as_bytes();
+    let ident_start = |b: u8| b.is_ascii_alphabetic() || b == b'_';
+    let ident_part = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+    let mut found = Vec::new();
+    // For each open brace block: whether the items inside it are module items.
+    let mut blocks: Vec<bool> = Vec::new();
+    let mut parens = 0usize;
+    // Identifier tokens since the last `;`, `{` or `}`.
+    let mut statement: Vec<&str> = Vec::new();
+    // A wasm-bindgen item attribute waiting for its item: (js_name, line, skip).
+    let mut pending: Option<(Option<String>, usize, bool)> = None;
+    let (mut i, mut line) = (0, 1);
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'\n' {
+            line += 1;
+            i += 1;
+        } else if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+        } else if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
+            let mut depth = 0;
+            while i < bytes.len() {
+                if bytes[i] == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                    depth += 1;
+                    i += 2;
+                } else if bytes[i] == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                    depth -= 1;
+                    i += 2;
+                    if depth == 0 {
+                        break;
+                    }
+                } else {
+                    line += usize::from(bytes[i] == b'\n');
+                    i += 1;
+                }
+            }
+        } else if b == b'"' {
+            i = skip_string(bytes, i + 1, &mut line);
+        } else if b == b'\'' {
+            // A char literal ('x', '\n', '\'', '\u{..}', multi-byte) or a lifetime.
+            if bytes.get(i + 1) == Some(&b'\\') {
+                i += 3;
+                while i < bytes.len() && bytes[i] != b'\'' {
+                    i += 1;
+                }
+                i += 1;
+            } else {
+                let width = source
+                    .get(i + 1..)
+                    .and_then(|rest| rest.chars().next())
+                    .map_or(1, char::len_utf8);
+                i += if bytes.get(i + 1 + width) == Some(&b'\'') {
+                    2 + width
+                } else {
+                    1
+                };
+            }
+        } else if b == b'#' && matches!(bytes.get(i + 1), Some(b'[' | b'!')) {
+            let inner = bytes[i + 1] == b'!';
+            let open = i + 1 + usize::from(inner);
+            if bytes.get(open) != Some(&b'[') {
+                i += 1;
+                continue;
+            }
+            let start_line = line;
+            let mut depth = 0;
+            let mut j = open;
+            while j < bytes.len() {
+                match bytes[j] {
+                    b'"' => {
+                        j = skip_string(bytes, j + 1, &mut line);
+                        continue;
+                    }
+                    b'[' | b'(' => depth += 1,
+                    b']' | b')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    b'\n' => line += 1,
+                    _ => {}
+                }
+                j += 1;
+            }
+            let attribute = &source[open..j.min(bytes.len())];
+            if !inner && parens == 0 && is_wasm_bindgen(attribute) {
+                let skip = attribute_flag(attribute, "start")
+                    || attribute_flag(attribute, "typescript_custom_section");
+                let name = js_name(attribute);
+                pending = Some(match pending.take() {
+                    Some((earlier, at, earlier_skip)) => (name.or(earlier), at, skip || earlier_skip),
+                    None => (name, start_line, skip),
+                });
+            }
+            i = j + 1;
+        } else if let Some(end) = literal_prefix(bytes, i) {
+            // A raw, byte or C string: r"..", r#".."#, br"..", b"..", c"..".
+            i = end(&mut line);
+        } else if b == b'(' {
+            parens += 1;
+            i += 1;
+        } else if b == b')' {
+            parens = parens.saturating_sub(1);
+            i += 1;
+        } else if b == b'{' {
+            blocks.push(statement.len() >= 2 && statement[statement.len() - 2] == "mod");
+            statement.clear();
+            pending = None;
+            i += 1;
+        } else if b == b'}' {
+            blocks.pop();
+            statement.clear();
+            pending = None;
+            i += 1;
+        } else if b == b';' {
+            if parens == 0 {
+                statement.clear();
+                pending = None;
+            }
+            i += 1;
+        } else if ident_start(b) && (i == 0 || !ident_part(bytes[i - 1])) {
+            let start = i;
+            while i < bytes.len() && ident_part(bytes[i]) {
+                i += 1;
+            }
+            let word = &source[start..i];
+            if parens == 0 {
+                if let Some((name, at, skip)) = pending.as_ref() {
+                    if matches!(statement.last(), Some(&("fn" | "struct" | "enum"))) {
+                        if !skip && blocks.iter().all(|module| *module) {
+                            found.push((name.clone().unwrap_or_else(|| word.to_owned()), *at));
+                        }
+                        pending = None;
+                    } else if matches!(
+                        word,
+                        "impl" | "mod" | "use" | "static" | "type" | "trait" | "macro_rules" | "extern"
+                    ) || (word == "const" && statement.is_empty())
+                    {
+                        pending = None;
+                    }
+                }
+                statement.push(word);
+            }
+        } else {
+            i += 1;
+        }
+    }
+    found
+}
+
+/// When a raw, byte or C string starts at `i`: a step past it (counting its
+/// lines).
+fn literal_prefix(bytes: &[u8], i: usize) -> Option<impl FnOnce(&mut usize) -> usize + '_> {
+    let first = *bytes.get(i)?;
+    if !matches!(first, b'r' | b'b' | b'c') || (i > 0 && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_')) {
+        return None;
+    }
+    let mut k = i + 1;
+    let raw = first == b'r' || (first == b'b' && bytes.get(k) == Some(&b'r'));
+    if first == b'b' && bytes.get(k) == Some(&b'r') {
+        k += 1;
+    }
+    let hashes = bytes[k.min(bytes.len())..]
+        .iter()
+        .take_while(|&&c| c == b'#')
+        .count();
+    if (hashes > 0 && !raw) || bytes.get(k + hashes) != Some(&b'"') {
+        return None;
+    }
+    let body = k + hashes + 1;
+    Some(move |line: &mut usize| {
+        if !raw {
+            return skip_string(bytes, body, line);
+        }
+        let mut k = body;
+        while k < bytes.len() {
+            if bytes[k] == b'"' && bytes[k + 1..].iter().take(hashes).filter(|&&c| c == b'#').count() == hashes {
+                return k + 1 + hashes;
+            }
+            *line += usize::from(bytes[k] == b'\n');
+            k += 1;
+        }
+        k
+    })
+}
+
+/// The index just past a string literal whose body starts at `i`.
+fn skip_string(bytes: &[u8], mut i: usize, line: &mut usize) -> usize {
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                *line += usize::from(bytes.get(i + 1) == Some(&b'\n'));
+                i += 2;
+            }
+            b'"' => return i + 1,
+            b'\n' => {
+                *line += 1;
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    i
+}
+
+/// Whether an attribute is a wasm-bindgen attribute, bare, pathed
+/// (`wasm_bindgen::prelude::wasm_bindgen(..)`) or inside `cfg_attr`, and not
+/// a sibling crate's (`wasm_bindgen_test`, `wasm_bindgen_futures`).
+fn is_wasm_bindgen(attribute: &str) -> bool {
+    let bytes = attribute.as_bytes();
+    attribute.match_indices("wasm_bindgen").any(|(at, word)| {
+        let before = at.checked_sub(1).map(|k| bytes[k]);
+        let after = &attribute[at + word.len()..];
+        !before.is_some_and(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'"')
+            && !after.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '"')
+            && !after.starts_with("::")
+    })
+}
+
+/// Whether a bare word is one argument of the attribute.
+fn attribute_flag(attribute: &str, flag: &str) -> bool {
+    attribute
+        .split(['(', ')', ','])
+        .any(|part| part.trim() == flag)
+}
+
+/// The attribute's `js_name = X` or `js_name = "X"` (never `js_namespace`).
+fn js_name(attribute: &str) -> Option<String> {
+    attribute.match_indices("js_name").find_map(|(at, word)| {
+        let rest = attribute[at + word.len()..].trim_start();
+        let rest = rest.strip_prefix('=')?.trim_start();
+        let rest = rest.strip_prefix('"').unwrap_or(rest);
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$')
+            .collect();
+        (!name.is_empty()).then_some(name)
+    })
+}
+
+/// Every wasm-bindgen export the crate's `src` defines, by JS name, with the
+/// sources (relative to `src`) that define it.
+pub fn crate_exports(src: &Path) -> BTreeMap<String, Vec<String>> {
+    fn walk(dir: &Path, files: &mut Vec<PathBuf>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, files);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                files.push(path);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(src, &mut files);
+    files.sort();
+    let mut exports: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for file in files {
+        let Ok(source) = fs::read_to_string(&file) else {
+            continue;
+        };
+        let name = file
+            .strip_prefix(src)
+            .unwrap_or(&file)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (export, _) in wasm_exports(&source) {
+            let files = exports.entry(export).or_default();
+            if !files.contains(&name) {
+                files.push(name.clone());
+            }
+        }
+    }
+    exports
 }
 
 /// Rewrite the manifest when asked, then write the compiled tables into
@@ -697,8 +1115,14 @@ pub fn emit(root: &Path) {
     }
     let cargo_toml = fs::read_to_string(root.join("Cargo.toml")).expect("Cargo.toml");
     let exchanges = root.join("src/gateway_exchange");
+    // build.rs already reruns on every change under src, so the scan is current.
+    let exports = crate_exports(&root.join("src"));
     let environment = Environment {
-        exchange: &|exchange| exchanges.join(format!("{exchange}.rs")).is_file(),
+        exchange: &|module| {
+            exchanges.join(format!("{module}.rs")).is_file()
+                || root.join("src").join(format!("{module}.rs")).is_file()
+        },
+        export: &|export| exports.get(export).cloned().unwrap_or_default(),
         feature_declared: &|feature| cargo_toml.contains(&format!("\n{feature} = ")),
         feature_enabled: &|feature| {
             env::var_os(format!(
@@ -708,7 +1132,7 @@ pub fn emit(root: &Path) {
             .is_some()
         },
     };
-    let out = std::path::PathBuf::from(env::var("OUT_DIR").expect("Cargo sets OUT_DIR"));
+    let out = PathBuf::from(env::var("OUT_DIR").expect("Cargo sets OUT_DIR"));
     fs::write(
         out.join("capabilities_table.rs"),
         compile(&json, &environment),

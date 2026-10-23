@@ -45,16 +45,13 @@ fn response(overrides: Value) -> Vec<u8> {
 }
 
 #[test]
-fn validates_one_bounded_login_for_native_and_browser_projection() {
+fn validates_one_bounded_login() {
     let login = validate_firebase_login_response(&response(Value::Null), Some(EMAIL), PROJECT, NOW)
         .unwrap();
     assert_eq!(login.principal().uid(), UID);
     assert_eq!(login.principal().display_name(), Some("DS Operator"));
     assert_eq!(login.expires_at_epoch_seconds(), NOW + 3_600);
-    let browser: Value = serde_json::from_str(&login.to_browser_json().unwrap()).unwrap();
-    assert_eq!(browser["schema"], LOGIN_CONTRACT_SCHEMA);
-    assert_eq!(browser["user"]["uid"], UID);
-    assert_eq!(browser["refreshToken"], "protected-refresh");
+    assert_eq!(login.refresh_token(), "protected-refresh");
 }
 
 #[test]

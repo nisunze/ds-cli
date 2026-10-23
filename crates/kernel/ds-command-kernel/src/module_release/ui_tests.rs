@@ -278,11 +278,25 @@ fn complete_catalog_refuses_crossed_lane_source_member_and_unknown_keys() {
     let mut duplicate = catalog.clone();
     duplicate["assets"][3] = duplicate["assets"][0].clone();
     assert!(inspect("interactions", "canary", &duplicate).is_err());
+    // Owner 22 Oct: members a newer publisher adds are accepted and never read
+    // (these used to be refusals); the admitted unit is unchanged. The
+    // producer-bound build_manifest stays closed (see the next test).
+    let admitted = inspect("interactions", "canary", &catalog).unwrap();
     for path in ["", "/assets/0", "/assets/0/engines/0"] {
-        let mut unknown = catalog.clone();
-        unknown.pointer_mut(path).unwrap()["future"] = json!(true);
-        assert!(inspect("interactions", "canary", &unknown).is_err());
+        let mut additive = catalog.clone();
+        additive.pointer_mut(path).unwrap()["future"] = json!(true);
+        assert_eq!(
+            inspect("interactions", "canary", &additive).unwrap(),
+            admitted,
+            "{path}"
+        );
     }
+    let mut oversized = catalog.clone();
+    oversized["future"] = json!("x".repeat(8001));
+    assert!(inspect("interactions", "canary", &oversized).is_err());
+    let mut missing = catalog;
+    missing["assets"][0].as_object_mut().unwrap().remove("url");
+    assert!(inspect("interactions", "canary", &missing).is_err());
 }
 
 #[test]
@@ -463,5 +477,36 @@ fn acquisition_plan_is_bounded_and_withdrawn_catalogs_stay_visible() {
         let withdrawn = inspect("interactions", "canary", &release).unwrap();
         assert_eq!(withdrawn.published().unwrap().status, status);
         assert!(acquisition_plan(&withdrawn, "canary", withdrawn.unit_sha256(), true).is_err());
+    }
+}
+
+/// Moved from module_engine_tests.rs, which ds-module-admission also compiles
+/// and which therefore cannot name Kernel-only owners such as `table_edit`.
+#[test]
+fn different_contract_metadata_admits_the_same_working_typed_exchange() {
+    use crate::module_engine::{admit_ui_identity, parse_ui_identity};
+    use crate::table_edit::{decode_request, decode_response, execute, TableEditRequest};
+    // Owner ruling and module-releases.md: metadata equality is not the
+    // compatibility criterion. Preserve all producer-integrity checks.
+    for version in [1, 2] {
+        let mut value: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/interactions-ui-engine-build.json"))
+                .unwrap();
+        value["component"] = serde_json::to_value(UiComponent::CommandKernel).unwrap();
+        value["ui_contract"] = json!(version);
+        let identity = parse_ui_identity(&value).unwrap();
+        admit_ui_identity(UiComponent::CommandKernel, &identity, None).unwrap();
+        let request: TableEditRequest = serde_json::from_value(json!({
+            "operation":"add_column",
+            "input":{"rows":[{}],"column":"n","data_type":"int","default_value":"3.5"}
+        }))
+        .unwrap();
+        let request = decode_request(&serde_json::to_vec(&request).unwrap()).unwrap();
+        let reply = execute(&request).unwrap();
+        let decoded = decode_response(&request, &serde_json::to_vec(&reply).unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_value(decoded).unwrap()["result"]["default_value"],
+            4
+        );
     }
 }

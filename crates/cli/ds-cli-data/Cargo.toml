@@ -31,6 +31,12 @@ ds-project-data = { path = "../../kernel/ds-project-data" }
 ds-columnar = { path = "../../../../ds-network/crates/ds-columnar" }
 ds-io = { path = "../../../../ds-network/crates/ds-io" }
 ds-elevation-host = { workspace = true }
+# Shared project dataset seeds: the Reporter by request/response, the
+# project head on the native Sync Center session, publisher tile integrity.
+ds-cli-exec = { workspace = true }
+ds-sync-runtime = { workspace = true }
+crc32c = "0.6"
+tempfile = "3"
 ds-terrain-host = { workspace = true }
 libc = { workspace = true }
 serde = { workspace = true }

@@ -1,5 +1,6 @@
 //! Fixed native addon effects over the existing release authority and transfer.
 //! Only native HTTPS acquisition mints a grant. Held/UI catalog JSON cannot.
+pub mod engine_unit;
 pub mod release_identity;
 pub mod ui;
 use crate::transfer::{self, TransferAdmission, TransferProgress};

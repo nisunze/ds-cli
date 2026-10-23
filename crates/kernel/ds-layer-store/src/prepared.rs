@@ -1591,11 +1591,12 @@ mod tests {
     fn the_store_asks_the_kernel_the_recorded_corpus_answers() {
         let corpus = corpus();
         let cases = corpus["cases"].as_array().expect("cases");
-        // The re-recorded corpus, the kernel's fixing review included: the
+        // The re-recorded corpus (70 cases after the gis_folder cases left on
+        // 2026-10-20), the kernel's fixing review included: the
         // cases its new rules answer — a repaired source label, a pinned pair,
         // a fenced rename, a traversal-shaped id, the metadata rule on every
         // op — are replayed here too, not only the shape that came before.
-        assert!(cases.len() >= 76, "the corpus lost cases");
+        assert!(cases.len() >= 70, "the corpus lost cases");
         let mut drift = Vec::new();
         for case in cases {
             let id = case["id"].as_str().expect("case id");

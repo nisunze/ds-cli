@@ -1,7 +1,11 @@
-//! Fixed native transport for the design-intake upload effects.
+//! Fixed native transport for the design-intake upload effect.
+//!
+//! ds-brain only receives the uploaded bytes (`upload_start` and the resumable
+//! transfer). Processing an upload is edge compute: `ds design intake upload`
+//! runs it on this machine through the Network engine and the governed save.
 use crate::{ClientError, ErrorKind, TransportResponse, UploadBytesCall};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::io::Read;
 
 pub const STATUS_PROCESSING_PATH: &str = "/process";
@@ -34,13 +38,6 @@ pub enum StatusProcessingCommand<'a> {
         size: u64,
         content_type: &'a str,
         reader: &'a mut dyn Read,
-    },
-    Process {
-        action: StatusUploadDomain,
-        file_name: &'a str,
-        blob_path: &'a str,
-        chain: &'a [String],
-        extra: &'a Map<String, Value>,
     },
 }
 
@@ -80,23 +77,6 @@ fn content_type(value: &str) -> bool {
         && value.len() <= 200
         && value.trim() == value
         && !value.chars().any(char::is_control)
-}
-
-fn blob_path(value: &str, project: &str, domain: StatusUploadDomain) -> bool {
-    let root = match domain {
-        StatusUploadDomain::LvDrafting => "lv_drafting",
-        StatusUploadDomain::SketchLv => "lv_sketches",
-        StatusUploadDomain::LvProcess => "lv_process",
-    };
-    let parts: Vec<_> = value.split('/').collect();
-    value.len() <= 2_048
-        && parts.len() == 5
-        && parts[0] == project
-        && parts[1] == root
-        && parts[2] == "uploads"
-        && !parts[3].is_empty()
-        && !parts[4].is_empty()
-        && !parts.iter().any(|part| matches!(*part, "." | ".."))
 }
 
 fn response(response: TransportResponse) -> Result<Value, ClientError> {
@@ -181,72 +161,6 @@ pub(crate) fn run<T: crate::AuthorizedTransport>(
             crate::project_data::uploaded(uploaded)?;
             json!({"blob_path":target.blob_path})
         }
-        StatusProcessingCommand::Process {
-            action,
-            file_name: name,
-            blob_path: path,
-            chain,
-            extra,
-        } => {
-            let valid_chain = chain.len() <= 1
-                && chain.iter().all(|step| step == "sketch")
-                && (action != StatusUploadDomain::LvProcess || chain.is_empty());
-            let valid_extra = if action == StatusUploadDomain::LvProcess {
-                extra.len() == 1
-                    && extra
-                        .get("settings")
-                        .and_then(Value::as_object)
-                        .is_some_and(|settings| {
-                            settings.len() <= 512
-                                && settings.iter().all(|(key, value)| {
-                                    !key.is_empty()
-                                        && key.len() <= 128
-                                        && !key.chars().any(char::is_control)
-                                        && matches!(value, Value::Bool(_) | Value::Number(_))
-                                })
-                        })
-            } else {
-                extra.is_empty()
-            };
-            if !file_name(name) || !blob_path(path, project, action) || !valid_chain || !valid_extra
-            {
-                return Err(invalid("invalid design-intake process request"));
-            }
-            let mut payload = extra.clone();
-            payload.insert("action".into(), json!(action.token()));
-            payload.insert("eds_project_id".into(), json!(project));
-            payload.insert("files".into(), json!([{"file_name":name,"file_path":path}]));
-            payload.insert("chain".into(), json!(chain));
-            response(transport.status_processing(crate::StatusProcessingCall {
-                profile,
-                payload: &Value::Object(payload),
-                authority: authority.call(),
-            })?)?
-        }
     };
     Ok(StatusProcessingReceipt { data })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn blob_scope_is_project_and_domain_fenced() {
-        assert!(blob_path(
-            "p/lv_process/uploads/r/a.zip",
-            "p",
-            StatusUploadDomain::LvProcess
-        ));
-        assert!(!blob_path(
-            "q/lv_process/uploads/r/a.zip",
-            "p",
-            StatusUploadDomain::LvProcess
-        ));
-        assert!(!blob_path(
-            "p/lv_drafting/uploads/r/a.zip",
-            "p",
-            StatusUploadDomain::LvProcess
-        ));
-    }
 }

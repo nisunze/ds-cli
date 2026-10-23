@@ -682,7 +682,7 @@ pub fn assert_source_ratchet(repo: &Path, baseline_path: &Path) {
             .arg("-C")
             .arg(repo)
             .arg("show")
-            .arg(format!("{commit}:{}", repository_path(baseline_path)))
+            .arg(format!("{commit}:./{}", repository_path(baseline_path)))
             .output()
             .expect("git previous baseline");
         assert!(
@@ -811,6 +811,7 @@ pub fn source_occurrences(repo: &Path) -> Vec<LiteralOccurrence> {
                         | "tests"
                         | "fixtures"
                         | "docs"
+                        | "backlog"
                         | ".git"
                         | "ds-template-test-support"
                         | "__tests__"

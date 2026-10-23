@@ -455,6 +455,66 @@ pub(super) mod browser {
         }
     }
 
+    /// The original a rotation turns, read exactly: inspected at its current
+    /// generation, then read from the generation-pinned signature that
+    /// inspection answered — without any DS credential, within the media
+    /// admission limit, and exactly the size the inspection declared.
+    #[wasm_bindgen(js_name = surveyMediaSourceBytes, unchecked_return_type = "SurveyMediaSourceBytes")]
+    pub async fn survey_media_source_bytes(
+        host: GatewayHost,
+        path: String,
+        signal: Option<AbortSignal>,
+    ) -> Result<JsValue, JsValue> {
+        use crate::gateway_exchange::storage::{self, browser::signed_get};
+        let work = async {
+            let principal = facts(&host)?.principal;
+            let inspection =
+                crate::gateway_exchange::browser::run(&host, super::Inspect(path)).await?;
+            let bound = crate::survey_photo_media::MAX_INPUT_BYTES as u64;
+            if inspection.size.is_some_and(|size| size > bound) {
+                return Err(rejection(&storage::too_large(bound)));
+            }
+            let now = facts(&host)?;
+            if now.offline_mode {
+                return Err(rejection(&crate::gateway_exchange::offline_refusal()));
+            }
+            let read = signed_get(
+                &inspection.source_url,
+                inspection.size.unwrap_or(bound),
+                now.link_up,
+            )
+            .await;
+            let bytes = storage::admit_declared_size(inspection.size, read.map(|read| read.bytes))
+                .map_err(|refusal| rejection(&refusal))?;
+            if facts(&host)?.principal != principal {
+                return Err(rejection(
+                    &crate::gateway_exchange::session_changed_refusal(),
+                ));
+            }
+            // The bytes are the answer; the spent signature stays here.
+            let described = typed(&inspection)?;
+            js_sys::Reflect::delete_property(&described.clone().into(), &"source_url".into())?;
+            let answer = js_sys::Object::new();
+            js_sys::Reflect::set(&answer, &"inspection".into(), &described)?;
+            js_sys::Reflect::set(
+                &answer,
+                &"bytes".into(),
+                &js_sys::Uint8Array::from(&bytes[..]),
+            )?;
+            Ok(JsValue::from(answer))
+        };
+        storage::browser::until_aborted(work, signal).await
+    }
+
+    #[wasm_bindgen(typescript_custom_section)]
+    const SOURCE_TYPES: &'static str = r#"
+/** One survey original, inspected and read at the generation it was inspected at. */
+export interface SurveyMediaSourceBytes {
+    inspection: { blob_path: string; bucket: string; generation: string; revision_protocol?: number; size?: number };
+    bytes: Uint8Array;
+}
+"#;
+
     struct Page<'a>(&'a GatewayHost);
 
     impl Link for Page<'_> {

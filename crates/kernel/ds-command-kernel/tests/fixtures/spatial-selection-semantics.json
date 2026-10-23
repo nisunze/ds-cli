@@ -1,0 +1,59 @@
+{
+  "schema": "ds-network.spatial-selection-semantics/v1",
+  "purpose": "Shared oracle for spatial-selection semantics across the Rust kernels that ds-cli, ds-web and ds-brain parity tests may cite. Planar WGS84 degrees; no project ids, emails or production data.",
+  "selector": {
+    "bbox": [30.0, -2.0, 30.1, -1.9],
+    "polygon": {
+      "type": "Polygon",
+      "coordinates": [
+        [[30.0, -2.0], [30.1, -2.0], [30.1, -1.9], [30.0, -1.9], [30.0, -2.0]],
+        [[30.04, -1.96], [30.06, -1.96], [30.06, -1.94], [30.04, -1.94], [30.04, -1.96]]
+      ]
+    },
+    "multipolygon_selector": {
+      "type": "MultiPolygon",
+      "coordinates": [
+        [[[30.0, -2.0], [30.1, -2.0], [30.1, -1.9], [30.0, -1.9], [30.0, -2.0]]],
+        [[[30.2, -2.0], [30.3, -2.0], [30.3, -1.9], [30.2, -1.9], [30.2, -2.0]]]
+      ]
+    }
+  },
+  "layer": {
+    "type": "FeatureCollection",
+    "features": [
+      { "type": "Feature", "id": "point_inside", "properties": { "id": "point_inside" },
+        "geometry": { "type": "Point", "coordinates": [30.02, -1.98] } },
+      { "type": "Feature", "id": "point_in_hole", "properties": { "id": "point_in_hole" },
+        "geometry": { "type": "Point", "coordinates": [30.05, -1.95] } },
+      { "type": "Feature", "id": "point_on_hole_ring", "properties": { "id": "point_on_hole_ring" },
+        "geometry": { "type": "Point", "coordinates": [30.04, -1.95] } },
+      { "type": "Feature", "id": "point_on_outer_ring", "properties": { "id": "point_on_outer_ring" },
+        "geometry": { "type": "Point", "coordinates": [30.0, -1.95] } },
+      { "type": "Feature", "id": "point_outside", "properties": { "id": "point_outside" },
+        "geometry": { "type": "Point", "coordinates": [30.2, -1.95] } },
+      { "type": "Feature", "id": "line_inside", "properties": { "id": "line_inside" },
+        "geometry": { "type": "LineString", "coordinates": [[30.01, -1.99], [30.03, -1.99]] } },
+      { "type": "Feature", "id": "line_crossing_no_interior_vertex", "properties": { "id": "line_crossing_no_interior_vertex" },
+        "geometry": { "type": "LineString", "coordinates": [[29.95, -1.95], [30.15, -1.95]] } },
+      { "type": "Feature", "id": "line_extent_overlaps_geometry_misses", "properties": { "id": "line_extent_overlaps_geometry_misses" },
+        "geometry": { "type": "LineString", "coordinates": [[29.94, -1.95], [30.05, -1.84]] } },
+      { "type": "Feature", "id": "polygon_partially_inside", "properties": { "id": "polygon_partially_inside" },
+        "geometry": { "type": "Polygon", "coordinates": [[[30.08, -1.95], [30.15, -1.95], [30.15, -1.88], [30.08, -1.88], [30.08, -1.95]]] } },
+      { "type": "Feature", "id": "polygon_inside", "properties": { "id": "polygon_inside" },
+        "geometry": { "type": "Polygon", "coordinates": [[[30.07, -1.99], [30.09, -1.99], [30.09, -1.97], [30.07, -1.97], [30.07, -1.99]]] } },
+      { "type": "Feature", "id": "multipolygon_feature_partial", "properties": { "id": "multipolygon_feature_partial" },
+        "geometry": { "type": "MultiPolygon", "coordinates": [
+          [[[30.01, -1.93], [30.03, -1.93], [30.03, -1.91], [30.01, -1.91], [30.01, -1.93]]],
+          [[[30.2, -1.99], [30.22, -1.99], [30.22, -1.97], [30.2, -1.97], [30.2, -1.99]]]
+        ] } }
+    ]
+  },
+  "expected": {
+    "bbox_extent": ["point_inside", "point_in_hole", "point_on_hole_ring", "point_on_outer_ring", "line_inside", "line_crossing_no_interior_vertex", "line_extent_overlaps_geometry_misses", "polygon_partially_inside", "polygon_inside", "multipolygon_feature_partial"],
+    "intersects": ["point_inside", "point_on_hole_ring", "point_on_outer_ring", "line_inside", "line_crossing_no_interior_vertex", "polygon_partially_inside", "polygon_inside", "multipolygon_feature_partial"],
+    "within": ["point_inside", "point_on_hole_ring", "point_on_outer_ring", "line_inside", "polygon_inside"],
+    "outside": ["point_in_hole", "point_outside", "line_extent_overlaps_geometry_misses"],
+    "bbox_extent_but_not_intersects": ["point_in_hole", "line_extent_overlaps_geometry_misses"],
+    "multipolygon_selector_error": "selector polygon must be a GeoJSON Polygon geometry"
+  }
+}

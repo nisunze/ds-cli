@@ -117,7 +117,9 @@ fn invalid_document_sheet_or_page_inputs_refuse_before_any_owner_call() {
         vec!["--document", "--rule-set", "one"],
         vec!["--document", "--limit", "1"],
         vec!["--document", "--offset", "1"],
-        vec!["--read", "held", "--sheet", "project_settings"],
+        // `--read held --sheet` was refused here while sheet reads were
+        // network-only; sheet reads are now held-first (DECOUPLING-012), see
+        // `a_sheet_read_projects_the_held_first_document_without_a_live_read`.
         vec![],
     ] {
         let mut tokens = vec!["--project", "project-p", "--lane", "canary"];
@@ -181,4 +183,82 @@ fn an_existing_output_refuses_without_acquisition_and_preserves_bytes() {
         "configuration_output_exists"
     );
     assert_eq!(std::fs::read(path).unwrap(), b"operator-owned");
+}
+
+#[test]
+fn the_default_read_is_held_first_acquire_for_document_and_sheet() {
+    for args in [vec!["--document"], vec!["--sheet", "project_settings"]] {
+        let mut tokens = vec!["--project", "project-p", "--lane", "canary"];
+        tokens.extend(args.clone());
+        let i = inputs(&tokens);
+        let calls = Cell::new(0);
+        let result = read_with(&i, |_, project, mode| {
+            calls.set(calls.get() + 1);
+            assert_eq!(mode, ProjectConfigurationRead::Acquire, "{args:?}");
+            // A held-first answer names its actual source, never the mode.
+            Ok(reply(project, ProjectConfigurationRead::Held))
+        })
+        .unwrap();
+        assert_eq!(calls.get(), 1);
+        assert_eq!(result["observation"]["source"], "held", "{args:?}");
+    }
+}
+
+#[test]
+fn a_sheet_read_projects_the_held_first_document_without_a_live_read() {
+    for read in ["held", "acquire", "refresh"] {
+        let i = inputs(&[
+            "--project",
+            "project-p",
+            "--lane",
+            "canary",
+            "--sheet",
+            "project_settings",
+            "--read",
+            read,
+        ]);
+        let mode: ProjectConfigurationRead = serde_json::from_value(json!(read)).unwrap();
+        let source = if mode == ProjectConfigurationRead::Refresh {
+            ProjectConfigurationRead::Refresh
+        } else {
+            ProjectConfigurationRead::Held
+        };
+        let result = read_with(&i, |lane, project, asked| {
+            assert_eq!((lane, asked), ("canary", mode));
+            Ok(reply(project, source))
+        })
+        .unwrap();
+        assert_eq!(result["project"], "project-p");
+        assert_eq!(result["sheet"], "project_settings");
+        assert_eq!(result["total"], 0);
+        assert_eq!(result["observation"]["source"], json!(source));
+    }
+    // A held read with nothing held is the typed refusal, never a live read.
+    let i = inputs(&[
+        "--project",
+        "project-p",
+        "--sheet",
+        "project_settings",
+        "--read",
+        "held",
+    ]);
+    let refused = read_with(&i, |_, _, _| {
+        Err(ds_cli_contract::Failure::failed(
+            ds_cli_auth::config_document::NOT_HELD.code,
+            "configuration is not held",
+        ))
+    })
+    .unwrap_err();
+    assert_eq!(refused.code(), "project_config_not_held");
+    // An acquire answer that claims to be the request mode is not admitted.
+    let i = inputs(&["--project", "project-p", "--sheet", "project_settings"]);
+    assert_eq!(
+        read_with(&i, |_, project, _| Ok(reply(
+            project,
+            ProjectConfigurationRead::Acquire
+        )))
+        .unwrap_err()
+        .code(),
+        "config_input_invalid"
+    );
 }

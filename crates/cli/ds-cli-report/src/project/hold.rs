@@ -54,7 +54,7 @@ pub(super) const INPUTS_NOT_HELD: Refusal = Refusal {
 };
 pub(super) const ROOM_NOT_HELD: Refusal = Refusal {
     code: "report_room_not_held",
-    when: "the service is unreachable and a room is unheld, older than its head, or its held saved content digest does not match its layers (batch row)",
+    when: "the service is unreachable and a room is unheld, stale, or its held digest does not match its layers (batch row)",
     remedy: "export that transformer once while connected",
 };
 

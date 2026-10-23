@@ -11,19 +11,16 @@ prepare: the native report path reads rooms from the service, and the former
 
 For “status of project X”, resolve the exact id with `ds auth project list`
 and read `ds design dashboard --project <exact-id> --output json`; this is a
-headless Server read, independent of the paired Desktop project. For a report,
-choose the computation path deliberately: `ds report project compute
---project <exact-id> --yes --output json` starts individual cloud report
-generation; claim publication only from its returned task/result receipt.
-`ds report project export --project <exact-id> --out-dir
-<directory> --output json` creates local outputs. Drain queued local
-publications with `ds report outbox drain --project <exact-id> --yes --output
-json` before requesting an archive. Preview its scope with `ds report project
-scope --project <exact-id> --output json`, publish with `ds report project
-compounded --project <exact-id> --file-level <transformer|sector|district|root>
---yes --output json`, then verify the registry with `ds report project
-archives --project <exact-id> --output json`. A Compounded Report is a ZIP
-snapshot containing individual reports and a combined data set.
+headless Server read, independent of the paired Desktop project. Every report
+is computed on this machine; nothing is computed in the cloud. `ds report
+project export --project <exact-id> --out-dir <directory> --output json`
+creates the individual reports and queues them. Preview an archive's scope with
+`ds report project scope --project <exact-id> --output json`, compose it with
+`ds report project compounded --project <exact-id> --file-level
+<transformer|sector|district|root> --yes --output json`, publish the queue with
+`ds report outbox drain --project <exact-id> --yes --output json`, then read
+it back with `ds report publication show`. A Compounded Report is a ZIP
+snapshot of the current individual reports and a combined data set.
 
 1. Read the chosen command's descriptor. Resolve the exact project id the
    user named with `ds auth project list` and pass it as `--project <id>`.
@@ -47,20 +44,20 @@ snapshot containing individual reports and a combined data set.
 5. Plan the deliverable: `ds report project scope --project <exact-id> --output json` shows the
    exact participating set and every excluded name with its state. Report
    `compounded_ready` and the exclusions to the user before generating.
-6. Publish: `ds report project compounded --project <exact-id> [--transformer …] --file-level
-   <transformer|sector|district|root> [--combine-per-group] [--force]
-   --yes --output json`. The call blocks until the service answers (up to
-   ten minutes). Return `status`, `prefix`, the archive locators, individual
-   coverage, the missing individuals with their causes, and
-   `registry_write_failed`. A `partial` status is a delivery with named gaps,
-   not a failure to hide. For one archive per city, tag or administrative
+6. Compose: `ds report project compounded --project <exact-id> [--transformer …] --file-level
+   <transformer|sector|district|root> [--combine-per-group]
+   --yes --output json`. It packages the current individual reports this
+   machine holds and computes the combined set here; a missing or older room
+   report refuses with the export to run. Return `status`, `prefix`,
+   `publication` and individual coverage, then run its `publication.next`
+   (`ds report outbox drain`) to publish. For one archive per city, tag or administrative
    level, pass `--group-by <definition-id>` (repeat to nest) and optional
    `--where <id>=<value>` instead of `--transformer`; `.data.groups` then
    holds one receipt per archive.
-7. Hand over: `ds report project archives --project <exact-id> --output json` lists the registry
-   newest first; `download_url` is a short-lived signed link when present.
+7. Hand over: `ds report publication show --engine network_reporter --operation
+   export-compounded_report --project <exact-id> --output json` reads the
+   published archive head; `ds report project archives` lists older registry rows.
 
-Request the ZIP archive through `report project compounded`; the service reuses
-fresh individual artifacts itself. Verify coverage and publication in the
-returned receipt and `report project archives`. The deprecated `report project
-combined` alias requests the same ZIP; no paired command composes this archive.
+Compose the ZIP archive through `report project compounded`; it never
+regenerates an individual report (`report project export` does). Verify
+coverage in the returned receipt and publication after the drain.

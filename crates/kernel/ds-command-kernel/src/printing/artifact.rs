@@ -3,8 +3,9 @@ use super::{Layout, Orientation};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+/// Engines write this beside an artifact; additive members from a newer engine
+/// are accepted (owner 22 Oct) and every member below stays required.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct ArtifactPresentation {
     pub layout_id: String,
     pub layout_name: String,

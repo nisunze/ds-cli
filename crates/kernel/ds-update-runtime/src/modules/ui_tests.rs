@@ -43,16 +43,12 @@ fn local_stage_uses_same_owned_bytes_and_keeps_release_selection_independent() {
             .unwrap();
         assert!(local.selection().unwrap().is_none());
         assert!(release.selection().unwrap().is_none());
-        assert!(
-            release
-                .stage_local(input.path(), &identity, &source, &wasm_sha, &|| false)
-                .is_err()
-        );
-        assert!(
-            local
-                .activate(&ready.receipt_id, 1, ActivationGuard::default(), &|| false)
-                .is_err()
-        );
+        assert!(release
+            .stage_local(input.path(), &identity, &source, &wasm_sha, &|| false)
+            .is_err());
+        assert!(local
+            .activate(&ready.receipt_id, 1, ActivationGuard::default(), &|| false)
+            .is_err());
         local
             .activate(&ready.receipt_id, 0, ActivationGuard::default(), &|| false)
             .unwrap();
@@ -79,34 +75,31 @@ fn local_stage_uses_same_owned_bytes_and_keeps_release_selection_independent() {
         let selected = local.selection().unwrap().unwrap();
         // A release store cannot consume a local ready receipt or selection.
         assert!(release.admit_receipt(&captured.receipt).is_err());
-        assert!(
-            policy::activate(
-                Some(&selected),
-                policy::prepare(
-                    policy::inspect(component.as_str(), "canary", &fixture(component, 2).0)
-                        .unwrap(),
-                    UiAuthority::Published(PublishedUiAuthority {
-                        gateway_origin: "https://gateway.example".into(),
-                        route_manifest_sha256: "e".repeat(64)
-                    }),
-                    &fixture(component, 2)
-                        .1
-                        .iter()
-                        .map(|(name, bytes)| VerifiedFile {
-                            filename: (*name).into(),
-                            sha256: format!("{:x}", Sha256::digest(bytes)),
-                            size_bytes: bytes.len() as i64
-                        })
-                        .collect::<Vec<_>>(),
-                    true,
-                )
-                .unwrap(),
-                selected.generation,
+        assert!(policy::activate(
+            Some(&selected),
+            policy::prepare(
+                policy::inspect(component.as_str(), "canary", &fixture(component, 2).0).unwrap(),
+                UiAuthority::Published(PublishedUiAuthority {
+                    gateway_origin: "https://gateway.example".into(),
+                    route_manifest_sha256: "e".repeat(64)
+                }),
+                &fixture(component, 2)
+                    .1
+                    .iter()
+                    .map(|(name, bytes)| VerifiedFile {
+                        filename: (*name).into(),
+                        sha256: format!("{:x}", Sha256::digest(bytes)),
+                        size_bytes: bytes.len() as i64
+                    })
+                    .collect::<Vec<_>>(),
                 true,
-                ActivationGuard::default()
             )
-            .is_err()
-        );
+            .unwrap(),
+            selected.generation,
+            true,
+            ActivationGuard::default()
+        )
+        .is_err());
         fs::write(
             local
                 .unit_directory(captured.receipt.unit.unit_sha256())
@@ -130,29 +123,30 @@ fn local_stage_rejects_wrong_scope_source_digest_and_linked_inputs_before_select
     );
     let store =
         UiModuleStore::new_scoped(base.path(), component, "canary", UiScope::LocalDev).unwrap();
-    assert!(
-        store
-            .stage_local(input.path(), &identity, &"f".repeat(40), &wasm_sha, &|| {
-                false
-            })
-            .is_err()
-    );
-    assert!(
-        store
-            .stage_local(input.path(), &identity, &source, &"f".repeat(64), &|| false)
-            .is_err()
-    );
+    assert!(store
+        .stage_local(input.path(), &identity, &"f".repeat(40), &wasm_sha, &|| {
+            false
+        })
+        .is_err());
+    assert!(store
+        .stage_local(input.path(), &identity, &source, &"f".repeat(64), &|| false)
+        .is_err());
     let file = input.path().join(files[0].0);
     fs::remove_file(&file).unwrap();
     std::os::unix::fs::symlink(&identity, &file).unwrap();
-    assert!(
-        store
-            .stage_local(input.path(), &identity, &source, &wasm_sha, &|| false)
-            .is_err()
-    );
+    assert!(store
+        .stage_local(input.path(), &identity, &source, &wasm_sha, &|| false)
+        .is_err());
     assert!(store.selection().unwrap().is_none());
 }
 
+/// A published installation's release authority digest.
+fn route_manifest(authority: &UiAuthority) -> String {
+    match authority {
+        UiAuthority::Published(published) => published.route_manifest_sha256.clone(),
+        UiAuthority::LocalBuild { .. } => panic!("expected a published UI authority"),
+    }
+}
 fn private_base() -> tempfile::TempDir {
     let directory = tempfile::tempdir().unwrap();
     #[cfg(unix)]
@@ -170,7 +164,18 @@ fn authority() -> CapturedReleaseAuthority {
         gateway_key: "public-fixture-key".into(),
     }
 }
+/// The exports every fixture unit's JavaScript member declares.
+const FIXTURE_EXPORTS: &str = "export function layerState(value) {\nexport class Handle {\n";
 fn fixture(component: UiComponent, revision: usize) -> (Value, Vec<(&'static str, Vec<u8>)>) {
+    fixture_with_exports(component, revision, FIXTURE_EXPORTS)
+}
+/// A fixture unit whose JavaScript member declares `exports` (wasm-bindgen
+/// lines) beside the fixed `initSync`/`default` pair.
+fn fixture_with_exports(
+    component: UiComponent,
+    revision: usize,
+    exports: &str,
+) -> (Value, Vec<(&'static str, Vec<u8>)>) {
     let mut release: Value = serde_json::from_str(match component {
         UiComponent::Interactions => {
             include_str!("../../../ds-command-kernel/src/module_release/fixtures/interactions-ui-wasm-canary.json")
@@ -182,10 +187,20 @@ fn fixture(component: UiComponent, revision: usize) -> (Value, Vec<(&'static str
     .unwrap();
     let version = format!("0.1.0-r{revision}");
     release["version"] = json!(version);
+    let javascript = component.files()[0].0;
     let files = component
         .files()
         .into_iter()
-        .map(|(name, _)| (name, format!("fixture:{name}:{revision}\n").into_bytes()))
+        .map(|(name, _)| {
+            let body = if name == javascript {
+                format!(
+                    "{exports}export {{ initSync, __wbg_init as default }};\n// fixture:{name}:{revision}\n"
+                )
+            } else {
+                format!("fixture:{name}:{revision}\n")
+            };
+            (name, body.into_bytes())
+        })
         .collect::<Vec<_>>();
     for asset in release["assets"].as_array_mut().unwrap() {
         let (name, bytes) = files
@@ -412,18 +427,13 @@ fn a_new_core_profile_reuses_verified_unit_bytes_and_keeps_each_acquisition_auth
         .unwrap(),
     )
     .unwrap();
-    assert_eq!(historical.authority.route_manifest_sha256, "e".repeat(64));
+    assert_eq!(route_manifest(&historical.authority), "e".repeat(64));
     let selected = store
         .activate(&ready.receipt_id, 2, ActivationGuard::default(), &|| false)
         .unwrap();
     assert_eq!(selected.generation, 3);
     assert_eq!(
-        store
-            .capture(&|| false)
-            .unwrap()
-            .receipt
-            .authority
-            .route_manifest_sha256,
+        route_manifest(&store.capture(&|| false).unwrap().receipt.authority),
         "f".repeat(64)
     );
     assert!(store
@@ -702,4 +712,126 @@ fn active_acquisition_admits_the_whole_release_and_refuses_a_withdrawn_one() {
         })
         .unwrap_err()
         .contains("module_release_invalid"));
+}
+
+fn converge_to_exports(
+    store: &UiModuleStore,
+    revision: usize,
+    exports: &str,
+) -> Result<UiConvergence, String> {
+    let (release, files) = fixture_with_exports(store.component, revision, exports);
+    let grant = active_grant(store.component, release)?;
+    store.converge_with(grant, ActivationGuard::default(), &|| false, |grant| {
+        store.stage_with(grant, &|| false, |asset, path| {
+            let bytes = &files
+                .iter()
+                .find(|(name, _)| asset.url.ends_with(name))
+                .unwrap()
+                .1;
+            fs::write(path, bytes).map_err(|e| e.to_string())
+        })
+    })
+}
+
+/// The UI Kernel of an installed Desktop built before pages recorded their
+/// requirements (Windows stable r97 calls sign-in in it).
+const OLDER_KERNEL: &str =
+    "export function firebaseSignIn(api_key) {\nexport function layerState(value) {\n";
+/// A later unit that moved sign-in out.
+const WITHOUT_SIGN_IN: &str =
+    "export function layerState(value) {\nexport function vectorTool(op) {\n";
+/// A later unit that only adds.
+const ADDITIVE: &str =
+    "export function firebaseSignIn(api_key) {\nexport function layerState(value) {\nexport function vectorTool(op) {\n";
+
+fn installed_older(component: UiComponent) -> (tempfile::TempDir, UiModuleStore) {
+    let base = private_base();
+    let store = UiModuleStore::new(base.path(), component, "canary").unwrap();
+    let first = converge_to_exports(&store, 1, OLDER_KERNEL);
+    // Nothing installed yet: convergence leaves an absent unit absent.
+    assert_eq!(first.unwrap().outcome, UiConvergenceOutcome::Absent);
+    let (release, files) = fixture_with_exports(component, 1, OLDER_KERNEL);
+    let grant = grant(component, release, &Cell::new(0)).unwrap();
+    let staged = store
+        .stage_with(grant, &|| false, |asset, path| {
+            let bytes = &files
+                .iter()
+                .find(|(name, _)| asset.url.ends_with(name))
+                .unwrap()
+                .1;
+            fs::write(path, bytes).map_err(|e| e.to_string())
+        })
+        .unwrap();
+    store
+        .activate(&staged.receipt_id, 0, ActivationGuard::default(), &|| false)
+        .unwrap();
+    (base, store)
+}
+
+#[test]
+fn an_older_page_keeps_its_unit_when_the_active_release_drops_an_export_it_calls() {
+    for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
+        let (_base, store) = installed_older(component);
+        let before = store.capture(&|| false).unwrap();
+        let refused = converge_to_exports(&store, 2, WITHOUT_SIGN_IN).unwrap_err();
+        assert!(
+            refused.starts_with("ui_unit_incompatible_with_installed_page:"),
+            "{refused}"
+        );
+        assert!(refused.contains("firebaseSignIn"), "{refused}");
+        // Not activated: the installed page keeps loading the unit it calls.
+        let kept = store.capture(&|| false).unwrap();
+        assert_eq!(kept.receipt.unit, before.receipt.unit);
+        assert_eq!(store.selection().unwrap().unwrap().generation, 1);
+        assert!(store
+            .unit_exports(kept.receipt.unit.unit_sha256(), &|| false)
+            .unwrap()
+            .contains("firebaseSignIn"));
+    }
+}
+
+#[test]
+fn an_additive_unit_is_activated_for_the_installed_page() {
+    for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
+        let (_base, store) = installed_older(component);
+        let updated = converge_to_exports(&store, 2, ADDITIVE).unwrap();
+        assert_eq!(updated.outcome, UiConvergenceOutcome::Updated);
+        assert_eq!(updated.generation, 2);
+        let active = store.capture(&|| false).unwrap();
+        assert!(store
+            .unit_exports(active.receipt.unit.unit_sha256(), &|| false)
+            .unwrap()
+            .contains("vectorTool"));
+    }
+}
+
+#[test]
+fn a_page_that_records_its_requirements_decides_removals_and_refuses_an_older_unit() {
+    for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
+        let (_base, store) = installed_older(component);
+        // A newer page records that it calls layerState and vectorTool only.
+        let recorded = store
+            .record_page_requirements(
+                &json!({"schema":"ds.ui-page-requirements/v1","components":{
+                    component.as_str(): ["layerState", "vectorTool", "default"]}}),
+                &|| false,
+            )
+            .unwrap();
+        assert_eq!(store.page_requirements().unwrap(), Some(recorded));
+        // The unit without sign-in now serves the installed page.
+        let updated = converge_to_exports(&store, 2, WITHOUT_SIGN_IN).unwrap();
+        assert_eq!(updated.outcome, UiConvergenceOutcome::Updated);
+        // Publishing the older unit again cannot serve that page: it lacks
+        // vectorTool, so the newer unit stays active.
+        let refused = converge_to_exports(&store, 1, OLDER_KERNEL).unwrap_err();
+        assert!(refused.starts_with("ui_unit_incompatible_with_installed_page:"));
+        assert!(refused.contains("vectorTool"));
+        assert_eq!(store.selection().unwrap().unwrap().generation, 2);
+        // A malformed record refuses typed and leaves the earlier record.
+        assert!(store
+            .record_page_requirements(&json!({"schema":"ds.ui-page-requirements/v1"}), &|| false)
+            .unwrap_err()
+            .starts_with("ui_page_requirements_invalid:"));
+        assert!(store.page_requirements().unwrap().is_some());
+    }
 }

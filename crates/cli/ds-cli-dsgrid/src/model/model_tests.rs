@@ -7,12 +7,11 @@ fn every_declared_operation_is_listed_for_the_parity_test_to_walk() {
     let mut unique = names.clone();
     unique.dedup();
     assert_eq!(names, unique, "an operation is declared twice");
-    // Two since 2026-09-20: the working copy the application itself holds
-    // open, published from the window, and the window opening one of this
-    // machine's working copies in Profile.
+    // One since b864f988 deleted `publish-version`: the window opening one
+    // of this machine's working copies in Profile.
     assert_eq!(
         names.len(),
-        2,
+        1,
         "the family sends exactly one operation per command"
     );
     assert!(
@@ -60,20 +59,21 @@ fn no_operation_can_carry_model_content() {
 #[test]
 fn no_local_operation_can_carry_a_project() {
     // The load-bearing project-independence claim, held at the wire
-    // contract rather than in prose: only `publish` may name project
-    // state at all, and even it never names the project itself — the
-    // application's own selected project is the destination.
+    // contract rather than in prose: no operation this family sends names
+    // a project.
     //
     // The four model-management operations that used to be checked here
     // no longer cross a wire at all: `ds dsgrid model list|create-local|
     // import-external|set-active` answer from this machine's own
     // catalogue, so their project-independence is now a fact about a
     // store that has no project field (`ds_command_kernel::local_models`).
-    assert!(
-        !MODEL_PUBLISH.arguments.contains(&"project"),
-        "publication targets the paired session's own selected project; \
-             a project id is never an argument"
-    );
+    for op in BRIDGE_OPS {
+        assert!(
+            !op.arguments.contains(&"project"),
+            "`{}` must never carry a project id",
+            op.operation
+        );
+    }
 }
 
 #[test]

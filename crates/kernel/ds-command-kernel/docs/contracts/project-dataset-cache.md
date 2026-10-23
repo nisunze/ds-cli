@@ -220,3 +220,28 @@ building footprints through it any more, and `decode_buildings` with its
 per-footprint admission leaves. Footprints arrive through the publisher path
 `ds data project-cache seed` admits; the four named refusals above describe
 that retired decoder.
+
+## 2026-10-22 — seed once per project: shared revisions
+
+Rooms stay one principal's local holding; `project_dataset_revisions` decides
+the project's shared answer for footprints and contours. One compute artifact
+head per (project, dataset, parameters): engine `project_dataset`, operation =
+dataset id, variant = `p` + 40 hex of the shared identity (id, quality,
+parameters, CRS — never the room provider or principal). The head holds a
+`manifest` (`ds.project-dataset-revisions/v1`: ordered revisions, each with its
+completed coverage, source version, bounded receipt, feature count and the
+SHA-256/size of its `rev-NNNNNN` gzip GeoJSON-lines delta) and every delta.
+Decisions, all pure: `decode` admits a chain (additive fields accepted;
+order, identity, digests and bounds refused whole); `delta` = wanted ∩ held −
+published (a refresh republishes what it completed); `pending` names the
+revisions a room has not applied; `base_fingerprint` is the SHA-256 of the
+manifest a publication was planned on (`sha256("")` for the first) — the fence
+Brain checks before a revision lands; `chain_freshness` reports coverage
+produced from a version other than the one acquisition reads now, never acting
+on it; `validate_open` admits exactly a manifest plus one delta on the native
+publication door, outside the report outbox's engine registry;
+`google_open_buildings::tiles` names the publisher's own S2 level-6 tiles a
+set of cells reaches (with the centroid margin); `tasks` is the typed
+request/response contract with the Reporter engine (footprint pages, contour
+lattice, contour pieces on fixed 1 km national-grid tiles). Orchestration:
+`ds-project-data/docs/contract.md` § Seed once per project.

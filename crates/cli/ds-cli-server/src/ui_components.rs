@@ -11,10 +11,10 @@ use serde_json::{Value, json};
 
 const UI_COMPONENT: Arg = Arg::value(
     "component",
-    "<interactions|command-kernel>",
-    "Exact fixed UI component owner.",
+    "<interactions|command-kernel|network>",
+    "Exact fixed UI component owner, or the Network page engine unit.",
 )
-.choices(&["interactions", "command-kernel"])
+.choices(&["interactions", "command-kernel", "network"])
 .required();
 
 pub(crate) const SCOPE: Arg = Arg::value(
@@ -131,8 +131,8 @@ pub static STAGE_LOCAL: Command = Command {
     id: "core.component.stage-local",
     path: &["core", "component", "stage-local"],
     contract: 1,
-    summary: "Stage one already built local UI unit without publication or activation.",
-    purpose: "Explicit Linux canary local-dev operation over four fixed opaque producer files, their actual exported UI identity, exact source snapshot and tested WASM digest. Core admits the identity and hashes, captures the same bytes into its separate private local-dev store and returns a generation-fenced ready receipt. No gateway, publication, build, JavaScript/WASM evaluation, release selection or project access occurs. The Desktop must select local-dev explicitly; this artifact cannot be promoted into a release selection.",
+    summary: "Stage one built local UI or Network page unit, unpublished.",
+    purpose: "Explicit Linux canary local-dev operation over four fixed opaque producer files, their actual exported UI identity, exact source snapshot and tested WASM digest. The Network page engine unit (component network) takes the identity its tested bytes export (network_engine_identity), whose sourceSha must equal --source-sha. Core admits the identity and hashes, captures the same bytes into its separate private local-dev store and returns a generation-fenced ready receipt. No gateway, publication, build, JavaScript/WASM evaluation, release selection or project access occurs. The Desktop must select local-dev explicitly; this artifact cannot be promoted into a release selection.",
     chapter: Chapter::Workstation,
     effect: Effect::MachineWrite,
     authority: Authority::None,
@@ -140,7 +140,7 @@ pub static STAGE_LOCAL: Command = Command {
     args: &[
         UI_COMPONENT,
         CHANNEL,
-        Arg::value("runtime", "<wasm>", "Only the two fixed UI WASM owners.")
+        Arg::value("runtime", "<wasm>", "The fixed UI WASM owners and the Network page engine unit.")
             .choices(&["wasm"])
             .default("wasm"),
         Arg::value(
@@ -179,11 +179,14 @@ pub static STAGE_LOCAL: Command = Command {
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
-    search: &["ui", "wasm", "local", "development"],
+    search: &["wasm", "development"],
     requires: Requires::Server,
     availability: ui_availability,
 };
 pub fn stage_local(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    if crate::engine_units::requested(inputs)? {
+        return crate::engine_units::stage_local(inputs, context);
+    }
     if !context.confirmed {
         return Err(Failure::invalid(
             "confirmation_required",
@@ -278,8 +281,8 @@ pub static CAPTURE: Command = Command {
     id: "core.component.capture",
     path: &["core", "component", "capture"],
     contract: 1,
-    summary: "Capture one installed complete UI unit for the Desktop loader.",
-    purpose: "Read the OS-user owned UI selection offline and verify all four retained fixed members under the shared updater lock. Return its immutable installation receipt, whole-unit digest and generation. Updates or removal affect later captures; this receipt keeps the captured unit. No catalog request, installation, JavaScript/WASM evaluation, login or project access occurs. Explicit runtime wasm is required.",
+    summary: "Capture one installed UI or Network page unit for the Desktop.",
+    purpose: "Read the OS-user owned UI selection offline and verify all four retained fixed members under the shared updater lock. Return its immutable installation receipt, whole-unit digest and generation. Later updates do not change this capture. No catalog, install, JS/WASM evaluation, login or project access occurs. Explicit runtime wasm is required. Component network captures the Network page engine unit.",
     chapter: Chapter::Workstation,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -333,7 +336,7 @@ pub static MEMBER: Command = Command {
         )
         .default("1048576"),
     ],
-    output: "ds.ui-module-member/v1: unit_sha256, filename, offset, byte_count, total_bytes, sha256, body_base64 and more. At most 1 MiB decoded bytes; more explicitly reports a remaining suffix.",
+    output: "ds.ui-module-member/v1 (ds.engine-unit-member/v1 for the Network page unit): unit_sha256, filename, offset, byte_count, total_bytes, sha256, body_base64 and more. At most 1 MiB decoded bytes; more explicitly reports a remaining suffix.",
     examples: &[],
     refusals: REFUSALS,
     reference: Some("docs/reference/core.md"),
@@ -342,6 +345,9 @@ pub static MEMBER: Command = Command {
     availability: ui_availability,
 };
 pub fn capture(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::engine_units::requested(inputs)? {
+        return crate::engine_units::capture(inputs);
+    }
     let (component, channel) = selected(inputs)?;
     value(
         UiModuleStore::retained_managed_scoped(component, channel, scope(inputs)?)
@@ -351,6 +357,9 @@ pub fn capture(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     )
 }
 pub fn member(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::engine_units::requested(inputs)? {
+        return crate::engine_units::member(inputs);
+    }
     let (component, channel) = selected(inputs)?;
     let invalid = || {
         owner_failure(

@@ -16,14 +16,13 @@ use ds_cli_contract::spec::{
 };
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_client_core::{
-    ClientError, ClientProfile, CompoundedArchiveCatalog, CompoundedReportReceipt,
-    CompoundedReportRequest, DeviceAccessSession, DeviceAuthContext, DeviceAuthorizationStatus,
-    DeviceBeginPublic, DeviceBeginRequest, DeviceBinding, DeviceCallFailure, DeviceCredential,
-    DeviceError, DevicePendingAuthorization, DevicePrivateKey, DeviceProtectedCall,
-    DeviceProtectedOperation, DeviceSummary, DeviceTransport, MediaGrants, ProjectDirectory,
-    ProjectFormSettingsEditor, ProjectFormsSnapshot, RetirementAction, RetirementReceipt,
-    RetirementRequest, SecretRequestBody, SolarSnapshot, StoreError, SurveyEntriesChanges,
-    SurveyEntriesChangesRequest, SurveyEntriesRead, SurveyEntriesReadRequest,
+    ClientError, ClientProfile, CompoundedArchiveCatalog, DeviceAccessSession, DeviceAuthContext,
+    DeviceAuthorizationStatus, DeviceBeginPublic, DeviceBeginRequest, DeviceBinding,
+    DeviceCallFailure, DeviceCredential, DeviceError, DevicePendingAuthorization, DevicePrivateKey,
+    DeviceProtectedCall, DeviceProtectedOperation, DeviceSummary, DeviceTransport, MediaGrants,
+    ProjectDirectory, ProjectFormSettingsEditor, ProjectFormsSnapshot, RetirementAction,
+    RetirementReceipt, RetirementRequest, SecretRequestBody, SolarSnapshot, StoreError,
+    SurveyEntriesChanges, SurveyEntriesChangesRequest, SurveyEntriesRead, SurveyEntriesReadRequest,
     SurveyEntriesSelectRequest, SurveyEntriesSelection, SurveyEntryCreateReceipt,
     SurveyEntryCreateRequest, SurveyQueryRequest, SurveyQueryResult, TileOperationResult,
     TilePreflight, TileType, TransformerContext, TransformerInventory, TransformerSet,
@@ -1200,27 +1199,11 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
         fixed_device_call!(self, feeder_configuration, project, bounds)
     }
 
-    pub fn compounded_report(
-        &mut self,
-        project: &str,
-        request: &CompoundedReportRequest,
-    ) -> Result<CompoundedReportReceipt, ClientError> {
-        fixed_device_call!(self, compounded_report, project, request)
-    }
     pub fn compounded_report_list(
         &mut self,
         project: &str,
     ) -> Result<CompoundedArchiveCatalog, ClientError> {
         fixed_device_call!(self, compounded_report_list, project)
-    }
-    /// The cloud individual-report computation: server-side like the
-    /// Combined Report, admitted under the same device credential.
-    pub fn export_reports(
-        &mut self,
-        project: &str,
-        request: &TransformerSet,
-    ) -> Result<ds_client_core::ExportReportsReceipt, ClientError> {
-        fixed_device_call!(self, export_reports, project, request)
     }
     pub fn transformer_inventory(
         &mut self,

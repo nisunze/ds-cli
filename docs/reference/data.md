@@ -26,7 +26,8 @@ inspect → (choose the sheet, layer, or coordinate columns) → convert
 Core no longer publishes `data vector` commands or the MCP `vector` profile.
 Those command names refuse as unknown; use an external analysis tool for local
 geometry processing and supply its reviewed file through an existing import
-contract. Network's portable Vector owner and its WASM consumers remain intact.
+contract. The browser vector tools are the Kernel's `vector_tools` operations
+([vector tools](../../crates/kernel/ds-command-kernel/docs/contracts/vector-tools.md)).
 
 ## `mv-lv-orphans`
 
@@ -228,13 +229,37 @@ reads the rooms a headless seed filled. The orchestration is
 `ds-command-kernel/crates/ds-project-data` (shared with the desktop shell); every decision
 is `ds-command-kernel`'s.
 
-### Retired remote context acquisition
+### Building footprints and contours: seeded once per project
 
-`seed --remote-context` asked the cloud to compute missing Google Open Buildings
-and Elevation Contours coverage. Every computation now runs on an edge, so the
-switch always refuses with `native_compute_required` before any credential,
-manifest or provider is touched. Supply these datasets as pinned local inputs
-with `--local-source` or `--publisher-input`; no cloud fallback exists.
+A plain `seed` (no `--local-source`/`--publisher-input`) seeds
+`google_open_buildings` and `elevation_contours` through the project's shared
+revisions (`ds-project-data` contract § Seed once per project):
+
+1. it reads the project's revision head on the governed compute artifact door
+   and replays every revision this machine has not applied — a second member
+   needs no publisher byte;
+2. for cells nobody published, Core fetches only the Google Open Buildings v3
+   S2 level-6 tiles those cells reach (generation-pinned, size and CRC32C
+   checked) or samples the Rwanda DEM, and the Reporter converts or cuts
+   contours offline (`prepare-publisher-footprints`, `plan-contour-lattice`,
+   `derive-contours`);
+3. it publishes what it completed and the chain lacked as the next revision,
+   fenced on the manifest it planned on. When another member published first
+   the door answers stale; the seed replays that revision and publishes only
+   the remainder (`project_dataset_revision_stale` after three re-plans).
+
+Each row carries `shared`: `head_revision`, `replayed_revisions`,
+`source_cells`, `publisher_tiles_fetched`, `surface_cells_derived`,
+`published` and `freshness`. A publisher or DEM version change is reported
+stale and re-acquired only by an explicit `--refresh`, which republishes as a
+refresh revision. Status, query and prints stay local and offline. A Reporter
+is needed to convert, derive or name a revision's producer
+(`reporter_engine_missing`); contours outside the Rwanda DEM refuse
+`contour_surface_uncovered`.
+
+`seed --remote-context` is retired: it refuses with `native_compute_required`
+before any credential, manifest or provider is touched; Brain computes neither
+dataset.
 
 ### Select an existing local analytical project asset
 
@@ -313,11 +338,10 @@ it does not download arbitrary URLs, publish shared assets or generate contours.
 Existing `data.city-vectors --source microsoft` is an explicit public Microsoft
 acquisition, separate from Google and from governed project-room seed.
 
-Missing legacy Google/contour inputs now return
-`project_dataset_local_source_required` without a Brain compute request. Old
-room identities and completed holdings remain intact. Contours require an
-explicit elevation producer/source revision/datum and preserve authored
-intervals; a native cutter remains unavailable. Any incomplete multi-dataset
+A print that finds buildings or contours missing returns
+`project_dataset_local_source_required` naming `data.project-cache.seed`; no
+Brain compute request exists. Old room identities and completed holdings
+remain intact. Any incomplete multi-dataset
 seed returns `project_dataset_seed_incomplete` with the complete partial
 receipt under refusal `detail.result`, including retained successes and errors.
 
@@ -343,12 +367,13 @@ Two families of dataset, seeded differently:
   and each project holds a cheap local subset of it. Nothing is downloaded on a
   read; a row without a published bundle is refused
   (`reference_bundle_unavailable`), never fetched from BigQuery.
-* **Building footprints and elevation contours**: acquired **per project**
-  through ds-brain's governed `query_print_context` door, into the project's
-  rooms, decoded and bounded by the kernel.
+* **Building footprints and elevation contours**: seeded **once per project**
+  as shared revisions every member replays (above); Core acquires only ground
+  nobody published.
 
-`ds report project export --seed` runs the same acquisition for the printed
-transformer only, so the first print request seeds; without `--seed` a print
+`ds report project export --seed` runs the national-layer acquisition for the
+printed transformer only; buildings and contours are never seeded by a print
+(their omission names `data.project-cache.seed`). Without `--seed` a print
 never reaches a provider.
 
 ### What an omitted `--dataset` seeds

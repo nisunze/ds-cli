@@ -157,6 +157,11 @@ pub enum Request {
     Outbox {
         operation: crate::outbox::Operation,
     },
+    /// The browser profile's own session record and pending Google
+    /// redirect; never Core's (its protected account is its principal).
+    AuthSession {
+        operation: crate::auth_session::store::Operation,
+    },
 }
 impl Request {
     pub fn store(&self) -> &'static str {
@@ -174,6 +179,7 @@ impl Request {
             Request::UploadChunks { .. } => crate::upload_chunks::STORE,
             Request::WorkDrafts { .. } => crate::work_drafts::STORE,
             Request::Outbox { .. } => crate::outbox::STORE,
+            Request::AuthSession { .. } => crate::auth_session::store::STORE,
         }
     }
     /// Refuse a store whose native home is its own Core command, so one store
@@ -194,6 +200,9 @@ impl Request {
             Request::DesignRooms { .. } => Ok(()),
             Request::ByteCache { .. } | Request::MediaOutbox { .. } | Request::UploadChunks { .. } => Ok(()),
             Request::WorkDrafts { .. } | Request::Outbox { .. } => Ok(()),
+            Request::AuthSession { .. } => Err(format!(
+                "{NOT_CORE}: auth_session is a browser profile's own session; Core holds its principal in its protected account"
+            )),
         }
     }
 }
@@ -459,6 +468,9 @@ pub fn execute(
                 }
                 Request::Outbox { operation } => {
                     crate::outbox::execute(&transaction, input, operation)?
+                }
+                Request::AuthSession { operation } => {
+                    crate::auth_session::store::execute(&transaction, input, operation)?
                 }
                 Request::Status { .. } | Request::GridProjectCatalog { .. } => {
                     unreachable!("statement-protocol stores are answered above")

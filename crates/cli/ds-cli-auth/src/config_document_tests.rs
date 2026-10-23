@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::{signed_in, FixtureTransport, NOW, SIGN_IN};
+use crate::test_support::{FixtureTransport, NOW, SIGN_IN, signed_in};
 use ds_client_core::{ProjectConfigurationChange, TransportResponse};
 use ds_command_kernel::{
     durable_store::Request,
@@ -213,14 +213,16 @@ fn a_refresh_outage_preserves_held_data_but_a_revocation_forgets_it() {
     )
     .unwrap_err();
     assert_eq!(error.code(), "auth_transient");
-    assert!(read_at(
-        &database,
-        "project-p",
-        ProjectConfigurationRead::Held,
-        || Ok(account("uid-1")),
-        || panic!("no transport")
-    )
-    .is_ok());
+    assert!(
+        read_at(
+            &database,
+            "project-p",
+            ProjectConfigurationRead::Held,
+            || Ok(account("uid-1")),
+            || panic!("no transport")
+        )
+        .is_ok()
+    );
     let error = read_at(
         &database,
         "project-p",
@@ -518,4 +520,113 @@ fn forgetting_an_unrelated_project_during_fetch_preserves_this_configuration() {
 #[test]
 fn forgetting_an_unrelated_account_during_fetch_preserves_this_configuration() {
     unrelated_forget_during_refresh("project-p", "uid-2");
+}
+
+#[test]
+fn acquire_reads_held_sqlite_offline_and_fetches_only_when_nothing_is_held() {
+    let root = private_root();
+    let database = root.path().join("store.sqlite");
+    let fetches = std::cell::Cell::new(0);
+    let fetch = |revision: u64| -> Result<Value, Failure> {
+        fetches.set(fetches.get() + 1);
+        Ok(config(revision))
+    };
+    let first = read_at(
+        &database,
+        "project-p",
+        ProjectConfigurationRead::Acquire,
+        || Ok(account("uid-1")),
+        || fetch(1),
+    )
+    .unwrap();
+    assert_eq!(first.observation.source, ProjectConfigurationRead::Refresh);
+    assert_eq!(fetches.get(), 1, "nothing held: one explicit acquisition");
+    // Offline: a fetch would fail, and none is attempted while a document is held.
+    let held = read_at(
+        &database,
+        "project-p",
+        ProjectConfigurationRead::Acquire,
+        || Ok(account("uid-1")),
+        || Err(Failure::failed("auth_transient", "offline")),
+    )
+    .unwrap();
+    assert_eq!(held.observation.source, ProjectConfigurationRead::Held);
+    assert_eq!(held.document, first.document);
+    assert_eq!(fetches.get(), 1);
+    // Another account holds nothing here and acquires its own document once.
+    let other = read_at(
+        &database,
+        "project-p",
+        ProjectConfigurationRead::Acquire,
+        || Ok(account("uid-2")),
+        || fetch(2),
+    )
+    .unwrap();
+    assert_eq!(other.observation.source, ProjectConfigurationRead::Refresh);
+    assert_eq!(fetches.get(), 2);
+    // Nothing held and offline: the transport refusal, never a fabricated document.
+    let refused = read_at(
+        &database,
+        "project-q",
+        ProjectConfigurationRead::Acquire,
+        || Ok(account("uid-1")),
+        || Err(Failure::failed("auth_transient", "offline")),
+    )
+    .unwrap_err();
+    assert_eq!(refused.code(), "auth_transient");
+}
+
+#[test]
+fn a_native_configuration_change_forgets_the_held_document_once() {
+    let root = private_root();
+    let database = root.path().join("store.sqlite");
+    read_at(
+        &database,
+        "project-p",
+        ProjectConfigurationRead::Refresh,
+        || Ok(account("uid-1")),
+        || Ok(config(1)),
+    )
+    .unwrap();
+    read_at(
+        &database,
+        "project-q",
+        ProjectConfigurationRead::Refresh,
+        || Ok(account("uid-1")),
+        || Ok(config(9)),
+    )
+    .unwrap();
+    forget_at(&database, "project-p", &account("uid-1")).unwrap();
+    assert_eq!(
+        read_at(
+            &database,
+            "project-p",
+            ProjectConfigurationRead::Held,
+            || Ok(account("uid-1")),
+            || panic!("held cannot fetch")
+        )
+        .unwrap_err()
+        .code(),
+        NOT_HELD.code
+    );
+    // The next held-first read acquires the saved document; another project is kept.
+    let fresh = read_at(
+        &database,
+        "project-p",
+        ProjectConfigurationRead::Acquire,
+        || Ok(account("uid-1")),
+        || Ok(config(2)),
+    )
+    .unwrap();
+    assert_eq!(fresh.observation.source, ProjectConfigurationRead::Refresh);
+    assert_eq!(serde_json::to_value(&fresh.document).unwrap(), config(2));
+    let kept = read_at(
+        &database,
+        "project-q",
+        ProjectConfigurationRead::Held,
+        || Ok(account("uid-1")),
+        || panic!("held cannot fetch"),
+    )
+    .unwrap();
+    assert_eq!(serde_json::to_value(&kept.document).unwrap(), config(9));
 }

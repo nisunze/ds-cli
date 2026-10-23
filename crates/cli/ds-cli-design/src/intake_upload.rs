@@ -1,4 +1,7 @@
-//! Headless design intake through the shared Rust upload state machine.
+//! Headless design intake: the shared Rust upload state machine moves each
+//! file into the project's governed intake storage (ds-brain only receives the
+//! bytes), and each file is then processed on this machine — Network engine by
+//! request and response, then the fenced governed save (`intake_process`).
 use ds_cli_auth::StatusUploadDomain;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
@@ -7,7 +10,7 @@ use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Map, Value};
 use std::io::Read;
 
-const REFUSALS: &[Refusal] = &[
+const OWN: &[Refusal] = &[
     ds_cli_report::project::NATIVE_PROFILE,
     ds_cli_report::project::NATIVE_PROFILE_DIGEST,
     ds_cli_report::project::NATIVE_PROFILE_UNSAFE,
@@ -25,14 +28,37 @@ const REFUSALS: &[Refusal] = &[
         when: "a source file or settings document is absent, changes during admission, or exceeds a bound",
         remedy: "pass bounded regular files and a JSON object of scalar process settings",
     },
+    Refusal {
+        code: "status_upload_layers_unreadable",
+        when: "the shared readers cannot read the file as a .gpkg (with every LV layer), shapefile .zip or .geojson",
+        remedy: "upload a readable .gpkg, shapefile .zip or .geojson design file",
+    },
+    Refusal {
+        code: "status_upload_layers_unrecognized",
+        when: "the file holds no LV layer (customers, lv_lines, lv_poles, service_cables, spans, tr), or one twice",
+        remedy: "name the file's layers as a DS LV export does",
+    },
+    Refusal {
+        code: "status_upload_transformer_unregistered",
+        when: "the transformer the file is named after is not registered in the project",
+        remedy: "create it in DS GridDesign (Design > New transformer), or name the file after an existing transformer",
+    },
 ];
+
+const PARTS: &[&[Refusal]] = &[
+    OWN,
+    crate::lv::project_save::COMMAND.refusals,
+    crate::lv::process::COMMAND.refusals,
+];
+const REFUSALS: &[Refusal] =
+    &ds_cli_report::project::distinct::<{ ds_cli_report::project::distinct_count(PARTS) }>(PARTS);
 
 pub static COMMAND: Command = Command {
     id: "design.intake.upload",
     path: &["design", "intake", "upload"],
     contract: 1,
     summary: "Upload and process LV design files without Desktop.",
-    purpose: "Names its project with --project (the saved selection is never read), admits every file through the shared Rust upload state machine, obtains project-scoped resumable targets, uploads local bytes, then submits independent one-file processing jobs. Upload admission, phase order, process request shape, result matching, failures and progress are the same kernel used by the browser; this native adapter supplies filesystem and fixed network effects only.",
+    purpose: "Names its project with --project (the saved selection is never read), admits every file through the shared Rust upload state machine and uploads its bytes to project-scoped resumable targets (ds-brain only stores them). Each file is then processed on this machine: its LV layers (customers, lv_lines, lv_poles, service_cables, spans, tr) are read by the shared readers, processed by the installed Network engine with the project configuration and the mode's preset (lv-drafting/lv-process: drafting, sketch-lv: sketch; --settings toggles laid over it), and saved over the transformer the file is named after through the fenced governed save. Results are independent per file.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -62,7 +88,7 @@ pub static COMMAND: Command = Command {
             ..ds_cli_contract::spec::LANE
         },
     ],
-    output: "Frozen project/lane, terminal upload phase, aggregate progress, and one success or error result per source file.",
+    output: "Frozen project/lane, terminal upload phase, aggregate progress, and one success or error result per source file: a success was processed on this machine and saved over its transformer; an error names the refusal.",
     examples: &[Example {
         command: "ds design intake upload --project <id> --file ./T001.zip --mode lv-process --settings ./process-settings.json --yes --output json",
         note: "Runs the complete intake on the named project with no open map or Desktop pairing.",
@@ -114,13 +140,26 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         _ => return Err(invalid("Unknown processing mode.")),
     };
     let settings = read_settings(inputs.value("settings"))?;
-    ds_cli_auth::status_upload(
+    let (lane, project, files) = (
         inputs.require("lane")?,
         inputs.require("project")?,
         inputs.repeated("file"),
-        mode,
-        &settings,
-    )
+    );
+    let token = inputs.require("mode")?;
+    let mut process = |index: usize, blob_path: Option<&str>| {
+        let source = files
+            .get(index)
+            .ok_or_else(|| invalid("The upload kernel named a missing source file."))?;
+        crate::intake_process::process_file(
+            lane,
+            project,
+            std::path::Path::new(source),
+            token,
+            &settings,
+            blob_path,
+        )
+    };
+    ds_cli_auth::status_upload(lane, project, files, mode, &settings, &mut process)
 }
 
 pub fn render(data: &Value) -> String {
@@ -145,23 +184,5 @@ pub fn render(data: &Value) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn command_is_headless_project_and_global_write() {
-        assert_eq!(COMMAND.authority, Authority::HeadlessProject);
-        assert_eq!(COMMAND.effect, Effect::GlobalWrite);
-        assert!(!COMMAND.authority.requires_desktop());
-    }
-
-    #[test]
-    fn settings_reject_non_object() {
-        let path =
-            std::env::temp_dir().join(format!("ds-upload-settings-{}.json", std::process::id()));
-        std::fs::write(&path, b"[]").unwrap();
-        let result = read_settings(path.to_str());
-        let _ = std::fs::remove_file(path);
-        assert!(result.is_err());
-    }
-}
+#[path = "intake_upload_tests.rs"]
+mod tests;

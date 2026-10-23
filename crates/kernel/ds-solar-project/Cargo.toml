@@ -7,10 +7,9 @@ rust-version.workspace = true
 license = "UNLICENSED"
 repository = "https://github.com/nisunze/ds-solar"
 
-[features]
-default = []
-compute = ["dep:ds-solar-runtime"]
-
+# An application crate: Solar engines are reached by request/response, so no
+# engine crate is linked here, optional or not. Local tooling supplies a run's
+# calculation explicitly (see run::LocalCalculation).
 [dependencies]
 base64 = "0.22"
 anyhow.workspace = true
@@ -18,7 +17,6 @@ chrono = { version = "0.4", default-features = false, features = ["std", "serde"
 ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
 ds-solar-io = { path = "../../../../ds-solar/crates/ds-solar-io" }
 ds-solar-reference-host = { path = "../ds-solar-reference-host" }
-ds-solar-runtime = { path = "../../../../ds-solar/crates/ds-solar-runtime", default-features = false, optional = true }
 ds-command-kernel = { path = "../ds-command-kernel" }
 ds-report-artifacts = { path = "../ds-report-artifacts" }
 serde.workspace = true
@@ -28,10 +26,3 @@ sha2.workspace = true
 rusqlite = { version = "0.40.2", features = ["bundled", "fallible_uint"] }
 fs2 = "0.4"
 tempfile = "3"
-
-[dev-dependencies]
-ds-solar-portfolio = { path = "../../../../ds-solar/crates/ds-solar-portfolio" }
-
-[[test]]
-name = "workspace"
-required-features = ["compute"]

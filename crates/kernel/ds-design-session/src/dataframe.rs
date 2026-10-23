@@ -8,7 +8,7 @@
 
 use crate::session::{Feature, Geometry};
 use polars::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
@@ -22,11 +22,23 @@ pub struct LayerTable {
     df: DataFrame,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(missing_as_null)
+)]
 pub struct LayerRow {
     pub row_index: usize,
     pub feature_id: String,
     pub geometry: Geometry,
+    #[cfg_attr(
+        all(feature = "bindings", target_arch = "wasm32"),
+        tsify(type = "Record<string, unknown>")
+    )]
     pub properties: Map<String, Value>,
 }
 
@@ -39,17 +51,44 @@ pub struct RowWindow {
     pub rows: Vec<LayerRow>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(missing_as_null)
+)]
 pub struct CellEditDiff {
     pub layer_name: String,
     pub row_index: usize,
     pub feature_id: String,
     pub column: String,
+    /// The cell value; `null` when the cell was empty.
+    #[serde(deserialize_with = "crate::reply::written_nullable")]
+    #[cfg_attr(
+        all(feature = "bindings", target_arch = "wasm32"),
+        tsify(type = "unknown")
+    )]
     pub before: Option<Value>,
+    #[serde(deserialize_with = "crate::reply::written_nullable")]
+    #[cfg_attr(
+        all(feature = "bindings", target_arch = "wasm32"),
+        tsify(type = "unknown")
+    )]
     pub after: Option<Value>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(missing_as_null)
+)]
 pub struct BulkCellEditResult {
     pub changed: Vec<CellEditDiff>,
     pub missing_feature_ids: Vec<String>,

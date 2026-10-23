@@ -113,15 +113,11 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Read the project's transformer status rows and verdicts, headlessly.",
     purpose: "\
-The read every headless Design answer starts from. Restores the native user \
-and reads the project --project names; the saved selection is never read. \
+The read every headless Design answer starts from, for the project --project names. \
 Without --transformer it answers every transformer document; with names, \
-exactly those that exist. Rows come back as the service sent \
-them, each with the shared kernel's verdict (health) and truth (view, phase \
+exactly those that exist. Each row carries the shared kernel's verdict (health) and truth (view, phase \
 ownership, latest action, governance, retry, kind, allows). With --search, \
---sort or --filter the rows are the register's own selection, in its order, \
-decided by the same kernel the application reads. Nothing falls back to a \
-browser. Default preserves the existing authenticated read. --read held reads only retained SQLite; --read acquire uses retained data and acquires only missing or invalidated status; --read refresh explicitly replaces the whole-project observation. A failed acquisition retains and labels held data. --out writes the full projection to a private file with a bounded receipt.",
+--sort or --filter the rows are the register's own selection, in its order. Held-first: default --read acquire answers offline from SQLite, acquiring only missing or invalidated status; held never reads; refresh replaces it. Names match by Kernel identity. --out writes a private file and bounded receipt.",
     chapter: Chapter::Design,
     effect: Effect::LocalAuthState,
     authority: Authority::HeadlessProject,
@@ -135,8 +131,13 @@ browser. Default preserves the existing authenticated read. --read held reads on
         SORT_ARG,
         DESC_ARG,
         FILTER_ARG,
-        Arg::value("read", "<mode>", "Held-only, held-first acquire, or explicit full refresh; omitted preserves existing acquisition.").choices(TransformerStatusRead::NAMES),
-        Arg::value("out", "<absolute-path>", "Write full status to a fresh private JSON file in an existing private directory."),
+        Arg::value("read", "<mode>", "acquire (default), held or refresh.")
+            .choices(TransformerStatusRead::NAMES),
+        Arg::value(
+            "out",
+            "<absolute-path>",
+            "Write full status to a fresh private JSON file in an existing private directory.",
+        ),
     ],
     output: "\
 Lane and the named project, the row count, the project's \
@@ -144,7 +145,7 @@ severity summary, and one row per transformer as the service sent it — \
 process/report/draft/sketch metadata, layer counts, uploads, artifacts, \
 retry capabilities — plus `health`, `view`, `phase_ownership`, `latest_action`, \
 `governance`, `retry`, `kind` and `allows`. With --findings, one `findings` row \
-per finding; with a selector, `query` carries the options each filter may offer. Explicit --read adds observation source/state/timestamp/digest/error. --out returns ds.design-status-file/v1 with path, sha256, size_bytes, lane, project, principal, count and observation; full data is in the private file.",
+per finding; with a selector, `query` carries the options each filter may offer. `observation`: source/state/time/digest/error. --out returns ds.design-status-file/v1 (path, sha256, size_bytes, lane, project, principal, count, observation).",
     examples: &[
         Example {
             command: "ds design status --project <id> --transformer TX-1 --output json",
@@ -174,36 +175,37 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     if let Some(path) = out {
         validate_output(path)?;
     }
-    let (headless, observation) = match inputs.value("read") {
-        Some(mode) => {
-            let mode =
-                serde_json::from_value::<TransformerStatusRead>(json!(mode)).map_err(|_| {
-                    Failure::invalid(
-                        QUERY_INVALID.code,
-                        "--read must be held, acquire or refresh",
-                    )
-                })?;
-            let (snapshot, observation) =
-                ds_cli_auth::read_transformer_status_for_project(lane, &project, mode)?;
-            (snapshot, Some(observation))
-        }
-        None => (
-            ds_cli_auth::transformer_status_for_project(lane, &project, &requested)?,
-            None,
-        ),
-    };
+    let mode = serde_json::from_value::<TransformerStatusRead>(json!(
+        inputs.value("read").unwrap_or("acquire")
+    ))
+    .map_err(|_| {
+        Failure::invalid(
+            QUERY_INVALID.code,
+            "--read must be held, acquire or refresh",
+        )
+    })?;
+    let (headless, observation) =
+        ds_cli_auth::read_transformer_status_for_project(lane, &project, mode)?;
+    let observation = Some(observation);
     let selected;
-    let result = if observation.is_some() && !requested.is_empty() {
-        selected = TransformerStatusList::from_observation(json!(
-            headless
-                .result()
-                .rows()
-                .iter()
-                .filter(|row| requested.names().iter().any(|name| name == row.name()))
-                .map(|row| row.row().clone())
-                .collect::<Vec<_>>()
-        ))
-        .map_err(|error| Failure::failed("design_status_query_invalid", format!("{error:?}")))?;
+    let result = if !requested.is_empty() {
+        // Names match rows by the Kernel transformer identity on both sides.
+        let rows = headless
+            .result()
+            .rows()
+            .iter()
+            .map(|row| row.row().clone())
+            .collect();
+        let targets: Vec<String> = requested.names().to_vec();
+        let narrowed = ds_command_kernel::transformer_status_store::select_targets(
+            rows,
+            &targets,
+            observation.as_ref(),
+        );
+        selected =
+            TransformerStatusList::from_observation(json!(narrowed.data)).map_err(|error| {
+                Failure::failed("design_status_query_invalid", format!("{error:?}"))
+            })?;
         &selected
     } else {
         headless.result()

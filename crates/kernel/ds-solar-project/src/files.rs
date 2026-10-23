@@ -2,8 +2,6 @@
 use anyhow::{Context, Result, bail, ensure};
 use ds_report_artifacts::confined_fs::HeldDirectory;
 use ds_solar_contracts::{SolarArtifactBatch, SolarError};
-#[cfg(feature = "compute")]
-use ds_solar_runtime::RunOutput;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -129,70 +127,6 @@ pub fn read_bounded(path: &Path, max_bytes: u64, label: &str) -> Result<Vec<u8>>
         );
     }
     Ok(bytes)
-}
-
-/// Rendering and calculation are complete before this IO operation starts.
-/// A visible destination always contains the complete verified artifact batch.
-#[cfg(feature = "compute")]
-pub fn commit_run(out: &Path, output: &RunOutput) -> Result<()> {
-    commit_run_with_progress(out, output, None)
-}
-#[cfg(feature = "compute")]
-pub fn commit_run_with_progress(
-    out: &Path,
-    output: &RunOutput,
-    progress: Option<&serde_json::Value>,
-) -> Result<()> {
-    let failures: Vec<_> = output
-        .cities
-        .iter()
-        .filter_map(|city| {
-            city.outcome.as_ref().err().map(|error| RunFailure {
-                city_id: &city.city_id,
-                error,
-            })
-        })
-        .collect();
-    commit_artifact_run(out, &output.batch, &failures, progress, |root| {
-        for city in &output.cities {
-            let Ok(outcome) = &city.outcome else { continue };
-            ensure!(crate::identifier(&city.city_id), "invalid output city id");
-            let dir = root.join("cities").join(&city.city_id);
-            json(&dir.join("result.json"), &outcome.result)?;
-            if let Some(model) = &outcome.report_model {
-                json(&dir.join("report-model.json"), model)?;
-            }
-            write(
-                &dir.join(outcome.report_input.name()),
-                &outcome.report_input.bytes,
-            )?;
-            if let Some(artifacts) = &outcome.artifacts {
-                for chart in &artifacts.charts {
-                    write(&dir.join(&chart.name), &chart.bytes)?;
-                }
-            }
-            for document in outcome.documents.iter().chain(&outcome.input_maps) {
-                write(&dir.join(document.name()), &document.bytes)?;
-            }
-            if let Some(Ok(projection)) = &city.portfolio_projection {
-                json(
-                    &dir.join(ds_solar_contracts::artifact_names::PORTFOLIO_CONTRIBUTION_NAME),
-                    &projection.contribution,
-                )?;
-                json(
-                    &dir.join(ds_solar_contracts::artifact_names::PORTFOLIO_CALCULATION_NAME),
-                    &projection.calculation,
-                )?;
-            }
-        }
-        if let Some(portfolio) = &output.portfolio {
-            json(&root.join("portfolio-result.json"), portfolio)?;
-        }
-        if let Some(document) = &output.portfolio_document {
-            write(&root.join(document.name()), &document.bytes)?;
-        }
-        Ok(())
-    })
 }
 
 /// One failed city, serialized in input order beside the successful artifacts.

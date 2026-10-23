@@ -43,6 +43,11 @@ wasm = [
     "ds-columnar/artifacts",
     "ds-columnar/bindings",
     "ds-cleaning/bindings",
+    "ds-io/bindings",
+    "page-data",
+    "layer-import",
+    "upload-batch-ipc",
+    "vector-tools",
     "dep:wasm-bindgen",
     "durable-store",
     "dep:sqlite-wasm-rs",
@@ -63,12 +68,28 @@ wasm = [
 # never its UI. The WASM build runs it on wasm-bindgen-futures; a native host
 # initializes any_spawner with its own runtime.
 client-state = ["durable-store", "dep:reactive_graph", "dep:any_spawner"]
+# The page's data owners (single-cell domain values, upload cleaning, layer
+# export writers) over Network's shared cleaning and file crates. Only the
+# browser build carries them: native Core links no Network crate beyond its
+# contracts and reaches cleaning and file IO through the Network engine.
+page-data = ["dep:ds-cleaning", "dep:ds-io"]
+# Chunk-level upload cleaning over Arrow IPC. The browser build carries it;
+# Core never stages upload chunks and keeps its build dataframe-free.
+upload-batch-ipc = ["page-data", "ds-cleaning/arrow_ipc"]
+# Browser file readers: ds-io parses; layers travel as the upload Arrow IPC
+# chunks (ds-cleaning codec). Core reads sources natively and leaves this off.
+layer-import = ["page-data", "ds-cleaning/arrow_ipc"]
+# The vector tool catalogue and runner over Arrow IPC layers (browser
+# windows). Core runs no vector tools and stays free of the IPC backend.
+vector-tools = ["ds-geo/browser-polars-ipc", "ds-geo-lite/sampling"]
 
 [dependencies]
 ds-core-contracts = { path = "../ds-core-contracts" }
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts" }
 ds-geo = { path = "../../../../ds-network/crates/ds-geo" }
-ds-cleaning = { path = "../../../../ds-network/crates/ds-cleaning", default-features = false }
+ds-cleaning = { path = "../../../../ds-network/crates/ds-cleaning", default-features = false, optional = true }
+# The file writers own every exported byte (layer and dashboard exports).
+ds-io = { path = "../../../../ds-network/crates/ds-io", optional = true }
 ds-design-session = { path = "../ds-design-session" }
 ds-columnar = { path = "../../../../ds-network/crates/ds-columnar", default-features = false }
 ds-profile-policy = { path = "../ds-profile-policy" }
@@ -92,7 +113,7 @@ percent-encoding = "2"
 # Portable primitives are canonical in ds-geo-lite; Network delegates to it.
 # The remaining identity/comparison snapshots keep their existing drift fence.
 # Neither this kernel nor its portable crates depend on ds-network.
-ds-geo-lite = { path = "../../shared/ds-geo-lite", features = ["overlay", "projection", "revision", "vector_types"] }
+ds-geo-lite = { path = "../../shared/ds-geo-lite", features = ["overlay", "projection", "revision", "vector_types", "editing", "profile", "codec"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 quick-xml = { version = "0.41", default-features = false, features = ["encoding"] }
 csv = "1.4"

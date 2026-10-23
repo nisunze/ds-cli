@@ -79,7 +79,9 @@ class ModuleInterface(unittest.TestCase):
         self.assertEqual(network["capabilities"], ["lv_processing_v1", "future_operation_v2"])
         path = self.engines["network"].with_suffix(".identity")
         original = json.loads(path.read_text())
-        for field, invalid in [("protocolMajor", 2), ("environment", "wasm"), ("sourceSha", "a" * 40), ("capabilities", ["x" * 257])]:
+        # Owner 22 Oct 2026: another protocolMajor is provenance, not a refusal;
+        # a protocolMajor of the wrong type still is.
+        for field, invalid in [("protocolMajor", "1"), ("environment", "wasm"), ("sourceSha", "a" * 40), ("capabilities", ["x" * 257])]:
             changed = json.loads(json.dumps(original))
             changed["engineIdentity"][field] = invalid
             path.write_text(json.dumps(changed))

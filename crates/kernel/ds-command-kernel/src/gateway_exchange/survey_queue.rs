@@ -583,10 +583,11 @@ mod browser {
     impl Firestore for Page {
         async fn author(&self) -> Result<(Author, String), String> {
             let firebase_project = FIREBASE_PROJECT.ok_or("this build names no Firebase project for survey creates")?;
-            let session = credentials(&self.0).await.map_err(|_| "sign in to deliver queued entries")?;
+            let session = credentials().await.map_err(|_| "sign in to deliver queued entries")?;
             let uid = facts(&self.0).map_err(|_| "sign in to deliver queued entries")?.principal;
             let bearer = session
                 .token
+                .clone()
                 .filter(|token| !token.is_empty())
                 .ok_or("sign in to deliver queued entries")?;
             let author = Author {

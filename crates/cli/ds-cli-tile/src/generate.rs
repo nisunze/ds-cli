@@ -13,9 +13,8 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Retired cloud tiling; refuses and names the Core tile queue.",
     purpose: "\
-Project tiling is edge compute: the hosted tile worker is retired and this \
-command never reaches it. It refuses with native_compute_required before any \
-credential is restored, sends nothing and starts nothing. Tiles are built by \
+The hosted tile worker is retired. This command refuses with \
+native_compute_required before any credential is restored and starts nothing. Tiles are built by \
 the Core on this machine from a prepared ds.tiles.prepared/v1 input through \
 `ds core tile submit`; no edge step yet prepares that input from project \
 survey/design data. `ds tile status` and `ds tile plan` still read the \

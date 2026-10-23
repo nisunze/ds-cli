@@ -136,13 +136,13 @@ was given.",
     refusals: &[
         Refusal {
             code: "combined_missing_admin_bounds_asset",
-            when: "the governed combined reference binding cannot resolve to verified installed bytes",
-            remedy: "capture the governed country reference binding in network_config and install its exact reference asset",
+            when: "the combined reference binding does not resolve to verified installed bytes",
+            remedy: "capture the country reference binding in network_config and install its asset",
         },
         Refusal {
             code: "report_locale_missing",
             when: "the reporter refuses this presentation contract",
-            remedy: "set report_locale in the existing Network Template project_settings sheet; backfill dry run first",
+            remedy: "set report_locale in the Network Template project_settings sheet",
         },
         Refusal {
             code: "report_locale_invalid",
@@ -177,7 +177,7 @@ was given.",
         Refusal {
             code: "unknown_task",
             when: "the installed reporter does not publish the selected voltage-drop or LV standard task",
-            remedy: "install a reporter exposing the selected task in report tasks; no alternate rendering or recomputation fallback is permitted",
+            remedy: "install a reporter exposing the selected task in report tasks",
         },
         crate::ENGINE_MISSING,
         crate::ENGINE_RECEIPT_INVALID,
@@ -199,7 +199,7 @@ was given.",
         Refusal {
             code: "transformer_document_mismatch",
             when: "combined transformer names and documents have different counts",
-            remedy: "pair each --transformer with one --transformer-document in the same order",
+            remedy: "pair each --transformer with one --transformer-document in order",
         },
         Refusal {
             code: "request_not_found",

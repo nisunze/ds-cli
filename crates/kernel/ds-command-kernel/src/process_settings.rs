@@ -679,6 +679,9 @@ fn project_type_default(project_type: Option<&str>) -> (Preset2, &'static str) {
     }
 }
 
+#[path = "process_settings_rows.rs"]
+pub mod rows;
+
 // ── the door ────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
@@ -758,6 +761,36 @@ enum Command {
         preset: Preset2,
         #[serde(default)]
         use_firestore_design_data: bool,
+    },
+    /// Whether a run with these settings finds the sheets it needs.
+    ConfigReadiness {
+        settings: Settings,
+        #[serde(default)]
+        project_config: Option<Value>,
+    },
+    /// The `transformer_settings` rows that make `settings` this preset.
+    PresetRows {
+        #[serde(default)]
+        project_config: Option<Value>,
+        preset: Preset2,
+        settings: Settings,
+    },
+    /// The `project_settings` rows declaring the default preset.
+    DefaultPresetRows {
+        #[serde(default)]
+        project_config: Option<Value>,
+        preset: Preset2,
+    },
+    /// The `transformer_settings` rows declaring the design sources.
+    SourceRows {
+        #[serde(default)]
+        project_config: Option<Value>,
+        sources: rows::SourceUpdate,
+    },
+    /// The design sources the base rows declare.
+    Sources {
+        #[serde(default)]
+        project_config: Option<Value>,
     },
 }
 
@@ -895,6 +928,38 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 },
             );
             json!({"wire_settings": wire_settings, "dropped": dropped})
+        }
+        Command::ConfigReadiness {
+            settings,
+            project_config,
+        } => {
+            check_settings(&settings)?;
+            serde_json::to_value(rows::readiness(&settings, project_config.as_ref()))
+                .map_err(|e| e.to_string())?
+        }
+        Command::PresetRows {
+            project_config,
+            preset,
+            settings,
+        } => {
+            // A non-setting value is skipped, as the retired writer did.
+            json!({"sheet": "transformer_settings", "rows": rows::preset_rows(project_config.as_ref(), preset, &settings)})
+        }
+        Command::DefaultPresetRows {
+            project_config,
+            preset,
+        } => {
+            json!({"sheet": "project_settings", "rows": rows::default_preset_rows(project_config.as_ref(), preset)})
+        }
+        Command::SourceRows {
+            project_config,
+            sources,
+        } => {
+            json!({"sheet": "transformer_settings", "rows": rows::source_rows(project_config.as_ref(), &sources)})
+        }
+        Command::Sources { project_config } => {
+            serde_json::to_value(rows::sources(project_config.as_ref()))
+                .map_err(|e| e.to_string())?
         }
     };
     serde_json::to_string(&value).map_err(|e| e.to_string())

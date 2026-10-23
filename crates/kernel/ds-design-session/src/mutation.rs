@@ -10,6 +10,14 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_MUTATION_CAPACITY: usize = 200;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(missing_as_null)
+)]
 pub struct FeatureChange {
     pub feature_id: FeatureId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -33,6 +41,14 @@ impl FeatureChange {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(missing_as_null)
+)]
 pub struct SessionDiff {
     pub kind: String,
     pub changes: Vec<FeatureChange>,

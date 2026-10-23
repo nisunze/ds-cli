@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 
 const CORE_PROTOCOL: &str = "ds.core-release/v1";
 
+/// Brain's published Core member: additive members are accepted (owner 22 Oct).
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 struct CoreAsset {
     platform: String,
     arch: String,
@@ -27,7 +27,6 @@ struct CoreAsset {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
 struct CoreRelease {
     schema: String,
     component: String,

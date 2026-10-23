@@ -8,6 +8,10 @@ evidence, not an outstanding interactive-speed release gate. Authority,
 revision fences and functional control guarantees still apply. See the
 [owning acceptance](../../../../../../ds-network/docs/contracts/profile-transactional-database.md#current-delivery-acceptance-owner-2026-10-12).
 
+The linked `ds-profile-runtime` crate named below is deleted; Network's retained
+Profile session (`ds-network-grid-application`) is the runtime. Behavior the
+sections below attribute to the linked runtime must be re-proven there.
+
 `profile_display::DisplayState::patched` owns display validation and atomic
 patching. `profile_controls::groups` owns the declared grouping, label keys,
 initial section expansion, numeric values, limits and complete current request

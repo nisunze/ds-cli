@@ -11,6 +11,25 @@ use crate::style_document::{self, Action, PATH, TIMEOUT_SECONDS};
 
 pub const INPUT_INVALID: &str = "styles_input_invalid";
 
+/// The export the page calls to publish, and the exchange it runs, for
+/// [`crate::capabilities::admit_export`].
+pub const PUBLISH_EXPORT: &str = "stylesPublish";
+pub const EXCHANGE: &str = "styles";
+
+/// Admit one publish from the page by the capability it performs: the row
+/// must name [`PUBLISH_EXPORT`] and be supported on this build's platform.
+pub fn admit_publish(platform: &str, capability: Option<&str>) -> Result<&'static str, Refusal> {
+    let id = capability.ok_or_else(|| {
+        Refusal::new(
+            INPUT_INVALID,
+            "A style publish names the capability it performs.",
+        )
+    })?;
+    crate::capabilities::admit_export_on(platform, id, PUBLISH_EXPORT, EXCHANGE)
+        .map(|capability| capability.id)
+        .map_err(|refused| Refusal::new(refused.code, refused.message))
+}
+
 /// One style action and its input, as `style_document` names them.
 #[derive(Clone, Debug, PartialEq)]
 pub enum StyleAction {
@@ -137,11 +156,18 @@ mod exports {
     }
 
     /// Publish one authored style document; answers the receipt Brain kept.
+    /// `capability` is the row this publish performs (a style plan names it;
+    /// a whole-document save is `style.document.publish`), admitted by its
+    /// manifest row before anything is sent.
     #[wasm_bindgen(js_name = stylesPublish, unchecked_return_type = "Record<string, unknown>")]
     pub async fn styles_publish(
         host: GatewayHost,
         #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] payload: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "CapabilityExports['stylesPublish']")]
+        capability: Option<String>,
     ) -> Result<JsValue, JsValue> {
+        super::admit_publish(crate::capabilities::PLATFORM, capability.as_deref())
+            .map_err(|refusal| rejection(&refusal))?;
         act(host, StyleAction::Publish { payload: json(payload)? }).await
     }
 

@@ -28,9 +28,14 @@ const NOT_WAITING: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refus
     when: "no rotation of that path is held waiting on this machine",
     remedy: "run ds survey photo rotate without --out first, or pass --bundle",
 };
+const AUTH_CONTEXT_CHANGED: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
+    code: "auth_context_mismatch",
+    when: "the signed-in account or credential changed while the photo was being prepared, before local retention",
+    remedy: "sign in as the original account for this lane and repeat the rotation",
+};
 const REFUSALS: &[ds_cli_contract::spec::Refusal] = &{
     const BASE: &[ds_cli_contract::spec::Refusal] = crate::project_forms::LIST_COMMAND.refusals;
-    let mut list = [DOCUMENT; BASE.len() + 5];
+    let mut list = [DOCUMENT; BASE.len() + 6];
     let mut i = 0;
     while i < BASE.len() {
         list[i] = BASE[i];
@@ -40,6 +45,7 @@ const REFUSALS: &[ds_cli_contract::spec::Refusal] = &{
     list[BASE.len() + 2] = NOT_WAITING;
     list[BASE.len() + 3] = moments::ROOT_INVALID;
     list[BASE.len() + 4] = moments::STORE_UNREADABLE;
+    list[BASE.len() + 5] = AUTH_CONTEXT_CHANGED;
     list
 };
 

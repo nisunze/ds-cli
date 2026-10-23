@@ -8,17 +8,17 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-use ds_cli_contract::{spec::Refusal as DeclaredRefusal, Failure};
+use ds_cli_contract::{Failure, spec::Refusal as DeclaredRefusal};
 use ds_command_kernel::{
     durable_store::{Call, Identity, Principal},
     gateway_exchange::{
+        Admitted, Exchange, Refusal,
         design::{
             DesignCall, ProjectConfigurationDocument, ProjectConfigurationObservation,
             ProjectConfigurationRead, ProjectConfigurationReply,
         },
         held_reads::project_config,
         retained::{self, Edge},
-        Admitted, Exchange, Refusal,
     },
 };
 use ds_sync_store::Store;
@@ -118,6 +118,48 @@ pub fn read(
             Ok(fresh.into_result().document)
         },
     )
+}
+
+/// Forget the held configuration after a native configuration change. The
+/// next held-first read acquires the saved document once; a refresh fetched
+/// before the change is refused (`retained_reads_stale`) instead of kept.
+pub fn forget(lane: &str, project: &str) -> Result<(), Failure> {
+    validate_project(project)?;
+    let database = ds_compute_runtime::server_state_directory(lane, None)
+        .map_err(|error| failure(STORE_REFUSED, error))?
+        .join("store.sqlite");
+    if !database
+        .try_exists()
+        .map_err(|error| failure(STORE_REFUSED, error))?
+    {
+        return Ok(());
+    }
+    forget_at(&database, project, &identity(lane)?)
+}
+
+fn forget_at(database: &Path, project: &str, identity: &Identity) -> Result<(), Failure> {
+    let cleared = |error: String| {
+        failure(
+            STORE_REFUSED,
+            format!(
+                "the configuration change was saved, but this device's held copy could not be cleared: {error}"
+            ),
+        )
+    };
+    let edge = NativeEdge {
+        store: RefCell::new(Store::open(database).map_err(|error| cleared(error.to_string()))?),
+        identity: identity.clone(),
+        project,
+        observe: || Ok(identity.clone()),
+        fetch: || {
+            Err(failure(
+                STORE_REFUSED,
+                "forgetting held configuration fetches nothing",
+            ))
+        },
+        original_failure: RefCell::new(None),
+    };
+    ready(project_config::forget(&edge, project)).map_err(|error| cleared(error.message))
 }
 
 struct NativeEdge<'a, O, F> {
@@ -259,37 +301,48 @@ fn read_captured_at(
         fetch,
         original_failure: RefCell::new(None),
     };
-    let shown = match mode {
+    let (shown, source) = match mode {
         ProjectConfigurationRead::Held => ready(project_config::held(&edge, project))
             .map_err(|error| failure(STORE_REFUSED, error))?
+            .map(|held| (held, ProjectConfigurationRead::Held))
             .ok_or_else(|| {
                 failure(
                     NOT_HELD,
                     "configuration is not held for this account and project",
                 )
             })?,
-        ProjectConfigurationRead::Refresh => ready(project_config::refresh(&edge, project))
-            .map_err(|error| {
-                if let Some(original) = edge
-                    .original_failure
-                    .borrow_mut()
-                    .take()
-                    .filter(|original| original.code() == error.code)
-                {
-                    return original;
+        ProjectConfigurationRead::Refresh | ProjectConfigurationRead::Acquire => ready(async {
+            if mode == ProjectConfigurationRead::Acquire {
+                if let Some(held) = project_config::held(&edge, project).await? {
+                    return Ok((held, ProjectConfigurationRead::Held));
                 }
-                if error.code == CONTEXT_CHANGED.code {
-                    return changed();
-                }
-                let declared = if error.code == STALE.code {
-                    STALE
-                } else if error.code == ANSWER_INVALID.code {
-                    ANSWER_INVALID
-                } else {
-                    STORE_REFUSED
-                };
-                failure(declared, error)
-            })?,
+            }
+            Ok((
+                project_config::refresh(&edge, project).await?,
+                ProjectConfigurationRead::Refresh,
+            ))
+        })
+        .map_err(|error| {
+            if let Some(original) = edge
+                .original_failure
+                .borrow_mut()
+                .take()
+                .filter(|original| original.code() == error.code)
+            {
+                return original;
+            }
+            if error.code == CONTEXT_CHANGED.code {
+                return changed();
+            }
+            let declared = if error.code == STALE.code {
+                STALE
+            } else if error.code == ANSWER_INVALID.code {
+                ANSWER_INVALID
+            } else {
+                STORE_REFUSED
+            };
+            failure(declared, error)
+        })?,
     };
     edge.current().map_err(|_| changed())?;
     let document: ProjectConfigurationDocument =
@@ -298,7 +351,7 @@ fn read_captured_at(
         project: project.into(),
         document,
         observation: ProjectConfigurationObservation {
-            source: mode,
+            source,
             saved_at_ms: shown.saved_at_ms,
         },
     })

@@ -14,6 +14,7 @@ use url::Url;
 pub mod browser;
 pub mod ui;
 pub mod ui_build;
+pub mod ui_page;
 
 pub const MODULE_RELEASE_SCHEMA: &str = "ds.module-release/v1";
 // The component catalog and engine build admission are shared with release
@@ -34,8 +35,12 @@ impl ModuleComponent {
     }
 }
 
+// Release catalogs are published by Brain independently of every installed
+// Core. Their DTOs accept members a newer publisher adds (owner 22 Oct; a
+// closed catalog once stranded every Desktop update on `releasedAt`); the
+// bounded pre-check below still bounds them, and every member read here stays
+// required and typed.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ModuleEngineIdentity {
     pub engine: String,
     pub release: String,
@@ -43,7 +48,6 @@ pub struct ModuleEngineIdentity {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ModuleReleaseAsset {
     pub platform: String,
     pub arch: String,
@@ -59,7 +63,6 @@ pub struct ModuleReleaseAsset {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ModuleRelease {
     pub schema: String,
     pub component: ModuleComponent,
@@ -111,17 +114,32 @@ fn release_folder(value: &str) -> bool {
             .is_match(value)
 }
 
-fn bounded_fields(value: &Value, allowed: &[&str], max_string: usize) -> bool {
+/// The most members a newer publisher may add to one catalog object.
+const MAX_ADDITIVE_MEMBERS: usize = 32;
+/// The longest name of an added member.
+const MAX_ADDITIVE_MEMBER_NAME: usize = 64;
+
+/// Known members keep their exact JSON types and bounds. A member a newer
+/// publisher adds is admitted while bounded (count, name and serialized size)
+/// and is never read, so it grants nothing.
+fn bounded_fields(value: &Value, known: &[&str], max_string: usize) -> bool {
     let Some(object) = value.as_object() else {
         return false;
     };
+    let mut additive = 0_usize;
     object.iter().all(|(key, value)| {
-        allowed.contains(&key.as_str())
-            && match key.as_str() {
-                "assets" | "source_revisions" | "engines" => true,
+        if known.contains(&key.as_str()) {
+            return match key.as_str() {
+                // Bounded by their own checks before this one is reached.
+                "assets" | "source_revisions" | "engines" | "build_manifest" => true,
                 "size_bytes" => value.is_i64(),
                 _ => value.as_str().is_some_and(|text| text.len() <= max_string),
-            }
+            };
+        }
+        additive += 1;
+        additive <= MAX_ADDITIVE_MEMBERS
+            && key.len() <= MAX_ADDITIVE_MEMBER_NAME
+            && serde_json::to_vec(value).is_ok_and(|bytes| bytes.len() <= max_string)
     })
 }
 
@@ -210,7 +228,7 @@ pub fn validate_module_release(
     if !bounded_shape(release) {
         return fail(
             "module_release_invalid",
-            "Module release is outside its closed bounded shape",
+            "Module release is outside its bounded shape",
         );
     }
     let release: ModuleRelease =

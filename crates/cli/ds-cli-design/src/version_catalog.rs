@@ -76,7 +76,7 @@ const fn descriptor(
         args,
         effect,
         contract: 1,
-        purpose: "LV version catalog separates immutable version/revision references from renumberable display ordinals. Legacy vN references retain their original snapshots. Publishing captures current saved transformer bytes as a new immutable revision; it never overwrites a prior snapshot. New insertion before a reviewed version shifts display labels only. This does not issue a PM submission or approve engineering. Every mutation requires exact catalog/source fences and explicit confirmation.",
+        purpose: "LV version catalog separates immutable version/revision references from renumberable display ordinals. Legacy vN references retain their original snapshots. Publishing captures current saved transformer bytes as a new immutable revision; it never overwrites a prior snapshot. Every mutation requires exact catalog/source fences and explicit confirmation.",
         chapter: Chapter::Design,
         authority: Authority::HeadlessProject,
         execution: Execution::Sync,
@@ -85,7 +85,7 @@ const fn descriptor(
         refusals: &[Refusal {
             code: "version_catalog_refused",
             when: "The server refuses catalog/source fences, occupied display ordinal, immutable identity or revision policy",
-            remedy: "Read the nested server cause, refresh the named catalog/head, and review before changing the request; retry only an identical uncertain mutation",
+            remedy: "Read the nested server cause, refresh the catalog/head, then change the request; retry only an identical uncertain mutation",
         }],
         reference: Some("docs/reference/design.md"),
         search: &["version catalog", "display ordinal", "insert version"],
@@ -172,11 +172,11 @@ pub static REVISION_BIND: Command = descriptor(
     "design.version.revision.bind",
     &["design", "version", "revision", "bind"],
     "Bind an immutable revision to a PM record or milestone (needs --yes).",
-    &[PROJECT, OBJECT, Arg::value("file", "<binding.json>", "Closed binding pins: version_id,revision_id,purpose,record_id/expected_record_revision,milestone_id,assets,expected_catalog_revision,expected_source_revision,reason,idempotency_key. Submission requires issued record and delivered assets; at most 32 asset pins.").required(), LANE],
+    &[PROJECT, OBJECT, Arg::value("file", "<binding.json>", "Closed binding pins: version_id,revision_id,purpose,record_id/expected_record_revision,milestone_id,assets,expected_catalog_revision,expected_source_revision,reason,idempotency_key. Submission needs an issued record and delivered assets; at most 32 asset pins.").required(), LANE],
     Effect::GlobalWrite,
 );
 pub static REVISION_PROMOTE: Command = Command {
-    purpose: "Promote an exact immutable runtime revision through Bulk. The server retains the current source as an immutable backup, records the tracked change and validates runtime identities before replacing Latest. Exported-design and metadata-only revisions refuse. Requires exact catalog/source fences and explicit confirmation; no caller content, implicit retry, submission or engineering approval.",
+    purpose: "Promote an exact immutable runtime revision through Bulk. The server keeps the current source as an immutable backup, records the tracked change and validates runtime identities before replacing Latest. Exported-design and metadata-only revisions refuse. Requires exact catalog/source fences and confirmation; no implicit retry.",
     output: "Verified exact target revision, immutable original-source backup, tracked change and new working source version/digest.",
     search: &["version promote", "immutable backup", "safe restore"],
     ..descriptor(

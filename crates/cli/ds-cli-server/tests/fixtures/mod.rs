@@ -1173,6 +1173,51 @@ impl LiveServer {
     }
 }
 
+impl LiveServer {
+    /// Stop this Server and start the shipped `ds core serve` again over the
+    /// SAME protected state directory — the same `store.sqlite` — exactly as
+    /// an operator restart or a machine reboot would. Nothing is copied.
+    pub fn restart(&mut self, workers: usize) {
+        self.stop();
+        let state = self.state.path().display().to_string();
+        let mut child = ds_command(
+            &self.config,
+            &[
+                "core",
+                "serve",
+                "--lane",
+                LANE,
+                "--state-dir",
+                &state,
+                "--workers",
+                &workers.to_string(),
+            ],
+        )
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the ds binary restarts");
+        let said = Arc::new(Mutex::new(String::new()));
+        for stream in [
+            child.stderr.take().map(Reading::Err),
+            child.stdout.take().map(Reading::Out),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let said = said.clone();
+            std::thread::spawn(move || stream.drain(&said));
+        }
+        self.child = child;
+        self.said = said;
+        assert!(
+            until(30, || self.said().contains("DS Core ready at")),
+            "the restarted Server never became ready. It said: {}",
+            self.said()
+        );
+    }
+}
+
 impl Drop for LiveServer {
     fn drop(&mut self) {
         self.stop();

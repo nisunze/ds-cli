@@ -28,13 +28,11 @@ pub static COMMAND: Command = Command {
     summary: "List one asset's versions, newest first.",
     purpose: "\
 The version history of one asset in the named project: each saved version \
-of a transformer design, a design attachment label or a grid model, newest \
-first, with its label, when and by whom it was made, its milestone and \
-reason, and which one is current. Read from the index ds-brain builds and \
-serves; the Assets page shows the same rows. Take the asset_id from `ds \
-assets list`, whose versions chip says how many there are; each version's \
-own asset_id feeds preview or read. An asset without versions answers an \
-empty list. Changes nothing. Headless.",
+of a transformer design, design attachment label or grid model, newest \
+first, with label, time, author, milestone, reason and which is current. \
+Read from the index ds-brain serves. Take the asset_id from `ds \
+assets list`; each version's own asset_id feeds preview or read. An asset \
+without versions answers an empty list. Changes nothing.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,

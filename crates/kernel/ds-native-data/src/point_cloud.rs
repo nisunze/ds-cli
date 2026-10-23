@@ -1398,7 +1398,7 @@ mod tests {
     fn heap_owned_completed_evidence_keeps_the_exact_receiver_wire() {
         let evidence = NativePointCloudEvidence {
             task: TASK,
-            execution_host: context.execution_host(),
+            execution_host: "desktop",
             sampling: "grid".into(),
             output_path: "/data/α.geojson".into(),
             output_bytes: 4096,

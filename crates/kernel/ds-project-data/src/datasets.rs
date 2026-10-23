@@ -2,9 +2,10 @@
 //! source is held as.
 //!
 //! The kernel's room address is a digest of the dataset document, so these
-//! documents are byte-for-byte the desktop's (`project-data/buildings.ts`,
-//! `project-data/global-reference.ts`): the same account on the same machine
-//! reads and writes the same rooms whichever host is running.
+//! documents stay byte-for-byte what earlier hosts wrote: the same account on
+//! the same machine keeps reading and writing the same rooms whichever host is
+//! running, and holdings seeded before the shared revisions existed keep
+//! their address.
 
 use ds_command_kernel::project_dataset_cache::{
     Dataset, Quality, BUILDINGS_DATASET_ID, CONTOURS_DATASET_ID, REFERENCE_CACHE_PROVIDER,
@@ -14,9 +15,11 @@ use std::collections::BTreeMap;
 
 use crate::catalog::ReferenceResource;
 
-/// Legacy room identity, retained so existing holdings keep their address.
-/// New derived acquisitions require explicitly pinned local source inputs.
-pub const BRAIN_PRINT_CONTEXT_PROVIDER: &str = "ds-brain:query_print_context";
+/// The room address token building footprints and contours have been held
+/// under since they were first seeded. It names no door and grants nothing:
+/// the shared project revisions ([`crate::revisions`]) and Core's own
+/// publisher or surface acquisition fill these rooms. Brain computes neither.
+pub const PRINT_CONTEXT_ROOM_PROVIDER: &str = "ds-brain:query_print_context";
 
 /// Authored contour intervals, as the layout's context source carries them.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,24 +40,24 @@ fn dataset(id: &str, provider: &str, parameters: BTreeMap<String, Value>) -> Dat
     }
 }
 
-/// Building footprints through ds-brain's `query_print_context`. Only the
-/// closed semantic kind travels; provider thresholds stay server-owned and
-/// arrive inside the source receipt.
+/// Building footprints, seeded once per project: published revisions first,
+/// then Google Open Buildings tiles for what nobody has published.
 pub fn buildings_dataset() -> Dataset {
     dataset(
         BUILDINGS_DATASET_ID,
-        BRAIN_PRINT_CONTEXT_PROVIDER,
+        PRINT_CONTEXT_ROOM_PROVIDER,
         BTreeMap::from([("context_kind".to_owned(), json!(BUILDINGS_DATASET_ID))]),
     )
 }
 
-/// Elevation contours through the same door. The authored intervals are part
-/// of the room address: two templates asking for different intervals hold two
-/// rooms rather than one room answering both with the wrong lines.
+/// Elevation contours, seeded the same way from the project's surface. The
+/// authored intervals are part of the room address and of the shared head:
+/// two templates asking for different intervals hold two chains rather than
+/// one answering both with the wrong lines.
 pub fn contours_dataset(settings: ContourSettings) -> Dataset {
     dataset(
         CONTOURS_DATASET_ID,
-        BRAIN_PRINT_CONTEXT_PROVIDER,
+        PRINT_CONTEXT_ROOM_PROVIDER,
         BTreeMap::from([
             ("context_kind".to_owned(), json!(CONTOURS_DATASET_ID)),
             (
@@ -71,6 +74,24 @@ pub fn contours_dataset(settings: ContourSettings) -> Dataset {
             ),
         ]),
     )
+}
+
+/// The contour settings a contours dataset document carries.
+pub fn contour_settings(dataset: &Dataset) -> Option<ContourSettings> {
+    if dataset.id != CONTOURS_DATASET_ID {
+        return None;
+    }
+    let number = |key: &str| dataset.parameters.get(key).and_then(Value::as_f64);
+    let interval = |key: &str| {
+        number(key)
+            .filter(|value| value.fract() == 0.0 && (1.0..=1000.0).contains(value))
+            .map(|value| value as u16)
+    };
+    Some(ContourSettings {
+        minor_interval_m: interval("minor_interval_m")?,
+        index_interval_m: interval("index_interval_m")?,
+        sample_spacing_m: number("sample_spacing_m")?,
+    })
 }
 
 /// A project subset of one complete national reference resource, extracted
@@ -94,17 +115,5 @@ pub fn at_version(dataset: &Dataset, source_version: &str) -> Dataset {
     Dataset {
         source_version: source_version.to_owned(),
         ..dataset.clone()
-    }
-}
-
-/// A host must not turn a missing local computed context into a Brain compute
-/// call. Keep the selected source and authored contour parameters explicit.
-pub fn local_resource_need(dataset: &Dataset) -> Option<crate::Failure> {
-    match dataset.id.as_str() {
-        BUILDINGS_DATASET_ID => Some(crate::Failure::LocalResourceRequired(format!(
-            "Google Open Buildings needs a pinned local Google publisher input or analytical source for version {:?}; explicitly supply it, or select Microsoft as a separate source", dataset.source_version))),
-        CONTOURS_DATASET_ID => Some(crate::Failure::LocalResourceRequired(format!(
-            "elevation contours need an explicitly selected local Rwanda DEM or Terrarium producer and exact surface revision/datum; authored parameters {} and version {:?} are preserved; local contour production is not yet admitted", serde_json::to_string(&dataset.parameters).unwrap_or_default(),dataset.source_version))),
-        _ => None,
     }
 }

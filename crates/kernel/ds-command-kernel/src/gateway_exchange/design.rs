@@ -82,10 +82,24 @@ pub fn admit_project_configuration_save(
 pub enum ProjectConfigurationRead {
     Held,
     Refresh,
+    /// Held-first: the held document answers at once and offline; only a
+    /// project with nothing held performs the one explicit configuration read.
+    Acquire,
 }
 
 impl ProjectConfigurationRead {
-    pub const NAMES: &'static [&'static str] = &["held", "refresh"];
+    pub const NAMES: &'static [&'static str] = &["held", "refresh", "acquire"];
+
+    /// Whether `source` may describe a document this read mode returned. An
+    /// observation names what produced the document (held SQLite or one
+    /// fresh read), never the request mode `acquire`.
+    pub fn admits_source(self, source: ProjectConfigurationRead) -> bool {
+        match (self, source) {
+            (_, Self::Acquire) => false,
+            (Self::Acquire, _) => true,
+            (read, source) => read == source,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema, PartialEq, Eq)]
@@ -132,7 +146,7 @@ fn admit_config_context(
 ) -> Result<(), Refusal> {
     project_reference(project)?;
     if actual != project
-        || observation.source != read
+        || !read.admits_source(observation.source)
         || observation.saved_at_ms > MAX_SAFE_OBSERVATION_MS
     {
         return Err(config_receipt_invalid());

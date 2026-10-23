@@ -31,9 +31,23 @@ fn historical_preflight_without_network_evidence_roundtrips_identical_bytes() {
     assert!(historical.valid());
     assert!(historical.network_engineering.is_empty());
     assert_eq!(serde_json::to_vec(&historical).unwrap(), HISTORICAL);
+    // Owner 22 Oct: a newer Reporter's additive member is accepted (this used
+    // to be a refusal). Core reads the same facts and never re-emits an
+    // unvalidated member: the typed record still serializes to these bytes.
     let mut extra: Value = serde_json::from_slice(HISTORICAL).unwrap();
     extra["unknown_preflight_field"] = json!(true);
-    assert!(serde_json::from_value::<EngineeringPreflight>(extra).is_err());
+    extra["source_layers"] = json!([]);
+    let newer: EngineeringPreflight = serde_json::from_value(extra).unwrap();
+    assert!(newer.valid());
+    assert_eq!(newer, historical);
+    assert_eq!(serde_json::to_vec(&newer).unwrap(), HISTORICAL);
+    // A missing required member or a wrong type still refuses.
+    let mut missing: Value = serde_json::from_slice(HISTORICAL).unwrap();
+    missing.as_object_mut().unwrap().remove("blockers");
+    assert!(serde_json::from_value::<EngineeringPreflight>(missing).is_err());
+    let mut wrong: Value = serde_json::from_slice(HISTORICAL).unwrap();
+    wrong["findings"] = json!({});
+    assert!(serde_json::from_value::<EngineeringPreflight>(wrong).is_err());
 }
 
 #[test]

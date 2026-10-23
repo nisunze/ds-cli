@@ -16,6 +16,14 @@
 //! `capabilityRun` WASM exports. ds-cli's coverage test holds the table to
 //! Core's command registry, so no Core command ships without a decision for
 //! every platform.
+//!
+//! A row the page runs in-page names its one typed owner, the Kernel export
+//! the page calls ([`Capability::export`]). An export that serves several
+//! rows admits each request through [`admit_export`], so it runs only what a
+//! row declares for this platform. The Desktop's Core door admits through
+//! [`core_door`]: an id this build's table lacks still reaches installed
+//! Core when Core itself declares it, because Core and this Kernel are
+//! released independently.
 
 use serde::Serialize;
 
@@ -26,6 +34,10 @@ pub const SCHEMA: &str = "ds.capability-route/v1";
 pub const CODE_PENDING: &str = "capability_pending";
 pub const CODE_DISCARDED: &str = "capability_discarded";
 pub const CODE_UNKNOWN: &str = "capability_unknown";
+/// A request names a capability whose row binds another export, or none.
+pub const CODE_EXPORT_MISMATCH: &str = "capability_export_mismatch";
+/// A capability this platform runs elsewhere than in the page.
+pub const CODE_NOT_IN_PAGE: &str = "capability_not_in_page";
 
 /// Who runs a supported capability.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -136,6 +148,9 @@ pub struct Capability {
     pub id: &'static str,
     routes: [u8; PLATFORMS.len()],
     pub run: Option<Run>,
+    /// The wasm-bindgen JS name the page calls to run this capability
+    /// in-page: present exactly when some platform runs it on the Kernel.
+    pub export: Option<&'static str>,
 }
 
 impl Capability {
@@ -152,6 +167,20 @@ impl Capability {
 }
 
 include!(concat!(env!("OUT_DIR"), "/capabilities_table.rs"));
+
+/// The executors a declared platform has.
+pub fn executors_on(platform: &str) -> Option<&'static [Executor]> {
+    let index = PLATFORMS.iter().position(|known| *known == platform)?;
+    Some(EXECUTORS[index])
+}
+
+/// Whether the platform is a page beside installed Core: it runs both the
+/// in-page Kernel and Core (the Desktop).
+pub fn beside_core(platform: &str) -> bool {
+    executors_on(platform).is_some_and(|executors| {
+        executors.contains(&Executor::Core) && executors.contains(&Executor::Kernel)
+    })
+}
 
 /// The compiled capability, or the typed refusal for an id Core does not have.
 pub fn capability(id: &str) -> Result<&'static Capability, String> {
@@ -172,6 +201,9 @@ pub struct RouteAnswer {
     pub executor: Option<Executor>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exchange: Option<&'static str>,
+    /// The Kernel export the page calls to run it in-page here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub export: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub page_lanes: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -180,24 +212,153 @@ pub struct RouteAnswer {
 
 /// How this build serves `id`.
 pub fn route(id: &str) -> Result<RouteAnswer, String> {
+    route_on(PLATFORM, id)
+}
+
+/// How a build for `platform` serves `id`.
+pub fn route_on(platform: &str, id: &str) -> Result<RouteAnswer, String> {
     let capability = capability(id)?;
-    let route = capability.route();
+    let index = PLATFORMS
+        .iter()
+        .position(|known| *known == platform)
+        .ok_or_else(|| format!("{CODE_UNKNOWN}: no platform `{platform}` is declared"))?;
+    let route = ROUTES[usize::from(capability.routes[index])];
     let (executor, exchange) = match route {
         Route::Supported { executor, exchange } => (Some(executor), exchange),
         _ => (None, None),
     };
+    let in_page = match executor {
+        Some(Executor::Kernel | Executor::NetworkUnit) => true,
+        Some(Executor::Core) => beside_core(platform),
+        _ => false,
+    };
     Ok(RouteAnswer {
         schema: SCHEMA,
         capability: capability.id,
-        platform: PLATFORM,
+        platform: PLATFORMS[index],
         status: route.status(),
         executor,
         exchange,
+        export: capability.export.filter(|_| in_page),
         page_lanes: (executor == Some(Executor::Core))
             .then(|| capability.run.and_then(|run| run.page_lanes))
             .flatten(),
         refusal: route.refusal(),
     })
+}
+
+/// Why an in-page run of a capability is not admitted.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unadmitted {
+    pub code: &'static str,
+    pub message: String,
+}
+
+/// Admit one in-page run of `id` through the Kernel export `export`, which
+/// runs the gateway exchange `exchange`, on this build's platform. An export
+/// that serves several rows calls this for each request, so it runs only what
+/// a row declares: the row must name this export as its owner and be
+/// supported here, by this exchange on the Kernel, or on Core beside the page
+/// (the Desktop page runs Core rows in-page through the same owner too).
+pub fn admit_export(id: &str, export: &str, exchange: &str) -> Result<&'static Capability, Unadmitted> {
+    admit_export_on(PLATFORM, id, export, exchange)
+}
+
+/// [`admit_export`] for a build serving `platform`.
+pub fn admit_export_on(
+    platform: &str,
+    id: &str,
+    export: &str,
+    exchange: &str,
+) -> Result<&'static Capability, Unadmitted> {
+    let capability = capability(id).map_err(|text| Unadmitted {
+        code: CODE_UNKNOWN,
+        message: text
+            .split_once(": ")
+            .map_or(text.clone(), |(_, message)| message.to_owned()),
+    })?;
+    if capability.export != Some(export) {
+        return Err(Unadmitted {
+            code: CODE_EXPORT_MISMATCH,
+            message: match capability.export {
+                Some(owner) => format!("`{id}` runs in the page through `{owner}`, not `{export}`."),
+                None => format!("`{id}` does not run in the page, so `{export}` cannot run it."),
+            },
+        });
+    }
+    let route = capability.route_on(platform).ok_or_else(|| Unadmitted {
+        code: CODE_UNKNOWN,
+        message: format!("No platform `{platform}` is declared."),
+    })?;
+    match route {
+        Route::Supported {
+            executor: Executor::Kernel,
+            exchange: Some(owner),
+        } if owner == exchange => Ok(capability),
+        Route::Supported {
+            executor: Executor::Core,
+            ..
+        } if beside_core(platform) => Ok(capability),
+        Route::Supported { executor, exchange: owner } => Err(Unadmitted {
+            code: CODE_NOT_IN_PAGE,
+            message: match (executor, owner) {
+                (Executor::Kernel, Some(owner)) => format!(
+                    "`{id}` runs through the Kernel's `{owner}` exchange on {platform}, not `{exchange}`."
+                ),
+                _ => format!("`{id}` runs on {executor:?} on {platform}, not in the page."),
+            },
+        }),
+        refused => {
+            let refusal = refused.refusal().expect("a refused route has its refusal");
+            Err(Unadmitted {
+                code: refusal.code,
+                message: refusal.message.to_owned(),
+            })
+        }
+    }
+}
+
+/// How a Core door answers a command before Core is asked.
+#[derive(Clone, Copy, Debug)]
+pub enum CoreDoor {
+    /// This build's manifest runs it on Core.
+    Declared(&'static Capability),
+    /// This build's manifest does not know it, and the page sits beside
+    /// installed Core: Core's own discovery decides, and Core authorizes and
+    /// validates the run. The door forwards only what Core declares.
+    Installed,
+}
+
+/// The Core door's admission on this build: [`on_core`] for every id the
+/// manifest knows; an id it lacks is left to installed Core's own discovery
+/// where the page runs beside Core, and refused everywhere else.
+pub fn core_door(id: &str) -> Result<CoreDoor, String> {
+    core_door_on(PLATFORM, id)
+}
+
+/// [`core_door`] for a build serving `platform`.
+pub fn core_door_on(platform: &str, id: &str) -> Result<CoreDoor, String> {
+    let Ok(capability) = capability(id) else {
+        return if beside_core(platform) {
+            Ok(CoreDoor::Installed)
+        } else {
+            Err(format!("{CODE_UNKNOWN}: DS Core has no command `{id}`"))
+        };
+    };
+    match capability.route_on(platform) {
+        Some(Route::Supported {
+            executor: Executor::Core,
+            ..
+        }) => Ok(CoreDoor::Declared(capability)),
+        Some(Route::Supported { executor, .. }) => Err(format!(
+            "capability_not_on_core: `{id}` runs on {executor:?} on {platform}, not on DS Core"
+        )),
+        Some(route) => {
+            let refusal = route.refusal().expect("a refused route has its refusal");
+            Err(format!("{}: {}", refusal.code, refusal.message))
+        }
+        None => Err(format!("{CODE_UNKNOWN}: no platform `{platform}` is declared")),
+    }
 }
 
 /// The capability, when this build runs it on installed Core; otherwise its
@@ -421,7 +582,7 @@ export interface CapabilityFailure {
     pub(crate) async fn run_captured_lv(
         host: &CapabilityHost,
         captured: &crate::design_lv::CapturedLvProcess,
-    ) -> Result<ds_network_contracts::lv::LvProcessBatchOutput, JsValue> {
+    ) -> Result<crate::design_lv::LvProcessRun, JsValue> {
         let capability =
             super::on_core(crate::design_lv::COMMAND).map_err(|text| refused(&text))?;
         let batch: ds_network_contracts::lv::LvProcessBatchInput =
@@ -441,12 +602,12 @@ export interface CapabilityFailure {
             )
         })?;
         captured
-            .decode_core_response(value)
+            .decode_core_run(value)
             .map_err(crate::design_lv::browser::failure)
     }
 
     /// This build's answer for `capability`.
-    #[wasm_bindgen(js_name = capabilityRoute, unchecked_return_type = "{ schema: string; capability: string; platform: string; status: 'supported' | 'pending' | 'discarded'; executor?: 'core' | 'kernel' | 'network_unit'; exchange?: string; page_lanes?: number; refusal?: { code: 'capability_pending' | 'capability_discarded'; reason: string; message: string } }")]
+    #[wasm_bindgen(js_name = capabilityRoute, unchecked_return_type = "{ schema: string; capability: string; platform: string; status: 'supported' | 'pending' | 'discarded'; executor?: 'core' | 'kernel' | 'network_unit'; exchange?: string; export?: keyof CapabilityExports; page_lanes?: number; refusal?: { code: 'capability_pending' | 'capability_discarded'; reason: string; message: string } }")]
     pub fn capability_route(
         #[wasm_bindgen(unchecked_param_type = "CapabilityId")] capability: String,
     ) -> Result<JsValue, JsValue> {
@@ -572,6 +733,26 @@ export interface CapabilityFailure {
         }
     }
 
+    /// Admission of a fixed application request against the installed Core's
+    /// descriptor: an input or choice that Core does not declare answers
+    /// `core_update_required` before anything is sent.
+    #[wasm_bindgen(js_name = capabilityCoreRequestAdmission, unchecked_return_type = "CapabilityFailure | null")]
+    pub fn capability_core_request_admission(
+        id: String,
+        descriptor: JsValue,
+        args: JsValue,
+        project: String,
+    ) -> Result<JsValue, JsValue> {
+        let descriptor: serde_json::Value = tsify::serde_wasm_bindgen::from_value(descriptor)
+            .map_err(|error| refusal("capability_input_invalid", &error.to_string()))?;
+        let args: serde_json::Value = tsify::serde_wasm_bindgen::from_value(args)
+            .map_err(|error| refusal("capability_input_invalid", &error.to_string()))?;
+        match super::command::admit_request(&id, &descriptor, &args, &project) {
+            Some(refusal) => crate::gateway_exchange::browser::typed(&refusal),
+            None => Ok(JsValue::NULL),
+        }
+    }
+
     /// Bind a native/JS transport rejection to the shared failure vocabulary.
     #[wasm_bindgen(js_name = capabilityFailure, unchecked_return_type = "CapabilityFailure")]
     pub fn capability_failure(
@@ -594,3 +775,19 @@ export interface CapabilityFailure {
 #[cfg(test)]
 #[path = "capabilities_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "capabilities_admission_tests.rs"]
+mod admission_tests;
+
+#[cfg(test)]
+#[path = "capability_dispatch_tests.rs"]
+mod dispatch_tests;
+
+#[cfg(test)]
+#[path = "capabilities_owners_tests.rs"]
+mod owners_tests;
+
+#[cfg(test)]
+#[path = "capabilities_operations_tests.rs"]
+mod operations_tests;

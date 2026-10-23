@@ -12,8 +12,8 @@ use std::{io::Read, path::Path};
 
 pub(super) const MISSING: Refusal = Refusal {
     code: "lv_analysis_missing",
-    when: "the local hold has no exact saved voltage-drop analysis for the transformer; project-run saves it on the server, not in the hold",
-    remedy: "hold it first: run report project export --project <id> --transformer <name> --selection <voltage_drop_pdf selection> --dry-run --out-dir <dir> (publishes nothing), then repeat the preview; or pass a captured --held-preview",
+    when: "the local hold has no exact saved voltage-drop analysis for the transformer",
+    remedy: "hold it first: report project export --project <id> --transformer <name> --selection <voltage_drop_pdf selection> --dry-run --out-dir <dir>, then repeat; or pass a captured --held-preview",
 };
 pub(super) const STALE: Refusal = Refusal {
     code: "lv_analysis_stale",

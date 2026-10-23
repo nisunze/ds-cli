@@ -63,12 +63,66 @@ impl MessagingEndpoint {
     }
 }
 
+/// The export the page calls, and the exchange it runs, for
+/// [`crate::capabilities::admit_export`].
+pub const EXPORT: &str = "messagingCommand";
+pub const EXCHANGE: &str = "messaging";
+
+/// The capability one action of one route performs: every action Brain
+/// serves names exactly one manifest row.
+pub fn capability(endpoint: MessagingEndpoint, action: &str) -> Option<&'static str> {
+    Some(match (endpoint, action) {
+        (MessagingEndpoint::Commands, "config") => "messaging.config",
+        (MessagingEndpoint::Commands, "search_people" | "search_project_people" | "list_contacts") => {
+            "messaging.people"
+        }
+        (MessagingEndpoint::Commands, "list_conversations") => "messaging.conversations",
+        (MessagingEndpoint::Commands, "resolve_direct") => "messaging.direct",
+        (MessagingEndpoint::Commands, "resolve_project") => "messaging.project",
+        (MessagingEndpoint::Commands, "resolve_notifications") => "messaging.personal",
+        (MessagingEndpoint::Commands, "list_messages" | "list_members" | "advance_delivered") => {
+            "messaging.read"
+        }
+        (MessagingEndpoint::Commands, "send_message") => "messaging.send",
+        (MessagingEndpoint::Commands, "advance_read") => "messaging.mark-read",
+        (MessagingEndpoint::Commands, "set_preferences") => "messaging.preferences.set",
+        (MessagingEndpoint::Commands, "register_installation") => "messaging.installation.register",
+        (MessagingEndpoint::Commands, "revoke_installation") => "messaging.installation.revoke",
+        (MessagingEndpoint::Commands, "list_installations") => "messaging.installations",
+        (MessagingEndpoint::Attachments, "start" | "finalize") => "messaging.attachment.upload",
+        (MessagingEndpoint::Attachments, "download") => "messaging.read",
+        _ => return None,
+    })
+}
+
 /// One messaging command.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Messaging {
     pub endpoint: MessagingEndpoint,
     pub payload: Map<String, Value>,
     pub timeout_ms: Option<u64>,
+}
+
+impl Messaging {
+    /// Admit this command from the page: its capability's row must name
+    /// [`EXPORT`] and be supported on this build's platform.
+    pub fn admit_in_page(&self, platform: &str) -> Result<&'static str, Refusal> {
+        let action = self
+            .payload
+            .get("action")
+            .and_then(Value::as_str)
+            .map(|action| action.trim().to_ascii_lowercase())
+            .unwrap_or_default();
+        let id = capability(self.endpoint, &action).ok_or_else(|| {
+            Refusal::new(
+                INPUT_INVALID,
+                format!("`{action}` is not a messaging action of this route."),
+            )
+        })?;
+        crate::capabilities::admit_export_on(platform, id, EXPORT, EXCHANGE)
+            .map(|capability| capability.id)
+            .map_err(|refused| Refusal::new(refused.code, refused.message))
+    }
 }
 
 impl Exchange for Messaging {
@@ -234,6 +288,8 @@ mod exports {
             payload,
             timeout_ms: timeout_ms.map(u64::from),
         };
+        call.admit_in_page(crate::capabilities::PLATFORM)
+            .map_err(|refusal| crate::gateway_exchange::browser::rejection(&refusal))?;
         typed(&run(&host, call).await?)
     }
     /// The signed-in account's messaging cache, at once and offline.

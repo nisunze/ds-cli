@@ -96,16 +96,15 @@ pub use context::{
 pub use ds_client_core::WeakNetwork;
 pub use ds_client_core::{
     ArchiveGroups, CompoundedArchive, CompoundedArchiveCatalog, CompoundedArchiveLayout,
-    CompoundedReportReceipt, CompoundedReportRequest, CompoundedReportStatus, ExportReportOutcome,
-    ExportReportResult, ExportReportsReceipt, LayerOrder, LayerOrderReceipt, LayerSnapshot,
-    LayerVisibilityDefault, LayerVisibilityDefaultReceipt, PROJECT_REPORT_MAX_REASON_CHARS,
-    PROJECT_REPORT_MAX_TRANSFORMER_CHARS, PROJECT_REPORT_MAX_TRANSFORMERS, ReportFileLevel,
-    RetirementAction, RetirementBackup, RetirementReceipt, RetirementRecord, RetirementRefusal,
-    RetirementRequest, RetirementResult, StyleEditReceipt, StyleInstruction, StyleSnapshot,
-    TileCatalog, TileMutation, TileOperationResult, TileOperationStatus, TilePreflight,
-    TilePreflightLayer, TilePreflightStatus, TileScope, TileType, TransformerInventory,
-    TransformerInventoryRow, TransformerKind, TransformerLifecycle, TransformerSet,
-    TransformerStatusList, TransformerStatusRow,
+    LayerOrder, LayerOrderReceipt, LayerSnapshot, LayerVisibilityDefault,
+    LayerVisibilityDefaultReceipt, PROJECT_REPORT_MAX_REASON_CHARS,
+    PROJECT_REPORT_MAX_TRANSFORMER_CHARS, PROJECT_REPORT_MAX_TRANSFORMERS, RetirementAction,
+    RetirementBackup, RetirementReceipt, RetirementRecord, RetirementRefusal, RetirementRequest,
+    RetirementResult, StyleEditReceipt, StyleInstruction, StyleSnapshot, TileCatalog, TileMutation,
+    TileOperationResult, TileOperationStatus, TilePreflight, TilePreflightLayer,
+    TilePreflightStatus, TileScope, TileType, TransformerInventory, TransformerInventoryRow,
+    TransformerKind, TransformerLifecycle, TransformerSet, TransformerStatusList,
+    TransformerStatusRow,
 };
 pub use ds_client_core::{
     BundleDownloadReceipt, ContourParameters, DataDistributionRequest, MediaGrant, MediaGrants,
@@ -517,8 +516,8 @@ const TEMPLATE_FLAG_ALONE_REFUSAL: Refusal = Refusal {
 
 pub(crate) const PROFILE_REFUSAL: Refusal = Refusal {
     code: "native_profile_not_configured",
-    when: "this build lacks its exact digest-pinned two-lane native client catalog",
-    remedy: "install one complete ds release containing ds-client-profiles/catalog.json",
+    when: "this build lacks its digest-pinned native client catalog",
+    remedy: "install one complete ds release",
 };
 pub(crate) const STATE_REFUSAL: Refusal = Refusal {
     code: "native_state_unsafe",
@@ -532,8 +531,8 @@ const PROFILE_DIGEST_REFUSAL: Refusal = Refusal {
 };
 const PROFILE_UNSAFE_REFUSAL: Refusal = Refusal {
     code: "native_profile_unsafe",
-    when: "the packaged catalog is unsafe or malformed, or the explicit local Go selection is invalid for this executable",
-    remedy: "unset DS_NATIVE_LOCAL_GO, or reinstall one complete ds release if the catalog is unsafe",
+    when: "the packaged catalog is unsafe or malformed, or the local Go selection is invalid",
+    remedy: "unset DS_NATIVE_LOCAL_GO, or reinstall one complete ds release",
 };
 const STATE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
     code: "native_state_unavailable",
@@ -542,8 +541,8 @@ const STATE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
 };
 const STATE_PROTECTION_REFUSAL: Refusal = Refusal {
     code: "native_state_protection_unavailable",
-    when: "the protected-state adapter cannot initialize in this execution context; a missing adapter is not established",
-    remedy: "retry in a normal shell for the same OS user, or a connected MCP with the same build, lane and DS account; if that works, fix the restricted context, else inspect the state error before repair",
+    when: "the protected-state adapter cannot initialize in this execution context",
+    remedy: "retry in a normal shell as the same OS user; if that works, fix the restricted context, else inspect the state error",
 };
 const STATE_ROOT_REFUSAL: Refusal = Refusal {
     code: "native_state_root_invalid",
@@ -973,7 +972,7 @@ pub static PROJECT_CREATE_COMMAND: Command = Command {
     contract: 1,
     chapter: Chapter::Project,
     summary: "Create one project, blank or from a template project.",
-    purpose: "Creates a project on the lane under the signed-in account. The id slug is derived from the display name exactly as the Projects page derives it; every other property is optional and, when absent, is the server's default. With --from-template it starts from a template project instead: ds-command-kernel plans the creation over the template's country, client, network and styling templates and settings, then copies every stored configuration sheet, every printing setup with its logos, every active transformer with the MV design document and every live DS Grid model through the existing doors; computed results, survey data, members, project records and Solar never travel. --dry-run returns the plan and writes nothing; a source outside the template state is planned but never applied. Needs project.create, then each door's own capability. It selects nothing.",
+    purpose: "Creates a project on the lane under the signed-in account. The id slug derives from the display name as on the Projects page; other properties default on the server. With --from-template it starts from a template project instead: ds-command-kernel plans the creation over the template's country, client, network and styling templates and settings, then copies every stored configuration sheet, every printing setup with its logos, every active transformer with the MV design document and every live DS Grid model through the existing doors; computed results, survey data, members, project records and Solar never travel. --dry-run returns the plan and writes nothing; a source outside the template state is planned, never applied. Needs project.create, then each door's own capability. It selects nothing.",
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessUser,
     execution: Execution::Sync,
@@ -1992,17 +1991,21 @@ pub use ds_client_core::StatusUploadDomain;
 /// machine, for the project the caller named. The project is bounded once and
 /// stays fixed for every upload and process effect in the job; the saved
 /// selection is never read.
+/// Upload each file to the project's governed intake storage, then run the
+/// caller's edge processing step for it. ds-brain receives the bytes only;
+/// `process(file_index, blob_path)` computes on this machine.
 pub fn status_upload(
     lane_value: &str,
     project: &str,
     paths: &[String],
     mode: StatusUploadDomain,
     settings: &serde_json::Map<String, Value>,
+    process: &mut dyn FnMut(usize, Option<&str>) -> Result<Value, Failure>,
 ) -> Result<Value, Failure> {
     let lane = Lane::parse(lane_value)?;
     let project = bounded_named_project(project)?;
     let mut result = if let Some(mut device) = restored_device_session(lane)? {
-        drive_status_upload(&project, paths, mode, settings, |command| {
+        drive_status_upload(&project, paths, mode, settings, process, |command| {
             device
                 .status_processing(&project, command)
                 .map(|receipt| receipt.data().clone())
@@ -2013,7 +2016,7 @@ pub fn status_upload(
         let store = NativeRefreshStore::open()?;
         let mut client = Client::new(profile, NativeTransport, store);
         require_restore_before_context(&mut client)?;
-        drive_status_upload(&project, paths, mode, settings, |command| {
+        drive_status_upload(&project, paths, mode, settings, process, |command| {
             client
                 .status_processing(&project, command, now())
                 .map(|receipt| receipt.data().clone())
@@ -2046,6 +2049,7 @@ fn drive_status_upload<F>(
     paths: &[String],
     mode: StatusUploadDomain,
     settings: &serde_json::Map<String, Value>,
+    process: &mut dyn FnMut(usize, Option<&str>) -> Result<Value, Failure>,
     mut execute: F,
 ) -> Result<Value, Failure>
 where
@@ -2166,27 +2170,10 @@ where
                     .ok_or_else(|| {
                         status_upload_failure("Upload kernel emitted an invalid process file list.")
                     })?;
-                let name = files[0]["file_name"].as_str().ok_or_else(|| {
-                    status_upload_failure("Upload kernel omitted the process file name.")
-                })?;
-                let path = files[0]["file_path"].as_str().ok_or_else(|| {
-                    status_upload_failure("Upload kernel omitted the process blob path.")
-                })?;
-                let action = status_upload_domain(effect["action"].as_str().unwrap_or(""))?;
-                let chain: Vec<String> =
-                    serde_json::from_value(effect["chain"].clone()).map_err(|_| {
-                        status_upload_failure("Upload kernel emitted an invalid process chain.")
-                    })?;
-                let extra = effect["extra"].as_object().ok_or_else(|| {
-                    status_upload_failure("Upload kernel emitted invalid process settings.")
-                })?;
-                execute(ds_client_core::StatusProcessingCommand::Process {
-                    action,
-                    file_name: name,
-                    blob_path: path,
-                    chain: &chain,
-                    extra,
-                })
+                status_upload_domain(effect["action"].as_str().unwrap_or(""))?;
+                // The processing step runs on this machine over the local
+                // source; ds-brain only received the uploaded bytes.
+                process(index, files[0]["file_path"].as_str())
             })();
             match outcome {
                 Ok(receipt) => json!({
@@ -2867,12 +2854,16 @@ pub fn feeder_configuration_receipt(
                 maximum,
             },
         );
-    headless_named_report(
+    let report = headless_named_report(
         lane,
         project,
         |device, project| device.feeder_configuration(project, change.as_ref()),
         |client, project| client.feeder_configuration(project, change.as_ref(), now()),
-    )
+    )?;
+    if change.is_some() {
+        config_document::forget(lane, project)?;
+    }
+    Ok(report)
 }
 
 /// Read print settings for a caller-named project. No selected-project state
@@ -2905,12 +2896,16 @@ pub fn settings_configuration_receipt(
     project: &str,
     change: ds_client_core::ProjectConfigurationChange,
 ) -> Result<HeadlessProjectReport<ds_client_core::FeederConfiguration>, Failure> {
-    headless_named_report(
+    let report = headless_named_report(
         lane,
         project,
         |device, project| device.feeder_configuration(project, Some(&change)),
         |client, project| client.feeder_configuration(project, Some(&change), now()),
-    )
+    )?;
+    if !matches!(change, ds_client_core::ProjectConfigurationChange::ReadSettings) {
+        config_document::forget(lane, project)?;
+    }
+    Ok(report)
 }
 
 pub fn ensure_meter_type(
@@ -2919,13 +2914,14 @@ pub fn ensure_meter_type(
     name: &str,
 ) -> Result<ds_client_core::FeederConfiguration, Failure> {
     let change = ds_client_core::ProjectConfigurationChange::EnsureMeterType { name: name.into() };
-    headless_named_report(
+    let receipt = headless_named_report(
         lane,
         project,
         |device, project| device.feeder_configuration(project, Some(&change)),
         |client, project| client.feeder_configuration(project, Some(&change), now()),
-    )
-    .map(|receipt| receipt.result)
+    )?;
+    config_document::forget(lane, project)?;
+    Ok(receipt.result)
 }
 
 /// Select the canonical MV printing setup behind the settings read's exact base.
@@ -2951,13 +2947,14 @@ pub fn design_output_rows_for_project(
     rows: Vec<serde_json::Value>,
 ) -> Result<ds_client_core::FeederConfiguration, Failure> {
     let change = ds_client_core::ProjectConfigurationChange::DesignOutputs { rows };
-    headless_named_project(
+    let named = headless_named_project(
         lane,
         project,
         |device, project| device.feeder_configuration(project, Some(&change)),
         |client, project| client.feeder_configuration(project, Some(&change), now()),
-    )
-    .map(HeadlessNamedProject::into_result)
+    )?;
+    config_document::forget(lane, project)?;
+    Ok(named.into_result())
 }
 
 pub fn customer_category_alias(
@@ -2970,13 +2967,14 @@ pub fn customer_category_alias(
         alias: alias.into(),
         category: category.into(),
     };
-    headless_named_report(
+    let receipt = headless_named_report(
         lane,
         project,
         |device, project| device.feeder_configuration(project, Some(&change)),
         |client, project| client.feeder_configuration(project, Some(&change), now()),
-    )
-    .map(|receipt| receipt.result)
+    )?;
+    config_document::forget(lane, project)?;
+    Ok(receipt.result)
 }
 
 /// One vocabulary housekeeping edit over the same transport
@@ -2987,13 +2985,16 @@ pub fn catalog_housekeeping(
     project: &str,
     change: ds_client_core::ProjectConfigurationChange,
 ) -> Result<ds_client_core::FeederConfiguration, Failure> {
-    headless_named_report(
+    let receipt = headless_named_report(
         lane,
         project,
         |device, project| device.feeder_configuration(project, Some(&change)),
         |client, project| client.feeder_configuration(project, Some(&change), now()),
-    )
-    .map(|receipt| receipt.result)
+    )?;
+    if !matches!(change, ds_client_core::ProjectConfigurationChange::ReadSettings) {
+        config_document::forget(lane, project)?;
+    }
+    Ok(receipt.result)
 }
 
 /// The [`HeadlessProjectReport`] shape for the project the CALLER
@@ -3018,33 +3019,6 @@ fn headless_named_report<T>(
         project_status: String::new(),
         result: named.result,
     })
-}
-
-/// Publish a Combined Report for the project explicitly named on this call.
-pub fn compounded_report_for_project(
-    lane_value: &str,
-    project: &str,
-    request: &CompoundedReportRequest,
-) -> Result<HeadlessNamedProject<CompoundedReportReceipt>, Failure> {
-    headless_named_project(
-        lane_value,
-        project,
-        |device, project| device.compounded_report(project, request),
-        |client, project| client.compounded_report(project, request, now()),
-    )
-}
-
-pub fn export_reports_for_project(
-    lane_value: &str,
-    project: &str,
-    request: &TransformerSet,
-) -> Result<HeadlessNamedProject<ExportReportsReceipt>, Failure> {
-    headless_named_project(
-        lane_value,
-        project,
-        |device, project| device.export_reports(project, request),
-        |client, project| client.export_reports(project, request, now()),
-    )
 }
 
 pub fn compounded_report_list_for_project(
@@ -3574,6 +3548,38 @@ pub fn design_annotations(
         project,
         |device, project| device.design_annotations(project, command),
         |client, project| client.design_annotations(project, command, now()),
+    )
+}
+
+/// The named project's applied `report_archive` grouping plan, or `None`
+/// when no plan is applied (the route's own `consumer_grouping_not_applied`):
+/// a Compounded Report archive is then flat.
+pub fn applied_report_archive_grouping(
+    lane_value: &str,
+    project: &str,
+) -> Result<HeadlessProjectReport<Option<Value>>, Failure> {
+    let command = ds_client_core::design_annotations::Command::ReadConsumerGrouping {
+        purpose: "report_archive".into(),
+    };
+    let applied = |read: Result<Value, ClientError>| match read {
+        Ok(plan) => Ok(Some(plan).filter(|plan| !plan.is_null())),
+        Err(error)
+            if error.service_refusal().is_some_and(|refusal| {
+                refusal.status() == 404
+                    && refusal.code().is_some_and(|code| {
+                        code.eq_ignore_ascii_case("consumer_grouping_not_applied")
+                    })
+            }) =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    };
+    headless_named_report(
+        lane_value,
+        project,
+        |device, project| applied(device.design_annotations(project, &command)),
+        |client, project| applied(client.design_annotations(project, &command, now())),
     )
 }
 
@@ -6014,13 +6020,13 @@ pub const DEVICE_AUTH_TRANSIENT_REFUSAL: Refusal = device::AUTH_TRANSIENT;
 /// both codes as unreachable, and that entry is the reminder.
 pub const DATA_DISTRIBUTION_UNAVAILABLE_REFUSAL: Refusal = Refusal {
     code: "data_distribution_unavailable",
-    when: "ds-brain's geographic data-distribution route could not answer: unreachable, past the gateway deadline, a server fault, or an answer outside its closed contract",
-    remedy: "retry without changing local state; a repeated refusal is a deployment or provider outage, not a request defect",
+    when: "the data-distribution route could not answer",
+    remedy: "retry without changing local state; a repeated refusal is a deployment or provider outage",
 };
 pub const REFERENCE_BUNDLE_DOWNLOAD_FAILED_REFUSAL: Refusal = Refusal {
     code: "reference_bundle_download_failed",
-    when: "the published reference bundle could not be fetched from storage.googleapis.com, could not be written, or its bytes did not carry the catalogue row's size and SHA-256",
-    remedy: "retry the download; if the digest keeps failing the catalogue row is stale, so read the catalogue again before installing",
+    when: "the reference bundle could not be fetched or written, or its bytes miss the catalogue row's size and SHA-256",
+    remedy: "retry; if the digest keeps failing, read the catalogue again before installing",
 };
 
 /// One data-distribution action against the project the CALLER named: the
@@ -6240,7 +6246,7 @@ fn map_printing_standard(error: ClientError) -> Failure {
 pub use ds_client_core::{PrintStyleKeyChoices, PrintStyleKeysRequest};
 pub const PRINT_STYLE_KEYS_REQUEST_INVALID_REFUSAL: Refusal = Refusal {
     code: "print_style_keys_request_invalid",
-    when: "the library, setup id, choices or plan digest are malformed, a choice names a setup outside the plan, one save would exceed its bound, or ds-brain refused one by name",
+    when: "the library, setup id, choices or plan digest is malformed, a choice names a setup outside the plan, or a save exceeds its bound",
     remedy: "choose only a key the plan lists for a listed setup",
 };
 pub const PRINT_STYLE_KEYS_PLAN_CHANGED_REFUSAL: Refusal = Refusal {
@@ -6260,8 +6266,8 @@ pub const PRINT_STYLE_KEYS_CATALOGUE_UNSEEDED_REFUSAL: Refusal = Refusal {
 };
 pub const PRINT_STYLE_KEYS_ROUTE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
     code: "print_style_keys_route_unavailable",
-    when: "this lane's API Gateway does not publish the template migration route, or its ds-brain predates saving Core-computed plans",
-    remedy: "plans still work; for apply or --all-projects, update ds, and if it persists the lane needs the ds-brain release that saves Core-computed plans",
+    when: "this lane's gateway does not publish the template migration route",
+    remedy: "plans still work; for apply or --all-projects, update ds, then the lane needs the newer ds-brain",
 };
 
 /// The printing template migration of one project library, computed in Core
@@ -7403,60 +7409,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn owner_readiness_refusal_crosses_the_cli_boundary_without_a_locator() {
-        use crate::test_support::{FixtureTransport, NOW, SIGN_IN, signed_in};
-        for (code, cause) in [
-            ("combined_inputs_not_current", "report_stale"),
-            (
-                "combined_inputs_publication_pending",
-                "report_publication_pending",
-            ),
-            ("combined_inputs_not_current", ""),
-        ] {
-            let transport = FixtureTransport::with_sign_in(SIGN_IN);
-            let causes = if cause.is_empty() {
-                vec![]
-            } else {
-                vec![serde_json::json!({"transformer":"tx_b", "code":cause, "detail":"PRIVATE"})]
-            };
-            transport
-                .lock()
-                .project_reports
-                .push_back(ds_client_core::TransportResponse::new(
-                    409,
-                    serde_json::to_vec(&serde_json::json!({"status":"refused", "code":code,
-                    "missing_individual_artifact_count":causes.len(),
-                    "missing_individual_artifact_causes":causes}))
-                    .unwrap(),
-                ));
-            let mut client = signed_in(transport.clone());
-            let request = CompoundedReportRequest::new(
-                ds_client_core::TransformerSet::new(vec!["tx_a".into(), "tx_b".into()]).unwrap(),
-                ds_client_core::ReportFileLevel::Transformer,
-                false,
-                false,
-            );
-            let failure = map_client(
-                client
-                    .compounded_report("project", &request, NOW)
-                    .unwrap_err(),
-            );
-            assert_eq!(failure.code(), code);
-            if !cause.is_empty() {
-                assert!(failure.message().contains("tx_b"));
-            }
-            assert!(failure.message().contains("no archive was published"));
-            let detail = failure.detail_value().unwrap();
-            assert!(detail.get("published").is_none());
-            assert!(!detail.to_string().contains("PRIVATE"));
-            let script = transport.lock();
-            assert_eq!(script.report_bodies.len(), 1);
-            assert_eq!(script.report_bodies[0]["eds_project_id"], "project");
-            assert_eq!(script.report_bodies[0]["action"], "download_transfo");
-        }
-    }
-
-    #[test]
     fn model_reference_capture_rechecks_current_protected_binding_before_return() {
         let fence = LayerScopeFence {
             uid: "captured-uid".into(),
@@ -7592,7 +7544,6 @@ mod tests {
             &str,
             &TransformerSet,
         ) -> Result<HeadlessProjectReport<TransformerStatusList>, Failure> = transformer_status;
-        assert_eq!(ReportFileLevel::Sector.token(), "sector");
         assert_eq!(RetirementAction::Restore.token(), "restore");
     }
 
@@ -8995,6 +8946,9 @@ mod tests {
 mod status_upload_tests {
     use super::*;
 
+    /// ds-brain receives the bytes; the processing step is the caller's edge
+    /// step, handed the file index and the blob the upload produced, and no
+    /// process request ever reaches the transport.
     #[test]
     fn native_upload_host_drives_kernel_effects_without_redeciding_the_job() {
         let path =
@@ -9002,12 +8956,21 @@ mod status_upload_tests {
         std::fs::write(&path, b"abc").unwrap();
         let sources = vec![path.to_string_lossy().into_owned()];
         let settings = json!({"assign_earthing":true}).as_object().unwrap().clone();
-        let mut effects = Vec::new();
+        let effects = std::cell::RefCell::new(Vec::new());
+        let name = path.file_name().unwrap().to_str().unwrap().to_owned();
+        let mut process = |index: usize, blob: Option<&str>| {
+            effects.borrow_mut().push("edge_process");
+            assert_eq!(index, 0);
+            assert!(blob.is_some_and(|blob| blob.ends_with("/lv_process/r/a.zip")
+                || blob.contains("lv_process")));
+            Ok(json!({"results":[{"file_name":name,"submitted":1,"computed_on":"edge"}]}))
+        };
         let result = drive_status_upload(
             "project_a",
             &sources,
             StatusUploadDomain::LvProcess,
             &settings,
+            &mut process,
             |command| match command {
                 ds_client_core::StatusProcessingCommand::Upload {
                     domain,
@@ -9018,31 +8981,18 @@ mod status_upload_tests {
                 } => {
                     let mut bytes = Vec::new();
                     reader.read_to_end(&mut bytes).unwrap();
-                    effects.push("upload");
+                    effects.borrow_mut().push("upload");
                     assert_eq!(domain, StatusUploadDomain::LvProcess);
                     assert_eq!(file_name, path.file_name().unwrap().to_str().unwrap());
                     assert_eq!(size, 3);
                     assert_eq!(bytes, b"abc");
                     Ok(json!({"blob_path":format!("projects/project_a/process_uploads/v2/lv_process/r/{file_name}")}))
                 }
-                ds_client_core::StatusProcessingCommand::Process {
-                    action,
-                    file_name,
-                    chain,
-                    extra,
-                    ..
-                } => {
-                    effects.push("process");
-                    assert_eq!(action, StatusUploadDomain::LvProcess);
-                    assert!(chain.is_empty());
-                    assert_eq!(extra["settings"]["assign_earthing"], true);
-                    Ok(json!({"results":[{"file_name":file_name,"submitted":1}]}))
-                }
             },
         )
         .unwrap();
         let _ = std::fs::remove_file(path);
-        assert_eq!(effects, ["upload", "process"]);
+        assert_eq!(*effects.borrow(), ["upload", "edge_process"]);
         assert_eq!(result["phase"], "complete");
         assert_eq!(result["results"][0]["ok"], true);
     }
@@ -9058,6 +9008,7 @@ mod status_upload_tests {
             &[missing.to_string_lossy().into_owned()],
             StatusUploadDomain::LvDrafting,
             &serde_json::Map::new(),
+            &mut |_, _| panic!("a missing file must not reach the processing step"),
             |_| panic!("a missing file must not reach a network effect"),
         )
         .unwrap();

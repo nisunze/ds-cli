@@ -106,9 +106,6 @@ fn refuses_malformed_targets_provenance_urls_and_unknown_payloads() {
         assert!(validate_module_release("solar", "canary", &value).is_err(), "{path}");
     }
     let mut value = catalog();
-    value["command"] = json!("run");
-    assert!(validate_module_release("solar", "canary", &value).is_err());
-    let mut value = catalog();
     let duplicate = value["assets"][0].clone();
     value["assets"].as_array_mut().unwrap().push(duplicate);
     assert!(validate_module_release("solar", "canary", &value).is_err());
@@ -124,4 +121,66 @@ fn withdrawal_status_is_preserved_and_never_grants_installation() {
             .status,
         "blocked"
     );
+}
+
+/// Owner 22 Oct (B6): a publisher may add catalog members; every installed
+/// Core admits the same release and never reads the addition. Added members
+/// stay bounded and a missing required member still refuses with the typed
+/// `module_release_invalid`. (`"command"` here was once a refusal case.)
+#[test]
+fn additive_catalog_members_are_admitted_bounded_and_never_read() {
+    let admitted = validate_module_release("solar", "canary", &catalog()).unwrap();
+    let mut additive = catalog();
+    additive["command"] = json!("run");
+    additive["signatures"] = json!([{"keyid": "k1", "sig": "x".repeat(88)}]);
+    additive["assets"][0]["releasedAt"] = json!("2026-10-13T08:00:00Z");
+    additive["assets"][0]["engines"][0]["capabilities"] = json!(["future_v1"]);
+    let newer = validate_module_release("solar", "canary", &additive).unwrap();
+    assert_eq!(newer, admitted);
+    assert_eq!(serde_json::to_value(&newer).unwrap(), catalog());
+
+    let mut network = network_catalog();
+    network["future"] = json!({"nested": true});
+    assert_eq!(
+        validate_module_release("network", "canary", &network).unwrap(),
+        validate_module_release("network", "canary", &network_catalog()).unwrap()
+    );
+
+    let invalid = |value: &Value| {
+        validate_module_release("solar", "canary", value)
+            .unwrap_err()
+            .code
+    };
+    let mut oversized = catalog();
+    oversized["future"] = json!("x".repeat(8001));
+    assert_eq!(invalid(&oversized), "module_release_invalid");
+    let mut long_name = catalog();
+    long_name["f".repeat(65)] = json!(1);
+    assert_eq!(invalid(&long_name), "module_release_invalid");
+    let mut many = catalog();
+    for index in 0..33 {
+        many[format!("future_{index}")] = json!(index);
+    }
+    assert_eq!(invalid(&many), "module_release_invalid");
+    for (parent, key) in [
+        ("", "version"),
+        ("/assets/0", "sha256"),
+        ("/assets/0/engines/0", "manifest_sha256"),
+    ] {
+        let mut missing = catalog();
+        missing
+            .pointer_mut(parent)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove(key);
+        assert_eq!(
+            invalid(&missing),
+            "module_release_invalid",
+            "{parent}/{key}"
+        );
+    }
+    let mut wrong = catalog();
+    wrong["assets"][0]["size_bytes"] = json!("10");
+    assert_eq!(invalid(&wrong), "module_release_invalid");
 }

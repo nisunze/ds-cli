@@ -67,8 +67,10 @@ fn bind_component(
     Ok(())
 }
 
+/// Brain's published catalog member: additive members from a newer publisher
+/// are accepted within the shared bounds (owner 22 Oct); the receipts below are
+/// this Kernel's own and stay closed.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct BrowserRelease {
     pub schema: String,
     pub component: ModuleComponent,

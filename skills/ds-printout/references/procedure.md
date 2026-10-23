@@ -53,15 +53,19 @@ same door:
   boundaries, schools, health facilities, churches, settlements, offices,
   peaks — what ds-brain publishes for the country) are installed on the
   machine once from their verified bundle and subset per project;
-  **buildings and contours** are acquired per project through ds-brain's
-  `query_print_context`. Re-running over unchanged design acquires nothing —
+  **buildings and contours** are seeded once per project: published revisions
+  are replayed first, Core fetches only uncovered Google Open Buildings tiles
+  or samples the Rwanda DEM, and the delta is published as the next revision
+  (`shared` on each row: replayed, published, `publisher_tiles_fetched`,
+  freshness). Re-running over unchanged design acquires nothing —
   that is the idempotence proof. One dataset's failure is its own row; the run
   continues. A row without a published bundle refuses
   `reference_bundle_unavailable` and is never fetched from BigQuery.
 - Seed on the first print instead · `report.project.export … --seed` runs the
   same acquisition for each printed transformer's own cluster before it
-  renders, so the first print request seeds and later runs acquire nothing.
-  Without `--seed` a print never reaches a provider.
+  renders for national layers; buildings and contours are never seeded by a
+  print (their row names `data.project-cache.seed`). Without `--seed` a print
+  never reaches a provider.
 - *Desktop-only*: `desktop.data.rwanda.install` (the villages DSAB the Rwanda
   engine stamps with; headless export reads it from the shared root or
   `--admin-bounds`).

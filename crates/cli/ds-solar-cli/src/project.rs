@@ -1,4 +1,5 @@
-//! Compatibility file adapter for the shared Solar-owned local controls.
+//! Compatibility file adapter for the shared Solar-owned local controls. This
+//! tooling supplies its in-process engine as the local run's calculation.
 use anyhow::{Result, ensure};
 use ds_solar_project::{control, files};
 use serde_json::{Value, json};
@@ -18,7 +19,7 @@ pub fn execute(args: Args) -> Result<()> {
         "project result file already exists"
     );
     let request: Value = serde_json::from_slice(&files::read(&args.request, 32 * 1024 * 1024)?)?;
-    let result = control::execute(request)?;
+    let result = control::execute_with(request, Some(&crate::local_engine::calculate))?;
     files::json(&args.result, &result)?;
     println!(
         "{}",

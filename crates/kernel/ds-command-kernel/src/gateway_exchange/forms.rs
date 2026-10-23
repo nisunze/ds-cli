@@ -96,6 +96,52 @@ impl FormsEndpoint {
     }
 }
 
+/// The export the page calls, and the exchange it runs, for
+/// [`crate::capabilities::admit_export`].
+pub const EXPORT: &str = "formsRequest";
+pub const EXCHANGE: &str = "forms";
+
+/// The capability one action of one form endpoint performs, or `None` for
+/// an action no row declares, which the page never runs.
+pub fn capability(endpoint: FormsEndpoint, action: &str) -> Option<&'static str> {
+    Some(match (endpoint, action) {
+        (FormsEndpoint::FormFactory, "list") => "survey.forms.list",
+        (FormsEndpoint::FormFactory, "get") => "survey.form.read",
+        (FormsEndpoint::FormFactory, "get_field_types") => "survey.form.types",
+        (FormsEndpoint::FormFactory, "create") => "survey.form.create",
+        (FormsEndpoint::FormFactory, "update") => "survey.form.update",
+        (
+            FormsEndpoint::FormFactory,
+            "publish" | "unpublish" | "duplicate" | "archive" | "restore" | "delete",
+        ) => "survey.form.lifecycle",
+        (FormsEndpoint::FormFactory, "purge_plan" | "purge_candidates") => "survey.form.purge-plan",
+        (FormsEndpoint::FormFactory, "purge") => "survey.form.purge",
+        (FormsEndpoint::ProjectForms, "activate") => "survey.project-forms.read",
+        (FormsEndpoint::ProjectForms, "settings_editor") => "survey.project-form.editor",
+        (FormsEndpoint::ProjectForms, "bulk_save") => "survey.project-forms.apply",
+        _ => return None,
+    })
+}
+
+/// Admit one request from the page: its capability's row must name
+/// [`EXPORT`] and be supported on this build's platform.
+pub fn admit_in_page(
+    platform: &str,
+    endpoint: FormsEndpoint,
+    request: &Map<String, Value>,
+) -> Result<&'static str, Refusal> {
+    let action = action(request);
+    let id = capability(endpoint, action).ok_or_else(|| {
+        Refusal::new(
+            INPUT_INVALID,
+            format!("`{action}` is not a form action the page runs."),
+        )
+    })?;
+    crate::capabilities::admit_export_on(platform, id, EXPORT, EXCHANGE)
+        .map(|capability| capability.id)
+        .map_err(|refused| Refusal::new(refused.code, refused.message))
+}
+
 /// One request of one form endpoint.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Forms {
@@ -460,6 +506,8 @@ mod exports {
         #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] body: JsValue,
     ) -> Result<JsValue, JsValue> {
         let (endpoint, body) = parts(endpoint, body)?;
+        super::admit_in_page(crate::capabilities::PLATFORM, endpoint, &body)
+            .map_err(|refusal| rejection(&refusal))?;
         let edge = BrowserEdge::new(host, store);
         typed(
             &request(&edge, endpoint, body)

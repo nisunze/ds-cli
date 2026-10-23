@@ -18,7 +18,13 @@ const PAGE_CAP: u64 = 16 * 1024 * 1024;
 const HEAD_CAP: u64 = 1024 * 1024;
 pub const LIMIT_MAX: u32 = 100;
 const FILE_NAME_MAX: usize = 255;
-pub const ENGINES: [&str; 4] = ["solar", "print", "vector_tiler", "network_reporter"];
+pub const ENGINES: [&str; 5] = [
+    "solar",
+    "print",
+    "vector_tiler",
+    "network_reporter",
+    crate::project_dataset_revisions::ENGINE,
+];
 pub const INVALID: &str = "compute_artifact_answer_invalid";
 pub const INPUT_INVALID: &str = "compute_artifact_input_invalid";
 /// The answer names another head or output than the one asked for, or bytes

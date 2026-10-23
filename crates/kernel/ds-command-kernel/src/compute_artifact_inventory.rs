@@ -160,7 +160,7 @@ pub fn decode_head(input: &[u8]) -> Result<Head, String> {
         .map_err(|_| "Compute artifact response has an invalid head.".to_string())?;
     if !matches!(
         head.engine.as_str(),
-        "solar" | "print" | "vector_tiler" | "network_reporter"
+        "solar" | "print" | "vector_tiler" | "network_reporter" | "project_dataset"
     ) || !id(&head.work_id)
         || !engine_identity(
             head.engine_version.as_deref(),
@@ -244,6 +244,7 @@ fn mime(format: &str) -> Option<&'static str> {
         "csv" => "text/csv",
         "geojson" => "application/geo+json",
         "geojsonseq" | "geojsonzip" | "shp" | "zip" => "application/zip",
+        "geojsonl_gz" => "application/gzip",
         "gpkg" => "application/geopackage+sqlite3",
         "json" => "application/json",
         "kmz" => "application/vnd.google-earth.kmz",
@@ -339,7 +340,7 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         serde_json::from_slice(input).map_err(|_| "Invalid artifact inventory response.")?;
     if !matches!(
         request.engine.as_str(),
-        "solar" | "print" | "vector_tiler" | "network_reporter"
+        "solar" | "print" | "vector_tiler" | "network_reporter" | "project_dataset"
     ) || request.outputs.is_empty()
         || request.outputs.len() > 100
     {

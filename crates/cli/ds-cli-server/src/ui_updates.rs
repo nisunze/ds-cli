@@ -101,7 +101,7 @@ fn pass(converge: Converge<'_>, said: &mut [Option<String>; 2], log: &mut dyn Fn
 }
 
 /// Sliced so stopping the host never waits out an interval; false once stopped.
-fn wait(stop: &AtomicBool, duration: Duration) -> bool {
+pub(crate) fn wait(stop: &AtomicBool, duration: Duration) -> bool {
     let mut waited = Duration::ZERO;
     while waited < duration && !stop.load(Ordering::Acquire) {
         let slice = SLICE.min(duration - waited);

@@ -468,6 +468,29 @@ application's own journal identity. Nothing is re-planned or trimmed. A
 receipt that withholds rows refuses `receipt_truncated`: `dsgrid spotting
 preview-receipt` can still show it as a visualization-only package.
 
+`ds dsgrid spotting preview` is the reviewable, non-journaling preview the
+Desktop Profile's automatic stringing uses (contract 1). It takes the exact
+package (`--model`), its lowercase `--expected-sha256` and authored
+`--expected-revision`, and an optional ordered `--alignment` scope (omitted:
+the whole model). Network plans (`plan_whole_model_spotting`) and, only when
+every requested plan, request derivation and fixed structure resolves, builds
+the one `spotting_layout_application` for the same pinned package. Core
+answers `ds.dsgrid.spotting-preview/v1` with `status: ready|blocked`, the pinned
+source, Network's result in requested order, the application (null when
+blocked) and typed conflicts (`alignment_plan_refused`,
+`alignment_request_refused`, `fixed_structure_missing`,
+`layout_application_refused`). A stale revision is Network's `stale_revision`
+refusal; changed bytes refuse `spotting_preview_digest_mismatch`. With
+`--out <absolute-new-json-file>` the preview is written once to a new file and
+a bounded receipt returns. Plans handed to the application step share the
+16 MiB request bound above; a larger whole-model preview refuses typed, and the
+receipt path remains the way to land it. Nothing is applied or saved: the
+reviewed application lands through the model's edit session.
+
+```text
+ds dsgrid spotting preview --model model.dsgrid --expected-sha256 <sha256> --expected-revision <rev> --alignment al-main --out /abs/preview.json --output json
+```
+
 `ds dsgrid validate` always
 reports the authored revision. The cheap inspect path exposes it on demand
 with `--include authored-revision`, which deliberately decodes the model.
@@ -680,7 +703,6 @@ identity still reaches it without loading exchange planning.
 | `structure describe/retype` | `ds_grid_engine::GridSession::apply_transaction_at_head` (`describe_structure`, `retype_structure`), `ds_grid_engine::evaluate_structure_type`, `ds_grid_exchange::dsgrid::emit`, `local_models::Op::Revise` |
 | `report structures` | `ds_grid_engine::report_structures` (+ `structure_rules::load_standard`), `ds_io::layers_to_xlsx` |
 | `report staking` | `ds_grid_exchange::staking_table::build_staking_table`, `ds_io::table_to_xlsx` |
-| `publish-version` | paired Desktop `dsgrid.model.publish`, composing its existing project version flow |
 | `feature-codes report` | Captured Network `grid-query` / `feature_code_table_report`; host target selection and output bounds only |
 | `feature-codes import/migrate` | `ds_grid_engine::feature_code_ops` over `ds_grid_engine::feature_code_standard` (the bundled standard and its classifier) |
 | `feature-codes export` | `ds_grid_exchange::feature_code_fea::export_fea`, `ds_io::pls_cadd_fea::write_fea` |

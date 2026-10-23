@@ -380,9 +380,9 @@ pub struct SurveyLayerReceipt {
     pub features: u64,
 }
 
-/// What the engine says it appended for one form.
+/// What the engine says it appended for one form. Additive members from a
+/// newer engine are accepted (owner 22 Oct).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct SurveyLayerResult {
     pub form: String,
     pub layer: String,

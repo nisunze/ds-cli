@@ -2008,11 +2008,10 @@ fn every_specialized_profile_is_bounded_and_catalogued() {
             // Sixteen leaves plus both bootstrap tools: `report project
             // publish` and the two `report outbox` commands joined the
             // delivery workflow, because a profile that produces report
-            // artifacts and cannot publish them strands its own output; and
-            // `report project compute` (2026-09-20) is the same individual
-            // report produced in the cloud, which is how edge and cloud
-            // production are proven to meet in one project.
-            "project-operations" => 18,
+            // artifacts and cannot publish them strands its own output. The
+            // cloud `report project compute` was deleted on 2026-10-22:
+            // reports compute only on an edge.
+            "project-operations" => 17,
             // The task-geometry leaves preserve the comment's WHERE; delete
             // and its three backup leaves complete the task recovery loop.
             // Twenty-four Project Work leaves plus two bootstrap tools.

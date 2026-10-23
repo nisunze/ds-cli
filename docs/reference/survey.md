@@ -393,6 +393,21 @@ the whole form, rows, refreshed time and age, cursor, last read), photos and
 thumbnails held per form, the working-area form choice, and where held photos
 live. Use it to know whether a read will be local before making one.
 
+```text
+ds survey dashboard --project <project-id> --output json
+```
+
+`survey dashboard` computes the dashboard numbers on this machine from the same
+held copy (owner rule: survey dashboard aggregations run on an edge): totals per
+form, entries per day and per surveyor with their median/min/max, distinct
+surveyors per day, and the administrative breakdown where rows carry it.
+Deleted entries are excluded and empty forms omitted. Nothing is fetched: refresh
+the copy with `ds survey entries read` first. `held` names, per form, the rows
+counted and whether they were held whole or under a working-area filter, so a
+filtered count is never read as the project's. The aggregation is the kernel's
+`survey_dashboard` owner; the hosted Web dashboard still reads Brain's stored
+report until the browser holds survey rows.
+
 ## Entry values and photo references
 
 `survey entries read` returns what the map loads for one project form: each

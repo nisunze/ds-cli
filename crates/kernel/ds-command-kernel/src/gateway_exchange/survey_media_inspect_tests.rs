@@ -78,3 +78,26 @@ fn wrong_target_or_unpinned_source_is_refused_without_an_upload() {
     );
     assert_eq!(edge.requests().len(), 2);
 }
+#[test]
+fn the_declared_size_is_kept_for_the_read_and_a_malformed_one_is_refused() {
+    let edge = TestEdge::new();
+    let mut sized = answer(PHOTO, "1234");
+    sized["data"]["size"] = json!(48_213);
+    sized["data"]["content_type"] = json!("image/jpeg");
+    edge.json(sized);
+    let found = block_on(inspect(&edge, PHOTO.into(), false)).unwrap().unwrap();
+    assert_eq!(found.size, Some(48_213));
+    // An answer that declares none still inspects: the read is then bounded only.
+    edge.json(answer(PHOTO, "1234"));
+    assert_eq!(block_on(inspect(&edge, PHOTO.into(), false)).unwrap().unwrap().size, None);
+    for size in [json!("48213"), json!(-1), json!(1.5)] {
+        let mut malformed = answer(PHOTO, "1234");
+        malformed["data"]["size"] = size.clone();
+        edge.json(malformed);
+        assert_eq!(
+            block_on(inspect(&edge, PHOTO.into(), false)).unwrap_err().code,
+            INVALID,
+            "{size}"
+        );
+    }
+}

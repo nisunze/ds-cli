@@ -33,7 +33,7 @@ const fn cmd(
         contract: 1,
         chapter: Chapter::Design,
         execution: Execution::Sync,
-        purpose: "Import a declared archival exported design as immutable v0. Six native GeoPackage layers retain original fid, source properties and dimensions; no runtime Survey identity is invented. Explicit source record, asset/version/member hashes and current transformer source fence are mandatory. Import never changes working GDFS or overwrites existing history. Source scope exported_design is read-only and cannot be promoted into runtime identity by this command. Import before runtime baseline bootstrap; conflicting v0 refuses.",
+        purpose: "Import a declared archival exported design as immutable v0. Six native GeoPackage layers retain original fid, source properties and dimensions; no runtime Survey identity is invented. Explicit source record, asset/version/member hashes and current transformer source fence are mandatory. Import never changes the working design or history. Scope exported_design stays read-only. Import before runtime baseline bootstrap; conflicting v0 refuses.",
         output: "Verified archival pins, native feature counts and new prepared artifact, or exact source-pinned exported-design v0 acknowledgement. No working design save, engineering approval, PM issuance or runtime restore.",
         examples: &[],
         refusals: &[Refusal {

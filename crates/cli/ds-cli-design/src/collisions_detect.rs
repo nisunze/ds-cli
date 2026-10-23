@@ -78,13 +78,13 @@ refusal!(
     ENGINE_MISSING,
     "reporter_engine_missing",
     "the selected lane has no managed Reporter addon",
-    "install Reporter for the selected --lane; use DS_REPORT_BIN only for explicit development"
+    "install Reporter for the selected --lane"
 );
 refusal!(
     ENGINE_RECEIPT_INVALID,
     "module_receipt_invalid",
     "the selected lane's managed Reporter receipt or executable bytes are invalid",
-    "repair or roll back Reporter in the selected lane; no alternate engine is substituted"
+    "repair or roll back Reporter in the selected lane"
 );
 refusal!(
     ENGINE_INCOMPATIBLE,
@@ -183,12 +183,10 @@ pub static DETECT: Command = Command {
     contract: 1,
     summary: "Detect project transformer collisions on this machine.",
     purpose: "\
-Runs collision detection locally; nothing is computed in the cloud. Reads the \
-project's transformer heads, acquires every active transformer's saved room \
-through the governed room hold (current held rooms are reused, moved or \
-missing rooms are fetched), and runs the Reporter addon's fixed \
-detect-collisions task over the layers its request schema names. --read held \
-makes no request: the rooms already on this machine are the input. A room \
+Runs collision detection locally. Reads the project's transformer heads, \
+acquires every active transformer's saved room through the room hold (held rooms \
+are reused, moved or missing ones fetched), and runs the Reporter addon's \
+detect-collisions task. --read held makes no request: the rooms already here are the input. A room \
 that cannot be supplied is named in input_errors, never treated as \
 collision-free. Nothing is published; --out writes the private result `ds \
 design collisions publish` stores.",

@@ -83,6 +83,10 @@ const SNAP_DISTANCE_TIE_M: f64 = 0.25;
 const HOVER_DISTANCE_TIE_M: f64 = 0.25;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
 pub struct FeatureId(pub String);
 
 impl FeatureId {
@@ -105,6 +109,10 @@ impl FeatureId {
 /// forced every renderer to translate, and that translation was
 /// duplicated in five places. Don't reintroduce a translator.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
 #[serde(tag = "type")]
 pub enum Geometry {
     /// `coords` is `[lng, lat]`.
@@ -201,10 +209,22 @@ fn project_geometry(projection: &ProjectionMetadata, geometry: &Geometry) -> Pro
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(missing_as_null)
+)]
 pub struct Feature {
     pub id: FeatureId,
     pub geometry: Geometry,
     #[serde(default)]
+    #[cfg_attr(
+        all(feature = "bindings", target_arch = "wasm32"),
+        tsify(type = "Record<string, unknown>")
+    )]
     pub properties: Map<String, Value>,
 }
 
@@ -475,6 +495,10 @@ impl RTreeObject for IndexedFeature {
 
 /// Selection mode for `SessionHandle::select`.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SelectionMode {
     /// Replace the entire selected set with the new ids.
@@ -498,23 +522,41 @@ pub type PolygonSelectionPredicate = crate::region::RegionPredicate;
 /// becomes a thin projection of this struct on the ds-web side. JS
 /// never writes to the selected / hovered fields directly; mutations
 /// go through `select` / `hover` / `clear_selection`.
-#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(missing_as_null)
+)]
 pub struct SelectionState {
     /// Multi-selection — for marquee + add/toggle modes. Deduped, in
     /// insertion order. Empty when nothing is selected.
     pub selected: Vec<FeatureId>,
     /// Single hovered feature; mutually independent from selected.
+    #[serde(deserialize_with = "crate::reply::written_nullable")]
     pub hovered: Option<FeatureId>,
     /// The feature most recently mutated (added, geometry-changed, or
     /// property-edited). Used by the UI to scroll the attribute table
     /// to the row, focus a property panel, etc.
+    #[serde(deserialize_with = "crate::reply::written_nullable")]
     pub last_edited: Option<FeatureId>,
 }
 
 /// Engine-owned status for one mounted edit scope. ds-web uses this as the
 /// wake signal for toolbar/CRS/snap/hover readiness instead of inferring
 /// readiness from JavaScript store state.
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(missing_as_null)
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ScopeStatus {
     pub phase: String,
@@ -532,10 +574,19 @@ pub struct ScopeStatus {
     pub layers: Vec<ScopeLayerStatus>,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(missing_as_null)
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ScopeLayerStatus {
     pub name: String,
+    #[serde(deserialize_with = "crate::reply::written_nullable")]
     pub geometry_type: Option<String>,
     pub input_feature_count: usize,
     pub feature_count: usize,
@@ -549,18 +600,39 @@ pub struct ScopeLayerStatus {
 /// geometry conversion instead of having ds-web reconstruct a parallel
 /// geometry parser before calling WASM.
 #[derive(Clone, Debug, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
 pub struct SessionLayerInput {
     pub name: String,
+    #[cfg_attr(
+        all(feature = "bindings", target_arch = "wasm32"),
+        tsify(type = "unknown")
+    )]
     pub geojson: Value,
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
 #[serde(rename_all = "camelCase")]
 pub struct PolygonSelectionQuery {
+    /// A GeoJSON Polygon; the session admits it.
+    #[cfg_attr(
+        all(feature = "bindings", target_arch = "wasm32"),
+        tsify(type = "unknown")
+    )]
     pub polygon: Value,
     #[serde(default)]
     pub target_layers: Vec<String>,
     #[serde(default)]
+    #[cfg_attr(
+        all(feature = "bindings", target_arch = "wasm32"),
+        tsify(type = "RegionPredicate")
+    )]
     pub predicate: PolygonSelectionPredicate,
     pub mode: SelectionMode,
     /// Upper bound on exact-geometry predicate evaluations. A selector that
@@ -621,7 +693,11 @@ struct ScopeLayerInputStats {
     skipped_unsupported_geometry_count: usize,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SnapTargetKind {
     Vertex,
@@ -632,6 +708,10 @@ pub enum SnapTargetKind {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapQuery {
     pub lng: f64,
@@ -669,11 +749,22 @@ fn default_snap_max_candidates() -> usize {
     100
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(missing_as_null)
+)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapResult {
     pub target_kind: SnapTargetKind,
+    /// `null` for a snap to the caller's own vertices.
+    #[serde(deserialize_with = "crate::reply::written_nullable")]
     pub feature_id: Option<FeatureId>,
+    #[serde(deserialize_with = "crate::reply::written_nullable")]
     pub layer_id: Option<String>,
     pub coord: [f64; 2],
     pub distance_m: f64,
@@ -708,7 +799,11 @@ enum InteractionFamily {
     Polygon,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
 #[serde(rename_all = "snake_case")]
 pub enum HoverTargetKind {
     Vertex,
@@ -717,6 +812,10 @@ pub enum HoverTargetKind {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
 #[serde(rename_all = "camelCase")]
 pub struct HoverQuery {
     pub lng: f64,
@@ -745,11 +844,20 @@ fn default_hover_include() -> bool {
     true
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    tsify(missing_as_null)
+)]
 #[serde(rename_all = "camelCase")]
 pub struct HoverResult {
     pub target_kind: HoverTargetKind,
     pub feature_id: FeatureId,
+    #[serde(deserialize_with = "crate::reply::written_nullable")]
     pub layer_id: Option<String>,
     pub distance_m: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1073,23 +1181,29 @@ impl SessionHandle {
         }
 
         // Dedupe last-wins by scoped id — `put_feature_no_log` replaced on a
-        // repeated id, so a later duplicate won — and remember the final input
-        // feature so `last_edited` lands where the per-feature loop left it.
+        // repeated id in its first row, so a later duplicate won — and
+        // remember the final input feature so `last_edited` lands where the
+        // per-feature loop left it.
         let last_edited = scoped.last().map(|feature| feature.id.clone());
+        let mut source_order: Vec<FeatureId> = Vec::with_capacity(scoped.len());
         let mut deduped: HashMap<FeatureId, Feature> = HashMap::with_capacity(scoped.len());
         for feature in scoped {
-            deduped.insert(feature.id.clone(), feature);
+            let id = feature.id.clone();
+            if deduped.insert(id.clone(), feature).is_none() {
+                source_order.push(id);
+            }
         }
         let count = deduped.len();
 
         // Build each incoming layer's DataFrame table ONCE from its features
         // (never a per-feature `replace_table_feature` round-trip). The scope
         // was just unmounted so its table keys are gone; inserting replaces any
-        // survivor wholesale.
+        // survivor wholesale. Rows keep the source order, as `open` does; the
+        // map's iteration order would make row indices depend on the hasher.
         #[cfg(feature = "enable_dataframes")]
         {
             let mut grouped: HashMap<String, Vec<Feature>> = HashMap::new();
-            for feature in deduped.values() {
+            for feature in source_order.iter().map(|id| &deduped[id]) {
                 if let Some((table_key, local_id)) = split_layer_feature_id(&feature.id) {
                     grouped.entry(table_key.to_string()).or_default().push(
                         Feature::with_properties(

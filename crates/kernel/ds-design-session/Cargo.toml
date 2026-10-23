@@ -11,7 +11,7 @@ publish.workspace = true
 [features]
 default = []
 enable_dataframes = ["dep:polars"]
-bindings = ["dep:tsify", "dep:wasm-bindgen"]
+bindings = ["dep:tsify", "dep:wasm-bindgen", "ds-geo-lite/bindings"]
 
 [dependencies]
 ds-geo-lite = { path = "../../shared/ds-geo-lite", features = ["revision", "projection", "geojson", "index"] }
@@ -20,3 +20,7 @@ serde_json = "1"
 polars = { version = "0.53.0", default-features = false, optional = true }
 tsify = { version = "0.5.8", default-features = false, features = ["js"], optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
+
+[dev-dependencies]
+# Tests read and write JSON as the Kernel build does: exact floats, key order kept.
+serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }

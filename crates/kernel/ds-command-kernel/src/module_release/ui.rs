@@ -45,8 +45,10 @@ impl UiComponent {
     }
 }
 
+/// Brain's published catalog member: additive members from a newer publisher
+/// are accepted within the shared bounds (owner 22 Oct). Its `build_manifest`
+/// stays the closed ten-fact identity its producer digest binds.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct UiRelease {
     pub schema: String,
     pub component: UiComponent,
@@ -569,26 +571,24 @@ pub fn inspect(
             "UI release requires its exact build manifest",
         )
     })?)?;
-    if !value.as_object().is_some_and(|object| {
-        object.iter().all(|(key, field)| {
-            key == "build_manifest"
-                || key == "assets"
-                || ([
-                    "schema",
-                    "component",
-                    "runtime",
-                    "channel",
-                    "product_id",
-                    "version",
-                    "protocol",
-                    "released_at",
-                    "status",
-                    "notes",
-                ]
-                .contains(&key.as_str())
-                    && field.as_str().is_some_and(|text| text.len() <= 8000))
-        })
-    }) || serde_json::to_vec(value).map_or(true, |bytes| bytes.len() > MAX_WIRE_BYTES)
+    if !bounded_fields(
+        value,
+        &[
+            "schema",
+            "component",
+            "runtime",
+            "channel",
+            "product_id",
+            "version",
+            "protocol",
+            "build_manifest",
+            "released_at",
+            "status",
+            "notes",
+            "assets",
+        ],
+        8000,
+    ) || serde_json::to_vec(value).map_or(true, |bytes| bytes.len() > MAX_WIRE_BYTES)
     {
         return fail(
             "module_release_invalid",

@@ -15,6 +15,7 @@ const NIX_ITRF_LON0_DEG: f64 = 30.0;
 const NIX_ITRF_K0: f64 = 0.9999;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "bindings", derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectionMode {
     NixItrf2005,
@@ -24,6 +25,7 @@ pub enum ProjectionMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "bindings", derive(tsify::Tsify))]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectionSelection {
     Auto,
@@ -34,6 +36,7 @@ pub enum ProjectionSelection {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "bindings", derive(tsify::Tsify))]
 pub struct ProjectionConfig {
     pub mode: ProjectionSelection,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,6 +58,7 @@ impl Default for ProjectionConfig {
 /// Temporary metric editing/build plane. Public feature payloads remain
 /// lon/lat; this describes the Rust-owned x/y representation.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "bindings", derive(tsify::Tsify))]
 pub struct ProjectionMetadata {
     pub mode: ProjectionMode,
     pub origin_lng: f64,

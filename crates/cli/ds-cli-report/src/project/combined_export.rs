@@ -62,7 +62,7 @@ const ENGINE_MISSING: Refusal = Refusal {
 const COLLISIONS: Refusal = Refusal {
     code: "combined_report_collision_limit_exceeded",
     when: "the stored collision result exceeds the project's combined-report policy",
-    remedy: "resolve the overlaps and publish a fresh collision result; `ds design collisions` reads it",
+    remedy: "resolve the overlaps and publish a fresh collision result",
 };
 const ROOMS_UNAVAILABLE: Refusal = Refusal {
     code: "combined_report_rooms_unavailable",
@@ -376,7 +376,10 @@ fn project_inputs(
 
 /// The run's scope: every active LV transformer, or the exact names asked
 /// for, each of which must be active.
-fn scope_names(rows: &[hold::Row], requested: &TransformerSet) -> Result<Vec<String>, Failure> {
+pub(super) fn scope_names(
+    rows: &[hold::Row],
+    requested: &TransformerSet,
+) -> Result<Vec<String>, Failure> {
     let active = |row: &hold::Row| {
         row.is_transformer()
             && row.is_active()

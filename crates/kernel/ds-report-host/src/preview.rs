@@ -2142,7 +2142,7 @@ mod tests {
         let corpus: Value = serde_json::from_str(
             &fs::read_to_string(
                 Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../tests/fixtures/ds-envelope-cases.json"),
+                    .join("../ds-command-kernel/tests/fixtures/ds-envelope-cases.json"),
             )
             .expect("the kernel's envelope corpus"),
         )

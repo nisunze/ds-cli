@@ -147,12 +147,53 @@ impl ProjectEndpoint {
     }
 }
 
+/// The export the page calls, and the exchange it runs, for
+/// [`crate::capabilities::admit_export`].
+pub const EXPORT: &str = "projectsAction";
+pub const EXCHANGE: &str = "projects";
+
+/// The capability one action of one endpoint performs, or `None` for an
+/// action no row declares, which the page never runs.
+pub fn capability(endpoint: ProjectEndpoint, action: &str) -> Option<&'static str> {
+    Some(match (endpoint, action) {
+        (ProjectEndpoint::Projects, "create") => "auth.project.create",
+        (ProjectEndpoint::Projects, "update") => "auth.project.update",
+        (ProjectEndpoint::Projects, "delete") => "auth.project.delete",
+        (ProjectEndpoint::Projects, "apply_template") => "survey.template.apply",
+        (ProjectEndpoint::Templates, "create") => "survey.template.create",
+        (ProjectEndpoint::Templates, "list") => "survey.templates.list",
+        (ProjectEndpoint::Templates, "get") => "survey.template.read",
+        (ProjectEndpoint::Templates, "set_public" | "delete") => "survey.template.lifecycle",
+        (ProjectEndpoint::Access, "list_users") => "auth.project.members.list",
+        (ProjectEndpoint::Access, "bulk_members") => "auth.project.members.set",
+        (ProjectEndpoint::Access, "copy_users") => "auth.project.members.copy",
+        (ProjectEndpoint::Governance, "archive_project") => "auth.project.archive",
+        _ => return None,
+    })
+}
+
 /// One action on one of Brain's project endpoints.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProjectAction {
     pub endpoint: ProjectEndpoint,
     pub action: String,
     pub data: Map<String, Value>,
+}
+
+impl ProjectAction {
+    /// Admit this action from the page: its capability's row must name
+    /// [`EXPORT`] and be supported on this build's platform.
+    pub fn admit_in_page(&self, platform: &str) -> Result<&'static str, Refusal> {
+        let id = capability(self.endpoint, &self.action).ok_or_else(|| {
+            Refusal::new(
+                INPUT_INVALID,
+                format!("`{}` is not a project action the page runs.", self.action),
+            )
+        })?;
+        crate::capabilities::admit_export_on(platform, id, EXPORT, EXCHANGE)
+            .map(|capability| capability.id)
+            .map_err(|refused| Refusal::new(refused.code, refused.message))
+    }
 }
 
 impl Exchange for ProjectAction {
@@ -284,17 +325,14 @@ mod exports {
             tsify::serde_wasm_bindgen::from_value(endpoint).map_err(unreadable)?;
         let data: Map<String, Value> =
             tsify::serde_wasm_bindgen::from_value(data).map_err(unreadable)?;
-        typed(
-            &run(
-                &host,
-                ProjectAction {
-                    endpoint,
-                    action,
-                    data,
-                },
-            )
-            .await?,
-        )
+        let call = ProjectAction {
+            endpoint,
+            action,
+            data,
+        };
+        call.admit_in_page(crate::capabilities::PLATFORM)
+            .map_err(|refusal| rejection(&refusal))?;
+        typed(&run(&host, call).await?)
     }
 }
 

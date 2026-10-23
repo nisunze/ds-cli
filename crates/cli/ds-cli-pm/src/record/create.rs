@@ -20,14 +20,13 @@ pub static COMMAND: Command = Command {
     summary: "File a letter, email, call, meeting or transmittal as a record.",
     purpose: "\
 Files one exchange with an outside party so it can be threaded, owed and \
-blocked on. A record is always authored against something — the ingested \
-.eml or screenshot (--source-asset), the in-app message (--source-message) \
-or the meeting note (--meeting-note); an answer in a thread is `ds pm record \
-reply`. Name the parties by id and say who owes the next answer with \
+blocked on, authored against the ingested .eml or screenshot (--source-asset), \
+the in-app message (--source-message) or the meeting note (--meeting-note); an \
+answer in a thread is `ds pm record reply`. Name the parties by id and say who owes the next answer with \
 --response-owed-by: a party, or a member by email. A submission or \
 transmittal carries at least one registered --document. Sensitivity is the \
 strictest of the assets named. The same --id twice is refused, not \
-duplicated. Headless; no window.",
+duplicated.",
     chapter: Chapter::Project,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,

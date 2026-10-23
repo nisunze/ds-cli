@@ -84,9 +84,11 @@ Placement, and why it is not the other way round:
   decide retry and backoff, interpret the response and map refusals, and the
   browser executor sends them. Svelte calls one typed async export per
   operation, with TypeScript types generated from the Rust types, and passes
-  one `GatewayHost` that answers only what the page holds: the gateway origin,
-  the session's bearer and email, the platform key, its clock and its
-  session, offline and link state. TypeScript holds no fetch port, route,
+  one `GatewayHost` that answers only what the page holds: its clock and its
+  session, offline and link state. The bearer and email are the Kernel's own
+  session's (`auth_session`, refreshed first when due, refused typed when a
+  refresh cannot run); the gateway origin and the platform key are constants
+  of the build. TypeScript holds no token, fetch port, route,
   retry or decoder for a migrated domain; the generated TS route manifest
   serves only the domains not yet moved. `ds-client-core` stays native; where
   both executors need the same registry or step logic, a portable crate is
@@ -265,6 +267,19 @@ and fails on any unreviewed bypass:
 - refused: `fetch`/`XMLHttpRequest`/`axios`/`EventSource` reaching a DS or
   Google origin from feature code, any raw URL/method/token IPC, any second
   Rust HTTP client that is not the shared adapter.
+
+A stored object is never an exception (2026-10-22). Which object a record's
+reference names — its own bucket, or the one bucket the deployment signs in —
+is `gateway_exchange::storage`'s answer (`storedObject`); its bytes are one
+Kernel read (`storedObjectBytes`: a fresh `sign_url` signature, or the
+reference's own signed authority when none is granted, read without DS
+credentials, bounded, with typed missing/forbidden/expired/too-large/integrity
+refusals; `surveyMediaSourceBytes` for an inspected generation). A page shows
+an image as those bytes in an object URL, never as `<img src>` pointed at
+storage: it needs the bytes anyway (offline cache, local thumbnails), and an
+image loader's opaque failure invites a TypeScript retry chain. The only signed
+URLs a page still receives (`storedObjectUrl`, `signStorageUrls`) feed a media
+element's own streaming or a browser download, which the page never reads.
 
 The check reports **exact remaining exceptions** with a reason. Remaining DS
 gateway bypasses mean the goal is not complete, and the report says so rather

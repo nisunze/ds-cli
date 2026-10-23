@@ -2,8 +2,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::project_report::{
-    CompoundedArchiveCatalog, CompoundedReportReceipt, CompoundedReportRequest,
-    ExportReportsReceipt, ProjectReportOperation, RetirementAction, RetirementReceipt,
+    CompoundedArchiveCatalog, ProjectReportOperation, RetirementAction, RetirementReceipt,
     RetirementRequest, TransformerInventory, TransformerSet, TransformerStatusList,
 };
 use crate::projects::ProjectPayload;
@@ -696,25 +695,6 @@ pub(crate) fn tile_generate<T: AuthorizedTransport>(
     crate::tiles::decode_operation(response, TILE_RESPONSE_LIMIT, ds_project, tile_type, true)
 }
 
-pub(crate) fn compounded_report<T: AuthorizedTransport>(
-    profile: &ClientProfile,
-    transport: &mut T,
-    authority: Authority<'_>,
-    ds_project: &str,
-    request: &CompoundedReportRequest,
-) -> Result<CompoundedReportReceipt, ClientError> {
-    let response = transport.project_report(ProjectReportCall {
-        profile,
-        ds_project,
-        operation: ProjectReportOperation::Compounded(request),
-        authority: authority.call(),
-    })?;
-    if response.status != 200 {
-        return Err(classify_project_report_response(&response));
-    }
-    crate::project_report::decode_compounded(response, PROJECT_REPORT_RESPONSE_LIMIT, ds_project)
-}
-
 /// One preview-pinned pole-material catalogue repair through the `/report`
 /// action gate. `request` is the kernel's fenced request
 /// (`design_config::material_propagation_request`); the receipt is returned
@@ -769,42 +749,6 @@ pub(crate) fn material_propagation<T: AuthorizedTransport>(
             "the material propagation receipt is not a JSON document",
         )
     })
-}
-
-/// Ask ds-brain to compute the individual reports of exact transformers in
-/// the cloud and publish them to the project. The route requires at least
-/// one name — an empty list is not "every active" there but a fall-through
-/// to the retired generic proxy — so the door refuses it before any bytes.
-pub(crate) fn export_reports<T: AuthorizedTransport>(
-    profile: &ClientProfile,
-    transport: &mut T,
-    authority: Authority<'_>,
-    ds_project: &str,
-    request: &TransformerSet,
-) -> Result<ExportReportsReceipt, ClientError> {
-    if request.is_empty() {
-        return Err(ClientError::new(
-            ErrorKind::InvalidInput,
-            "a cloud report computation names at least one transformer",
-        ));
-    }
-    let response = transport.project_report(ProjectReportCall {
-        profile,
-        ds_project,
-        operation: ProjectReportOperation::ExportReports(request),
-        authority: authority.call(),
-    })?;
-    // 207 is this route's own partial verdict, decoded like a 200; every
-    // other status is a refusal.
-    if !matches!(response.status, 200 | 207) {
-        return Err(classify_export_reports_response(&response));
-    }
-    crate::project_report::decode_export_reports(
-        response,
-        PROJECT_REPORT_RESPONSE_LIMIT,
-        ds_project,
-        request,
-    )
 }
 
 pub(crate) fn compounded_report_list<T: AuthorizedTransport>(
@@ -1238,48 +1182,6 @@ fn classify_project_report_response(response: &TransportResponse) -> ClientError
         return ClientError::with_project_report_service_code(kind, message, code);
     }
     classify_project_report_error(response.status)
-}
-
-/// The write-governance refusal of a cloud report computation.
-///
-/// ds-brain gates `export_reports_only` on transformer-write governance
-/// before it proxies, and answers `423 {"error_code": TRANSFORMER_EDIT_LOCKED
-/// | TRANSFORMER_FINAL_LOCKED, "detail": …}` — the detail names the holder
-/// of the lease, which is the one fact the operator needs. Both cross as a
-/// bounded [`crate::ServiceRefusal`] (`transformer_edit_locked` /
-/// `transformer_final_locked`); no new [`ProjectReportServiceCode`] variant
-/// is minted for a refusal one action emits, and everything else classifies
-/// as the report route always has.
-fn classify_export_reports_response(response: &TransportResponse) -> ClientError {
-    #[derive(serde::Deserialize)]
-    struct GovernanceRefusalWire {
-        error_code: String,
-        #[serde(default)]
-        detail: String,
-    }
-    const MAX_REFUSAL_BODY: usize = 64 * 1024;
-    if response.status == 423
-        && !response.body.is_empty()
-        && response.body.len() <= MAX_REFUSAL_BODY
-    {
-        if let Ok(wire) = serde_json::from_slice::<GovernanceRefusalWire>(&response.body) {
-            // The code that crosses is this crate's spelling, as every typed
-            // refusal's is; the service's upper-case token is not echoed.
-            let code = match wire.error_code.as_str() {
-                "TRANSFORMER_EDIT_LOCKED" => Some("transformer_edit_locked"),
-                "TRANSFORMER_FINAL_LOCKED" => Some("transformer_final_locked"),
-                _ => None,
-            };
-            if let Some(code) = code {
-                return ClientError::with_service_refusal(
-                    ErrorKind::InvalidInput,
-                    "the governed report service refused a locked transformer",
-                    crate::ServiceRefusal::new(423, Some(code), Some(&wire.detail)),
-                );
-            }
-        }
-    }
-    classify_project_report_response(response)
 }
 
 fn classify_project_report_error(status: u16) -> ClientError {

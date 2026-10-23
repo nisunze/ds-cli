@@ -63,7 +63,16 @@ JSON object containing boolean and numeric process settings.
 
 The command works on the project named by `--project` (the saved selection is
 never read), verifies each server-issued resumable target against that project, completes the upload
-phase before it starts one-file process jobs, and returns one result per file.
+phase, then processes each file on this machine and returns one result per file.
+ds-brain only stores the uploaded bytes; it processes nothing. Processing reads
+the file's LV layers (`customers`, `lv_lines`, `lv_poles`, `service_cables`,
+`spans`, `tr`; other layers are reported as ignored) with the shared readers,
+runs the installed Network engine with the project configuration and the
+mode's preset (`lv-drafting`/`lv-process`: drafting, `sketch-lv`: sketch;
+`--settings` toggles laid over it), and saves the result over the transformer
+the file is named after through the fenced governed save — the same owners
+`ds design lv project-run` composes. A file named after a transformer the project
+has not registered is refused (`status_upload_transformer_unregistered`).
 
 ```bash
 ds design intake upload --project <id> --file ./T001.zip --mode lv-process \
@@ -480,18 +489,21 @@ ds design status --project <id> --transformer TX-1 --transformer TX-2 --output j
 ds design status --project <id> --findings --output json
 ```
 
-Explicit `--read held` reads the last authenticated whole-project observation
-from native SQLite without network acquisition; no held observation refuses with
-`design_status_not_held`. `--read refresh` intentionally acquires a whole-project
-snapshot. Both modes apply `--transformer` locally. Their `observation` records
+Reads are held-first (DECOUPLING-012). The default, `--read acquire`, answers
+from the last authenticated whole-project observation in native SQLite with no
+network read and acquires one whole-project snapshot only when nothing is held or
+the held one was invalidated. Explicit `--read held` never reads the network; no
+held observation refuses with `design_status_not_held`. `--read refresh`
+intentionally acquires a whole-project snapshot. Every mode applies
+`--transformer` locally, matching names by the Kernel transformer identity
+(`transformer_status_store::row_identity`) on both sides. Their `observation` records
 source (`held` or `refresh`), state (`ready` or `held`), observation time, digest,
 and a bounded error code. Failed refresh preserves prior bytes and time, returns
 clearly held data when available, and never reports it as a fresh observation.
 Invalidations mark the retained snapshot as needing refresh. No retired JSON
 cache is read or maintained; an initial explicit refresh establishes SQLite.
 
-Omitting `--read` preserves the original behavior: full reads refresh, targeted
-reads call the service for those names and invalidate full-snapshot freshness.
+Omitting `--read` is `acquire`; every answer carries its `observation`.
 Internal observed-status callers retain their cold-acquire behavior. Styles
 retain their existing separate JSON contract.
 
@@ -499,7 +511,9 @@ retain their existing separate JSON contract.
 file in an existing protected directory. The bounded `ds.design-status-file/v1`
 receipt names its exact path, SHA256, byte size, lane, project, principal, count,
 and observation. Native UI consumers always pass `--read` and `--out`; opening
-uses held, and intentional Refresh uses refresh. A missing or incompatible
+and navigation use acquire, and intentional Refresh uses refresh. A window sends
+only a read mode the installed Core's descriptor declares; an older Core is the
+Kernel's `core_update_required` refusal and nothing is sent. A missing or incompatible
 native owner is a refusal, never a browser fallback.
 
 Omit `--transformer` for every transformer document in the project; repeat it
@@ -1581,6 +1595,16 @@ it is now one belief rather than the browser's and the CLI's.
 one set). `--limit` is 1–100 and `--offset` pages; `more` counts omitted rows,
 while `truncated` identifies shortened cell/metadata evidence. Use
 `read --sheet KEY --out NEW_PATH` for complete, untruncated sheet JSON.
+
+`read` (sheet or `--document`) is held-first (DECOUPLING-012). The default
+`--read acquire` answers from the configuration this device holds in Core
+SQLite, offline, and performs one configuration read only when nothing is held;
+`--read held` never reads the network (`project_config_not_held` when nothing is
+held); `--read refresh` is the explicit read that replaces the held document.
+`observation.source` names what produced the answer (`held` or `refresh`), never
+the request mode. Every native configuration change (`set`, `save`, `rule-set
+duplicate`, feeder limits, meter types, output rows, aliases, housekeeping, copy)
+forgets the held document, so the next read acquires the saved document once.
 
 `diff --sheet KEY --file BASELINE.json` compares that file to the current
 sheet. Object key order is immaterial; row order, missing values and whitespace

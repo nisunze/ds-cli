@@ -85,8 +85,8 @@ pub static COMMAND: Command = Command {
     refusals: &[
         refusal!(
             "transformer_process_projection_unavailable",
-            "the backend does not return exact saved layers and their same-read processing projection",
-            "deploy matching ds-brain process projection support, then retry without changing local state"
+            "the backend does not return saved layers with their processing projection",
+            "deploy matching ds-brain projection support, then retry"
         ),
         refusal!(
             "native_profile_not_configured",
@@ -106,12 +106,12 @@ pub static COMMAND: Command = Command {
         ds_cli_auth::SIGNED_OUT_REFUSAL,
         refusal!(
             "context_corrupt",
-            "--project is not one exact DS project id: blank, untrimmed, too long, or a path",
+            "--project is not one exact project id (blank, untrimmed, too long or a path)",
             "copy one exact ds_project value from ds auth project list"
         ),
         refusal!(
             "project_context_stale",
-            "the account or project changed between the transformer and configuration reads",
+            "the account or project changed between the two reads",
             "export the transformer again"
         ),
         refusal!(
@@ -160,7 +160,7 @@ pub static COMMAND: Command = Command {
         refusal!(
             "auth_rejected",
             "the authentication service, or the transformer-context route, rejected this request",
-            "confirm this lane still authenticates with `ds auth status`; if it does, the transformer-context route rejected a credential this call already verified, and no local change fixes that"
+            "confirm `ds auth status` authenticates this lane; if it does, the transformer-context route rejected a verified credential and no local change fixes it"
         ),
         refusal!(
             "auth_revoked",
@@ -195,7 +195,7 @@ pub static COMMAND: Command = Command {
         refusal!(
             "transformer_context_unfenced",
             "the server omitted either the snapshot version or content digest",
-            "refresh or migrate the transformer until the context call returns both fences"
+            "refresh or migrate the transformer until the context returns both fences"
         ),
         refusal!(
             "fast_lv_input_too_large",
@@ -220,7 +220,7 @@ pub static COMMAND: Command = Command {
         refusal!(
             "fast_lv_request_output_write_failed",
             "the request cannot be durably written at --out",
-            "choose a writable absent path and retry the unchanged transformer export"
+            "choose a writable absent path and retry the export"
         ),
         PROCESS_SETTINGS_INVALID,
     ],
@@ -492,7 +492,7 @@ fn read_operator(path: &str) -> Result<Value, Failure> {
 /// Carry the settings the LV process dialog sends for `preset` into every
 /// job: the kernel resolves them once over the engine's own catalogue and
 /// the project's preset rows, and the native owner admits the result.
-pub(super) fn apply_process_preset(
+pub(crate) fn apply_process_preset(
     request: &[u8],
     preset: &str,
     operator: Option<&Value>,

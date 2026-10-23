@@ -1,6 +1,10 @@
 //! Closed local project controls shared by native CLI and the legacy file adapter.
-//! This boundary carries no credential, HTTP client or implicit reference acquisition.
-use crate::{ProjectIdentity, Workspace, files, run::RunRequest};
+//! This boundary carries no credential, HTTP client or implicit reference acquisition,
+//! and links no Solar engine: a local run's calculation is an explicit host input.
+use crate::{
+    ProjectIdentity, Workspace, files,
+    run::{LocalCalculator, RunRequest},
+};
 use anyhow::{Result, ensure};
 use ds_solar_contracts::SolarCityInput;
 use serde::{Deserialize, Serialize};
@@ -175,8 +179,18 @@ fn page_limit() -> usize {
     20
 }
 
+const NO_ENGINE: &str = "Local project calculation is available through solar.application; the native host does not link the Solar engine";
+
 /// Decode the owner's closed request before any local filesystem effect.
+/// Calculation requests refuse before any effect: native hosts calculate
+/// through `solar.application` and the independently released Solar addon.
 pub fn execute(request: Value) -> Result<Value> {
+    execute_with(request, None)
+}
+
+/// [`execute`] with a host-supplied local run calculation. Only local tooling
+/// that links an engine supplies one. Portfolio aggregation is never local.
+pub fn execute_with(request: Value, calculate: Option<&LocalCalculator<'_>>) -> Result<Value> {
     let bytes = serde_json::to_vec(&request)?;
     ensure!(
         bytes.len() <= 32 * 1024 * 1024,
@@ -205,17 +219,8 @@ pub fn execute(request: Value) -> Result<Value> {
             city,
         } => crate::dashboard::source(&source, &project, &run, &city)?,
         Request::PortfolioCalculate { request } => {
-            #[cfg(feature = "compute")]
-            {
-                crate::portfolio::calculate(request)?
-            }
-            #[cfg(not(feature = "compute"))]
-            {
-                let _ = request;
-                anyhow::bail!(
-                    "Local project calculation is available through solar.application; the native host does not link the Solar engine"
-                )
-            }
+            let _ = request;
+            anyhow::bail!(NO_ENGINE)
         }
         Request::CityCreate {
             workspace,
@@ -358,17 +363,11 @@ pub fn execute(request: Value) -> Result<Value> {
             request,
             network,
         } => {
-            #[cfg(feature = "compute")]
-            {
-                Workspace::open(&workspace)?.execute_with_network(&request, &cache, &network)?
-            }
-            #[cfg(not(feature = "compute"))]
-            {
-                let _ = (workspace, cache, request, network);
-                anyhow::bail!(
-                    "Local project calculation is available through solar.application; the native host does not link the Solar engine"
-                )
-            }
+            let Some(calculate) = calculate else {
+                anyhow::bail!(NO_ENGINE)
+            };
+            Workspace::open(&workspace)?
+                .execute_with_network(&request, &cache, &network, calculate)?
         }
         Request::Result { workspace, run_id } => {
             Workspace::open(&workspace)?.run_result(&run_id)?

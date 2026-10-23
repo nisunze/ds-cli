@@ -15,7 +15,7 @@ use ds_cli_contract::spec::{
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
-use crate::{BOOL_CHOICES, DESCRIPTOR_ARG, TARGET_ARG};
+use crate::{DESCRIPTOR_ARG, TARGET_ARG};
 
 /// The application's own defaults, as its tool dock opens with them.
 const DEFAULT_MIN_SPACING: &str = "50";
@@ -61,13 +61,6 @@ map as a new layer. Polygons are their own area; point and line layers need \
             "Buffer non-polygon parts into areas; 0..1000000.",
         )
         .default(DEFAULT_BUFFER),
-        Arg::value(
-            "sample-elevation",
-            "<bool>",
-            "Read terrain elevation at each point.",
-        )
-        .default("false")
-        .choices(BOOL_CHOICES),
         Arg::value("seed", "<n>", "Fix the sample so the run repeats."),
         TARGET_ARG,
         DESCRIPTOR_ARG,
@@ -75,7 +68,7 @@ map as a new layer. Polygons are their own area; point and line layers need \
     output: "\
 The new layer's id and name, the point count, and how the areas were made: \
 source features, sampling areas, how many were buffered and how many parts \
-were skipped for lack of a buffer. With elevation, how many points had none.",
+were skipped for lack of a buffer.",
     examples: &[Example {
         command: "ds map random-points --layer sketch:abc --min-spacing-m 30 --seed 7 --output json",
         note: "Reproducible: the same seed samples the same points.",
@@ -122,13 +115,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         1_000_000.0,
     )?;
     let buffer = crate::number(inputs.require("buffer-m")?, "buffer-m", 0.0, 1_000_000.0)?;
-    let elevation = crate::boolean(inputs.value("sample-elevation"), false);
 
     let mut settings = json!({
         "minSpacingM": min,
         "maxSpacingM": max,
         "bufferDistanceM": buffer,
-        "sampleElevation": elevation,
     });
     // Omitted rather than defaulted: the application's schema makes `seed`
     // optional, and sending a fixed one would quietly make every unseeded run
@@ -158,8 +149,6 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         "areas": result["areaCount"].as_u64().unwrap_or(0),
         "buffered_areas": result["bufferedCount"].as_u64().unwrap_or(0),
         "skipped_no_buffer": result["skippedNoBuffer"].as_u64().unwrap_or(0),
-        "elevation_sampled": result["elevationSampled"].as_bool().unwrap_or(false),
-        "elevation_gaps": result["elevationGaps"].as_u64().unwrap_or(0),
     }))
 }
 
@@ -190,12 +179,6 @@ pub fn render(data: &Value) -> String {
         out.push_str(&format!(
             "  {} skipped for lack of a buffer\n",
             crate::plural(skipped, "part")
-        ));
-    }
-    if data["elevation_sampled"].as_bool().unwrap_or(false) {
-        out.push_str(&format!(
-            "  elevation sampled; {} without data\n",
-            data["elevation_gaps"]
         ));
     }
     out

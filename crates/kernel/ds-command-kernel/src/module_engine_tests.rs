@@ -85,10 +85,18 @@ fn reporter_engine_release_must_match_the_named_or_derived_release() {
 
 #[test]
 fn network_refusals_keep_their_typed_reasons() {
+    // Owner 22 Oct: another schema revision or protocol integer is admitted
+    // (see the additive test below); another document family or a protocol
+    // integer of the wrong type still refuses.
     let cases: Vec<(&str, Edit, &str)> = vec![
         (
             "schema",
-            Box::new(|v| v["schema"] = json!("ds.engine-build/v2")),
+            Box::new(|v| v["schema"] = json!("ds.module-build/v1")),
+            "protocol or target",
+        ),
+        (
+            "identity family",
+            Box::new(|v| v["engineIdentity"]["schema"] = json!("ds.reporter-engine/v1")),
             "protocol or target",
         ),
         (
@@ -98,7 +106,7 @@ fn network_refusals_keep_their_typed_reasons() {
         ),
         (
             "protocol",
-            Box::new(|v| v["engineIdentity"]["protocolMajor"] = json!(2)),
+            Box::new(|v| v["engineIdentity"]["protocolMajor"] = json!("1")),
             "protocol or target",
         ),
         (
@@ -394,7 +402,7 @@ fn browser_engine_units_refuse_native_crossed_or_unversioned_identities() {
             ModuleComponent::Network,
             browser_network(),
             "/protocolMajor",
-            json!(2),
+            json!("1"),
         ),
         (
             ModuleComponent::Network,
@@ -420,17 +428,20 @@ fn browser_engine_units_refuse_native_crossed_or_unversioned_identities() {
             "/sourceSha",
             json!("main"),
         ),
+        // Owner 22 Oct: an added capability or another release version is
+        // admitted (see the test below); lacking the consumed capability or a
+        // malformed version still refuses.
         (
             ModuleComponent::Reporter,
             browser_reporter(),
             "/capabilities",
-            json!(["render_held_svg_pdf_v1", "extra_v1"]),
+            json!(["extra_v1"]),
         ),
         (
             ModuleComponent::Reporter,
             browser_reporter(),
             "/coreVersion",
-            json!("0.2.0"),
+            json!("0.2"),
         ),
     ] {
         let mut changed = base;
@@ -510,28 +521,131 @@ fn ui_units_refuse_unknown_fields_compilers_and_targets() {
     }
 }
 
+// This file is also compiled by crates/kernel/ds-module-admission through
+// `module_engine.rs`'s `#[path]`: keep it free of `crate::` paths. The
+// Kernel-only typed-exchange proof for different UI contract metadata lives in
+// module_release/ui_tests.rs.
+
+/// Owner 22 Oct: a Network build released alone with another schema revision,
+/// another protocol integer and additive facts is admitted with the same
+/// producer facts; only the required capabilities decide.
 #[test]
-fn different_contract_metadata_admits_the_same_working_typed_exchange() {
-    use crate::table_edit::{decode_request, decode_response, execute, TableEditRequest};
-    // Owner ruling and module-releases.md: metadata equality is not the
-    // compatibility criterion. Preserve all producer-integrity checks above.
-    for version in [1, 2] {
-        let mut value = ui_identity();
-        value["component"] = serde_json::to_value(UiComponent::CommandKernel).unwrap();
-        value["ui_contract"] = json!(version);
-        let identity = parse_ui_identity(&value).unwrap();
-        admit_ui_identity(UiComponent::CommandKernel, &identity, None).unwrap();
-        let request: TableEditRequest = serde_json::from_value(json!({
-            "operation":"add_column",
-            "input":{"rows":[{}],"column":"n","data_type":"int","default_value":"3.5"}
-        }))
-        .unwrap();
-        let request = decode_request(&serde_json::to_vec(&request).unwrap()).unwrap();
-        let reply = execute(&request).unwrap();
-        let decoded = decode_response(&request, &serde_json::to_vec(&reply).unwrap()).unwrap();
+fn a_newer_network_build_with_other_revisions_and_additive_facts_is_admitted_unchanged() {
+    let current = admit_engine_build(ModuleComponent::Network, "linux", &network(), None).unwrap();
+    let mut newer = network();
+    newer["schema"] = json!("ds.engine-build/v2");
+    newer["futureBuildFact"] = json!({"sbom": true});
+    newer["build"]["futureLinker"] = json!("lld");
+    newer["engineIdentity"]["schema"] = json!("ds.network-engine/v3");
+    newer["engineIdentity"]["protocolMajor"] = json!(2);
+    newer["engineIdentity"]["protocolMinor"] = json!(11);
+    newer["engineIdentity"]["futureIdentityFact"] = json!([1]);
+    newer["engineIdentity"]["capabilities"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!("future_operation_v10"));
+    assert_eq!(
+        admit_engine_build(ModuleComponent::Network, "linux", &newer, None).unwrap(),
+        current
+    );
+    for (component, base) in [
+        (ModuleComponent::Solar, solar()),
+        (ModuleComponent::Reporter, reporter()),
+    ] {
+        let platform = if component == ModuleComponent::Solar {
+            "windows"
+        } else {
+            "linux"
+        };
+        let admitted = admit_engine_build(component, platform, &base, None).unwrap();
+        let mut newer = base;
+        newer["schema"] = json!("ds.engine-build/v2");
+        newer["futureFact"] = json!("additive");
         assert_eq!(
-            serde_json::to_value(decoded).unwrap()["result"]["default_value"],
-            4
+            admit_engine_build(component, platform, &newer, None).unwrap(),
+            admitted
         );
     }
+}
+
+/// Owner 22 Oct (B5): a Reporter WASM unit is admitted by the capability the
+/// Kernel calls it for, whatever its release version or additional
+/// capabilities; producer facts remain its own integrity check.
+#[test]
+fn a_reporter_wasm_unit_is_admitted_by_its_consumed_capability_not_version_or_list() {
+    let mut newer = browser_reporter();
+    newer["coreVersion"] = json!("0.2.0");
+    newer["schema"] = json!("ds.reporter-engine/v2");
+    newer["protocolMajor"] = json!(2);
+    newer["capabilities"] = json!(["render_held_svg_pdf_v1", "render_held_png_v1"]);
+    newer["futureFact"] = json!(true);
+    let admitted = admit_browser_engine_build(ModuleComponent::Reporter, &newer, None).unwrap();
+    assert_eq!(admitted.version, "0.2.0");
+    assert_eq!(
+        admitted.release,
+        format!("ds-network-reporter@0.2.0+{SOURCE}")
+    );
+    let producer = |version| BrowserEngineProducer {
+        version,
+        source_sha: SOURCE,
+        manifest_sha256: CLOSURE,
+    };
+    assert_eq!(
+        admit_browser_engine_build(ModuleComponent::Reporter, &newer, Some(producer("0.2.0")))
+            .unwrap(),
+        admitted
+    );
+    // The artifact's own producer receipt still binds its identity.
+    assert!(
+        admit_browser_engine_build(ModuleComponent::Reporter, &newer, Some(producer("0.1.0")))
+            .is_err()
+    );
+    // The consumed capability is required; a repeated or malformed token is not
+    // a declaration.
+    for capabilities in [
+        json!(["render_held_png_v1"]),
+        json!([]),
+        json!(["render_held_svg_pdf_v1", "render_held_svg_pdf_v1"]),
+        json!(["render_held_svg_pdf_v1", 7]),
+        json!("render_held_svg_pdf_v1"),
+    ] {
+        let mut changed = newer.clone();
+        changed["capabilities"] = capabilities.clone();
+        let error =
+            admit_browser_engine_build(ModuleComponent::Reporter, &changed, None).unwrap_err();
+        assert!(
+            error.starts_with("module_engine_incompatible:"),
+            "{capabilities}: {error}"
+        );
+    }
+    // A Network unit is likewise admitted with additive capabilities and a
+    // different protocol integer.
+    let mut network = browser_network();
+    network["protocolMajor"] = json!(3);
+    network["capabilities"] = json!(["lv_processing_v1", "grid_query_v1", "future_v4"]);
+    assert_eq!(
+        admit_browser_engine_build(ModuleComponent::Network, &network, None).unwrap(),
+        admit_browser_engine_build(ModuleComponent::Network, &browser_network(), None).unwrap()
+    );
+}
+
+#[test]
+fn schema_family_names_the_document_not_its_revision() {
+    assert_eq!(schema_family("ds.engine-build/v1"), "ds.engine-build");
+    assert_eq!(schema_family("ds.engine-build/v27"), "ds.engine-build");
+    assert_eq!(schema_family("ds.engine-build"), "ds.engine-build");
+    assert_eq!(schema_family("ds.engine-build/vx"), "ds.engine-build/vx");
+    assert_eq!(schema_family("ds.engine-build/"), "ds.engine-build/");
+    assert!(same_family(
+        &json!("ds.engine-build/v2"),
+        ENGINE_BUILD_SCHEMA
+    ));
+    assert!(!same_family(
+        &json!("ds.module-build/v1"),
+        ENGINE_BUILD_SCHEMA
+    ));
+    assert!(!same_family(&json!(1), ENGINE_BUILD_SCHEMA));
+    assert!(protocol_integer(&json!(0)) && protocol_integer(&json!(7)));
+    assert!(!protocol_integer(&json!("1")) && !protocol_integer(&json!(-1)));
+    assert!(!protocol_integer(&json!(u64::from(u32::MAX) + 1)));
 }

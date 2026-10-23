@@ -96,12 +96,10 @@ pub static COMMAND: Command = Command {
     summary: "Find transformers with bounded typed tag predicates.",
     purpose: "\
 Evaluates 1-20 typed predicates against the project's current Transformer \
-Status projection. Typed filters distinguish numeric ordering, free text \
-and choice vocabulary. The server scans transformers once and \
-assignments once per referenced definition. --limit is an admission bound: \
+Status projection. The server scans transformers once and assignments once per definition. --limit is an admission bound: \
 if more rows match, the call refuses rather than returning a partial selection. \
-A choice predicate is matched against the stored vocabulary byte for byte and \
-refuses, never returning an empty set for a value the project never authored.",
+A choice predicate matches the stored vocabulary byte for byte and \
+refuses an unauthored value rather than returning an empty set.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,

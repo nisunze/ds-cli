@@ -122,6 +122,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_file_write",
         "none",
     ),
+    ("dsgrid.spotting.preview", "local_file_write", "none"),
     ("dsgrid.apply", "local_file_write", "none"),
     ("dsgrid.apply-batch", "local_file_write", "none"),
     ("dsgrid.apply-correction", "local_file_write", "none"),
@@ -170,6 +171,8 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("survey.local.status", "read_only", "none"),
+    // The dashboard numbers aggregated on this machine from the held copy.
+    ("survey.dashboard", "read_only", "none"),
     ("survey.photo.fetch", "local_file_write", "headless_project"),
     (
         "design.group.project-preview",
@@ -301,16 +304,12 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "local_file_write",
         "headless_user",
     ),
-    (
-        "data.elevation.attach",
-        "local_file_write",
-        "desktop_pairing",
-    ),
+    ("data.elevation.attach", "local_file_write", "none"),
     // Extraction generates points from an explicit area; it is intentionally
     // separate from attachment, which enriches an existing point file. The
     // plan is a map-independent preview; extraction writes only local files
     // through the paired Desktop's governed Rwanda DEM component.
-    ("data.elevation.plan", "read_only", "desktop_pairing"),
+    ("data.elevation.plan", "read_only", "none"),
     // Native terrain tools run offline on local files: compare and sample write
     // their declared outputs; describe only reads.
     ("data.elevation.compare", "local_file_write", "none"),
@@ -331,11 +330,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
         "headless_project",
     ),
     ("data.parcels.query", "local_file_write", "headless_project"),
-    (
-        "data.elevation.extract",
-        "local_file_write",
-        "desktop_pairing",
-    ),
+    ("data.elevation.extract", "local_file_write", "none"),
     ("data.convert", "local_file_write", "none"),
     ("data.conversion-matrix", "discovery", "none"),
     ("data.inspect", "read_only", "none"),
@@ -950,14 +945,6 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ),
     (
         "report.project.compounded",
-        "artifact_write",
-        "headless_project",
-    ),
-    // The cloud twin of `report.project.export`: the same individual report,
-    // computed and published server-side. A durable artifact of the project,
-    // so it confirms like the Combined Report does.
-    (
-        "report.project.compute",
         "artifact_write",
         "headless_project",
     ),

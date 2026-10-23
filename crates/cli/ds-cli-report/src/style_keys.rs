@@ -25,7 +25,7 @@ const LANE: Arg = ds_cli_contract::spec::LANE
 const SCOPE: Arg = Arg::value(
     "scope",
     "<scope>",
-    "The library of the project named by --project. The retired global library is refused before authentication.",
+    "The library of the project named by --project; global is retired and refused.",
 )
 .choices(&["global", "project"]);
 const PROJECT: Arg = Arg::value(
@@ -43,7 +43,7 @@ const CHOICES: Arg = Arg::value(
     "<json-file>",
     "Owner choices: {\"<template id>\": {\"<layer>\": <a key from the plan's candidates>}}.",
 );
-const PURPOSE: &str = "Moves printing templates whose pens still use legacy style_refs (previews refuse with style_resolution_required) to the governed print keys ds-command-kernel decides here, in Core, from the library and governed style table. An undecidable layer is a named finding settled only by --choices. Plans write nothing; apply writes exactly a reviewed plan_sha256 and keeps every replaced template.";
+const PURPOSE: &str = "Moves printing templates whose pens use legacy style_refs (previews refuse with style_resolution_required) to the governed print keys Core decides from the library and style table. An undecidable layer is a finding settled only by --choices. Plans write nothing; apply writes exactly a reviewed plan_sha256 and keeps every replaced template.";
 
 const NOT_FOUND: Refusal = Refusal {
     code: "print_setup_not_found",
@@ -53,11 +53,11 @@ const NOT_FOUND: Refusal = Refusal {
 const PROJECT_REQUIRED: Refusal = Refusal {
     code: "project_required",
     when: "--scope project names no --project",
-    remedy: "pass --scope project with --project <exact-id>; the saved selection is never read",
+    remedy: "pass --scope project with --project <exact-id>",
 };
 const INPUT_INVALID: Refusal = Refusal {
     code: "printing_invalid",
-    when: "the flags do not name one project library (the global library is retired), or the choices file is not one bounded JSON object of exact keys",
+    when: "the flags do not name one project library, or the choices file is not one bounded JSON object of exact keys",
     remedy: "pass --scope project --project <exact-id>, or --all-projects alone; write --choices from the plan's candidates",
 };
 const REFUSALS: &[Refusal] = &[

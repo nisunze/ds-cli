@@ -253,6 +253,14 @@ mod tests {
         let legacy = Connection::open(&path).unwrap();
         legacy.execute_batch("CREATE TABLE observation(id INTEGER PRIMARY KEY,document TEXT); INSERT INTO observation VALUES(1,'legacy derived status'); PRAGMA user_version=1;").unwrap();
         drop(legacy);
+        // Raw SQLite creates sidecars from the ambient umask; keep the legacy
+        // fixture as private as the store itself so the test is hermetic.
+        for entry in fs::read_dir(path.parent().unwrap()).unwrap() {
+            let entry = entry.unwrap().path();
+            if entry.is_file() {
+                fs::set_permissions(&entry, std::os::unix::fs::PermissionsExt::from_mode(0o600)).unwrap();
+            }
+        }
         assert!(held(dir.path(), &scope).unwrap().is_none());
         acquire(dir.path(), &scope, false, || {
             Ok::<_, ()>(json!({"transformers":[]}))

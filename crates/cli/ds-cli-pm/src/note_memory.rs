@@ -228,7 +228,7 @@ pub static CONTEXT: Command = retained_page_descriptor(
     "pm.note.context",
     &["pm", "note", "context"],
     "Retrieve applicable active rulings and scoped conflicts before acting.",
-    "Online reads retain one fixed last-context page; explicit --offline reuses only the exact request and captured context revision, without network or session restoration. Captured incomplete or migration-required context remains incomplete. Consumes a closed context JSON: query fields terms/tags/tag_match/note_types/lifecycle/sort/direction/cursor/limit and optional scope. The existing project owner combines text relevance and affected objects/structures/conditions; exact-tag-only lookup is insufficient. Routine context is active only, scans at most 200 and reports incomplete results. Potential overlapping issue/scope conflicts retain exact sources and explicit supersession; newest does not win. References are inspected on demand, never fetched speculatively.",
+    "Online reads retain one last-context page; --offline reuses only the exact request and captured revision. Consumes a closed context JSON: terms/tags/tag_match/note_types/lifecycle/sort/direction/cursor/limit and optional scope. The project owner combines text relevance with affected objects and conditions. Routine context is active only, scans at most 200 and reports incomplete results. Overlapping conflicts keep exact sources and supersession; newest does not win.",
     Effect::ReadOnly,
     &[INPUT, OFFLINE_PAGE, crate::LANE_ARG, crate::PROJECT_ARG],
 );
@@ -236,7 +236,7 @@ pub static UPDATE: Command = descriptor(
     "pm.note.update",
     &["pm", "note", "update"],
     "Revise a project note with its reviewed version and stable operation.",
-    "Closed Write JSON requires operation_id,id,expected_version,reason,draft. Draft contains subject/body/tags and memory schema ds.project-note-memory/v1, note_type,active lifecycle, provenance,scope,individual claims,evidence,supersedes,unresolved. Each claim has id,semantic kind,issue_key,text,mandatory provenance and exact evidence/supersession refs. User instructions/decisions cannot be inferred from proposals. Server owns author/time/permissions, version CAS and identical replay. Non-active transitions use verified backup retirement.",
+    "Closed Write JSON requires operation_id,id,expected_version,reason,draft. Draft contains subject/body/tags and memory schema ds.project-note-memory/v1, note_type,active lifecycle, provenance,scope,claims,evidence,supersedes,unresolved. Each claim has id,kind,issue_key,text,provenance and exact evidence/supersession refs. User decisions cannot be inferred from proposals. Server owns author/time/permissions, version CAS and identical replay. Non-active transitions use verified backup retirement.",
     Effect::GlobalWrite,
     crate::authored_args![INPUT, crate::LANE_ARG, crate::PROJECT_ARG],
 );

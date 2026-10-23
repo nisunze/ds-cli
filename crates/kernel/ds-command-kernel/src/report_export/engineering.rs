@@ -1,10 +1,13 @@
 //! Bounded evidence from the reporter's held-fact qualification pass.
+//!
+//! The Reporter writes these records; additive members from a Reporter
+//! released after this Kernel are accepted (owner 22 Oct). Required members,
+//! types and the bounds in [`EngineeringPreflight::valid`] still decide.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct EngineeringPreflight {
     pub schema: String,
     pub source_layers: Vec<SourceLayer>,
@@ -22,14 +25,12 @@ pub struct EngineeringPreflight {
     pub network_engineering: Vec<Value>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct SourceLayer {
     pub layer: String,
     pub features: usize,
     pub held_features_sha256: String,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct FieldLineage {
     pub layer: String,
     pub field: String,
@@ -45,7 +46,6 @@ pub struct FieldLineage {
     pub invalid: usize,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Finding {
     pub code: String,
     pub layer: String,
@@ -56,7 +56,6 @@ pub struct Finding {
     pub recorded: Option<Value>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct QuantityLineage {
     pub section: String,
     pub description: String,

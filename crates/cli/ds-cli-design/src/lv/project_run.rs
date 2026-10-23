@@ -27,27 +27,27 @@ const LOCAL_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "fast_lv_run_incomplete",
         when: "a captured stage is incomplete, mismatched, oversized or modified",
-        remedy: "retain the evidence and use a new output directory; never assemble or repair process JSON manually",
+        remedy: "keep the evidence and use a new output directory",
     },
     Refusal {
         code: "fast_lv_run_busy",
         when: "another invocation holds this run directory's lease",
-        remedy: "wait for that invocation; after a crash remove only the abandoned .run-lock file before resuming",
+        remedy: "wait for that invocation; after a crash remove only the abandoned .run-lock file",
     },
     Refusal {
         code: "fast_lv_run_process_failed",
         when: "the single native job did not succeed",
-        remedy: "inspect result.json diagnostics and correct the project source before starting a new run",
+        remedy: "inspect result.json diagnostics and fix the project source before a new run",
     },
     Refusal {
         code: "fast_lv_run_save_unverified",
-        when: "the save owner did not verify exactly one transformer with version, layer and analysis digests",
-        remedy: "inspect detail.save; resume the unchanged captured run to retry its fenced save",
+        when: "the save did not verify exactly one transformer's version, layer and analysis digests",
+        remedy: "inspect detail.save; resume the captured run to retry its save",
     },
     Refusal {
         code: "fast_lv_run_print_failed",
-        when: "the verified save succeeded but the fenced analysis read or A4 print failed",
-        remedy: "retain detail.save and the output directory, then retry --resume --print-a4; never reconstruct saved analysis",
+        when: "the save succeeded but the analysis read or A4 print failed",
+        remedy: "keep detail.save and the output directory, then retry --resume --print-a4",
     },
 ];
 
@@ -85,7 +85,7 @@ const fn process_extra_count() -> usize {
 pub(super) const BROWSER_MISSING: Refusal = Refusal {
     code: "reporter_browser_missing",
     when: "no verified existing reporter browser is configured",
-    remedy: "run ds workstation configure --component chromium --target reporter --yes --output json once",
+    remedy: "run ds workstation configure --component chromium --target reporter --yes once",
 };
 const PRINT_REFUSALS: &[Refusal] = &[
     BROWSER_MISSING,
@@ -161,7 +161,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "project-run"],
     contract: 2,
     summary: "Compute, save and optionally print one LV transformer to A4.",
-    purpose: "Capture the explicit project's currently fenced transformer and configuration through project-export --project-config, process once with ds-network owner defaults or --preset/--operator, then project-save the exact layers and ds.lv-voltage-drop.analysis/v1 atomically on the working head. Success requires the save owner's fresh verified layer/analysis digests. Retain the bounded output directory; --resume reuses its exact captured source/result and deterministic operation ID, never re-exports or recomputes. Named versions and backups are not changed; no compute artifacts are uploaded. With --print-a4, capture the requested lane's managed Reporter once and preflight its render_voltage_drop_result task and configured headless browser before effects, retaining that Reporter through rendering, then fetch exact saved analysis under all three save pins and call report.export voltage-drop with matching held layers and the same sealed project caption. Missing or mismatched caption refuses printing; a verified earlier ID-caption print is preserved while a fresh attempt corrects it. Print failures retain saved:true/printed:false evidence. --resume --print-a4 retries from the first verified save without saving again; moved heads refuse. Configure an existing browser once with workstation configure --component chromium --target reporter. No Desktop or browser window is opened.",
+    purpose: "Capture the project's fenced transformer and configuration through project-export --project-config, process once with ds-network owner defaults or --preset/--operator, then project-save the exact layers and ds.lv-voltage-drop.analysis/v1 atomically on the working head. Success requires the save owner's verified layer/analysis digests. Retain the bounded output directory; --resume reuses its captured source/result and deterministic operation ID, never re-exporting or recomputing. Named versions and backups are unchanged; nothing is uploaded. With --print-a4, capture the lane's managed Reporter once, preflight its render_voltage_drop_result task and headless browser before effects, then fetch the exact saved analysis under all three save pins and call report.export voltage-drop with matching held layers and the sealed project caption. A missing or mismatched caption refuses printing. Print failures retain saved:true/printed:false evidence. --resume --print-a4 retries from the verified save without saving again; moved heads refuse. Configure a browser once with workstation configure --component chromium --target reporter. No window is opened.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,

@@ -1459,7 +1459,7 @@ mod tests {
     fn completed_evidence_omits_the_fallback_source_when_no_fallback_ran() {
         let evidence = |fallback_source: Option<&str>| NativeElevationEvidence {
             task: TASK,
-            execution_host: context.execution_host(),
+            execution_host: "desktop",
             source_path: "/work/points.geojson".to_string(),
             source_bytes: 10,
             output_path: "/work/points-z.geojson".to_string(),

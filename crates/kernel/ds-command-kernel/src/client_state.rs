@@ -33,7 +33,7 @@ pub mod form_editor;
 pub mod maps;
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod browser;
+pub(crate) mod browser;
 
 /// Who is signed in and which project is active, as the host reports them.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

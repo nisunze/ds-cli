@@ -1,24 +1,20 @@
-#[cfg(feature = "compute")]
-use crate::{MAX_CITIES, timestamp};
-use crate::{Workspace, files, identifier};
+//! Restart-safe local runs over captured, prepared inputs. The workspace owns
+//! capture, locks and closed-batch verification; the caller supplies the
+//! calculation, so this application crate never links a Solar engine.
+use crate::{MAX_CITIES, Workspace, files, identifier, timestamp};
 use anyhow::{Result, ensure};
-use ds_solar_contracts::SolarArtifactBatch;
-#[cfg(feature = "compute")]
-use ds_solar_contracts::{SolarCityInput, digest};
-#[cfg(feature = "compute")]
-use ds_solar_io::cache::DirectoryReferenceCache;
+use ds_solar_contracts::{
+    PreparedSolarCityInput, SolarArtifactBatch, SolarCityInput, digest,
+    network_form::ResolvedInformation,
+};
+use ds_solar_io::{cache::DirectoryReferenceCache, output::GeneratedDocument};
 use ds_solar_reference_host::ReferencePreparer;
-#[cfg(feature = "compute")]
-use ds_solar_runtime::{CalculationOptions, Concurrency, SolarRuntime, run_cities};
-#[cfg(feature = "compute")]
 use fs2::FileExt;
-use rusqlite::OptionalExtension;
-#[cfg(feature = "compute")]
-use rusqlite::{TransactionBehavior, params};
+use rusqlite::{OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-#[cfg(feature = "compute")]
 use std::{
+    collections::BTreeMap,
     fs::{self, OpenOptions},
     path::Path,
 };
@@ -32,34 +28,44 @@ pub struct RunRequest {
     pub charts: bool,
     pub drafts: Vec<String>,
 }
-#[cfg(feature = "compute")]
 #[derive(Serialize, Deserialize)]
 struct CapturedRun {
     request: RunRequest,
     inputs: Vec<SolarCityInput>,
     #[serde(default)]
-    prepared_digests: std::collections::BTreeMap<String, String>,
+    prepared_digests: BTreeMap<String, String>,
 }
+
+/// One explicit calculation of a captured run's prepared inputs. The calculator
+/// commits one closed batch at `destination`, which does not exist yet; the
+/// workspace then verifies that batch against the captured prepared inputs.
+pub struct LocalCalculation<'a> {
+    pub run_id: &'a str,
+    pub project_id: &'a str,
+    pub root: &'a str,
+    pub prepared: &'a [PreparedSolarCityInput],
+    /// Locally held input maps per city id, keyed by their immutable source URI.
+    pub input_maps: BTreeMap<String, BTreeMap<String, GeneratedDocument>>,
+    pub concurrency: usize,
+    pub charts: bool,
+    pub drafts: &'a [String],
+    pub destination: &'a Path,
+}
+
+/// A host's calculation of one captured run; only engine-linking tooling has one.
+pub type LocalCalculator<'a> = dyn Fn(LocalCalculation<'_>) -> Result<()> + 'a;
 
 impl Workspace {
     /// A restarted command resumes the captured input, never today's mutable
     /// input. Holding only the job lock lets another process seed or synchronize.
-    #[cfg(feature = "compute")]
-    pub fn execute(&mut self, request: &RunRequest, reference_cache: &Path) -> Result<Value> {
-        self.execute_with_network(request, reference_cache, &Default::default())
-    }
-
     /// Shared assets are transient inputs supplied by the authorized host.
     /// Captured city records and the outbox retain references and overrides only.
-    #[cfg(feature = "compute")]
     pub fn execute_with_network(
         &mut self,
         request: &RunRequest,
         reference_cache: &Path,
-        network: &std::collections::BTreeMap<
-            String,
-            ds_solar_contracts::network_form::ResolvedInformation,
-        >,
+        network: &BTreeMap<String, ResolvedInformation>,
+        calculate: impl FnOnce(LocalCalculation<'_>) -> Result<()>,
     ) -> Result<Value> {
         ensure!(identifier(&request.run_id), "invalid Solar run id");
         let _compute_lock = crate::clean::lock(&self.path, false)?;
@@ -160,26 +166,24 @@ impl Workspace {
                 "UPDATE runs SET request=?1 WHERE id=?2",
                 params![serde_json::to_string(&captured)?, request.run_id],
             )?;
-            let mut options = CalculationOptions::default()
-                .with_run_id(&request.run_id)
-                .with_charts(request.charts)
-                .with_documents(true)
-                .with_report_drafts(request.drafts.clone());
+            let mut input_maps = BTreeMap::new();
             for input in &prepared {
-                options.input_maps.insert(
+                input_maps.insert(
                     input.city.identity.city_id.clone(),
                     self.input_maps(&input.city)?,
                 );
             }
-            let output = run_cities(
-                &SolarRuntime::new(),
-                &prepared,
-                &options,
-                Concurrency::new(request.concurrency),
-                &self.identity.project_id,
-                &self.identity.root,
-            )?;
-            files::commit_run(&destination, &output)?;
+            calculate(LocalCalculation {
+                run_id: &request.run_id,
+                project_id: &self.identity.project_id,
+                root: &self.identity.root,
+                prepared: &prepared,
+                input_maps,
+                concurrency: request.concurrency,
+                charts: request.charts,
+                drafts: &request.drafts,
+                destination: &destination,
+            })?;
             self.finish_run(request, &destination)
         })();
         if result.is_err() {
@@ -191,7 +195,6 @@ impl Workspace {
         result
     }
 
-    #[cfg(feature = "compute")]
     fn finish_run(&mut self, request: &RunRequest, directory: &Path) -> Result<Value> {
         let batch: SolarArtifactBatch = serde_json::from_slice(&files::read(
             &directory.join("batch.json"),

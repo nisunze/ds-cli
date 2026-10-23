@@ -2853,14 +2853,6 @@ impl ProjectReportCall<'_> {
     pub const fn timeout_seconds(&self) -> u64 {
         self.operation.timeout_seconds()
     }
-    /// `Some("fast")` for the compounded deliverable, sent as the fixed
-    /// `X-DS-Processing-Lane` header; `None` for lane-neutral actions.
-    pub const fn processing_lane(&self) -> Option<&'static str> {
-        self.operation.processing_lane()
-    }
-    pub const fn processing_lane_header(&self) -> &'static str {
-        PROCESSING_LANE_HEADER
-    }
     pub const fn correlation_headers(&self) -> [&'static str; 2] {
         CORRELATION_HEADERS
     }

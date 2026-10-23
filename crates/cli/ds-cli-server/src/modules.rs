@@ -38,7 +38,7 @@ pub static RELEASE: Command = Command {
     path: &["core", "module-release"],
     contract: 2,
     summary: "Validate one module's declared release metadata.",
-    purpose: "Read bounded local JSON and ask the Kernel to validate the selected module and lane's release metadata. Native is the default; runtime wasm inspects the complete four-file Network browser unit or Interactions/UI Kernel unit with required trusted build manifest. UI inspection returns its whole-unit digest. This is read-only schema and compatibility inspection; it grants no installation trust, download, activation, computation or publication authority.",
+    purpose: "Read bounded local JSON and ask the Kernel to validate the selected module and lane's release metadata. Native is the default; runtime wasm inspects the complete four-file Network browser unit or Interactions/UI Kernel unit with required trusted build manifest. UI inspection returns its whole-unit digest. Read-only inspection; it grants no install, download, activation or publication authority.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::None,

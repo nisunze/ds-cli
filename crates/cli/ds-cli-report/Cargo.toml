@@ -61,3 +61,5 @@ lopdf = { version = "0.45", default-features = false }
 ds-grid-engine = { workspace = true }
 base64.workspace = true
 ds-grid-exchange = { workspace = true }
+# Reads the Compounded Report archive the installed Reporter builds.
+zip.workspace = true

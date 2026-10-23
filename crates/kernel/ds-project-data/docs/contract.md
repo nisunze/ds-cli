@@ -15,7 +15,11 @@ bytes.
 |---|---|
 | Buffer policy, coverage plan, gap assessment, identity digests, seed order, decode of a provider page, the catalogue's default-on rows, the print-context document and its bounds | `ds-command-kernel` |
 | Rooms (`project-dataset-cache/v1/<key>/room.sqlite`), national bundle indexes (`reference-query-cache/…`), locks, fencing, staging | `ds-layer-store` |
-| The provider door (ds-brain `data-distribution`), bundle bytes, credentials | the host, through [`Provider`] and the fetch it lends |
+| Shared revision chain: head identity, manifest schema, base fence, delta and freshness rules, Google Open Buildings tile selection (S2 level 6), the engine task contracts | `ds-command-kernel::project_dataset_revisions` |
+| Replaying revisions into a room, preparing the source pages `ensure` commits, building and publishing the next revision, the stale re-plan | this crate, [`revisions`] |
+| Footprint normalization and contour derivation (offline, by request/response) | the Reporter engine (`prepare-publisher-footprints`, `plan-contour-lattice`, `derive-contours`) |
+| The provider doors (cloud-resident bounded reads, the compute artifact door for revisions, public publisher objects, the Rwanda DEM), bundle bytes, credentials | the host (`ds-cli-data`), through [`Provider`], [`revisions::RevisionHost`], [`revisions::SourceHost`] and the fetch it lends |
+| Authorizing and storing revisions (`design.report`, one head per project dataset, retained deltas, stale verdict) | ds-brain compute artifacts, engine `project_dataset`; it computes nothing |
 
 This crate decides nothing about geometry or document shape and never opens a
 socket.
@@ -73,8 +77,10 @@ nor a download request establishes completeness. Paths do not enter identity;
 source/version, stable object identities, byte pins, coverage and conversion
 revision do. Explicit source changes never substitute Microsoft for Google.
 
-The native producer verifies compressed bytes (128 MiB/object), then streams
-bounded records (2 MiB/record, 512 MiB expanded/object). Google geometry is strict
+The producer verifies the compressed bytes against their pins (128 MiB/object)
+and stages them; the Reporter engine's `prepare-publisher-footprints` task
+(the same normalization the shared seed uses) streams bounded records
+(2 MiB/record) and answers one page per extraction cell. Google geometry is strict
 2D Polygon/MultiPolygon WKT, including holes; unsupported types, dimensional or
 CRS modifiers, malformed/unclosed rings and nonfinite/non-WGS84 coordinates
 refuse. Microsoft rows require canonical WGS84 Polygon/MultiPolygon Features.
@@ -98,25 +104,81 @@ existing local analytical owner builds/uses the spatial index and commits
 project coverage through the same ticket fence. There is no transport port,
 ADC, Earth Engine or Brain compute call in this producer.
 
-This is a local publisher-input producer, not an online publisher download or
-contour cutter. Google online acquisition needs an admitted frozen publisher
-catalogue/resource port. Existing Microsoft city acquisition remains explicit
-and separate. A retained full Rwanda COG is an elevation input; no native
-contour producer is admitted by this slice.
+This is the pinned-input path (`--publisher-input`, e.g. Microsoft tiles an
+operator chose); it publishes its own analytical source and room. Online
+Google Open Buildings acquisition and contour derivation are the shared seed
+([below](#seed-once-per-project-shared-revisions)).
 
 ## The registry the kernel echoes
 
 `datasets::{buildings_dataset, contours_dataset, catalog_dataset}` produce the
 `Dataset` documents — byte-identical to the desktop's — whose digest is the
-room address. The legacy Buildings/Contours provider value
-`ds-brain:query_print_context` remains in the identity to preserve old holdings;
-it is not permission to compute remotely. `datasets::local_resource_need`
-reports the selected missing local input and exact authored parameters. The
-CLI provider calls this owner instead of Brain compute; warm holdings still
-read without any acquisition. A catalogue layer is a project subset of the
+room address. The Buildings/Contours provider token
+`datasets::PRINT_CONTEXT_ROOM_PROVIDER` (`ds-brain:query_print_context`)
+remains in the identity only so rooms seeded before the shared revisions keep
+their address; it names no door and grants nothing (the Brain action answers
+`NATIVE_COMPUTE_REQUIRED`). The shared head identity leaves it out. A print
+lends only the cloud-read provider: for buildings and contours it refuses
+`project_dataset_local_source_required` naming `ds data project-cache seed`,
+and warm holdings read without any acquisition. A catalogue layer is a project subset of the
 machine's installed national bundle (`desktop:reference_resource_cache`).
 Contours are one room dataset carrying both kinds; the assembler splits them
 back into `contours_index` / `contours_intermediate`.
+
+## Seed once per project: shared revisions
+
+Owner direction (22 October 2026): building footprints and contours are
+fetched once per project; individuals drive differential updates on true
+changes only. Engines are offline, acquisition is Core's, Brain authorizes and
+stores. `revisions::seed` is that rule for `DeclaredSource::{Buildings,Contours}`.
+
+| Responsibility | Where | Why there |
+|---|---|---|
+| Head identity, manifest, base fence, delta, freshness, S2 tile choice, task contracts | `ds-command-kernel::project_dataset_revisions` | decisions and schemas are the Kernel's; the Reporter and Core read one typed contract |
+| Room replay, prepared pages, delta build, publish/re-plan loop | `ds-project-data::revisions` | the application owns orchestration and the room fence; it opens no socket |
+| Revision head, verified download, open → transfer → finalize | `ds-cli-data` host over the native Sync Center session (`compute_artifacts`, engine `project_dataset`) | the existing governed edge publication door: one JWT, project membership, `design.report`, no new gateway route |
+| Google Open Buildings v3 level-6 tiles (generation-pinned, size + CRC32C, SHA-256 receipt) and Rwanda DEM samples | `ds-cli-data` host (`ureq`, `ds-elevation-host`) | API-capable acquisition belongs to the application; the Kernel names which tiles and versions |
+| Footprint normalization (strict WKT, centroid prefilter, room rule, dedupe) and contour derivation (lattice, marching squares, fixed-tile clipping) | Reporter engine tasks, by request/response | data transformation is engine compute; one implementation serves the shared seed and `--publisher-input`; the Kernel never links the engine |
+| One head per project dataset, revision admission against the planned manifest, retained deltas | ds-brain `project_dataset_publication.go` | governance only: digest verification of stored bytes, no compute |
+
+A seed, in order:
+
+1. **Read** the project head (`compute_artifacts read`); a missing head is an
+   empty chain. The manifest (`ds.project-dataset-revisions/v1`) is digest
+   checked and decoded; every revision output must match its head declaration.
+2. **Replay** revisions this room has not applied (the room records them in
+   `applied_revisions`): each delta is downloaded once, verified, split by its
+   cells under the dataset's acquisition rule and committed through the store's
+   ticket fence as a replacement. A second member therefore needs no publisher
+   byte. A refresh skips replay.
+3. **Prepare** only the cells `ensure` will still ask for (`planned_cells`):
+   Core fetches the Google Open Buildings S2 level-6 tiles those cells (plus
+   the centroid margin) reach, or samples the Rwanda DEM on the Reporter's
+   lattice, and the Reporter answers one complete page per cell.
+4. **Ensure** (or `refresh`) commits those pages exactly as before.
+5. **Publish** the delta: wanted ∩ held − published (a refresh republishes all
+   it completed). The delta is the room's own rows for those cells under the
+   acquisition rule (`query selection: acquisition`), gzip GeoJSON lines in
+   feature-key order, published with the next manifest and the base
+   fingerprint of the manifest it was planned on (`sha256("")` for the first).
+   Brain answers `stored_stale` when another revision landed first; the seed
+   re-reads, replays what landed and publishes only what is still missing
+   (`MAX_STALE_RETRIES`, then `project_dataset_revision_stale`; held rows stay).
+
+Differential updates: extent growth acquires and publishes only the new cells.
+A publisher (`google-open-buildings/v3/polygons_s2_level_6`) or surface
+(`rwanda_dem_10m/…`) version change is reported — the room's available version
+and the chain freshness mark the old coverage stale — and only an explicit
+`--refresh` re-acquires it; nothing polls. Others pick new revisions up on their
+next seed. Reads (`Mode::Read`, prints, `status`, `query`) stay local and
+offline. Contours are cut on fixed 1 km national-grid tiles so a piece is the
+same bytes whichever cell asked, which keeps a cell's replacement exact at
+its edges. Web reads a published head through the Kernel's existing
+`computeArtifactPublishedHead`/`computeArtifactBytes` exports; it never seeds.
+
+Bounds: 99 revisions per head (the door holds 100 outputs; compaction is
+backlog), 64 MiB and 500000 features per delta, 24 publisher tiles per seed.
+Contours outside the Rwanda DEM refuse `contour_surface_uncovered`.
 
 ## Declared, not available
 
@@ -159,7 +221,7 @@ walks the kernel's `ContextPreparation` contexts:
 | Source kind | Headless answer |
 |---|---|
 | `catalog` | the room subset; `Mode::Acquire` installs and seeds on the first print |
-| `google_open_buildings`, `elevation_contours` | the rooms through the host's provider |
+| `google_open_buildings`, `elevation_contours` | the held rooms; a print never seeds them (`project_dataset_local_source_required` names `ds data project-cache seed`) |
 | `project_dsgrid_mv` | omitted, reason `desktop_only` |
 | `survey`, `local_layer` | refused `print_context_unsupported` |
 
@@ -181,4 +243,9 @@ the rest fits. The held coverage stays whole for smaller prints.
 `project_dataset_not_held`, `project_dataset_acquisition_failed`,
 `dataset_provider_unavailable`, `project_dataset_local_source_required`, `reference_bundle_unavailable`,
 `print_context_unsupported`, `print_context_too_large`, `catalog_invalid`,
-`project_dataset_store_failed`. A command declares the ones it can reach.
+`project_dataset_store_failed`. A shared seed ([`revisions::SharedFailure`]) adds
+`project_dataset_revision_invalid`, `project_dataset_revision_stale`,
+`project_dataset_publication_refused` and the host's own engine/surface codes
+(`reporter_engine_missing`, `reporter_engine_incompatible`, `engine_refused`,
+`engine_response_invalid`, `contour_surface_uncovered`). A command declares the
+ones it can reach.

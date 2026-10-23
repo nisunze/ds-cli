@@ -1,29 +1,24 @@
-//! `ds report project` — the project's Compounded Report ZIP, produced by
-//! the governed report service in the background.
+//! `ds report project` — report commands over one explicitly named project.
 //!
-//! These commands need no map, no room, no Desktop and no local reporter
-//! engine. They restore the native user and act only on that user's
-//! audience-fenced named project through the fixed `/report` contract:
-//! ds-brain resolves the exact scope (every active saved transformer, or the
-//! explicit names given), reuses fresh individual artifacts, regenerates the
-//! missing or stale ones through the cloud reporter, composes the scope-correct
-//! combined set, and publishes one ZIP with a registry row. The CLI never
-//! replays those phases and never holds a token.
+//! Every computation runs on this edge. `export` and `combined` compute the
+//! individual and Combined Reports through the installed Reporter;
+//! `compounded` composes the Compounded Report ZIP from the current report
+//! bytes this machine retains, through the Reporter's closed bundle task, and
+//! publishes it through the governed compute-artifact door. ds-brain only
+//! authorizes, stores and lists: it never computes, composes or regenerates a
+//! report. The CLI never holds a token.
 //!
 //! ```text
-//!   scope → compounded → archives
-//!   scope → compute            (individual reports, computed in the cloud)
+//!   scope → export / combined → compounded → archives
 //! ```
 //!
 //! `scope` is the plan: it reads the lifecycle inventory and shows which
 //! transformers participate and which are excluded (retired, deleted, missing)
-//! before any artifact is produced. `compute` is the cloud twin of the edge
-//! engine's `export`: the same individual report, produced server-side.
+//! before any artifact is produced.
 
 pub mod archives;
 pub mod combined;
 pub mod combined_export;
-pub mod compute;
 pub mod crs;
 pub mod export;
 pub mod grouping;
@@ -140,20 +135,20 @@ refusal!(
 refusal!(
     AUTH_CONTEXT_MISMATCH,
     "auth_context_mismatch",
-    "the protected native providers disagree on identity or named project",
-    "sign out or revoke the unintended provider before retrying"
+    "native providers disagree on identity or project",
+    "sign out or revoke the unintended provider"
 );
 refusal!(
     AUTH_INPUT,
     "auth_input_invalid",
-    "the report service refused the request: an unknown or excluded transformer, no applied `report_archive` grouping, or a malformed scope or layout",
-    "run `ds report project scope`, and `ds design consumer-grouping read --purpose report_archive`"
+    "the report service refused the scope, layout or grouping",
+    "run `ds report project scope`"
 );
 refusal!(
     AUTH_REJECTED,
     "auth_rejected",
-    "the fixed gateway rejects the verified request, the user lacks design.compounded_report, or the project is archived or expired",
-    "verify the account, its project access and capabilities, and the project lifecycle"
+    "the gateway rejects the request, design.compounded_report is missing, or the project is archived",
+    "verify the account, project access and capabilities"
 );
 refusal!(
     AUTH_REVOKED,
@@ -170,13 +165,13 @@ refusal!(
 refusal!(
     AUTH_TRANSIENT,
     "auth_transient",
-    "the report service is temporarily unavailable, or transformer freshness could not be verified",
-    "retry without changing local state; no artifact was regenerated"
+    "the report service is temporarily unavailable or freshness is unverified",
+    "retry; local state is unchanged"
 );
 refusal!(
     AUTH_UNREADABLE,
     "auth_response_unreadable",
-    "the response violates its closed bounded contract, e.g. an archive advertised for zero individual artifacts",
+    "the response violates its closed contract",
     "retry once, then update ds if it persists"
 );
 refusal!(
@@ -188,14 +183,14 @@ refusal!(
 refusal!(
     INVALID_SCOPE,
     "invalid_transformer_scope",
-    "a --transformer name is blank, untrimmed, or over 200 characters, or more than 500 were named",
-    "pass bounded transformer names, or omit them for every active transformer"
+    "a --transformer name is blank, untrimmed, over 200 characters, or over 500 names",
+    "pass bounded names, or omit them for every active transformer"
 );
 refusal!(
     RESERVED_IDENTITY,
     "reserved_transformer_identity",
-    "a --transformer name is a reserved computed identity (collisions, combined_transformer and its aliases): report output, never a participant",
-    "drop the reserved name; `ds report project scope` lists the real participants"
+    "a --transformer name is a reserved computed identity (collisions, combined_transformer)",
+    "drop it; `ds report project scope` lists participants"
 );
 refusal!(
     CONFIRMATION_REQUIRED,
@@ -241,13 +236,13 @@ pub const NATIVE_READ_REFUSALS: &[Refusal] = &[
 /// alone and `409` covers two of them.
 const REPORT_NO_INDIVIDUAL_ARTIFACTS: Refusal = Refusal {
     code: "report_no_individual_artifacts",
-    when: "the run finished but no selected transformer had an individual report to package",
+    when: "no selected transformer had an individual report to package",
     remedy: "generate the individual reports first, then retry",
 };
 const REPORT_GROUPING_STALE: Refusal = Refusal {
     code: "report_grouping_stale",
     when: "the applied grouping changed after this request pinned its digest",
-    remedy: "re-read the applied grouping and retry with the digest it reports now",
+    remedy: "re-read the applied grouping and retry with its new digest",
 };
 const REPORT_GROUPING_INCOMPLETE: Refusal = Refusal {
     code: "report_grouping_incomplete",
@@ -264,18 +259,18 @@ const REPORT_GROUPING_INCOMPLETE: Refusal = Refusal {
 /// applies; this owns the fact that it exists.
 pub const COMBINED_INPUTS_PUBLICATION_PENDING: Refusal = Refusal {
     code: "combined_inputs_publication_pending",
-    when: "a room's report is computed on a device and has not left its publication queue",
-    remedy: "run `ds report outbox drain` on that device; re-exporting would seal a second artifact beside the one already waiting",
+    when: "a room's report has not left its device publication queue",
+    remedy: "run `ds report outbox drain` on that device",
 };
 pub const COMBINED_INPUTS_NOT_CURRENT: Refusal = Refusal {
     code: "combined_inputs_not_current",
-    when: "a room's report is missing, stale, failed, or was given up on by the queue",
+    when: "a room's report is missing, stale, failed or abandoned by the queue",
     remedy: "regenerate those rooms with `ds report project export --transformer <name>`",
 };
 pub const COMBINED_INPUTS_EMPTY: Refusal = Refusal {
     code: "combined_inputs_empty",
-    when: "every room in scope is current and genuinely holds nothing to combine",
-    remedy: "read `ds report project scope`; the design, not the report, is what is empty",
+    when: "every room in scope is current and holds nothing to combine",
+    remedy: "read `ds report project scope`; the design is what is empty",
 };
 pub const COMBINED_NO_INPUTS: Refusal = Refusal {
     code: "combined_no_inputs",
@@ -284,8 +279,8 @@ pub const COMBINED_NO_INPUTS: Refusal = Refusal {
 };
 pub const COMBINED_READINESS_UNAVAILABLE: Refusal = Refusal {
     code: "combined_readiness_unavailable",
-    when: "the readiness predicate could not answer, so no room can be called current",
-    remedy: "report this build; the run is refused rather than published over rooms nothing checked",
+    when: "the readiness predicate could not answer",
+    remedy: "report this build; nothing was published",
 };
 
 pub const NATIVE_WRITE_REFUSALS: &[Refusal] = &[
@@ -334,17 +329,87 @@ pub(crate) const fn joined<const N: usize>(parts: &[&[Refusal]]) -> [Refusal; N]
     out
 }
 
+const fn same_code(left: &str, right: &str) -> bool {
+    let (left, right) = (left.as_bytes(), right.as_bytes());
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if left[index] != right[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+const fn first_of_code(parts: &[&[Refusal]], part: usize, index: usize) -> bool {
+    let code = parts[part][index].code;
+    let mut p = 0;
+    while p <= part {
+        let end = if p == part { index } else { parts[p].len() };
+        let mut i = 0;
+        while i < end {
+            if same_code(parts[p][i].code, code) {
+                return false;
+            }
+            i += 1;
+        }
+        p += 1;
+    }
+    true
+}
+
+/// How many distinct codes several declared refusal lists hold.
+pub const fn distinct_count(parts: &[&[Refusal]]) -> usize {
+    let (mut count, mut part) = (0, 0);
+    while part < parts.len() {
+        let mut index = 0;
+        while index < parts[part].len() {
+            if first_of_code(parts, part, index) {
+                count += 1;
+            }
+            index += 1;
+        }
+        part += 1;
+    }
+    count
+}
+
+/// Several declared refusal lists as one, each code once (first wins), so a
+/// command composed of other commands' owners declares every code it can emit.
+pub const fn distinct<const N: usize>(parts: &[&[Refusal]]) -> [Refusal; N] {
+    let mut out = [NATIVE_PROFILE; N];
+    let (mut at, mut part) = (0, 0);
+    while part < parts.len() {
+        let mut index = 0;
+        while index < parts[part].len() {
+            if first_of_code(parts, part, index) {
+                out[at] = parts[part][index];
+                at += 1;
+            }
+            index += 1;
+        }
+        part += 1;
+    }
+    assert!(
+        at == N,
+        "distinct refusal lists must fill the array exactly"
+    );
+    out
+}
+
 /// `scope`: the read lane plus the grouping's own refusals.
 pub const SCOPE_REFUSALS: &[Refusal] = &joined::<
     { NATIVE_READ_REFUSALS.len() + grouping::REFUSALS.len() },
 >(&[NATIVE_READ_REFUSALS, &grouping::REFUSALS]);
 
-/// `compounded`: the write lane, the readiness refusals the published receipt
-/// is read through, the grouping's own refusals, and the grouped run that
-/// did not publish every group.
-pub const COMBINED_REFUSALS: &[Refusal] = &joined::<
-    { NATIVE_WRITE_REFUSALS.len() + 7 + grouping::REFUSALS.len() + 1 },
->(&[
+/// `compounded`: the write lane, the readiness refusals its inputs are read
+/// through, the composition's and grouping's own refusals, the grouped run
+/// that did not publish every group, everything the combined set computed
+/// here can refuse, and the bundle and seal steps.
+const COMPOUNDED_PARTS: &[&[Refusal]] = &[
     NATIVE_WRITE_REFUSALS,
     &[
         COMBINED_INPUTS_PUBLICATION_PENDING,
@@ -354,18 +419,27 @@ pub const COMBINED_REFUSALS: &[Refusal] = &joined::<
         COMBINED_READINESS_UNAVAILABLE,
         Refusal {
             code: "compounded_composition_invalid",
-            when: "composition JSON is malformed, oversized or rejected by the server's closed schema",
-            remedy: "read the composition schema/template from the project's archive listing and correct the JSON",
+            when: "composition JSON is malformed, oversized or outside ds.compounded-report/v1",
+            remedy: "correct the JSON: schema, transformers, archive_layout {group_depth, transformer_folders, combine_per_group} and force",
         },
         Refusal {
             code: "compounded_composition_conflict",
             when: "composition is mixed with scope, grouping, layout or force flags",
             remedy: "pass composition or ordinary flags",
         },
+        combined::GROUPING_INVALID,
+        combined::INPUTS_INVALID,
+        combined::ARCHIVE_TOO_LARGE,
+        combined::STORE_UNREADABLE,
+        crate::ENGINE_RECEIPT_INVALID,
     ],
     &grouping::REFUSALS,
     &[grouping::GROUPS_PARTIAL],
-]);
+    combined_export::REFUSALS,
+];
+
+pub const COMBINED_REFUSALS: &[Refusal] =
+    &distinct::<{ distinct_count(COMPOUNDED_PARTS) }>(COMPOUNDED_PARTS);
 
 pub fn transformer_set(inputs: &ds_cli_contract::Inputs) -> Result<TransformerSet, Failure> {
     let names = inputs.repeated("transformer");
@@ -538,7 +612,6 @@ mod tests {
             &crs::COMMAND,
             &combined::COMMAND,
             &combined_export::COMMAND,
-            &compute::COMMAND,
             &archives::COMMAND,
             &settings::COMMAND,
             &settings::OUTPUTS_SET,

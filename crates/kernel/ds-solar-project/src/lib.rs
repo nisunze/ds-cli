@@ -1,6 +1,7 @@
 //! The local Solar project owns inputs, closed local runs and authored-input publication.
-//! This crate has no HTTP client, UI, map, or credential dependency. A separate
-//! authenticated sender acknowledges exact outbox rows after server acceptance.
+//! This crate has no HTTP client, UI, map, credential or Solar engine dependency;
+//! a local run's calculation is supplied by its host. A separate authenticated
+//! sender acknowledges exact outbox rows after server acceptance.
 use anyhow::{Result, ensure};
 use ds_solar_contracts::SolarCityInput;
 pub use ds_solar_contracts::is_solar_id as identifier;

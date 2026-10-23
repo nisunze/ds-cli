@@ -5,9 +5,8 @@ use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
 use crate::project_report::{
-    CompoundedArchiveCatalog, CompoundedReportReceipt, CompoundedReportRequest, RetirementAction,
-    RetirementReceipt, RetirementRequest, TransformerInventory, TransformerSet,
-    TransformerStatusList,
+    CompoundedArchiveCatalog, RetirementAction, RetirementReceipt, RetirementRequest,
+    TransformerInventory, TransformerSet, TransformerStatusList,
 };
 use crate::weak_network::transient_status;
 use crate::{
@@ -2285,42 +2284,6 @@ impl DeviceApiAuthorization<'_> {
             ds_project,
             tile_type,
             force,
-        )
-    }
-
-    pub fn compounded_report<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &CompoundedReportRequest,
-        now: u64,
-    ) -> Result<CompoundedReportReceipt, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::compounded_report(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-        )
-    }
-
-    pub fn export_reports<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &TransformerSet,
-        now: u64,
-    ) -> Result<crate::project_report::ExportReportsReceipt, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::export_reports(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
         )
     }
 

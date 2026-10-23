@@ -100,6 +100,13 @@ pub enum Request {
     CanonicalParameterName {
         value: String,
     },
+    /// The fence a sheet save may carry: the sheet as it was read when the
+    /// gateway fences saves of that sheet, otherwise none.
+    SaveFence {
+        sheet_key: String,
+        #[serde(default)]
+        expected: Value,
+    },
     AliasList {
         action: AliasAction,
         value: Value,
@@ -362,6 +369,10 @@ pub fn apply(request: Request) -> Result<Value, String> {
             "misspellednames" | "misspelledheader" | "aliases" | "values"
         )),
         CanonicalParameterName { value } => json!(canonical_parameter_name(&value)),
+        SaveFence {
+            sheet_key,
+            expected,
+        } => save_fence(&sheet_key, expected),
         AliasList {
             action,
             value,
@@ -1165,6 +1176,19 @@ pub fn set_parameter(
 
 /// The numeric/boolean grammar used by processor presets. Text Settings controls
 /// deliberately retain arbitrary strings; process settings admit only flags/numbers.
+/// Sheets whose save the gateway fences atomically against the rows the edit
+/// started from (`expected_data`; a moved sheet answers 409). The deployed
+/// gateway fences `project_settings` only; another sheet cannot carry a
+/// fence until the gateway fences it, so its save stays last-writer-wins.
+pub const FENCED_SAVE_SHEETS: &[&str] = &["project_settings"];
+
+pub fn save_fence(sheet_key: &str, expected: Value) -> Value {
+    if expected.is_null() || !FENCED_SAVE_SHEETS.contains(&sheet_key) {
+        return Value::Null;
+    }
+    expected
+}
+
 pub fn process_setting_value(raw: &Value) -> Option<Value> {
     match raw {
         Value::Bool(b) => Some(Value::Bool(*b)),
@@ -1557,3 +1581,7 @@ mod governed_map_policy_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "save_fence_tests.rs"]
+mod save_fence_tests;

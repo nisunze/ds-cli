@@ -46,8 +46,10 @@ pub struct Acquisition {
     pub source_receipt: Value,
 }
 
-/// The host's door to a governed provider (ds-brain `query_print_context`).
-/// Called only from the explicit acquisition stage, once per gap cell.
+/// The host's door to one acquisition owner: a cloud-resident bounded read,
+/// or the pages a shared seed prepared from published revisions and Core's
+/// own publisher or surface acquisition. Called only from the explicit
+/// acquisition stage, once per gap cell.
 pub trait Provider {
     fn acquire(&mut self, dataset: &Dataset, area: &Value) -> Result<Acquisition, Failure>;
 }
@@ -107,6 +109,18 @@ impl Room<'_> {
     }
 
     fn open(&self, dataset: &Dataset, policy: &BufferPolicy) -> Result<Value, Failure> {
+        self.open_observing(dataset, policy, "")
+    }
+
+    /// Open the room and, when `available` names one, record it as the
+    /// newest version the acquisition owner now reads, so held rows produced
+    /// from an older one report as stale. Recording it changes no row.
+    fn open_observing(
+        &self,
+        dataset: &Dataset,
+        policy: &BufferPolicy,
+        available: &str,
+    ) -> Result<Value, Failure> {
         let document = serde_json::to_value(dataset).map_err(crate::store)?;
         self.call(json!({
             "action": "open",
@@ -115,7 +129,7 @@ impl Room<'_> {
             "quality": document["quality"],
             "parameters": document["parameters"],
             "crs": document["crs"],
-            "source_version": "",
+            "source_version": available,
             "buffer_policy": policy,
         }))
     }
@@ -559,6 +573,152 @@ fn settle(
     })
 }
 
+/// The exact cells an acquiring `ensure` (or `refresh`) would ask its
+/// provider for right now: the gap tiles (every planned tile for a refresh).
+/// Reads the room; acquires nothing. A shared seed prepares exactly these
+/// pages before the loop runs, so the provider answers each without a second
+/// pass over its source.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn planned_cells(
+    root: &Path,
+    scope: &Scope,
+    dataset: &Dataset,
+    policy: &BufferPolicy,
+    extents: &[Extent],
+    focus: &[String],
+    refresh: bool,
+) -> Result<(Coverage, Vec<[f64; 4]>), Failure> {
+    let plan = plan_focused(scope, dataset, policy, extents, focus).map_err(crate::store)?;
+    let room = Room {
+        root,
+        scope,
+        key: dataset_key(scope, dataset),
+    };
+    let targets = if refresh {
+        plan.coverage.cells.clone()
+    } else {
+        assess(&completed(&room.status()?)?, &plan.coverage)
+            .map_err(crate::store)?
+            .gaps
+            .cells
+    };
+    let mut cells = Vec::new();
+    for cell in targets {
+        cells.extend(tiles(cell)?);
+    }
+    Ok((plan.coverage, cells))
+}
+
+/// Replace, cell by cell, what the room holds with complete pages a shared
+/// revision published. Each cell goes through the store's own ticket and
+/// commit fence as a refresh, so the rows its cell selects are replaced
+/// exactly, under the provider's rule, and nothing else is touched.
+pub(crate) fn replace_cells(
+    root: &Path,
+    scope: &Scope,
+    dataset: &Dataset,
+    policy: &BufferPolicy,
+    pages: Vec<([f64; 4], Acquisition)>,
+) -> Result<Value, Failure> {
+    let room = Room {
+        root,
+        scope,
+        key: dataset_key(scope, dataset),
+    };
+    let mut status = room.open(dataset, policy)?;
+    for (cell, page) in pages {
+        let cells = Coverage { cells: vec![cell] };
+        let held_version = status["source_version"].as_str().unwrap_or("").to_owned();
+        let digest = query_digest(scope, &at_version(dataset, &held_version), policy, &cells);
+        let ticket = room.begin(&digest, &polygon(cell), &cells, &held_version, true)?;
+        if ticket["accepted"] != Value::Bool(true) {
+            return Err(Failure::AcquisitionFailed(format!(
+                "the room declined a published revision cell ({})",
+                ticket["reason"].as_str().unwrap_or("no reason given")
+            )));
+        }
+        let ticket = ticket["ticket"].as_str().unwrap_or("").to_owned();
+        match room.commit(&digest, &ticket, &cells, &page, &held_version) {
+            Ok(next) => status = next,
+            Err(error) => {
+                let _ = room.fail(&digest, &ticket, error.message());
+                return Err(error);
+            }
+        }
+    }
+    Ok(status)
+}
+
+/// Record the version the acquisition owner reads now, without touching a
+/// row, so rows held from an older one report as stale until a refresh.
+pub(crate) fn observe_available(
+    root: &Path,
+    scope: &Scope,
+    dataset: &Dataset,
+    policy: &BufferPolicy,
+    available: &str,
+) -> Result<Value, Failure> {
+    let room = Room {
+        root,
+        scope,
+        key: dataset_key(scope, dataset),
+    };
+    room.open(dataset, policy)?;
+    room.open_observing(dataset, policy, available)
+}
+
+/// The room's own record of which shared revisions it replayed.
+pub(crate) fn applied_revisions(
+    root: &Path,
+    scope: &Scope,
+    dataset: &Dataset,
+    head: &str,
+) -> Result<std::collections::BTreeSet<u32>, Failure> {
+    let room = Room {
+        root,
+        scope,
+        key: dataset_key(scope, dataset),
+    };
+    let answer = room.call(json!({"action": "revisions", "head": head}))?;
+    Ok(answer["applied"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_u64)
+        .filter_map(|revision| u32::try_from(revision).ok())
+        .collect())
+}
+
+pub(crate) fn mark_applied(
+    root: &Path,
+    scope: &Scope,
+    dataset: &Dataset,
+    head: &str,
+    revision: u32,
+    manifest_sha256: &str,
+) -> Result<(), Failure> {
+    let room = Room {
+        root,
+        scope,
+        key: dataset_key(scope, dataset),
+    };
+    room.call(
+        json!({"action": "applied", "head": head, "revision": revision,
+        "manifest_sha256": manifest_sha256}),
+    )?;
+    Ok(())
+}
+
+/// The room's status, read without creating it.
+pub(crate) fn room_status(root: &Path, scope: &Scope, dataset: &Dataset) -> Result<Value, Failure> {
+    Room {
+        root,
+        scope,
+        key: dataset_key(scope, dataset),
+    }
+    .status()
+}
+
 /// Read every held feature for one area from the room, paged and fenced on
 /// the room's generation. Performs no acquisition, by design.
 pub fn read_features(
@@ -566,6 +726,27 @@ pub fn read_features(
     scope: &Scope,
     dataset: &Dataset,
     area: &Value,
+) -> Result<(Vec<Value>, String), Failure> {
+    read_held(root, scope, dataset, area, false)
+}
+
+/// The rows an acquisition of `area` selects and a commit of it replaces,
+/// under the dataset's own rule: what a shared revision publishes for a cell.
+pub(crate) fn read_selected(
+    root: &Path,
+    scope: &Scope,
+    dataset: &Dataset,
+    area: &Value,
+) -> Result<(Vec<Value>, String), Failure> {
+    read_held(root, scope, dataset, area, true)
+}
+
+fn read_held(
+    root: &Path,
+    scope: &Scope,
+    dataset: &Dataset,
+    area: &Value,
+    acquisition: bool,
 ) -> Result<(Vec<Value>, String), Failure> {
     let room = Room {
         root,
@@ -585,6 +766,9 @@ pub fn read_features(
     let mut version = String::new();
     loop {
         let mut request = json!({"action": "query", "area": area, "limit": 50_000});
+        if acquisition {
+            request["selection"] = json!("acquisition");
+        }
         if let (Some(after), Some(generation)) = (after_id, generation) {
             request["after_id"] = json!(after);
             request["generation"] = json!(generation);

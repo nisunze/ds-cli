@@ -71,16 +71,13 @@ pub static COMMAND: Command = Command {
     purpose: "\
 The project's timeline: every asset the signed-in user may see in the named \
 project — uploads, transformer designs, MV models, survey media, reports, \
-Solar, prints — newest change first, each with its folder, kind and version \
-count. --order name sorts by name; --folder narrows to one exact index folder. \
+Solar, prints — newest change first, with folder, kind and version count. --order name sorts by name; --folder narrows to one exact index folder. \
 Read from the index ds-brain builds and serves; --refresh rebuilds it first. \
-Bounded pages are retained under the protected account, lane, credential and \
-named project. Ordinary repeated reads reuse a recent capture; --offline reads \
-only that exact retained query, with zero acquisition. Retained data proves its \
-captured scope, not current membership, permission or cloud freshness. \
-Missing or denied retained pages require explicit online acquisition. \
+Pages are retained per account, lane and project. Repeated reads reuse a \
+recent capture; --offline reads only that exact retained query. Retained data \
+proves its captured scope, not current membership or freshness. \
 Every other `ds assets` command takes an asset_id from here or `ds assets \
-tree`. A class the caller cannot read has no row and no count. Changes nothing. Headless.",
+tree`. A class the caller cannot read has no row or count. Changes nothing.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,

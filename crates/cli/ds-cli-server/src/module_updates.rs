@@ -241,6 +241,9 @@ fn native_failure_or(message: String, fallback: &str) -> Failure {
 }
 
 pub fn stage(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::engine_units::requested(inputs)? {
+        return crate::engine_units::stage(inputs);
+    }
     if crate::ui_components::requested(inputs)? {
         return crate::ui_components::stage(inputs);
     }
@@ -301,7 +304,7 @@ mod tests {
                 .iter()
                 .map(|arg| arg.name)
                 .collect::<Vec<_>>(),
-            ["component", "channel", "runtime"]
+            ["component", "channel", "runtime", "scope"]
         );
         for command in [&STAGE, &SELECTION] {
             for forbidden in ["file", "url", "path", "probe", "authority", "idle", "dirty"] {

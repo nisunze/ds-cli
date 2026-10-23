@@ -120,6 +120,27 @@ pub struct StylePlan {
     pub receipt: Value,
     pub payload: Value,
 }
+
+impl StyleInstruction {
+    /// The capability publishing this plan performs: the page hands it to
+    /// `stylesPublish`, which admits the publish by its manifest row.
+    pub fn capability(&self) -> &'static str {
+        match self {
+            Self::Guarded { .. } => "style.instruction.set",
+            Self::Preset { .. } => "style.preset.set",
+            Self::Seed => "style.seed.create",
+            Self::PrintVariant => "style.print.create",
+            Self::Appearance { .. } => "style.appearance.set",
+            Self::Categorical { .. } => "style.categorical.set",
+            Self::ColorRange { .. } => "style.color-range.set",
+            Self::Zoom { .. } => "style.zoom.set",
+            Self::Label { .. } => "style.label.set",
+            Self::Dimension { .. } => "style.dimension.set",
+            Self::ClearDimension => "style.dimension.clear",
+            Self::Cartography { .. } => "style.cartography.set",
+        }
+    }
+}
 pub fn instruction_schema() -> Value {
     serde_json::to_value(schemars::schema_for!(StyleInstruction))
         .expect("compiled instruction schema")
@@ -140,7 +161,9 @@ pub fn plan_style_request(input: &[u8]) -> Result<String, String> {
     }
     let request: Request = serde_json::from_slice(input).map_err(|e| e.to_string())?;
     let plan = plan_style_edit(&request.snapshot, &request.reference, &request.instruction)?;
-    serde_json::to_string(&plan).map_err(|e| e.to_string())
+    let mut answer = serde_json::to_value(&plan).map_err(|e| e.to_string())?;
+    answer["capability"] = json!(request.instruction.capability());
+    serde_json::to_string(&answer).map_err(|e| e.to_string())
 }
 
 pub fn style_catalog_request(input: &[u8]) -> Result<String, String> {
@@ -1509,10 +1532,15 @@ mod tests {
     fn held_request_matches_native_plan_without_map_state() {
         let state = snapshot(json!({"type":"line","paint":{"line-width":3}}));
         let request = json!({"snapshot":state,"reference":"master/poles","instruction":{"kind":"print_variant"}});
-        let held: Value = serde_json::from_str(
+        let mut held: Value = serde_json::from_str(
             &plan_style_request(&serde_json::to_vec(&request).unwrap()).unwrap(),
         )
         .unwrap();
+        // The page's plan also names the capability its publish performs.
+        assert_eq!(
+            held.as_object_mut().unwrap().remove("capability"),
+            Some(json!("style.print.create"))
+        );
         let native =
             plan_style_edit(&state, "master/poles", &StyleInstruction::PrintVariant).unwrap();
         assert_eq!(held, serde_json::to_value(native).unwrap());

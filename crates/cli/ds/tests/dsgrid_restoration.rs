@@ -28,6 +28,7 @@ const RESTORED: &[&str] = &[
     "dsgrid.run",
     "dsgrid.spotting.preview-receipt",
     "dsgrid.spotting.apply-receipt",
+    "dsgrid.spotting.preview",
     "dsgrid.apply",
     "dsgrid.apply-batch",
     "dsgrid.apply-correction",

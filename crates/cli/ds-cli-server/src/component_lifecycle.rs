@@ -25,7 +25,7 @@ pub static ACTIVATE: Command = Command {
     path: &["core", "component", "activate"],
     contract: 2,
     summary: "Activate one verified staged component through Core.",
-    purpose: "Runtime wasm activates an existing UI staging receipt locally, without login or a running Core, rechecking its generation and bytes. Native (default) confirms an existing staging receipt at an explicitly held generation: the lane's running Core fences job admission and refuses uncaptured pending work, and the shared updater verifies the retained bytes and advances the selection atomically. Captured jobs keep their executable. No download, release lookup or Desktop session.",
+    purpose: "Runtime wasm activates an existing UI staging receipt locally without login, rechecking generation and bytes. Native (default) confirms an existing staging receipt at an explicitly held generation: the lane's running Core fences job admission and refuses uncaptured pending work, and the shared updater verifies the retained bytes and advances the selection atomically. Captured jobs keep their executable. No download or Desktop session.",
     chapter: Chapter::Workstation,
     effect: Effect::MachineWrite,
     authority: Authority::None,
@@ -175,6 +175,9 @@ fn from_inputs(inputs: &Inputs, activate: bool) -> Result<Request, Failure> {
     Ok(request)
 }
 pub fn activate(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::engine_units::requested(inputs)? {
+        return crate::engine_units::activate(inputs);
+    }
     if crate::ui_components::requested(inputs)? {
         return crate::ui_components::activate(inputs);
     }
@@ -182,6 +185,9 @@ pub fn activate(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     request_runtime(&from_inputs(inputs, true)?)
 }
 pub fn rollback(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
+    if crate::engine_units::requested(inputs)? {
+        return crate::engine_units::rollback(inputs);
+    }
     if crate::ui_components::requested(inputs)? {
         return crate::ui_components::rollback(inputs);
     }

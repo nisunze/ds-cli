@@ -322,7 +322,7 @@ const WINDOW_COMMANDS: &[(&str, usize)] = &[
     // 1 → 0 on 2026-09-19: `auth link approve` approves under the native
     // user; it was the last governance write bound to a window.
     ("ds-cli-auth", 0),
-    ("ds-cli-data", 4),
+    ("ds-cli-data", 1),
     // `ds-cli-design` left this ledger on 2026-09-20: 26 → 0, twenty-four
     // collaboration commands headless and four window-cache controls retired
     // (contract 01 of the dsgrid-authority program).
@@ -551,7 +551,7 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
     ("assets", 0),
     // 1 → 0: `auth.link.approve` is the native user's write now.
     ("auth", 0),
-    ("data", 4),
+    ("data", 1),
     // 28 → 0 on 2026-09-20: tag/group/consumer-grouping/comment/
     // known-columns/materials run headless on the kernel's design doors;
     // `design.sync.*` and `design.transformer.download` were retired.
@@ -611,7 +611,7 @@ const WINDOW_BACKLOG: &[(&str, u64)] = &[
 // 97 → 100 on 2026-10-20: the three local-dev desktop.dev.* drivers.
 // 100 → 84 the same day: the sixteen paired Solar commands retired.
 // 84 → 73 the same day: the eleven Desktop-paired printing commands retired.
-const WINDOW_BACKLOG_TOTAL: u64 = 73;
+const WINDOW_BACKLOG_TOTAL: u64 = 70;
 
 #[test]
 fn the_registered_window_backlog_never_grows() {

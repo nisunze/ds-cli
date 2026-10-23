@@ -283,66 +283,6 @@ impl SessionHandle {
         self.inner.feature_count()
     }
 
-    /// Attach a domain plug-in by name. Recognized values:
-    ///   - `"lv"` → [`core_domains::LvDomain`]
-    ///   - `"mv"` → [`core_domains::MvDomain`]
-    ///   - `"temp"` → [`core_domains::TempDomain`]
-    ///   - `"design"` / empty → detach (foundation defaults)
-    ///
-    /// Setting the domain changes the `domain` field on every subsequent
-    /// [`SessionHandle::selectionResolution`] return. Contract:
-    /// `docs/contracts/geojson-foundation-crate.md` §5.
-    #[wasm_bindgen(js_name = "setDomain")]
-    pub fn set_domain(&mut self, domain_id: &str) {
-        use ds_design_session::domains::{LvDomain, MvDomain, TempDomain};
-        let dom: Option<std::sync::Arc<dyn ds_design_session::traits::LayerDomain>> =
-            match domain_id {
-                "lv" => Some(LvDomain::shared()),
-                "mv" => Some(MvDomain::shared()),
-                "temp" => Some(TempDomain::shared()),
-                "" | "design" => None,
-                other => {
-                    log_warn(&format!(
-                        "setDomain: unknown domain id {other:?} — detaching"
-                    ));
-                    None
-                }
-            };
-        self.inner.set_domain(dom);
-        log_info(&format!("setDomain → {}", self.inner.domain_id()));
-    }
-
-    /// Current domain id (or `"design"` when no domain is attached).
-    #[wasm_bindgen(js_name = "domainId")]
-    pub fn domain_id(&self) -> String {
-        self.inner.domain_id().to_string()
-    }
-
-    /// Resolve a feature into a widened
-    /// [`core_selection::SelectionResolution`]: identity (`tab_id` +
-    /// `row_index`) plus full geometry, bbox, and a domain tag. ds-web
-    /// feeds this directly to its highlight + autozoom paths — no
-    /// transformer-cache lookup, no source-type branching.
-    ///
-    /// Returns a JSON string with the
-    /// [`core_selection::SelectionResolution`] shape, or `null` when the
-    /// feature id isn't in this session.
-    ///
-    /// Contract: `docs/contracts/geojson-foundation-crate.md` §6.
-    #[wasm_bindgen(js_name = "selectionResolution")]
-    pub fn selection_resolution(
-        &self,
-        tab_id: &str,
-        row_index: usize,
-        feature_id: &str,
-    ) -> Result<Option<String>, JsError> {
-        let fid = core_session::FeatureId(feature_id.to_string());
-        match self.inner.selection_resolution(tab_id, row_index, &fid) {
-            Some(res) => Ok(Some(stringify_json(&res)?)),
-            None => Ok(None),
-        }
-    }
-
     /// Projection metadata for the temporary editing plane used by the
     /// session's R-tree and exact metric hit tests. Feature payloads remain
     /// lon/lat; this describes the internal x/y copy.
@@ -1138,6 +1078,11 @@ fn stringify_optional_diff(
         None => Ok(None),
     }
 }
+
+/// Typed admission of the JSON replies above; one decoder per reply family.
+#[cfg(target_arch = "wasm32")]
+#[path = "design_session_reply.rs"]
+mod reply;
 
 #[cfg(test)]
 #[path = "design_session_tests.rs"]

@@ -9,7 +9,7 @@
 //! | Copy | Coordinate space | Reached from |
 //! |---|---|---|
 //! | `ds_geo::session` | projected metres | the browser edit-session lasso |
-//! | `ds_network::memory_selection` | WGS84 lon/lat | the grid + survey lasso |
+//! | `ds_network::memory_selection` (now `ds_geo::area_selection`) | WGS84 lon/lat | the grid + survey lasso |
 //! | `ds-web/src/lib/selection/lasso-run.ts` | *screen pixels* | the survey lasso |
 //!
 //! The third one was not even a copy of the algebra — it was

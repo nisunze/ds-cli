@@ -500,8 +500,11 @@ mod exports {
         chunks, held_page, page, BrowserPushSubscription, Config, MarkResult, Marked,
         NotificationMark, Register, Revoke,
     };
+    use crate::auth_session::browser::EndedSession;
     use crate::durable_store::port::StoreHost;
-    use crate::gateway_exchange::browser::{attempt, rejection, run, typed, GatewayHost};
+    use crate::gateway_exchange::browser::{
+        attempt, attempt_as, rejection, run, typed, GatewayHost,
+    };
     use crate::gateway_exchange::retained::browser::BrowserEdge;
     use wasm_bindgen::prelude::*;
 
@@ -580,21 +583,22 @@ mod exports {
         typed(&run(&host, Register { subscription }).await?)
     }
 
-    /// Revoke one push subscription by id or endpoint.
+    /// Revoke one push subscription by id or endpoint, as the current
+    /// session or, after a sign-out, as the `ended` session that owned it.
     #[wasm_bindgen(js_name = pushRevoke)]
     pub async fn push_revoke(
         host: GatewayHost,
         subscription_id: Option<String>,
         endpoint: Option<String>,
+        ended: Option<EndedSession>,
     ) -> Result<bool, JsValue> {
-        run(
-            &host,
-            Revoke {
-                subscription_id,
-                endpoint,
-            },
-        )
-        .await
+        let call = Revoke {
+            subscription_id,
+            endpoint,
+        };
+        attempt_as(&host, call, ended.as_ref().map(EndedSession::credentials))
+            .await?
+            .map_err(|refusal| rejection(&refusal))
     }
 }
 

@@ -281,6 +281,26 @@ pub mod project_config {
         project_reference(project)?;
         retained::forget(edge, None, KIND, Some(project), None).await
     }
+
+    /// Held-first acquisition: the held document answers without a fetch;
+    /// only a project with nothing held performs one explicit read and
+    /// retains it. The answer names which of the two produced the document.
+    pub async fn acquire(
+        edge: &impl Edge,
+        project: &str,
+    ) -> Result<
+        (
+            Shown,
+            crate::gateway_exchange::design::ProjectConfigurationRead,
+        ),
+        Refusal,
+    > {
+        use crate::gateway_exchange::design::ProjectConfigurationRead as Source;
+        if let Some(held) = held(edge, project).await? {
+            return Ok((held, Source::Held));
+        }
+        Ok((refresh(edge, project).await?, Source::Refresh))
+    }
 }
 
 /// A project's survey sync and publication status.
@@ -598,6 +618,27 @@ export interface AssetsCatalogue { assets: Record<string, unknown>[]; folders: R
         typed(&fresh.map_err(|refusal| rejection(&refusal))?)
     }
 
+    /// Held-first: the held `/config` document, or one explicit read when
+    /// nothing is held. The reply's observation names its actual source.
+    #[wasm_bindgen(js_name = projectConfigAcquire, unchecked_return_type = "ProjectConfigurationReply")]
+    pub async fn project_config_acquire(
+        host: GatewayHost,
+        store: StoreHost,
+        project: String,
+    ) -> Result<JsValue, JsValue> {
+        let (shown, source) = project_config::acquire(&edge(host, store), &project)
+            .await
+            .map_err(|refusal| rejection(&refusal))?;
+        let reply = crate::gateway_exchange::design::admit_project_configuration_reply(
+            &project,
+            crate::gateway_exchange::design::ProjectConfigurationRead::Acquire,
+            serde_json::json!({"project": project, "document": shown.value,
+                "observation": {"source": source, "saved_at_ms": shown.saved_at_ms}}),
+        )
+        .map_err(|refusal| rejection(&refusal))?;
+        typed(&reply)
+    }
+
     /// Forget the held `/config` document: a save changed it.
     #[wasm_bindgen(js_name = projectConfigForget)]
     pub async fn project_config_forget(
@@ -715,3 +756,7 @@ export interface AssetsCatalogue { assets: Record<string, unknown>[]; folders: R
 #[cfg(test)]
 #[path = "held_reads_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "held_reads_acquire_tests.rs"]
+mod acquire_tests;

@@ -16,7 +16,7 @@ const LOCAL_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "fast_lv_save_input_invalid",
         when: "a receipt or artifact is absent, oversized, malformed or mismatched",
-        remedy: "retain the successful project-export and process JSON receipts and their exact request/result files",
+        remedy: "keep the project-export and process JSON receipts and their request/result files",
     },
     Refusal {
         code: "fast_lv_publication_invalid",
@@ -25,8 +25,8 @@ const LOCAL_REFUSALS: &[Refusal] = &[
     },
     Refusal {
         code: "fast_lv_save_source_digest_mismatch",
-        when: "native save finds that the projected source layers differ from the exported source digest before contacting the server",
-        remedy: "update ds, then retry the same exact receipts and operation id; report a repeated mismatch in the current build",
+        when: "the projected source layers differ from the exported source digest",
+        remedy: "update ds, then retry the same receipts and operation id",
     },
     Refusal {
         code: "confirmation_required",
@@ -36,7 +36,7 @@ const LOCAL_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "network_engine_missing",
         when: "publication projection cannot find an installed Network addon",
-        remedy: "install the Network addon; retained source and result files stay unchanged",
+        remedy: "install the Network addon; retained files stay unchanged",
     },
     Refusal {
         code: "network_engine_incompatible",
@@ -46,12 +46,12 @@ const LOCAL_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "network_engine_unqualified",
         when: "the addon has no admitted release identity",
-        remedy: "install a verified Network release or explicitly select a compatible development executable",
+        remedy: "install a verified Network release or select a compatible development executable",
     },
     Refusal {
         code: "network_receipt_invalid",
         when: "publication receipt disagrees with captured request, result, engine or schema",
-        remedy: "retain the original receipts and files, and use an intact compatible Network addon",
+        remedy: "keep the original receipts and files; use an intact Network addon",
     },
     Refusal {
         code: "network_result_invalid",

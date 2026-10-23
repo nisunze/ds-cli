@@ -37,7 +37,11 @@ fn missing_and_incompatible_config_sheets_are_refused_by_both_decoders() {
 
 #[test]
 fn configuration_read_modes_and_receipts_match_the_typed_wire() {
-    assert_eq!(ProjectConfigurationRead::NAMES, &["held", "refresh"]);
+    // Additive request mode (DECOUPLING-012): held-first acquisition.
+    assert_eq!(
+        ProjectConfigurationRead::NAMES,
+        &["held", "refresh", "acquire"]
+    );
     for name in ProjectConfigurationRead::NAMES {
         let mode: ProjectConfigurationRead = serde_json::from_value(json!(name)).unwrap();
         assert_eq!(serde_json::to_value(mode).unwrap(), json!(name));

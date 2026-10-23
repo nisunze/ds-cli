@@ -226,7 +226,7 @@ pub(super) const PUBLISH_LOCAL_ONLY: Refusal = Refusal {
 };
 pub(super) const PUBLISH_SCOPE_CHANGED: Refusal = Refusal {
     code: "report_publish_scope_changed",
-    when: "the native identity, lane, audience, project or credential generation changed before sealing",
+    when: "the identity, lane, audience, project or credential changed before sealing",
     remedy: "repeat the export under the current native account and project",
 };
 pub(super) const PUBLISH_ROOT: Refusal = Refusal {
@@ -291,7 +291,7 @@ const CONTEXT_TOO_LARGE: Refusal = Refusal {
 };
 const NEIGHBOR_POINTS_UNAVAILABLE: Refusal = Refusal {
     code: "neighbor_transformer_points_unavailable",
-    when: "a sheet selects neighboring transformer points or circuit context but an active project room is missing, changed or has no verified transformer point",
+    when: "a sheet selects neighbor transformer points or circuit context but an active room is missing, changed or has no verified point",
     remedy: "refresh the active transformer rooms for this project, then retry the sheet",
 };
 const HOLDINGS_STORE: Refusal = Refusal {
@@ -321,6 +321,8 @@ pub(super) const REFUSALS: &[Refusal] = &[
         when: "Held receipt differs from admitted project configuration",
         remedy: "Explicitly refresh the project configuration and retry with its original receipt",
     },
+    held_export::STATUS_NOT_HELD,
+    ds_cli_auth::config_document::NOT_HELD,
     Refusal {
         code: "report_pending_outputs_require_sync",
         when: "A partial export would replace a publication with other pending outputs",
@@ -402,7 +404,7 @@ pub(super) const REFUSALS: &[Refusal] = &[
 
 pub(super) const PINNED_ROOM_INVALID: Refusal = Refusal {
     code: "pinned_room_invalid",
-    when: "a --pin-room file is unreadable, repeats or names a transformer this batch does not print, or its saved content digest does not match its layers",
+    when: "a --pin-room file is unreadable, repeats, names a transformer not printed, or its digest does not match its layers",
     remedy: "pin the exact held room a delivery receipt names: its transformer, revision and content digest",
 };
 
@@ -411,7 +413,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "export"],
     contract: 2,
     summary: "Export all transformer reports and maps headlessly in parallel.",
-    purpose: "Defaults: SHP/KMZ/XLSX, plus saved voltage-drop JSON when the project's output selection exports it. Prints regenerate; data may reuse. Saved A4 preview reuses held files.",
+    purpose: "Defaults: SHP/KMZ/XLSX, plus saved voltage-drop JSON when the output selection exports it. Prints regenerate; data may reuse.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -426,7 +428,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "held-export",
             "<json-file>",
-            "Closed ds.report-held-export/v1 saved-room SHP/KMZ/XLSX export; verifies source/receipt pins and queues exact artifacts through Core Sync. Dirty or unsaved rooms refuse before compute.",
+            "Closed ds.report-held-export/v1 SHP/KMZ/XLSX export pinned to held status and configuration only; queues artifacts via Core Sync. Dirty rooms refuse.",
         ),
         OUT_DIR_ARG,
         CONCURRENCY_ARG,

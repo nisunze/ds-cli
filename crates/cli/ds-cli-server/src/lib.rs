@@ -5,6 +5,8 @@ pub mod cache_retire;
 pub mod component_lifecycle;
 pub mod core_components;
 pub mod desktop_update;
+pub mod engine_units;
+mod engine_updates;
 pub mod module_updates;
 pub mod modules;
 pub mod profile_session;
@@ -1258,7 +1260,10 @@ pub fn serve(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let refresh = auth::CredentialRefresh::start(credential, auth::REFRESH_INTERVAL);
     // Installed UI units follow their channel's active release beside the host.
     let ui_updates = ui_updates::UiUpdates::start(lane.clone());
+    // So does an installed Network page engine unit (DECOUPLING-007).
+    let engine_updates = engine_updates::EngineUpdates::start(lane.clone());
     let hosted = runtime.block_on(host::serve(app, workers, listening));
+    drop(engine_updates);
     drop(ui_updates);
     drop(refresh);
     hosted.map_err(failure)?;
@@ -1696,7 +1701,7 @@ mod tests {
                 assert!(!refusal.remedy.contains("ds server"));
             }
         }
-        assert_eq!(ids.len(), 30);
+        assert_eq!(ids.len(), 33);
         assert!(ids.contains("core.profile-session"));
         assert!(ids.contains("core.cache.retire"));
         assert!(cache_retire::COMMAND.requires_confirmation());
@@ -1983,7 +1988,7 @@ mod tests {
     fn every_command_that_names_a_job_or_a_project_declares_project() {
         for command in DOMAIN.commands {
             if command.authority == Authority::None
-                || matches!(command.id, "core.serve" | "core.cache.retire")
+                || matches!(command.id, "core.serve" | "core.cache.retire" | "core.store")
             {
                 continue;
             }

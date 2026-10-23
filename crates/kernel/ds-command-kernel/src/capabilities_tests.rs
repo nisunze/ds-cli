@@ -11,14 +11,26 @@ const MANIFEST: &str = include_str!("../routing/capabilities.json");
 const CARGO_TOML: &str = include_str!("../Cargo.toml");
 
 fn exchange(name: &str) -> bool {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src/gateway_exchange")
-        .join(format!("{name}.rs"))
-        .is_file()
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    src.join("gateway_exchange").join(format!("{name}.rs")).is_file()
+        || src.join(format!("{name}.rs")).is_file()
 }
 
 fn declared(feature: &str) -> bool {
     CARGO_TOML.contains(&format!("\n{feature} = "))
+}
+
+/// The crate's wasm-bindgen exports, scanned the way build.rs scans them.
+fn crate_exports() -> &'static std::collections::BTreeMap<String, Vec<String>> {
+    static EXPORTS: std::sync::OnceLock<std::collections::BTreeMap<String, Vec<String>>> =
+        std::sync::OnceLock::new();
+    EXPORTS.get_or_init(|| {
+        compiler::crate_exports(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"))
+    })
+}
+
+fn export(name: &str) -> Vec<String> {
+    crate_exports().get(name).cloned().unwrap_or_default()
 }
 
 /// Compile `text` as a build enabling `features`.
@@ -28,6 +40,7 @@ fn compile_with(text: &str, features: &[&str]) -> String {
         text,
         &compiler::Environment {
             exchange: &exchange,
+            export: &export,
             feature_declared: &declared,
             feature_enabled: &enabled,
         },
@@ -172,7 +185,8 @@ fn owner_rulings_hold_in_the_table() {
     // Survey entries: a create is the same direct Firestore write as its author
     // on every platform that offers it (the page's Kernel survey queue on the
     // Web and the Desktop, Core's own writer on cli); only changes go through
-    // Brain's mutate exchange. Android is planned.
+    // Brain's mutate exchange. No mobile app is offered or planned (owner,
+    // 2026-10-22): android stays declared, and refuses.
     assert_eq!(
         on("survey.entries.create", "web"),
         Route::Supported {
@@ -193,7 +207,7 @@ fn owner_rulings_hold_in_the_table() {
     );
     assert_eq!(
         on("survey.entries.create", "android").status(),
-        Status::Pending
+        Status::Discarded
     );
     for id in [
         "survey.entries.update",
@@ -210,12 +224,12 @@ fn owner_rulings_hold_in_the_table() {
                 "{id} on {platform}"
             );
         }
-        assert_eq!(on(id, "android").status(), Status::Pending, "{id}");
+        assert_eq!(on(id, "android").status(), Status::Discarded, "{id}");
     }
     // Photo capture lives on Web and Android.
     let photo = "survey.photo.capture";
     assert_eq!(on(photo, "web").status(), Status::Supported);
-    assert_eq!(on(photo, "android").status(), Status::Pending);
+    assert_eq!(on(photo, "android").status(), Status::Discarded);
     for platform in ["cli", "desktop", "ios", "macos"] {
         assert_eq!(
             on(photo, platform).refusal().unwrap().reason,

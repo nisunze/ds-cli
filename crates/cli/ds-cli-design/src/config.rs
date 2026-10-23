@@ -30,8 +30,8 @@ const DOCUMENT: Arg = Arg::switch(
     "document",
     "Read the complete configuration instead of one paged sheet.",
 );
-const READ_MODE: Arg = Arg::value("read", "<held|refresh>", "held reads SQLite only; refresh performs one explicit project configuration read and retains it.")
-    .choices(ProjectConfigurationRead::NAMES).default("refresh");
+const READ_MODE: Arg = Arg::value("read", "<held|refresh|acquire>", "acquire answers from held SQLite and reads once only when nothing is held; held never reads; refresh reads once and retains it.")
+    .choices(ProjectConfigurationRead::NAMES).default("acquire");
 const FILE: Arg = Arg::value("file", "<path>", "JSON sheet value, at most 16 MiB.").required();
 const PARAMETER: Arg = Arg::value(
     "parameter",
@@ -150,8 +150,8 @@ pub static SHEETS: Command = command(
     &[crate::PROJECT_ARG, LANE, LIMIT, OFFSET],
 );
 pub static READ: Command = Command {
-    purpose: "Read one project configuration sheet, or select --document for its complete shared Rust document. --document --read held uses only Core SQLite under the retained account; --read refresh performs one explicit native configuration GET and retains it for later offline opens. --out writes complete JSON to a new private file. Sheet mode preserves bounded Settings projection and rule-set selection.",
-    output: "Sheet mode: bounded items, total, more, truncated and project. Document mode: project, document and observation {source, saved_at_ms}; with --out the complete document is the output file and data contains project, observation and path.",
+    purpose: "Read one project configuration sheet, or select --document for its complete shared Rust document. Both read held-first from Core SQLite under the retained account: the default --read acquire answers offline from the held document and performs one native configuration GET only when nothing is held; --read held never reads the network; --read refresh performs one explicit GET and retains it. Configuration saves forget the held document. --out writes complete JSON to a new private file. Sheet mode preserves bounded Settings projection and rule-set selection.",
+    output: "Sheet mode: bounded items, total, more, truncated, project and observation. Document mode: project, document and observation {source held|refresh, saved_at_ms}; with --out the complete document is the output file and data contains project, observation and path.",
     ..command(
     "design.config.read",
     &["design", "config", "read"],
@@ -284,9 +284,6 @@ fn read_with(
                 .ok_or_else(|| invalid("--sheet is required unless --document is selected"))?,
         )
     };
-    if !i.switch("document") && i.value("read") == Some("held") {
-        return Err(invalid("--read held requires --document"));
-    }
     if i.value("out")
         .is_some_and(|p| std::path::Path::new(p).exists())
     {
@@ -295,10 +292,10 @@ fn read_with(
             "output path already exists",
         ));
     }
+    let mode = serde_json::from_value::<ProjectConfigurationRead>(json!(i.require("read")?))
+        .map_err(invalid)?;
+    let answer = document(i.require("lane")?, i.require("project")?, mode)?;
     if i.switch("document") {
-        let mode = serde_json::from_value::<ProjectConfigurationRead>(json!(i.require("read")?))
-            .map_err(invalid)?;
-        let answer = document(i.require("lane")?, i.require("project")?, mode)?;
         if let Some(path) = i.value("out") {
             let receipt = answer
                 .file_receipt(i.require("project")?, mode, path.into())
@@ -315,18 +312,22 @@ fn read_with(
         return serde_json::to_value(answer).map_err(invalid);
     }
     let key = key.expect("sheet was admitted before acquisition");
-    let current = read_current(i)?;
-    let value = sheet(&current.document, key)?;
+    answer
+        .admit_context(i.require("project")?, mode)
+        .map_err(invalid)?;
+    let document = serde_json::to_value(&answer.document).map_err(invalid)?;
+    let value = sheet(&document, key)?;
     let mut result = design_config::apply(Request::Read {
-        document: current.document.clone(),
+        document: document.clone(),
         sheet_key: key.into(),
         rule_set: i.value("rule-set").map(str::to_owned),
         offset,
         limit,
     })
     .map_err(invalid)?;
-    result["project"] = current.summary["project"].clone();
+    result["project"] = json!(answer.project);
     result["sheet"] = json!(key);
+    result["observation"] = serde_json::to_value(&answer.observation).map_err(invalid)?;
     if let Some(path) = i.value("out") {
         write_output(path, &serde_json::to_vec_pretty(value).map_err(invalid)?)?;
         result["path"] = json!(path)

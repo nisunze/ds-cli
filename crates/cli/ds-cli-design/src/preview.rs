@@ -326,7 +326,7 @@ pub const DOWNLOAD_DIR_INVALID: Refusal = Refusal {
 const SOURCE_ARG: Arg = Arg::repeated(
     "source",
     "<kind>",
-    "Fetch the in-scope rows' original uploads of this kind (sketch, draft or process) instead of report artifacts; repeat to combine. Not with --format.",
+    "Fetch the rows' original uploads of this kind instead of report artifacts; repeat to combine. Not with --format.",
 )
 .choices(SOURCE_KINDS);
 
@@ -340,18 +340,18 @@ pub const DOWNLOAD_TOO_LARGE: Refusal = Refusal {
 };
 pub const DOWNLOAD_LOCATOR_UNSUPPORTED: Refusal = Refusal {
     code: "download_locator_unsupported",
-    when: "a listed locator is not a gs://, Cloud Storage (storage.googleapis.com, storage.cloud.google.com) or Firebase Storage object URL",
-    remedy: "narrow --transformer or --format to fetch the rest; the named locator is a DS defect to report, not a link to fetch by hand",
+    when: "a listed locator is not a gs://, Cloud Storage or Firebase Storage object URL",
+    remedy: "narrow --transformer or --format to fetch the rest; report the locator as a DS defect",
 };
 pub const DOWNLOAD_SELECTION_INVALID: Refusal = Refusal {
     code: "download_selection_invalid",
     when: "--source was combined with --format; original uploads are not filtered by report format",
-    remedy: "fetch report formats and original uploads in separate runs into separate directories",
+    remedy: "fetch report formats and original uploads in separate runs and directories",
 };
 pub const DOWNLOAD_INCOMPLETE: Refusal = Refusal {
     code: "download_incomplete",
-    when: "the signer refused, or storage failed, at least one listed artifact; the fetched ones and manifest.json are kept",
-    remedy: "read `refused` and `failed` in manifest.json; check project membership, then fetch the rest again into a new directory",
+    when: "the signer or storage failed at least one listed artifact; fetched ones and manifest.json are kept",
+    remedy: "read `refused` and `failed` in manifest.json, check membership, then fetch the rest into a new directory",
 };
 
 const FETCH_REFUSALS: &[Refusal] = &[
@@ -377,7 +377,7 @@ pub static DOWNLOAD_FETCH: Command = Command {
     path: &["design", "download", "fetch"],
     contract: 1,
     summary: "Download a plan's artifacts byte-exact with a SHA-256 manifest.",
-    purpose: "Executes `ds design download plan` for the same --project, --transformer and --format: every listed report, print and archive object is signed afresh by the report service's authorized signer (project membership checked, short-lived), fetched, and written under --out-dir at its stored object path, with manifest.json naming each file's identity, size and SHA-256. With --source sketch|draft|process it fetches the in-scope rows' original uploads the plan lists as `source_entries` instead, through the same signer. Nothing is fetched by a bearer link the plan carried. Refused or failed objects are named in the manifest and the command reports `download_incomplete`. At most 200 artifacts per run; this never regenerates reports.",
+    purpose: "Runs `ds design download plan` for the same scope: every listed report, print and archive object is signed afresh by the report service (membership checked), fetched, and written under --out-dir at its stored object path, with manifest.json naming each file's identity, size and SHA-256. With --source sketch|draft|process it fetches the in-scope rows' original uploads the plan lists as `source_entries` instead, through the same signer. Refused or failed objects are named in the manifest and the command reports `download_incomplete`. At most 200 artifacts per run; never regenerates reports.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,

@@ -53,9 +53,19 @@ pub fn connection_failure(code: Option<&str>, message: &str, remedy: Option<&str
     failure
 }
 
+/// The Kernel's decision for running `id` through this build's Core door. An
+/// id this build's manifest lacks is left to installed Core where the page
+/// runs beside it ([`super::core_door`]): Core's own descriptor then decides
+/// in [`admit`].
 pub fn core_refusal(id: &str) -> Option<Failure> {
-    match super::route(id) {
+    core_refusal_on(super::PLATFORM, id)
+}
+
+/// [`core_refusal`] for a build serving `platform`.
+pub fn core_refusal_on(platform: &str, id: &str) -> Option<Failure> {
+    match super::route_on(platform, id) {
         Ok(route) if route.executor == Some(super::Executor::Core) => None,
+        Err(_) if super::capability(id).is_err() && super::beside_core(platform) => None,
         Ok(route) => Some(match route.refusal {
             Some(refusal) => Failure::new(
                 refusal.code,
@@ -83,8 +93,28 @@ pub fn core_refusal(id: &str) -> Option<Failure> {
 /// cannot be silently omitted by a form. Machine-owned values and staged
 /// outputs are supplied by the native adapter, not the page.
 pub fn admit(id: &str, descriptor: &Value, args: &Value, project: &str) -> Option<Failure> {
-    if let Some(refusal) = core_refusal(id) {
+    admit_on(super::PLATFORM, id, descriptor, args, project)
+}
+
+/// [`admit`] for a build serving `platform`. An id this build's manifest
+/// lacks runs only when installed Core's own descriptor declares exactly it;
+/// Core still authorizes and validates the run.
+pub fn admit_on(
+    platform: &str,
+    id: &str,
+    descriptor: &Value,
+    args: &Value,
+    project: &str,
+) -> Option<Failure> {
+    if let Some(refusal) = core_refusal_on(platform, id) {
         return Some(refusal);
+    }
+    if super::capability(id).is_err() && descriptor["id"] != id {
+        return Some(Failure::new(
+            super::CODE_UNKNOWN,
+            format!("Neither this client's capability manifest nor installed DS Core declares `{id}`."),
+            "Choose a command installed DS Core declares, or update DS Core.",
+        ));
     }
     let incompatible = |message: String| {
         Some(Failure::new(
@@ -165,6 +195,60 @@ pub fn admit(id: &str, descriptor: &Value, args: &Value, project: &str) -> Optio
     None
 }
 
+/// A fixed application request needs a newer installed Core.
+pub const CORE_UPDATE_REQUIRED: &str = "core_update_required";
+
+/// Admission of a fixed application request (not a descriptor-driven form)
+/// against the installed Core's own descriptor. Every input and choice the
+/// request carries must be declared there: an older Core that lacks one is
+/// answered `core_update_required` before anything is sent. Compatibility is
+/// the declared inputs and choices, never a release or contract number; an
+/// additive descriptor field or input never refuses.
+pub fn admit_request(id: &str, descriptor: &Value, args: &Value, project: &str) -> Option<Failure> {
+    if let Some(refusal) = core_refusal(id) {
+        return Some(refusal);
+    }
+    if let (true, Some(inputs), Some(args)) = (
+        descriptor["id"] == id,
+        descriptor["inputs"].as_array(),
+        args.as_object(),
+    ) {
+        for (name, value) in args {
+            let missing = match inputs.iter().find(|input| input["name"] == name.as_str()) {
+                None => Some(format!("`--{name}`")),
+                Some(input) => input["choices"].as_array().and_then(|choices| {
+                    value
+                        .as_array()
+                        .map(Vec::as_slice)
+                        .unwrap_or_else(|| std::slice::from_ref(value))
+                        .iter()
+                        .find(|value| !choices.contains(value))
+                        .map(|value| match value.as_str() {
+                            Some(text) => format!("`--{name} {text}`"),
+                            None => format!("`--{name} {value}`"),
+                        })
+                }),
+            };
+            if let Some(missing) = missing {
+                let mut refusal = Failure::new(
+                    CORE_UPDATE_REQUIRED,
+                    format!(
+                        "The DS Core installed on this device does not support {missing} for `{id}`, which this window needs."
+                    ),
+                    "Update DS Core from Modules; it updates independently of this window. Then retry.",
+                );
+                refusal.class = "unavailable".into();
+                return Some(refusal);
+            }
+        }
+    }
+    admit(id, descriptor, args, project)
+}
+
 #[cfg(test)]
 #[path = "capability_command_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "capability_command_request_tests.rs"]
+mod request_tests;

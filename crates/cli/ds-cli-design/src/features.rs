@@ -86,7 +86,7 @@ const SIGNED_OUT: Refusal = ds_cli_auth::SIGNED_OUT_REFUSAL;
 refusal!(
     NO_PROJECT,
     "context_corrupt",
-    "--project is not one exact DS project id: blank, untrimmed, too long, or a path",
+    "--project is not one exact project id (blank, untrimmed, too long or a path)",
     "copy one exact ds_project value from ds auth project list"
 );
 refusal!(
@@ -146,7 +146,7 @@ refusal!(
     AUTH_REJECTED,
     "auth_rejected",
     "the authentication service, or the transformer-context route, rejected this request",
-    "confirm this lane still authenticates with `ds auth status`; if it does, the transformer-context route rejected a credential this call already verified, and no local change fixes that"
+    "confirm `ds auth status` authenticates this lane; if it does, the transformer-context route rejected a verified credential and no local change fixes it"
 );
 refusal!(
     AUTH_REVOKED,

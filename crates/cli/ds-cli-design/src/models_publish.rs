@@ -13,23 +13,23 @@ use serde_json::{Value, json};
 
 const SOURCE: Refusal = Refusal {
     code: "model_publish_source_invalid",
-    when: "--file is not an existing absolute ordinary .dsgrid file or cannot be read exactly",
-    remedy: "Choose an absolute ordinary .dsgrid file; keep its bytes unchanged while publishing.",
+    when: "--file is not an existing absolute .dsgrid file or cannot be read",
+    remedy: "Choose an absolute .dsgrid file and keep it unchanged while publishing.",
 };
 const EXPECTED_HEAD: Refusal = Refusal {
     code: "publish_expected_head_required",
     when: "an existing model has no nonempty reviewed expected head",
-    remedy: "Read design model list for the exact project and lane, then pass its head_revision_id as --expected-head.",
+    remedy: "Read design model list, then pass its head_revision_id as --expected-head.",
 };
 const RECEIPT: Refusal = Refusal {
     code: "model_publish_receipt_invalid",
-    when: "the returned publication acknowledgement differs from the exact prepared source or lacks verified commit metadata",
-    remedy: "Do not repeat the publish blindly; inspect the exact project model head and retained source digest before deciding what to do next.",
+    when: "the publication acknowledgement differs from the prepared source or lacks verified commit metadata",
+    remedy: "Do not repeat the publish blindly; inspect the model head and retained source digest first.",
 };
 const PREPARATION: Refusal = Refusal {
     code: "model_publish_preparation_failed",
-    when: "the native preparation owner returns an unrecognized refusal or changes the requested publication scope",
-    remedy: "Read the named owner cause and use a compatible native Network component; no publication was attempted.",
+    when: "native preparation returns an unrecognized refusal or changes the publication scope",
+    remedy: "Read the owner cause and use a compatible Network component; nothing was published.",
 };
 const CONFIRMATION: Refusal = Refusal {
     code: "confirmation_required",
@@ -39,14 +39,14 @@ const CONFIRMATION: Refusal = Refusal {
 const CONFLICT: Refusal = Refusal {
     code: "publish_conflict",
     when: "the expected head moved or this immutable revision conflicts with stored state",
-    remedy: "Read the exact project model head and stored revision; review the conflict before another publish.",
+    remedy: "Read the model head and stored revision; review the conflict before publishing again.",
 };
 
 const fn preparation_refusal(code: &'static str, when: &'static str) -> Refusal {
     Refusal {
         code,
         when,
-        remedy: "Inspect the unchanged source and exact publication inputs against the named owner rule.",
+        remedy: "Check the inputs against the named rule.",
     }
 }
 const fn engine_refusal(code: &'static str, when: &'static str) -> Refusal {
@@ -262,7 +262,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "model", "publish"],
     contract: 1,
     summary: "Save a reviewed .dsgrid checkpoint to an MV model (needs --yes).",
-    purpose: "Publish one exact local package as an immutable revision of an existing mv_line model in the explicitly named project and credential lane. Native Network preparation validates the opaque package and derives its source identity; the authenticated owner uploads, commits against --expected-head and verifies exact revision readback. This saves into the current version without renaming, creating a model or changing a local active model. Report upload is a separate workflow. A failed acknowledgement is never retried automatically.",
+    purpose: "Publish one exact local package as an immutable revision of an existing mv_line model in the explicitly named project and credential lane. Native Network preparation validates the package and derives its source identity; the owner uploads, commits against --expected-head and verifies readback. It creates no model, renames nothing and leaves the local active model. A failed acknowledgement is never retried.",
     chapter: Chapter::Design,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,
@@ -272,7 +272,7 @@ pub static COMMAND: Command = Command {
         Arg { required: true, default: None, ..crate::LANE_ARG },
         Arg::value("model", "<id>", "Exact existing project model_id from design model list.").required(),
         Arg::value("expected-head", "<revision-id>", "Exact reviewed head_revision_id; never refreshed or replaced automatically.").required(),
-        Arg::value("file", "<absolute.dsgrid>", "Existing ordinary absolute .dsgrid file, nonempty and at most 256 MiB; never modified.").required(),
+        Arg::value("file", "<absolute.dsgrid>", "Existing absolute .dsgrid file, nonempty, at most 256 MiB; never modified.").required(),
         Arg::value("reason", "<text>", "Reviewed checkpoint reason, using the publication owner's text rules.").required(),
     ],
     output: "Verified owner status, project/lane, project_model, immutable revision, current version, digest/byte_length, source local_revision, expected_head/parent_revision, upload_skipped and available stored ordinal. active_model_changed=false. No report publication or signed locator.",

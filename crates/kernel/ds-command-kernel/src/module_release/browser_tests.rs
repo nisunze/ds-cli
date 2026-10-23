@@ -175,11 +175,25 @@ fn incomplete_crossed_mixed_oversized_and_unknown_members_refuse() {
         v["assets"][0]["url"].as_str().unwrap()
     ));
     cases.push(v);
+    // Owner 22 Oct: members a newer publisher adds are accepted and never read
+    // (these two cases used to be refusals); the admitted unit is unchanged.
+    let admitted = inspect("canary", &base).unwrap();
     let mut v = base.clone();
     v["assets"][0]["executable"] = json!("evil");
+    v["extra"] = json!(true);
+    v["assets"][1]["engines"][0]["future"] = json!({"signature": "x"});
+    assert_eq!(inspect("canary", &v).unwrap(), admitted);
+    // Added members stay bounded; a missing required member still refuses.
+    let mut v = base.clone();
+    v["extra"] = json!("x".repeat(8001));
+    cases.push(v);
+    let mut v = base.clone();
+    for index in 0..33 {
+        v[format!("future_{index}")] = json!(index);
+    }
     cases.push(v);
     let mut v = base;
-    v["extra"] = json!(true);
+    v["assets"][0].as_object_mut().unwrap().remove("sha256");
     cases.push(v);
     for value in cases {
         assert!(inspect("canary", &value).is_err(), "{value}");
@@ -430,7 +444,12 @@ fn reporter_requires_its_complete_closed_unit_owner_protocol_and_identity() {
         ("sourceSha", json!("a".repeat(40))),
         ("dependencyClosureSha256", json!("a".repeat(64))),
         ("capabilities", json!(["lv_processing_v1"])),
-        ("capabilities", json!(["render_held_svg_pdf_v1", "other"])),
+        // Owner 22 Oct (B5): an added capability is admitted (below); a
+        // repeated token is not a declaration.
+        (
+            "capabilities",
+            json!(["render_held_svg_pdf_v1", "render_held_svg_pdf_v1"]),
+        ),
     ] {
         let mut identity = receipt.engine_identity.clone();
         identity[key] = value;
@@ -469,6 +488,23 @@ fn reporter_requires_its_complete_closed_unit_owner_protocol_and_identity() {
             "{key}"
         );
     }
+    // Owner 22 Oct (B5): a Reporter unit that declares the consumed capability
+    // is admitted with added capabilities, another protocol integer and an
+    // added identity fact (the first used to be a refusal above).
+    let mut newer = receipt.engine_identity.clone();
+    newer["capabilities"] = json!(["render_held_svg_pdf_v1", "render_held_png_v1"]);
+    newer["protocolMajor"] = json!(2);
+    newer["futureFact"] = json!(true);
+    let admitted = prepare(
+        receipt.unit.clone(),
+        receipt.authority.clone(),
+        &files,
+        newer.clone(),
+        true,
+    )
+    .unwrap();
+    assert_eq!(admitted.unit, receipt.unit);
+    assert_eq!(admitted.engine_identity, newer);
     for index in 0..4 {
         let mut corrupt = files.clone();
         corrupt[index].sha256 = "0".repeat(64);

@@ -9,6 +9,12 @@ use ds_report_host::{RunExtras, RunSettings, TransformerReportInputs};
 use serde_json::{Value, json};
 use std::{io::Read, path::PathBuf};
 
+/// The held status observation has no saved revision for this transformer.
+pub(super) const STATUS_NOT_HELD: ds_cli_contract::spec::Refusal = ds_cli_contract::spec::Refusal {
+    code: "design_status_not_held",
+    when: "this device holds no saved revision of the transformer",
+    remedy: "run ds design status --read refresh once online, then retry",
+};
 fn refusal(r: policy::Refusal) -> Failure {
     Failure::invalid(r.code, r.message).remedy("Preserve the held room; save or refresh through its design owner when its saved revision is unavailable or changed")
 }
@@ -59,37 +65,57 @@ pub(super) fn preflight(inputs: &Inputs) -> Result<(), Failure> {
 pub(super) fn run(inputs: &Inputs) -> Result<Value, Failure> {
     preflight(inputs)?;
     let r = read(inputs)?;
-    // The native source owner proves this exact saved revision and content.
-    // Its layer bytes are never substituted for the caller's captured room.
-    let source =
-        ds_cli_auth::saved_transformer_context_for_project(&r.lane, &r.project, &r.transformer)?;
-    let identity = source.identity();
+    // Held-first (DECOUPLING-012): the export reads only what this device
+    // holds. The held status observation proves the saved revision and
+    // content the room claims; the held configuration proves its receipt.
+    // Nothing held is a typed refusal, never a live read. Layer bytes are
+    // never substituted for the caller's captured room.
+    let identity = ds_cli_auth::headless_identity_for_named_project(&r.lane)?;
     r.authority(
-        source.snapshot().ds_project(),
+        &r.project,
         identity.lane(),
         identity.uid(),
         identity.credential_audience_sha256(),
     )
     .map_err(refusal)?;
-    if source.snapshot().transformer_name() != r.transformer {
-        return Err(invalid("Saved source returned another transformer"));
-    }
-    r.saved_source(
-        source.snapshot().metadata().version(),
-        source.snapshot().metadata().content_digest(),
+    let (status, _) = ds_cli_auth::read_transformer_status_for_project(
+        &r.lane,
+        &r.project,
+        ds_command_kernel::transformer_status_store::TransformerStatusRead::Held,
+    )?;
+    let wanted = ds_command_kernel::transformer_status_store::row_identity(&r.transformer);
+    let saved = status
+        .result()
+        .rows()
+        .iter()
+        .find(|row| ds_command_kernel::transformer_status_store::row_identity(row.name()) == wanted)
+        .map(|row| &row.row()["metadata"])
+        .filter(|metadata| metadata["version"].is_u64() && metadata["content_digest"].is_string())
+        .ok_or_else(|| {
+            Failure::unavailable(
+                STATUS_NOT_HELD.code,
+                format!("This device holds no saved revision of {}", r.transformer),
+            )
+            .remedy(STATUS_NOT_HELD.remedy)
+        })?;
+    r.saved_source(saved["version"].as_u64(), saved["content_digest"].as_str())
+        .map_err(refusal)?;
+    let configuration = ds_cli_auth::config_document::read(
+        &r.lane,
+        &r.project,
+        ds_command_kernel::gateway_exchange::design::ProjectConfigurationRead::Held,
+    )?;
+    let authoritative = report_export::InputReceipt::from_config(
+        &serde_json::to_value(&configuration.document).map_err(|e| invalid(e.to_string()))?,
     )
-    .map_err(refusal)?;
-    let configuration = ds_cli_auth::feeder_configuration_for_project(&r.lane, &r.project)?;
-    super::require_same_context(identity, &r.project, configuration.identity(), &r.project)
-        .map_err(host_failure)?;
-    let authoritative = report_export::InputReceipt::from_config(&configuration.result().document)
-        .map_err(invalid)?;
+    .map_err(invalid)?;
     if authoritative != r.receipt {
         return Err(Failure::conflict(
             "report_held_export_configuration_changed",
             "The original project receipt differs from the current admitted configuration; explicitly refresh the configuration and retry",
         ));
     }
+    let identity = &identity;
     let current = || {
         let now = ds_cli_auth::headless_identity_for_named_project(&r.lane)?;
         super::require_same_context(identity, &r.project, &now, &r.project).map_err(host_failure)

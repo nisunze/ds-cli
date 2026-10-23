@@ -242,8 +242,9 @@ mod truncation_tests {
 }
 
 /// Actionable render diagnostics shared by the native host, GUI and CLI.
+/// Engines write these; additive members from a newer engine are accepted
+/// (owner 22 Oct), the eight members below stay required.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct PrintWarning {
     pub code: String,
     pub transformer: String,

@@ -53,6 +53,7 @@ pub mod profile;
 pub mod project;
 pub mod report;
 pub mod run;
+pub mod spotting_preview;
 mod spotting_receipt;
 pub mod structure;
 pub mod validate;
@@ -84,6 +85,7 @@ pub static DOMAIN: Domain = Domain {
         &run::COMMAND,
         &preview_receipt::COMMAND,
         &apply_receipt::COMMAND,
+        &spotting_preview::COMMAND,
         &apply::COMMAND,
         &apply_batch::COMMAND,
         &apply_batch::CORRECTION,

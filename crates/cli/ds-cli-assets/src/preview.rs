@@ -106,10 +106,9 @@ Read signed catalogue bytes as text, grids, headers, geometry or metadata, \
 never pixels or remote content. PDF defaults to pdf.js metadata. Embedded \
 PDF text: --pdf-text-pages FIRST:LAST for a whole PDF, inclusive 1-based \
 range, at most 5 actual pages, last at most 10000. --pages/--rows select \
-ordinary preview only. Fixed Linux Poppler/prlimit required; other hosts or \
-missing helpers refuse. Decoder byte, page and resource limits are in the reference. \
+ordinary preview only. Needs Linux Poppler/prlimit. \
 No OCR, annotations, layout reconstruction or partial text. \
-Encrypted/malformed content refused. --retain consumes a whole catalogue or PM PDF through the common native file room; fresh online source authorization, exact storage generation and measured SHA; no URL is returned. --offline with all native pins makes zero source or auth-refresh calls. Other sys: bytes remain unavailable. Headless.",
+Encrypted/malformed content is refused. --retain admits a whole catalogue or PM PDF through the native file room with fresh online authorization, exact storage generation and measured SHA; no URL is returned. --offline with all native pins makes zero source or auth calls. Other sys: bytes are unavailable.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,

@@ -89,7 +89,6 @@ struct App {
     survey: Source,
     design: Source,
     data: Source,
-    project_data: Source,
     cli_errors: Source,
     materialize: Source,
     analysis: Source,
@@ -124,7 +123,6 @@ fn app() -> App {
         survey: read("src/lib/desktop/cli-survey.ts"),
         design: read("src/lib/desktop/cli-map-design.ts"),
         data: read("src/lib/desktop/cli-data.ts"),
-        project_data: read("src/lib/desktop/cli-project-data.ts"),
         cli_errors: read("src/lib/desktop/cli-errors.ts"),
         materialize: read("src/lib/search-place/materialize.ts"),
         analysis: read("src/lib/analysis/outliers.ts"),
@@ -707,8 +705,9 @@ const DSGRID_RETIRED_OPERATIONS: &[&str] = &[
 /// `dsgrid.profile.open` (2026-09-20) is the second: it asks the window to
 /// open this machine's working copy by path and occupy Profile with it. It
 /// reads no project — the copy is a fact about the machine — so it is the
-/// one project-independent operation the adapter admits.
-const DSGRID_PROJECT_OPERATIONS: &[&str] = &["dsgrid.model.publish", "dsgrid.profile.open"];
+/// one project-independent operation the adapter admits. `dsgrid.model.publish`
+/// left with its sender `publish-version` (b864f988).
+const DSGRID_PROJECT_OPERATIONS: &[&str] = &["dsgrid.profile.open"];
 
 #[test]
 fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments() {
@@ -765,8 +764,8 @@ fn every_dsgrid_model_command_has_one_closed_operation_owner_and_exact_arguments
     assert_eq!(
         seen.len(),
         DSGRID_PROJECT_OPERATIONS.len(),
-        "the family sends exactly the two operations that are about the application's own \
-         window: publish, and profile open"
+        "the family sends exactly the one operation that is about the application's own \
+         window: profile open"
     );
     let allowlist = between(
         &app.transport,
@@ -1017,9 +1016,10 @@ fn the_data_domain_sends_only_operations_the_desktop_owns() {
         "pub const CLI_OPERATIONS: &[&str] = &[",
         "];",
     );
-    // What is left is local compute this application's own components serve:
-    // the Rwanda DEM engine and the project's pinned boundary asset.
-    assert_eq!(ds_cli_data::BRIDGE_OPS.len(), 4);
+    // What is left is admin attachment, which needs the project's governed
+    // installed boundary asset; elevation and point-cloud left the door for
+    // the shared native data application in d35cb02d.
+    assert_eq!(ds_cli_data::BRIDGE_OPS.len(), 1);
     assert!(
         !ds_cli_data::BRIDGE_OPS.is_empty(),
         "ds_cli_data::BRIDGE_OPS must declare operations for this parity check"
@@ -1031,12 +1031,9 @@ fn the_data_domain_sends_only_operations_the_desktop_owns() {
             "the native allowlist must own the data operation exactly once"
         );
         assert_eq!(switch_case_count(&app.frontend, operation.operation), 1);
-        // The data family has two typed adapters — local source work in
-        // `cli-data.ts`, the project dataset rooms in `cli-project-data.ts` —
-        // and exactly one of them owns each operation. Reading only the first
-        // reported `data.project_cache.*` as having no contract at all, which
-        // is the opposite of what is true.
-        let owners = [&app.data, &app.project_data]
+        // The data family has one typed adapter, `cli-data.ts`, which must own
+        // each operation exactly once.
+        let owners = [&app.data]
             .into_iter()
             .filter(|source| has_operation_contract(source, operation.operation))
             .collect::<Vec<_>>();

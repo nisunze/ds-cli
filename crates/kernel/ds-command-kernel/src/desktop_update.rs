@@ -1,5 +1,12 @@
-//! Closed update inspection and download admission. Hosts schedule and execute
+//! Update inspection and download admission. Hosts schedule and execute
 //! the existing verified transfer; inspection never installs or activates.
+//!
+//! What other components publish or report — Brain's shell and Core catalog
+//! members and the installed shell's build identity — accepts members a newer
+//! producer adds (owner 22 Oct; a closed catalog once refused every Desktop
+//! update over `releasedAt`). Members read here stay required and typed. The
+//! requests a host hands this owner (`DownloadRequest`, `InspectionInput`)
+//! stay closed.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -79,7 +86,7 @@ fn kind_order(platform: &str) -> &'static [&'static str] {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct BuildIdentity {
     pub version: Option<String>,
     pub source_sha: Option<String>,
@@ -173,7 +180,7 @@ pub(crate) struct Proven {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseAsset {
     pub platform: String,
     pub arch: String,
@@ -202,7 +209,7 @@ pub struct ReleaseAsset {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 pub struct DesktopRelease {
     pub channel: String,
     #[serde(alias = "product_id")]

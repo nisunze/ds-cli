@@ -83,19 +83,6 @@ pub use ds_cli_desktop::ops::{
 // The declared wire contract
 // ---------------------------------------------------------------------------
 
-pub const MODEL_PUBLISH: BridgeOp = BridgeOp {
-    operation: "dsgrid.model.publish",
-    arguments: &[
-        "model",
-        "path",
-        "project_model",
-        "kind",
-        "name",
-        "expected_head",
-        "reason",
-    ],
-};
-
 /// Every operation this family can send, for `tests/bridge_parity.rs` to walk.
 /// An operation absent from this list is one the parity test never proves
 /// against the application.
@@ -109,8 +96,10 @@ pub const MODEL_PUBLISH: BridgeOp = BridgeOp {
 /// `ds dsgrid project download` uses.
 /// `dsgrid.profile.open` (2026-09-20) is the one way back: the application
 /// opens this machine's working copy by path, under the copy's own id, and
-/// occupies Profile with it.
-pub const BRIDGE_OPS: &[&BridgeOp] = &[&MODEL_PUBLISH, &crate::profile::open::PROFILE_OPEN];
+/// occupies Profile with it. `dsgrid.model.publish` left with its sender,
+/// `publish-version`, in b864f988 (DECOUPLING-003) and the application no
+/// longer admits it.
+pub const BRIDGE_OPS: &[&BridgeOp] = &[&crate::profile::open::PROFILE_OPEN];
 
 /// The largest page of local models one read returns. A hand copy of the
 /// adapter's own `MAX_LIST_LIMIT`, held to it by `tests/bridge_parity.rs`; the

@@ -51,13 +51,12 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Promote a geo asset, or a geo pack member, to a local layer.",
     purpose: "\
-Fetch the asset's bytes through the catalogue's signed read and admit them \
-to this machine's prepared local layer store — the one `ds map local` reads \
-and writes, per lane and DS account — never a new store, never an upload. \
-The layer records the source asset as provenance; the asset is unchanged. The \
-store admits a GeoJSON feature collection of one geometry type: a non-geo \
-asset, another geo format, mixed geometries or a feature count over the cap \
-is refused with the reason. A projected sys: row is refused by name.",
+Fetch the asset's bytes by the catalogue's signed read into this machine's \
+prepared local layer store (the one `ds map local` uses, per lane and account); \
+never a new store or an upload. \
+The layer records the source asset as provenance; the asset is unchanged. Only \
+a GeoJSON collection of one geometry type under the feature cap is admitted; \
+anything else is refused with the reason, and a projected sys: row by name.",
     chapter: Chapter::Assets,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,

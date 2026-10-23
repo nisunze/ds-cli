@@ -946,6 +946,7 @@ fn solar_local_clean_is_project_explicit_confirmed_and_has_no_recovery_options()
             .iter()
             .any(|input| input["name"] == "digest" || input["name"] == "action")
     );
+    // Central confirmation answers before the engine is consulted.
     assert_eq!(
         refusal(&[
             "solar",
@@ -958,7 +959,7 @@ fn solar_local_clean_is_project_explicit_confirmed_and_has_no_recovery_options()
             "--output",
             "json"
         ]),
-        "engine_refused"
+        "confirmation_required"
     );
     let schema = ds_cli_server::solar_application_schema(Some("project_clean")).unwrap();
     assert!(schema.to_string().contains("project_id"));
@@ -3371,6 +3372,7 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             BTreeSet::from([
                 "combine-per-group",
                 "composition",
+                "core-state-dir",
                 "file-level",
                 "force",
                 "group-by",
@@ -3379,14 +3381,6 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
                 "transformer",
                 "where",
             ]),
-        ),
-        // The cloud twin of `report.project.export`: the same three inputs
-        // as the Compounded Report's scope — the names, the lane, and the
-        // framework's `--yes` — and not one option more.
-        (
-            "report.project.compute",
-            "artifact_write",
-            BTreeSet::from(["lane", "project", "transformer"]),
         ),
         (
             "report.project.archives",

@@ -13,6 +13,7 @@ use ds_solar_reference_host::{
 mod fixtures;
 use ds_solar_addon::prepared_task;
 use ds_solar_contracts::result_comparison::comparison_receipt;
+mod local_engine;
 mod project;
 use ds_solar_project::intake::{
     GovernedCityIntake, GovernedIntakeAuthority, GovernedSnapshot, governed_intake,
@@ -824,11 +825,7 @@ fn write_run(
     output: &ds_solar_runtime::RunOutput,
     progress: &CollectingProgressSink,
 ) -> Result<()> {
-    ds_solar_project::files::commit_run_with_progress(
-        out,
-        output,
-        Some(&serde_json::to_value(progress.events())?),
-    )
+    local_engine::commit_run(out, output, Some(&serde_json::to_value(progress.events())?))
 }
 
 fn verify_batch_files(root: &Path, batch: &ds_solar_contracts::SolarArtifactBatch) -> Result<()> {

@@ -497,8 +497,8 @@ Core's retained Profile view requires the captured Network `profile_view_v1`
 capability before style acquisition, staging or rebind. It sends one bounded,
 digest-pinned `ds.network.profile-view-input/v1` file through the retained
 process. Network uses its existing scene owner and `ds-profile-presentation` to
-return the complete scene/display projection; Core no longer links
-`ds-profile-runtime`. Legacy runtime consumers use that same projection owner.
+return the complete scene/display projection; no application crate links a
+Profile runtime or Grid engine (the unused `ds-profile-runtime` crate is deleted).
 Core retains authored-style acquisition, authorization, display state and late
 style-adoption checks. It verifies the returned model, history, retained assets
 and patched display state before adoption. Network prepares and encodes the

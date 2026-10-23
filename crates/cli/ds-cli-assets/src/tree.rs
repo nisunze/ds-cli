@@ -75,10 +75,9 @@ pub static COMMAND: Command = Command {
 The named project's folder tree from the index ds-brain serves: system \
 folders (Transformers, MV models, Survey, Reports, Solar …) and declared \
 folders, with counts, to --depth. --folder roots it at one exact path; \
---refresh rebuilds the index. `sources_omitted` names the edge-only Local \
-data and local prints the shared index never holds. --query and --link \
-search catalogued uploads only (`index_status: not_read`). --into walks one `pack` \
-asset's members with sizes, never unpacking. Headless.",
+--refresh rebuilds the index. `sources_omitted` names edge-only data the shared index never holds. \
+--query and --link search catalogued uploads only. --into lists one `pack` \
+asset's members with sizes, never unpacking.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,

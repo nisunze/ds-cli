@@ -25,8 +25,10 @@
 //!   ([`room_hold`]), so a Server with no link still prints.
 //!
 //! It never decides geometry, policy or document shape — those stay in the
-//! kernel — and it never fetches from a provider: the host hands it a
-//! [`Provider`] for the governed ds-brain door and a fetch for bundle bytes.
+//! kernel — and it never fetches from a provider: the host lends it the
+//! doors it needs ([`Provider`], a bundle fetch, and for building footprints
+//! and contours the shared revision door and Core's own source acquisition,
+//! [`revisions`]), so it opens no socket and holds no credential.
 
 pub mod bundle;
 pub mod catalog;
@@ -41,6 +43,7 @@ pub mod metadata;
 pub mod preview_room;
 pub mod print_context;
 pub mod publisher_footprints;
+pub mod revisions;
 pub mod room_hold;
 pub mod survey_hold;
 

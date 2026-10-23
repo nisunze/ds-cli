@@ -235,6 +235,9 @@ pub mod region;
 
 #[cfg(feature = "codec")]
 pub mod wkb;
+/// GeoPackage geometry header, WKB payload and layer admission policy.
+#[cfg(feature = "codec")]
+pub mod gpkg;
 
 #[cfg(feature = "index")]
 pub mod measured_path;

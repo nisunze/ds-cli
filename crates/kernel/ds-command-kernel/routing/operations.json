@@ -1379,19 +1379,20 @@
       }
     },
     "project_report": {
-      "summary": "The compounded project deliverable, the transformer inventory, and the status rows behind it.",
+      "summary": "The compounded archive registry, the transformer inventory, and the status rows behind it.",
       "doc": [
-        "`actions` is exactly the closed vocabulary the native client may send",
-        "(ds-client-core PROJECT_REPORT_ACTIONS). list_transformers_status was",
-        "declared for the headless Design read spine and bumped the client",
-        "profile schema to v19. The browser lane sends four further /report",
-        "actions — add_transfo_to_combined, combined_and_export,",
-        "export_reports_only, refresh_mv_reports — which are NOT declared yet.",
-        "Declaring them is a descriptor edit plus a review, not a code change."
+        "`actions` is exactly the closed vocabulary of the native client profile",
+        "(ds-client-core PROJECT_REPORT_ACTIONS); list_transformers_status bumped",
+        "the client profile schema to v19. No report is computed on this route:",
+        "individual, combined and compounded reports are composed on an edge and",
+        "published through the compute-artifact door, so no client sends",
+        "download_transfo; it stays in the profile identity only until the next",
+        "profile schema release removes it. Brain answers every compute action",
+        "with 501 NATIVE_COMPUTE_REQUIRED."
       ],
       "operations": {
         "action": {
-          "summary": "Compounded deliverable, archive registry, inventory, retirement, status rows.",
+          "summary": "Archive registry, inventory, retirement, status rows.",
           "transport": "json",
           "action_key": "action",
           "actions": [

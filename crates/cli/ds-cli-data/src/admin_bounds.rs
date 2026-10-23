@@ -573,7 +573,7 @@ mod tests {
         }
         // Attachment is the one paired command left here, and it is the only
         // operation this crate may still send.
-        assert_eq!(crate::BRIDGE_OPS.len(), 4);
+        assert_eq!(crate::BRIDGE_OPS.len(), 1);
         assert!(
             crate::BRIDGE_OPS
                 .iter()

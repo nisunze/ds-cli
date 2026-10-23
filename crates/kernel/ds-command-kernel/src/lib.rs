@@ -23,6 +23,7 @@ pub mod design_session;
 pub use design_session::{find_feature_in_tabs_v2, SelectionCoordinator, SessionHandle};
 pub mod asset_preview;
 pub mod assets;
+pub mod grid_engine;
 pub mod grid_held_models;
 pub mod grid_selection_controls;
 pub mod profile_controls;
@@ -127,6 +128,7 @@ pub fn execution_context_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsVa
 }
 pub mod desktop_instance;
 pub mod desktop_update;
+pub mod engine_unit;
 pub mod module_engine;
 pub mod module_install;
 pub mod module_release;
@@ -238,6 +240,9 @@ pub mod survey_capture;
 pub mod work_drafts;
 #[cfg(feature = "durable-store")]
 pub mod outbox;
+/// The page's signed-in session: its record, refresh policy, Google redirect
+/// sign-in and the profile store that keeps it.
+pub mod auth_session;
 
 pub mod sync_store;
 #[cfg(feature = "wasm")]
@@ -342,6 +347,8 @@ pub mod project_dataset_cache;
 pub fn project_dataset_cache_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
     project_dataset_cache::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
+/// The project's shared, governed chain of seeded dataset revisions.
+pub mod project_dataset_revisions;
 pub mod project_design_extent;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = projectDesignExtentCommand)]
@@ -352,6 +359,7 @@ pub mod reference_cache;
 pub mod grid_crs;
 pub mod selection_field;
 pub mod table_query;
+#[cfg(feature = "page-data")]
 pub mod domain_value;
 /// The one rule every input door applies to a geometry (owner ruling,
 /// 2026-09-27): what BigQuery's `ST_GEOGFROMGEOJSON` refuses is refused, and
@@ -381,6 +389,8 @@ pub fn solar_portfolio_batch_wasm(input: &[u8]) -> Result<String, wasm_bindgen::
 }
 pub mod survey;
 pub mod survey_control;
+/// The survey dashboard report, aggregated on the edge from held rows.
+pub mod survey_dashboard;
 pub mod survey_entries_changes;
 pub mod survey_entries_select;
 pub mod survey_entry_create;
@@ -440,7 +450,6 @@ pub use solar_portfolio::{
     SOLAR_PORTFOLIO_MEMBERSHIP_SCHEMA, SOLAR_PORTFOLIO_MUTATION_PLAN_SCHEMA,
 };
 
-pub const LOGIN_CONTRACT_SCHEMA: &str = "ds.auth.login-result/v1";
 pub const MAX_LOGIN_RESPONSE_BYTES: usize = 64 * 1024;
 pub const MAX_SOLAR_PORTFOLIO_RESULT_BYTES: usize = 4 * 1024 * 1024;
 
@@ -582,29 +591,6 @@ impl ValidatedLogin {
 
     pub fn take_refresh_token(&mut self) -> String {
         std::mem::take(&mut self.refresh_token)
-    }
-
-    /// Bounded browser handoff. It is deliberately not a command receipt and
-    /// must never be traced or logged because it contains credential material.
-    pub fn to_browser_json(&self) -> Result<String, LoginError> {
-        #[derive(Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct BrowserLogin<'a> {
-            schema: &'static str,
-            user: &'a LoginPrincipal,
-            id_token: &'a str,
-            refresh_token: &'a str,
-            expires_at_epoch_seconds: u64,
-        }
-
-        serde_json::to_string(&BrowserLogin {
-            schema: LOGIN_CONTRACT_SCHEMA,
-            user: &self.principal,
-            id_token: &self.id_token,
-            refresh_token: &self.refresh_token,
-            expires_at_epoch_seconds: self.expires_at_epoch_seconds,
-        })
-        .map_err(|_| unreadable_response())
     }
 }
 
@@ -913,7 +899,6 @@ mod wasm {
         plan_project_control_artifact_download, plan_project_control_bulk_action,
         plan_project_control_report_download, plan_project_control_rooms, plan_solar_network_seed,
         plan_solar_portfolio_mutation, solar_portfolio_membership_identity,
-        validate_firebase_id_token, validate_firebase_login_response,
         validate_solar_portfolio_catalog, validate_solar_portfolio_mutation_receipt,
         validate_solar_portfolio_result,
     };
@@ -968,35 +953,6 @@ mod wasm {
     #[wasm_bindgen(js_name = planProjectControlArtifactDownload)]
     pub fn project_control_artifact_download(input_json: &[u8]) -> Result<String, JsValue> {
         plan_project_control_artifact_download(input_json)
-            .map_err(|error| JsValue::from_str(&error.to_string()))
-    }
-
-    #[wasm_bindgen(js_name = validateFirebaseLogin)]
-    pub fn validate_firebase_login(
-        response_json: &[u8],
-        expected_email: Option<String>,
-        firebase_project_id: &str,
-        now_epoch_seconds: u64,
-    ) -> Result<String, JsValue> {
-        validate_firebase_login_response(
-            response_json,
-            expected_email.as_deref(),
-            firebase_project_id,
-            now_epoch_seconds,
-        )
-        .and_then(|login| login.to_browser_json())
-        .map_err(|error| JsValue::from_str(&error.to_string()))
-    }
-
-    #[wasm_bindgen(js_name = validateFirebaseIdToken)]
-    pub fn validate_firebase_token(
-        token: &str,
-        uid: &str,
-        email: &str,
-        firebase_project_id: &str,
-        now_epoch_seconds: u64,
-    ) -> Result<u64, JsValue> {
-        validate_firebase_id_token(token, uid, email, firebase_project_id, now_epoch_seconds)
             .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
@@ -1602,12 +1558,9 @@ pub fn collisions_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
 pub mod local_layers;
 pub mod local_models;
 pub mod vector_ops;
-#[cfg(feature = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = vectorProcess)]
-pub fn vector_process_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
-    vector_ops::evaluate(input)
-        .map_err(|error| wasm_bindgen::JsValue::from_str(&serde_json::json!(error).to_string()))
-}
+/// The vector tool catalogue and IPC runner windows use (one closed tool set).
+#[cfg(feature = "vector-tools")]
+pub mod vector_tools;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = localLayers)]
 pub fn local_layers_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {
@@ -1682,3 +1635,26 @@ pub mod design_cell_vocabulary;
 pub mod geojson_comparison;
 
 pub mod table_edit;
+
+#[cfg(feature = "page-data")]
+pub mod layer_export;
+#[cfg(feature = "page-data")]
+mod network_json_order;
+#[cfg(feature = "upload-batch-ipc")]
+pub mod upload_batch;
+#[cfg(feature = "page-data")]
+pub mod upload_cleaning;
+
+/// Typed geometry operations: interactive line edits and bulk profile sampling.
+pub mod geometry_operation;
+
+/// Polygon area selection over caller-supplied GeoJSON layers.
+pub mod area_selection;
+/// New line work an incoming line layer adds to an authoritative base.
+pub mod line_extension;
+/// Bounded GeoPackage geometry decoding and layer admission for browser hosts.
+pub mod gpkg_geometry;
+/// Browser file readers (GeoJSON, KML/KMZ, archives, shapefiles, PLS-CADD,
+/// tabular sources) as typed application operations over `ds-io`.
+#[cfg(feature = "layer-import")]
+pub mod layer_import;

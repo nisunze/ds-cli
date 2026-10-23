@@ -81,7 +81,7 @@ pub static COMMAND: Command = Command {
         Refusal {
             code: "fast_lv_source_not_found",
             when: "--input is absent, not a regular file, or cannot be read",
-            remedy: "pass a readable local ds.lv.process.request/v1 or historical ds.fast-lv.request/v1 file",
+            remedy: "pass a readable ds.lv.process.request/v1 or ds.fast-lv.request/v1 file",
         },
         Refusal {
             code: "fast_lv_input_too_large",
@@ -95,7 +95,7 @@ pub static COMMAND: Command = Command {
         },
         Refusal {
             code: "fast_lv_schema_unsupported",
-            when: "the request schema is neither ds.lv.process.request/v1 nor historical ds.fast-lv.request/v1",
+            when: "the request schema is neither ds.lv.process.request/v1 nor ds.fast-lv.request/v1",
             remedy: "write a supported LV processing v1 request",
         },
         Refusal {
@@ -125,8 +125,8 @@ pub static COMMAND: Command = Command {
         },
         Refusal {
             code: "lv_process_all_jobs_failed",
-            when: "every job of the batch failed, for example a request exported without --project-config; the result document is still written (not for a --project page batch)",
-            remedy: "read detail.results for each transformer's error; for an outdated configuration, export the request again with design lv project-export --project-config",
+            when: "every job of the batch failed, e.g. a request exported without --project-config; the result document is still written",
+            remedy: "read detail.results for each error; for an outdated configuration, export again with design lv project-export --project-config",
         },
     ],
     reference: Some("docs/reference/design.md"),
@@ -380,7 +380,7 @@ fn map_owner_message(code: &'static str, message: String) -> Failure {
         _ => Failure::internal("fast_lv_result_encoding_failed", message),
     }
 }
-pub(super) fn map_network_error(error: ds_network_client::NetworkFailure) -> Failure {
+pub(crate) fn map_network_error(error: ds_network_client::NetworkFailure) -> Failure {
     if let Some(owner) = error.owner_error() {
         return map_owner_message(owner.code(), owner.to_string());
     }

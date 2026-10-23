@@ -245,18 +245,66 @@ fn per_asset_publication_dates_from_the_catalog_and_the_page_shape_are_admitted(
         windows.release_date.as_deref(),
         Some("2026-10-15T14:47:21Z")
     );
-    let mut unknown = catalog_release();
-    unknown["assets"][0]["signature"] = json!("x");
+    // Owner 22 Oct: a member a newer publisher adds is accepted and changes
+    // nothing (this used to be a refusal — the `releasedAt` failure class).
+    let mut additive = catalog_release();
+    additive["assets"][0]["signature"] = json!("x");
+    additive["future"] = json!({"rollout": 0.5});
+    let installed = json!({"version":"0.2.0","sourceSha":"old","builtAt":"2026-10-18T00:00:00Z"});
+    let base = shell(installed.clone(), catalog_release(), "linux");
+    let newer = shell(installed, additive, "linux");
+    assert_eq!(newer.published, base.published);
+    assert_eq!(newer.installed, base.installed);
+    assert_eq!(newer.release, base.release);
+    assert_eq!(
+        newer.update.as_ref().map(|update| &update.url),
+        base.update.as_ref().map(|update| &update.url)
+    );
+    // A missing required member still refuses.
+    let mut missing = catalog_release();
+    missing["assets"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("sha256");
     assert!(inspect(
         "shell",
         "canary",
         InspectionInput {
-            release: unknown,
+            release: missing,
             installed: Value::Null,
             platform: "linux".into(),
         },
     )
     .is_err());
+}
+
+/// Owner 22 Oct: the installed shell's own build identity and Brain's Core
+/// member accept what a newer producer adds.
+#[test]
+fn a_newer_shell_identity_and_core_member_with_additive_members_inspect_the_same() {
+    let same = json!({"version":"0.2.0","sourceSha":"new","builtAt":"2026-10-19T20:56:00Z"});
+    let mut newer_shell = same.clone();
+    newer_shell["buildFlavor"] = json!("canary-signed");
+    let base = shell(same, catalog_release(), "linux");
+    let newer = shell(newer_shell, catalog_release(), "linux");
+    assert_eq!(newer.installed, base.installed);
+    assert_eq!(newer.installed.build_number, Some(117));
+    assert!(newer.update.is_none() && base.update.is_none());
+
+    let installed = json!({"version":"0.1.0","source_sha":"5".repeat(40),"profile":"release"});
+    let mut additive = core_release();
+    additive["future"] = json!(true);
+    additive["assets"][0]["signature"] = json!("x");
+    let base = core(installed.clone(), core_release(), "linux").unwrap();
+    let newer = core(installed.clone(), additive, "linux").unwrap();
+    assert_eq!(newer.installed, base.installed);
+    assert_eq!(newer.published, base.published);
+    let mut missing = core_release();
+    missing["assets"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("sha256");
+    assert!(core(installed, missing, "linux").is_err());
 }
 #[test]
 fn installed_shell_bytes_that_are_the_published_asset_carry_its_publication_identity() {
@@ -349,7 +397,10 @@ fn a_crossed_or_malformed_core_release_refuses() {
         ("protocol", json!("ds.module/v1")),
         ("status", json!("unknown")),
         ("assets", json!([])),
-        ("signature", json!("x")),
+        // Owner 22 Oct: an added member (`signature` was this case) is now
+        // admitted — see a_newer_shell_identity_and_core_member_…; a required
+        // member of the wrong type still refuses.
+        ("version", json!(1)),
     ] {
         let mut release = core_release();
         release[field] = value;

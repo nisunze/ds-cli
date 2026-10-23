@@ -99,7 +99,7 @@ const SCOPE_CHANGED: Refusal = Refusal {
 const ROOT_INVALID: Refusal = Refusal {
     code: "report_publish_root_invalid",
     when: "the Server state root is unavailable, relative, or cannot hold a sealed publication",
-    remedy: "use Server's default state root, or the same absolute --core-state-dir as ds core serve",
+    remedy: "use the default state root, or the absolute --core-state-dir of ds core serve",
 };
 
 const REFUSALS: &[Refusal] = &[

@@ -3,7 +3,9 @@
 //! The kernel owns admission, upload-before-processing phase order, bounded
 //! concurrency, process request shape, result reconciliation, progress and
 //! cancellation. Hosts own only effects: browser `File` reads, native file
-//! reads, resumable byte transfer and the fixed `/process` call.
+//! reads, resumable byte transfer to the governed intake storage, and the
+//! processing step, which runs on the edge (Network engine, then the fenced
+//! governed save); ds-brain only receives the uploaded bytes.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};

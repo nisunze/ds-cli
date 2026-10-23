@@ -23,8 +23,9 @@ pub use design_snapshot::{
 use ds_cli_exec::{addons::NETWORK, CapturedExternal};
 use ds_network_contracts::{
     engine::{
-        valid_hex, EngineIdentity, ExecutionEnvironment, ExecutionRuntime, NetworkBuildInfo,
-        NetworkCapability, NetworkReceiptV1, NetworkTaskOutcome, NetworkTaskRefusalV1,
+        schema_family, valid_hex, EngineIdentity, ExecutionEnvironment, ExecutionRuntime,
+        NetworkBuildInfo, NetworkCapability, NetworkReceiptV1, NetworkTaskOutcome,
+        NetworkTaskRefusalV1, ENGINE_BUILD_SCHEMA_FAMILY,
     },
     lv_processing::{
         decode_native_lv_request, NativeLvError, NativeLvRequestV1, NativeLvResultV1,
@@ -328,9 +329,11 @@ fn capture_resolved_identity(
             "build-info did not return one bounded successful identity",
         ));
     }
+    // Typed decode decides: additive members from a newer engine are accepted,
+    // a missing required fact or a wrong type is `network_engine_identity_invalid`.
     let build: NetworkBuildInfo = serde_json::from_str(&probe.stdout)
         .map_err(|e| NetworkFailure::new("network_engine_identity_invalid", e.to_string()))?;
-    if build.schema != "ds.engine-build/v1" || build.module != "network" {
+    if schema_family(&build.schema) != ENGINE_BUILD_SCHEMA_FAMILY || build.module != "network" {
         return Err(NetworkFailure::new(
             "network_engine_incompatible",
             "captured binary is not the Network module",
@@ -379,14 +382,18 @@ fn admit_candidate(engine: &CapturedExternal) -> Result<bool, NetworkFailure> {
     // Actual source and closure qualification is verified by the probe.
     Ok(false)
 }
+/// Admit a captured Network identity by the facts this client consumes: a
+/// native Network identity within its runtime/budget bounds, valid pins, and
+/// the declared `lv_processing_v1` capability. Its schema revision and protocol
+/// integers are provenance and never decide compatibility (owner 22 Oct);
+/// an absent required fact is the typed `network_engine_incompatible`.
 fn validate_identity(identity: &EngineIdentity, width: usize) -> Result<(), NetworkFailure> {
     let pins_valid = match (&identity.source_sha, &identity.dependency_closure_sha256) {
         (None, None) => true,
         (Some(source), Some(closure)) => valid_hex(source, 40) && valid_hex(closure, 64),
         _ => false,
     };
-    if identity.schema != "ds.network-engine/v1"
-        || identity.protocol_major != 1
+    if !identity.is_network_identity()
         || !matches!(identity.environment, ExecutionEnvironment::Native)
         || !matches!(identity.runtime.environment, ExecutionEnvironment::Native)
         || identity.runtime.logical_cpus == 0
@@ -396,15 +403,12 @@ fn validate_identity(identity: &EngineIdentity, width: usize) -> Result<(), Netw
         || identity.core_version.is_empty()
         || identity.core_version.len() > 128
         || identity.capabilities.len() > 64
-        || !identity
-            .capabilities
-            .iter()
-            .any(|cap| matches!(cap, NetworkCapability::LvProcessingV1))
+        || !identity.declares(&NetworkCapability::LvProcessingV1)
         || !pins_valid
     {
         return Err(NetworkFailure::new(
             "network_engine_incompatible",
-            "incompatible protocol, runtime, budget, capability or source pin",
+            "the engine lacks a required Network identity, runtime, budget, capability or source pin",
         ));
     }
     Ok(())

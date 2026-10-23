@@ -162,6 +162,18 @@ const NOT_A_REFUSAL: &[(&str, &str)] = &[
 /// unscanned while the test passed.
 const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
     (
+        "ds-cli-auth/src/config_document.rs",
+        "every code is a field of this module's own DeclaredRefusal constants (NOT_HELD, CONTEXT_CHANGED, STALE, ANSWER_INVALID and the rest), passed through `failure(declared, ..)` and `changed()`; the commands that read or save project configuration declare them",
+    ),
+    (
+        "ds-cli-data/src/project_cache/local_source.rs",
+        "the engine code is matched against the declared REFUSALS roster (REPORTER_MISSING, REPORTER_INCOMPATIBLE, ENGINE_REFUSED, ENGINE_RESPONSE_INVALID) with ENGINE_REFUSED as the fallback, so only a declared code is emitted",
+    ),
+    (
+        "ds-cli-data/src/lib.rs",
+        "terminal mechanics preserve the shared native data application's typed code and class; its closed codes are the NATIVE_DATA_REFUSED and NATIVE_DATA_FAILED entries declared by the elevation and terrain commands",
+    ),
+    (
         "ds-cli-server/src/core_components.rs",
         "owner_failure selects only from the command's declared REFUSALS; \
          every_owner_refusal_is_declared_and_actionable exercises that entire \
@@ -960,6 +972,7 @@ fn every_constructible_refusal_code_is_documented() {
         // `ds survey working-area … --target server`, declared there.
         ("ds-cli-server", &["core", "map", "survey"]),
         ("ds-cli-solar", &["solar"]),
+        ("ds-solar-cli", &["solar"]),
         ("ds-cli-pm", &["pm", "notes"]),
         ("ds-cli-messaging", &["messaging"]),
         ("ds-cli-assets", &["assets"]),

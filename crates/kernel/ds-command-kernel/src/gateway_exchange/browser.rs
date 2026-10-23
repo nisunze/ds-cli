@@ -2,13 +2,13 @@
 //! sent with reqwest's WebAssembly client over the page's own `fetch`.
 //!
 //! Svelte calls one typed export per operation; each domain declares its
-//! exports beside its operations, and every export runs [`run`]. The page
-//! passes a [`GatewayHost`] answering only what the page holds:
-//! `credentials()` — the session's bearer and email, asked before every
-//! request so a long exchange never sends a stale bearer (the gateway origin
-//! and the platform key are constants of the build,
-//! [`crate::gateway_target`]); `facts()` — its clock and its session,
-//! offline and link state; `refused()` — told each refusal that followed a request,
+//! exports beside its operations, and every export runs [`run`]. The bearer
+//! and email come from the Kernel's own session ([`crate::auth_session`]),
+//! read before every request so a long exchange never sends a stale bearer;
+//! the gateway origin and the platform key are constants of the build
+//! ([`crate::gateway_target`]). The page passes a [`GatewayHost`] answering
+//! only what the page holds: `facts()` — its clock and its session, offline
+//! and link state; `refused()` — told each refusal that followed a request,
 //! with the SRE event when the policy decided one is worth posting.
 //! Headers, the deadline, the response bound, pauses and refusals happen
 //! here. A refusal rejects as an `Error` named `GatewayRefusal` (or
@@ -20,11 +20,10 @@ use std::pin::pin;
 use futures_util::future::{select, Either};
 use futures_util::StreamExt;
 use gloo_timers::future::TimeoutFuture;
-use js_sys::{Promise, Reflect};
+use js_sys::Reflect;
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::JsFuture;
 
 use super::{
     offline_refusal, resume, session_changed_refusal, start, Exchange, Facts, Failure, Method,
@@ -38,10 +37,8 @@ const PROCESSING_LANE: &str = "fast";
 
 #[wasm_bindgen(typescript_custom_section)]
 const GATEWAY_HOST: &'static str = r#"
-/** What the page answers for a gateway call; every decision is the Kernel's. */
+/** What the page answers for a gateway call; every decision is the Kernel's, and the bearer is the Kernel session's. */
 export interface GatewayHost {
-    /** The session's bearer and email, for the next request. A rejection ends the call with it. */
-    credentials(): Promise<GatewayCredentials>;
     /** The page's clock and its session, offline and link state right now. */
     facts(): GatewayFacts;
     /** One refusal that followed a request; `report` is the SRE event to post, when the policy decided one is worth it. */
@@ -65,9 +62,6 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "GatewayHost")]
     pub type GatewayHost;
 
-    #[wasm_bindgen(method, catch, js_name = credentials)]
-    fn ask_credentials(this: &GatewayHost) -> Result<JsValue, JsValue>;
-
     #[wasm_bindgen(method, catch, js_name = facts)]
     fn ask_facts(this: &GatewayHost) -> Result<JsValue, JsValue>;
 
@@ -75,16 +69,21 @@ extern "C" {
     fn tell_refused(this: &GatewayHost, refused: JsValue) -> Result<(), JsValue>;
 }
 
-/// What only the page holds: the session's bearer and email. The gateway
+/// One request's bearer and email, from the Kernel's session. The gateway
 /// origin and the platform key are constants of this build
 /// ([`crate::gateway_target`]).
-#[derive(Deserialize, Tsify)]
+#[derive(Clone, Default)]
 pub struct GatewayCredentials {
-    #[serde(default)]
-    #[tsify(optional)]
     pub token: Option<String>,
-    #[serde(default)]
     pub email: String,
+}
+
+impl Drop for GatewayCredentials {
+    fn drop(&mut self) {
+        if let Some(token) = &mut self.token {
+            zeroize::Zeroize::zeroize(token);
+        }
+    }
 }
 
 /// Where this build's requests go: the deployed gateway it was compiled for,
@@ -139,9 +138,10 @@ fn unreadable(error: impl std::fmt::Display) -> JsValue {
     .into()
 }
 
-pub(crate) async fn credentials(host: &GatewayHost) -> Result<GatewayCredentials, JsValue> {
-    let answer = JsFuture::from(Promise::resolve(&host.ask_credentials()?)).await?;
-    tsify::serde_wasm_bindgen::from_value(answer).map_err(unreadable)
+/// The session's bearer and email for the next request, refreshed first
+/// when it is due; a refresh that cannot run refuses, typed.
+pub(crate) async fn credentials() -> Result<GatewayCredentials, Refusal> {
+    crate::auth_session::browser::credentials().await
 }
 
 pub(crate) fn facts(host: &GatewayHost) -> Result<GatewayFacts, JsValue> {
@@ -444,9 +444,25 @@ pub(crate) async fn attempt<C: Exchange>(
     host: &GatewayHost,
     call: C,
 ) -> Result<Result<C::Output, Refusal>, JsValue> {
+    attempt_as(host, call, None).await
+}
+
+/// [`attempt`], speaking as `ended` — a session the person just signed out
+/// of — instead of the current session: only the cleanup that still belongs
+/// to the ended session (its push revoke) does this.
+pub(crate) async fn attempt_as<C: Exchange>(
+    host: &GatewayHost,
+    call: C,
+    ended: Option<&GatewayCredentials>,
+) -> Result<Result<C::Output, Refusal>, JsValue> {
     let client = reqwest::Client::new();
     // The account that asked; an answer is only ever handed back to it.
     let principal = facts(host)?.principal;
+    let observed_facts = |facts: &GatewayFacts| {
+        let mut observed = Facts::from(facts);
+        observed.has_session |= ended.is_some();
+        observed
+    };
     let mut sent = None;
     let mut step = start(call);
     loop {
@@ -463,7 +479,12 @@ pub(crate) async fn attempt<C: Exchange>(
             } => {
                 let delay = delay_ms + (js_sys::Math::random() * jitter_ms as f64) as u64;
                 TimeoutFuture::new(u32::try_from(delay).unwrap_or(u32::MAX)).await;
-                resume(continuation, Observed::Waited, &[], &(&facts(host)?).into())
+                resume(
+                    continuation,
+                    Observed::Waited,
+                    &[],
+                    &observed_facts(&facts(host)?),
+                )
             }
             Step::Fetch {
                 request,
@@ -476,7 +497,13 @@ pub(crate) async fn attempt<C: Exchange>(
                 if before.principal != principal {
                     return Ok(Err(session_changed_refusal()));
                 }
-                let credentials = credentials(host).await?;
+                let credentials = match ended {
+                    Some(ended) => ended.clone(),
+                    None => match credentials().await {
+                        Ok(credentials) => credentials,
+                        Err(refusal) => return Ok(Err(refusal)),
+                    },
+                };
                 let request_id = uuid::Uuid::new_v4().to_string();
                 let started = js_sys::Date::now();
                 let (observed, bytes) =
@@ -491,7 +518,7 @@ pub(crate) async fn attempt<C: Exchange>(
                 if after.principal != principal {
                     return Ok(Err(session_changed_refusal()));
                 }
-                resume(continuation, observed, &bytes, &(&after).into())
+                resume(continuation, observed, &bytes, &observed_facts(&after))
             }
         };
     }

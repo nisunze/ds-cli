@@ -1,3 +1,4 @@
+#![cfg(feature = "page-data")]
 use ds_command_kernel::domain_value::{
     DomainValueInput, DomainValueResponse, evaluate, validate_response,
 };

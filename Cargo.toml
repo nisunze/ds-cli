@@ -61,7 +61,6 @@ members = [
     "crates/kernel/ds-network-client",
     "crates/kernel/ds-profile-grid",
     "crates/kernel/ds-profile-policy",
-    "crates/kernel/ds-profile-runtime",
     "crates/kernel/ds-project-data",
     "crates/kernel/ds-report-artifacts",
     "crates/kernel/ds-report-host",
@@ -191,7 +190,7 @@ ds-grid-exchange = { path = "../ds-network/crates/ds-grid-exchange" }
 ds-grid-composition = { path = "../ds-network/crates/ds-grid-composition" }
 ds-grid-tasks = { path = "../ds-network/crates/ds-grid-tasks" }
 ds-io = { path = "../ds-network/crates/ds-io" }
-ds-network = { path = "../ds-network/crates/ds-network", features = ["arrow_ipc"] }
+ds-network = { path = "../ds-network/crates/ds-network" }
 ds-network-contracts = { path = "../ds-network/crates/ds-network-contracts" }
 ds-network-client = { path = "crates/kernel/ds-network-client" }
 

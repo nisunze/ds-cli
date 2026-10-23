@@ -7,6 +7,7 @@ pub mod archive_groups;
 pub mod artifacts;
 pub mod browser;
 pub mod browser_store;
+pub mod compounded;
 pub mod inventory;
 pub mod transformers;
 

@@ -54,6 +54,13 @@ pub fn validate(project: &str, body: &Value) -> Result<Action, String> {
             {
                 return Err("publication has missing or undeclared fields".into());
             }
+            // A shared project dataset revision is published by Core's seed,
+            // never queued in the report outbox, so it is admitted here
+            // without joining the outbox's engine registry.
+            if text("engine")? == crate::project_dataset_revisions::ENGINE {
+                crate::project_dataset_revisions::validate_open(object)?;
+                return Ok(Action::Open);
+            }
             let engine = engine(text("engine")?).ok_or("unregistered publication engine")?;
             let operation = text("operation")?;
             let variant = text("variant")?;
@@ -90,9 +97,16 @@ pub fn validate(project: &str, body: &Value) -> Result<Action, String> {
                     || ["filename", "paper_size"]
                         .iter()
                         .any(|key| fields.get(*key).is_some_and(|value| !value.is_string()))
-                    || fields
-                        .get("presentation")
-                        .is_some_and(|value| !value.is_object())
+                    || fields.get("presentation").is_some_and(|value| {
+                        // Engines may add presentation members (the artifact
+                        // decoder accepts them); a publication request carries
+                        // exactly the declared ones and never forwards extras.
+                        const PRESENTATION: &[&str] =
+                            &["layout_id", "layout_name", "paper_name", "orientation", "page_mm"];
+                        !value.as_object().is_some_and(|members| {
+                            members.keys().all(|key| PRESENTATION.contains(&key.as_str()))
+                        })
+                    })
                 {
                     return Err("output has undeclared or invalid metadata".into());
                 }

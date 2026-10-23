@@ -1255,8 +1255,10 @@ impl EngineIdentity {
     }
 }
 
+/// `ds-report build-info`. A newer Reporter's additive build facts are
+/// accepted (owner 22 Oct: a Reporter released alone stays usable); a missing
+/// required fact or a wrong type is still "malformed".
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct BuildInfo {
     schema: String,
     service: String,
@@ -1273,11 +1275,14 @@ struct BuildInfo {
     build_manifest_sha256: String,
 }
 
-/// Prove one `build-info` document is the reporter's closed build identity.
+/// Prove one `build-info` document is the reporter's build identity: its
+/// required facts, self-consistent and bounded. The schema revision is
+/// provenance; only the document family is checked.
 pub fn engine_identity(document: &Value) -> Result<EngineIdentity, String> {
     let info: BuildInfo = serde_json::from_value(document.clone())
         .map_err(|error| format!("reporter build identity is malformed: {error}"))?;
-    if info.schema != "ds.engine-build/v1"
+    if crate::module_engine::schema_family(&info.schema)
+        != crate::module_engine::schema_family(crate::module_engine::ENGINE_BUILD_SCHEMA)
         || info.service != "ds-network-reporter"
         || info.binary != "ds-report"
         || info.engine_version
@@ -1312,7 +1317,6 @@ pub fn engine_identity(document: &Value) -> Result<EngineIdentity, String> {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct ArtifactRecord {
     pub format: String,
     pub filename: String,
@@ -1326,7 +1330,6 @@ pub struct ArtifactRecord {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
 pub struct Blocker {
     pub code: String,
     pub message: String,
@@ -1335,7 +1338,6 @@ pub struct Blocker {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
 pub struct AdminBoundsEvidence {
     pub configured: bool,
     pub villages_loaded: usize,
@@ -1346,15 +1348,17 @@ pub struct AdminBoundsEvidence {
 /// Bounded disclosure from the quantity-only media path. This carries no
 /// media locator, grant token or permission and cannot admit a GIS output.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
 pub struct QuantityMediaOmission {
     pub code: String,
     pub reference_count: u64,
     pub reason: String,
 }
 
+/// The engine's `result.json`. It and every record it nests accept additive
+/// members from a Reporter released after this Kernel (owner 22 Oct): a member
+/// Core does not read changes nothing it verifies. A missing required member
+/// or a wrong type is still "malformed", and every bound below still applies.
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ResultDocument {
     #[serde(default)]
     quantity_media_omitted: Option<QuantityMediaOmission>,
@@ -2091,10 +2095,58 @@ pub const ENGINEERING_REVIEW_CODES: [&str; 4] = [
     "lv_span_exceeds_max_length",
 ];
 
-/// Is this one of the print warnings the kernel's own tables and diagnostics
-/// can raise, placed on this run? Every host that reads an engine result
-/// asks here, so the desktop shell and `ds` accept the same warnings.
+/// The longest warning code carried from a Reporter this Kernel does not know.
+pub const MAX_PRINT_WARNING_CODE_BYTES: usize = 64;
+
+/// Is this warning admissible on this run? Every host that reads an engine
+/// result asks here, so the desktop shell and `ds` accept the same warnings.
+///
+/// A code this Kernel knows must have that code's exact shape. A code it does
+/// not know — a Reporter released after this Kernel (owner 22 Oct) — is never
+/// a refusal: it is carried as the typed, displayable [`PrintWarning`] it is,
+/// code and message unchanged, within the bounds every warning shares
+/// ([`carried_print_warning`]). It is cartographic: only
+/// [`ENGINEERING_REVIEW_CODES`] hold approval.
 pub fn valid_print_warning(warning: &PrintWarning, transformer: &str, formats: &[String]) -> bool {
+    match known_print_warning(warning, transformer, formats) {
+        Some(valid) => valid,
+        None => carried_print_warning(warning, transformer, formats),
+    }
+}
+
+/// The bounds an unknown code is carried within: a snake_case identifier code,
+/// this run's transformer (any case) or none, one of this run's outputs or
+/// none, bounded identifiers and message, and honest row counts.
+pub fn carried_print_warning(
+    warning: &PrintWarning,
+    transformer: &str,
+    formats: &[String],
+) -> bool {
+    let identifier = |value: &str| value.len() <= 240 && !value.chars().any(char::is_control);
+    !warning.code.is_empty()
+        && warning.code.len() <= MAX_PRINT_WARNING_CODE_BYTES
+        && warning.code.as_bytes()[0].is_ascii_lowercase()
+        && warning
+            .code
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        && (warning.transformer.is_empty() || warning.transformer.eq_ignore_ascii_case(transformer))
+        && (warning.output_id.is_empty() || formats.contains(&warning.output_id))
+        && identifier(&warning.layout_id)
+        && identifier(&warning.element_id)
+        && warning.omitted_rows <= warning.total_rows
+        && warning.total_rows <= 1_000_000
+        && warning.message.len() <= 2048
+}
+
+/// `Some(valid)` for a code this Kernel's tables, diagnostics or engineering
+/// audits raise, checked against that code's exact shape; `None` for any other
+/// code.
+fn known_print_warning(
+    warning: &PrintWarning,
+    transformer: &str,
+    formats: &[String],
+) -> Option<bool> {
     let plan_transformer = transformer;
     let placed = warning.transformer == plan_transformer
         && formats.contains(&warning.output_id)
@@ -2199,9 +2251,9 @@ pub fn valid_print_warning(warning: &PrintWarning, transformer: &str, formats: &
                 && warning.total_rows == 0
                 && warning.message.len() <= 2048
         }
-        _ => false,
+        _ => return None,
     };
-    valid
+    Some(valid)
 }
 
 // ---------------------------------------------------------------------------
@@ -2635,7 +2687,7 @@ mod tests {
         }
     }
 
-    fn simple_receipt(country: &str) -> InputReceipt {
+    pub(super) fn simple_receipt(country: &str) -> InputReceipt {
         let sheets =
             r#"{"project_settings":[{"parameter":"design_export_format","value":["shp","xlsx"]}]}"#;
         InputReceipt {
@@ -2926,7 +2978,7 @@ mod tests {
         );
     }
 
-    fn layers() -> BTreeMap<String, Value> {
+    pub(super) fn layers() -> BTreeMap<String, Value> {
         let mut layers = BTreeMap::new();
         layers.insert(
             "lv_poles".to_string(),
@@ -2935,7 +2987,7 @@ mod tests {
         layers
     }
 
-    fn engine() -> EngineIdentity {
+    pub(super) fn engine() -> EngineIdentity {
         EngineIdentity {
             engine_version: format!("ds-network-reporter@0.1.0+{}", "a".repeat(40)),
             build_manifest_sha256: "b".repeat(64),
@@ -3294,12 +3346,21 @@ mod tests {
         let mut other = release.clone();
         other["binary"] = json!("ds-grid");
         assert!(engine_identity(&other).is_err());
-        let mut unknown = release;
-        unknown["extra"] = json!(true);
-        assert!(engine_identity(&unknown).is_err());
+        // Owner 22 Oct: an additive build fact from a newer Reporter is the
+        // same identity (this used to require a refusal); a missing required
+        // fact still refuses.
+        let mut additive = release.clone();
+        additive["extra"] = json!(true);
+        assert_eq!(
+            engine_identity(&additive).unwrap(),
+            engine_identity(&release).unwrap()
+        );
+        let mut missing = release;
+        missing.as_object_mut().unwrap().remove("rustc");
+        assert!(engine_identity(&missing).unwrap_err().contains("malformed"));
     }
 
-    fn result_document(plan: &ExportPlan, out_dir: &Path) -> Value {
+    pub(super) fn result_document(plan: &ExportPlan, out_dir: &Path) -> Value {
         let mut artifacts = vec![
             json!({"format": "shp", "filename": "tx_a.shp.zip", "path": out_dir.join("tx_a.shp.zip"), "bytes": 10, "sha256": "1".repeat(64)}),
             json!({"format": "xlsx", "filename": "tx_a.xlsx", "path": out_dir.join("tx_a.xlsx"), "bytes": 20, "sha256": "2".repeat(64)}),
@@ -3359,11 +3420,36 @@ mod tests {
             receipt["quantity_media_omitted"],
             document["quantity_media_omitted"]
         );
+        // Owner 22 Oct: the record accepts additive members, so an extra
+        // member is no longer refused (this case used to be in the refusal
+        // list below). It still cannot weaken a grant: the receipt is written
+        // from the typed record, so no forged member ever leaves the run.
+        let mut forged = document.clone();
+        forged["quantity_media_omitted"]["grant"] = json!("forged");
+        let carried = verify(&forged).unwrap();
+        let receipt = run_receipt(&RunReceiptFacts {
+            plan: &plan,
+            client_run_id: &format!("report-{}", "0".repeat(32)),
+            engine: &engine(),
+            result: &carried,
+            artifact_dir: "tx_a",
+            now_ms: 1,
+            expected_content_digest: Some(&plan.content_digest),
+            print_context_sha256: None,
+            print_context_layers: &[],
+            print_context_omitted: &[],
+        })
+        .unwrap();
+        assert_eq!(
+            receipt["quantity_media_omitted"],
+            document["quantity_media_omitted"]
+        );
+        assert!(!receipt.to_string().contains("forged"));
         for invalid in [
             json!({"code":"allowed","reference_count":1,"reason":"media_not_required_for_quantity"}),
             json!({"code":"quantity_media_omitted","reference_count":0,"reason":"media_not_required_for_quantity"}),
             json!({"code":"quantity_media_omitted","reference_count":1,"reason":"https://private-path"}),
-            json!({"code":"quantity_media_omitted","reference_count":1,"reason":"media_not_required_for_quantity","grant":"forged"}),
+            json!({"code":"quantity_media_omitted","reason":"media_not_required_for_quantity"}),
         ] {
             document["quantity_media_omitted"] = invalid;
             assert!(verify(&document).is_err());
@@ -3427,8 +3513,13 @@ mod tests {
         assert!(verify(&optional).is_ok());
         optional["engineering_preflight"]["field_lineage"][0]["requirement"] = json!("required");
         assert!(verify(&optional).is_err());
+        // Owner 22 Oct: an additive member is accepted (`{"extra":true}` used
+        // to be the first refusal below); a wrong type still refuses.
+        let mut additive = document.clone();
+        additive["engineering_preflight"]["extra"] = json!(true);
+        assert_eq!(verify(&additive).unwrap(), verify(&document).unwrap());
         for patch in [
-            json!({"extra":true}),
+            json!({"blockers":"0"}),
             json!({"schema":"wrong"}),
             json!({"omitted_details":1}),
             json!({"quantity_rows_total":1}),
@@ -3568,8 +3659,16 @@ mod tests {
         assert!(
             invalid(&|d| d["admin_bounds"]["configured"] = json!(true)).contains("another country")
         );
-        assert!(invalid(&|d| d["warnings"] = json!([{"code":"other","transformer":"tx_a","output_id":"shp","layout_id":"x","element_id":"e","total_rows":2,"omitted_rows":1,"message":""}])).contains("print warnings"));
-        assert!(invalid(&|d| d["extra"] = json!(1)).contains("malformed"));
+        // Owner 22 Oct: an unknown code from a newer Reporter is carried, and
+        // an additive result member is accepted (report_export/
+        // compatibility_tests.rs); these two lines used to require refusals.
+        // An unknown code outside the bounds every warning shares, and a
+        // missing required member, still refuse.
+        assert!(invalid(&|d| d["warnings"] = json!([{"code":"other","transformer":"tx_a","output_id":"shp","layout_id":"x","element_id":"e","total_rows":1,"omitted_rows":2,"message":""}])).contains("print warnings"));
+        assert!(invalid(&|d| {
+            d.as_object_mut().unwrap().remove("elapsed_ms");
+        })
+        .contains("malformed"));
 
         // A Rwanda plan needs the administrative evidence the engine reports.
         let rwanda = plan_transformer_export(
@@ -4295,7 +4394,10 @@ mod tests {
                 (6, "element_id", json!("")),
                 (6, "total_rows", json!(1)),
                 (6, "output_id", json!("xlsx")),
-                (0, "code", json!("print_visual_approval")),
+                // Owner 22 Oct: an unknown snake_case code is carried (see
+                // below; `print_visual_approval` was this case); a code that
+                // is not one stays a refusal.
+                (0, "code", json!("print visual approval")),
                 (0, "element_id", json!("")),
                 (0, "total_rows", json!(5)),
                 (1, "element_id", json!("legend")),
@@ -4318,6 +4420,14 @@ mod tests {
                     "{format}: accepted a diagnostics row with invalid {key}"
                 );
             }
+            let mut newer = document.clone();
+            newer["warnings"][0]["code"] = json!("print_visual_approval");
+            let carried = verify(&newer).unwrap();
+            assert_eq!(carried.warnings[0].code, "print_visual_approval");
+            assert_eq!(
+                carried.warnings[0].message,
+                document["warnings"][0]["message"]
+            );
         }
     }
 
@@ -4692,3 +4802,7 @@ mod project_printing_label_tests {
         assert!(captured_printing_project_label("project", &source, &changed_raw, &r).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "compatibility_tests.rs"]
+mod compatibility_tests;

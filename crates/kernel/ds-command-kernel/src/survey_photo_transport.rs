@@ -69,6 +69,10 @@ pub struct Inspection {
     pub source_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revision_protocol: Option<u8>,
+    /// The stored generation's size, when the gateway declares it: a read of
+    /// `source_url` must answer exactly this many bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 pub fn inspect(value: &Value, path: &str) -> Result<Inspection, String> {
     let bucket = target(value, path)?;
@@ -93,6 +97,13 @@ pub fn inspect(value: &Value, path: &str) -> Result<Inspection, String> {
         generation,
         source_url: raw.into(),
         revision_protocol: (value["revision_protocol"] == 1).then_some(1),
+        size: match &value["size"] {
+            Value::Null => None,
+            size => Some(
+                size.as_u64()
+                    .ok_or("Media response declared an invalid size")?,
+            ),
+        },
     })
 }
 

@@ -9,6 +9,7 @@ pub use ds_geo_lite::{identity, projection, region};
 pub mod dataframe;
 pub mod domains;
 pub mod mutation;
+pub mod reply;
 pub mod selection;
 pub mod session;
 pub mod traits;

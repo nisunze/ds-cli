@@ -5,6 +5,11 @@ use ds_command_kernel::module_release::ui::{
     self as policy, InstalledUiModule, PublishedUiAuthority, UiAuthority, UiCapture, UiComponent,
     UiScope, UiSelection, UiSelectionState, UiUnit, VerifiedFile,
 };
+use ds_command_kernel::module_release::ui_page::{self as page, UiPageRequirements};
+
+/// The installed Desktop page's recorded requirements, beside the selection.
+const PAGE_REQUIREMENTS_FILE: &str = "page-requirements.json";
+const MAX_PAGE_REQUIREMENTS_BYTES: u64 = 512 * 1024;
 
 const STAGE_SCHEMA: &str = "ds.ui-module-stage/v1";
 const MAX_STORED_BYTES: u64 = 1024 * 1024;
@@ -42,13 +47,13 @@ pub fn ui_platform() -> Result<(), String> {
     Err("ui_component_platform_unavailable: UI installation requires qualified Linux x86_64 storage or the registered Windows x86_64 SID/DACL owner".into())
 }
 #[cfg(windows)]
-fn windows_owner() -> Result<&'static WindowsUiStoreOwner, String> {
+pub(super) fn windows_owner() -> Result<&'static WindowsUiStoreOwner, String> {
     WINDOWS_OWNER.get().copied().ok_or_else(|| {
         "ui_component_platform_unavailable: the Windows SID/DACL owner is not registered".into()
     })
 }
 #[cfg(windows)]
-fn audit_windows_tree(root: &Path) -> Result<(), String> {
+pub(super) fn audit_windows_tree(root: &Path) -> Result<(), String> {
     let owner = windows_owner()?;
     let mut pending = vec![(root.to_path_buf(), 0usize)];
     let mut count = 0usize;
@@ -840,6 +845,9 @@ impl UiModuleStore {
         let outcome = convergence_plan(current.as_ref(), &digest);
         let generation = if outcome == UiConvergenceOutcome::Updated {
             let staged = stage(grant)?;
+            // The installed page decides, not a version: a unit lacking an
+            // export it calls keeps the installed unit (owner 22 Oct).
+            self.admit_for_installed_page(current.as_ref(), &staged.sha256, cancelled)?;
             // The planned generation fences a removal or person's change made
             // after this plan: the update then refuses instead of reinstalling.
             self.activate(&staged.receipt_id, planned, guard, cancelled)?
@@ -856,6 +864,110 @@ impl UiModuleStore {
             release_version: Some(version),
             unit_sha256: Some(digest),
         })
+    }
+    /// Record what the installed Desktop page calls of this component (the
+    /// page build's `ds.ui-page-requirements` document), replacing an earlier
+    /// record. Later convergence admits only units that provide it.
+    pub fn record_page_requirements(
+        &self,
+        requirements: &serde_json::Value,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<UiPageRequirements, String> {
+        let admitted = UiPageRequirements::admit(requirements).map_err(|e| e.to_string())?;
+        let bytes = serde_json::to_vec(&admitted).map_err(|e| e.to_string())?;
+        if bytes.len() as u64 > MAX_PAGE_REQUIREMENTS_BYTES {
+            return Err(
+                "ui_page_requirements_invalid: page requirements exceed their bound".into(),
+            );
+        }
+        let _lock = self.lock()?;
+        let path = self.root.join(PAGE_REQUIREMENTS_FILE);
+        if exists_plain(&path)? {
+            ordinary_file(&path)?;
+        }
+        let mut staged = tempfile::NamedTempFile::new_in(&self.root).map_err(|e| e.to_string())?;
+        staged
+            .write_all(&bytes)
+            .and_then(|_| staged.as_file().sync_all())
+            .map_err(|e| e.to_string())?;
+        check_cancel(cancelled)?;
+        staged
+            .persist(&path)
+            .map_err(|e| format!("ui_page_requirements_invalid: {}", e.error))?;
+        sync_directory(&self.root)?;
+        Ok(admitted)
+    }
+    /// The installed page's recorded requirements; `None` when no page has
+    /// recorded any (a page installed before pages recorded them).
+    pub fn page_requirements(&self) -> Result<Option<UiPageRequirements>, String> {
+        let path = self.root.join(PAGE_REQUIREMENTS_FILE);
+        if !exists_plain(&path)? {
+            return Ok(None);
+        }
+        let value: serde_json::Value =
+            serde_json::from_slice(&read_plain(&path, MAX_PAGE_REQUIREMENTS_BYTES)?).map_err(
+                |_| "ui_page_requirements_invalid: malformed recorded page requirements",
+            )?;
+        UiPageRequirements::admit(&value)
+            .map(Some)
+            .map_err(|e| e.to_string())
+    }
+    /// Admit a staged unit only when it provides every export the installed
+    /// page calls: its recorded requirements, or for a page that recorded none
+    /// the exports of the unit it loads today. Nothing installed, nothing to keep.
+    fn admit_for_installed_page(
+        &self,
+        current: Option<&UiSelection>,
+        candidate_sha256: &str,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<(), String> {
+        let declared = self.page_requirements()?;
+        let installed = match current.map(|selected| &selected.selection) {
+            Some(UiSelectionState::Installed { active, .. }) if declared.is_none() => {
+                Some(self.unit_exports(active.unit.unit_sha256(), cancelled)?)
+            }
+            _ => None,
+        };
+        let Some(required) =
+            page::installed_page_requirement(declared.as_ref(), self.component, installed.as_ref())
+        else {
+            return Ok(());
+        };
+        let provided = self.unit_exports(candidate_sha256, cancelled)?;
+        page::admit_for_installed_page(self.component, &required, &provided)
+            .map_err(|e| e.to_string())
+    }
+    /// The runtime exports a retained unit's verified JavaScript member declares.
+    pub fn unit_exports(
+        &self,
+        unit_sha256: &str,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<std::collections::BTreeSet<String>, String> {
+        let name = self.component.files()[0].0;
+        let mut bytes = Vec::new();
+        loop {
+            let (chunk, file) = self.member(
+                unit_sha256,
+                name,
+                bytes.len() as u64,
+                MAX_MEMBER_CHUNK,
+                cancelled,
+            )?;
+            if file.size_bytes as usize > page::MAX_GLUE_BYTES {
+                return Err(
+                    "module_artifact_invalid: the UI JavaScript member exceeds its export bound"
+                        .into(),
+                );
+            }
+            if chunk.is_empty() {
+                break;
+            }
+            bytes.extend_from_slice(&chunk);
+            if bytes.len() as u64 >= file.size_bytes as u64 {
+                break;
+            }
+        }
+        page::unit_exports(&bytes).map_err(|e| e.to_string())
     }
     fn receipt_path(&self, id: &str) -> Result<PathBuf, String> {
         if id.len() != 32

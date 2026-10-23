@@ -35,7 +35,7 @@ pub enum Surface {
     Versions,
 }
 
-const SELECTIONS: &[&str] = &[
+pub(crate) const SELECTIONS: &[&str] = &[
     "list",
     "get",
     "list_assignments",
@@ -46,7 +46,7 @@ const SELECTIONS: &[&str] = &[
 ];
 const SELECTION_READS: &[&str] = &["list", "get", "list_assignments"];
 
-const ATTACHMENTS: &[&str] = &[
+pub(crate) const ATTACHMENTS: &[&str] = &[
     "list",
     "list_project",
     "download",
@@ -58,7 +58,7 @@ const ATTACHMENTS: &[&str] = &[
 ];
 const ATTACHMENT_READS: &[&str] = &["list", "list_project", "download"];
 
-const ANNOTATIONS: &[&str] = &[
+pub(crate) const ANNOTATIONS: &[&str] = &[
     "list_tag_definitions",
     "save_tag_definition",
     "archive_tag_definition",
@@ -103,7 +103,7 @@ const ANNOTATION_READS: &[&str] = &[
 ];
 
 /// Version actions Brain serves on its design versions route.
-const VERSIONS: &[&str] = &[
+pub(crate) const VERSIONS: &[&str] = &[
     "list_versions",
     "get_version",
     "create_version",
@@ -114,7 +114,7 @@ const VERSIONS: &[&str] = &[
     "renumber_version",
 ];
 /// Version actions Brain serves on its data route, keyed by `eds_project_id`.
-const REVISIONS: &[&str] = &[
+pub(crate) const REVISIONS: &[&str] = &[
     "get_transformer_version_revision",
     "promote_transformer_version_revision",
     "publish_transformer_version_revision",
@@ -140,12 +140,96 @@ pub struct DesignCollab {
     pub request: Map<String, Value>,
 }
 
+/// The export the page calls, and the exchange it runs, for
+/// [`crate::capabilities::admit_export`].
+pub const EXPORT: &str = "designCollab";
+pub const EXCHANGE: &str = "design_collab";
+
+/// The capability one action of one surface performs: every action the
+/// surfaces serve names exactly one manifest row, so the page export runs
+/// only what a row declares for its platform.
+pub fn capability(surface: Surface, action: &str) -> Option<&'static str> {
+    Some(match (surface, action) {
+        (Surface::Selections, "list") => "design.selection.list",
+        (Surface::Selections, "get" | "list_assignments") => "design.selection.read",
+        (Surface::Selections, "save" | "update") => "design.selection.save",
+        (Surface::Selections, "archive") => "design.selection.archive",
+        (Surface::Selections, "promote_task") => "design.selection.assign",
+        (Surface::Attachments, "list") => "design.attachment.list",
+        (Surface::Attachments, "list_project") => "design.attachment.list-project",
+        (Surface::Attachments, "download") => "design.attachment.download",
+        (Surface::Attachments, "start_upload" | "finalize_upload") => "design.attachment.publish",
+        (Surface::Attachments, "set_latest") => "design.attachment.set-latest",
+        (Surface::Attachments, "archive" | "archive_revision") => "design.attachment.retire",
+        (Surface::Annotations, "list_tag_definitions") => "design.tag.project-list",
+        (Surface::Annotations, "save_tag_definition" | "archive_tag_definition") => {
+            "design.tag.define"
+        }
+        (Surface::Annotations, "list_tags") => "design.tag.list",
+        (Surface::Annotations, "set_tags") => "design.tag.set",
+        (Surface::Annotations, "query_tags") => "design.tag.query",
+        (Surface::Annotations, "list_tag_groups") => "design.group.list",
+        (Surface::Annotations, "preview_tag_group") => "design.group.preview",
+        (Surface::Annotations, "apply_tag_group") => "design.group.apply",
+        (Surface::Annotations, "unassign_tag_group") => "design.group.unassign",
+        (Surface::Annotations, "export_tag_projection") => "design.group.export",
+        (Surface::Annotations, "preview_consumer_grouping") => "design.consumer-grouping.preview",
+        (Surface::Annotations, "apply_consumer_grouping") => "design.consumer-grouping.apply",
+        (Surface::Annotations, "read_consumer_grouping") => "design.consumer-grouping.read",
+        (Surface::Annotations, "archive_consumer_grouping") => "design.consumer-grouping.archive",
+        (Surface::Annotations, "preview_location_enrichment") => "design.tag.enrich-preview",
+        (Surface::Annotations, "apply_location_enrichment") => "design.tag.enrich-apply",
+        (Surface::Annotations, "list_tag_templates") => "design.tag.template.list",
+        (Surface::Annotations, "promote_tag_definition") => "design.tag.template.promote",
+        (Surface::Annotations, "adopt_tag_template") => "design.tag.template.adopt",
+        (Surface::Annotations, "list_threads") => "design.comment.list",
+        (Surface::Annotations, "get_thread") => "design.comment.read",
+        (Surface::Annotations, "create_thread" | "add_comment") => "design.comment.post",
+        (Surface::Annotations, "resolve_thread") => "design.comment.resolve",
+        (Surface::Annotations, "redact_comment") => "design.comment.redact",
+        (Surface::Annotations, "promote_thread") => "design.comment.promote",
+        (Surface::Versions, "list_versions") => "design.version.list",
+        (Surface::Versions, "get_version") => "design.version.show",
+        (Surface::Versions, "create_version") => "design.version.begin",
+        (Surface::Versions, "get_head") => "design.version.status",
+        (Surface::Versions, "get_version_catalog") => "design.version.catalog",
+        (Surface::Versions, "get_version_revision" | "get_transformer_version_revision") => {
+            "design.version.revision.show"
+        }
+        (Surface::Versions, "bind_version_revision") => "design.version.revision.bind",
+        (Surface::Versions, "renumber_version") => "design.version.renumber",
+        (Surface::Versions, "promote_transformer_version_revision") => {
+            "design.version.revision.promote"
+        }
+        (Surface::Versions, "publish_transformer_version_revision") => {
+            "design.version.revision.publish"
+        }
+        (Surface::Versions, "import_transformer_version") => "design.version.import",
+        _ => return None,
+    })
+}
+
 impl DesignCollab {
     fn action(&self) -> &str {
         self.request
             .get("action")
             .and_then(Value::as_str)
             .unwrap_or_default()
+    }
+
+    /// Admit this request from the page: its capability's row must name
+    /// [`EXPORT`] and be supported on this build's platform.
+    pub fn admit_in_page(&self, platform: &str) -> Result<&'static str, Refusal> {
+        let action = self.action();
+        let id = capability(self.surface, action).ok_or_else(|| {
+            input_invalid(format!(
+                "`{action}` is not an action of design {:?}.",
+                self.surface
+            ))
+        })?;
+        crate::capabilities::admit_export_on(platform, id, EXPORT, EXCHANGE)
+            .map(|capability| capability.id)
+            .map_err(|refused| Refusal::new(refused.code, refused.message))
     }
 
     /// The route and deadline this action is served on, or `None` when the
@@ -255,7 +339,10 @@ mod exports {
             .map_err(|error| js_sys::Error::new(&error.to_string()))?;
         let request: Map<String, Value> = tsify::serde_wasm_bindgen::from_value(request)
             .map_err(|error| js_sys::Error::new(&error.to_string()))?;
-        typed(&run(&host, DesignCollab { surface, request }).await?)
+        let call = DesignCollab { surface, request };
+        call.admit_in_page(crate::capabilities::PLATFORM)
+            .map_err(|refusal| crate::gateway_exchange::browser::rejection(&refusal))?;
+        typed(&run(&host, call).await?)
     }
 }
 

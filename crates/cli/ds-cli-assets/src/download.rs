@@ -12,7 +12,7 @@ pub static COMMAND: Command = Command {
     path: &["assets", "download"],
     contract: 1,
     summary: "Authorize a fresh read reference for one project file.",
-    purpose: "Return the exact asset row, its short-lived signed download URL and expiry after the existing project and sensitivity checks. No asset bytes are fetched, so large PDFs can be streamed by their document reader without the assets.read memory limit. The URL is temporary read authority: use it immediately and do not retain it as a durable link. A projected sys: row is refused before authentication. No URL, storage path or credential is accepted.",
+    purpose: "Return the exact asset row, its short-lived signed download URL and expiry after the existing project and sensitivity checks. No asset bytes are fetched, so large PDFs can be streamed by their document reader without the assets.read memory limit. The URL is temporary: use it immediately, never keep it as a link. A projected sys: row is refused before authentication.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,

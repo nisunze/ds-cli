@@ -146,7 +146,6 @@ impl Workspace {
         Ok(())
     }
 
-    #[cfg(feature = "compute")]
     pub(crate) fn input_maps(
         &self,
         city: &ds_solar_contracts::SolarCityInput,

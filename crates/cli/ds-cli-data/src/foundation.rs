@@ -217,7 +217,7 @@ pub static QUERY_COMMAND: Command = Command {
     path: &["data", "customers", "query"],
     contract: 1,
     summary: "List existing customers in one village, cell, area or transformer.",
-    purpose: "Read anonymized EDCL customers from BigQuery within one village/cell authority boundary, a rectangle of at most 25 km², a supplied boundary or one transformer's buffered design extent. Capped at 5,000 rows; the receipt states rows_total and truncation. Includes segmentation, meter type/category, payment method, connection year and administrative names. Retain project data with `ds data project-cache seed --dataset edcl_customers`; never installs the national dataset.",
+    purpose: "Read anonymized EDCL customers from BigQuery within a village/cell boundary, a rectangle up to 25 km², a supplied boundary or one transformer's buffered extent. Capped at 5,000 rows; the receipt states rows_total and truncation. Includes segmentation, meter type, payment method, connection year and administrative names. Retain project data with `ds data project-cache seed --dataset edcl_customers`; never installs the national dataset.",
     chapter: Chapter::Data,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,

@@ -18,6 +18,40 @@ use sha2::{Digest, Sha256};
 pub const MODULE_PROTOCOL: &str = "ds.module/v1";
 pub const NETWORK_PROTOCOL: &str = "ds.network-engine/v1";
 pub const ENGINE_BUILD_SCHEMA: &str = "ds.engine-build/v1";
+
+/// The document family a schema tag names, without its `/vN` revision.
+///
+/// Owner rule (22 Oct 2026): independently released components are compatible
+/// by the required typed facts and capabilities they exchange, never by equal
+/// versions, schema revisions or protocol integers. The family still says what
+/// a document is (a build-info is not an engine identity); the revision is
+/// provenance only.
+pub fn schema_family(schema: &str) -> &str {
+    match schema.rsplit_once('/') {
+        Some((family, revision))
+            if revision.len() > 1
+                && revision.starts_with('v')
+                && revision[1..].bytes().all(|byte| byte.is_ascii_digit()) =>
+        {
+            family
+        }
+        _ => schema,
+    }
+}
+
+/// Does this JSON string name a document of the same family as `expected`?
+fn same_family(value: &Value, expected: &str) -> bool {
+    value
+        .as_str()
+        .is_some_and(|schema| schema_family(schema) == schema_family(expected))
+}
+
+/// A protocol integer is provenance: present and typed, never compared.
+fn protocol_integer(value: &Value) -> bool {
+    value
+        .as_u64()
+        .is_some_and(|major| major <= u64::from(u32::MAX))
+}
 /// Build-info beyond this bound is refused before any field is read.
 pub const MAX_BUILD_INFO_BYTES: usize = 16 * 1024;
 
@@ -138,10 +172,13 @@ pub fn admit_engine_build(
     check_build_info_size(v)?;
     let target = platform_target(platform)?;
     let (version, source, manifest) = if component == ModuleComponent::Network {
-        if v["schema"] != ENGINE_BUILD_SCHEMA
+        // Document families and typed facts decide; schema revisions and the
+        // protocol integer are provenance (owner 22 Oct). The required
+        // capabilities below decide whether this build can serve Core.
+        if !same_family(&v["schema"], ENGINE_BUILD_SCHEMA)
             || v["module"] != "network"
-            || v["engineIdentity"]["schema"] != component.protocol()
-            || v["engineIdentity"]["protocolMajor"] != 1
+            || !same_family(&v["engineIdentity"]["schema"], component.protocol())
+            || !protocol_integer(&v["engineIdentity"]["protocolMajor"])
             || v["engineIdentity"]["environment"] != "native"
             || v["engineIdentity"]["runtime"]["environment"] != "native"
             || v["build"]["profile"] != "release"
@@ -184,7 +221,7 @@ pub fn admit_engine_build(
             field(engine, "dependencyClosureSha256")?,
         )
     } else {
-        if v["schema"] != ENGINE_BUILD_SCHEMA
+        if !same_family(&v["schema"], ENGINE_BUILD_SCHEMA)
             || v["profile"] != "release"
             || v["target"] != target
             || !hex(field(v, "cargo_lock_sha256")?, 64)
@@ -345,14 +382,21 @@ pub fn admit_browser_engine_build(
     let closure = identity["dependencyClosureSha256"]
         .as_str()
         .unwrap_or_default();
-    let version = producer.as_ref().map_or(core_version, |p| p.version);
+    // The one capability the Kernel calls this unit for must be declared;
+    // additional capabilities never refuse a unit.
+    require_tokens(&identity["capabilities"], &[profile.capability])?;
     let crossed = producer.as_ref().is_some_and(|p| {
         identity["coreVersion"] != p.version
             || identity["sourceSha"] != p.source_sha
             || identity["dependencyClosureSha256"] != p.manifest_sha256
     });
-    if identity["schema"] != profile.identity_schema
-        || identity["protocolMajor"] != 1
+    // The unit is admitted by the capability its consumer requires, never by
+    // its version, an exact capability list, a schema revision or the protocol
+    // integer (owner 22 Oct): a later unit that adds capabilities or bumps its
+    // release still serves the operation the Kernel calls. Producer facts
+    // (`crossed`) remain this artifact's own integrity check.
+    if !same_family(&identity["schema"], profile.identity_schema)
+        || !protocol_integer(&identity["protocolMajor"])
         || identity["environment"] != "wasm"
         || (component == ModuleComponent::Network && identity["runtime"]["environment"] != "wasm")
         || crossed
@@ -361,16 +405,6 @@ pub fn admit_browser_engine_build(
                 identity["jsonObjectOrder"].as_str(),
                 Some("sorted" | "insertion")
             ))
-        || (component == ModuleComponent::Reporter
-            && (version != "0.1.0"
-                || identity["capabilities"] != serde_json::json!(["render_held_svg_pdf_v1"])))
-        || !identity["capabilities"]
-            .as_array()
-            .is_some_and(|capabilities| {
-                capabilities
-                    .iter()
-                    .any(|capability| capability == profile.capability)
-            })
         || !semantic_version(core_version)
         || !hex(source, 40)
         || !hex(closure, 64)

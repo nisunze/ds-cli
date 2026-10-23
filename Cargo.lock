@@ -1539,6 +1539,9 @@ dependencies = [
 name = "ds-cleaning"
 version = "0.1.0"
 dependencies = [
+ "ds-geo-lite",
+ "polars",
+ "polars-io",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -1611,9 +1614,11 @@ dependencies = [
 name = "ds-cli-data"
 version = "0.1.0"
 dependencies = [
+ "crc32c",
  "ds-cli-auth",
  "ds-cli-contract",
  "ds-cli-desktop",
+ "ds-cli-exec",
  "ds-client-core",
  "ds-columnar",
  "ds-command-kernel",
@@ -1622,12 +1627,14 @@ dependencies = [
  "ds-layer-store",
  "ds-native-data",
  "ds-project-data",
+ "ds-sync-runtime",
  "ds-terrain-host",
  "flate2",
  "libc",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "ureq",
 ]
 
@@ -1854,6 +1861,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -2057,6 +2065,7 @@ dependencies = [
  "ds-design-session",
  "ds-geo",
  "ds-geo-lite",
+ "ds-io",
  "ds-kml",
  "ds-network-contracts",
  "ds-profile-policy",
@@ -2222,10 +2231,12 @@ dependencies = [
  "arrow-schema",
  "ds-design-session",
  "ds-geo-lite",
+ "polars-arrow",
  "regex",
  "serde",
  "serde_json",
  "tsify",
+ "uuid",
  "wasm-bindgen",
 ]
 
@@ -2369,6 +2380,8 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "shapefile",
+ "tsify",
+ "wasm-bindgen",
  "zip 2.4.2",
  "zstd",
 ]
@@ -2481,14 +2494,11 @@ dependencies = [
  "ds-graph",
  "ds-io",
  "ds-network-contracts",
- "ds-profile",
- "flate2",
  "rayon",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.20",
- "time",
 ]
 
 [[package]]
@@ -2513,7 +2523,6 @@ dependencies = [
  "ds-geo-lite",
  "ds-grid-model",
  "ds-profile-grid",
- "ds-profile-policy",
  "schemars",
  "serde",
  "serde_json",
@@ -2537,13 +2546,8 @@ dependencies = [
 name = "ds-profile"
 version = "0.1.0"
 dependencies = [
- "ds-geo-lite",
- "ds-grid-physics",
  "ds-network-contracts",
  "ds-profile-grid",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -2558,32 +2562,6 @@ name = "ds-profile-policy"
 version = "0.1.0"
 dependencies = [
  "schemars",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "ds-profile-presentation"
-version = "0.1.0"
-dependencies = [
- "ds-grid-engine",
- "ds-grid-model",
- "ds-grid-physics",
- "ds-profile-policy",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "ds-profile-runtime"
-version = "0.1.0"
-dependencies = [
- "ds-command-kernel",
- "ds-grid-engine",
- "ds-grid-exchange",
- "ds-grid-model",
- "ds-grid-physics",
- "ds-profile-presentation",
  "serde",
  "serde_json",
 ]
@@ -2674,11 +2652,13 @@ name = "ds-solar-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "clap",
  "ds-solar-addon",
  "ds-solar-contracts",
  "ds-solar-engine",
+ "ds-solar-portfolio",
  "ds-solar-project",
  "ds-solar-reference-host",
  "ds-solar-runtime",
@@ -2792,9 +2772,7 @@ dependencies = [
  "ds-report-artifacts",
  "ds-solar-contracts",
  "ds-solar-io",
- "ds-solar-portfolio",
  "ds-solar-reference-host",
- "ds-solar-runtime",
  "fs2",
  "rusqlite",
  "schemars",

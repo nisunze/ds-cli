@@ -9,7 +9,9 @@
 //! build environment, never from a repository:
 //!
 //!   DS_GATEWAY_URL_CANARY, DS_GATEWAY_URL_PRODUCTION, DS_PLATFORM_API_KEY,
-//!   DS_FIREBASE_PROJECT_ID, DS_FIREBASE_API_KEY
+//!   DS_FIREBASE_PROJECT_ID, DS_FIREBASE_API_KEY, DS_GOOGLE_CLIENT_ID (optional:
+//!   the OAuth client of Google's redirect sign-in; without it a page refuses
+//!   Google sign-in as unconfigured)
 //!
 //! and a packaged build names the Kernel revision it was pinned to in
 //! DS_RELEASE_PIN_DS_COMMAND_KERNEL; every build names the digest of the
@@ -22,12 +24,13 @@
 use sha2::{Digest, Sha256};
 use std::{env, fs, path::Path, path::PathBuf};
 
-const VARS: [&str; 6] = [
+const VARS: [&str; 7] = [
     "DS_GATEWAY_URL_CANARY",
     "DS_GATEWAY_URL_PRODUCTION",
     "DS_PLATFORM_API_KEY",
     "DS_FIREBASE_PROJECT_ID",
     "DS_FIREBASE_API_KEY",
+    "DS_GOOGLE_CLIENT_ID",
     "DS_RELEASE_PIN_DS_COMMAND_KERNEL",
 ];
 
@@ -143,6 +146,15 @@ pub fn emit(root: &Path) {
     let key = var("DS_PLATFORM_API_KEY");
     let firebase = var("DS_FIREBASE_PROJECT_ID");
     let firebase_key = var("DS_FIREBASE_API_KEY");
+    let google_client = var("DS_GOOGLE_CLIENT_ID");
+    if google_client.as_deref().is_some_and(|id| {
+        !id.ends_with(".apps.googleusercontent.com")
+            || !id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_'))
+    }) {
+        fail("DS_GOOGLE_CLIENT_ID must be one OAuth client id (<id>.apps.googleusercontent.com)");
+    }
     let channels = release_channels(root);
     // The gateway this build calls: the page's own origin on the local stack,
     // else the lane's deployed gateway, which must be named.
@@ -175,6 +187,7 @@ pub fn emit(root: &Path) {
         "release_origins": {"canary": canary, "production": production},
         "api_key_sha256": key_sha256,
         "firebase_project": firebase,
+        "google_client_id": google_client,
     });
     let channels = channels
         .iter()
@@ -190,6 +203,7 @@ pub fn emit(root: &Path) {
          pub const PLATFORM_API_KEY: Option<&str> = {key};\n\
          pub const FIREBASE_PROJECT: Option<&str> = {firebase};\n\
          pub const FIREBASE_API_KEY: Option<&str> = {firebase_key};\n\
+         pub const GOOGLE_CLIENT_ID: Option<&str> = {google_client};\n\
          pub const RELEASE_CHANNELS: &[(&str, &str)] = &[{channels}];\n\
          pub const SOURCE_REVISION: &str = {revision:?};\n\
          pub const ROUTING_SHA256: &str = {routing:?};\n\
@@ -201,6 +215,7 @@ pub fn emit(root: &Path) {
         key = optional(&key),
         firebase = optional(&firebase),
         firebase_key = optional(&firebase_key),
+        google_client = optional(&google_client),
         revision = source_revision(),
         routing = routing_sha256(root),
         identity = identity.to_string(),

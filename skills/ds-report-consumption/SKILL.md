@@ -35,9 +35,12 @@ ones this skill was written against.
   report artifacts and check its SHA-256 against the receipt before reading.
 - `ds report project compounded --project <exact-id> [--transformer …] --file-level
   transformer|sector|district|root [--combine-per-group] --yes --output json`
-  — the one way to request a Compounded Report archive, with no map or paired
-  application, against the project named on this request: one archive holding
-  `transformers/<name>/<name>.xlsx` and `combined/combined_transformer.xlsx`.
+  — composes the Compounded Report archive on this machine from the current
+  individual reports it holds and queues it for publication (`ds report outbox
+  drain`), with no map or paired application, against the project named on
+  this request: one archive holding each transformer's report files in its
+  applied-group folder (`<group>/…/<name>/<name>.xlsx`) and
+  `combined_transformer.xlsx` at the root.
   The workbook inside this ZIP does not update the separately published
   Combined Report version.
   Plan with `ds report project

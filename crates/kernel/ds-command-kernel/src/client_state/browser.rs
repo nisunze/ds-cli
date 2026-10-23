@@ -112,7 +112,7 @@ pub struct StateSignal {
 }
 
 impl StateSignal {
-    fn of<T>(state: &OnDemand<T>) -> Self
+    pub(crate) fn of<T>(state: &OnDemand<T>) -> Self
     where
         T: Serialize + PartialEq + Send + Sync + 'static,
     {

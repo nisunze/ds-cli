@@ -417,21 +417,64 @@ pub fn view(
             .cloned()
             .ok_or("status observation has no transformers")?,
     )?;
-    let rows: Vec<_> = rows
-        .into_iter()
-        .filter(|row| {
-            targets.is_empty()
-                || row
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .is_some_and(|name| targets.iter().any(|target| target == name))
-        })
-        .collect();
     let observation = status_observation(&held, refreshed, None)?;
+    let selected = select_targets(rows, targets, Some(&observation));
     let is_held = observation.state == StatusObservationState::Held;
     Ok(
-        json!({"data":rows,"observation":observation,"error":if is_held {Some("Status is held; refresh to observe current project status.")}else{None}}),
+        json!({"data":selected.data,"deleted":selected.deleted,"observation":observation,"error":if is_held {Some("Status is held; refresh to observe current project status.")}else{None}}),
     )
+}
+/// The identity every status consumer matches rows by: the Kernel's
+/// transformer reference rule, never a client's own name spelling.
+pub fn row_identity(name: &str) -> String {
+    crate::report::transformers::canonical_transformer_reference(name)
+}
+/// A targeted read's answer: the rows matching the targets by identity, and
+/// the targets this read proves deleted. Absence is a deletion fact only when
+/// this read refreshed a complete, current observation; a held, stale or
+/// failed observation never deletes a row.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct TargetSelection {
+    pub data: Vec<Value>,
+    pub deleted: Vec<String>,
+}
+pub fn select_targets(
+    rows: Vec<Value>,
+    targets: &[String],
+    observation: Option<&StatusObservation>,
+) -> TargetSelection {
+    if targets.is_empty() {
+        return TargetSelection {
+            data: rows,
+            deleted: Vec::new(),
+        };
+    }
+    let wanted: Vec<(String, &String)> = targets
+        .iter()
+        .map(|target| (row_identity(target), target))
+        .collect();
+    let identity = |row: &Value| row.get("name").and_then(Value::as_str).map(row_identity);
+    let data: Vec<Value> = rows
+        .into_iter()
+        .filter(|row| identity(row).is_some_and(|id| wanted.iter().any(|(key, _)| *key == id)))
+        .collect();
+    let complete = observation.is_some_and(|observation| {
+        observation.source == StatusObservationSource::Refresh
+            && observation.state == StatusObservationState::Ready
+    });
+    let mut deleted = Vec::new();
+    if complete {
+        for (key, target) in &wanted {
+            if !data
+                .iter()
+                .any(|row| identity(row).as_deref() == Some(key.as_str()))
+                && !deleted.contains(*target)
+            {
+                deleted.push((*target).clone());
+            }
+        }
+    }
+    TargetSelection { data, deleted }
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
@@ -630,6 +673,17 @@ enum Call {
         refreshed: bool,
         targets: Vec<String>,
     },
+    /// A host-supplied projection (Core's status file) narrowed to targets
+    /// by the same identity and deletion rule as [`view`].
+    Select {
+        rows: Vec<Value>,
+        targets: Vec<String>,
+        observation: Option<StatusObservation>,
+    },
+    /// The status identity of each name, in order.
+    Identities {
+        names: Vec<String>,
+    },
 }
 pub fn evaluate(input: &[u8]) -> Result<String, String> {
     let value = match serde_json::from_slice(input).map_err(|e| e.to_string())? {
@@ -648,6 +702,29 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             refreshed,
             targets,
         } => Ok(view(held, refreshed, &targets)?),
+        Call::Select {
+            rows,
+            targets,
+            observation,
+        } => {
+            if let Some(observation) = &observation {
+                observation.validate()?;
+            }
+            serde_json::to_value(select_targets(
+                admit_rows(Value::Array(rows))?,
+                &targets,
+                observation.as_ref(),
+            ))
+        }
+        Call::Identities { names } => {
+            if names.len() > 2000 {
+                return Err("too many status names".into());
+            }
+            Ok(json!(names
+                .iter()
+                .map(|name| row_identity(name))
+                .collect::<Vec<_>>()))
+        }
     }
     .map_err(|e: serde_json::Error| e.to_string())?;
     serde_json::to_string(&value).map_err(|e| e.to_string())
@@ -801,3 +878,7 @@ mod tests {
         assert_eq!(view["observation"]["sha256"], sha);
     }
 }
+
+#[cfg(test)]
+#[path = "transformer_status_targets_tests.rs"]
+mod targets_tests;

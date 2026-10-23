@@ -275,7 +275,6 @@ pub const RANDOM_POINTS: BridgeOp = BridgeOp {
         "settings.minSpacingM",
         "settings.maxSpacingM",
         "settings.bufferDistanceM",
-        "settings.sampleElevation",
         "settings.seed",
     ],
 };

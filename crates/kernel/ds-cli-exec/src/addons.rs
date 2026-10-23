@@ -8,7 +8,14 @@ fn capabilities(component: &str, identity: &Value) -> Option<Value> {
         return None;
     }
     if component == "network" {
-        use ds_network_contracts::engine::{ExecutionEnvironment, NetworkBuildInfo, valid_hex};
+        use ds_network_contracts::engine::{
+            ENGINE_BUILD_SCHEMA_FAMILY, ExecutionEnvironment, NetworkBuildInfo, schema_family,
+            valid_hex,
+        };
+        // The typed decode decides: a newer engine's additive members are
+        // accepted, a missing required fact or a wrong type is refused. Schema
+        // revisions and protocol integers are provenance, never a gate; the
+        // consumer of each operation checks the capability it needs.
         let info: NetworkBuildInfo = serde_json::from_value(identity.clone()).ok()?;
         let engine = info.engine_identity;
         let pins = match (&engine.source_sha, &engine.dependency_closure_sha256) {
@@ -16,10 +23,9 @@ fn capabilities(component: &str, identity: &Value) -> Option<Value> {
             (Some(source), Some(closure)) => valid_hex(source, 40) && valid_hex(closure, 64),
             _ => false,
         };
-        if info.schema != "ds.engine-build/v1"
+        if schema_family(&info.schema) != ENGINE_BUILD_SCHEMA_FAMILY
             || info.module != "network"
-            || engine.schema != "ds.network-engine/v1"
-            || engine.protocol_major != 1
+            || !engine.is_network_identity()
             || engine.environment != ExecutionEnvironment::Native
             || engine.runtime.environment != ExecutionEnvironment::Native
             || engine.core_version.is_empty()
@@ -45,8 +51,10 @@ fn capabilities(component: &str, identity: &Value) -> Option<Value> {
     let valid = if component == "solar" {
         identity["name"] == "ds-solar-engine"
     } else {
-        identity["schema"] == "ds.engine-build/v1"
-            && identity["service"] == "ds-network-reporter"
+        identity["schema"].as_str().is_some_and(|schema| {
+            ds_network_contracts::engine::schema_family(schema)
+                == ds_network_contracts::engine::ENGINE_BUILD_SCHEMA_FAMILY
+        }) && identity["service"] == "ds-network-reporter"
             && identity["binary"] == "ds-report"
     };
     let schemas = identity["schemas"].as_array().filter(|schemas| {
@@ -168,109 +176,5 @@ pub fn managed_module_base() -> Result<std::path::PathBuf, ds_core_contracts::Fa
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn network_identity(count: usize) -> Value {
-        let mut declared = vec!["lv_processing_v1".to_owned()];
-        declared.extend((1..count).map(|index| format!("future_capability_{index}")));
-        json!({
-            "schema": "ds.engine-build/v1",
-            "module": "network",
-            "engineIdentity": {
-                "schema": "ds.network-engine/v1",
-                "protocolMajor": 1,
-                "protocolMinor": 0,
-                "coreVersion": "0.1.0",
-                "sourceSha": "a".repeat(40),
-                "dependencyClosureSha256": "b".repeat(64),
-                "environment": "native",
-                "runtime": {
-                    "environment": "native",
-                    "logicalCpus": 8,
-                    "internalWorkerThreads": 2
-                },
-                "jsonObjectOrder": "sorted",
-                "capabilities": declared
-            }
-        })
-    }
-
-    #[test]
-    fn network_accepts_33_and_64_capabilities_preserving_additive_tokens() {
-        for count in [33, 64] {
-            let identity = network_identity(count);
-            assert_eq!(
-                capabilities("network", &identity),
-                Some(identity["engineIdentity"]["capabilities"].clone()),
-                "{count} capabilities must remain available"
-            );
-        }
-    }
-
-    #[test]
-    fn network_refuses_65_capabilities() {
-        assert!(capabilities("network", &network_identity(65)).is_none());
-    }
-
-    #[test]
-    fn network_refuses_invalid_native_protocol_and_identity_fields() {
-        for (pointer, invalid) in [
-            ("/schema", json!("ds.engine-build/v2")),
-            ("/module", json!("reporter")),
-            ("/engineIdentity/schema", json!("ds.network-engine/v2")),
-            ("/engineIdentity/protocolMajor", json!(2)),
-            ("/engineIdentity/protocolMajor", json!("1")),
-            ("/engineIdentity/environment", json!("wasm")),
-            ("/engineIdentity/runtime/environment", json!("wasm")),
-            ("/engineIdentity/runtime/logicalCpus", json!(0)),
-            ("/engineIdentity/runtime/logicalCpus", json!(65537)),
-            ("/engineIdentity/runtime/internalWorkerThreads", json!(0)),
-            ("/engineIdentity/runtime/internalWorkerThreads", json!(9)),
-            ("/engineIdentity/coreVersion", json!("")),
-            ("/engineIdentity/coreVersion", json!("v".repeat(129))),
-            ("/engineIdentity/sourceSha", Value::Null),
-            ("/engineIdentity/sourceSha", json!("g".repeat(40))),
-            (
-                "/engineIdentity/dependencyClosureSha256",
-                json!("g".repeat(64)),
-            ),
-            ("/engineIdentity/capabilities/0", json!("")),
-            ("/engineIdentity/capabilities/0", json!("x".repeat(257))),
-        ] {
-            let mut identity = network_identity(33);
-            *identity.pointer_mut(pointer).unwrap() = invalid.clone();
-            assert!(
-                capabilities("network", &identity).is_none(),
-                "invalid {pointer}: {invalid} must be refused"
-            );
-        }
-    }
-
-    #[test]
-    fn network_identity_remains_bounded_to_16_kib() {
-        let mut identity = network_identity(64);
-        for capability in identity["engineIdentity"]["capabilities"]
-            .as_array_mut()
-            .unwrap()
-        {
-            *capability = json!("x".repeat(240));
-        }
-        let mut remaining = 16 * 1024 - serde_json::to_vec(&identity).unwrap().len();
-        for capability in identity["engineIdentity"]["capabilities"]
-            .as_array_mut()
-            .unwrap()
-        {
-            let added = remaining.min(16);
-            *capability = json!("x".repeat(240 + added));
-            remaining -= added;
-        }
-        assert_eq!(remaining, 0);
-        assert_eq!(serde_json::to_vec(&identity).unwrap().len(), 16 * 1024);
-        assert!(capabilities("network", &identity).is_some());
-
-        identity["engineIdentity"]["coreVersion"] = json!("0.1.0x");
-        assert_eq!(serde_json::to_vec(&identity).unwrap().len(), 16 * 1024 + 1);
-        assert!(capabilities("network", &identity).is_none());
-    }
-}
+#[path = "addons_tests.rs"]
+mod tests;
