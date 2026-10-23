@@ -423,27 +423,16 @@ pub const SUPERSEDED_BY_HEAD: &str = "superseded_by_head";
 /// dependant parks with this typed reason instead of holding a queue slot.
 pub const DEPENDENCY_REFUSED: &str = "dependency_refused";
 
-/// Uploads run smallest first: a large batch never holds a small one behind
-/// it. Only the upload slots are reordered; every other action keeps its place.
+/// Uploads run first, smallest first. Bytes only this machine holds never wait
+/// behind a download of a shared head — a fresh host mirroring a whole project
+/// held every local result behind it — and a large batch never holds a small
+/// one behind it. Every other action keeps its relative place.
 fn uploads_small_first(actions: &mut [Action]) {
-    let slots: Vec<usize> = actions
-        .iter()
-        .enumerate()
-        .filter(|(_, action)| matches!(action, Action::Upload { .. }))
-        .map(|(index, _)| index)
-        .collect();
-    let mut uploads: Vec<Action> = slots
-        .iter()
-        .map(|&index| std::mem::replace(&mut actions[index], Action::Offline))
-        .collect();
     // Stable: equal sizes keep the identity order the plan built.
-    uploads.sort_by_key(|action| match action {
-        Action::Upload { size_bytes, .. } => *size_bytes,
-        _ => 0,
+    actions.sort_by_key(|action| match action {
+        Action::Upload { size_bytes, .. } => (0, *size_bytes),
+        _ => (1, 0),
     });
-    for (slot, action) in slots.into_iter().zip(uploads) {
-        actions[slot] = action;
-    }
 }
 
 /// Which of two disagreeing results of a *derived* artifact is current.

@@ -135,6 +135,45 @@ fn uploads_run_smallest_first_and_other_actions_keep_their_place() {
     );
 }
 
+/// A fresh host mirroring a whole project (ADERM, 10-23: 106 heads, 953 MB)
+/// held its only-local Solar results behind every download whose identity
+/// sorted first. Local bytes publish before any shared head is fetched.
+#[test]
+fn uploads_run_before_every_download_whatever_their_identity_order() {
+    let remote = |room: &str| {
+        json!({
+            "engine": "network_reporter", "operation": format!("export-{room}"), "variant": "default",
+            "revision": "head-1", "sha256": "e".repeat(64), "published_at_ms": 1_000,
+        })
+    };
+    let plan = plan(&request(
+        vec![export("m_local", 9_000_000), export("n_local", 10)],
+        vec![remote("a_remote"), remote("z_remote")],
+        vec![],
+    ))
+    .unwrap();
+    let order: Vec<(&str, &str)> = plan
+        .actions
+        .iter()
+        .filter_map(|action| match action {
+            Action::Upload { identity, .. } => Some(("upload", identity.operation.as_str())),
+            Action::Download { identity, .. } => Some(("download", identity.operation.as_str())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        order,
+        [
+            ("upload", "export-n_local"),
+            ("upload", "export-m_local"),
+            ("download", "export-a_remote"),
+            ("download", "export-z_remote"),
+        ]
+    );
+    assert_eq!(plan.summary.uploads, 2);
+    assert_eq!(plan.summary.downloads, 2);
+}
+
 #[test]
 fn an_input_without_settled_verdicts_still_parses() {
     let input: Input = serde_json::from_value(json!({
