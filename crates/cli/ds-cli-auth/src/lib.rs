@@ -18,6 +18,7 @@ pub mod grid_mv_catalogue;
 pub mod link_approval;
 mod local_go;
 mod metadata;
+mod network_cause;
 pub mod pm_graph_source;
 pub use metadata::{
     observed_style_catalog, observed_transformer_status_for_project,
@@ -541,8 +542,10 @@ const STATE_UNAVAILABLE_REFUSAL: Refusal = Refusal {
 };
 const STATE_PROTECTION_REFUSAL: Refusal = Refusal {
     code: "native_state_protection_unavailable",
-    when: "the protected-state adapter cannot initialize in this execution context",
-    remedy: "retry in a normal shell as the same OS user; if that works, fix the restricted context, else inspect the state error",
+    // Declared on many commands, so it stays as short as the help budgets
+    // allow; the comparison it names is spelled out in docs/reference/auth.md.
+    when: "cannot initialize in this execution context; a missing adapter is not established",
+    remedy: "retry in a normal shell for the same OS user or an MCP with the same build, lane and DS account before repair",
 };
 const STATE_ROOT_REFUSAL: Refusal = Refusal {
     code: "native_state_root_invalid",
@@ -5155,8 +5158,11 @@ fn map_client(error: ClientError) -> Failure {
     // These are closed, static Core diagnostics, not backend response text.
     // Preserve the publication step instead of naming authentication as its cause.
     if error.kind() == ErrorKind::Transient && message.starts_with("Solar publication ") {
-        return Failure::unavailable("auth_transient", message)
-            .remedy("retry the exact sealed publication without changing local state");
+        return network_cause::explain(
+            Failure::unavailable("auth_transient", message)
+                .remedy("retry the exact sealed publication without changing local state"),
+            network_cause::Request::Native,
+        );
     }
     // The transformer context route answered and named ONE transformer it
     // could not read (`TRANSFORMER_READ_FAILED`). Core keeps it retryable,
@@ -5723,11 +5729,16 @@ fn map_client_kind(kind: ErrorKind, message: String) -> Failure {
             "auth_identity_mismatch",
             "Firebase returned an identity outside the bound native session",
         ),
-        ErrorKind::Transient => Failure::unavailable(
-            "auth_transient",
-            "the native authentication service is temporarily unavailable",
-        )
-        .remedy("retry without changing local state"),
+        // Every transient a native call meets lands here; the cause its
+        // transport recorded says whether any DS service was reached.
+        ErrorKind::Transient => network_cause::explain(
+            Failure::unavailable(
+                "auth_transient",
+                "the native authentication service is temporarily unavailable",
+            )
+            .remedy("retry without changing local state"),
+            network_cause::Request::Native,
+        ),
         ErrorKind::UnreadableResponse => Failure::unavailable(
             "auth_response_unreadable",
             "the authentication or project response did not match its closed contract",

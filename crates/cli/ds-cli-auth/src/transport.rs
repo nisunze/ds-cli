@@ -2584,11 +2584,18 @@ fn project_report_url(origin: &str) -> String {
     format!("{origin}{}", ds_client_core::PROJECT_REPORT_PATH)
 }
 
-fn bounded(
+pub(crate) fn bounded(
     mut response: ureq::http::Response<ureq::Body>,
     limit: usize,
 ) -> Result<TransportResponse, TransportError> {
     let status = response.status().as_u16();
+    crate::network_cause::answered(
+        status,
+        response
+            .headers()
+            .get("retry-after")
+            .and_then(|value| value.to_str().ok()),
+    );
     let mut body = Zeroizing::new(Vec::with_capacity(limit.min(64 * 1024)));
     response
         .body_mut()
@@ -2596,16 +2603,16 @@ fn bounded(
         .limit(limit.saturating_add(1) as u64)
         .reader()
         .read_to_end(&mut body)
-        .map_err(|_| TransportError::Unreachable)?;
+        .map_err(|error| {
+            crate::network_cause::body_failed(&error);
+            TransportError::Unreachable
+        })?;
     Ok(TransportResponse::new(status, std::mem::take(&mut *body)))
 }
 
+/// The one native classification, which also records the cause a refusal names.
 fn classify(error: ureq::Error) -> TransportError {
-    if matches!(error, ureq::Error::Timeout(_)) {
-        TransportError::TimedOut
-    } else {
-        TransportError::Unreachable
-    }
+    crate::network_cause::classify(error)
 }
 
 fn correlation_id() -> String {
@@ -2646,6 +2653,9 @@ fn correlation_id() -> String {
 }
 
 fn correlation_headers() -> (String, String) {
+    // Every governed request starts here: nothing an earlier one saw
+    // describes it.
+    crate::network_cause::request_started();
     let request_id = correlation_id();
     if let Ok(mut last) = LAST_CORRELATION_ID.lock() {
         *last = Some(request_id.clone());

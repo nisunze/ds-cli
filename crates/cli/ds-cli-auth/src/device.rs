@@ -357,7 +357,12 @@ pub fn run_status(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     let mut transport = NativeDeviceTransport::new(&profile, gateway_key);
     let result = pending
         .observe_status(&mut transport, &WeakNetwork::FIELD)
-        .map_err(|failure| device_call_failure(failure, |never| match never {}))?;
+        .map_err(|failure| {
+            crate::network_cause::explain(
+                device_call_failure(failure, |never| match never {}),
+                crate::network_cause::Request::Native,
+            )
+        })?;
     release(&mut store, &state_key(&profile))?;
     Ok(observed_status_json(public, result))
 }
@@ -427,7 +432,12 @@ pub(crate) fn link_status(lane: Lane) -> Result<Value, Failure> {
     let mut transport = NativeDeviceTransport::new(&profile, gateway_key);
     let result = pending
         .observe_status(&mut transport, &WeakNetwork::FIELD)
-        .map_err(|failure| device_call_failure(failure, |never| match never {}))?;
+        .map_err(|failure| {
+            crate::network_cause::explain(
+                device_call_failure(failure, |never| match never {}),
+                crate::network_cause::Request::Native,
+            )
+        })?;
     release(&mut store, &key)?;
     Ok(observed_status_json(public, result))
 }
@@ -654,7 +664,14 @@ macro_rules! fixed_device_call {
                 $self.credential.uid(),
                 now,
             )
-            .map_err(|_| ClientError::from(TransportError::Unreachable))?;
+            .map_err(|error| {
+                // A spent lease sends nothing: say so instead of letting the
+                // refusal read as a network outage.
+                if error == ds_client_core::DeviceError::AccessToken {
+                    crate::network_cause::access_lease_spent();
+                }
+                ClientError::from(TransportError::Unreachable)
+            })?;
         authorization.$method(&mut $self.transport, $($argument,)* now)
     }};
 }
@@ -1539,8 +1556,7 @@ fn device_failure(_: DeviceError) -> Failure {
 
 fn device_response_failure(error: DeviceError, http_status: u16) -> Failure {
     if http_status == 429 || (500..=599).contains(&http_status) {
-        return transport_failure(TransportError::Unreachable)
-            .detail(json!({ "http_status": http_status }));
+        return device_transient(json!({ "http_status": http_status }));
     }
     if http_status == 404 {
         return Failure::unavailable(
@@ -1556,11 +1572,21 @@ fn device_response_failure(error: DeviceError, http_status: u16) -> Failure {
 }
 
 fn transport_failure(_: TransportError) -> Failure {
-    Failure::unavailable(
-        "device_auth_transient",
-        "the fixed DS device authorization endpoint is temporarily unreachable",
+    device_transient(json!({}))
+}
+
+/// One unretried device-endpoint blink, explained by the cause the native
+/// device transport recorded for it.
+fn device_transient(detail: Value) -> Failure {
+    crate::network_cause::explain(
+        Failure::unavailable(
+            "device_auth_transient",
+            "the fixed DS device authorization endpoint is temporarily unreachable",
+        )
+        .remedy("retry without changing protected device state")
+        .detail(detail),
+        crate::network_cause::Request::Native,
     )
-    .remedy("retry without changing protected device state")
 }
 
 /// Refresh one device access session through the kernel's weak-network
@@ -1576,7 +1602,16 @@ fn refresh_access(
             Ok((unix_seconds(), random_token::<24>()?))
         })
         .map(|(session, _)| session)
-        .map_err(|failure| device_call_failure(failure, std::convert::identity))
+        .map_err(|failure| {
+            let retries = match &failure {
+                DeviceCallFailure::Transient { retries, .. } => *retries,
+                _ => 0,
+            };
+            crate::network_cause::explain(
+                device_call_failure(failure, std::convert::identity),
+                crate::network_cause::Request::DeviceRefresh { retries },
+            )
+        })
 }
 
 /// A device call the kernel already retried: a host failure is the host's
@@ -1648,6 +1683,7 @@ impl NativeDeviceTransport {
         path: &str,
         body: SecretRequestBody,
     ) -> Result<TransportResponse, TransportError> {
+        crate::network_cause::request_started();
         #[cfg(ds_messaging_emulator)]
         let origin = {
             let _fenced_origin = &self.origin;
@@ -1696,6 +1732,7 @@ impl DeviceTransport for NativeDeviceTransport {
         &mut self,
         call: DeviceProtectedCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
+        crate::network_cause::request_started();
         let path = call.path().map_err(|_| TransportError::Unreachable)?;
         let mut bearer = format!("Bearer {}", call.bearer_token());
         let request = match call.method() {
@@ -1732,6 +1769,13 @@ fn bounded(
     mut response: ureq::http::Response<ureq::Body>,
 ) -> Result<TransportResponse, TransportError> {
     let status = response.status().as_u16();
+    crate::network_cause::answered(
+        status,
+        response
+            .headers()
+            .get("retry-after")
+            .and_then(|value| value.to_str().ok()),
+    );
     let mut body = Vec::new();
     response
         .body_mut()
@@ -1739,16 +1783,16 @@ fn bounded(
         .limit((ds_client_core::DEVICE_ACCESS_RESPONSE_LIMIT + 1) as u64)
         .reader()
         .read_to_end(&mut body)
-        .map_err(|_| TransportError::Unreachable)?;
+        .map_err(|error| {
+            crate::network_cause::body_failed(&error);
+            TransportError::Unreachable
+        })?;
     Ok(TransportResponse::new(status, body))
 }
 
+/// The one native classification, which also records the cause a refusal names.
 fn classify(error: ureq::Error) -> TransportError {
-    if matches!(error, ureq::Error::Timeout(_)) {
-        TransportError::TimedOut
-    } else {
-        TransportError::Unreachable
-    }
+    crate::network_cause::classify(error)
 }
 
 pub fn render(value: &Value) -> String {

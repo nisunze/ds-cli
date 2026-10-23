@@ -46,6 +46,33 @@ A successful matching MCP call can distinguish a restricted agent shell
 from a product installation problem; it does not make that shell available.
 Inspect the concrete protected-state error before recommending repair or
 reinstallation. Do not reset credentials or change identity to diagnose it.
+`native_state_unavailable` and `native_state_unsafe` remedies lead with the
+same comparison: a normal shell for the same OS user first, and directory
+repair only if the command also fails there.
+
+`auth_transient` and `device_auth_transient` keep their codes and classes. When
+the native transport saw why a request got no usable answer, the refusal names
+the cause and adds `detail.transport`:
+
+- `cause`: one closed token (`name_unresolved`, `proxy_refused`,
+  `connection_refused`, `network_unreachable`, `network_forbidden`,
+  `connect_timed_out`, `connection_dropped`, `tls_failed`, `deadline_exceeded`,
+  `service_status`, `access_lease_spent`, `transport_failed`).
+- `reach`: how far the request got (`not_sent`, `not_reached`, `dropped`,
+  `no_answer`, `answered`).
+- `proxy_configured`: whether this process has a proxy configured. The proxy
+  address is never included.
+- `retry_here`: whether an unchanged retry from this execution context can work.
+- `retry_after_s`: the retry hint. It is the service's bounded `Retry-After`,
+  or else the kernel curve's last pause.
+- `http_status` and `request` (`device_refresh`), where known.
+
+`reach: not_reached` means no DS service was contacted, and the credential is
+intact. If a device refresh was refused on this machine for its whole retry
+curve, the refusal is not retryable. Run the command from a normal shell for
+the same OS user, or allow this sandbox or proxy to reach the gateway. Do not
+sign in again, relink or reinstall. `answered` and `no_answer` describe the
+service, not the credential.
 
 After a device is explicitly relinked to another account, `auth project list`
 and `auth project use` compare the protected providers' canonical UID, lane and
