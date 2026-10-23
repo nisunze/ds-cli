@@ -68,16 +68,21 @@ is ruled in the sync contract: simple local clean and recompute.
   current placement answers, replay them in the pure kernel and native/WASM
   consumers, and prove identical Solar/reporter bytes and head identity from
   native and locally built Cloud Run adapters. Hosted web Solar remains closed.
-- **A fresh Core's Solar dependants wait behind the whole project mirror.** Since
-  `0865b1c5` uploads lead each pass (10-23, fresh Core: `calculate-aderm_kyabe`
-  head-3 published 20 s after sealing, before any download), but a report that
-  depends on the calculation published in that pass, and every row sealed during
-  it, waits for the next one, and a fresh host's first pass
-  downloads every head (ADERM 10-23: 106 heads, 953 MB at ~130 KB/s, about an
-  hour, `scratch/claude-linux-prod-20261022/solar-work/activity*.json`). Next
-  step: re-plan the dependants after the pass's uploads, before its downloads, in
-  `ds-sync-runtime` `run_leased`; prove with a calculate+report pair behind a large
-  download set.
+- **Core shutdown waits for a whole sync pass.** `core serve` joins the Solar
+  sync pump, which reads `worker_stop` only between passes, so SIGTERM during a
+  fresh Core's mirror waits for every remaining download (ADERM 10-23: still
+  running 11 min after SIGTERM at 532 of ~950 MB; killed, and the restart then
+  waited out the 5-min lease). Next step: end the pass at its download-step
+  boundary (`ds-sync-runtime` `run_leased`, where `Delivery::sealed_since_plan`
+  already yields) once the host is stopping; prove a stop mid-mirror returns
+  within one step and the restart resumes the mirror.
+- **A transient upload failure mid-mirror waits for the next pass.** Since
+  `4fe5605d` a result sealed during a mirror is asked before the next download
+  step, but each row is asked once per pass: ADERM 10-23 `calculate-aderm_kyabe`
+  sealed 22:55:25, asked 22:59:45, gateway deadline at 23:00:15, then held
+  behind the remaining ~400 MB. Next step: let `Delivery::sealed_since_plan`
+  re-ask a held row once the kernel's own retry deadline (`plan.wake`) for it
+  has passed, never sooner; decide whether that deadline is per row.
 - **The Server pump hides its failure.** `solar-sync-pump` stays `failed` with
   "Sync Center could not read or publish durable server work" from one pass until
   a later pass succeeds, and the cause is neither logged nor projected
