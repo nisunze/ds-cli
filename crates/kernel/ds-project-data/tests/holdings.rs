@@ -1106,15 +1106,23 @@ fn an_incremental_national_seed_keeps_what_an_earlier_seed_holds() {
 }
 
 /// 2026-09-27 review: tiling had no upper bound, so an extent no project has
-/// became tens of thousands of sequential provider rounds. It is refused by
-/// name before the first one; a district still seeds (above).
+/// became tens of thousands of sequential provider rounds. 2026-10-23: such
+/// an extent (a vertex left at zero) is named and never read, and it no
+/// longer refuses the project's real designs: on the Rwanda template one
+/// stray design had failed every one of its 42 datasets. A district still
+/// seeds (above).
 #[test]
-fn an_implausibly_wide_extent_is_refused_before_any_provider_round() {
+fn an_implausibly_wide_extent_is_named_and_never_read_while_real_designs_seed() {
+    use ds_command_kernel::project_dataset_cache::MAX_ENVELOPE_M2;
     let root = tempfile::tempdir().unwrap();
     // Nine degrees by eight and a half: about 37,000 tiles of 25 km².
     let wide = json!({"lv_lines": {"type": "FeatureCollection", "features": [
         {"type": "Feature", "properties": {}, "geometry": {"type": "LineString",
             "coordinates": [[29.0, -2.5], [38.0, 6.0]]}}
+    ]}});
+    let real = json!({"lv_lines": {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {}, "geometry": {"type": "LineString",
+            "coordinates": [[29.70, -2.70], [29.702, -2.698]]}}
     ]}});
     let mut provider = AreaRecorder { areas: Vec::new() };
     let mut fetch = no_fetch;
@@ -1122,25 +1130,32 @@ fn an_implausibly_wide_extent_is_refused_before_any_provider_round() {
         provider: &mut provider,
         fetch: &mut fetch,
     };
-    let refused = ensure(
+    let seeded = ensure(
         root.path(),
         &scope(),
         &buildings_dataset(),
         &DeclaredSource::Buildings,
         &buffer_policy(&[200.0]).unwrap(),
-        &design_extents([("tx", &wide)]).unwrap(),
+        &design_extents([("tx", &wide), ("tx-real", &real)]).unwrap(),
         &[],
         Mode::Acquire(&mut hosts),
     )
-    .expect_err("an implausible extent is refused");
-    assert_eq!(refused.code(), "project_dataset_acquisition_failed");
+    .expect("the real design seeds beside the stray one");
+    assert!(seeded.covered, "{:?}", seeded.warnings);
     assert!(
-        refused.message().contains("more than the 400 reads")
-            && refused.message().contains("narrow the seed"),
-        "{}",
-        refused.message()
+        seeded
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("correct their geometry: tx")),
+        "{:?}",
+        seeded.warnings
     );
-    assert!(provider.areas.is_empty(), "no provider round was made");
+    assert_eq!(
+        provider.areas.len(),
+        1,
+        "one read, for the real design only"
+    );
+    assert!(provider.areas[0] <= MAX_ENVELOPE_M2);
 }
 
 /// Serves a fixed set of rows: each one the asked area selects under the

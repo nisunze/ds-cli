@@ -23,11 +23,24 @@ fn seed_descriptor() -> serde_json::Value {
 fn the_seed_contract_names_shared_revisions_and_their_refusals() {
     let command = seed_descriptor();
     let purpose = command["purpose"].as_str().unwrap_or_default();
-    assert!(purpose.contains("once per project"), "{purpose}");
-    assert!(
-        purpose.contains("published revisions are replayed first"),
-        "{purpose}"
-    );
+    // The three rules an agent needs before it spends provider cost: what
+    // area is acquired, how far around it, and that shared revisions come
+    // before any fetch.
+    for rule in [
+        "once per project",
+        "union of its active LV designs and MV routes",
+        "project_context_tolerance_m setting (default 200 m)",
+        "never one project-wide box",
+        "Published revisions are replayed first",
+        "fetches only uncovered",
+        "published as the next shared revision",
+        "Seeds declared datasets plus what it holds",
+    ] {
+        assert!(
+            purpose.contains(rule),
+            "seed purpose omits {rule:?}: {purpose}"
+        );
+    }
     let refusals: Vec<&str> = command["refusals"]
         .as_array()
         .expect("refusals")
@@ -44,6 +57,7 @@ fn the_seed_contract_names_shared_revisions_and_their_refusals() {
         "engine_refused",
         "engine_response_invalid",
         "native_compute_required",
+        "project_context_tolerance_invalid",
     ] {
         assert!(refusals.contains(&code), "seed does not declare {code}");
     }

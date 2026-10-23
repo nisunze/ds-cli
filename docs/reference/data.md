@@ -233,7 +233,21 @@ is `ds-command-kernel`'s.
 
 A plain `seed` (no `--local-source`/`--publisher-input`) seeds
 `google_open_buildings` and `elevation_contours` through the project's shared
-revisions (`ds-project-data` contract § Seed once per project):
+revisions (`ds-project-data` contract § Seed once per project).
+
+The area is the union of every active LV transformer design and MV route
+segment (plus `--mv-model`), each widened by the project's
+`project_context_tolerance_m` Settings value — 200 m until the project authors
+one (`ds design config set --sheet project_settings --parameter
+project_context_tolerance_m --value <0–5000>`), and a bare transformer point
+by the same distance. Nothing between designs and no sheet frame around them
+is acquired, and never one project-wide box; a malformed value refuses
+`project_context_tolerance_invalid`. Prints read buildings and contours within
+the same distance of the design. An extent wider than any design reaches (a
+vertex left at zero) is named in the row's warnings and not acquired; the rest
+of the project still seeds. Each shared row reports its `tolerance_m`.
+Extending a design and seeding again acquires and publishes only the new
+ground:
 
 1. it reads the project's revision head on the governed compute artifact door
    and replays every revision this machine has not applied — a second member

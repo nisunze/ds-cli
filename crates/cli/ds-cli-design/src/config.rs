@@ -182,7 +182,7 @@ pub static DIFF: Command = command(
     &[crate::PROJECT_ARG, LANE, SHEET, FILE, LIMIT, OFFSET],
 );
 pub static SET: Command = Command {
-    purpose: "Set one project Settings parameter and verify readback through the signed-in native client. Governed map printing defaults can be authored before a row exists: keep_all_labels_at_high_density is false; print_metric_grid_enabled is true; print_metric_grid_interval_m is automatic (use automatic or positive metres). Every map print reads these settings. Automatic spacing uses its actual frame/scale and round 1/2/2.5/5 steps per decade for about 4–8 lines. Other parameters must already exist. Read/diff first; --yes saves only the named project.",
+    purpose: "Set one project Settings parameter and verify readback through the signed-in native client. Governed map printing defaults can be authored before a row exists: keep_all_labels_at_high_density is false; print_metric_grid_enabled is true; print_metric_grid_interval_m is automatic (use automatic or positive metres). Every map print reads these settings. Automatic spacing uses its actual frame/scale and round 1/2/2.5/5 steps per decade for about 4–8 lines. project_context_tolerance_m (default 200, metres 0–5000) is how far around the LV and MV design buildings and contours are seeded. Other parameters must already exist. Read/diff first; --yes saves only the named project.",
     search: &["printing", "labels", "metric grid", "density"],
     ..command(
         "design.config.set",

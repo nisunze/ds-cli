@@ -29,6 +29,7 @@ fn policy_value() -> Value {
         isolated_rule: IsolatedRule::PointOnly,
         provisional: true,
         sheets: Vec::new(),
+        ..BufferPolicy::default()
     })
     .unwrap()
 }

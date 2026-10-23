@@ -270,6 +270,12 @@ refusal!(
     "repair or update Reporter for the selected --lane"
 );
 refusal!(
+    TOLERANCE_INVALID,
+    "project_context_tolerance_invalid",
+    "project_context_tolerance_m is not metres from 0 to 5000",
+    "correct it with `ds design config set`; held data is kept"
+);
+refusal!(
     RETIRED,
     "dataset_retired",
     "the named layer was retired and has no single authority (powerlines, elementary_school)",
@@ -511,6 +517,7 @@ const SEED_REFUSALS: &[Refusal] = &[
     ENGINE_REFUSED,
     ENGINE_RESPONSE_INVALID,
     NETWORK_ENGINE_INCOMPATIBLE,
+    TOLERANCE_INVALID,
     INVALID_SCOPE,
     RETIRED,
     NO_DESIGN_EXTENT,
@@ -626,7 +633,7 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Seeds design/MV coverage under --project. Buildings and contours are seeded once per project: published revisions replay first, Core fetches only uncovered Google Open Buildings tiles or samples the Rwanda DEM, the Reporter converts offline, and the delta is published as the next revision. Seeds declared datasets plus what it holds. --local-source/--publisher-input select pinned inputs instead. --refresh re-acquires and republishes. Incomplete results refuse with detail.result.",
+    purpose: "Seeds design/MV coverage under --project. Buildings and contours are acquired once per project for the union of its active LV designs and MV routes (and --mv-model), each widened by its project_context_tolerance_m setting (default 200 m), never one project-wide box. Published revisions are replayed first; Core fetches only uncovered Google tiles or Rwanda DEM cells, the Reporter converts offline, and the delta is published as the next shared revision. Seeds declared datasets plus what it holds. --local-source/--publisher-input pin inputs; --refresh re-acquires and republishes. Incomplete results refuse with detail.result.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
@@ -641,7 +648,7 @@ pub static SEED_COMMAND: Command = Command {
         REFRESH_ARG,
         LANE_ARG,
     ],
-    output: "Per dataset: acquired cells, coverage, features, holding, warnings/errors, optional `selected_source` pins, and for buildings/contours `shared` (head revision, replayed and published revisions, source cells, freshness); plus `refresh`, `failed`, `complete` and captured transformer/MV sources.",
+    output: "Per dataset: acquired cells, coverage, features, holding, warnings/errors, optional `selected_source` pins, and for buildings/contours `shared` (head revision, replayed and published revisions, source cells, freshness) and `tolerance_m`; plus `refresh`, `failed`, `complete` and captured transformer/MV sources.",
     examples: &[
         Example {
             command: "ds data project-cache seed --project gisagara --dataset google_open_buildings --yes --output json",
@@ -1435,24 +1442,50 @@ fn design_extents(
         })
         .map(|row| row.name().to_owned())
         .collect();
-    // One restored session for the whole inventory: a restore per
-    // transformer is a token refresh per transformer.
-    let contexts =
-        ds_cli_auth::transformer_contexts_for_project(lane, inventory.project_id(), &names)?;
-    if contexts.identity() != inventory.identity()
-        || contexts.project_id() != inventory.project_id()
-    {
-        return Err(Failure::conflict(
-            "auth_context_mismatch",
-            "project or native identity changed while reading design extents",
-        ));
-    }
+    // One restored session per batch: a restore per transformer is a token
+    // refresh per transformer, while one session for a whole inventory
+    // outlives its short device access lease (217 sequential reads took the
+    // template project past it and the seed failed as `auth_transient`).
     let mut extents = Vec::with_capacity(names.len());
-    for (name, context) in names.iter().zip(contexts.into_result()) {
-        let layers = serde_json::to_value(context.layers()).unwrap_or(Value::Null);
-        extents.push(ds_project_data::extents::extent_of(name, &layers).map_err(refused)?);
+    for batch in names.chunks(DESIGN_EXTENT_BATCH) {
+        let contexts =
+            ds_cli_auth::transformer_contexts_for_project(lane, inventory.project_id(), batch)?;
+        if contexts.identity() != inventory.identity()
+            || contexts.project_id() != inventory.project_id()
+        {
+            return Err(Failure::conflict(
+                "auth_context_mismatch",
+                "project or native identity changed while reading design extents",
+            ));
+        }
+        for (name, context) in batch.iter().zip(contexts.into_result()) {
+            let layers = serde_json::to_value(context.layers()).unwrap_or(Value::Null);
+            extents.push(ds_project_data::extents::extent_of(name, &layers).map_err(refused)?);
+        }
     }
     Ok(extents)
+}
+
+/// Transformer contexts read under one restored device session: far inside
+/// its access lease at the service's per-read latency.
+const DESIGN_EXTENT_BATCH: usize = 40;
+
+/// The shared buildings/contours plan at the project's own tolerance
+/// (`project_context_tolerance_m` in its Settings, the published default
+/// while it authors none). A malformed value refuses; it never becomes the
+/// default.
+fn context_tolerance_policy(lane: &str, project: &str) -> Result<policy::BufferPolicy, Failure> {
+    let settings = ds_cli_auth::settings_configuration(
+        lane,
+        project,
+        ds_client_core::ProjectConfigurationChange::ReadSettings,
+    )?;
+    let tolerance = policy::context_tolerance_m(&settings.document).map_err(|error| {
+        Failure::invalid(TOLERANCE_INVALID.code, error).remedy(TOLERANCE_INVALID.remedy)
+    })?;
+    policy::shared_acquisition_policy(tolerance).map_err(|error| {
+        Failure::invalid(TOLERANCE_INVALID.code, error).remedy(TOLERANCE_INVALID.remedy)
+    })
 }
 
 /// Governed active MV heads contribute narrow route-segment coverage to the
@@ -1766,6 +1799,9 @@ fn catalog_seed(
     let mut failed = 0_usize;
     // Opened only when a shared dataset is seeded, removed with the run.
     let mut seeding: Option<SharedSeeding> = None;
+    // Buildings and contours hold only what is within the project's
+    // tolerance of its design; its Settings are read once, on first need.
+    let mut shared_policy: Option<Result<policy::BufferPolicy, Failure>> = None;
     for target in targets {
         let resolved = match declared.iter().find(|d| d.dataset.id == target) {
             Some(found) => Some(found.clone()),
@@ -1786,17 +1822,35 @@ fn catalog_seed(
             ds_project_data::DeclaredSource::Buildings
                 | ds_project_data::DeclaredSource::Contours(_)
         ) {
-            let row = shared_seed_row(
-                &mut seeding,
-                lane,
-                &root,
-                scope,
-                &entry,
-                &policy,
-                &extents,
-                refresh,
-                rooms.contains_key(&entry.dataset.id),
-            );
+            let held = rooms.contains_key(&entry.dataset.id);
+            let row = match shared_policy
+                .get_or_insert_with(|| context_tolerance_policy(lane, &project))
+            {
+                Ok(shared) => {
+                    let mut row = shared_seed_row(
+                        &mut seeding,
+                        lane,
+                        &root,
+                        scope,
+                        &entry,
+                        shared,
+                        &extents,
+                        refresh,
+                        held,
+                    );
+                    row["tolerance_m"] = json!(shared.design_buffer_m);
+                    row
+                }
+                Err(failure) => json!({
+                    "dataset_id": entry.dataset.id,
+                    "label": entry.candidate.label,
+                    "clusters": 0, "acquired": 0, "feature_count": 0,
+                    "local_holding": held,
+                    "warnings": [],
+                    "code": failure.code(),
+                    "error": format!("{}: {}", failure.code(), failure.message()),
+                }),
+            };
             if row.get("error").is_some() {
                 failed += 1;
             }

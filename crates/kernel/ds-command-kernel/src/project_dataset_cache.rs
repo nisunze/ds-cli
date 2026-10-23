@@ -40,6 +40,11 @@ pub const MAX_COVERAGE_CELLS: usize = 4_096;
 /// district-sized provider request, which a paid or page-bounded source
 /// answers with a bill, a truncation, or both.
 pub const MAX_ENVELOPE_M2: f64 = 25_000_000.0;
+/// The widest one design or route extent may be: the 400 provider reads of
+/// [`MAX_ENVELOPE_M2`] one gap cell may take. Nothing a project designs is
+/// this wide; a rectangle that is reaches a coordinate left at zero or in the
+/// wrong hemisphere, and the plan names it instead of acquiring it.
+pub const MAX_EXTENT_M2: f64 = 400.0 * MAX_ENVELOPE_M2;
 /// Per-source receipt ceiling. A receipt is provenance, not payload: one over
 /// this size is refused whole rather than trimmed to fit, because a truncated
 /// receipt no longer proves what it claims.
@@ -153,6 +158,104 @@ pub struct BufferPolicy {
     /// A seed that prints names its sheets (`both_orientations`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sheets: Vec<SheetShape>,
+    /// Which ground the plan asks for. Absent on the wire for the default,
+    /// so a policy authored before the field reads back exactly as given.
+    #[serde(default, skip_serializing_if = "AcquisitionArea::is_cluster_envelope")]
+    pub area: AcquisitionArea,
+}
+
+/// How a plan turns buffered extents into acquisition cells.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AcquisitionArea {
+    /// A small fused cluster is asked for as its one envelope; past
+    /// [`MAX_ENVELOPE_M2`] its members' own rectangles are.
+    #[default]
+    ClusterEnvelope,
+    /// Always the members' own rectangles: the union of every extent within
+    /// its distance and nothing between them. Shared buildings and contours
+    /// are planned this way ([`shared_acquisition_policy`]).
+    BufferedExtents,
+}
+
+impl AcquisitionArea {
+    fn is_cluster_envelope(&self) -> bool {
+        *self == Self::ClusterEnvelope
+    }
+}
+
+/// The project setting that says how far around its LV and MV design a
+/// project's building footprints and contours are acquired, in metres.
+pub const CONTEXT_TOLERANCE_PARAMETER: &str = "project_context_tolerance_m";
+/// The published value while a project authors none.
+pub const DEFAULT_CONTEXT_TOLERANCE_M: f64 = 200.0;
+pub const MAX_CONTEXT_TOLERANCE_M: f64 = 5_000.0;
+
+/// The CLI may author this published default before a project has a row.
+pub fn is_governed_parameter(key: &str) -> bool {
+    key == CONTEXT_TOLERANCE_PARAMETER
+}
+
+/// The project's context tolerance from its Settings document (`{sheets:
+/// {project_settings: [...]}}`, or the bare sheets object). Absent is the
+/// published default; a malformed or out-of-range value refuses rather than
+/// silently becoming it.
+pub fn context_tolerance_m(config: &Value) -> Result<f64, String> {
+    let config = config.get("sheets").unwrap_or(config);
+    let Some(rows) = config
+        .get("project_settings")
+        .or_else(|| config.pointer("/parameters/project_settings"))
+    else {
+        return Ok(DEFAULT_CONTEXT_TOLERANCE_M);
+    };
+    let rows = rows
+        .as_array()
+        .ok_or("project_context_tolerance_invalid: project_settings must be rows")?;
+    let matching: Vec<&Value> = rows
+        .iter()
+        .filter(|row| {
+            crate::report_formats::setting_parameter_key(row).as_deref()
+                == Some(CONTEXT_TOLERANCE_PARAMETER)
+        })
+        .collect();
+    let value = match matching.as_slice() {
+        [] => return Ok(DEFAULT_CONTEXT_TOLERANCE_M),
+        [row] => &row["value"],
+        _ => {
+            return Err(format!(
+                "project_context_tolerance_invalid: duplicate {CONTEXT_TOLERANCE_PARAMETER}"
+            ))
+        }
+    };
+    let metres = value.as_f64().or_else(|| {
+        value
+            .as_str()
+            .and_then(|text| text.trim().parse::<f64>().ok())
+    });
+    metres
+        .filter(|metres| metres.is_finite() && (0.0..=MAX_CONTEXT_TOLERANCE_M).contains(metres))
+        .ok_or_else(|| {
+            format!(
+                "project_context_tolerance_invalid: {CONTEXT_TOLERANCE_PARAMETER} requires metres from 0 to {MAX_CONTEXT_TOLERANCE_M}"
+            )
+        })
+}
+
+/// What a shared buildings or contours seed asks for: the union of every
+/// LV transformer design and MV route extent, each widened by the project's
+/// tolerance — a bare transformer point included — and nothing else. No
+/// cluster envelope, no sheet frame, never one project-wide box.
+pub fn shared_acquisition_policy(tolerance_m: f64) -> Result<BufferPolicy, String> {
+    let policy = BufferPolicy {
+        design_buffer_m: tolerance_m,
+        isolated_buffer_m: tolerance_m,
+        isolated_rule: IsolatedRule::PointOnly,
+        provisional: false,
+        sheets: Vec::new(),
+        area: AcquisitionArea::BufferedExtents,
+    };
+    policy.validate()?;
+    Ok(policy)
 }
 
 /// The sheets an LV drawing set prints on, either way round.
@@ -168,6 +271,7 @@ impl Default for BufferPolicy {
             isolated_rule: IsolatedRule::PointOnly,
             provisional: false,
             sheets: Vec::new(),
+            area: AcquisitionArea::ClusterEnvelope,
         }
     }
 }
@@ -733,6 +837,11 @@ pub struct Plan {
     pub extent_count: usize,
     pub located_count: usize,
     pub skipped: Vec<String>,
+    /// Extents wider than any design or route reaches (a stray vertex, a
+    /// coordinate left at its zero): named and not planned, so one broken
+    /// design never turns the whole project into an unacquirable box.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub oversized: Vec<String>,
     pub empty: bool,
 }
 
@@ -805,10 +914,15 @@ pub fn plan_focused(
     }
     let mut named: Vec<(String, Rect, bool)> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
+    let mut oversized: Vec<String> = Vec::new();
     for extent in extents {
         match extent.bounds {
             Some(bounds) => {
                 let rect = Rect::from_bounds(bounds)?;
+                if rect_area_m2(rect) > MAX_EXTENT_M2 {
+                    oversized.push(extent.name.clone());
+                    continue;
+                }
                 let designed = bounds[0] != bounds[2] || bounds[1] != bounds[3];
                 named.push((extent.name.clone(), rect, designed));
             }
@@ -869,8 +983,10 @@ pub fn plan_focused(
         // Past MAX_ENVELOPE_M2 that trade inverts — chained sites would turn
         // into one district-sized request — so the members' own rectangles
         // become the cells. Cross-cluster fusion never happens either way;
-        // `clusters` guarantees disjoint envelopes.
-        let split = rect_area_m2(envelope) > MAX_ENVELOPE_M2;
+        // `clusters` guarantees disjoint envelopes. A buffered-extents plan
+        // never takes the envelope: it holds only what is within its distance.
+        let split = policy.area == AcquisitionArea::BufferedExtents
+            || rect_area_m2(envelope) > MAX_ENVELOPE_M2;
         let cluster_cells: Vec<Rect> = if split {
             wanted.iter().map(|&index| expanded[index]).collect()
         } else {
@@ -908,6 +1024,7 @@ pub fn plan_focused(
         empty: coverage.is_empty(),
         coverage,
         skipped,
+        oversized,
     })
 }
 

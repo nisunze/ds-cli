@@ -505,6 +505,7 @@ fn policy() -> BufferPolicy {
         isolated_rule: IsolatedRule::PointOnly,
         provisional: true,
         sheets: both_orientations(),
+        area: AcquisitionArea::ClusterEnvelope,
     }
 }
 
@@ -1204,4 +1205,142 @@ fn the_seed_target_action_answers_through_the_request_door() {
         evaluate(empty.to_string().as_bytes()).unwrap_err(),
         SEED_SCOPE_REFUSAL
     );
+}
+
+#[test]
+fn a_shared_seed_holds_the_union_of_design_and_route_extents_within_the_tolerance() {
+    // Two LV designs 600 m apart (one cluster once widened), one MV route
+    // segment between them and a transformer that is still a bare point.
+    let extents = [
+        extent("lv-a", Some([30.000, -2.000, 30.002, -1.998])),
+        extent("lv-b", Some([30.0074, -2.000, 30.0094, -1.998])),
+        extent("mv-route", Some([30.002, -1.9995, 30.0074, -1.9985])),
+        extent("bare", Some([30.004, -2.006, 30.004, -2.006])),
+    ];
+    let shared = shared_acquisition_policy(DEFAULT_CONTEXT_TOLERANCE_M).unwrap();
+    let planned = plan(&scope(), &buildings(), &shared, &extents).unwrap();
+    // One cell per member, each exactly its extent widened by the
+    // tolerance: no envelope between them and no sheet frame around them.
+    let mut wanted: Vec<[f64; 4]> = extents
+        .iter()
+        .map(|extent| {
+            let rect = Rect::from_bounds(extent.bounds.unwrap()).unwrap();
+            buffered(rect, DEFAULT_CONTEXT_TOLERANCE_M).bounds()
+        })
+        .collect();
+    wanted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert_eq!(planned.coverage.cells, wanted);
+    assert!(planned.clusters.iter().all(|cluster| cluster.split));
+    // The bare transformer is widened by the tolerance too, not 1 km.
+    let [w, _, e, _] = buffered(
+        Rect::from_bounds([30.004, -2.006, 30.004, -2.006]).unwrap(),
+        DEFAULT_CONTEXT_TOLERANCE_M,
+    )
+    .bounds();
+    assert!((400.0..402.0).contains(&easting(-2.006, w, e)));
+    // The cluster-envelope plan of the same extents asks for strictly more
+    // ground: that over-fetch is what the shared seed never acquires.
+    let enveloped = plan(&scope(), &buildings(), &BufferPolicy::default(), &extents).unwrap();
+    let held = Coverage {
+        cells: planned.coverage.cells.clone(),
+    };
+    assert!(!assess(&held, &enveloped.coverage).unwrap().covered);
+    assert!(
+        assess(&enveloped.coverage, &planned.coverage)
+            .unwrap()
+            .covered
+    );
+}
+
+#[test]
+fn the_context_tolerance_is_a_project_setting_with_a_published_default() {
+    let settings = |rows: Value| json!({"sheets": {"project_settings": rows}});
+    assert_eq!(context_tolerance_m(&json!({})).unwrap(), 200.0);
+    assert_eq!(
+        context_tolerance_m(&settings(
+            json!([{"parameter":"report_locale","value":"fr"}])
+        ))
+        .unwrap(),
+        DEFAULT_CONTEXT_TOLERANCE_M
+    );
+    for value in [json!(350), json!("350"), json!(350.0)] {
+        let authored =
+            settings(json!([{"parameter": CONTEXT_TOLERANCE_PARAMETER, "value": value}]));
+        assert_eq!(context_tolerance_m(&authored).unwrap(), 350.0);
+    }
+    // Malformed never silently becomes the default.
+    for value in [
+        json!(-1),
+        json!(5_001),
+        json!("wide"),
+        json!(null),
+        json!(true),
+    ] {
+        let authored =
+            settings(json!([{"parameter": CONTEXT_TOLERANCE_PARAMETER, "value": value}]));
+        let error = context_tolerance_m(&authored).unwrap_err();
+        assert!(
+            error.starts_with("project_context_tolerance_invalid"),
+            "{error}"
+        );
+    }
+    let twice = settings(json!([
+        {"parameter": CONTEXT_TOLERANCE_PARAMETER, "value": 100},
+        {"parameter": CONTEXT_TOLERANCE_PARAMETER, "value": 300},
+    ]));
+    assert!(context_tolerance_m(&twice).is_err());
+    assert!(is_governed_parameter(CONTEXT_TOLERANCE_PARAMETER));
+
+    let policy = shared_acquisition_policy(350.0).unwrap();
+    assert_eq!(
+        (policy.design_buffer_m, policy.isolated_buffer_m),
+        (350.0, 350.0)
+    );
+    assert!(policy.sheets.is_empty());
+    assert_eq!(policy.area, AcquisitionArea::BufferedExtents);
+    assert!(shared_acquisition_policy(f64::NAN).is_err());
+}
+
+#[test]
+fn the_acquisition_area_rides_the_wire_only_when_it_is_not_the_default() {
+    let written = serde_json::to_value(BufferPolicy::default()).unwrap();
+    assert!(written.get("area").is_none(), "{written}");
+    let shared = shared_acquisition_policy(200.0).unwrap();
+    let written = serde_json::to_value(&shared).unwrap();
+    assert_eq!(written["area"], "buffered_extents");
+    let back: BufferPolicy = serde_json::from_value(written).unwrap();
+    assert_eq!(back, shared);
+}
+
+#[test]
+fn a_design_reaching_a_zero_coordinate_is_named_and_the_rest_still_plans() {
+    // A vertex left at NIX (0, 0) lands near (23.66, -44.97): its design's
+    // rectangle spans half a continent. It is named, never acquired, and
+    // never stops the project's real designs from planning.
+    let extents = [
+        extent("lv-real", Some([29.70, -2.70, 29.702, -2.698])),
+        extent(
+            "lv-stray",
+            Some([23.659740281, -44.965635885, 29.767231262, -2.855510961]),
+        ),
+    ];
+    for policy in [policy(), shared_acquisition_policy(200.0).unwrap()] {
+        let planned = plan(&scope(), &buildings(), &policy, &extents).unwrap();
+        assert_eq!(planned.oversized, vec!["lv-stray"]);
+        assert_eq!(planned.located_count, 1);
+        assert_eq!(planned.coverage.cells.len(), 1);
+        let [w, s, e, n] = planned.coverage.cells[0];
+        assert!(
+            w > 29.6 && e < 29.8 && s > -2.8 && n < -2.6,
+            "{w} {s} {e} {n}"
+        );
+        let written = serde_json::to_value(&planned).unwrap();
+        assert_eq!(written["oversized"], json!(["lv-stray"]));
+    }
+    // A plan with nothing oversized keeps its reply shape.
+    let clean = plan(&scope(), &buildings(), &policy(), &extents[..1]).unwrap();
+    assert!(serde_json::to_value(&clean)
+        .unwrap()
+        .get("oversized")
+        .is_none());
 }

@@ -20,8 +20,8 @@
 use ds_command_kernel::printing::context::expanded_layer_ids;
 use ds_command_kernel::printing::{PrintContextLayer, PrintContextSource};
 use ds_command_kernel::project_dataset_cache::{
-    both_orientations, buffer_policy, plan_focused, BufferPolicy, Dataset, Scope,
-    CONTOURS_INDEX_LAYER, CONTOURS_INTERMEDIATE_LAYER,
+    both_orientations, buffer_policy, plan_focused, shared_acquisition_policy, BufferPolicy,
+    Dataset, Scope, CONTOURS_INDEX_LAYER, CONTOURS_INTERMEDIATE_LAYER,
 };
 use ds_command_kernel::report_export::{print_context_document, sha256_hex};
 use serde_json::{json, Value};
@@ -76,6 +76,20 @@ fn print_policy(buffer_m: f64) -> Result<BufferPolicy, Failure> {
     let mut policy = buffer_policy(&[buffer_m]).map_err(crate::store)?;
     policy.sheets = both_orientations();
     Ok(policy)
+}
+
+/// The area one context source is read for. Building footprints and contours
+/// are held only within the tolerance of the design (the shared seed's
+/// rule), so a print reads them there and never asks for the sheet frame
+/// around it; catalogue layers keep the sheet-shaped area.
+fn source_policy(source: &PrintContextSource) -> Result<BufferPolicy, Failure> {
+    match source {
+        PrintContextSource::GoogleOpenBuildings { .. }
+        | PrintContextSource::ElevationContours { .. } => {
+            shared_acquisition_policy(buffer_of(source)).map_err(crate::store)
+        }
+        _ => print_policy(buffer_of(source)),
+    }
 }
 
 pub fn sheet_area(
@@ -168,7 +182,7 @@ fn room_layers(
     warnings: &mut Vec<String>,
     reused: &mut bool,
 ) -> Result<Vec<(String, Vec<Value>, String)>, Failure> {
-    let policy = print_policy(buffer_of(&context.source))?;
+    let policy = source_policy(&context.source)?;
     let extent = extent_of(transformer, layers)?;
     if extent.bounds.is_none() {
         return Err(Failure::Unsupported(

@@ -1077,8 +1077,7 @@ pub fn save_sheet(document: &Value, key: &str, value: &Value) -> Result<Value, &
         }
     }
     if key == "project_settings" {
-        crate::printing::map_policy::resolve(&json!({"project_settings":compact}))
-            .map_err(|_| "config_parameter_invalid")?;
+        governed_project_settings(&compact)?;
     }
     if serde_json::to_vec(&compact)
         .map_err(|_| "config_sheet_shape_invalid")?
@@ -1088,6 +1087,15 @@ pub fn save_sheet(document: &Value, key: &str, value: &Value) -> Result<Value, &
         return Err("config_input_too_large");
     }
     Ok(compact)
+}
+/// Every published default a project_settings row may author must still
+/// resolve: the map printing policy and the project context tolerance.
+fn governed_project_settings(rows: &Value) -> Result<(), &'static str> {
+    let settings = json!({"project_settings": rows});
+    crate::printing::map_policy::resolve(&settings).map_err(|_| "config_parameter_invalid")?;
+    crate::project_dataset_cache::context_tolerance_m(&settings)
+        .map_err(|_| "config_parameter_invalid")?;
+    Ok(())
 }
 pub fn set_parameter(
     document: &Value,
@@ -1115,7 +1123,8 @@ pub fn set_parameter(
         .collect();
     if indices.is_empty()
         && key == "project_settings"
-        && crate::printing::map_policy::is_governed_parameter(&canonical)
+        && (crate::printing::map_policy::is_governed_parameter(&canonical)
+            || crate::project_dataset_cache::is_governed_parameter(&canonical))
     {
         let value = if canonical == crate::printing::map_policy::INTERVAL
             && raw
@@ -1128,8 +1137,7 @@ pub fn set_parameter(
         };
         rows.push(json!({"parameter":canonical,"value":value}));
         let saved = save_sheet(document, key, &json!(rows))?;
-        crate::printing::map_policy::resolve(&json!({"project_settings":saved}))
-            .map_err(|_| "config_parameter_invalid")?;
+        governed_project_settings(&saved)?;
         return Ok(saved);
     }
     if indices.len() != 1 {
@@ -1168,8 +1176,7 @@ pub fn set_parameter(
     rows[indices[0]]["value"] = value;
     let saved = save_sheet(document, key, &json!(rows))?;
     if key == "project_settings" {
-        crate::printing::map_policy::resolve(&json!({"project_settings":saved}))
-            .map_err(|_| "config_parameter_invalid")?;
+        governed_project_settings(&saved)?;
     }
     Ok(saved)
 }
@@ -1585,3 +1592,7 @@ mod governed_map_policy_tests {
 #[cfg(test)]
 #[path = "save_fence_tests.rs"]
 mod save_fence_tests;
+
+#[cfg(test)]
+#[path = "governed_settings_tests.rs"]
+mod governed_settings_tests;

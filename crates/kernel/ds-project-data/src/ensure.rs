@@ -403,6 +403,15 @@ fn settle(
             if plan.skipped.len() > 5 { "…" } else { "" }
         ));
     }
+    if !plan.oversized.is_empty() {
+        let shown: Vec<&str> = plan.oversized.iter().take(5).map(String::as_str).collect();
+        warnings.push(format!(
+            "{} design or route extent(s) reach farther than any design does (a vertex left at zero or far away) and were not covered; correct their geometry: {}{}",
+            plan.oversized.len(),
+            shown.join(", "),
+            if plan.oversized.len() > 5 { "…" } else { "" }
+        ));
+    }
     let room = Room {
         root,
         scope,
@@ -428,8 +437,11 @@ fn settle(
         room.status()?
     };
     if plan.empty {
-        warnings
-            .push("This project has no design extent yet, so there is nothing to acquire.".into());
+        if plan.oversized.is_empty() {
+            warnings.push(
+                "This project has no design extent yet, so there is nothing to acquire.".into(),
+            );
+        }
         return Ok(EnsureOutcome {
             dataset_key: room.key,
             clusters: plan.clusters.len(),
