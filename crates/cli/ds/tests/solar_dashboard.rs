@@ -135,5 +135,5 @@ fn every_result_section_reaches_source_verification() {
             "{choice}: {refused}"
         );
     }
-    assert_eq!(read("boq")["error"]["code"], "invalid_choice");
+    assert_eq!(read("bill")["error"]["code"], "invalid_choice");
 }

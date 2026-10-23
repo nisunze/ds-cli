@@ -13,6 +13,7 @@ const PORTFOLIO_PROJECTION_BYTES: usize = 15_000;
 const PORTFOLIO_SERIES_EDGE_ITEMS: usize = 4;
 const PORTFOLIO_STRING_CHARS: usize = 400;
 const RESULT_SECTIONS: &[&str] = &[
+    "boq",
     "config",
     "costs",
     "finance",
