@@ -1,25 +1,35 @@
 //! Which process settings a run would carry — the kernel's answer, headless.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
-    Arg, Authority, Availability, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
+    Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 use std::io::Read;
 
-fn local() -> Availability {
-    Availability::Available
-}
-
-const REFUSALS: &[Refusal] = &[Refusal {
-    code: "process_settings_invalid",
-    when: "A settings file is malformed, or a value is neither boolean nor finite numeric",
-    remedy: "Pass the project configuration as `ds design config` returns it and settings as {key: bool|number}",
-}];
+const REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "process_settings_invalid",
+        when: "A settings file is malformed, or a value is neither boolean nor finite numeric",
+        remedy: "Pass the project configuration as `ds design config` returns it and settings as {key: bool|number}",
+    },
+    crate::lv::catalogue::PRESET_NOT_OFFERED,
+    crate::lv::catalogue::CATALOGUE_INVALID,
+    Refusal {
+        code: "network_engine_missing",
+        when: "no Network engine is installed to answer its LV processor catalogue",
+        remedy: "install the matching Network engine addon",
+    },
+    Refusal {
+        code: "network_engine_incompatible",
+        when: "the installed Network engine publishes no LV processor catalogue (lv_processor_catalog_v1)",
+        remedy: "install a Network engine that offers its LV processor catalogue",
+    },
+];
 
 const CATALOG: Arg = Arg::switch(
     "catalog",
-    "Include the engine-owned settings catalog for a process-settings editor.",
+    "Include the installed Network engine's settings catalog for a process-settings editor.",
 );
 
 const PRESET: Arg = Arg::value(
@@ -48,7 +58,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "process", "settings"],
     contract: 1,
     summary: "Resolve the process settings a preset would send.",
-    purpose: "What a named preset produces for a project, which dependent flags collapse into the effective contract, which settings the operator may see for that preset, and what a hidden setting puts on the wire are decided once in ds-command-kernel (process_settings) over the engine's own catalogue — the same answer the LV process dialog sends. Every key that leaves the wire is named with its reason.",
+    purpose: "What a named preset produces for a project, which dependent flags collapse into the effective contract, which settings the operator may see for that preset, and what a hidden setting puts on the wire are decided once in ds-command-kernel (process_settings) over the catalogue the installed Network engine answers (its lv_processor_catalog task; Core compiles none) — the same answer the LV process dialog sends. A preset the engine does not offer is refused. Every key that leaves the wire is named with its reason.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -60,7 +70,7 @@ pub static COMMAND: Command = Command {
         FIRESTORE_DESIGN_DATA,
         CATALOG,
     ],
-    output: "{settings, visible_groups, wire_settings, dropped[{key, why, forced_to?}]}; --catalog additionally returns catalog, the engine-owned editor metadata, and alone (no --preset) returns only {catalog}.",
+    output: "{settings, visible_groups, wire_settings, dropped[{key, why, forced_to?}]}; --catalog additionally returns catalog, the installed engine's editor metadata, and alone (no --preset) returns only {catalog}.",
     examples: &[Example {
         command: "ds design process settings --preset sketch --output json",
         note: "`.data.wire_settings` is the payload a Sketch run carries.",
@@ -70,7 +80,7 @@ pub static COMMAND: Command = Command {
     reference: Some("docs/reference/design.md"),
     search: &[],
     requires: Requires::Server,
-    availability: local,
+    availability: || ds_network_client::available(),
 };
 
 fn invalid(e: impl std::fmt::Display) -> Failure {
@@ -92,10 +102,9 @@ fn json_file(path: &str) -> Result<Value, Failure> {
 }
 
 pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
-    let catalog: Value =
-        serde_json::from_str(ds_network_contracts::lv::PROCESSOR_PRESETS_JSON).map_err(invalid)?;
-    // The catalogue is the same for every preset: an editor reads it before
-    // anyone has chosen one.
+    // The installed engine says what it offers; the catalogue is the same for
+    // every preset, so an editor reads it before anyone has chosen one.
+    let (catalog, offer) = crate::lv::catalogue::engine_catalogue(None)?;
     let Some(preset) = i.value("preset") else {
         if i.switch("catalog") {
             return Ok(json!({ "catalog": catalog }));
@@ -104,6 +113,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             "`--preset` is required unless --catalog asks for the catalogue alone",
         ));
     };
+    crate::lv::catalogue::admit_preset(&offer, preset)?;
     let mut request = json!({
         "op": "resolve",
         "catalog": &catalog,

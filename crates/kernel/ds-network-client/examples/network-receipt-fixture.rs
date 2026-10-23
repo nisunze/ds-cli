@@ -17,7 +17,7 @@ fn main() {
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(0);
     assert_eq!(workers, 1);
-    let identity = json!({"schema":"ds.network-engine/v1","jsonObjectOrder":"sorted","protocolMajor":if mode=="incompatible"{2}else{1},"protocolMinor":0,"coreVersion":"fixture-core","sourceSha":null,"dependencyClosureSha256":null,"environment":"native","runtime":{"environment":"native","logicalCpus":1,"internalWorkerThreads":1},"capabilities":["lv_processing_v1"]});
+    let identity = json!({"schema":"ds.network-engine/v1","jsonObjectOrder":"sorted","protocolMajor":if mode=="incompatible"{2}else{1},"protocolMinor":0,"coreVersion":"fixture-core","sourceSha":null,"dependencyClosureSha256":null,"environment":"native","runtime":{"environment":"native","logicalCpus":1,"internalWorkerThreads":1},"capabilities":["lv_processing_v1","lv_processor_catalog_v1"]});
     match command {
         "build-info" => {
             assert_eq!(args.len(), 3);
@@ -71,6 +71,24 @@ fn main() {
                 ),
             }
         }
-        _ => panic!("fixture accepts two fixed tasks"),
+        // The LV processor catalogue Core admits every request against: the
+        // catalogue the Network engine ships, answered as its grid operation.
+        "grid-operation" => {
+            assert_eq!(args.len(), 7);
+            let request = fs::read(&args[2]).unwrap();
+            let call: Value = serde_json::from_slice(&request).unwrap();
+            assert_eq!(call["call"]["operation"], "lv_processor_catalog");
+            let catalog: Value = serde_json::from_str(include_str!(
+                "../../../../../ds-network/crates/ds-network-contracts/src/processor_presets.json"
+            ))
+            .unwrap();
+            let result = serde_json::to_vec(&json!({"schema":"ds.grid.native-operation-result/v1","operation":"lv_processor_catalog","engine_version":"fixture-core","package_sha256":null,"result":{"schema":"ds.lv.processor-catalog/v1","catalog":catalog},"artifacts":[]})).unwrap();
+            fs::write(Path::new(&args[4]).join("result.json"), &result).unwrap();
+            println!(
+                "{}",
+                json!({"schema":"ds.network.task-result/v1","inputSha256":sha(&request),"engineIdentity":identity,"artifact":{"file":"result.json","byteCount":result.len(),"sha256":sha(&result),"schema":"ds.grid.native-operation-result/v1"},"outcome":"completed"})
+            );
+        }
+        _ => panic!("fixture accepts three fixed tasks"),
     }
 }

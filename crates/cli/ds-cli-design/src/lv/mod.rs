@@ -2,6 +2,7 @@
 
 pub mod analysis_read;
 mod artifact;
+pub(crate) mod catalogue;
 mod print_a4;
 pub mod process;
 pub mod project_export;

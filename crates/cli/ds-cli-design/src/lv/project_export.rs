@@ -223,6 +223,19 @@ pub static COMMAND: Command = Command {
             "choose a writable absent path and retry the export"
         ),
         PROCESS_SETTINGS_INVALID,
+        super::catalogue::PRESET_NOT_OFFERED,
+        super::catalogue::SETTING_NOT_OFFERED,
+        super::catalogue::CATALOGUE_INVALID,
+        refusal!(
+            "network_engine_missing",
+            "--preset needs the lane's Network engine catalogue and no Network engine is installed for the lane",
+            "install the matching Network engine addon"
+        ),
+        refusal!(
+            "network_engine_incompatible",
+            "--preset needs the lane's Network engine catalogue and that engine publishes none (lv_processor_catalog_v1)",
+            "install a Network engine that offers its LV processor catalogue"
+        ),
     ],
     reference: Some("docs/reference/design.md"),
     search: &[],
@@ -330,6 +343,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
                 preset,
                 operator.as_ref(),
                 sheets_for_preset.as_ref(),
+                Some(lane),
             )?;
             let settings = json!({"preset": preset, "operator": operator, "wire_settings": wire});
             (request, settings)
@@ -490,16 +504,18 @@ fn read_operator(path: &str) -> Result<Value, Failure> {
 }
 
 /// Carry the settings the LV process dialog sends for `preset` into every
-/// job: the kernel resolves them once over the engine's own catalogue and
-/// the project's preset rows, and the native owner admits the result.
+/// job: the kernel resolves them once over the catalogue the engine of `lane`
+/// (the packaged engine without one) answers and the project's preset rows;
+/// a preset or setting that engine does not offer is refused here.
 pub(crate) fn apply_process_preset(
     request: &[u8],
     preset: &str,
     operator: Option<&Value>,
     sheets: Option<&std::collections::BTreeMap<String, Value>>,
+    lane: Option<&str>,
 ) -> Result<(Vec<u8>, Value), Failure> {
-    let catalog: Value = serde_json::from_str(ds_network_contracts::lv::PROCESSOR_PRESETS_JSON)
-        .map_err(|error| Failure::internal("fast_lv_input_invalid", error.to_string()))?;
+    let (catalog, offer) = super::catalogue::engine_catalogue(lane)?;
+    super::catalogue::admit_preset(&offer, preset)?;
     let mut resolve = json!({
         "op": "resolve",
         "catalog": catalog,
@@ -530,8 +546,12 @@ pub(crate) fn apply_process_preset(
     }
     let bytes = serde_json::to_vec(&document)
         .map_err(|error| Failure::internal("fast_lv_input_invalid", error.to_string()))?;
-    ds_network_contracts::lv_processing::decode_native_lv_request(&bytes)
+    let admitted = ds_network_contracts::lv_processing::decode_native_lv_request(&bytes)
         .map_err(map_owner_error)?;
+    offer.admit_request(&admitted).map_err(|error| {
+        Failure::invalid(error.code(), error.to_string())
+            .remedy(super::catalogue::SETTING_NOT_OFFERED.remedy)
+    })?;
     Ok((bytes, wire))
 }
 

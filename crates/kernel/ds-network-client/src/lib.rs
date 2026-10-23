@@ -9,6 +9,7 @@ mod grid_catalog;
 mod grid_create;
 mod grid_operation;
 mod grid_write_admission;
+mod lv_catalog;
 mod lv_publication;
 mod mv_projection;
 mod mv_report;
@@ -38,6 +39,7 @@ pub use grid_apply::GridApplyOutcome;
 pub use grid_apply_batch::GridApplyBatchOutcome;
 pub use grid_create::GridCreateOutcome;
 pub use grid_operation::GridOperationOutcome;
+pub use lv_catalog::LvProcessorCatalog;
 pub use lv_publication::{LvAnalysisValidationOutcome, LvPublicationOutcome};
 pub use profile::{ProfileCheckpoint, ProfileOutcome, ProfileSession};
 pub use report_engineering::ReportEngineeringOutcome;
@@ -177,6 +179,13 @@ fn process_lv_captured(
             "scratch must be an ordinary directory",
         ));
     }
+    // Core compiles no LV processor catalogue: the captured engine says what
+    // it offers, and a setting it does not offer refuses before any staging.
+    captured
+        .lv_processor_catalog(scratch, cancel)?
+        .offer()
+        .admit_request(&request)
+        .map_err(lv_catalog::offer_failure)?;
     let run = tempfile::Builder::new()
         .prefix("ds-network-run-")
         .tempdir_in(scratch)

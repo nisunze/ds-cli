@@ -16,6 +16,8 @@ pub struct CapturedNetworkClient {
     pub(crate) identity: EngineIdentity,
     pub(crate) executable_sha256: String,
     pub(crate) development_override: bool,
+    /// The engine's LV processor catalogue, read at most once per capture.
+    pub(crate) lv_catalogue: std::sync::OnceLock<crate::LvProcessorCatalog>,
 }
 
 impl CapturedNetworkClient {
@@ -27,6 +29,7 @@ impl CapturedNetworkClient {
             identity,
             executable_sha256,
             development_override,
+            lv_catalogue: Default::default(),
         })
     }
 
@@ -75,6 +78,7 @@ impl CapturedNetworkClient {
             identity,
             executable_sha256,
             development_override,
+            lv_catalogue: Default::default(),
         })
     }
 
@@ -156,6 +160,7 @@ impl CapturedNetworkClient {
             identity,
             executable_sha256,
             development_override,
+            lv_catalogue: Default::default(),
         })
     }
 

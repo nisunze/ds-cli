@@ -183,7 +183,7 @@ fn a_preset_carries_the_dialogs_settings_into_every_job_and_the_owner_admits_the
     let operator = assignment_on();
 
     let (bytes, wire) =
-        apply_process_preset(&request, "sketch", Some(&operator), Some(&sheets)).unwrap();
+        apply_process_preset(&request, "sketch", Some(&operator), Some(&sheets), None).unwrap();
 
     let document: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(document["jobs"][0]["settings"], wire);
@@ -215,6 +215,7 @@ fn a_malformed_operator_toggle_is_refused_before_any_request_is_written() {
         &request,
         "sketch",
         Some(&json!({ "assign_assemblies": "yes" })),
+        None,
         None,
     )
     .unwrap_err();

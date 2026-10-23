@@ -50,7 +50,7 @@ pub static COMMAND: Command = Command {
     }],
     refusals: &[
         Refusal {code:"network_engine_missing",when:"the compatible native Network engine is absent",remedy:"install the matching Network engine addon"},
-        Refusal {code:"network_engine_incompatible",when:"the captured Network executable lacks the required protocol or capability",remedy:"install the compatible Network engine"},
+        Refusal {code:"network_engine_incompatible",when:"the captured Network executable lacks the required protocol or capability, including its LV processor catalogue (lv_processor_catalog_v1)",remedy:"install the compatible Network engine"},
         Refusal {code:"network_serialization_incompatible",when:"the captured engine differs from this consumer's preserved JSON byte profile",remedy:"install the insertion-order Network component for this host"},
         Refusal {code:"network_engine_path_invalid",when:"the explicit development engine path is not absolute",remedy:"set DS_NETWORK_ENGINE_BIN to an absolute compatible executable path"},
         Refusal {code:"network_engine_invalid",when:"the captured executable cannot be read within its byte bound",remedy:"install an intact compatible Network component"},
@@ -123,6 +123,8 @@ pub static COMMAND: Command = Command {
             when: "the owner result cannot be encoded as its v1 document",
             remedy: "keep the input unchanged and report this internal encoding failure",
         },
+        super::catalogue::SETTING_NOT_OFFERED,
+        super::catalogue::CATALOGUE_INVALID,
         Refusal {
             code: "lv_process_all_jobs_failed",
             when: "every job of the batch failed, e.g. a request exported without --project-config; the result document is still written",
@@ -391,6 +393,11 @@ pub(crate) fn map_network_error(error: ds_network_client::NetworkFailure) -> Fai
     let message = error.to_string();
     let failure = match code {
         "network_engine_missing" => Failure::unavailable(code, message),
+        // The installed engine's catalogue does not offer what the request asks.
+        "lv_process_setting_not_offered" | "lv_process_preset_not_offered" => {
+            Failure::invalid(code, message)
+        }
+        "lv_processor_catalog_invalid" => Failure::failed(code, message),
         "network_engine_incompatible"
         | "network_serialization_incompatible"
         | "network_engine_path_invalid"

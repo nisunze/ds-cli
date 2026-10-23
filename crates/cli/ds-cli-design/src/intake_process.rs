@@ -215,6 +215,8 @@ pub(crate) fn process_file(
         preset(mode),
         operator.as_ref(),
         Some(&sheets),
+        // The packaged engine processes this upload below.
+        None,
     )?;
 
     // The Network engine, offline, by request and response.
