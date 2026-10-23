@@ -1,31 +1,52 @@
 //! A second same-process Store must not cancel SQLite's kernel locks.
+
+/// Names the file `lock_probe_child` tries to lock; unset in ordinary runs.
+#[cfg(target_os = "linux")]
+const PROBE: &str = "DS_STORE_LOCK_PROBE";
+
+/// The independent process of the lock regression: one non-blocking
+/// whole-file write lock (SQLite's locking bytes included), reported and
+/// released when the process exits. Without the variable it does nothing.
+#[cfg(target_os = "linux")]
+#[test]
+fn lock_probe_child() {
+    use std::os::unix::io::AsRawFd;
+    let Some(path) = std::env::var_os(PROBE) else {
+        return;
+    };
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .unwrap();
+    // SAFETY: a zeroed flock is a valid "whole file from offset 0" request.
+    let mut lock: libc::flock = unsafe { std::mem::zeroed() };
+    lock.l_type = libc::F_WRLCK as _;
+    lock.l_whence = libc::SEEK_SET as _;
+    // SAFETY: the descriptor is open for the duration of the call.
+    let acquired = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETLK, &lock) } == 0;
+    println!("lock-probe:{}", if acquired { "ACQUIRED" } else { "BUSY" });
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn second_store_open_preserves_existing_sqlite_posix_locks() {
     fn independent_exclusive_lock(path: &std::path::Path) -> String {
         // POSIX locks are process-scoped: a separate process is essential.
-        // Locking the complete private file covers SQLite's locking-byte range.
-        // This child never opens SQLite, reads rows or changes file bytes.
-        let output = std::process::Command::new("python3")
-            .args([
-                "-c",
-                r#"import os,fcntl,sys
-fd=os.open(sys.argv[1],os.O_RDWR)
-try:
- try:
-  fcntl.lockf(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
-  print('ACQUIRED')
- except BlockingIOError:
-  print('BUSY')
-finally:
- os.close(fd)
-"#,
-            ])
-            .arg(path)
+        // The probe is this test binary again (`lock_probe_child`), which
+        // never opens SQLite, reads rows or changes file bytes.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "lock_probe_child", "--nocapture", "--test-threads=1"])
+            .env(PROBE, path)
             .output()
-            .expect("Linux Store lock regression requires python3");
+            .expect("the lock probe child runs");
         assert!(output.status.success(), "independent lock probe failed");
-        String::from_utf8(output.stdout).unwrap().trim().into()
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        stdout
+            .lines()
+            .find_map(|line| line.split_once("lock-probe:").map(|(_, answer)| answer.trim()))
+            .expect("the probe reports its answer")
+            .into()
     }
     let directory = tempfile::tempdir().unwrap();
     std::fs::set_permissions(

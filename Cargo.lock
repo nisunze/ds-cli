@@ -2852,6 +2852,7 @@ name = "ds-sync-store"
 version = "0.1.0"
 dependencies = [
  "ds-command-kernel",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",
