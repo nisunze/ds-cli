@@ -11,7 +11,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | Area | Remaining entries |
 | --- | ---: |
 | [1. Source integration and release code](#1-source-integration-and-release-code) | 7 |
-| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 9 |
+| [2. Green `run` and release gates](#2-green-run-and-release-gates) | 17 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
@@ -45,7 +45,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 
 - **In progress:** `wasm-size` (take back the network WASM growth).
 
-- **Contract 5 residue: one Kernel engine-call owner** (23 Oct): Reporter calls now go only through `ds_cli_exec::reporter::Reporter` (closed tasks, catalogue admission before work), pinned by ds `tests/process_boundary.rs` `cli_crates_reach_engines_only_through_the_kernel_engine_call_owners`. Still open: (1) ds-cli-solar `calculate_prepared.rs`, `engine.rs`, `lib.rs`, `project.rs`, `run.rs` hold the Solar `CapturedExternal` and name its subcommands (the gate's `SOLAR_PENDING` list) — give Solar the same Kernel client and empty the list; (2) the LV processor catalogue is compiled into Core (`ds_network_contracts::lv::PROCESSOR_PRESETS_JSON` in ds-cli-design `process_settings.rs` and `lv/project_export.rs`, Kernel vendor copy in `process_settings.rs`) because the installed Network publishes no catalogue task — needs a typed Network task (ds-network owner decides), then read it through ds-network-client; (3) ds-design-workspace `grid_publication.rs` and ds-client-core `transformer_save.rs` capture Network with the lane-less `CapturedNetworkClient::capture` (packaged lane) — capture the request's lane as `mv_projection` now does; (4) the Desktop shell still spawns the Reporter itself (src-tauri `reference_data.rs`), waiting on the UI freeze.
+- **Contract 5 residue: one Kernel engine-call owner** (23 Oct): Reporter and Solar calls now go only through `ds_cli_exec::reporter::Reporter` and `ds_cli_exec::solar::Solar` (closed tasks, catalogue admission before work), pinned with no exceptions by ds `tests/process_boundary.rs` `cli_crates_reach_engines_only_through_the_kernel_engine_call_owners`. Still open: (1) the LV processor catalogue is compiled into Core (`ds_network_contracts::lv::PROCESSOR_PRESETS_JSON` in ds-cli-design `process_settings.rs` and `lv/project_export.rs`, Kernel vendor copy in `process_settings.rs`) because the installed Network publishes no catalogue task — needs a typed Network task (ds-network owner decides), then read it through ds-network-client; (2) ds-design-workspace `grid_publication.rs` and ds-client-core `transformer_save.rs` capture Network with the lane-less `CapturedNetworkClient::capture` (packaged lane) — capture the request's lane as `mv_projection` now does; (3) the Desktop shell still spawns the Reporter itself (src-tauri `reference_data.rs`), waiting on the UI freeze.
 
 - **Security `c9df4098`: signed reads only.** ds-apis-tf `infra/default_bucket.storage.rules` still has `allow get: if !isServerOwnedName(...)` (legacy public read), so `report_lv`/`lv_drafting` project objects stay readable by URL. Put them behind signed reads only and prove the ds-web/Desktop/field/kernel consumers use `sign_url`; make kernel `artifact_identity` accept `https://storage.cloud.google.com/<bucket>/<object>` as ds-brain `artifact_reference.go` already does. Deploy, token revocation and the anonymous-GET refusal are in [SEEDING.md](SEEDING.md).
 
@@ -65,37 +65,68 @@ is ruled in the sync contract: simple local clean and recompute.
   current placement answers, replay them in the pure kernel and native/WASM
   consumers, and prove identical Solar/reporter bytes and head identity from
   native and locally built Cloud Run adapters. Hosted web Solar remains closed.
-- **Strict runtime Clippy fails on an untouched report enum.**
-  `cargo clippy --offline --manifest-path crates/ds-sync-runtime/Cargo.toml
-  --all-targets --all-features -- -D warnings` reports `large_enum_variant` at
-  `src/reports.rs:307` (`SealOutcome::Sealed`, 1368 bytes versus 25). The enum is
-  identical to baseline `24a58f2`. Repair in its owning release-gate slice; do not
-  sweep unrelated report code into the Solar migration. Proof: the same strict
-  command passes without lint suppression. With that diagnostic excepted on the
-  command line, the test target also reports `single_element_loop` at
-  `crates/ds-sync-runtime/src/gateway.rs:352`; that path is likewise unchanged.
-- **Strict kernel/store Clippy has untouched baseline diagnostics.**
-  `cargo clippy --offline -p ds-command-kernel -p ds-sync-store --all-targets
-  --all-features -- -D warnings` reports `redundant_closure` and `needless_borrow`
-  in `src/profile_encoding.rs`, `type_complexity` in `src/style_legend.rs`,
-  `too_many_arguments` in `src/style_multiscale.rs` and
-  `src/printing/style_capture.rs`, `single_element_loop` in
-  `src/profile_display.rs`, a diagnostic at `src/sync_store.rs:176`, and `cloned_ref_to_slice_refs` in report preview and
-  printing tests. These paths are unchanged by Solar sync. Leave the Profile
-  findings to its owner and the remaining findings to their owning gate slices;
-  proof requires the strict command to pass without lint suppression.
+- **A fresh Core's Solar dependants wait behind the whole project mirror.** Since
+  `0865b1c5` uploads lead each pass (10-23, fresh Core: `calculate-aderm_kyabe`
+  head-3 published 20 s after sealing, before any download), but a report that
+  depends on the calculation published in that pass, and every row sealed during
+  it, waits for the next one, and a fresh host's first pass
+  downloads every head (ADERM 10-23: 106 heads, 953 MB at ~130 KB/s, about an
+  hour, `scratch/claude-linux-prod-20261022/solar-work/activity*.json`). Next
+  step: re-plan the dependants after the pass's uploads, before its downloads, in
+  `ds-sync-runtime` `run_leased`; prove with a calculate+report pair behind a large
+  download set.
+- **The Server pump hides its failure.** `solar-sync-pump` stays `failed` with
+  "Sync Center could not read or publish durable server work" from one pass until
+  a later pass succeeds, and the cause is neither logged nor projected
+  (`ds-cli-server` `solar_sync.rs` `note_publication_failure` drops it). The one
+  seen cause on 10-23 was a startup `Store sidecar must be an ordinary single-link
+  file` race in `ds-sync-store` `prepare_private`. Next step: log the bounded
+  cause on the Core's stderr and project a typed code; then reproduce the sidecar
+  race with two openers of a fresh store.
 
 ## Solar CLI: a calculation reachable from the documented commands (Claude)
 
-Found by a read-only trace of `ds solar` against installed canary (2026-10-20), city `aderm_kyabe` in `arjgpydw_aderm_loc7`.
-
-- **No offline calculation path from the documented commands.** `ds solar project run` refuses "the native host does not link the Solar engine". `ds solar input prepare` refuses `engine_refused` (ReferenceUnitInvalid, bundle "is not cached") and its remedy names no route. The only route is `ds solar reference plan`, then an undocumented external producer, then `ds solar reference import`. Acceptance: a signed-in user goes from `ds solar input capture` to a committed, readable result (`ds solar results read --section boq`) using documented `ds solar` commands only, and `project run` either computes or is retired from help and skills.
-- **The real compute path is hard to reach.** `ds solar application` (45 operations; `ds solar application schema` lists them, `calculate` is the compute) needs a running `ds core serve`, `--yes`, `--lane` and a hand-written JSON request file. Help and the Solar skills describe `project run` as the lifecycle instead. Acceptance: help, skills and the Web Solar page name one reachable lifecycle, with each step's request shape discoverable from the command (a request template or a typed command per common operation such as `calculate`, `readiness` and `prepare_captured`), and no skill step that refuses on a current build.
-- **The stable lane has no Solar addon installed.** `ds solar engine` refuses `solar_engine_missing` on stable while canary works, so every engine-backed `ds solar` command refuses on stable. Release and install matter: Acceptance is an installed stable Core whose `ds solar engine` reports the matching Solar owner, per the per-component admission in [DECOUPLING.md](../../../../../ds-architecture/backlog/DECOUPLING.md#2-release-acceptance).
-- **`ds solar sync status` is not in the source.** The Desktop-paired command was retired with the Solar window (`999a832b`); the installed canary still lists it, and it refuses on a lane the shell cannot fence. The working equivalents are `ds core sync status` and `ds desktop sync status`. Acceptance: no help, skill or doc names `ds solar sync status`, and the installed Solar help points at the Core and Desktop commands instead.
-
+- **A city with no sealed reference bundle has no in-product producer.** With a
+  sealed bundle the documented route works end to end (10-23, ADERM, all seven
+  cities): `input capture`, `project init`/`seed` (or Core `prepare_captured`),
+  `reference plan`/`reference import`, `project run` (now computes through the
+  addon, `91551b6c`) or Core `calculate`, then `results read --section costs
+  --path hybrid_boq` (every declared section reads since `a47d11a6`). A new site
+  still needs the external pvlib producer (`ds-solar/tools/reference-producer`,
+  Python, outside `ds`); the remote acquisition leaf was retired in `53a29db2`,
+  while client-core `solar_project::Command::Reference` and ds-cli-auth
+  `NativeTransport::solar_reference` remain unused. Owner decides: restore one
+  authenticated acquisition, or ship the producer as a Solar addon task.
+- **The Web Solar page does not name the reachable lifecycle.** CLI help, the
+  reference and both Solar skills now name `prepare_captured` →
+  `reference_plan`/`reference_import` → `calculate`/`portfolio_start` with
+  `solar application schema --operation <op>` request shapes; the Web page
+  (UI lane) still describes the retired paths.
+- **The stable lane has no Solar addon installed.** 10-23: `ds core modules`
+  (stable) lists solar, reporter and network `missing`, and the running stable
+  `ds core serve` (started without `DS_SOLAR_ENGINE_BIN`) refuses every Solar
+  compute operation `solar_engine_missing`; a Core given the production engine
+  computes. Release and install matter: acceptance is an installed stable Core
+  whose `ds solar engine` reports the matching Solar owner, per the per-component
+  admission in [DECOUPLING.md](../../../../../ds-architecture/backlog/DECOUPLING.md#2-release-acceptance).
 
 ## 2. Green `run` and release gates
+
+- **Strict sync-runtime Clippy fails on the report seal enum.** `cargo clippy
+  --offline -p ds-sync-runtime --no-deps --all-targets --all-features -- -D
+  warnings` reports `large_enum_variant` at `src/reports.rs:390`
+  (`SealOutcome::Sealed`; Solar's own `SealOutcome` already boxes it). Boxing it
+  changes the ds-cli-report seal callers (`project/export.rs`, `publish.rs`,
+  `combined.rs`); land it with the report lane. Without `--no-deps` the same
+  command first fails on Kernel lints (next entry). Proof: the strict command
+  passes without suppression. (Moved from the Solar sync section 10-23.)
+- **Strict kernel/store Clippy has baseline diagnostics.** `cargo clippy
+  --offline -p ds-command-kernel -p ds-sync-store --all-targets --all-features --
+  -D warnings` still reports the Profile, style and printing findings recorded
+  before, plus new dead code (`survey_working_area_forms_store.rs`,
+  `media_outbox.rs` `MIB`) and `result_large_err`. Leave each to its owning gate
+  slice; proof requires the strict command to pass without lint suppression.
+  (Moved from the Solar sync section 10-23.)
 
 - **Standalone columnar benchmark lock is stale.** `ds-network/benchmarks/columnar/Cargo.lock` still retains retired `ds-geo-ops` and omits the already-consolidated `ds-geo-lite`/`ds-cleaning`/`ds-kml` graph. Its isolated lock refresh needs unrelated package removals beyond the Calamine addition, so it was preserved rather than swept into application lock updates. Refresh and qualify that benchmark workspace separately before relying on its locked builds or measurements.
 
