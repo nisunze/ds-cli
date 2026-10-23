@@ -475,8 +475,12 @@ layouts. A migrated entry keeps the project in its original references.
 Every refresh is verified against the stream's closing summary: a cut-off
 stream, a form that failed part-way, or rows lost against the summary total
 are refused (`survey_entries_unreadable`, `survey_entries_transient`) and the
-held copy is left as it was. The route is `POST /api/v1/data`
-(`query_entries`) under the caller's JWT and named-project authority.
+held copy is left as it was. A form the project has disabled is not
+mirrored by the survey service, so its read fails however often it is
+retried; after such a failure one binding read names it
+(`survey_form_disabled`) and points at the enabled forms. The route is
+`POST /api/v1/data` (`query_entries`) under the caller's JWT and
+named-project authority.
 
 ### Photo files: thumbnails first
 

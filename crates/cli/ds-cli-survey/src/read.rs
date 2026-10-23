@@ -123,6 +123,11 @@ const REFUSALS: &[Refusal] = &[
         remedy: "retry once, then report it with `ds feedback submit`",
     },
     Refusal {
+        code: "survey_form_disabled",
+        when: "the online read failed and the project's binding of --form is disabled; the survey service reads only enabled project forms",
+        remedy: "read an enabled form from `ds survey project-forms list --project <id> --status enabled`, or enable this one with `ds survey project-forms plan` then `apply`",
+    },
+    Refusal {
         code: "survey_entries_output",
         when: "--out names an existing or unwritable file, or complete-file is incomplete or exceeds the owning source-format byte bound",
         remedy: "choose a new writable path",
@@ -271,7 +276,8 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let (lane_token, project_id, (source, manifest, rows)) = match offline_answer {
         Some(held) => held,
         None => {
-            let headless = ds_cli_auth::survey_hold(lane, project, answer)?;
+            let headless = ds_cli_auth::survey_hold(lane, project, answer)
+                .map_err(|failure| diagnose(failure, lane, project, form))?;
             (
                 headless.lane().to_owned(),
                 headless.project_id().to_owned(),
@@ -315,11 +321,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 /// Deleted entries are never held, so a read that wants them asks the cloud
 /// directly, as before the hold, and says so.
 fn cloud(inputs: &Inputs, request: &SurveyEntriesReadRequest) -> Result<Value, Failure> {
-    let headless = ds_cli_auth::survey_entries_read(
-        inputs.require("lane")?,
-        inputs.require("project")?,
-        request,
-    )?;
+    let (lane, project) = (inputs.require("lane")?, inputs.require("project")?);
+    let headless = ds_cli_auth::survey_entries_read(lane, project, request)
+        .map_err(|failure| diagnose(failure, lane, project, request.form()))?;
     let read = headless.result();
     let mut data = answer_json(headless.lane(), read, inputs, request);
     data["source"] = json!("cloud");
@@ -392,6 +396,56 @@ fn hold_failure(error: HoldError<Failure>) -> Failure {
             .remedy("retry once, then report it with `ds feedback submit`"),
         HoldError::Store(message) => store_failure(message),
     }
+}
+
+/// An unreadable answer for a form this project has disabled is not stream
+/// damage: the survey service mirrors only enabled project forms, so the read
+/// fails however often it is retried (feedback d6f052b0). Only after the online
+/// read failed, one binding read names that cause; any other outcome keeps the
+/// original refusal.
+fn diagnose(failure: Failure, lane: &str, project: &str, form: &str) -> Failure {
+    if failure.code() != "survey_entries_unreadable" {
+        return failure;
+    }
+    match ds_cli_auth::project_forms(lane, project) {
+        Ok(headless) => name_disabled(
+            failure,
+            project,
+            form,
+            headless
+                .snapshot()
+                .forms()
+                .iter()
+                .map(|binding| (binding.slug(), binding.enabled())),
+        ),
+        Err(_) => failure,
+    }
+}
+
+fn name_disabled<'a>(
+    failure: Failure,
+    project: &str,
+    form: &str,
+    bindings: impl IntoIterator<Item = (&'a str, bool)>,
+) -> Failure {
+    let disabled = bindings
+        .into_iter()
+        .any(|(slug, enabled)| slug == form && !enabled);
+    if !disabled {
+        return failure;
+    }
+    Failure::invalid(
+        "survey_form_disabled",
+        format!(
+            "`{form}` is disabled in project {project}; the survey service reads only enabled project forms, so retrying cannot succeed"
+        ),
+    )
+    .remedy(
+        "read an enabled form from `ds survey project-forms list --project <id> --status enabled`, or enable this one with `ds survey project-forms plan` then `apply`",
+    )
+    .next(format!(
+        "ds survey project-forms list --project {project} --status enabled"
+    ))
 }
 
 fn store_failure(message: String) -> Failure {
@@ -538,58 +592,5 @@ pub fn render(data: &Value) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use ds_cli_contract::args::parse as parse_args;
-
-    pub(super) fn inputs(arguments: &[&str]) -> Inputs {
-        parse_args(
-            &COMMAND,
-            &arguments
-                .iter()
-                .map(|value| (*value).to_owned())
-                .collect::<Vec<_>>(),
-        )
-        .expect("closed arguments")
-    }
-
-    #[test]
-    fn filters_parse_before_auth_and_the_default_bound_is_a_hundred() {
-        let request = parse(&inputs(&[
-            "--project",
-            "p1",
-            "--form",
-            "transformer_survey",
-            "--bbox",
-            "29.7, -2.1,29.8,-2.0",
-            "--updated-after",
-            "2026-09-01T00:00:00Z",
-        ]))
-        .unwrap();
-        assert_eq!(request.limit(), 100);
-        assert_eq!(request.form(), "transformer_survey");
-        assert_eq!(request.updated_after(), Some("2026-09-01T00:00:00Z"));
-        for bad in [
-            &["--limit", "0"][..],
-            &["--limit", "5001"],
-            &["--bbox", "1,2,3"],
-            &["--bbox", "30,-2,29,-1"],
-            &["--updated-after", "yesterday"],
-        ] {
-            let mut arguments = vec!["--project", "p1", "--form", "f"];
-            arguments.extend_from_slice(bad);
-            let failure = parse(&inputs(&arguments)).unwrap_err();
-            assert_eq!(failure.code(), "survey_entries_invalid", "{bad:?}");
-        }
-    }
-
-    #[test]
-    fn a_partial_read_says_so_in_words() {
-        let text = render(
-            &json!({"project":{"ds_project":"p1"},"form":"f","returned":100,
-            "total":247,"media_count":88,"truncated":true}),
-        );
-        assert!(text.contains("100 of 247 entries  88 photos"));
-        assert!(text.contains("NOT ALL"));
-    }
-}
+#[path = "read_tests.rs"]
+mod tests;
