@@ -138,6 +138,7 @@ pub static DOMAIN: Domain = Domain {
         &repair::PROJECT,
         &repair::WORKSPACE,
         &repair::PUBLISH,
+        &repair::RESEAL,
         &project::SOURCES,
         &project::INIT,
         &project::WRITE,

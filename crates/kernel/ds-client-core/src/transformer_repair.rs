@@ -54,6 +54,7 @@ fn repair_error(error: design_repair::RepairError) -> ClientError {
         "repair_change_ambiguous" => "repair_change_ambiguous",
         "repair_preservation_refused" => "repair_preservation_refused",
         "repair_root_unknown" => "repair_root_unknown",
+        "repair_renumber_refused" => "repair_renumber_refused",
         _ => "repair_document_invalid",
     })
 }
@@ -96,6 +97,9 @@ impl TransformerRepairPublication {
             let features = self.target.layers[&change.layer]["features"]
                 .as_array()
                 .ok_or_else(|| invalid("repair_target_invalid"))?;
+            // A renumber's identity is repeated by definition: its exact
+            // reviewed feature digest, not the first match, selects the feature.
+            let renumber = change.field == "id";
             let feature = features
                 .iter()
                 .find(|feature| {
@@ -106,9 +110,19 @@ impl TransformerRepairPublication {
                             Value::Number(v) => v.to_string() == change.feature_id,
                             _ => false,
                         })
+                        && (!renumber
+                            || ds_command_kernel::design::digest(feature).ok().as_deref()
+                                == Some(change.before_feature_digest.as_str()))
                 })
                 .ok_or_else(|| invalid("repair_identity_required"))?;
-            changes.push(json!({"layer":change.layer,"identity":design_repair::feature_identity(feature).map_err(repair_error)?,"property":change.field,"before":change.before,"after":change.after}));
+            let mut wire = json!({"layer":change.layer,"identity":design_repair::feature_identity(feature).map_err(repair_error)?,"property":change.field,"before":change.before,"after":change.after});
+            if renumber {
+                // The server pins the same feature by its canonical JSON digest.
+                wire["feature_digest"] =
+                    json!(ds_command_kernel::report_export::jcs::sha256(feature)
+                        .map_err(|_| invalid("repair_target_invalid"))?);
+            }
+            changes.push(wire);
         }
         let body=serde_json::to_vec(&json!({"action":"repair_transformer_properties","eds_project_id":project,"transformer_name":self.target.transformer,
             "repair":{"operation_id":self.operation_id,"source_version":self.proposal.request.target.server_version,

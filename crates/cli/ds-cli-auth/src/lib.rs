@@ -5138,6 +5138,11 @@ fn map_client(error: ClientError) -> Failure {
         "repair_proposal_changed" |
         "repair_readback_unverified" |
         "repair_receipt_mismatch" |
+        "repair_renumber_refused" |
+        "repair_reseal_expectation_changed" |
+        "repair_reseal_expectation_required" |
+        "repair_reseal_head_moved" |
+        "repair_reseal_not_needed" |
         "repair_response_failed" |
         "repair_response_invalid" |
         "repair_response_too_large" |
@@ -5306,6 +5311,11 @@ fn map_service_refusal(
             | "transformer_repair_preimage_moved"
             | "transformer_repair_source_invalid"
             | "transformer_repair_source_moved"
+            | "transformer_reseal_invalid"
+            | "transformer_reseal_not_needed"
+            | "transformer_reseal_operation_conflict"
+            | "transformer_reseal_source_invalid"
+            | "transformer_reseal_source_moved"
             | "transformer_retired"
             | "transformer_source_changed"
             | "transformer_version_conflict"
@@ -6869,6 +6879,28 @@ pub fn repair_transformer(
         input.project(),
         ds_project_data::metadata::Kind::TransformerStatus,
     )?;
+    Ok(receipt)
+}
+
+/// Heal one saved head's stale stored content digest (or, unconfirmed, plan it).
+pub fn reseal_transformer_digest(
+    lane: &str,
+    project: &str,
+    input: &ds_client_core::TransformerDigestReseal,
+) -> Result<HeadlessProjectReport<Value>, Failure> {
+    let receipt = headless_named_report(
+        lane,
+        project,
+        |device, project| device.reseal_transformer_digest(project, input),
+        |client, project| client.reseal_transformer_digest(project, input, now()),
+    )?;
+    if input.confirmed {
+        metadata::invalidate(
+            receipt.identity(),
+            project,
+            ds_project_data::metadata::Kind::TransformerStatus,
+        )?;
+    }
     Ok(receipt)
 }
 

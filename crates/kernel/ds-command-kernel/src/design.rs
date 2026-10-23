@@ -408,6 +408,14 @@ impl Snapshot {
     /// owner references remain recorded facts for a diagnostic or an explicit
     /// repair; a mutation requiring stable identity refuses them separately.
     pub fn validate_retained(&self) -> Result<(), String> {
+        self.validate_retained_identities(false)
+    }
+    /// The same admission for a governed renumber of a repeated feature
+    /// identity: the snapshot may hold the duplicate the renumber resolves.
+    pub fn validate_retained_allowing_duplicate_ids(&self) -> Result<(), String> {
+        self.validate_retained_identities(true)
+    }
+    fn validate_retained_identities(&self, allow_duplicate_ids: bool) -> Result<(), String> {
         if self.schema != SCHEMA || self.crs != "EPSG:4326" {
             return Err("expected ds.design.snapshot/v1 and EPSG:4326".into());
         }
@@ -439,7 +447,9 @@ impl Snapshot {
                         Value::Number(_) => {}
                         _ => return Err("feature id must be a nonempty string or number".into()),
                     }
-                    if !ids.insert(serde_json::to_string(id).map_err(|e| e.to_string())?) {
+                    if !ids.insert(serde_json::to_string(id).map_err(|e| e.to_string())?)
+                        && !allow_duplicate_ids
+                    {
                         return Err(format!("duplicate feature identity in {layer}"));
                     }
                 }

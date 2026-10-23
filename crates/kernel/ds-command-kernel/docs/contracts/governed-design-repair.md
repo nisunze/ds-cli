@@ -116,8 +116,9 @@ non-selected property remain equal. The pure result says `persisted: false`.
 The persistence owner must atomically fence and save the selected projection,
 then perform exact saved readback. A retry is bound to its operation/request
 digest. Cancellation before that explicit effect boundary is non-mutating.
-Repair has no process, resize, renumber, rebuild, phase rebalance, blanket
-demotion, hidden default or report-generation call. Report preflight remains
+Repair has no process, resize, rebuild, phase rebalance, blanket demotion,
+hidden default or report-generation call, and no renumber other than the
+explicit duplicated-identity `renumber` operation below. Report preflight remains
 required after a successful repair.
 
 ## Closed property authority
@@ -133,6 +134,7 @@ unknown fields are never repairable through this operation.
 | `lv_poles` | `existing_status` (lifecycle status: bounded text or null, never a number) |
 | `lv_lines`, `service_cables` | `cable_size`, `cab_size`, `service_cable_size`, `length` |
 | `customers` | `meter_type`, `category`, `connection_pole_id`, `connection_override_pole_id`, `service_cable_size`, `peak_power_w`, `num_houses` |
+| `lv_poles` | `id`, only through the `renumber` operation below |
 
 These layers also admit an explicit `drafting_status: "approved"` assignment;
 demotion, deletion or null approval is refused. Engineering quantities and
@@ -142,6 +144,27 @@ strings of at most 2,048 UTF-8 bytes without control characters, or such
 numbers. Engineering absence/null is preserved or explicitly
 repairable only when the reviewed field policy permits it. Legitimate zero
 ratings stay zero; repair does not invent planned supply.
+
+## Duplicated-identity renumber
+
+Owner decision 2026-10-23. A target whose `lv_poles` repeats a member `id`
+refuses every ordinary operation (`repair_target_invalid`). The operation
+`{"kind":"renumber","target_layer":"lv_poles","target_id":"14",
+"before_feature_digest":"<digest of that exact feature>","new_id":"174"}` admits
+that target and proposes one `id` change for the one feature of the repeated
+identity whose reviewed digest matches; its change keeps `feature_id` = the old
+id and the pinned `before_feature_digest`. It requires `id` on the reviewed
+allowlist and policy, refuses an identity that is not repeated, a pin that
+matches no feature (`repair_target_changed`) or byte-identical repeats
+(`repair_identity_ambiguous`), and refuses with `repair_renumber_refused` a
+second identity path on the feature, a new id that is not an exact identifier
+of the old JSON type or is already used in the layer or the request, and any
+customer `connection_pole_id`/`connection_override_pole_id` or declared policy
+reference naming the repeated id. Assignment and restoration still refuse `id`.
+Projection writes only the member `id`; the undo check proves everything else is
+equal. Publication sends the server the same pin as `feature_digest`, the RFC
+8785 SHA-256 of the feature (`tests/governed_repair_renumber.rs`, and the
+shared vector in ds-client-core `client_contract/transformer_reseal.rs`).
 
 ## Shared descriptors and proof
 

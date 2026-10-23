@@ -1,7 +1,7 @@
 //! Thin file/authority bindings for the single native repair owner.
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
+    spec::{Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires},
 };
 use ds_command_kernel::design_repair;
 use serde_json::{Value, json};
@@ -57,6 +57,7 @@ const REFUSALS: &[Refusal] = &[
     refusal("repair_field_invalid"),
     refusal("repair_source_required"),
     refusal("repair_unit_mismatch"),
+    refusal("repair_renumber_refused"),
 ];
 const fn command(
     id: &'static str,
@@ -338,6 +339,150 @@ pub fn publish(i: &Inputs, c: &Context) -> Result<Value, Failure> {
     let receipt = ds_cli_auth::repair_transformer(i.require("lane")?, &publication)?;
     Ok(json!({"project":receipt.project_id(),"lane":receipt.lane(),"result":receipt.result()}))
 }
+const RESEAL_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "confirmation_required",
+        when: "The reseal was not previewed with --dry-run nor confirmed with --yes.",
+        remedy: "Run --dry-run, review the plan, then pass --yes with its version and stored digest.",
+    },
+    Refusal {
+        code: "repair_reseal_not_needed",
+        when: "The stored content digest already agrees with the saved layers.",
+        remedy: "Nothing to heal; repair the head directly.",
+    },
+    Refusal {
+        code: "repair_reseal_expectation_required",
+        when: "--yes was given without --expect-version and --expect-stored-digest.",
+        remedy: "Pass the version and stored digest the --dry-run plan reported.",
+    },
+    Refusal {
+        code: "repair_reseal_expectation_changed",
+        when: "The head's version or stored digest differs from the reviewed plan.",
+        remedy: "Run --dry-run again and review the current head.",
+    },
+    Refusal {
+        code: "repair_reseal_head_moved",
+        when: "The stored row and the saved room describe different heads.",
+        remedy: "Retry the --dry-run once the head is quiet.",
+    },
+    refusal("repair_operation_id_invalid"),
+    refusal("repair_receipt_mismatch"),
+    refusal("repair_readback_unverified"),
+    refusal("repair_response_invalid"),
+    refusal("repair_response_failed"),
+    refusal("repair_response_too_large"),
+    refusal("repair_target_invalid"),
+    refusal("transformer_reseal_invalid"),
+    refusal("transformer_reseal_not_needed"),
+    refusal("transformer_reseal_source_moved"),
+    refusal("transformer_reseal_source_invalid"),
+    refusal("transformer_reseal_operation_conflict"),
+    refusal("transformer_version_mismatch"),
+    refusal("transformer_locked"),
+    refusal("transformer_retired"),
+    refusal("transformer_deleted"),
+    refusal("reserved_transformer_name"),
+    refusal("insufficient_permissions"),
+    refusal("project_archived"),
+    refusal("project_expired"),
+];
+pub static RESEAL: Command = Command {
+    authority: Authority::HeadlessProject,
+    purpose: "Heal a saved head whose stored metadata.content_digest is not the canonical digest of its own stored layers, which repair refuses (transformer_repair_source_moved). --dry-run reads the stored row and the saved room and reports both digests and the version. --yes with that version and stored digest sends one fenced reseal that stores the recomputed digest: no layer byte, version, approval or derived state changes. The receipt names the old and new digest and the version; a stored-row re-read verifies it. A head whose digests agree refuses.",
+    args: &[
+        Arg::value("project", "<id>", "Explicit project.").required(),
+        Arg::value(
+            "transformer",
+            "<name>",
+            "Saved transformer whose stored digest disagrees with its layers.",
+        )
+        .required(),
+        Arg::value("lane", "<stable|canary>", "Exact authority lane.")
+            .choices(&["stable", "canary"])
+            .required(),
+        Arg::switch("dry-run", "Read and report the plan without writing."),
+        Arg::value(
+            "expect-version",
+            "<n>",
+            "Required with --yes: the version the --dry-run plan reported.",
+        ),
+        Arg::value(
+            "expect-stored-digest",
+            "<sha256>",
+            "Required with --yes: the stale stored digest the --dry-run plan reported.",
+        ),
+        Arg::value(
+            "operation-id",
+            "<id>",
+            "Replay identity; defaults to one derived from transformer, version and stored digest.",
+        ),
+    ],
+    output: "dry run: .result.plan {version, stored_content_digest, layers_content_digest}; with --yes also .result.receipt {version, previous_content_digest, content_digest, layers_changed:false} and verified:true.",
+    examples: &[
+        Example {
+            command: "ds design repair reseal --project <id> --transformer <name> --lane stable --dry-run --output json",
+            note: "Review .data.result.plan before confirming.",
+            runnable: false,
+        },
+        Example {
+            command: "ds design repair reseal --project <id> --transformer <name> --lane stable --expect-version <n> --expect-stored-digest <sha256> --yes --output json",
+            note: "Then repair the head with design repair publish.",
+            runnable: false,
+        },
+    ],
+    refusals: RESEAL_REFUSALS,
+    availability: ds_cli_auth::native_availability,
+    ..command(
+        "design.repair.reseal",
+        &["design", "repair", "reseal"],
+        "Heal a saved head's stale stored content digest from its own layers.",
+        &[],
+        Effect::GlobalWrite,
+    )
+};
+pub fn reseal(i: &Inputs, c: &Context) -> Result<Value, Failure> {
+    let dry_run = i.switch("dry-run");
+    if !dry_run && !c.confirmed {
+        return Err(Failure::invalid(
+            "confirmation_required",
+            "Review the --dry-run plan and pass --yes.",
+        ));
+    }
+    let transformer = i.require("transformer")?.to_owned();
+    let expect_version = i
+        .value("expect-version")
+        .map(|v| {
+            v.parse::<u64>().map_err(|_| {
+                Failure::invalid(
+                    "repair_document_invalid",
+                    "--expect-version must be a positive integer.",
+                )
+            })
+        })
+        .transpose()?;
+    let expect_stored_digest = i.value("expect-stored-digest").map(str::to_owned);
+    let operation_id = match i.value("operation-id") {
+        Some(id) => id.to_owned(),
+        None => format!(
+            "reseal-{}-v{}-{}",
+            transformer.to_ascii_lowercase(),
+            expect_version.unwrap_or(0),
+            expect_stored_digest
+                .as_deref()
+                .map_or("plan", |d| d.get(..16).unwrap_or(d))
+        ),
+    };
+    let input = ds_client_core::TransformerDigestReseal {
+        operation_id,
+        transformer,
+        confirmed: !dry_run,
+        expect_version,
+        expect_stored_digest,
+    };
+    let receipt =
+        ds_cli_auth::reseal_transformer_digest(i.require("lane")?, i.require("project")?, &input)?;
+    Ok(json!({"project":receipt.project_id(),"lane":receipt.lane(),"result":receipt.result()}))
+}
 pub fn render(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_default()
 }
@@ -361,6 +506,7 @@ fn native_failure(code: &str, message: String) -> Failure {
         | "repair_preservation_refused"
         | "repair_proposal_changed"
         | "repair_readback_mismatch"
+        | "repair_renumber_refused"
         | "repair_root_unknown"
         | "repair_scope_invalid"
         | "repair_scope_mismatch"

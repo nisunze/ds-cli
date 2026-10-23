@@ -1708,6 +1708,17 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::transformer_repair::run(self.profile, transport, self.authority(), project, input)
     }
+    pub fn reseal_transformer_digest<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        project: &str,
+        input: &crate::TransformerDigestReseal,
+        now: u64,
+    ) -> Result<serde_json::Value, ClientError> {
+        input.validate(project)?;
+        self.ensure_active(now)?;
+        crate::transformer_reseal::run(self.profile, transport, self.authority(), project, input)
+    }
     pub fn save_transformers<T: AuthorizedTransport>(
         &self,
         transport: &mut T,

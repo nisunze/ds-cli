@@ -14688,3 +14688,5 @@ fn installation_invalid_receipts_and_foreign_identity_replies_cannot_acquire_or_
 }
 #[path = "client_contract/configuration_save.rs"]
 mod configuration_save_exchange;
+#[path = "client_contract/transformer_reseal.rs"]
+mod transformer_reseal_exchange;

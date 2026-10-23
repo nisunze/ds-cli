@@ -2719,6 +2719,11 @@ static DESIGN_ENTRIES: &[Entry] = &[
         render: ds_cli_design::repair::render,
     },
     Entry {
+        command: &ds_cli_design::repair::RESEAL,
+        handler: ds_cli_design::repair::reseal,
+        render: ds_cli_design::repair::render,
+    },
+    Entry {
         command: &ds_cli_design::project::SOURCES,
         handler: ds_cli_design::project::sources,
         render: ds_cli_design::project::render,

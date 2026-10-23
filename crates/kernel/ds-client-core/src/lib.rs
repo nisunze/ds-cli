@@ -325,11 +325,13 @@ pub use transport::SharedAssetsCall;
 
 pub mod collisions_publish;
 pub mod transformer_repair;
+pub mod transformer_reseal;
 mod transformer_save;
 pub use collisions_publish::{
     CollisionsBasisEntry, CollisionsInputError, CollisionsPublication, CollisionsPublicationReceipt,
 };
 pub use transformer_repair::TransformerRepairPublication;
+pub use transformer_reseal::TransformerDigestReseal;
 pub use transformer_save::{
     TransformerSaveBatch, TransformerSaveCall, TransformerSaveItem, TransformerSaveReceipt,
     TransformerSaved,

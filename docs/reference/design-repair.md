@@ -25,7 +25,17 @@ If evidence declares a raw file SHA-256, supply its exact `--evidence-file`;
 changed bytes or decoded layers refuse. Publication makes one exact saved-room readback
 and one property-only write. Locks, project lifecycle, permissions, stale heads,
 altered preimages, operation payload conflicts and unverified readbacks refuse.
-It never processes, resizes, renumbers, rebuilds or demotes approved data.
+It never processes, resizes, rebuilds or demotes approved data. Its one renumber is
+the explicit `renumber` operation: one `lv_poles` feature of a repeated identity,
+pinned by its reviewed feature digest, gets an unused id, and nothing else moves.
+
+`ds design repair reseal --project P --transformer T --lane stable --dry-run`
+reports a saved head whose stored content digest disagrees with the digest of
+its own stored layers (publication refuses such a head with
+`transformer_repair_source_moved`). With `--expect-version` and
+`--expect-stored-digest` from that plan and `--yes`, it stores the recomputed
+digest without sending or changing any layer, version or approval, verifies the
+receipt and a stored-row re-read, and refuses when the digests already agree.
 
 External analysis uses the executor's own commands and file formats. Its evidence
 returns through these direct native controls; persistence remains an explicit

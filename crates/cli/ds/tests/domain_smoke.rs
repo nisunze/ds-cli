@@ -7006,8 +7006,8 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
         // renumber and five revision controls replaced the ordinal restore;
         // 2026-10-18: the three saved MV model commands; 2026-10-19: local
         // collision detection and publication, and the retained MV model
-        // catalogue. 120 + 12 - 1 + 3.
-        134,
+        // catalogue. 120 + 12 - 1 + 3. 2026-10-23: the stored-digest reseal.
+        135,
         "the design domain should expose its whole family: {commands:?}"
     );
     for command in commands {
@@ -7140,6 +7140,7 @@ fn every_design_command_is_discoverable_without_the_desktop_installed() {
                     | "design.materials.apply"
                     | "design.lv.analysis-read"
                     | "design.repair.publish"
+                    | "design.repair.reseal"
                     | "design.transformer.backup"
                     | "design.transformer.restore-deleted"
             ) {

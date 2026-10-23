@@ -34,6 +34,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("design.repair.apply-selected", "local_file_write", "none"),
     ("design.project.repair", "local_file_write", "none"),
     ("design.repair.publish", "global_write", "headless_project"),
+    ("design.repair.reseal", "global_write", "headless_project"),
     ("data.mv-lv-orphans", "local_file_write", "none"),
     // Exact effect and authority reviewed from the integrated CLI descriptors.
     ("assets.download", "read_only", "headless_project"),

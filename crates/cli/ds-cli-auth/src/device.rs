@@ -954,6 +954,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, repair_transformer, project, input)
     }
+    pub fn reseal_transformer_digest(
+        &mut self,
+        project: &str,
+        input: &ds_client_core::TransformerDigestReseal,
+    ) -> Result<Value, ClientError> {
+        fixed_device_call!(self, reseal_transformer_digest, project, input)
+    }
     pub fn save_transformers(
         &mut self,
         project: &str,

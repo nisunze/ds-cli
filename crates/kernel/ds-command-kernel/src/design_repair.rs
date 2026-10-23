@@ -14,6 +14,9 @@ pub const MAX_SOURCE_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_PROPOSAL_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_POLICY_BYTES: usize = 512 * 1024;
 
+mod renumber;
+pub use renumber::repair_identity_renumber_layer;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Scope {
@@ -395,6 +398,14 @@ pub enum RepairOperation {
         target_layer: String,
         target_ids: Vec<String>,
         values: BTreeMap<String, Cell>,
+    },
+    /// Give the one feature of a repeated identity whose reviewed digest is
+    /// `before_feature_digest` the unused identity `new_id`.
+    Renumber {
+        target_layer: String,
+        target_id: String,
+        before_feature_digest: String,
+        new_id: String,
     },
 }
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
@@ -1083,10 +1094,17 @@ fn add_change(
     });
     Ok(())
 }
-fn check_target(target: &Snapshot, fence: &TargetFence) -> Result<(), RepairError> {
-    target
-        .validate_retained()
-        .map_err(|e| error("repair_target_invalid", e))?;
+fn check_target(
+    target: &Snapshot,
+    fence: &TargetFence,
+    renumbering: bool,
+) -> Result<(), RepairError> {
+    if renumbering {
+        target.validate_retained_allowing_duplicate_ids()
+    } else {
+        target.validate_retained()
+    }
+    .map_err(|e| error("repair_target_invalid", e))?;
     if !sha(&fence.snapshot_revision) || revision(target)? != fence.snapshot_revision {
         return Err(error(
             "repair_target_changed",
@@ -1149,18 +1167,45 @@ pub fn propose(
         }
         for field in fields {
             name(field)?;
-            rule(request, layer, field)?;
+            if field == "id" && repair_identity_renumber_layer(layer) {
+                renumber::identity_rule(request, layer)?;
+            } else {
+                rule(request, layer, field)?;
+            }
         }
     }
-    check_target(target, &request.target)?;
+    let renumbering = request
+        .operations
+        .iter()
+        .any(|operation| matches!(operation, RepairOperation::Renumber { .. }));
+    check_target(target, &request.target, renumbering)?;
     if let Some(source) = source {
         validate_source(source, &request.scope)?;
     }
     let mut changes = Vec::new();
     let mut seen = BTreeSet::new();
+    let mut new_ids = BTreeSet::new();
     let mut match_counts = Vec::new();
     for operation in &request.operations {
         match operation {
+            RepairOperation::Renumber {
+                target_layer,
+                target_id,
+                before_feature_digest,
+                new_id,
+            } => renumber::propose(
+                &mut changes,
+                &mut seen,
+                &mut new_ids,
+                request,
+                target,
+                renumber::Renumber {
+                    target_layer,
+                    target_id,
+                    before_feature_digest,
+                    new_id,
+                },
+            )?,
             RepairOperation::Restore {
                 source_layer,
                 target_layer,
@@ -1300,12 +1345,44 @@ pub fn propose(
     bounded(&proposal, MAX_PROPOSAL_BYTES)?;
     Ok(proposal)
 }
+/// A renumber's cell is the feature's member `id`; every other cell is a
+/// property. `id` is protected, so no property change can carry that field.
+fn identity_change(change: &CellChange) -> bool {
+    change.field == "id"
+}
+fn read_change_cell(feature: &Value, change: &CellChange) -> Cell {
+    if identity_change(change) {
+        feature
+            .get("id")
+            .map_or(Cell::Missing, |value| Cell::Value {
+                value: value.clone(),
+            })
+    } else {
+        Cell::read(feature, &change.field)
+    }
+}
+fn write_change_cell(feature: &mut Value, change: &CellChange, cell: &Cell) {
+    let object = if identity_change(change) {
+        feature.as_object_mut().unwrap()
+    } else {
+        feature["properties"].as_object_mut().unwrap()
+    };
+    match cell {
+        Cell::Missing => {
+            object.remove(&change.field);
+        }
+        Cell::Value { value } => {
+            object.insert(change.field.clone(), value.clone());
+        }
+    }
+}
 fn project_cells(target: &Snapshot, changes: &[CellChange]) -> Result<Snapshot, RepairError> {
     let mut next = target.clone();
-    let mut offsets: BTreeMap<(String, String), usize> = BTreeMap::new();
+    let mut offsets: BTreeMap<(String, String, bool), usize> = BTreeMap::new();
     let mut layer_identities = BTreeMap::new();
     for change in changes {
-        let key = (change.layer.clone(), change.feature_id.clone());
+        let identity = identity_change(change);
+        let key = (change.layer.clone(), change.feature_id.clone(), identity);
         if !offsets.contains_key(&key) {
             let features = layer(&target.layers, &change.layer)?;
             let index = layer_identities
@@ -1317,61 +1394,73 @@ fn project_cells(target: &Snapshot, changes: &[CellChange]) -> Result<Snapshot, 
                     "Selected target identity disappeared.",
                 )
             })?;
-            if positions.len() != 1 {
-                return Err(error(
-                    "repair_identity_ambiguous",
-                    "Selected identity is ambiguous.",
-                ));
-            }
-            let offset = positions[0];
-            stable_id(&features[offset], index)?;
-            if hash(&features[offset])? != change.before_feature_digest {
-                return Err(error(
-                    "repair_target_changed",
-                    "Selected feature differs from reviewed bytes.",
-                ));
-            }
+            let offset = if identity {
+                // A renumber names one feature of a repeated identity by its
+                // exact reviewed digest, never by position.
+                let mut pinned = Vec::new();
+                for &position in positions {
+                    if hash(&features[position])? == change.before_feature_digest {
+                        pinned.push(position);
+                    }
+                }
+                match pinned.as_slice() {
+                    [offset] => *offset,
+                    [] => {
+                        return Err(error(
+                            "repair_target_changed",
+                            "Selected feature differs from reviewed bytes.",
+                        ))
+                    }
+                    _ => {
+                        return Err(error(
+                            "repair_identity_ambiguous",
+                            "Selected identity is ambiguous.",
+                        ))
+                    }
+                }
+            } else {
+                if positions.len() != 1 {
+                    return Err(error(
+                        "repair_identity_ambiguous",
+                        "Selected identity is ambiguous.",
+                    ));
+                }
+                let offset = positions[0];
+                stable_id(&features[offset], index)?;
+                if hash(&features[offset])? != change.before_feature_digest {
+                    return Err(error(
+                        "repair_target_changed",
+                        "Selected feature differs from reviewed bytes.",
+                    ));
+                }
+                offset
+            };
             offsets.insert(key.clone(), offset);
         }
         let offset = offsets[&key];
         let original = &target.layers[&change.layer]["features"][offset];
-        if Cell::read(original, &change.field) != change.before {
+        if read_change_cell(original, change) != change.before {
             return Err(error(
                 "repair_target_changed",
                 "Selected cell differs from its reviewed before value.",
             ));
         }
-        let properties = next.layers.get_mut(&change.layer).unwrap()["features"][offset]
-            ["properties"]
-            .as_object_mut()
-            .unwrap();
-        match &change.after {
-            Cell::Missing => {
-                properties.remove(&change.field);
-            }
-            Cell::Value { value } => {
-                properties.insert(change.field.clone(), value.clone());
-            }
-        }
+        let feature = &mut next.layers.get_mut(&change.layer).unwrap()["features"][offset];
+        write_change_cell(feature, change, &change.after);
     }
     // Verify by undoing only selected cells. Every other byte-valued fact,
     // including feature order, geometry, counts and snapshot inputs, must equal
     // the original. No normalizer is allowed on this path.
     let mut restored = next.clone();
     for change in changes {
-        let offset = offsets[&(change.layer.clone(), change.feature_id.clone())];
-        let properties = restored.layers.get_mut(&change.layer).unwrap()["features"][offset]
-            ["properties"]
-            .as_object_mut()
-            .unwrap();
-        match &change.before {
-            Cell::Missing => {
-                properties.remove(&change.field);
-            }
-            Cell::Value { value } => {
-                properties.insert(change.field.clone(), value.clone());
-            }
-        }
+        let key = (
+            change.layer.clone(),
+            change.feature_id.clone(),
+            identity_change(change),
+        );
+        let feature =
+            &mut restored.layers.get_mut(&change.layer).unwrap()["features"][offsets[&key]];
+        write_change_cell(feature, change, &change.before);
     }
     if serde_json::to_value(&restored).unwrap() != serde_json::to_value(target).unwrap() {
         return Err(error(
@@ -1379,8 +1468,12 @@ fn project_cells(target: &Snapshot, changes: &[CellChange]) -> Result<Snapshot, 
             "Projection changed facts outside the selected cells.",
         ));
     }
-    next.validate_retained()
-        .map_err(|e| error("repair_target_invalid", e))?;
+    if changes.iter().any(identity_change) {
+        next.validate_retained_allowing_duplicate_ids()
+    } else {
+        next.validate_retained()
+    }
+    .map_err(|e| error("repair_target_invalid", e))?;
     Ok(next)
 }
 pub fn apply_selected(
