@@ -139,7 +139,7 @@ fn assembled_sheet_context_is_admitted_with_exact_keys_and_api_replies_back_to_f
         layer("contours_index", 1),
         layer("rivers", 0),
     ];
-    let capture = assemble("project", "aln-1", layers, &snapshot).unwrap();
+    let capture = assemble("project", "aln-1", layers, &snapshot, &titles()).unwrap();
     capture.validate("project").unwrap();
     let render = &capture.render;
     let carried: Vec<&str> = render["layers"]
@@ -167,7 +167,7 @@ fn assembled_sheet_context_is_admitted_with_exact_keys_and_api_replies_back_to_f
     assert!(elements.iter().any(|e| e["kind"] == "map"));
     assert_eq!(
         elements.iter().find(|e| e["id"] == "legend").unwrap()["legend"]["titles"]["lv_lines"],
-        "New LV"
+        "Nouveau LV"
     );
     // Same held bytes, same capture: the digest pins sources and recipe.
     let again = assemble(
@@ -180,6 +180,7 @@ fn assembled_sheet_context_is_admitted_with_exact_keys_and_api_replies_back_to_f
             layer("contours_index", 1),
         ],
         &snapshot,
+        &titles(),
     )
     .unwrap();
     assert_eq!(again.context_sha256, capture.context_sha256);
@@ -188,13 +189,21 @@ fn assembled_sheet_context_is_admitted_with_exact_keys_and_api_replies_back_to_f
 #[test]
 fn an_unresolved_family_or_captured_mv_geometry_refuses_instead_of_printing_unstyled() {
     let snapshot = styles(&["roads"]);
-    let refused = assemble("project", "aln-1", vec![layer("rivers", 1)], &snapshot).unwrap_err();
+    let refused = assemble(
+        "project",
+        "aln-1",
+        vec![layer("rivers", 1)],
+        &snapshot,
+        &titles(),
+    )
+    .unwrap_err();
     assert!(refused.contains("style_resolution_unknown"), "{refused}");
     let refused = assemble(
         "project",
         "aln-1",
         vec![layer("dsgrid_mv_lines", 1)],
         &snapshot,
+        &titles(),
     )
     .unwrap_err();
     assert!(
@@ -210,6 +219,7 @@ fn the_key_plan_capture_is_one_model_overview_pinned_to_its_sources() {
         "project",
         vec![layer("roads", 3), layer("tr", 2)],
         &snapshot,
+        &titles(),
     )
     .unwrap();
     assert_eq!(capture.schema, KEY_PLAN_SCHEMA);
@@ -227,6 +237,7 @@ fn the_key_plan_names_transformers_and_places_while_sheets_name_nothing_extra() 
         "project",
         vec![layer("tr", 2), layer("places", 1), layer("roads", 1)],
         &snapshot,
+        &titles(),
     )
     .unwrap();
     let overrides = &key_plan.render["layout"]["style_overrides"];
@@ -236,7 +247,14 @@ fn the_key_plan_names_transformers_and_places_while_sheets_name_nothing_extra() 
         assert_eq!(overrides[id]["label"]["size_pt"], 7.0);
     }
     assert!(overrides.get("roads").is_none());
-    let sheet = assemble("project", "aln-1", vec![layer("tr", 1)], &snapshot).unwrap();
+    let sheet = assemble(
+        "project",
+        "aln-1",
+        vec![layer("tr", 1)],
+        &snapshot,
+        &titles(),
+    )
+    .unwrap();
     assert_eq!(sheet.render["layout"]["style_overrides"], json!({}));
 }
 
@@ -250,4 +268,56 @@ fn a_key_plan_frames_its_routes_with_a_margin_and_never_less_than_two_kilometres
     let short = key_plan_extent([29.80676, -2.62650, 29.80681, -2.62648]);
     assert!(short[2] - short[0] >= KEY_PLAN_MIN_SPAN_DEG);
     assert!(short[3] - short[1] >= KEY_PLAN_MIN_SPAN_DEG);
+}
+
+/// French status labels: the printed wording follows the project's sealed
+/// catalogue, never an English literal compiled into the Kernel.
+fn titles() -> BTreeMap<String, String> {
+    legend_titles(&json!({STATUS_CATALOGUE: [
+        {"clean_name":"new","label":"Nouveau","misspelled_names":["nouveau"]},
+        {"clean_name":"existing","label":"Existant","misspelled_names":[]}
+    ]}))
+}
+
+#[test]
+fn network_legend_wording_comes_from_the_sealed_status_catalogue_labels() {
+    assert_eq!(
+        titles(),
+        BTreeMap::from([
+            ("lv_lines".to_owned(), "Nouveau LV".to_owned()),
+            ("lv_line".to_owned(), "Existant LV".to_owned()),
+            ("mv_line".to_owned(), "Existant MV".to_owned()),
+        ])
+    );
+    // The held Gisagara catalogue reads as it always printed.
+    let english = legend_titles(&json!({STATUS_CATALOGUE: [
+        {"clean_name":"new","label":"New"},{"clean_name":"existing","label":"Existing"}
+    ]}));
+    assert_eq!(english["lv_line"], "Existing LV");
+    assert_eq!(english["lv_lines"], "New LV");
+    // A status the catalogue lacks, or a blank/oversized label, leaves the row
+    // to the Reporter's layer-label fallback instead of inventing wording.
+    let partial = legend_titles(&json!({STATUS_CATALOGUE: [
+        {"clean_name":"new","label":"  "},
+        {"clean_name":"existing","label":"x".repeat(81)}
+    ]}));
+    assert!(partial.is_empty());
+    assert!(legend_titles(&json!({})).is_empty());
+    let snapshot = styles(&["lv_line"]);
+    let sheet = assemble(
+        "project",
+        "aln-1",
+        vec![layer("lv_line", 1)],
+        &snapshot,
+        &BTreeMap::new(),
+    )
+    .unwrap();
+    let legend = sheet.render["layout"]["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["id"] == "legend")
+        .unwrap()["legend"]
+        .clone();
+    assert!(legend["titles"].get("lv_line").is_none(), "{legend}");
 }

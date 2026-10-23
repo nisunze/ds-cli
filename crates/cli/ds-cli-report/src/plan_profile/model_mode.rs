@@ -207,7 +207,7 @@ pub(super) fn admit(
 impl ModelSource {
     /// The model's WGS84 routes, projected by Network from the same verified
     /// bytes Reporter prints; changed bytes refuse before any context read.
-    pub(super) fn projection(&self) -> Result<Value, Failure> {
+    pub(super) fn projection(&self, lane: &str) -> Result<Value, Failure> {
         let bytes = fs::read(&self.path).map_err(|error| invalid(error.to_string()))?;
         if format!("sha256:{:x}", Sha256::digest(&bytes)) != self.digest {
             return Err(Failure::conflict(
@@ -216,7 +216,7 @@ impl ModelSource {
             )
             .remedy(SOURCE_CHANGED.remedy));
         }
-        ds_project_data::mv_projection::project(&bytes, &self.revision).map_err(|error| {
+        ds_project_data::mv_projection::project(&bytes, &self.revision, lane).map_err(|error| {
             let refusal = if error.code() == "network_engine_missing" {
                 crate::project::mv_context::NETWORK_ENGINE_MISSING
             } else if error.unavailable() {

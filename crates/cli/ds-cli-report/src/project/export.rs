@@ -3320,29 +3320,31 @@ fn project_inputs(
     selection: &DesignOutputSelection,
     held_first: bool,
 ) -> Result<(super::hold::Inputs, Value), Failure> {
+    // The hold is kept per account and project; its CRS capture also records
+    // the lane and credential audience it answers. A copy captured for any
+    // other scope is not this print's input: the refusal names the member.
     let scoped = |inputs: &super::hold::Inputs| -> Result<(), Failure> {
-        match &inputs.project_crs {
-            Some(capture) => capture
-                .validate_scope(
-                    project,
-                    lane,
-                    identity.uid(),
-                    identity.credential_audience_sha256(),
-                    None,
-                )
-                .map_err(|e| {
-                    Failure::invalid("report_inputs_invalid", e).remedy(INPUTS_INVALID.remedy)
-                }),
-            None => Ok(()),
-        }
+        let Some(capture) = &inputs.project_crs else {
+            return Ok(());
+        };
+        capture
+            .validate_scope(
+                project,
+                lane,
+                identity.uid(),
+                identity.credential_audience_sha256(),
+                None,
+            )
+            .map_err(|error| held_scope_refusal(capture, project, lane, identity, &error))
     };
     // A print that publishes nothing reads the held copy when it answers this
-    // selection; one that does not is read again, once, below.
+    // selection and was captured for this lane and credential; one that does
+    // not (another lane's run held it last) is read again, once, below.
     if held_first
         && let Ok(inputs) = hold.inputs("held first")
         && held_inputs_cover(&inputs, selection)
+        && scoped(&inputs).is_ok()
     {
-        scoped(&inputs)?;
         let receipt = json!({"source": "held", "read_at": inputs.read_at, "held_first": true});
         return Ok((inputs, receipt));
     }
@@ -3366,6 +3368,41 @@ fn project_inputs(
     scoped(&inputs)?;
     let receipt = json!({"source": "held", "read_at": inputs.read_at, "unreachable": unreachable});
     Ok((inputs, receipt))
+}
+
+/// The held inputs cannot serve this print: name the captured member that
+/// differs. Values are scope names, never credential material.
+fn held_scope_refusal(
+    capture: &ds_command_kernel::printing::project_crs::Capture,
+    project: &str,
+    lane: &str,
+    identity: &ds_cli_auth::ProviderIdentity,
+    error: &str,
+) -> Failure {
+    let field = if capture.project != project {
+        "project"
+    } else if capture.lane != lane {
+        "lane"
+    } else if capture.principal != identity.uid() {
+        "principal"
+    } else if capture.credential_audience_sha256 != identity.credential_audience_sha256() {
+        "credential_audience_sha256"
+    } else {
+        "project_params"
+    };
+    let held_lane = if field == "lane" {
+        json!(capture.lane)
+    } else {
+        Value::Null
+    };
+    Failure::unavailable(
+        super::hold::INPUTS_NOT_HELD.code,
+        format!(
+            "the held print inputs were captured for another {field} and the service did not answer this print ({error})"
+        ),
+    )
+    .detail(json!({"field": format!("project_crs.{field}"), "lane": lane, "held_lane": held_lane}))
+    .remedy(super::hold::INPUTS_NOT_HELD.remedy)
 }
 
 /// Refuse an output directory that already holds a batch receipt or a named

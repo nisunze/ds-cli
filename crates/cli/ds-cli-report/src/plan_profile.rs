@@ -691,8 +691,14 @@ fn run_project(inputs: &Inputs, model: Option<model_mode::ModelSource>) -> Resul
         (Some(model), None) => {
             let lane = inputs.require("lane")?;
             let identity = ds_cli_auth::headless_identity_for_named_project(lane)?;
-            let acquired =
-                context::acquire(lane, project, &identity, &model.projection()?, &styles)?;
+            let acquired = context::acquire(
+                lane,
+                project,
+                &identity,
+                &model.projection(lane)?,
+                &styles,
+                &report_config,
+            )?;
             context_page_files = json!(acquired.files);
             Some(acquired)
         }

@@ -1225,3 +1225,92 @@ fn an_output_directory_holding_a_report_refuses_before_any_work() {
         OUTPUT_EXISTS.code
     );
 }
+
+/// be552f2b / 6e322426 on 23 Oct: a Stable dry-run read the copy a Canary run
+/// had held last and refused the whole batch with report_inputs_invalid. The
+/// held copy answers only its own lane and credential; any other print reads
+/// the service again, and offline it is refused by the member that differs.
+#[test]
+fn held_inputs_of_another_lane_are_read_again_and_refused_by_member_offline() {
+    use ds_cli_auth::{ProviderIdentity, WeakNetwork};
+    use ds_command_kernel::{printing::project_crs::Capture, report_export};
+    let dir = tempfile::tempdir().unwrap();
+    let stable = ProviderIdentity::new("stable", &"a".repeat(64), "user-a").unwrap();
+    let canary = ProviderIdentity::new("canary", &"b".repeat(64), "user-a").unwrap();
+    let hold = super::super::hold::Hold::at(dir.path().to_path_buf(), "user-a", "project-a");
+    let sheets = json!({"printing_setups":[],"project_settings":[{"parameter":"report_locale","value":"en"}]});
+    let receipt = report_export::InputReceipt {
+        schema: 1,
+        country: "RW".into(),
+        reference_semantic_sha256: "a".repeat(64),
+        sheets_json: sheets.to_string(),
+        sheets_sha256: report_export::sha256_hex(sheets.to_string().as_bytes()),
+        local_print_recipe: None,
+    };
+    let params = json!({"crs":{"mode":"utm","utm_zone":35,"utm_hemisphere":"south"}});
+    let inputs = super::super::hold::Inputs {
+        project_crs: Some(
+            Capture::new(
+                "project-a",
+                "canary",
+                canary.uid(),
+                canary.credential_audience_sha256(),
+                params,
+            )
+            .unwrap(),
+        ),
+        printing_style_capture: None,
+        transformer_natures: None,
+        saved_analyses: BTreeMap::new(),
+        rows: Vec::new(),
+        configuration: json!({ report_export::INPUT_RECEIPT_MEMBER: receipt }),
+        setups: Vec::new(),
+        read_at: "held".into(),
+    };
+    hold.hold_inputs(&inputs).unwrap();
+    let selection: DesignOutputSelection = serde_json::from_value(json!({
+        "schema":"ds.design-output-selection/v1","geospatial":["shp"],"tabular":[],"prints":[]
+    }))
+    .unwrap();
+
+    // The copy answers its own lane and credential first, with no service read.
+    let (held, answer) = project_inputs(
+        "canary",
+        "project-a",
+        &canary,
+        &hold,
+        &mut super::super::hold::Link::default(),
+        &selection,
+        true,
+    )
+    .unwrap();
+    assert_eq!(held, inputs);
+    assert_eq!(answer["held_first"], true);
+
+    // A Stable print does not take it: it asks the service (here a latched
+    // outage), then names the member the held capture differs by.
+    let mut offline =
+        super::super::hold::Link::with_schedule(WeakNetwork::new(&[std::time::Duration::ZERO; 3]));
+    let _ = offline.read(|| -> Result<(), Failure> {
+        Err(Failure::unavailable(
+            "device_auth_transient",
+            "the fixed DS device authorization endpoint is temporarily unreachable",
+        ))
+    });
+    assert!(offline.unreachable().is_some());
+    let refused = project_inputs(
+        "stable",
+        "project-a",
+        &stable,
+        &hold,
+        &mut offline,
+        &selection,
+        true,
+    )
+    .unwrap_err();
+    assert_eq!(refused.code(), super::super::hold::INPUTS_NOT_HELD.code);
+    let detail = refused.detail_value().unwrap();
+    assert_eq!(detail["field"], "project_crs.lane");
+    assert_eq!(detail["held_lane"], "canary");
+    assert_eq!(detail["lane"], "stable");
+}

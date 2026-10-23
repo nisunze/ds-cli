@@ -5,7 +5,7 @@ fn acceptance_native_mv_projection_local_print_context() {
     let path = std::env::var("DS_MV_PROJECTION_MODEL").unwrap();
     let bytes = std::fs::read(&path).unwrap();
     let digest = report_export::sha256_hex(&bytes);
-    let model = load_local(&path).unwrap();
+    let model = load_local(&path, "stable").unwrap();
     assert_eq!(model.identity.id, format!("local-{}", &digest[..16]));
     assert_eq!(model.identity.revision_id, format!("local:sha256:{digest}"));
     assert_eq!(model.identity.digest, digest);
@@ -29,7 +29,7 @@ fn acceptance_native_mv_projection_local_print_context() {
 #[ignore = "requires an explicitly unavailable captured Network engine"]
 fn acceptance_native_mv_missing_engine_is_unavailable() {
     let path = std::env::var("DS_MV_PROJECTION_MODEL").unwrap();
-    let error = match load_local(&path) {
+    let error = match load_local(&path, "stable") {
         Err(error) => error,
         Ok(_) => panic!("missing engine cannot return a projection"),
     };

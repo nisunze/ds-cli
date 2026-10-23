@@ -1,5 +1,5 @@
 {
-  "count": 10,
+  "count": 8,
   "occurrences": [
     {
       "path": "ds-client-core/src/sre.rs",
@@ -24,18 +24,6 @@
       "line": 14,
       "token": "service",
       "literal_sha256": "9df6b026a8c6c26e3c3acd2370a16e93fffdc0015ff5bd879218788025db0280"
-    },
-    {
-      "path": "ds-command-kernel/src/printing/mv_context.rs",
-      "line": 79,
-      "token": "Existing",
-      "literal_sha256": "3659c270316ced75117b5766ba47e6baddf29c795790f5194e5ff4178d29442b"
-    },
-    {
-      "path": "ds-command-kernel/src/printing/mv_context.rs",
-      "line": 80,
-      "token": "Existing",
-      "literal_sha256": "92e534f311c36983fa96598fbda17f7467669b250e32e0e5d50f166e9ca76316"
     },
     {
       "path": "ds-command-kernel/src/project_dataset_cache.rs",

@@ -154,7 +154,10 @@ pub(super) fn acquire(
     identity: &ds_cli_auth::ProviderIdentity,
     projection: &Value,
     styles: &Snapshot,
+    sheets: &Value,
 ) -> Result<Acquired, Failure> {
+    // Legend wording is the project's sealed status catalogue, never a literal.
+    let titles = mv_context::legend_titles(sheets);
     let routes = routes(projection).map_err(unavailable)?;
     let Some(model_bounds) = union(&routes) else {
         return Err(unavailable("the model has no geographic route"));
@@ -252,7 +255,7 @@ pub(super) fn acquire(
             .map_err(unavailable)?,
         );
         let carried = counts(&layers);
-        let capture = mv_context::assemble(project, &route.id, layers, styles)
+        let capture = mv_context::assemble(project, &route.id, layers, styles, &titles)
             .map_err(|error| unavailable(format!("{}: {error}", route.id)))?;
         let path = stage.path().join(format!("alignment-{index:04}.json"));
         std::fs::write(&path, serde_json::to_vec(&capture).map_err(unavailable)?)
@@ -295,7 +298,7 @@ pub(super) fn acquire(
         .map_err(unavailable)?,
     );
     let carried = counts(&layers);
-    let key_plan = mv_context::assemble_key_plan(project, layers, styles)
+    let key_plan = mv_context::assemble_key_plan(project, layers, styles, &titles)
         .map_err(|error| unavailable(format!("key plan: {error}")))?;
     let key_plan_path = stage.path().join("key-plan.json");
     std::fs::write(

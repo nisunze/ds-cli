@@ -97,8 +97,8 @@ pub(super) fn hold_models(hold: &super::hold::Hold, models: &[Model]) -> Result<
 pub(super) fn provenance(models: &[Model]) -> Vec<Value> {
     models.iter().map(|model| json!({"model_id":model.identity.id,"revision_id":model.identity.revision_id,"sha256":model.identity.digest,"label":model.identity.label})).collect()
 }
-pub(super) fn load_local(path: &str) -> Result<Model, Failure> {
-    let local = ds_project_data::mv_projection::load_local(Path::new(path))
+pub(super) fn load_local(path: &str, lane: &str) -> Result<Model, Failure> {
+    let local = ds_project_data::mv_projection::load_local(Path::new(path), lane)
         .map_err(|error| projection_fail(&error))?;
     Ok(Model {
         identity: map::Model {
@@ -227,7 +227,9 @@ pub(super) fn load(
             .bytes
             .ok_or_else(|| fail("MV owner returned no verified model bytes"))?;
         let session = projection_session
-            .get_or_insert_with(ds_project_data::mv_projection::ProjectionSession::capture)
+            .get_or_insert_with(|| {
+                ds_project_data::mv_projection::ProjectionSession::capture_for_lane(lane)
+            })
             .as_ref()
             .map_err(projection_fail)?;
         let projection = session

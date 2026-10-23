@@ -1548,7 +1548,9 @@ fn mv_route_extents(
             )
         })?;
         let session = projection_session
-            .get_or_insert_with(ds_project_data::mv_projection::ProjectionSession::capture)
+            .get_or_insert_with(|| {
+                ds_project_data::mv_projection::ProjectionSession::capture_for_lane(lane)
+            })
             .as_ref()
             .map_err(mv_projection_fail)?;
         let routes = session
@@ -1579,14 +1581,15 @@ fn mv_route_extents(
     Ok((extents, sources))
 }
 
-fn local_mv_route_extents(path: &str) -> Result<(Vec<policy::Extent>, Value), Failure> {
-    let local = ds_project_data::mv_projection::load_local(Path::new(path)).map_err(|error| {
-        if error.unavailable() {
-            mv_projection_fail(&error)
-        } else {
-            Failure::invalid(INVALID_SCOPE.code, format!("--mv-model: {error}"))
-        }
-    })?;
+fn local_mv_route_extents(path: &str, lane: &str) -> Result<(Vec<policy::Extent>, Value), Failure> {
+    let local =
+        ds_project_data::mv_projection::load_local(Path::new(path), lane).map_err(|error| {
+            if error.unavailable() {
+                mv_projection_fail(&error)
+            } else {
+                Failure::invalid(INVALID_SCOPE.code, format!("--mv-model: {error}"))
+            }
+        })?;
     let source = json!({"kind":"local_draft","path":path,
         "sha256":format!("sha256:{}",local.sha256),
         "revision_id":local.revision_id,"route_segments":local.route_extents.len()});
@@ -1649,7 +1652,7 @@ fn local_seed(
     let (mut mv_extents, mut mv_sources) =
         mv_route_extents(lane, &scope.project, inventory.identity())?;
     if let Some(path) = inputs.value("mv-model") {
-        let (draft, source) = local_mv_route_extents(path)?;
+        let (draft, source) = local_mv_route_extents(path, lane)?;
         mv_extents.extend(draft);
         mv_sources.push(source);
     }
@@ -1729,7 +1732,7 @@ fn catalog_seed(
     let transformer_extent_count = extents.len();
     let (mut mv_extents, mut mv_sources) = mv_route_extents(lane, &project, inventory.identity())?;
     if let Some(path) = inputs.value("mv-model") {
-        let (draft, source) = local_mv_route_extents(path)?;
+        let (draft, source) = local_mv_route_extents(path, lane)?;
         mv_extents.extend(draft);
         mv_sources.push(source);
     }

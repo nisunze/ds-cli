@@ -15,7 +15,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
-| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 19 |
+| [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 21 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 7 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 10 |
 | [10. Voltage drop](#10-voltage-drop) | 5 |
@@ -174,6 +174,10 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 ## 7. Report compute, export and combined output
 
 - **Reporter single-transformer preflight still refuses on missing engineering facts** (found 23 Oct, ds-network-reporter b8a733b): rooms whose `lv_poles` lack `stay`/`flying_stay`/`earthing` end Partial with `report_engineering_facts_required`. Owner rule 21 Oct: a report is always produced and missing engineering facts become itemized Dirty Categories, never a refusal. Make the single-transformer preflight emit dirty categories like the Combined Report does; the example rooms now carry declared zeros only so the printing examples run.
+
+- **Reporter refuses additive `printing_context` members** (`c7958c2b`, found 23 Oct): ds-network-reporter `src/held_input.rs` `printing_text_from` refuses the whole report when any `printing_context` value is not text, even one no layout prints. The sealed Gisagara receipt now carries text only and exports (Linux, `report project export --dry-run`), so nothing fails today. Next: refuse only a non-text value a layout `{key}` actually binds, naming that key, and ignore unused members; decided by the Reporter owner.
+
+- **Local layout proof fails late on unsealed governed symbols** (`09b78d74` residue, 23 Oct): `report project export --print-layout <gisagara A0 body> --project arjgpydw_nyam --transformer fill_in_kabuhoro --dry-run` ends `export_blocked` "print symbol `ds-transformer` is missing from held symbol_assets" (evidence `scratch/claude-linux-prod-20261022/lane-report-1023/nyam-a0g.json`); `complete_proof_print_styles` (ds-cli-report `project/export.rs`) checks icons only for `style_refs`, not for governed `style_keys` bindings. The adopted project layout prints. Next: refuse before render naming each binding icon the sealed `printing_symbol_assets` lacks (or seal it from the governed binding).
 
 - **Quantity-only XLSX acquisition** (`0b875c6c`): native transformer quantity export refuses on unrelated survey video outside granted scopes. Preserve media authority, omit inaccessible unrelated media with a bounded diagnostic, and still produce the quantity workbook from unchanged source digests. The offline path also lacks complete groups/sheets/models capture; expose a declared complete-config or quantity-only capture without widening media grants.
 

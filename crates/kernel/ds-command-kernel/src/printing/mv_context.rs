@@ -73,12 +73,34 @@ const ORDER: [&str; 12] = [
     "tr",
 ];
 
-/// Legend wording the sheets' plan key reads for its network rows.
-const TITLES: [(&str, &str); 3] = [
-    ("lv_lines", "New LV"),
-    ("lv_line", "Existing LV"),
-    ("mv_line", "Existing MV"),
+/// The sealed status catalogue whose row `label` names an existence status
+/// wherever a legend prints one; the Reporter's legend falls back to it too.
+pub const STATUS_CATALOGUE: &str = "lv_poles_pole_status";
+/// The network rows of the plan key: carried layer, the catalogue status it
+/// shows and its voltage class. The printed status word is never a literal.
+const NETWORK_ROWS: [(&str, &str, &str); 3] = [
+    ("lv_lines", "new", "LV"),
+    ("lv_line", "existing", "LV"),
+    ("mv_line", "existing", "MV"),
 ];
+const MAX_STATUS_LABEL_BYTES: usize = 80;
+
+/// The network legend wording a project's sealed sheets give: each row's
+/// status `label` from the status catalogue with its voltage class. A status
+/// the catalogue does not carry leaves that row to the layer-label fallback.
+pub fn legend_titles(sheets: &Value) -> BTreeMap<String, String> {
+    let rows = sheets[STATUS_CATALOGUE].as_array();
+    NETWORK_ROWS
+        .iter()
+        .filter_map(|(layer, status, class)| {
+            let label = rows?.iter().find(|row| row["clean_name"] == *status)?["label"]
+                .as_str()?
+                .trim();
+            (!label.is_empty() && label.len() <= MAX_STATUS_LABEL_BYTES)
+                .then(|| ((*layer).to_owned(), format!("{label} {class}")))
+        })
+        .collect()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -220,13 +242,15 @@ pub fn style_key(layer: &str) -> Result<Key, String> {
 }
 
 /// Assemble one alignment's sheet context from the held layers a host read.
+/// `titles` is the project's [`legend_titles`] wording for the network rows.
 pub fn assemble(
     project: &str,
     alignment_id: &str,
     layers: Vec<VectorLayer>,
     styles: &Snapshot,
+    titles: &BTreeMap<String, String>,
 ) -> Result<Capture, String> {
-    let render = render(layers, styles, &[])?;
+    let render = render(layers, styles, &[], titles)?;
     let capture = Capture {
         schema: SCHEMA.into(),
         project_id: project.into(),
@@ -243,8 +267,9 @@ pub fn assemble_key_plan(
     project: &str,
     layers: Vec<VectorLayer>,
     styles: &Snapshot,
+    titles: &BTreeMap<String, String>,
 ) -> Result<KeyPlan, String> {
-    let render = render(layers, styles, &KEY_PLAN_LABELS)?;
+    let render = render(layers, styles, &KEY_PLAN_LABELS, titles)?;
     let capture = KeyPlan {
         schema: KEY_PLAN_SCHEMA.into(),
         project_id: project.into(),
@@ -261,6 +286,7 @@ fn render(
     mut layers: Vec<VectorLayer>,
     styles: &Snapshot,
     labels: &[(&str, &str)],
+    titles: &BTreeMap<String, String>,
 ) -> Result<Value, String> {
     layers.retain(|layer| {
         layer.geojson["features"]
@@ -277,11 +303,7 @@ fn render(
     for element in &mut layout.elements {
         if element.id == "legend" {
             element.legend = Some(
-                serde_json::from_value(json!({"titles": TITLES
-                    .iter()
-                    .map(|(id, title)| (id.to_string(), title.to_string()))
-                    .collect::<BTreeMap<_, _>>()}))
-                .map_err(|e| e.to_string())?,
+                serde_json::from_value(json!({ "titles": titles })).map_err(|e| e.to_string())?,
             );
         }
     }

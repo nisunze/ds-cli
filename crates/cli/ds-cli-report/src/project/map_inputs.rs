@@ -416,7 +416,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         })?
     };
     if let Some(path) = i.value("mv-model") {
-        models.push(super::mv_context::load_local(path)?);
+        models.push(super::mv_context::load_local(path, lane)?);
     }
     let mut sources = printing::project_sources::Sources::default();
     sources

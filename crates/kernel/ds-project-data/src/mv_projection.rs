@@ -59,8 +59,11 @@ pub struct ProjectionSession {
     stage: tempfile::TempDir,
 }
 impl ProjectionSession {
-    pub fn capture() -> Result<Self, ProjectionError> {
-        let client = CapturedNetworkClient::capture(1, &|| false)?;
+    /// Capture the Network engine of the request's own installed lane. A
+    /// Canary print never projects its MV context with the packaged Stable
+    /// engine (or the reverse); an explicit development override stays explicit.
+    pub fn capture_for_lane(lane: &str) -> Result<Self, ProjectionError> {
+        let client = CapturedNetworkClient::capture_for_lane(lane, 1, &|| false)?;
         let stage = ds_network_client::private_disk_stage()?;
         Ok(Self { client, stage })
     }
@@ -103,7 +106,7 @@ pub struct LocalMvProjection {
     pub route_extents: Vec<Extent>,
 }
 
-pub fn load_local(path: &Path) -> Result<LocalMvProjection, ProjectionError> {
+pub fn load_local(path: &Path, lane: &str) -> Result<LocalMvProjection, ProjectionError> {
     if !path.is_absolute() || path.extension().and_then(|v| v.to_str()) != Some("dsgrid") {
         return Err("local MV model must be an absolute .dsgrid file".into());
     }
@@ -134,7 +137,7 @@ pub fn load_local(path: &Path) -> Result<LocalMvProjection, ProjectionError> {
     let sha256 = format!("{:x}", Sha256::digest(&bytes));
     let model_id = format!("local-{}", &sha256[..16]);
     let revision_id = format!("local:sha256:{sha256}");
-    let projection = project(&bytes, &revision_id)?;
+    let projection = project(&bytes, &revision_id, lane)?;
     let route_extents = route_extents_in(&projection, &model_id)?;
     Ok(LocalMvProjection {
         model_id,
@@ -145,8 +148,8 @@ pub fn load_local(path: &Path) -> Result<LocalMvProjection, ProjectionError> {
     })
 }
 
-pub fn project(bytes: &[u8], revision: &str) -> Result<Value, ProjectionError> {
-    ProjectionSession::capture()?.project(bytes, revision)
+pub fn project(bytes: &[u8], revision: &str, lane: &str) -> Result<Value, ProjectionError> {
+    ProjectionSession::capture_for_lane(lane)?.project(bytes, revision)
 }
 
 /// Small route-segment footprints for project data acquisition. One long MV
@@ -155,8 +158,9 @@ pub fn route_extents(
     bytes: &[u8],
     revision: &str,
     model_id: &str,
+    lane: &str,
 ) -> Result<Vec<Extent>, ProjectionError> {
-    ProjectionSession::capture()?.route_extents(bytes, revision, model_id)
+    ProjectionSession::capture_for_lane(lane)?.route_extents(bytes, revision, model_id)
 }
 
 fn route_extents_in(projection: &Value, model_id: &str) -> Result<Vec<Extent>, String> {
