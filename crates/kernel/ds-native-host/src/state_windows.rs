@@ -20,7 +20,7 @@ use ds_client_core::StoreError;
 use sha2::{Digest, Sha256};
 use windows_sys::Win32::Foundation::{
     CloseHandle, ERROR_LOCK_VIOLATION, ERROR_SHARING_VIOLATION, GENERIC_ALL, GENERIC_READ,
-    GENERIC_WRITE, HANDLE, LocalFree,
+    GENERIC_WRITE, GetLastError, HANDLE, LocalFree,
 };
 use windows_sys::Win32::Security::Authorization::{
     BuildTrusteeWithSidW, GetEffectiveRightsFromAclW, GetSecurityInfo, SE_FILE_OBJECT, TRUSTEE_W,
@@ -228,10 +228,11 @@ pub fn protect(path: &Path, plaintext: &[u8]) -> Result<Zeroizing<Vec<u8>>, Stor
             &mut output,
         )
     };
+    let failure = dpapi_failure(success, output.pbData.is_null(), StoreError::Unavailable);
     entropy.zeroize();
-    if success == 0 || output.pbData.is_null() {
+    if let Some(error) = failure {
         zero_and_free_blob(&mut output);
-        return Err(StoreError::Unavailable);
+        return Err(error);
     }
     let ciphertext = unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize) };
     let Some(total) = ENVELOPE_HEADER.checked_add(ciphertext.len()) else {
@@ -289,13 +290,20 @@ pub fn unprotect(path: &Path, envelope: &[u8]) -> Result<Vec<u8>, StoreError> {
             &mut output,
         )
     };
+    // Capture the thread-local error before zeroization or LocalFree can
+    // replace it. Never inspect a stale last-error value after success.
+    let failure = dpapi_failure(
+        success,
+        output.pbData.is_null(),
+        StoreError::UnsafeOrUnreadable,
+    );
     entropy.zeroize();
     if !description.is_null() {
         unsafe { LocalFree(description.cast()) };
     }
-    if success == 0 || output.pbData.is_null() {
+    if let Some(error) = failure {
         zero_and_free_blob(&mut output);
-        return Err(StoreError::UnsafeOrUnreadable);
+        return Err(error);
     }
     let mut plaintext =
         unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() };
@@ -304,6 +312,21 @@ pub fn unprotect(path: &Path, envelope: &[u8]) -> Result<Vec<u8>, StoreError> {
         plaintext.shrink_to_fit();
     }
     Ok(plaintext)
+}
+
+fn dpapi_failure(success: i32, output_missing: bool, fallback: StoreError) -> Option<StoreError> {
+    if success == 0 {
+        let code = unsafe { GetLastError() };
+        Some(
+            if crate::state_windows_error::dpapi_context_unavailable(code) {
+                StoreError::Unavailable
+            } else {
+                fallback
+            },
+        )
+    } else {
+        output_missing.then_some(fallback)
+    }
 }
 
 pub fn move_no_replace(source: &Path, destination: &Path) -> Result<(), StoreError> {

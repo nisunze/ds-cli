@@ -770,8 +770,8 @@ fn state_failure(error: StoreError) -> Failure {
     }
 }
 
-/// Access to the per-user DS config directory failed in this process.
-pub(crate) const STATE_ACCESS_REMEDY: &str = "this execution context could not open the per-user DS config directory: run the same command from a normal shell for this OS user first; if it works there, a sandbox, service account or restricted token is the cause, so run there or grant this context access; only if it also fails there, check that the directory is owner-only, contains no symlinks, and has free space; do not reinstall or sign in again to diagnose this";
+/// Access to protected per-user auth state failed in this process.
+pub(crate) const STATE_ACCESS_REMEDY: &str = "this execution context could not access the protected native auth state: run the same command from a normal shell for this OS user first; if it works there, a sandbox, service account or restricted token is the cause, so run there or grant this context access; only if it also fails there, check that the directory is owner-only, contains no symlinks, and has free space; do not reinstall or sign in again to diagnose this";
 /// The protected state failed its owner, mode, symlink or decode checks here.
 pub(crate) const STATE_UNSAFE_REMEDY: &str = "the protected state failed its owner-only checks in this execution context: run the same command from a normal shell for this OS user first; if it works there, this context runs as another principal or under a restricted token, so run there; only if it also fails there, repair the directory's owner and mode or remove symlinks; do not reinstall or sign in again to diagnose this";
 

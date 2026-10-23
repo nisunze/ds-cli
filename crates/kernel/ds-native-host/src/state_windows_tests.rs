@@ -74,6 +74,50 @@
     }
 
     #[test]
+    fn dpapi_error_is_captured_before_cleanup_and_success_ignores_stale_error() {
+        use windows_sys::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_INVALID_DATA, SetLastError};
+
+        unsafe { SetLastError(ERROR_ACCESS_DENIED) };
+        let failure = dpapi_failure(0, true, StoreError::UnsafeOrUnreadable);
+        // Model a cleanup call replacing the thread's last-error value.
+        unsafe { SetLastError(ERROR_INVALID_DATA) };
+        assert_eq!(failure, Some(StoreError::Unavailable));
+        assert_eq!(
+            dpapi_failure(0, true, StoreError::UnsafeOrUnreadable),
+            Some(StoreError::UnsafeOrUnreadable)
+        );
+        unsafe { SetLastError(ERROR_ACCESS_DENIED) };
+        assert_eq!(dpapi_failure(1, false, StoreError::UnsafeOrUnreadable), None);
+        assert_eq!(
+            dpapi_failure(1, true, StoreError::UnsafeOrUnreadable),
+            Some(StoreError::UnsafeOrUnreadable)
+        );
+        unsafe { SetLastError(ERROR_INVALID_DATA) };
+        assert_eq!(
+            dpapi_failure(0, true, StoreError::Unavailable),
+            Some(StoreError::Unavailable)
+        );
+    }
+
+    #[test]
+    fn malformed_envelope_headers_remain_unsafe() {
+        let path = test_path("credentials", "malformed");
+        let protected = protect(&path, b"protected-state-test").expect("protect");
+        for offset in [0, 8, 9, 10, 12, 44] {
+            let mut malformed = protected.to_vec();
+            malformed[offset] ^= 1;
+            assert_eq!(
+                unprotect(&path, &malformed),
+                Err(StoreError::UnsafeOrUnreadable)
+            );
+        }
+        assert_eq!(
+            unprotect(&path, &protected[..ENVELOPE_HEADER - 1]),
+            Err(StoreError::UnsafeOrUnreadable)
+        );
+    }
+
+    #[test]
     fn encrypted_atomic_file_round_trips_without_plaintext_on_disk() {
         let destination = test_path("devices", "roundtrip");
         let stage = destination.parent().unwrap().join(format!(
