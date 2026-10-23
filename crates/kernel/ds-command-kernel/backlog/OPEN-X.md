@@ -13,7 +13,7 @@ Check existing contracts, source evidence and recorded owner choices first. Rout
 | [12. Engineering acceptance and material authority](#12-engineering-acceptance-and-material-authority) | 2 |
 | [13. Between-angle policy](#13-between-angle-policy) | 0 |
 | [14. Profile display and supervised editing](#14-profile-display-and-supervised-editing) | 0 |
-| [15. Project scope and engineering choices](#15-project-scope-and-engineering-choices) | 4 |
+| [15. Project scope and engineering choices](#15-project-scope-and-engineering-choices) | 6 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 1 |
 | [18. Supervised native qualification](#18-supervised-native-qualification) | 1 |
 | [22. Account and data-owner authority](#22-account-and-data-owner-authority) | 2 |
@@ -92,6 +92,10 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group A (owner decision
 ## 15. Project scope and engineering choices
 
 - **ADERM new authoring scope** (`c89fea1b`): extend `beinamar_02` to reach the Health Post and Grand Marche within 37 m and size it at 315 kVA. **Input needed:** decide whether the required new LV pole/span authoring capability is admitted during the no-new-features period. **Boundary:** starting that new capability. Once admitted, put its CLI-first implementation in OPEN.md and its approved project delivery in SEEDING.md.
+
+- **Isolated tapping supply poles** (`daad9302`, `1433454b`): by contract (ds-network `docs/contracts/lv-network-build-contract.md`, strict tapping reconciliation) a tapping pole that touches no authored LV line stays a non-source junction, so it is unreachable and `connect_customers_to_tapping_poles` serves no customer from it; in the filed staging 22 of 23 unconnected customers were within 37 m of such a pole. **Input needed:** whether an untouched tapping pole is a supply root (always, or behind a project setting) whose customers get service cables within `max_service_length`, with voltage drop from that root. **Boundary:** `quick_build` source classification and that contract paragraph. Then: a fixture with isolated tapping poles (eligible customers connected, over-limit ones unresolved, idempotent rerun) and a receipt line naming isolated sources and missing transformer metadata.
+
+- **LV capabilities filed by agents, held by the no-new-features period**: `28f4ac76`, `079fbed3`, `ef153213` (a revision-pinned native LV integrity preflight and version comparison: duplicate spans/lines with multiplicity, cycles inherited vs introduced against a pinned base, span/line size disagreement, endpoint gaps, zero-length services, customers shared across transformers, exact vs unique near-position vs unmatched poles with no label fallback); `e7ad3ba6` (scoped transformer relocation that authors one source connector and its span without whole-network processing); `0988aebe` (geographic MV-transformer vs LV-design check); `4114613f` (survey handoff selected by a transformer tag cohort); `3c390483`, `67162842` (version rename/retire/leading pointer, and a successor boundary with source-note lineage, with `b78cdeda`). **Input needed:** which to admit now. **Boundary:** starting each new command; once admitted, each gets its OPEN.md line.
 
 - **Nyamagabe Model 2 angle-duty choice**: EDCL drawing guidance discourages steel single poles at 30–60° angles. **Input needed:** the responsible engineering decision between steel single poles and wooden H-poles, with the approved `nyamagabe-mv` duty policy for `j-w-60d-S255.012` and `j-w-S255.012`. **Boundary:** changing the model’s pole family/policy. Existing strength checks and missing transformer-kVA corrections continue in [SEEDING.md block 15](SEEDING.md#15-project-deliveries).
 

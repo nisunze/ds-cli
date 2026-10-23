@@ -17,21 +17,21 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [5. Print renderer and booklet code](#5-print-renderer-and-booklet-code) | 5 |
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 24 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 8 |
-| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 13 |
+| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 14 |
 | [10. Voltage drop](#10-voltage-drop) | 5 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 11 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 10 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 5 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 2 |
 | [15. Project delivery code](#15-project-delivery-code) | 3 |
-| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 15 |
+| [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 16 |
 | [17. Project Work and Assets](#17-project-work-and-assets) | 11 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 4 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 7 |
 | [22. Operations product code](#22-operations-product-code) | 5 |
 | [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 9 |
-| [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 6 |
+| [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 7 |
 | [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 5 |
 <!-- /toc -->
 
@@ -294,7 +294,7 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - `007c1624` (major): Legacy (unfenced) transformer rooms cannot be read headlessly: lv project-export refuses, features select scans 0, location path resolves nothing, no headless migrate.
 
-- `6ed42257` (blocker): `design.lv.project-save` requires the request source layers to equal the exported saved-head digest (ds-cli `crates/ds-cli-design/src/lv/project_save.rs` `source_layers_for_fence` refuses with `fast_lv_save_input_invalid`; kernel `crates/ds-client-core/src/transformer_save.rs` digest check), so a client-supplied design that differs from the head is refused. Add a governed supplied-layers save fenced on the exported head version/digest, carrying the kept-as-drawn rows, with a dry-run diff against the head.
+- `6ed42257` (blocker): `design.lv.project-save` requires the request source layers to equal the exported saved-head digest (ds-cli `crates/ds-cli-design/src/lv/project_save.rs` `source_layers_for_fence` refuses with `fast_lv_save_input_invalid`; kernel `crates/ds-client-core/src/transformer_save.rs` digest check), so a client-supplied design that differs from the head is refused. Add a governed supplied-layers save fenced on the exported head version/digest, carrying the kept-as-drawn rows, with a dry-run diff against the head. Since 23 Oct the save owner takes that fence (`TransformerSaveItem.base_content_digest`: the head a supplied result replaces, checked against version and digest; intake uses it), so what is left is the `project-save` door that admits a supplied result against its export receipt, and the diff.
 
 - `09de401e` (minor): after `design migrate apply --overwrite`, every overwritten head carries one more feature property key than its source (agasharu 61 vs 60, agatare 38 vs 37, akamana 38 vs 37; the fresh copy upgrade_agacyamu 65 vs 65). Find what survives from the replaced head in ds-brain design-migrate. **Proof:** pinned preview `properties_before` is equal on source and destination.
 
@@ -306,9 +306,11 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 
 - **Room save restamps identity labels** (`79dbbecf`, `36f93262`): fixed in ds-web `3b51319cb` and Kernel `cf72ce2d`: a room save sends the room's own `transfo` and `tr.name` and fills only a missing `transfo`. Waits on a Desktop/UI release and an installed replay. 36f932 also needs a governed LV transformer rename or display-name control (`ab9d3ac2`): no `ds` command renames one (confirmation-gated, collision-fenced, all references atomic, fresh readback). That is a new Kernel and Brain command, not a small change.
 
-- `83f3712b` (major): DBF-truncated field names: (a) dropped empty export columns are not reported; (b) ds-web duplicates the truncation mapping in TypeScript (`src/lib/design/columns.ts` `suggestDesignColumnHeader`, used by `upload-inspect.ts`): expose ds-network `restore_dbf_truncated_columns` through WASM and delete the TS and its tests; (c) the headless `ds design intake upload --mode lv-process` path does not run the native restore (fold into `14fd08e8`).
+- `83f3712b` (major): DBF-truncated field names: (a) dropped empty export columns are not reported; (b) ds-web duplicates the truncation mapping in TypeScript (`src/lib/design/columns.ts` `suggestDesignColumnHeader`, used by `upload-inspect.ts`): expose ds-network `restore_dbf_truncated_columns` through WASM and delete the TS and its tests; (c) the headless `ds design intake upload --mode lv-process` path does not run the native restore.
 
-- `14fd08e8` (major): Headless LV intake cannot upload to Northern Hub.
+- **Headless intake refuses a GeoPackage that lacks any LV layer** (`14fd08e8`): `design intake upload` asks the Network GeoPackage reader for all six LV layers, and `ds-io` `native_gpkg::read_layer` refuses a requested table that does not exist (`status_upload_layers_unreadable: GeoPackage layer "service_cables" does not exist`, Rwanda Template `agatare_1`, 23 Oct), so a sketch with only `tr`, `lv_lines` and `customers` cannot be uploaded. Let the `geopackage_layers` call answer which requested tables exist (or skip absent ones) and read only the LV layers present; an older engine keeps its typed refusal. Proof: a GPKG without `service_cables`/`spans` uploads; one with no LV layer still refuses `status_upload_layers_unrecognized`.
+
+- **Property edits leave no lineage stamps** (`b2645e4a`): a governed v2 room property-edited and saved keeps its properties and geometry, but changed rows do not advance `v_last`. Save correctly transports the staged room (its descriptor said it stamped; corrected 23 Oct). Stamping belongs to the edit boundary (ds-web calls ds-network-wasm `stamp_geojson_layers_version`); trace why the `map design set` property edit did not reach it under the open version. Waits on the UI catch-up (ds-web frozen). Proof: one property edit under an open `v2` advances only that row's `v_last`, and a second save of the unchanged room stamps nothing.
 
 ## 10. Voltage drop
 
@@ -401,6 +403,8 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 - **Clearance report case identity**: the Gisagara M3 report prints `vertical at — (null °C)` although its vertical case is 75 °C. Fix the producer/report projection from the exact selected case; never patch the label to a per-model constant.
 
 ## 16. Map data, datasets and screen styling
+
+- **`data inspect` refuses GeoPackage** (`bea33682`): installed eaf7eb82 answers `source_unsupported` ("binary file, not a delimited text table") for a valid multi-layer `.gpkg`, although `design intake upload` reads the same file through the Network source reader. Give `data.inspect` the GeoPackage layer/CRS/attribute inventory through that reader (data lane), then a per-transformer comparison against fenced `design lv project-export` requests.
 
 - **Empty XLSX intake panics during cleaning.** `ds-network/crates/ds-io/src/clean.rs::flatten_header` indexes `grid[0]` when `source_inspect` receives a valid workbook with an empty worksheet. Both the existing parser and the Calamine trial produce the same empty raw `Grid`; the failure predates the replacement. Return the declared empty/refusal outcome without panicking, and prove empty-sheet, one-cell and header-only intake natively and in executed WASM. Leave the current concurrent implementation work untouched.
 
@@ -658,6 +662,8 @@ Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) �
 - Multi-village (leaf) Working Area and pipeline filters.
 
 - Governed per-entity DS Grid tag editing, validating `tag_<id>` against definitions.
+
+- **Service-length tolerance** (`779a7895`, owner request): a project parameter beside `max_service_length` (default +3 m) that admits marginal service connections in ds-network `quick_build` service targeting, warning each admitted one with nominal/tolerance/effective distances and never changing the nominal limit. Fixture: Upgrade Rubona3's 37.60 m customer connects at 37 + 3 m, one beyond 40 m stays unconnected, Kanto2's nine customers are unchanged.
 
 ## 25. CLI reliability reporting and proactive feedback (priority)
 

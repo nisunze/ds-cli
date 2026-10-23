@@ -24,7 +24,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [6. Print acceptance on live projects](#6-print-acceptance-on-live-projects) | 14 |
 | [7. Report compute, export and combined output](#7-report-compute-export-and-combined-output) | 10 |
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 4 |
-| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 7 |
+| [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 9 |
 | [10. Voltage drop](#10-voltage-drop) | 13 |
 | [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 3 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 3 |
@@ -207,6 +207,10 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 - **Truncated DBF field names** (`83f3712b`): after the release pins include `e79caa5a` and `85879bfa`, run the installed acceptance on `correct-lv-shapefiles.zip`.
 
 - **Unicode source reproduction** (`f7732067`): current Linux Unicode fixtures and `bukane` v3 export preserve characters. Obtain the original affected host/build, corrupt request bytes and approved v2 source pin, then reproduce the exact export before alleging a remaining code fault.
+
+- **Inert span-tolerance seed text** (`86904ced`): the project `drafting_tolerances` sheet (Northern Hub, and the template it was seeded from) describes `max_span_violation_tolerance` as "Allowed overshoot (m) beyond a cable's max_span before inserting an additional pole", but LV processing never reads `drafting_tolerances`; the effective tolerance is the per-cable `lv_lines.max_span_violation_tolerance`, and it only grades `lv_span_exceeds_max_length` (ds-network `lv-network-build-contract.md`). Through `ds design config` on the governed template, correct that description or retire the inert row, then copy it to projects with `design config copy`.
+
+- **Headless intake save over an existing transformer** (`14fd08e8`): installed eaf7eb82 uploads, processes, then refuses every changed upload with `transformer_save_source_changed` (it fenced the head against the upload's own layers). Fixed 23 Oct: intake fences the save on the head version and digest it read; a source-built ds saved Rwanda Template `agatare_1` v4→v5→v6 with verified readback. After the next release, replay one upload on a test project with the installed ds, then close `14fd08e8` (the original Northern Hub `auth_response_unreadable` no longer reproduces: the upload stage completes).
 
 ## 10. Voltage drop
 
