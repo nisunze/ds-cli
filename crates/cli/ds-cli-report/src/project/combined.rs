@@ -90,16 +90,16 @@ the folders; Sync publishes the ZIP as export-compounded_report (`report outbox 
 A missing or older room report refuses before any archive. --group-by/--where give one \
 archive per leaf group (_unassigned holds untagged rooms). --composition takes \
 the ds.compounded-report/v1 JSON instead of scope/layout/force flags. \
-Explicit project required; no URL or action override.";
+No URL or action override.";
 
 pub(super) const OUTPUT: &str = "\
-Lane, named project ID, requested scope, and `archive_layout` — the layout \
+Lane, project ID, requested scope, and `archive_layout` — the layout \
 asked for, never the tree achieved: unresolved administrative values collapse \
 to `_unassigned/`. Then the receipt: status, `prefix`, `archives` (the sealed \
 archive's locator), `publication` (operation, batch, publish id; `ds report \
 outbox drain` publishes it and `ds report publication show` reads it \
 back), individual coverage, missing individuals with \
-causes (empty: a missing room refuses), errors and registry-write failure. \
+causes, errors and registry-write failure. \
 Grouped: `grouping` and one `groups` receipt per archive.";
 
 pub(super) const GROUPING_INVALID: Refusal = Refusal {

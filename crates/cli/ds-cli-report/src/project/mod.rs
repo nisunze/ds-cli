@@ -141,8 +141,8 @@ refusal!(
 refusal!(
     AUTH_INPUT,
     "auth_input_invalid",
-    "the report service refused the scope, layout or grouping",
-    "run `ds report project scope`"
+    "an excluded transformer, no `report_archive` grouping, or bad scope",
+    "ds report project scope; ds design consumer-grouping read --purpose report_archive"
 );
 refusal!(
     AUTH_REJECTED,
