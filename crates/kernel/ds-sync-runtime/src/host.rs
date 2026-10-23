@@ -591,6 +591,21 @@ impl SyncHost for StoreHost<'_> {
         Ok(rows)
     }
 
+    /// The rows [`SyncHost::local`] starts from, read from the store alone:
+    /// no producer reconciliation and no replica verification, so a pass can
+    /// ask between two download steps without re-hashing what it mirrored.
+    fn sealed(&self, _project: &str) -> Result<Vec<LocalRow>, String> {
+        Ok(self
+            .snapshot()?
+            .artifacts
+            .iter()
+            .filter(|stored| {
+                !stored.archived && !matches!(stored.state.as_str(), "conflict" | "refused")
+            })
+            .map(local_row_from_store)
+            .collect())
+    }
+
     fn held_heads(&self, _project: &str) -> Result<(Vec<RemoteRow>, Option<u64>), String> {
         let heads = self
             .snapshot()?

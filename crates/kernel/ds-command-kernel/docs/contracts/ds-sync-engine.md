@@ -94,6 +94,14 @@ with attribution and `base_revisions` (the server re-authorizes live and checks
 concurrency); downloads through the gateway read — then re-plan. The browser
 holds no local compute artifacts: it shows remote heads and downloads.
 
+Uploads lead every pass. Downloads run one head per step, and before each step
+the pass re-plans from the store's own rows and its held heads (no record read,
+no replica re-verified) and publishes what was sealed since it planned. A
+result sealed during a long mirror therefore waits at most one download step,
+never the whole project. Each publication is attempted at most once per pass
+under that pass's lease, and a head the pass replaced with its own result is not
+fetched.
+
 The Desktop sync door sends the signed-in webview's validated `x-api-key`
 alongside its bearer. An empty key is allowed only for a local stack that does
 not require one. A 401 from the gateway or the record is a credential blocker:

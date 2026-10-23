@@ -21,6 +21,8 @@
 //! whether that trigger needs the remote heads re-read. The only timed wake a
 //! host may honour is the one the plan names in `wake`.
 
+use std::collections::BTreeSet;
+
 use ds_command_kernel::{sync, sync_store::QueueBlock};
 use serde_json::Value;
 use sync::{publication_verdict, PublicationStage as Stage, PublicationVerdict};
@@ -130,6 +132,18 @@ pub trait SyncHost {
         let _ = (project, row);
         Ok(None)
     }
+    /// This machine's own publications for the project as the store holds
+    /// them now — what [`SyncHost::local`] answers without the head replicas
+    /// and without reconciling the producer's disk. A pass reads it between
+    /// two download steps, so it must stay cheap: no byte is re-verified and
+    /// nothing leaves the machine.
+    fn sealed(&self, project: &str) -> Result<Vec<LocalRow>, String> {
+        Ok(self
+            .local(project)?
+            .into_iter()
+            .filter(|row| !row.client_publish_id.is_empty())
+            .collect())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +252,9 @@ pub fn plan(
 ///
 /// The shape is the ruling's: a trigger arrives, the kernel says whether the
 /// record must be re-read for that trigger, the record is read at most once,
-/// and then the actions run. Nothing here waits, sleeps or schedules.
+/// and then the actions run. Nothing here waits, sleeps or schedules. Before
+/// each download step (one head) the pass publishes whatever was sealed since
+/// it planned, so a long mirror never holds a local result behind it.
 pub fn run(host: &dyn SyncHost, project: &str, trigger: sync::Trigger) -> Result<SyncRun, String> {
     run_with_download_interest(host, project, trigger, None)
 }
@@ -432,6 +448,10 @@ fn run_leased(
         )?;
     }
 
+    // Every publication this pass has asked the record about, and every
+    // identity it published: a row is attempted at most once per pass, and a
+    // head this pass superseded with its own bytes is not fetched.
+    let mut delivery = Delivery::default();
     for action in &plan.actions {
         match action {
             sync::Action::Offline => {
@@ -443,30 +463,28 @@ fn run_leased(
             sync::Action::Upload { identity, .. } => {
                 // A publication verdict affects only its row. A refused
                 // session affects every remaining gateway call in this pass.
-                let receipt = bind_publication(upload(host, project, &local, identity), &local);
-                let credential_refused = receipt.outcome == "credential_refused";
-                let settled = settled_verdict(&receipt);
-                let retain_for_recovery = local
-                    .iter()
-                    .find(|row| &row.identity == identity)
-                    .is_some_and(|row| {
-                        crate::store::recovery::retain_failure_bytes(
-                            &crate::rows::store_row(project, row, host.server_now_ms()),
-                            &crate::rows::receipt_row(project, &receipt, host.server_now_ms()),
-                        )
-                    });
-                keep(host, project, &mut receipts, receipt);
-                if credential_refused {
+                if delivery.deliver(host, project, &local, identity, &mut receipts) {
                     break;
-                }
-                // Terminal verdicts leave the queue immediately. Only exact
-                // recoverable authority evidence retains bytes for explicit recovery.
-                if let Some(verdict) = settled.filter(|_| !retain_for_recovery) {
-                    let receipt = reclaim(host, project, &local, identity, verdict);
-                    keep(host, project, &mut receipts, receipt);
                 }
             }
             sync::Action::Download { identity, .. } => {
+                // One download step is one head. Whatever was sealed while
+                // the steps before it ran publishes first.
+                if delivery.sealed_since_plan(
+                    host,
+                    project,
+                    trigger,
+                    download_interest,
+                    &mut receipts,
+                )? {
+                    break;
+                }
+                if delivery.published.contains(identity) {
+                    receipts.push(Receipt::new("nothing", "in_sync").about(identity).detail(
+                        "this pass published this identity after it planned; the head it replaced is not fetched",
+                    ));
+                    continue;
+                }
                 let receipt = download(host, project, &remote, identity);
                 let credential_refused = receipt.outcome == "credential_refused";
                 keep(host, project, &mut receipts, receipt);
@@ -580,6 +598,110 @@ fn run_leased(
         replanned,
         reclaimed,
     })
+}
+
+/// What one pass has delivered so far.
+#[derive(Default)]
+struct Delivery {
+    /// `(identity, client_publish_id)` of every row this pass asked the
+    /// record to publish, whatever it answered. Never asked twice in a pass:
+    /// a held row waits for the next trigger, as it always has.
+    attempted: BTreeSet<(sync::Identity, String)>,
+    /// Identities whose head this pass replaced with its own bytes.
+    published: BTreeSet<sync::Identity>,
+}
+
+impl Delivery {
+    /// Perform one planned upload over `rows` and keep its receipts.
+    /// Answers `true` when the session was refused, which ends the pass.
+    fn deliver(
+        &mut self,
+        host: &dyn SyncHost,
+        project: &str,
+        rows: &[LocalRow],
+        identity: &sync::Identity,
+        receipts: &mut Vec<Receipt>,
+    ) -> bool {
+        let row = rows.iter().find(|row| &row.identity == identity);
+        self.attempted.insert((
+            identity.clone(),
+            row.map(|row| row.client_publish_id.clone())
+                .unwrap_or_default(),
+        ));
+        let receipt = bind_publication(upload(host, project, rows, identity), rows);
+        if receipt.outcome == "credential_refused" {
+            keep(host, project, receipts, receipt);
+            return true;
+        }
+        if receipt.outcome == "published" {
+            self.published.insert(identity.clone());
+        }
+        let settled = settled_verdict(&receipt);
+        let retain_for_recovery = row.is_some_and(|row| {
+            crate::store::recovery::retain_failure_bytes(
+                &crate::rows::store_row(project, row, host.server_now_ms()),
+                &crate::rows::receipt_row(project, &receipt, host.server_now_ms()),
+            )
+        });
+        keep(host, project, receipts, receipt);
+        // Terminal verdicts leave the queue immediately. Only exact
+        // recoverable authority evidence retains bytes for explicit recovery.
+        if let Some(verdict) = settled.filter(|_| !retain_for_recovery) {
+            let receipt = reclaim(host, project, rows, identity, verdict);
+            keep(host, project, receipts, receipt);
+        }
+        false
+    }
+
+    /// Publish what was sealed since this pass planned, before its next
+    /// download step.
+    ///
+    /// A fresh host mirroring a whole project spends its pass fetching heads
+    /// (ADERM, 10-23: 106 heads, ~950 MB), while its Solar runs keep sealing
+    /// results that only this machine holds; those waited for the last head.
+    /// Between two steps the pass re-plans from the store's own rows and the
+    /// held heads — nothing remote is read, no replica is re-verified — and
+    /// performs only the uploads it has not attempted yet. The plan still
+    /// decides each one; this pass's lease is what keeps a second worker from
+    /// publishing the same row. Answers `true` when the session was refused.
+    fn sealed_since_plan(
+        &mut self,
+        host: &dyn SyncHost,
+        project: &str,
+        trigger: sync::Trigger,
+        download_interest: Option<&[sync::Identity]>,
+        receipts: &mut Vec<Receipt>,
+    ) -> Result<bool, String> {
+        let rows = host.sealed(project)?;
+        let (remote, read_at) = host.held_heads(project)?;
+        let plan = plan_once_with_interest(
+            host,
+            project,
+            trigger,
+            read_at,
+            &rows,
+            &remote,
+            download_interest,
+        )?;
+        for action in &plan.actions {
+            let sync::Action::Upload { identity, .. } = action else {
+                continue;
+            };
+            let Some(row) = rows.iter().find(|row| &row.identity == identity) else {
+                continue;
+            };
+            if self
+                .attempted
+                .contains(&(identity.clone(), row.client_publish_id.clone()))
+            {
+                continue;
+            }
+            if self.deliver(host, project, &rows, identity, receipts) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
 }
 
 /// Bind only the publication selected in this pass, never a fresh lookup
