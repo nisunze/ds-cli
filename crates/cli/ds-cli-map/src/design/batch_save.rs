@@ -35,8 +35,9 @@ pub static COMMAND: Command = Command {
     contract: 1,
     summary: "Save an explicit batch of staged transformer rooms.",
     purpose: "\
-Persists each named dirty desktop room with optimistic concurrency checks and \
-v_first/v_last stamping from the deliberate Design Status version. Items are isolated so one conflict does not \
+Persists each named dirty desktop room exactly as staged, with optimistic concurrency checks. Save never \
+stamps or advances v_first/v_last: feature lineage is authored by editing and processing under the deliberate \
+Design Status version (`map design version begin`). Items are isolated so one conflict does not \
 cancel unrelated saves. This durable project write always requires --yes.",
     chapter: Chapter::Design,
     effect: Effect::ArtifactWrite,

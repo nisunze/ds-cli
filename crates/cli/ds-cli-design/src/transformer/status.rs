@@ -160,7 +160,7 @@ per finding; with a selector, `query` carries the options each filter may offer.
     ],
     refusals: REFUSALS,
     reference: Some("docs/reference/design.md"),
-    search: &[],
+    search: &["scope", "cohort"],
     requires: Requires::Server,
     availability: ds_cli_auth::native_availability,
 };

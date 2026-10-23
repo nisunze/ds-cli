@@ -489,6 +489,10 @@ ds design status --project <id> --transformer TX-1 --transformer TX-2 --output j
 ds design status --project <id> --findings --output json
 ```
 
+A tag cohort (a scope, city or phase value) is selected by name: `ds design tag
+query --project <id> --choice <tag>:equals:<value>` answers the matching
+transformer names, which `--transformer` then takes, one per name.
+
 Reads are held-first (DECOUPLING-012). The default, `--read acquire`, answers
 from the last authenticated whole-project observation in native SQLite with no
 network read and acquires one whole-project snapshot only when nothing is held or
