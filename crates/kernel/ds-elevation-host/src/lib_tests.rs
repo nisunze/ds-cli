@@ -14,7 +14,7 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
-        let (x, y) = ds_geo::projection::wgs84_to_nix_itrf2005(30.0, -2.0);
+        let (x, y) = ds_geo_lite::projection::wgs84_to_nix_itrf2005(30.0, -2.0);
         let mut compressor = ZlibEncoder::new(Vec::new(), Compression::default());
         for value in [1600.0_f32, 1601.0, 1602.0, 1603.0] {
             compressor.write_all(&value.to_le_bytes()).unwrap();

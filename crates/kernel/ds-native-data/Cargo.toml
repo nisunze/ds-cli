@@ -16,7 +16,6 @@ ds-io = { path = "../../../../ds-network/crates/ds-io" }
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
 ds-network-client = { path = "../ds-network-client" }
 tempfile = "3"
-ds-geo = { path = "../../../../ds-network/crates/ds-geo" }
 ds-update-runtime = { path = "../ds-update-runtime" }
 ds-layer-store = { path = "../ds-layer-store" }
 serde = { workspace = true }

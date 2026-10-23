@@ -12,7 +12,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use ds_geo::projection::GridModelCrs;
+use ds_geo_lite::model_crs::GridModelCrs;
 use ds_network_client::{CapturedNetworkClient, ElevationCompleted, Needed, NetworkFailure};
 use ds_network_contracts::elevation::{
     COMPARISON_ARTIFACT, CompareRequestV1, ComparisonReceiptV1, DemAccessV1,

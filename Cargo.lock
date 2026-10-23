@@ -2198,7 +2198,7 @@ dependencies = [
 name = "ds-elevation-host"
 version = "0.1.0"
 dependencies = [
- "ds-geo",
+ "ds-geo-lite",
  "ds-network-client",
  "ds-network-contracts",
  "flate2",
@@ -2443,7 +2443,6 @@ dependencies = [
  "crc32c",
  "csv",
  "ds-columnar",
- "ds-geo",
  "ds-io",
  "ds-layer-store",
  "ds-network-client",

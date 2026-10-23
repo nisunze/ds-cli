@@ -12,7 +12,7 @@ publish.workspace = true
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
 ds-network-client = { path = "../ds-network-client" }
 tempfile = "3"
-ds-geo = { path = "../../../../ds-network/crates/ds-geo" }
+ds-geo-lite = { path = "../../shared/ds-geo-lite", features = ["projection"] }
 ureq = "3.3.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
