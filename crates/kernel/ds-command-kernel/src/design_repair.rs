@@ -173,6 +173,8 @@ pub fn feature_identity(feature: &Value) -> Result<FeatureIdentity, RepairError>
 #[serde(rename_all = "snake_case")]
 pub enum RepairPropertyKind {
     TextOrNumber,
+    /// A lifecycle status spelling (bounded text, never a number).
+    Status,
     NonnegativeNumber,
     NonnegativeInteger,
     Approval,
@@ -211,6 +213,9 @@ pub fn repair_property_kind(layer: &str, field: &str) -> Option<RepairPropertyKi
         ) => Some(TextOrNumber),
         ("customers", "peak_power_w") => Some(NonnegativeNumber),
         ("customers", "num_houses") => Some(NonnegativeInteger),
+        // Owner 2026-10-23: a pole's existence status, which older designs
+        // recorded as a struct_type marker, is a factual repair cell.
+        ("lv_poles", "existing_status") => Some(Status),
         _ => None,
     }
 }
@@ -231,11 +236,12 @@ pub fn validate_property_cell(layer: &str, field: &str, cell: &Cell) -> Result<(
         (RepairPropertyKind::Approval, _) => false,
         (_, Cell::Missing | Cell::Value { value: Value::Null }) => true,
         (
-            RepairPropertyKind::TextOrNumber,
+            RepairPropertyKind::TextOrNumber | RepairPropertyKind::Status,
             Cell::Value {
                 value: Value::String(text),
             },
         ) => text.len() <= 2048 && !text.chars().any(char::is_control),
+        (RepairPropertyKind::Status, Cell::Value { .. }) => false,
         (
             RepairPropertyKind::TextOrNumber | RepairPropertyKind::NonnegativeNumber,
             Cell::Value { value },

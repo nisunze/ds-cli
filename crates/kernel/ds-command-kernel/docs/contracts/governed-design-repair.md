@@ -130,6 +130,7 @@ unknown fields are never repairable through this operation.
 | --- | --- |
 | `tr` | `plan_kva`, `tr_size`, `transfo_size`, `main_cable_size` |
 | `lv_poles`, `tapping_poles` | `struct_type`, `material`, `assembly_type`, `stay`, `flying_stay`, `earthing` |
+| `lv_poles` | `existing_status` (lifecycle status: bounded text or null, never a number) |
 | `lv_lines`, `service_cables` | `cable_size`, `cab_size`, `service_cable_size`, `length` |
 | `customers` | `meter_type`, `category`, `connection_pole_id`, `connection_override_pole_id`, `service_cable_size`, `peak_power_w`, `num_houses` |
 

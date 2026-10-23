@@ -680,7 +680,8 @@ fn strict_field_catalogue_rejects_identity_system_fields_unknown_fields_and_hidd
         "feature_id",
         "geometry",
         "drafting_locked_properties",
-        "existing_status",
+        // existing_status itself joined the catalogue (owner, 2026-10-23).
+        "existing_status_detail",
         "_ds_source_file",
         "unknown_fact",
     ] {
@@ -1167,5 +1168,91 @@ fn dispatcher_and_generated_descriptors_share_closed_shapes_and_no_persistence_c
             .unwrap()
             .contains("\"$ref\""));
         assert_eq!(descriptor["pure"], true);
+    }
+}
+
+#[test]
+fn pole_existence_status_is_an_admitted_text_cell_and_its_neighbours_are_not() {
+    let target = snapshot();
+    let mut request = self::request(&target);
+    let status_rule = FieldRule {
+        allowed_values: vec![json!("existing"), json!("new")],
+        ..text_rule()
+    };
+    request
+        .policy
+        .fields
+        .get_mut("lv_poles")
+        .unwrap()
+        .insert("existing_status".into(), status_rule.clone());
+    request
+        .allowlist
+        .get_mut("lv_poles")
+        .unwrap()
+        .insert("existing_status".into());
+    let assign = |layer: &str, field: &str, value: Value| RepairOperation::Assign {
+        target_layer: layer.into(),
+        target_ids: vec!["p2".into()],
+        values: BTreeMap::from([(field.into(), Cell::Value { value })]),
+    };
+    request.operations = vec![assign("lv_poles", "existing_status", json!("existing"))];
+    let proposal = propose(None, &target, &request).unwrap();
+    assert_eq!(proposal.changes.len(), 1);
+    assert_eq!(proposal.changes[0].before, Cell::Missing);
+    let applied = apply_selected(None, &target, &proposal, &selection(&proposal)).unwrap();
+    assert_eq!(applied.changed_cells, 1);
+    let mut expected = serde_json::to_value(&target).unwrap();
+    expected["layers"]["lv_poles"]["features"][1]["properties"]["existing_status"] =
+        json!("existing");
+    assert_eq!(
+        serde_json::to_value(&applied.snapshot).unwrap(),
+        expected,
+        "only the selected existence cell changes"
+    );
+
+    // A lifecycle status is text: a number is refused even if a caller widens
+    // its policy to admit one.
+    assert_eq!(
+        code(validate_property_cell(
+            "lv_poles",
+            "existing_status",
+            &Cell::Value { value: json!(1) }
+        )),
+        "repair_value_invalid"
+    );
+    // Its neighbours stay outside the catalogue, whatever the caller allows.
+    for (layer, field) in [
+        ("lv_poles", "existing_status_detail"),
+        ("tapping_poles", "existing_status"),
+        ("lv_poles", "construction_status"),
+    ] {
+        assert_eq!(
+            code(validate_property_cell(
+                layer,
+                field,
+                &Cell::Value {
+                    value: json!("existing")
+                }
+            )),
+            "repair_field_not_allowed"
+        );
+        let mut widened = request.clone();
+        widened
+            .policy
+            .fields
+            .entry(layer.into())
+            .or_default()
+            .insert(field.into(), status_rule.clone());
+        widened
+            .allowlist
+            .entry(layer.into())
+            .or_default()
+            .insert(field.into());
+        widened.operations = vec![assign(layer, field, json!("existing"))];
+        assert_eq!(
+            code(propose(None, &target, &widened)),
+            "repair_field_not_allowed",
+            "{layer}.{field}"
+        );
     }
 }
