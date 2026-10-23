@@ -614,3 +614,39 @@ fn wire_context_defaults_network_and_rejects_crossed_component_callers() {
         );
     }
 }
+/// Contract 4 (owner 22 Oct): a newer catalog or WASM protocol revision of the
+/// same family admits the same unit; another family or a missing protocol
+/// still refuses.
+#[test]
+fn newer_catalog_and_protocol_revisions_admit_the_same_unit() {
+    let base = catalog();
+    let admitted = inspect("canary", &base).unwrap();
+    let mut newer = base.clone();
+    newer["schema"] = json!("ds.module-release/v2");
+    newer["protocol"] = json!("ds.network-wasm/v2");
+    for asset in newer["assets"].as_array_mut().unwrap() {
+        asset["protocol"] = json!("ds.network-wasm/v2");
+    }
+    let unit = inspect("canary", &newer).unwrap();
+    assert_eq!(unit.release.protocol, "ds.network-wasm/v2");
+    assert_eq!(unit.release.assets.len(), admitted.release.assets.len());
+
+    let mut other = newer.clone();
+    other["protocol"] = json!("ds.reporter-wasm/v1");
+    assert_eq!(
+        inspect("canary", &other).unwrap_err().code,
+        "module_release_identity_mismatch"
+    );
+    let mut other = newer.clone();
+    other["assets"][2]["protocol"] = json!("ds.ui-wasm/v1");
+    assert_eq!(
+        inspect("canary", &other).unwrap_err().code,
+        "module_release_asset_invalid"
+    );
+    let mut missing = newer;
+    missing.as_object_mut().unwrap().remove("protocol");
+    assert_eq!(
+        inspect("canary", &missing).unwrap_err().code,
+        "module_release_invalid"
+    );
+}

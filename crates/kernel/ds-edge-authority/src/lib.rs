@@ -2,8 +2,16 @@
 //!
 //! This crate deliberately has no Tauri dependency. The desktop shell supplies
 //! its private authority directory and shell-minted identity, while this module
-//! owns signature verification, the bounded Google certificate cache, closed
+//! owns signature verification, the bounded Google certificate cache,
 //! capability schemas, and the rollback-resistant server-time high-water mark.
+//!
+//! Brain's signed capabilities are replies from an independently released
+//! component (contract 4): a member a newer Brain adds is accepted, bound by
+//! the signature and never read, so it grants nothing; their `schema` is
+//! provenance. Every member read here stays required and typed, the signing
+//! domain still separates capability kinds, and a restriction older Cores must
+//! honour has to ride on a member they already read (scope, expiry, status).
+//! Verification requests and this crate's retained records stay closed.
 
 use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -118,7 +126,6 @@ pub fn bounded_os_version(os_type: &str, version: &str) -> Result<String, String
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct SignatureDeclaration {
     pub algorithm: String,
     pub signer: String,
@@ -127,7 +134,6 @@ pub struct SignatureDeclaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Principal {
     pub uid: String,
     #[serde(
@@ -148,7 +154,6 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct InstallLeasePayload {
     schema: u8,
     issuer: String,
@@ -166,7 +171,6 @@ struct InstallLeasePayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct InstallLeaseCapability {
     pub schema: u8,
     pub issuer: String,
@@ -249,14 +253,12 @@ pub enum VerifiedInstallStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct GrantEngine {
     name: String,
     release: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct GrantScope {
     ds_project: String,
     capabilities: Vec<String>,
@@ -264,7 +266,6 @@ struct GrantScope {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct WorkGrantPayload {
     schema: u8,
     issuer: String,
@@ -281,7 +282,6 @@ struct WorkGrantPayload {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WorkGrantCapability {
     pub schema: u8,
     pub issuer: String,
@@ -300,7 +300,6 @@ pub struct WorkGrantCapability {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WorkGrantScope {
     pub ds_project: String,
     pub capabilities: Vec<String>,
@@ -308,7 +307,6 @@ pub struct WorkGrantScope {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WorkGrantEngine {
     pub name: String,
     pub release: String,
@@ -346,7 +344,6 @@ impl WorkGrantCapability {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ArtifactReadEntitlementPayload {
     schema: u8,
     issuer: String,
@@ -366,7 +363,6 @@ struct ArtifactReadEntitlementPayload {
 /// crash-durable Network Reporter publication. It deliberately carries no
 /// locator, filename, or filesystem path.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct ArtifactReadEntitlementCapability {
     pub schema: u8,
     pub issuer: String,
@@ -648,8 +644,8 @@ impl AuthorityVerifier {
             Some(owner_uid) => bounded_text(owner_uid, 128) && decoded.principal.uid == owner_uid,
             None => decoded.principal.uid.is_empty() && decoded.principal.org.is_none(),
         };
-        if decoded.schema != 1
-            || decoded.issuer != self.pins.issuer
+        // `schema` is provenance (contract 4): typed and required, never compared.
+        if decoded.issuer != self.pins.issuer
             || decoded.audience != self.pins.audience
             || decoded.install_id != expected.install_id
             || decoded.device != expected.device
@@ -756,8 +752,8 @@ impl AuthorityVerifier {
         let manifest = request.snapshot_manifest;
         let manifest_transformer = manifest.transformers.first();
         let execution = &decoded.individual_execution;
-        if decoded.schema != 1
-            || decoded.issuer != self.pins.issuer
+        // `schema` is provenance (contract 4): typed and required, never compared.
+        if decoded.issuer != self.pins.issuer
             || decoded.audience != self.pins.audience
             || decoded.install_id != expected.install_id
             || decoded.device != expected.device
@@ -880,8 +876,8 @@ impl AuthorityVerifier {
             .engines
             .first()
             .map(|engine| engine.release.clone());
-        if decoded.schema != 1
-            || decoded.issuer != self.pins.issuer
+        // `schema` is provenance (contract 4): typed and required, never compared.
+        if decoded.issuer != self.pins.issuer
             || decoded.audience != self.pins.audience
             || decoded.install_id != expected.install_id
             || decoded.device != expected.device

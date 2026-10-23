@@ -16,10 +16,20 @@ pub mod ui;
 pub mod ui_build;
 pub mod ui_page;
 
+use crate::module_engine::schema_family;
+
 pub const MODULE_RELEASE_SCHEMA: &str = "ds.module-release/v1";
 // The component catalog and engine build admission are shared with release
 // packaging through `module_engine`; these paths remain the public names.
 pub use crate::module_engine::{ModuleComponent, MODULE_PROTOCOL, NETWORK_PROTOCOL};
+
+/// Does a published catalog or protocol tag name the same document family as
+/// the one this Kernel reads? A newer publisher's `/vN` revision is provenance
+/// (owner 22 Oct, contract 4): the typed members below decide whether the
+/// catalog is usable, and a different family is still another document.
+pub(crate) fn same_family(tag: &str, expected: &str) -> bool {
+    schema_family(tag) == schema_family(expected)
+}
 
 impl ModuleComponent {
     fn parse(component: &str) -> Result<Self, ModuleReleaseError> {
@@ -236,7 +246,7 @@ pub fn validate_module_release(
             code: "module_release_invalid",
             message: "Module release does not match its declared schema".into(),
         })?;
-    if release.schema != MODULE_RELEASE_SCHEMA {
+    if !same_family(&release.schema, MODULE_RELEASE_SCHEMA) {
         return fail(
             "module_release_schema_invalid",
             "Module release schema is unsupported",
@@ -256,7 +266,7 @@ pub fn validate_module_release(
             "Module release does not match the requested component and lane",
         );
     }
-    if release.protocol != component.protocol() {
+    if !same_family(&release.protocol, component.protocol()) {
         return fail(
             "module_release_protocol_unsupported",
             "Module protocol is unsupported",
@@ -279,7 +289,7 @@ pub fn validate_module_release(
         if !matches!(asset.platform.as_str(), "linux" | "windows")
             || asset.arch != "x86_64"
             || asset.kind != "module-executable"
-            || asset.protocol != component.protocol()
+            || !same_family(&asset.protocol, component.protocol())
             || platforms.contains(&asset.platform.as_str())
         {
             return fail(

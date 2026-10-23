@@ -30,6 +30,7 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 
 use crate::{ENGINE_LANE, RUN_TIMEOUT, capture_engine};
+use ds_command_kernel::module_engine::schema_family;
 
 const BATCH_SCHEMA: &str = "ds-solar.artifact-batch/v1";
 const MAX_BATCH_RECEIPT_BYTES: u64 = 16 * 1024 * 1024;
@@ -447,29 +448,20 @@ fn missing_batch_receipt(path: &Path) -> Failure {
 
 fn invalid_batch_receipt(detail: impl Into<String>) -> Failure {
     Failure::failed("batch_receipt_invalid", detail)
-        .remedy("install matching ds and ds-solar releases, then rerun into a new output directory")
+        .remedy("rerun into a new output directory; a receipt that still lacks a required member needs a ds-solar engine that writes it")
 }
 
+/// The engine's batch receipt is a reply (contract 4): members a newer engine
+/// adds are accepted and never read, and its schema revision is provenance.
+/// Every member read here stays required and typed; `batch_digest` still binds
+/// the whole document as written, unknown members included.
 fn validate_batch_receipt(batch: &Value, expected_run_id: Option<&str>) -> Result<(), Failure> {
-    let root = batch
-        .as_object()
-        .ok_or_else(|| invalid_batch_receipt("batch.json root is not an object"))?;
-    let allowed_root = [
-        "schema_version",
-        "batch_id",
-        "run",
-        "artifacts",
-        "state",
-        "batch_digest",
-    ];
-    if root.keys().any(|key| !allowed_root.contains(&key.as_str())) {
-        return Err(invalid_batch_receipt(
-            "batch.json contains a field outside the v1 batch contract",
-        ));
+    if !batch.is_object() {
+        return Err(invalid_batch_receipt("batch.json root is not an object"));
     }
-    if batch["schema_version"].as_str() != Some(BATCH_SCHEMA) {
+    if batch["schema_version"].as_str().map(schema_family) != Some(schema_family(BATCH_SCHEMA)) {
         return Err(invalid_batch_receipt(
-            "batch.json does not declare ds-solar.artifact-batch/v1",
+            "batch.json does not declare the ds-solar.artifact-batch family",
         ));
     }
     let batch_digest = batch["batch_digest"]
@@ -486,12 +478,6 @@ fn validate_batch_receipt(batch: &Value, expected_run_id: Option<&str>) -> Resul
     let run = batch["run"]
         .as_object()
         .ok_or_else(|| invalid_batch_receipt("run identity is missing"))?;
-    let run_fields = ["project_id", "root", "run_id", "cities"];
-    if run.keys().any(|key| !run_fields.contains(&key.as_str())) {
-        return Err(invalid_batch_receipt(
-            "run identity contains a field outside the v1 batch contract",
-        ));
-    }
     for field in ["project_id", "root", "run_id"] {
         run.get(field)
             .and_then(Value::as_str)
@@ -507,17 +493,11 @@ fn validate_batch_receipt(batch: &Value, expected_run_id: Option<&str>) -> Resul
         .as_array()
         .filter(|cities| cities.len() <= 200)
         .ok_or_else(|| invalid_batch_receipt("run.cities is not a bounded array"))?;
-    let city_fields = ["city_id", "input_digest", "result_digest"];
     let mut city_ids = BTreeSet::new();
     for city in cities {
         let city = city
             .as_object()
             .ok_or_else(|| invalid_batch_receipt("run.cities contains a non-object"))?;
-        if city.keys().any(|key| !city_fields.contains(&key.as_str())) {
-            return Err(invalid_batch_receipt(
-                "a run city contains a field outside the v1 batch contract",
-            ));
-        }
         let city_id = valid_logical_segment(city.get("city_id").and_then(Value::as_str))
             .ok_or_else(|| invalid_batch_receipt("run.cities.city_id is invalid"))?;
         if !city_ids.insert(city_id) {
@@ -537,27 +517,11 @@ fn validate_batch_receipt(batch: &Value, expected_run_id: Option<&str>) -> Resul
         .as_array()
         .filter(|artifacts| artifacts.len() <= MAX_BATCH_ARTIFACTS)
         .ok_or_else(|| invalid_batch_receipt("artifacts is not a bounded array"))?;
-    let artifact_fields = [
-        "name",
-        "role",
-        "media_type",
-        "byte_count",
-        "content_digest",
-        "city_id",
-    ];
     let mut previous_name: Option<&str> = None;
     for artifact in artifacts {
         let artifact = artifact
             .as_object()
             .ok_or_else(|| invalid_batch_receipt("artifacts contains a non-object"))?;
-        if artifact
-            .keys()
-            .any(|key| !artifact_fields.contains(&key.as_str()))
-        {
-            return Err(invalid_batch_receipt(
-                "an artifact contains a field outside the v1 batch contract",
-            ));
-        }
         let name = artifact
             .get("name")
             .and_then(Value::as_str)
@@ -704,82 +668,8 @@ pub fn render(data: &Value) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn closed_batch() -> Value {
-        let digest = |byte: char| format!("sha256:{}", byte.to_string().repeat(64));
-        let run = json!({
-            "project_id": "project-1",
-            "root": "solar",
-            "run_id": "run-1",
-            "cities": [{
-                "city_id": "city-1",
-                "input_digest": digest('a'),
-                "result_digest": digest('b'),
-            }],
-        });
-        let artifacts = json!([{
-            "name": "cities/city-1/result.json",
-            "role": "city_result",
-            "media_type": "application/json",
-            "byte_count": 42,
-            "content_digest": digest('c'),
-            "city_id": "city-1",
-        }]);
-        let content = json!({
-            "schema_version": BATCH_SCHEMA,
-            "run": run,
-            "artifacts": artifacts,
-        });
-        let digest = ds_solar_contracts::digest::canonical_json_digest(&content).unwrap();
-        json!({
-            "schema_version": BATCH_SCHEMA,
-            "batch_id": &digest[7..39],
-            "run": content["run"],
-            "artifacts": content["artifacts"],
-            "state": {"state": "local_ready"},
-            "batch_digest": digest,
-        })
-    }
-
-    #[test]
-    fn closed_batch_manifest_identity_is_recomputed_before_projection() {
-        let mut batch = closed_batch();
-        validate_batch_receipt(&batch, Some("run-1")).expect("closed receipt is valid");
-
-        batch["artifacts"][0]["byte_count"] = json!(43);
-        let failure =
-            validate_batch_receipt(&batch, Some("run-1")).expect_err("tampering must fail");
-        assert_eq!(failure.code(), "batch_receipt_invalid");
-        assert!(failure.message().contains("batch_digest"));
-    }
-
-    #[test]
-    fn oversized_batch_manifest_is_bounded_at_max_plus_one() {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock after epoch")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "ds-cli-solar-oversized-batch-{}-{unique}.json",
-            std::process::id()
-        ));
-        let file = std::fs::File::create(&path).expect("create sparse batch fixture");
-        file.set_len(MAX_BATCH_RECEIPT_BYTES + 2)
-            .expect("extend sparse batch fixture");
-        drop(file);
-
-        let failure = read_batch_receipt(&path, None).expect_err("oversized receipt must fail");
-        assert_eq!(failure.code(), "batch_receipt_oversized");
-        assert_eq!(
-            failure.detail_value().expect("bounded detail")["observed_at_least"],
-            MAX_BATCH_RECEIPT_BYTES + 1
-        );
-        let _ = std::fs::remove_file(path);
-    }
-}
+#[path = "run_receipt_tests.rs"]
+mod tests;
 
 #[cfg(test)]
 #[path = "run_tests.rs"]

@@ -1,7 +1,7 @@
 //! DS Core's own published release, projected beside the shell's. Read-only:
 //! Core installation stays with its installer; nothing here downloads or runs.
 use super::{asset_publication, release_identity, Inspection, InspectionInput, Proven};
-use crate::module_release::MODULE_RELEASE_SCHEMA;
+use crate::module_release::{same_family, MODULE_RELEASE_SCHEMA};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -65,11 +65,11 @@ fn admit(channel: &str, release: Value) -> Result<CoreRelease, String> {
     } else {
         "rw.datasolutions.core"
     };
-    if release.schema != MODULE_RELEASE_SCHEMA
+    if !same_family(&release.schema, MODULE_RELEASE_SCHEMA)
         || release.component != "core"
         || release.channel != channel
         || release.product_id != product
-        || release.protocol != CORE_PROTOCOL
+        || !same_family(&release.protocol, CORE_PROTOCOL)
     {
         return Err("The Core release belongs to another lane or product".into());
     }
@@ -79,7 +79,7 @@ fn admit(channel: &str, release: Value) -> Result<CoreRelease, String> {
     ) || release.assets.is_empty()
         || release.assets.len() > 12
         || release.assets.iter().any(|asset| {
-            asset.protocol != CORE_PROTOCOL
+            !same_family(&asset.protocol, CORE_PROTOCOL)
                 || !matches!(asset.platform.as_str(), "windows" | "linux" | "macos")
                 || !digest(&asset.sha256)
                 || asset.size_bytes == 0

@@ -89,7 +89,7 @@ fn refuses_malformed_targets_provenance_urls_and_unknown_payloads() {
     for (path, replacement) in [
         ("/assets/0/platform", json!("macos")),
         ("/assets/0/arch", json!("aarch64")),
-        ("/assets/0/protocol", json!("ds.module/v2")),
+        ("/assets/0/protocol", json!("ds.network-wasm/v1")),
         ("/assets/0/sha256", json!("A".repeat(64))),
         ("/assets/0/source_revisions/ds-solar", json!("e".repeat(40))),
         ("/assets/0/engines/0/engine", json!("ds-network-reporter")),
@@ -183,4 +183,54 @@ fn additive_catalog_members_are_admitted_bounded_and_never_read() {
     let mut wrong = catalog();
     wrong["assets"][0]["size_bytes"] = json!("10");
     assert_eq!(invalid(&wrong), "module_release_invalid");
+}
+
+/// Contract 4 (owner 22 Oct): a newer publisher's catalog or protocol
+/// revision is provenance. Every member this Kernel reads still decides, a
+/// different document or protocol family still refuses, and a missing
+/// required member is the typed `module_release_invalid`.
+#[test]
+fn newer_catalog_and_protocol_revisions_are_admitted_by_family() {
+    let mut newer = catalog();
+    newer["schema"] = json!("ds.module-release/v2");
+    newer["protocol"] = json!("ds.module/v3");
+    newer["assets"][0]["protocol"] = json!("ds.module/v3");
+    newer["assets"][0]["signature"] = json!({"scheme": "future"});
+    let admitted = validate_module_release("solar", "canary", &newer).unwrap();
+    assert_eq!(admitted.schema, "ds.module-release/v2");
+    assert_eq!(admitted.protocol, "ds.module/v3");
+
+    let mut network = network_catalog();
+    network["protocol"] = json!("ds.network-engine/v2");
+    network["assets"][0]["protocol"] = json!("ds.network-engine/v2");
+    assert!(validate_module_release("network", "canary", &network).is_ok());
+
+    for (path, replacement, code) in [
+        (
+            "/schema",
+            json!("ds.desktop-release/v1"),
+            "module_release_schema_invalid",
+        ),
+        (
+            "/protocol",
+            json!("ds.network-engine/v1"),
+            "module_release_protocol_unsupported",
+        ),
+        (
+            "/assets/0/protocol",
+            json!("ds.ui-wasm/v1"),
+            "module_release_target_unsupported",
+        ),
+    ] {
+        let mut other = newer.clone();
+        *other.pointer_mut(path).unwrap() = replacement;
+        let refusal = validate_module_release("solar", "canary", &other).unwrap_err();
+        assert_eq!(refusal.code, code, "{path}");
+    }
+    for member in ["protocol", "assets"] {
+        let mut missing = newer.clone();
+        missing.as_object_mut().unwrap().remove(member);
+        let refusal = validate_module_release("solar", "canary", &missing).unwrap_err();
+        assert_eq!(refusal.code, "module_release_invalid", "{member}");
+    }
 }

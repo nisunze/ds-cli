@@ -995,7 +995,10 @@ fn artifact_read_entitlement_rejects_domain_visibility_schema_and_time_attacks()
             "key_id": "test-key", "value": "abc"
         }
     });
-    assert!(serde_json::from_value::<ArtifactReadEntitlementCapability>(extended).is_err());
+    // Contract 4 (owner 22 Oct): a member a newer Brain adds to its reply is
+    // accepted and never read (this was a refusal); the signing domain, not
+    // member closure, keeps a work grant from passing as an entitlement.
+    assert!(serde_json::from_value::<ArtifactReadEntitlementCapability>(extended).is_ok());
 }
 
 struct CountingCertificates {
@@ -1269,4 +1272,103 @@ fn high_water_lock_serializes_processes_without_stale_age_breaking() {
         .contains("busy"));
     drop(held);
     acquire_authority_lock_with_attempts(&root.0, 1).unwrap();
+}
+
+/// Re-sign `payload` with members a newer Brain adds and a newer `schema`.
+fn resigned<T: Serialize>(domain: &str, payload: &T) -> (String, SignatureDeclaration) {
+    let mut signed = serde_json::to_value(payload).unwrap();
+    signed["schema"] = serde_json::json!(2);
+    signed["attestation"] = serde_json::json!({"kind": "future", "level": 3});
+    signed["principal"]["display_name"] = serde_json::json!("Owner");
+    if signed.get("scope").is_some() {
+        signed["scope"]["region"] = serde_json::json!("rw");
+        signed["scope"]["engines"][0]["channel"] = serde_json::json!("canary");
+    }
+    signed_bytes(domain, &signed)
+}
+
+/// The same signed reply without one member every Core reads.
+fn without<T: Serialize>(
+    domain: &str,
+    payload: &T,
+    member: &str,
+) -> (String, SignatureDeclaration) {
+    let mut signed = serde_json::to_value(payload).unwrap();
+    signed.as_object_mut().unwrap().remove(member);
+    signed_bytes(domain, &signed)
+}
+
+/// Contract 4 (owner 22 Oct): every Brain capability kind verifies when a
+/// newer Brain adds members and bumps `schema`; the result is exactly what
+/// the known members grant. A missing required member is a typed refusal.
+#[test]
+fn newer_brain_capabilities_with_additive_members_verify_and_grant_nothing_more() {
+    let mut install = install_payload();
+    install.schema = 2;
+    let base = install_request(install.clone(), "2026-08-18T12:00:01Z");
+    let mut newer = base.clone();
+    (newer.capability.signed_payload, newer.capability.signature) =
+        resigned(INSTALL_DOMAIN, &install);
+    let verified = verifier(&TestRoot::new())
+        .verify_install_with_keys(newer, &keys())
+        .unwrap();
+    assert_eq!(verified.status, VerifiedInstallStatus::Active);
+    assert_eq!(verified.owner_uid.as_deref(), Some(OWNER));
+    let mut missing = base.clone();
+    (
+        missing.capability.signed_payload,
+        missing.capability.signature,
+    ) = without(INSTALL_DOMAIN, &install, "expires_at");
+    let refusal = verifier(&TestRoot::new())
+        .verify_install_with_keys(missing, &keys())
+        .unwrap_err();
+    assert!(refusal.contains("JSON is invalid"), "{refusal}");
+    let mut visible = serde_json::to_value(&base.capability).unwrap();
+    visible["attestation"] = serde_json::json!({"kind": "future"});
+    assert!(serde_json::from_value::<InstallLeaseCapability>(visible.clone()).is_ok());
+    visible.as_object_mut().unwrap().remove("status");
+    assert!(serde_json::from_value::<InstallLeaseCapability>(visible).is_err());
+
+    let mut work = work_payload();
+    work.schema = 2;
+    let base = work_request(work.clone(), "2026-08-18T12:00:05Z");
+    let expected = verifier(&TestRoot::new())
+        .verify_work_with_keys(base.clone(), &keys())
+        .unwrap();
+    let mut newer = base.clone();
+    (newer.capability.signed_payload, newer.capability.signature) = resigned(WORK_DOMAIN, &work);
+    let verified = verifier(&TestRoot::new())
+        .verify_work_with_keys(newer, &keys())
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&verified).unwrap(),
+        serde_json::to_value(&expected).unwrap()
+    );
+    let mut missing = base;
+    (
+        missing.capability.signed_payload,
+        missing.capability.signature,
+    ) = without(WORK_DOMAIN, &work, "grant_id");
+    assert!(verifier(&TestRoot::new())
+        .verify_work_with_keys(missing, &keys())
+        .is_err());
+
+    let mut read = artifact_read_payload();
+    read.schema = 2;
+    let base = artifact_read_request(read.clone(), "2026-08-18T12:00:05Z");
+    let mut newer = base.clone();
+    (newer.capability.signed_payload, newer.capability.signature) =
+        resigned(ARTIFACT_READ_DOMAIN, &read);
+    let verified = verifier(&TestRoot::new())
+        .verify_artifact_read_with_keys(newer, &keys())
+        .unwrap();
+    assert_eq!(verified.batch_id, "d".repeat(64));
+    let mut missing = base;
+    (
+        missing.capability.signed_payload,
+        missing.capability.signature,
+    ) = without(ARTIFACT_READ_DOMAIN, &read, "batch_id");
+    assert!(verifier(&TestRoot::new())
+        .verify_artifact_read_with_keys(missing, &keys())
+        .is_err());
 }

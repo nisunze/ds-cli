@@ -420,3 +420,35 @@ fn a_crossed_or_malformed_core_release_refuses() {
     )
     .is_err());
 }
+/// Contract 4 (owner 22 Oct): a newer Core catalog or release-protocol
+/// revision projects the same publication; another family or a missing
+/// required member refuses.
+#[test]
+fn a_newer_core_catalog_revision_projects_the_same_publication() {
+    let runtime = json!({"version":"0.1.0","source_sha":"5".repeat(40)});
+    let base = core(runtime.clone(), core_release(), "linux").unwrap();
+    let mut newer = core_release();
+    newer["schema"] = json!("ds.module-release/v2");
+    newer["protocol"] = json!("ds.core-release/v2");
+    for asset in newer["assets"].as_array_mut().unwrap() {
+        asset["protocol"] = json!("ds.core-release/v2");
+    }
+    let result = core(runtime.clone(), newer.clone(), "linux").unwrap();
+    assert_eq!(result.published, base.published);
+    assert_eq!(result.installed, base.installed);
+
+    for (field, value) in [
+        ("schema", json!("ds.desktop-release/v1")),
+        ("protocol", json!("ds.module/v2")),
+    ] {
+        let mut other = newer.clone();
+        other[field] = value;
+        assert!(core(runtime.clone(), other, "linux").is_err(), "{field}");
+    }
+    let mut other = newer.clone();
+    other["assets"][1]["protocol"] = json!("ds.network-engine/v1");
+    assert!(core(runtime.clone(), other, "linux").is_err());
+    let mut missing = newer;
+    missing.as_object_mut().unwrap().remove("protocol");
+    assert!(core(runtime, missing, "linux").is_err());
+}

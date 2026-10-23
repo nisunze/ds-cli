@@ -281,11 +281,11 @@ pub fn inspect(channel_name: &str, value: &Value) -> Result<BrowserUnit, ModuleR
             ""
         }
     );
-    if release.schema != MODULE_RELEASE_SCHEMA
+    if !same_family(&release.schema, MODULE_RELEASE_SCHEMA)
         || release.runtime != "wasm"
         || release.channel != channel_name
         || release.product_id != expected_product
-        || release.protocol != profile.protocol
+        || !same_family(&release.protocol, profile.protocol)
     {
         return fail(
             "module_release_identity_mismatch",
@@ -311,7 +311,7 @@ pub fn inspect(channel_name: &str, value: &Value) -> Result<BrowserUnit, ModuleR
     for asset in &release.assets {
         if asset.platform != "browser"
             || asset.arch != "wasm32"
-            || asset.protocol != profile.protocol
+            || !same_family(&asset.protocol, profile.protocol)
             || asset.size_bytes <= 0
             || asset.size_bytes > MAX_UNIT_BYTES
             || !hex(&asset.sha256, 64)
