@@ -22,6 +22,7 @@ fn pin_args() -> Vec<&'static str> {
 }
 
 #[test]
+#[ignore = "DECOUPLING-003: `ds library` returns through the Network unit; this is its acceptance"]
 fn metadata_read_refuses_file_output_and_preserves_existing_bytes() {
     let dir = std::env::temp_dir().join(format!("ds-member-overwrite-{}", std::process::id()));
     fs::create_dir(&dir).unwrap();
@@ -40,6 +41,7 @@ fn metadata_read_refuses_file_output_and_preserves_existing_bytes() {
 }
 
 #[test]
+#[ignore = "DECOUPLING-003: `ds library` returns through the Network unit; this is its acceptance"]
 fn release_is_required_and_invalid_digest_refuses_before_authentication() {
     let mut args = pin_args();
     let release = args.iter().position(|arg| *arg == "--release-id").unwrap();
@@ -66,6 +68,7 @@ fn release_is_required_and_invalid_digest_refuses_before_authentication() {
 }
 
 #[test]
+#[ignore = "DECOUPLING-003: `ds library` returns through the Network unit; this is its acceptance"]
 fn exact_member_discovery_declares_its_native_authority_and_metadata_limit() {
     let (envelope, code) = common::json(&[
         "capabilities",
