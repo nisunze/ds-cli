@@ -85,9 +85,9 @@ upload-batch-ipc = ["page-data", "ds-cleaning/arrow_ipc"]
 # Browser file readers: ds-io parses; layers travel as the upload Arrow IPC
 # chunks (ds-cleaning codec). Core reads sources natively and leaves this off.
 layer-import = ["page-data", "ds-cleaning/arrow_ipc"]
-# The vector tool catalogue and runner over Arrow IPC layers (browser
-# windows). Core runs no vector tools and stays free of the IPC backend.
-vector-tools = ["page-geometry", "ds-geo/browser-polars-ipc", "ds-geo-lite/sampling"]
+# The vector tools' host half (browser windows): the effect to the Network
+# unit's runner and the reply check; the runner and its IPC backend stay there.
+vector-tools = []
 
 [dependencies]
 ds-core-contracts = { path = "../ds-core-contracts" }

@@ -320,6 +320,7 @@ const NOT_ROWS: &[(&str, Why)] = &[
     ("validateSolarPortfolioResult", Mechanics("helper")),
     ("validateTableEditSnapshot", Mechanics("helper")),
     ("vectorToolId", Step("data.vector.run")),
+    ("vectorToolReply", Step("data.vector.run")),
     ("verifiedBytes", Mechanics("helper")),
     ("verifySolarPortfolioGraphBytes", Mechanics("helper")),
 ];
