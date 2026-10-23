@@ -3518,6 +3518,8 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
             "reserved_transformer_identity",
             "`--transformer {reserved}` must refuse locally"
         );
+        // Project report compute was Brain compute; it is retired (22 Oct, no
+        // hybrid compute) and must stay unknown rather than return quietly.
         assert_eq!(
             headless(&[
                 "report",
@@ -3529,8 +3531,8 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
                 "--output",
                 "json"
             ]),
-            "reserved_transformer_identity",
-            "`compute --transformer {reserved}` must refuse locally"
+            "unknown_command",
+            "`report project compute` stays retired"
         );
     }
     // A grouped Combined Report (owner ruling 2026-09-26) selects its scope
@@ -3593,16 +3595,14 @@ fn background_project_operations_are_map_independent_and_use_the_declared_projec
         "confirmation_required",
         "a grouped run publishes archives, so it confirms first"
     );
-    // The cloud computation confirms before anything else, then needs the
-    // native user: neither costs a round trip.
-    assert_eq!(
-        headless(&["report", "project", "compute", "--output", "json"]),
-        "confirmation_required"
-    );
-    assert_eq!(
-        headless(&["report", "project", "compute", "--yes", "--output", "json"]),
-        "headless_signed_out"
-    );
+    // The cloud report computation is retired (22 Oct, no hybrid compute):
+    // reports compute at the edge, so the old verb stays unknown.
+    for args in [
+        &["report", "project", "compute", "--output", "json"][..],
+        &["report", "project", "compute", "--yes", "--output", "json"][..],
+    ] {
+        assert_eq!(headless(args), "unknown_command");
+    }
     // The printing output policy reaches the same gate: a settings read with
     // no restorable native user refuses by code and performs no request, and
     // a save refuses its own document locally — before any credential — so an
@@ -12599,7 +12599,8 @@ fn solar_migration_is_one_solar_verb_with_a_kind_inside_it() {
             command["purpose"]
                 .as_str()
                 .unwrap()
-                .contains("COMPUTATION RESULTS NEVER MIGRATE")
+                .to_lowercase()
+                .contains("computation results never migrate")
                 || command["purpose"]
                     .as_str()
                     .unwrap()
