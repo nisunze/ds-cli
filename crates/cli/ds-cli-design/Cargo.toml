@@ -15,9 +15,8 @@ ds-cli-auth = { workspace = true }
 ds-layer-store = { path = "../../kernel/ds-layer-store" }
 # Collaboration commands are governed routes on ds-brain under the native
 # credential (`ds-cli-auth`); nothing here pairs with a window. Offline LV
-# processing delegates to the admitted Network process. The engine crate is
-# retained only below for calculation parity tests.
-ds-geo = { workspace = true }
+# processing and feature selection delegate to the admitted Network process.
+# The engine crates are retained only below for calculation parity tests.
 ds-network-contracts = { workspace = true }
 ds-network-client = { workspace = true }
 serde = { workspace = true }
@@ -35,6 +34,7 @@ ds-command-kernel = { workspace = true }
 
 [dev-dependencies]
 ds-network = { workspace = true }
+ds-geo = { workspace = true }
 lopdf = { version = "0.45", default-features = false }
 # Disk-backed owner-only fixtures shared across ds-cli tests.
 ds-cli-contract = { workspace = true, features = ["testing"] }

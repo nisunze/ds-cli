@@ -14,7 +14,7 @@
 //! differs.
 //! `design.features.select` separately restores the governed native user and
 //! its audience-fenced project, fetches one fixed context projection, and
-//! delegates deterministic selection to `ds-geo`.
+//! delegates deterministic selection to the Network engine.
 //!
 //! ## How collaboration reaches ds-brain
 //!
@@ -32,7 +32,7 @@
 //!
 //! The separate `design features select` read restores the same governed
 //! native user, fetches one closed context projection, and delegates
-//! selection to `ds-geo`; it accepts no project override.
+//! selection to the Network engine; it accepts no project override.
 //!
 //! ## Why this is not `ds map`
 //!

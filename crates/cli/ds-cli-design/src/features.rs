@@ -11,6 +11,10 @@ use ds_command_kernel::design_features::{
     self, DesignFeatureSourceContext, DesignFeaturesSelectFault, FeatureSelectionError,
     FeatureSelectionResult, FeatureSelector, MAX_PROJECTED_IDS,
 };
+use ds_network_contracts::engine::json_object_order;
+use ds_network_contracts::grid_operation::{
+    GRID_OPERATION_REFUSAL_SCHEMA_V1, GridOperationRefusalV1,
+};
 use serde_json::{Value, json};
 
 const TRANSFORMER: Arg = Arg::value(
@@ -280,6 +284,24 @@ refusal!(
     "the selector matches over 20000 features",
     "narrow with --where, --bbox, or --id"
 );
+refusal!(
+    ENGINE_MISSING,
+    "network_engine_missing",
+    "the compatible native Network engine that selects features is absent",
+    "install the matching Network engine addon"
+);
+refusal!(
+    ENGINE_INCOMPATIBLE,
+    "network_engine_incompatible",
+    "the captured Network engine lacks feature_selection_v1",
+    "install the compatible Network engine"
+);
+refusal!(
+    ENGINE_ORDER,
+    "network_serialization_incompatible",
+    "the captured Network engine orders JSON members differently from Core",
+    "install the compatible Network engine"
+);
 
 pub static COMMAND: Command = Command {
     id: "design.features.select",
@@ -345,6 +367,9 @@ pub static COMMAND: Command = Command {
         INVALID_FEATURE,
         SCAN_LIMIT,
         MATCH_LIMIT,
+        ENGINE_MISSING,
+        ENGINE_INCOMPATIBLE,
+        ENGINE_ORDER,
     ],
     reference: Some("docs/reference/design.md"),
     search: &[],
@@ -373,8 +398,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         version: snapshot.metadata().version(),
         content_digest: snapshot.metadata().content_digest().map(str::to_owned),
     };
-    let result =
-        design_features::select(source, snapshot.layers(), selector).map_err(map_application)?;
+    let result = select_in_engine(source, snapshot.layers(), selector)?;
     let (selection, omitted) = selection_projection(&result.selection, ids_wanted);
     let version = snapshot.metadata().version();
     let digest = snapshot.metadata().content_digest();
@@ -407,6 +431,62 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         });
     }
     Ok(output)
+}
+
+/// The Network engine selects; Core stages the captured layers and admits the
+/// reply for the source it captured before the call.
+fn select_in_engine(
+    source: DesignFeatureSourceContext,
+    layers: &BTreeMap<String, Value>,
+    selector: FeatureSelector,
+) -> Result<design_features::DesignFeaturesSelectResponse, Failure> {
+    let (call, inputs) =
+        design_features::engine_request(&source, layers, selector).map_err(map_application)?;
+    let engine =
+        ds_network_client::CapturedNetworkClient::capture(1, &|| false).map_err(engine_failure)?;
+    // Sample properties keep their source member order only when the engine's
+    // JSON maps are this process's; another profile would reorder the reply.
+    if engine.identity().json_object_order != json_object_order() {
+        return Err(
+            Failure::failed("network_serialization_incompatible", ENGINE_ORDER.when)
+                .remedy(ENGINE_ORDER.remedy),
+        );
+    }
+    // DS's own private disk stage, never system tmpfs or the working directory.
+    let scratch = ds_network_client::private_disk_stage().map_err(engine_failure)?;
+    let outcome = engine
+        .grid_operation(&call, None, &inputs, scratch.path(), &|| false)
+        .map_err(engine_failure)?;
+    design_features::admit_engine_result(source, outcome.result.result).map_err(map_application)
+}
+
+/// The selector's own refusal keeps its code, message and detail; every
+/// other failure is the engine boundary's typed refusal.
+fn engine_failure(error: ds_network_client::NetworkFailure) -> Failure {
+    let envelope = error
+        .owner_detail
+        .as_deref()
+        .and_then(|detail| serde_json::from_value::<GridOperationRefusalV1>(detail.clone()).ok())
+        .filter(|envelope| envelope.schema == GRID_OPERATION_REFUSAL_SCHEMA_V1);
+    if let (Some(code), Some(envelope)) = (error.owner_code(), envelope) {
+        return map_application(design_features::engine_refusal(
+            code,
+            &error.message,
+            envelope.detail,
+        ));
+    }
+    let code = error.owner_code().unwrap_or(error.code()).to_owned();
+    let message = error.to_string();
+    match code.as_str() {
+        "network_engine_missing" | "module_removed" => {
+            Failure::unavailable(&code, message).remedy(ENGINE_MISSING.remedy)
+        }
+        "network_engine_incompatible" => {
+            Failure::failed(&code, message).remedy(ENGINE_INCOMPATIBLE.remedy)
+        }
+        _ if error.owner_invalid_input == Some(true) => Failure::invalid(&code, message),
+        _ => Failure::failed(&code, message),
+    }
 }
 
 fn selection_projection(result: &FeatureSelectionResult, ids_wanted: usize) -> (Value, usize) {

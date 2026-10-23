@@ -1,16 +1,23 @@
 //! One application boundary for `design.features.select` on captured room bytes.
 //!
 //! Acquisition and authorization stay with their current owners. This owner
-//! retains explicit source identity, invokes the one `ds_geo` selector, and
-//! admits the response against that same captured source. A working-copy base
-//! version is provenance, never proof of a persisted revision or a write fence.
+//! retains explicit source identity, admits the selector, and admits the
+//! response against that same captured source. The selection itself is the
+//! Network owner's: native Core sends it to the Network engine as one closed
+//! `feature_selection` operation; the browser build still links the selector
+//! (`page-geometry`) until the page reaches it through its Network unit.
+//! A working-copy base version is provenance, never proof of a persisted
+//! revision or a write fence.
 use std::{collections::BTreeMap, error::Error, fmt};
 
-pub use ds_geo::feature_selection::{
+pub use ds_network_contracts::feature_selection::{
     FeatureSelectionError, FeatureSelectionResult, FeatureSelector, MAX_PROJECTED_IDS,
 };
-use ds_geo::feature_selection::{
+use ds_network_contracts::feature_selection::{
     MAX_MATCHED_FEATURES, MAX_SAMPLE_FEATURES, MAX_SCANNED_FEATURES, MAX_SELECTION_LAYERS,
+};
+use ds_network_contracts::grid_operation::{
+    FeatureSelectionParamsV1, GridOperationV1, FEATURE_SELECTION_LAYERS_INPUT,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -183,23 +190,8 @@ impl DesignFeaturesSelectFault {
 
 impl From<FeatureSelectionError> for DesignFeaturesSelectFault {
     fn from(error: FeatureSelectionError) -> Self {
-        let details = match &error {
-            FeatureSelectionError::TooManyLayers { count }
-            | FeatureSelectionError::TooManyWhereFilters { count }
-            | FeatureSelectionError::TooManyIds { count }
-            | FeatureSelectionError::SampleTooLarge { count }
-            | FeatureSelectionError::RegionTooLarge { count }
-            | FeatureSelectionError::ScanLimitExceeded { count } => json!({"count":count}),
-            FeatureSelectionError::DuplicateLayerFilter { layer }
-            | FeatureSelectionError::InvalidFeatureCollection { layer } => json!({"layer":layer}),
-            FeatureSelectionError::InvalidWhereValue { key } => json!({"key":key}),
-            FeatureSelectionError::DuplicateId { id } => json!({"id":id}),
-            FeatureSelectionError::InvalidFeature { layer, index } => {
-                json!({"layer":layer,"index":index})
-            }
-            _ => json!({}),
-        };
-        Self::new(error.code(), error.to_string(), details)
+        // One detail shape, the contract's, for the engine and every host.
+        Self::new(error.code(), error.to_string(), error.details())
     }
 }
 impl fmt::Display for DesignFeaturesSelectFault {
@@ -218,7 +210,7 @@ fn category(error: &serde_json::Error) -> &'static str {
     }
 }
 
-/// The native CLI and browser operation call this exact typed owner.
+/// The browser operation's in-page selection over the linked Network selector.
 pub fn select(
     source: DesignFeatureSourceContext,
     layers: &BTreeMap<String, Value>,
@@ -227,6 +219,55 @@ pub fn select(
     source.validate()?;
     let selection = ds_geo::feature_selection::select_geojson_features(layers, selector)?;
     Ok(DesignFeaturesSelectResponse { source, selection })
+}
+
+/// The Network engine operation and its one staged input for a native
+/// selection: the closed selector and the captured layers' exact JSON bytes.
+/// Core stages these; it never evaluates a selector clause itself.
+pub fn engine_request(
+    source: &DesignFeatureSourceContext,
+    layers: &BTreeMap<String, Value>,
+    selector: FeatureSelector,
+) -> Result<(GridOperationV1, Vec<(String, Vec<u8>)>), DesignFeaturesSelectFault> {
+    source.validate()?;
+    let bytes = serde_json::to_vec(layers).map_err(DesignFeaturesSelectFault::invalid_json)?;
+    Ok((
+        GridOperationV1::FeatureSelection(FeatureSelectionParamsV1 { selector }),
+        vec![(FEATURE_SELECTION_LAYERS_INPUT.to_owned(), bytes)],
+    ))
+}
+
+/// Admit the engine's selection result for the source captured before the
+/// call, with the same count and bound checks as a worker reply.
+pub fn admit_engine_result(
+    source: DesignFeatureSourceContext,
+    result: Value,
+) -> Result<DesignFeaturesSelectResponse, DesignFeaturesSelectFault> {
+    source.validate()?;
+    let selection: FeatureSelectionResult = serde_json::from_value(result).map_err(|error| {
+        DesignFeaturesSelectFault::new(
+            "selection_response_incompatible",
+            "feature-selection result has missing required fields or incompatible types",
+            json!({"category":category(&error),"line":error.line(),"column":error.column()}),
+        )
+    })?;
+    admit(
+        DesignFeaturesSelectResponse {
+            source: source.clone(),
+            selection,
+        },
+        &source,
+    )
+}
+
+/// The owner's typed refusal, carried across the engine boundary unchanged:
+/// its code, message and structured detail.
+pub fn engine_refusal(
+    code: &str,
+    message: &str,
+    details: Option<Value>,
+) -> DesignFeaturesSelectFault {
+    DesignFeaturesSelectFault::new(code, message, details.unwrap_or_else(|| json!({})))
 }
 
 pub fn encode_request(
@@ -329,6 +370,15 @@ pub fn decode_response(
             return Err(refusal);
         }
     };
+    admit(result, expected_source)
+}
+
+/// One admission for every reply path: the source must be the captured one
+/// and the selection must satisfy its required counts and bounds.
+fn admit(
+    result: DesignFeaturesSelectResponse,
+    expected_source: &DesignFeatureSourceContext,
+) -> Result<DesignFeaturesSelectResponse, DesignFeaturesSelectFault> {
     if &result.source != expected_source {
         return Err(DesignFeaturesSelectFault::incompatible(
             "feature-selection response belongs to another captured source",
@@ -353,7 +403,7 @@ pub fn decode_response(
         .take(MAX_PROJECTED_IDS)
         .collect();
     let identified = selection.matches.iter().filter(|m| m.id.is_some()).count();
-    use ds_geo::feature_selection::{
+    use ds_network_contracts::feature_selection::{
         FeatureSelectionGeometryOmissionReason as Omission,
         FeatureSelectionSampleGeometryState as GeometryState,
     };
