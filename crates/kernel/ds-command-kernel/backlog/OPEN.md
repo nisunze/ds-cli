@@ -19,7 +19,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [8. Sync, publication and edge outbox](#8-sync-publication-and-edge-outbox) | 8 |
 | [9. LV processing, sizing and headless intake](#9-lv-processing-sizing-and-headless-intake) | 14 |
 | [10. Voltage drop](#10-voltage-drop) | 5 |
-| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 11 |
+| [11. PLS-CADD exchange round trip](#11-pls-cadd-exchange-round-trip) | 14 |
 | [12. DS Grid engineering (Codex main)](#12-ds-grid-engineering-codex-main) | 10 |
 | [13. Spotting (Codex main)](#13-spotting-codex-main) | 5 |
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 2 |
@@ -328,6 +328,12 @@ Moved 2026-10-07 to [STABILIZATION.md](STABILIZATION.md) group E (printing templ
 - **Reporter tests red at 96282d0 on this host (Chrome 154):** `annah_row_requires_the_design_year_circuit_without_claiming_as_drawn_compliance` (pdftotext `-layout` splits the note between columns, so the sentence assertion fails) and the `a4-extended` raster anchor (pages 2, 5 and 7 drift). Neither involves the combined template.
 
 ## 11. PLS-CADD exchange round trip
+
+- **dsgrid-exchange export state on real heads (23 Oct, fb-dsgrid-exchange lane)**: with `ds dsgrid-exchange` restored (ds-cli `faa84747`, Network `d460712e`/`03ee04a6`), `plan --target pls-bak --container bak` on read-only downloads of the current heads refuses every one: Gisagara Model 1 (43) and Model 2 (4), Nyamagabe Model 1 (30), 2 (32) and 3 (7) with `immutable_structure_unsourced`, plus strict-export refusals (Gisagara M1/M2 CRI Method 1 weight-slot bindings unresolved; Nyamagabe M1/M2 FEA code 51 TIN flag lost in emission; Nyamagabe M3 DON attachment slot change on `sec-0c77f3e8a31d74e9-489`); Gisagara Model 3 is now refused at plan (68 Method 2 interaction curves without case bindings) instead of failing at convert. Evidence `scratch/claude-linux-prod-20261022/fbdgx/repro/plan-*.json`. Next: restore `dsgrid replace-structure` (and `library` pins) so unsourced definitions can be replaced; each strict-export refusal is its own owner fix in `ds-grid-exchange`.
+
+- **Remedy text names retired commands**: `ds-grid-exchange` `unsourced_structure_refusal` (conversion.rs) tells callers to run `ds dsgrid replace-structure` or `ds pls structure-substitute`, and `staking_comments::unearthed_refusal` `ds dsgrid structure staking-enrich`; none is registered in Core (DECOUPLING-003). Restore the commands or name the reachable route; do not leave a remedy no caller can run.
+
+- **`ds dsgrid-exchange sync`** stays retired; restoring it needs its own closed operation writing into the linked workspace (linked implementation at ds-cli `14f43d9b^`), feedback `e7059959`, `43c0295a`, `8f6e3ff1`.
 
 - **PLS engineering fidelity** (`4ed6b202`, `ef2478d4`, `0a653e07`): the native round trip must retain connected T-offs, use section ruling spans for clearance, and preserve valid cable and criteria records. Prove each against its filed PLS acceptance before issuing strength results.
 
