@@ -308,6 +308,12 @@ pub enum Command {
         task_id: String,
         file: AttachmentFile,
     },
+    /// The same resumable upload flow onto one record (a correspondence record
+    /// or a project note): a retry completes the caller's interrupted row.
+    RecordAttach {
+        record_id: String,
+        file: AttachmentFile,
+    },
     /// One exact task relationship detach; retained file bytes are not deleted.
     TaskDetach {
         request: ds_command_kernel::project_management::task_attachment_detach::Request,
@@ -416,7 +422,7 @@ impl Command {
             Self::Admit { .. } => "task_admit",
             Self::DeclineAdmission { .. } => "task_decline_admission",
             Self::LogHours { .. } => "task_log_hours",
-            Self::TaskAttach { .. } => "start_attachment_upload",
+            Self::TaskAttach { .. } | Self::RecordAttach { .. } => "start_attachment_upload",
             Self::TaskDetach { .. } => "detach_task_attachment",
         }
     }
@@ -458,6 +464,12 @@ impl Command {
             Self::TaskAttach { task_id, .. } => {
                 if !project_note_id_valid(task_id) {
                     return Err(invalid("a task attachment names one stable task id"));
+                }
+                Ok(())
+            }
+            Self::RecordAttach { record_id, .. } => {
+                if !project_note_id_valid(record_id) {
+                    return Err(invalid("a record attachment names one stable record id"));
                 }
                 Ok(())
             }
@@ -632,7 +644,8 @@ impl Command {
             | Self::Assignees
             | Self::Overview { .. }
             | Self::ModelReferences { .. }
-            | Self::TaskAttach { .. } => {}
+            | Self::TaskAttach { .. }
+            | Self::RecordAttach { .. } => {}
             Self::TaskDetach { request } => return request.payload(project),
             Self::PublicProjects {
                 status,
@@ -941,7 +954,24 @@ pub(crate) fn run<T: AuthorizedTransport>(
         );
     }
     if let Command::TaskAttach { task_id, file } = command {
-        return attachment_upload::attach(profile, transport, authority, project, task_id, file);
+        return attachment_upload::attach(
+            profile,
+            transport,
+            authority,
+            project,
+            attachment_upload::Entity::Task(task_id),
+            file,
+        );
+    }
+    if let Command::RecordAttach { record_id, file } = command {
+        return attachment_upload::attach(
+            profile,
+            transport,
+            authority,
+            project,
+            attachment_upload::Entity::Record(record_id),
+            file,
+        );
     }
     if let Command::TaskDetach { request } = command {
         request
@@ -1003,6 +1033,7 @@ pub(crate) fn run<T: AuthorizedTransport>(
         | Command::DeclineAdmission { .. }
         | Command::LogHours { .. }
         | Command::TaskAttach { .. }
+        | Command::RecordAttach { .. }
         | Command::TaskDetach { .. }
         | Command::TaskCreateAttached { .. } => data,
     };

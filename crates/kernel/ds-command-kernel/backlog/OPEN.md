@@ -10,7 +10,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 
 | Area | Remaining entries |
 | --- | ---: |
-| [1. Source integration and release code](#1-source-integration-and-release-code) | 6 |
+| [1. Source integration and release code](#1-source-integration-and-release-code) | 7 |
 | [2. Green `run` and release gates](#2-green-run-and-release-gates) | 9 |
 | [3. Template creation code](#3-template-creation-code) | 1 |
 | [4. Print template and style code](#4-print-template-and-style-code) | 2 |
@@ -25,7 +25,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [14. Plan and Profile authoring](#14-plan-and-profile-authoring) | 2 |
 | [15. Project delivery code](#15-project-delivery-code) | 3 |
 | [16. Map data, datasets and screen styling](#16-map-data-datasets-and-screen-styling) | 14 |
-| [17. Project Work and Assets](#17-project-work-and-assets) | 8 |
+| [17. Project Work and Assets](#17-project-work-and-assets) | 11 |
 | [18. Global DS Grid library](#18-global-ds-grid-library) | 4 |
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 7 |
@@ -44,6 +44,8 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 - **Network modularization:** [maintained guide](../../../../../ds-architecture/backlog/DS-NETWORK-MODULARIZATION.md), including the current decoupling queue and installed Profile acceptance.
 
 - **In progress:** `wasm-size` (take back the network WASM growth).
+
+- **Contract 5 residue: one Kernel engine-call owner** (23 Oct): Reporter calls now go only through `ds_cli_exec::reporter::Reporter` (closed tasks, catalogue admission before work), pinned by ds `tests/process_boundary.rs` `cli_crates_reach_engines_only_through_the_kernel_engine_call_owners`. Still open: (1) ds-cli-solar `calculate_prepared.rs`, `engine.rs`, `lib.rs`, `run.rs` hold the Solar `CapturedExternal` and name its subcommands (the gate's `SOLAR_PENDING` list) — give Solar the same Kernel client and empty the list; (2) the LV processor catalogue is compiled into Core (`ds_network_contracts::lv::PROCESSOR_PRESETS_JSON` in ds-cli-design `process_settings.rs` and `lv/project_export.rs`, Kernel vendor copy in `process_settings.rs`) because the installed Network publishes no catalogue task — needs a typed Network task (ds-network owner decides), then read it through ds-network-client; (3) ds-design-workspace `grid_publication.rs` and ds-client-core `transformer_save.rs` capture Network with the lane-less `CapturedNetworkClient::capture` (packaged lane) — capture the request's lane as `mv_projection` now does; (4) the Desktop shell still spawns the Reporter itself (src-tauri `reference_data.rs`), waiting on the UI freeze.
 
 - **Security `c9df4098`: signed reads only.** ds-apis-tf `infra/default_bucket.storage.rules` still has `allow get: if !isServerOwnedName(...)` (legacy public read), so `report_lv`/`lv_drafting` project objects stay readable by URL. Put them behind signed reads only and prove the ds-web/Desktop/field/kernel consumers use `sign_url`; make kernel `artifact_identity` accept `https://storage.cloud.google.com/<bucket>/<object>` as ds-brain `artifact_reference.go` already does. Deploy, token revocation and the anonymous-GET refusal are in [SEEDING.md](SEEDING.md).
 
@@ -484,6 +486,12 @@ Rules: [PRINCIPLES.md §6](PRINCIPLES.md#6-ds-grid-engineering).
 - **Shared PM/Assets lifecycle and interaction**: implement consistent offline-first state and active/testing/archive scope across PM, Assets, overview and governance. Provide the missing dense governance/Installations interaction through native hit/snap or typed CLI proposals; keep engineering and graph decisions in Rust/server contracts. Project theme values are operational parameters in SEEDING.md.
 
 - **Assets initial-index latency — remaining cold sources**: trace remaining required inventory, watermark and immutable-version acquisitions with actual source read/query counts and latency before any further optimization. Fix only demonstrated avoidable work, without unbounded prefetch, duplicate authority reads, a second cache or refetch on tab switching. Preserve the existing authority/generation guards and bounded snapshot/preview lifecycle; matched installed latency acceptance is in SEEDING §17.
+
+- **RAR archives are `unknown` in Assets** (feedback 83e38a4f, parked 2026-10-23): `ds assets ingest` of a verified 101,093,342-byte `EPCGIS_1.RAR` (asset a_gh4psq1pemst, Gisagara) answers format `unknown`, kind `other`, `bytes match no known format signature`. Known: `Format` is a closed vocabulary shared by the Kernel (`assets/mod.rs`, serde enum without a fallback) and ds-brain's Go index port (`assetsTreeFormats`, `object.word` refuses unlisted words), so adding `rar` in the Kernel alone breaks the deployed index and older Cores. Next step: accept `rar` (RAR4 `Rar!\x1a\x07\x00`, RAR5 `Rar!\x1a\x07\x01\x00`) as an additive word in ds-brain first and make older-Core reads tolerate an unknown format, then recognise it in the Kernel as kind `pack` with a typed `container_unsupported` member-walk finding (no extraction; a header-only member inventory only through a proven crate). Decided by: the owner's call on cross-release format additions plus a Brain deploy before the Core release.
+
+- **Project notes cannot link exact LV transformer versions** (feedback b78cdeda, parked 2026-10-23): `pm.model-link.add` pins DS Grid catalog revisions only, and ds-brain re-checks that pin inside the Project Work write. Next step: extend the same link record and server check to an exact LV transformer version (transformer id, version, digest) with batch add, forward readback on the note/task and reverse readback from the transformer-version owner, keeping declared source authorship apart from the recorder and refusing nonexistent or foreign versions; no per-transformer notes or second tag store. Decided by: a ds-brain link-schema change and deploy (server-side validation), then Core and MCP.
+
+- **Shared auth transport names every correspondence 404 `transformer_not_found`** (found 2026-10-23, auth-transport owner): `ds pm record read --record <unknown>` answered ds-brain's 404 `service_code: record_not_found` as `transformer_not_found` with "pass one exact transformer name". PM `classify` now adopts a relayed documented not-found (record, party, blocker, asset); the transport's generic 404 kind mapping should carry the service's not-found code or a neutral `not_found`, so other domains relaying a 404 stop naming transformers. Prove with a 404 relayed through each correspondence-style route.
 
 ## 18. Global DS Grid library
 

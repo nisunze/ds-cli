@@ -2,14 +2,14 @@
 //!
 //! Core (CLI/MCP), the Desktop and the browser run the same steps for one file
 //! on one project entity:
-//! 1. on a task, survey its attachments for the caller's own interrupted
-//!    reservations of this exact file (same name and size, `uploading` or
-//!    `failed`);
+//! 1. on a task or a record, survey its attachments for the caller's own
+//!    interrupted reservations of this exact file (same name and size,
+//!    `uploading` or `failed`);
 //! 2. restart the newest `uploading` one, so a retry completes that row
 //!    instead of adding another, or reserve a new row;
 //! 3. send the bytes to the minted storage session;
 //! 4. finalize, accepting only a ready row on this entity;
-//! 5. detach the caller's other reservations of the same file.
+//! 5. on a task, detach the caller's other reservations of the same file.
 //!
 //! A host executes the one effect a step names (a governed PM action or one
 //! byte upload) and reports what it observed. Each host's adapter lives in its
@@ -89,6 +89,16 @@ impl Upload {
 
     fn task(&self) -> bool {
         self.linked_entity_type == "task"
+    }
+
+    /// The entities whose attachments `get_context` reads by id, so a retry
+    /// can find and complete the caller's interrupted reservation.
+    fn context_key(&self) -> Option<&'static str> {
+        match self.linked_entity_type.as_str() {
+            "task" => Some("task_id"),
+            "record" => Some("record_id"),
+            _ => None,
+        }
     }
 }
 
@@ -189,7 +199,7 @@ pub fn start(upload: Upload) -> Step {
     if let Err(message) = upload.validate() {
         return refused(INPUT_INVALID, message);
     }
-    if upload.task() {
+    if upload.context_key().is_some() {
         survey(upload, 0, Vec::new(), None)
     } else {
         reserve(upload, None, Vec::new())
@@ -367,8 +377,8 @@ pub fn resume(continuation: Continuation, observed: Observed) -> Step {
 
 fn survey(upload: Upload, pages: u32, found: Vec<Reservation>, cursor: Option<String>) -> Step {
     let mut body = json!({"action": "get_context", "ds_project": upload.project,
-        "task_id": upload.linked_entity_id, "limit": SURVEY_PAGE,
-        "collections": ["pm_attachments"]});
+        "limit": SURVEY_PAGE, "collections": ["pm_attachments"]});
+    body[upload.context_key().unwrap_or("task_id")] = json!(upload.linked_entity_id);
     if let Some(cursor) = cursor {
         body["cursors"] = json!({"pm_attachments": cursor});
     }
@@ -382,19 +392,25 @@ fn survey(upload: Upload, pages: u32, found: Vec<Reservation>, cursor: Option<St
     }
 }
 
-/// The newest `uploading` reservation is completed; every other one is
-/// detached once the file is ready.
+/// The newest `uploading` reservation is completed; on a task every other one
+/// is detached once the file is ready. Only a task has a relationship detach,
+/// so a record's older reservations are left to ds-brain's own reclaim of the
+/// caller's abandoned uploads.
 fn plan(upload: Upload, mut found: Vec<Reservation>) -> Step {
     found.sort_by(|a, b| {
         (b.uploading, b.created_at, &b.id).cmp(&(a.uploading, a.created_at, &a.id))
     });
     found.dedup_by(|a, b| a.id == b.id);
     let restart = found.first().filter(|row| row.uploading).cloned();
-    let reclaim = found
-        .into_iter()
-        .skip(usize::from(restart.is_some()))
-        .take(MAX_RECLAIM)
-        .collect();
+    let reclaim = if upload.task() {
+        found
+            .into_iter()
+            .skip(usize::from(restart.is_some()))
+            .take(MAX_RECLAIM)
+            .collect()
+    } else {
+        Vec::new()
+    };
     reserve(upload, restart, reclaim)
 }
 
@@ -480,8 +496,8 @@ fn cancel(upload: Upload, id: String, version: i64) -> Step {
 fn incomplete(upload: &Upload) -> Step {
     refused(
         BYTES_INCOMPLETE,
-        if upload.task() {
-            "the attachment bytes did not reach storage; the reserved row stays uploading and attaching the same file to this task again completes it"
+        if upload.context_key().is_some() {
+            "the attachment bytes did not reach storage; the reserved row stays uploading and attaching the same file to this task or record again completes it"
         } else {
             "the attachment bytes did not reach storage; the reserved row stays uploading until it is reclaimed"
         },
@@ -496,7 +512,7 @@ fn detach(upload: &Upload, row: &Reservation) -> Detach {
     }
 }
 
-/// The caller's own live reservation of the same file on this task.
+/// The caller's own live reservation of the same file on this entity.
 fn reservation(upload: &Upload, row: &Value) -> Option<Reservation> {
     let data = &row["data"];
     let state = data["state"].as_str()?;
@@ -508,9 +524,9 @@ fn reservation(upload: &Upload, row: &Value) -> Option<Reservation> {
         .is_some_and(|name| name.trim() == upload.name.trim())
         && data["size_bytes"].as_u64() == Some(upload.size_bytes);
     let live = row["is_deleted"] == false && row["task_detached"] != true;
-    let on_task = data["linked_entity_type"] == "task"
+    let on_entity = data["linked_entity_type"] == upload.linked_entity_type.as_str()
         && data["linked_entity_id"] == upload.linked_entity_id.as_str();
-    if !(mine && same_file && live && on_task && matches!(state, "uploading" | "failed")) {
+    if !(mine && same_file && live && on_entity && matches!(state, "uploading" | "failed")) {
         return None;
     }
     Some(Reservation {

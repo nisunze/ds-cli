@@ -8398,6 +8398,83 @@ fn pm_task_attach_is_one_confirmed_write_that_checks_its_file_first() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// `ds pm record attach` is the task attach's confirmed write on a record:
+/// it stops at the confirmation gate, names a missing or empty file before
+/// any credential is restored, and only then needs the signed-in native user.
+/// `ds pm record create --attach` checks its files before filing anything.
+#[test]
+fn pm_record_attach_is_one_confirmed_write_that_checks_its_file_first() {
+    let command = ok(&["capabilities", "pm.record.attach", "--output", "json"])["command"].clone();
+    assert_eq!(command["requires"], "server", "{command}");
+    assert_eq!(command["authority"], "headless_project");
+    assert_eq!(command["effect"], "global_write");
+    let root = temp_root("pm-record-attach");
+    std::fs::create_dir_all(&root).expect("temp root");
+    let empty = root.join("empty.rar");
+    std::fs::write(&empty, b"").expect("empty file");
+    let archive = root.join("EPCGIS_1.RAR");
+    std::fs::write(&archive, b"Rar!\x1a\x07\x01\x00").expect("file");
+    let attach = |file: &std::path::Path, yes: bool| {
+        let mut argv = vec![
+            "pm".to_string(),
+            "record".into(),
+            "attach".into(),
+            "--record".into(),
+            "R-1".into(),
+            "--file".into(),
+            file.to_str().expect("utf-8").into(),
+            "--output".into(),
+            "json".into(),
+        ];
+        if yes {
+            argv.push("--yes".into());
+        }
+        argv
+    };
+    let refused = |argv: Vec<String>, native: bool| {
+        let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
+        if native {
+            native_pm_refusal(&argv)
+        } else {
+            pm_refusal(&argv)
+        }
+    };
+    assert_eq!(
+        refused(attach(&archive, false), false),
+        "confirmation_required"
+    );
+    assert_eq!(
+        refused(attach(&root.join("absent.rar"), true), true),
+        "attachment_file_invalid"
+    );
+    assert_eq!(
+        refused(attach(&empty, true), true),
+        "attachment_file_invalid"
+    );
+    assert_eq!(refused(attach(&archive, true), true), "headless_signed_out");
+    let absent = root.join("absent.rar");
+    let create = [
+        "pm",
+        "record",
+        "create",
+        "--category",
+        "project_note",
+        "--channel",
+        "other",
+        "--direction",
+        "internal",
+        "--subject",
+        "April reference",
+        "--attach",
+        absent.to_str().expect("utf-8"),
+        "--yes",
+        "--output",
+        "json",
+    ];
+    assert_eq!(native_pm_refusal(&create), "attachment_file_invalid");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn every_work_write_refuses_without_confirmation() {
     // Project Management is shared state governed by ds-brain. Every write
@@ -8653,6 +8730,7 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
         "pm.record.read",
         "pm.record.thread",
         "pm.record.create",
+        "pm.record.attach",
         "pm.record.reply",
         "pm.record.update",
         "pm.party.list",
@@ -8717,6 +8795,7 @@ fn every_work_command_is_reachable_without_the_desktop_installed() {
                 | "pm.document.copy"
                 | "pm.mail-thread.ingest"
                 | "pm.record.create"
+                | "pm.record.attach"
                 | "pm.record.reply"
                 | "pm.record.update"
                 | "pm.party.create"

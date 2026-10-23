@@ -170,12 +170,40 @@ completes it, so a retry never adds a second row; the receipt says
 `restarted: true`. Your other unfinished rows of that file (`uploading` or
 `failed`) are then detached from the task and listed under `reclaimed`; any
 that refuse are listed under `unreclaimed`. Only your own rows are touched.
-To remove one unfinished row explicitly, read its id and version with
-`ds pm task read --timeline` and run `ds pm task detach`.
+To remove one unfinished row explicitly, read its id and `detail.version`
+from its attachment entry in `ds pm task read --timeline` and run
+`ds pm task detach --expected-version <that version>`.
 
 `ds pm task create --attach` uses the same upload for each file. If one
 fails, the task stays created and the refusal lists the ready receipts;
 attach the remaining files with `ds pm task attach`, not a second create.
+
+### Attaching a file to a record or project note
+
+```bash
+ds pm record attach --project <exact-id> --record R-0031 --file ./EPCGIS_1.RAR --yes --output json
+ds pm note create --project <exact-id> --input note.json --attach ./EPCGIS_1.RAR --yes --output json
+```
+
+A record, including a project note, takes files through the same resumable
+upload as a task. `record attach` reads the record first, so nothing is
+reserved on an id that is not a record you may read. Attaching the same file
+again after an interruption completes your unfinished row (`restarted: true`)
+instead of adding one. A record has no relationship detach, so an older
+unfinished row of the same file is left for the server's own reclaim of your
+abandoned uploads. `ds pm record read` lists the record's own uploads under
+`pmAttachments`, each with its `state` (`ready` is a delivered file,
+`uploading` an interrupted one) and the `sys:pm_attachment:<id>` that
+`ds assets read` and `ds assets preview` open.
+
+`record create --attach` checks every file before filing anything, files the
+record, then uploads each file and returns them under `uploads`. If one
+fails, the record stays filed and `record_attachments_incomplete` carries its
+`recordId` and the ready receipts; attach the remaining files with
+`ds pm record attach`, never a second record. `ds pm note create --attach`
+does the same for a project note (`note_attachments_incomplete` carries the
+`noteId`); a note needs no source asset, so it is the record to create when a
+file such as an approved reference archive is itself what is being recorded.
 
 ## Assignment is a request, not a decree
 
@@ -364,7 +392,8 @@ what a person may set is a waiver, with a reason, and it is not withdrawn.
 | `model_version_not_found` | the project's catalog has no such model, revision or version |
 | `model_version_mismatch` | `--version` disagrees with the catalog version of `--revision` |
 | `attachment_file_invalid` | `--file` is unreadable, empty, above 100 MiB or unnamed, or `--content-type` is not one `type/subtype` |
-| `attachment_unverified` | the server did not verify a ready attachment on the named task; read the task before repeating |
+| `attachment_unverified` | the server did not verify a ready attachment on the named task or record; read it before repeating |
+| `record_attachments_incomplete` | `record create --attach` filed the record but one upload was not verified ready; attach the rest with `ds pm record attach` |
 
 `--start 01-09-2026` is refused here rather than at the engine on purpose: a
 transposed day and month is the commonest scheduling mistake there is, and

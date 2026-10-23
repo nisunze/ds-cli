@@ -1115,6 +1115,7 @@ const CORRESPONDENCE_COMMANDS: &[&str] = &[
     "pm.record.read",
     "pm.record.thread",
     "pm.record.create",
+    "pm.record.attach",
     "pm.record.reply",
     "pm.record.update",
     "pm.task.block",

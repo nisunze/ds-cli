@@ -96,7 +96,12 @@ pub(super) fn run<T: AuthorizedTransport>(
     }
     for (index, file) in files.iter().enumerate() {
         match super::attachment_upload::attach(
-            profile, transport, authority, project, task_id, file,
+            profile,
+            transport,
+            authority,
+            project,
+            super::attachment_upload::Entity::Task(task_id),
+            file,
         ) {
             Ok(receipt) => receipts.push(receipt),
             Err(error) => {

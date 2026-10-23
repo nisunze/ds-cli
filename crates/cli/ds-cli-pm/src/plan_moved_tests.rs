@@ -65,3 +65,25 @@ fn other_refusals_keep_their_mapping() {
     let unrelated = classify(Failure::invalid("invalid_date", "bad date"));
     assert_eq!(unrelated.code(), "invalid_date");
 }
+
+/// On 2026-10-23 `ds pm record read --record <unknown>` answered ds-brain's
+/// 404 `record_not_found` as `transformer_not_found` ("pass one exact
+/// transformer name"): the shared transport names every 404 of this route
+/// after transformers. The service's documented code wins.
+#[test]
+fn a_relayed_documented_refusal_keeps_the_services_code_and_remedy() {
+    let not_found = Failure::invalid(
+        "transformer_not_found",
+        "correspondence could not find what the request named (HTTP 404): record \"R9\" was not found",
+    )
+    .remedy("pass one exact transformer name from the selected project")
+    .detail(json!({"http_status": 404, "service_code": "record_not_found",
+        "service_message": "record \"R9\" was not found"}));
+    let failure = classify(not_found);
+    assert_eq!(failure.code(), RECORD_NOT_FOUND.code);
+    assert_eq!(failure.remedy_text(), Some(RECORD_NOT_FOUND.remedy));
+    assert_eq!(failure.detail_value().unwrap()["http_status"], 404);
+    // An undocumented service code is left to the existing mapping.
+    let unknown = classify(relayed(404, "something_new", "x"));
+    assert_eq!(unknown.code(), "auth_input_invalid");
+}

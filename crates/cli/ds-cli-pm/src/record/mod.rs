@@ -10,6 +10,7 @@
 //! the owing side settles the parent's response and clears every task
 //! blocked on it in the same commit.
 
+pub mod attach;
 pub mod create;
 pub mod list;
 pub mod read;
@@ -276,6 +277,21 @@ pub fn projections(data: &Value) -> String {
                 } else {
                     String::new()
                 },
+            ));
+        }
+    }
+    if let Some(rows) = data["pmAttachments"]
+        .as_array()
+        .filter(|rows| !rows.is_empty())
+    {
+        out.push_str("  uploads on this record\n");
+        for row in rows {
+            out.push_str(&format!(
+                "    {:<36} {:<9} {:>10} B  {}\n",
+                row["id"].as_str().unwrap_or("?"),
+                row["state"].as_str().unwrap_or("?"),
+                row["sizeBytes"].as_i64().unwrap_or(0),
+                crate::truncate(row["name"].as_str().unwrap_or("?"), 36),
             ));
         }
     }

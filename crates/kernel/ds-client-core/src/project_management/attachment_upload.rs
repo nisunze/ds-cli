@@ -12,21 +12,32 @@ use ds_command_kernel::project_management::attachment_upload::{
 };
 use serde_json::{json, Map, Value};
 
-/// Attach one file to one task: the verified ready row, the exact local bytes
-/// and SHA-256, and whether an interrupted reservation was completed or
-/// detached on the way.
+/// The Project Work entity a file is attached to.
+#[derive(Clone, Copy, Debug)]
+pub(super) enum Entity<'a> {
+    Task(&'a str),
+    Record(&'a str),
+}
+
+/// Attach one file to one task or record: the verified ready row, the exact
+/// local bytes and SHA-256, and whether an interrupted reservation was
+/// completed or detached on the way.
 pub(super) fn attach<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
     authority: Authority<'_>,
     project: &str,
-    task_id: &str,
+    entity: Entity<'_>,
     file: &AttachmentFile,
 ) -> Result<Value, ClientError> {
+    let (linked_entity_type, linked_entity_id) = match entity {
+        Entity::Task(id) => ("task", id),
+        Entity::Record(id) => ("record", id),
+    };
     let mut step = flow::start(Upload {
         project: project.to_owned(),
-        linked_entity_type: "task".into(),
-        linked_entity_id: task_id.to_owned(),
+        linked_entity_type: linked_entity_type.into(),
+        linked_entity_id: linked_entity_id.to_owned(),
         principal: authority.email.to_owned(),
         name: file.name().to_owned(),
         content_type: file.content_type().to_owned(),

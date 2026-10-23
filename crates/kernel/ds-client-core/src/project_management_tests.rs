@@ -1132,4 +1132,77 @@ fn attachment_files_are_bounded_named_plainly_and_typed() {
     }
     .validate()
     .is_err());
+    assert!(Command::RecordAttach {
+        record_id: "a/b".into(),
+        file: AttachmentFile::new("a.pdf", None, vec![1]).unwrap()
+    }
+    .validate()
+    .is_err());
+}
+
+/// A record runs the task's resumable flow on its own id: its attachments are
+/// read by `record_id`, the row is reserved on the record and only a ready
+/// row on that record is accepted.
+#[test]
+fn record_attach_runs_the_same_resumable_flow_on_the_record() {
+    let bytes = b"Rar!\x1a\x07\x01\x00 archive".to_vec();
+    let file = AttachmentFile::new("EPCGIS_1.RAR", None, bytes.clone()).unwrap();
+    let mut transport = attach_transport("ready", bytes.len());
+    for fixture in [&mut transport.started, &mut transport.finalized] {
+        fixture["item"]["data"]["linked_entity_type"] = json!("record");
+        fixture["item"]["data"]["linked_entity_id"] = json!("rec-5");
+    }
+    let receipt = run(
+        &crate::data_distribution::tests::profile_for_tests(),
+        &mut transport,
+        crate::authorized::Authority {
+            bearer_token: "bearer",
+            uid: "uid",
+            email: "user@example.com",
+            device_id: None,
+        },
+        "project-a",
+        &Command::RecordAttach {
+            record_id: "rec-5".into(),
+            file: file.clone(),
+        },
+    )
+    .expect("attached");
+    assert_eq!(
+        transport.payloads[0],
+        json!({"action": "get_context", "ds_project": "project-a", "record_id": "rec-5",
+               "limit": 100, "collections": ["pm_attachments"]})
+    );
+    assert_eq!(
+        transport.payloads[1]["data"]["linked_entity_type"],
+        "record"
+    );
+    assert_eq!(transport.payloads[1]["data"]["linked_entity_id"], "rec-5");
+    assert_eq!(transport.uploaded, vec![(SESSION.to_owned(), bytes)]);
+    assert_eq!(receipt["item"]["state"], "ready");
+    assert_eq!(receipt["item"]["linked_entity_id"], "rec-5");
+    assert_eq!(receipt["sha256"], file.sha256());
+    // A ready row on another entity is not this record's file.
+    let mut foreign = attach_transport("ready", 4);
+    let four = AttachmentFile::new("a.pdf", None, vec![1, 2, 3, 4]).unwrap();
+    assert!(run(
+        &crate::data_distribution::tests::profile_for_tests(),
+        &mut foreign,
+        crate::authorized::Authority {
+            bearer_token: "bearer",
+            uid: "uid",
+            email: "user@example.com",
+            device_id: None,
+        },
+        "project-a",
+        &Command::RecordAttach {
+            record_id: "rec-5".into(),
+            file: four,
+        },
+    )
+    .is_err());
+    assert!(
+        foreign.uploaded.is_empty(),
+        "no byte moves for a row reserved elsewhere"
+    );
 }

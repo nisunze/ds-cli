@@ -296,18 +296,103 @@ fn an_unverified_finalize_and_host_failures_stop_the_upload() {
     );
 }
 
+/// Comments, residuals and activities have no attachment context read, so
+/// they reserve directly; a record now surveys first (see below).
 #[test]
 fn other_entities_reserve_directly_with_their_authored_fields() {
     let mut upload = upload();
-    upload.linked_entity_type = "record".into();
-    upload.linked_entity_id = "rec-1".into();
+    upload.linked_entity_type = "comment".into();
+    upload.linked_entity_id = "comment-1".into();
     upload
         .metadata
         .insert("document_number".into(), json!("EDCL-7"));
     let (body, _) = pm(start(upload));
     assert_eq!(body["action"], "start_attachment_upload");
-    assert_eq!(body["data"]["linked_entity_type"], "record");
+    assert_eq!(body["data"]["linked_entity_type"], "comment");
     assert_eq!(body["data"]["document_number"], "EDCL-7");
+}
+
+fn record_upload() -> Upload {
+    let mut upload = upload();
+    upload.linked_entity_type = "record".into();
+    upload.linked_entity_id = "rec-1".into();
+    upload
+}
+
+fn record_row(id: &str, version: i64, state: &str, created_at: i64) -> Value {
+    let mut item = row(id, version, state, "me@example.com", created_at);
+    item["data"]["linked_entity_type"] = json!("record");
+    item["data"]["linked_entity_id"] = json!("rec-1");
+    item
+}
+
+/// A record shares the task's resumable lifecycle: its attachments are read
+/// by `record_id`, and a retry completes the caller's interrupted row of the
+/// same file instead of reserving another. Only a task has a relationship
+/// detach, so an older duplicate is left in place, never detached.
+#[test]
+fn a_record_retry_completes_its_interrupted_row_and_detaches_nothing() {
+    let (survey, next) = pm(start(record_upload()));
+    assert_eq!(
+        survey,
+        json!({"action": "get_context", "ds_project": "project-a", "record_id": "rec-1",
+            "limit": 100, "collections": ["pm_attachments"]})
+    );
+    let on_task = row("task-row", 1, "uploading", "me@example.com", 30);
+    let rows = vec![
+        record_row("older", 1, "uploading", 10),
+        record_row("newest", 1, "uploading", 20),
+        on_task,
+    ];
+    let (restart, next) = pm(answer(next, context(rows, None)));
+    assert_eq!(
+        restart,
+        json!({"action": "restart_attachment_upload", "ds_project": "project-a",
+            "id": "newest", "expected_version": 1})
+    );
+    let reserved =
+        json!({"item": record_row("newest", 2, "uploading", 20), "session_uri": SESSION});
+    let (_, _, next) = send(answer(next, reserved));
+    let (finalize, next) = pm(resume(next, Observed::Upload { status: 201 }));
+    assert_eq!(finalize["id"], "newest");
+    match answer(next, json!({"item": record_row("newest", 3, "ready", 20)})) {
+        Step::Done {
+            row,
+            restarted,
+            reclaimed,
+            unreclaimed,
+            ..
+        } => {
+            assert!(restarted);
+            assert_eq!(row["linked_entity_type"], "record");
+            assert_eq!(row["state"], "ready");
+            assert!(reclaimed.is_empty() && unreclaimed.is_empty());
+        }
+        other => panic!("expected the ready record row, got {other:?}"),
+    }
+}
+
+/// An interrupted record upload says how to resume it; a first record upload
+/// with nothing to resume reserves a new row on that record.
+#[test]
+fn a_record_upload_reserves_on_the_record_and_names_its_retry() {
+    let (_, next) = pm(start(record_upload()));
+    let (reserve, next) = pm(answer(next, context(Vec::new(), None)));
+    assert_eq!(reserve["action"], "start_attachment_upload");
+    assert_eq!(reserve["data"]["linked_entity_type"], "record");
+    assert_eq!(reserve["data"]["linked_entity_id"], "rec-1");
+    let reserved = json!({"item": record_row("att-1", 1, "uploading", 1), "session_uri": SESSION});
+    let (_, _, next) = send(answer(next, reserved));
+    match resume(next, Observed::Upload { status: 503 }) {
+        Step::Refused { code, message } => {
+            assert_eq!(code, BYTES_INCOMPLETE);
+            assert!(
+                message.contains("task or record again completes it"),
+                "{message}"
+            );
+        }
+        other => panic!("expected a refusal, got {other:?}"),
+    }
 }
 
 #[test]

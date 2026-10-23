@@ -94,6 +94,16 @@ const HISTORY: Refusal = Refusal {
 };
 const REFUSALS: &[Refusal] =
     &crate::correspondence_refusals::<25>(&[INVALID, UNREADABLE, MIGRATION, HISTORY]);
+/// Note creation also checks and uploads its `--attach` files.
+pub(super) const CREATE_REFUSALS: &[Refusal] = &crate::correspondence_refusals::<28>(&[
+    INVALID,
+    UNREADABLE,
+    MIGRATION,
+    HISTORY,
+    crate::task::attach::FILE_INVALID,
+    crate::record::attach::UNVERIFIED,
+    crate::note::ATTACH_PARTIAL,
+]);
 pub(super) const fn descriptor(
     id: &'static str,
     path: &'static [&'static str],

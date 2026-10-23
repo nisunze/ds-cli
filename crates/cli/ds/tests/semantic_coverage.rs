@@ -1330,6 +1330,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("notes.checklist.read", "read_only", "headless_user"),
     ("notes.checklist.edit", "global_write", "headless_user"),
     ("pm.record.create", "global_write", "headless_project"),
+    ("pm.record.attach", "global_write", "headless_project"),
     ("pm.record.list", "read_only", "headless_project"),
     ("pm.record.read", "read_only", "headless_project"),
     ("pm.record.reply", "global_write", "headless_project"),

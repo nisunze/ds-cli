@@ -138,6 +138,7 @@ pub static DOMAIN: Domain = Domain {
         &record::read::COMMAND,
         &record::thread::COMMAND,
         &record::create::COMMAND,
+        &record::attach::COMMAND,
         &record::reply::COMMAND,
         &record::update::COMMAND,
         &party::list::COMMAND,
@@ -418,6 +419,9 @@ pub fn classify(failure: Failure) -> Failure {
             failure
         };
     }
+    if let Some(found) = relayed_not_found(&failure) {
+        return found;
+    }
     let relayed = failure
         .detail_value()
         .and_then(|detail| detail["service_code"].as_str())
@@ -430,6 +434,31 @@ pub fn classify(failure: Failure) -> Failure {
             .remedy(PM_REFUSED.remedy);
     }
     failure
+}
+
+/// The shared transport names a status, not this domain's refusal: every 404
+/// of the correspondence route arrives as `transformer_not_found` with a
+/// transformer remedy. When ds-brain's own code is a documented not-found,
+/// that code and its remedy are the answer.
+fn relayed_not_found(failure: &Failure) -> Option<Failure> {
+    let detail = failure.detail_value()?;
+    let message = failure.message().to_owned();
+    let found = match detail["service_code"].as_str()? {
+        "record_not_found" => {
+            Failure::invalid(RECORD_NOT_FOUND.code, message).remedy(RECORD_NOT_FOUND.remedy)
+        }
+        "party_not_found" => {
+            Failure::invalid(PARTY_NOT_FOUND.code, message).remedy(PARTY_NOT_FOUND.remedy)
+        }
+        "blocker_not_found" => {
+            Failure::invalid(BLOCKER_NOT_FOUND.code, message).remedy(BLOCKER_NOT_FOUND.remedy)
+        }
+        "asset_not_found" => {
+            Failure::invalid(ASSET_NOT_FOUND.code, message).remedy(ASSET_NOT_FOUND.remedy)
+        }
+        _ => return None,
+    };
+    Some(found.detail(detail.clone()))
 }
 
 /// What a caller does when the plan was written while the server read it.

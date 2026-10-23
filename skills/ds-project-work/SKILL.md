@@ -97,6 +97,9 @@ from filenames, scan the whole project or create a task merely to answer.
    invent a separate response-matrix workflow.
 4. Use Assets for exact artifact identity, classification and sensitivity.
    Registration, versioning and a task attachment are different boundaries.
+   A task or record takes its own files directly through Project Work, when
+   it is created or later, with no Assets ingest or link step; attaching the
+   same file again after an interruption resumes that upload.
    A task upload is delivered only when its receipt says ready with verified
    size/type; uploading is not completion. Keep its local SHA. This neither
    classifies a formal document nor grants approval/version history. Existing
