@@ -53,6 +53,19 @@ fn owner(component: ModuleComponent) -> &'static ds_cli_exec::External {
         ModuleComponent::Network => &ds_cli_exec::addons::NETWORK,
     }
 }
+/// Capture exactly what the relocated store selected. These tests are about the
+/// managed store, so a developer override such as `DS_SOLAR_ENGINE_BIN` in the
+/// shell must not answer for it; it did, and two of them failed there. Errors
+/// are their refusal codes.
+fn managed(
+    owner: &'static ds_cli_exec::External,
+    base: &Path,
+) -> Result<ds_cli_exec::CapturedExternal, String> {
+    owner
+        .capture_managed_for_lane_in("canary", base)
+        .map(|captured| captured.expect("the store selected an executable"))
+        .map_err(|failure| failure.code().to_owned())
+}
 #[test]
 fn host_connectivity_and_pre_cancel_stop_before_transfer_or_probe() {
     for component in [
@@ -296,9 +309,7 @@ fn native_three_component_stage_activate_restart_rollback_keeps_captured_old_job
             .unwrap();
         assert_eq!(first_selection.generation, 1);
         let (old_path, _) = store.selected_executable(&|| false).unwrap().unwrap();
-        let captured = owner(component)
-            .capture_for_lane_in("canary", base.path())
-            .unwrap();
+        let captured = managed(owner(component), base.path()).unwrap();
         let (two, bytes) = fixture(component, 2);
         let second = stage(&store, two, &bytes);
         let recovered = ModuleStore::new(base.path(), component, "canary")
@@ -315,8 +326,7 @@ fn native_three_component_stage_activate_restart_rollback_keeps_captured_old_job
         let old_result = captured
             .call_json("work", &[], Duration::from_secs(2))
             .unwrap();
-        let new_result = owner(component)
-            .capture_for_lane_in("canary", base.path())
+        let new_result = managed(owner(component), base.path())
             .unwrap()
             .call_json("work", &[], Duration::from_secs(2))
             .unwrap();
@@ -361,9 +371,7 @@ fn removal_restart_stale_stage_reinstall_and_captured_jobs_preserve_one_authorit
             serde_json::from_slice::<ModuleSelectionRecord>(&v1).unwrap(),
             ModuleSelectionRecord::Installed(_)
         ));
-        let captured = owner(component)
-            .capture_for_lane_in("canary", base.path())
-            .unwrap();
+        let captured = managed(owner(component), base.path()).unwrap();
         let (candidate, candidate_bytes) = fixture(component, 2);
         let stale = stage(&store, candidate, &candidate_bytes);
         let removed = store
@@ -386,11 +394,10 @@ fn removal_restart_stale_stage_reinstall_and_captured_jobs_preserve_one_authorit
             .unwrap_err()
             .starts_with("module_removed:"));
         assert_eq!(
-            owner(component)
-                .capture_for_lane_in("canary", base.path())
+            managed(owner(component), base.path())
                 .err()
                 .unwrap()
-                .code(),
+                .as_str(),
             "module_removed"
         );
         let rollback_error = restarted
@@ -422,9 +429,7 @@ fn removal_restart_stale_stage_reinstall_and_captured_jobs_preserve_one_authorit
             .unwrap();
         assert_eq!(restored.generation, 3);
         assert!(restored.previous.is_none());
-        assert!(owner(component)
-            .capture_for_lane_in("canary", base.path())
-            .is_ok());
+        assert!(managed(owner(component), base.path()).is_ok());
     }
 }
 #[test]
@@ -744,11 +749,10 @@ fn atomic_pointer_recovery_and_generation_fence_do_not_need_network_or_probes() 
     fs::write(&active, b"damaged active unit").unwrap();
     assert!(store.selected_executable(&|| false).is_err());
     assert_eq!(
-        owner(ModuleComponent::Solar)
-            .capture_for_lane_in("canary", base.path())
+        managed(owner(ModuleComponent::Solar), base.path())
             .err()
             .unwrap()
-            .code(),
+            .as_str(),
         "module_receipt_invalid"
     );
     let recovered = store
@@ -873,9 +877,7 @@ fn qualified_network_artifact_runs_lv_from_native_managed_selection() {
         selected.active.engine_identity["engineIdentity"]["dependencyClosureSha256"],
         producer["engines"][0]["manifest_sha256"]
     );
-    let captured = ds_cli_exec::addons::NETWORK
-        .capture_for_lane_in("canary", base.path())
-        .unwrap();
+    let captured = managed(&ds_cli_exec::addons::NETWORK, base.path()).unwrap();
     assert_eq!(fs::read(captured.executable()).unwrap(), bytes);
     let request = PathBuf::from(
         std::env::var_os("DS_MODULE_TEST_LV_INPUT").expect("owning immutable LV fixture"),
@@ -1048,9 +1050,7 @@ fn qualified_network_update_keeps_held_a_runs_b_and_rolls_back_to_a() {
     let selected_a = store
         .activate(&ready_a, ActivationGuard::default(), &|| false)
         .unwrap();
-    let held_a = ds_cli_exec::addons::NETWORK
-        .capture_for_lane_in("canary", base.path())
-        .unwrap();
+    let held_a = managed(&ds_cli_exec::addons::NETWORK, base.path()).unwrap();
     assert_eq!(selected_a.generation, 1);
     assert_eq!(fs::read(held_a.executable()).unwrap(), bytes_a);
     assert_eq!(authority_reads.get(), 1);
@@ -1062,9 +1062,7 @@ fn qualified_network_update_keeps_held_a_runs_b_and_rolls_back_to_a() {
     let selected_b = store
         .activate(&ready_b, ActivationGuard::default(), &|| false)
         .unwrap();
-    let new_b = ds_cli_exec::addons::NETWORK
-        .capture_for_lane_in("canary", base.path())
-        .unwrap();
+    let new_b = managed(&ds_cli_exec::addons::NETWORK, base.path()).unwrap();
     assert_eq!(selected_b.generation, 2);
     assert_eq!(selected_b.previous.as_ref().unwrap(), &selected_a.active);
     assert_eq!(fs::read(new_b.executable()).unwrap(), bytes_b);
@@ -1078,9 +1076,7 @@ fn qualified_network_update_keeps_held_a_runs_b_and_rolls_back_to_a() {
     let rolled_back = store
         .rollback(2, ActivationGuard::default(), &|| false)
         .unwrap();
-    let new_a = ds_cli_exec::addons::NETWORK
-        .capture_for_lane_in("canary", base.path())
-        .unwrap();
+    let new_a = managed(&ds_cli_exec::addons::NETWORK, base.path()).unwrap();
     assert_eq!(rolled_back.generation, 3);
     assert_eq!(rolled_back.active, selected_a.active);
     assert_eq!(rolled_back.previous.as_ref().unwrap(), &selected_b.active);
