@@ -55,7 +55,7 @@ pub fn unavailable(reason: &str) -> GridRefusal {
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod browser {
+pub(crate) mod browser {
     use super::*;
     use wasm_bindgen::prelude::*;
 
@@ -89,19 +89,14 @@ mod browser {
         js_sys::Reflect::set(target, &JsValue::from_str(key), value).map(|_| ())
     }
 
-    /// Build the effect for one operation: `{ unit, entry, payload }`.
-    #[wasm_bindgen(js_name = gridEngineRequest, unchecked_return_type = "{ unit: 'network'; entry: 'grid.session' | 'grid.model'; payload: Uint8Array }")]
-    pub fn grid_engine_request(
-        #[wasm_bindgen(unchecked_param_type = "'open' | 'session' | 'model'")] kind: &str,
-        method: &str,
-        args: js_sys::Array,
-    ) -> Result<JsValue, JsValue> {
-        let effect = request(kind, method, admit(&args)?).map_err(refusal)?;
+    /// One effect as the host receives it: `{ unit, entry, payload }`.
+    pub(crate) fn effect_value(effect: &GridEffect) -> Result<JsValue, JsValue> {
         let out = js_sys::Object::new();
         set(&out, "unit", &JsValue::from_str(effect.unit))?;
         let entry = match effect.entry {
             GridEntry::Session => "grid.session",
             GridEntry::Model => "grid.model",
+            GridEntry::Stream => "grid.stream",
         };
         set(&out, "entry", &JsValue::from_str(entry))?;
         set(
@@ -112,11 +107,24 @@ mod browser {
         Ok(out.into())
     }
 
-    /// Decode one reply: JSON text, bytes, `{ bytes, receiptJson }` or `null`
-    /// for an open. Throws the owner's or the Kernel's typed refusal.
-    #[wasm_bindgen(js_name = decodeGridEngineReply, unchecked_return_type = "string | Uint8Array | { bytes: Uint8Array; receiptJson: string } | null")]
+    /// Build the effect for one operation: `{ unit, entry, payload }`.
+    #[wasm_bindgen(js_name = gridEngineRequest, unchecked_return_type = "{ unit: 'network'; entry: 'grid.session' | 'grid.model' | 'grid.stream'; payload: Uint8Array }")]
+    pub fn grid_engine_request(
+        #[wasm_bindgen(unchecked_param_type = "'open' | 'session' | 'model' | 'stream'")]
+        kind: &str,
+        method: &str,
+        args: js_sys::Array,
+    ) -> Result<JsValue, JsValue> {
+        effect_value(&request(kind, method, admit(&args)?).map_err(refusal)?)
+    }
+
+    /// Decode one reply: JSON text, bytes, `{ bytes, receiptJson }`,
+    /// `{ text, blobs }` or `null` for an open. Throws the owner's or the
+    /// Kernel's typed refusal.
+    #[wasm_bindgen(js_name = decodeGridEngineReply, unchecked_return_type = "string | Uint8Array | { bytes: Uint8Array; receiptJson: string } | { text: string; blobs: Uint8Array[] } | null")]
     pub fn decode_grid_engine_reply(
-        #[wasm_bindgen(unchecked_param_type = "'open' | 'session' | 'model'")] kind: &str,
+        #[wasm_bindgen(unchecked_param_type = "'open' | 'session' | 'model' | 'stream'")]
+        kind: &str,
         method: &str,
         reply: &[u8],
     ) -> Result<JsValue, JsValue> {
@@ -130,6 +138,16 @@ mod browser {
                 let out = js_sys::Object::new();
                 set(&out, "bytes", &js_sys::Uint8Array::from(bytes.as_slice()))?;
                 set(&out, "receiptJson", &JsValue::from_str(&receipt_json))?;
+                out.into()
+            }
+            GridResult::Parts { text, blobs } => {
+                let out = js_sys::Object::new();
+                set(&out, "text", &JsValue::from_str(&text))?;
+                let parts: js_sys::Array = blobs
+                    .iter()
+                    .map(|blob| JsValue::from(js_sys::Uint8Array::from(blob.as_slice())))
+                    .collect();
+                set(&out, "blobs", &parts)?;
                 out.into()
             }
             GridResult::Opened => JsValue::NULL,
