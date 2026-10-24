@@ -23,18 +23,10 @@
 
 pub mod backup_create;
 pub mod backup_extract;
-pub mod compare_don;
 pub mod delivery_verify;
 pub mod desktop;
-pub mod deviation_labels;
-pub mod pole_capacity;
 pub mod reference_closure;
-pub mod section_orientation;
-pub mod shading_variants;
 pub mod structure_inventory;
-pub mod structure_substitute;
-pub mod structure_translate;
-pub mod terrain_reconcile;
 
 use ds_cli_contract::spec::Domain;
 
@@ -44,16 +36,8 @@ pub static DOMAIN: Domain = Domain {
     commands: &[
         &backup_create::COMMAND,
         &backup_extract::COMMAND,
-        &pole_capacity::COMMAND,
         &reference_closure::COMMAND,
-        &section_orientation::COMMAND,
-        &compare_don::COMMAND,
         &structure_inventory::COMMAND,
-        &shading_variants::COMMAND,
-        &structure_substitute::COMMAND,
-        &structure_translate::COMMAND,
-        &terrain_reconcile::COMMAND,
-        &deviation_labels::COMMAND,
         &delivery_verify::COMMAND,
         &desktop::check::COMMAND,
         &desktop::close::COMMAND,
@@ -120,29 +104,6 @@ pub fn workspace_path(raw: &str) -> Result<PathBuf, Failure> {
 }
 
 /// Resolve an absent output to an absolute path while preserving its new leaf.
-/// Resolve a directory argument to an existing directory, as an absolute path.
-///
-/// `source_path` is the file form; a library is a workspace tree, so it needs
-/// its own check. Refusing here names the flag, where refusing inside the task
-/// would only say a path was not readable.
-pub fn source_directory(raw: &str, flag: &str) -> Result<PathBuf, Failure> {
-    let path = PathBuf::from(raw);
-    if !path.is_dir() {
-        return Err(
-            Failure::invalid("source_not_found", format!("`{raw}` is not a directory"))
-                .remedy(format!("check the path passed to --{flag}")),
-        );
-    }
-    path.canonicalize().map_err(|error| {
-        Failure::invalid(
-            "source_not_found",
-            format!("`{raw}` could not be resolved to an absolute path"),
-        )
-        .remedy(format!("check the path passed to --{flag}"))
-        .detail(json!({ "detail": error.kind().to_string() }))
-    })
-}
-
 pub fn output_path(raw: &str) -> Result<PathBuf, Failure> {
     let path = PathBuf::from(raw);
     if path.exists() {

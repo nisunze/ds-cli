@@ -13416,16 +13416,6 @@ fn pm_collaboration_adapters_declare_bounded_reads_and_confirmed_task_comment() 
     assert_eq!(read["command"]["effect"], "read_only");
 }
 
-// ---------------------------------------------------------------------------
-// pls structure-translate
-// ---------------------------------------------------------------------------
-
-/// The public humble-pole design named into a canonical library written here
-/// (its own two structure files under canonical names: a test double, never
-/// a library anything is delivered from). Without a staking table the
-/// baseline is the design as DS reads it; the dry run translates and compares
-/// in memory, the write commits the four artifacts.
-
 #[test]
 fn survey_delete_preview_runs_the_real_kernel_and_admits_no_write() {
     let root = temp_root("survey-delete-preview");

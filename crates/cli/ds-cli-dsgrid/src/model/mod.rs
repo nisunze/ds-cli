@@ -118,9 +118,6 @@ pub const MODEL_KINDS: &[&str] = &["general", "lv_network", "mv_line"];
 /// all local, but none of them is instant on a field laptop.
 pub const LOCAL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
-/// Publication captures a snapshot, uploads it and advances a governed head.
-pub const PUBLISH_TIMEOUT: Duration = Duration::from_secs(15 * 60);
-
 // ---------------------------------------------------------------------------
 // Flag shapes shared across the family
 // ---------------------------------------------------------------------------
