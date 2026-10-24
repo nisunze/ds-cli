@@ -34,6 +34,9 @@
 //! A project inventory is not authority: its grant must name the same install
 //! and project before publication.
 
+#[cfg(test)]
+mod test_directory;
+
 pub mod gateway;
 mod guard;
 pub mod host;
@@ -74,6 +77,8 @@ pub use rows::{
     inventory_digest, now_ms, server_time_ms, LocalOutput, LocalRow, Receipt, Reclaimed,
     RecordAnswer, RemoteOutput, RemoteRow, SyncRun, TransferReceipt, MAX_ROWS, SCHEMA,
 };
-pub use run::{plan, plan_once, run, run_with_download_interest, SyncHost, DEFAULT_TRIGGER};
+pub use run::{
+    plan, plan_once, run, run_until_stopped, run_with_download_interest, SyncHost, DEFAULT_TRIGGER,
+};
 
 pub mod reports;

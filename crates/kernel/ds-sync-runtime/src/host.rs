@@ -9,6 +9,7 @@
 //! No host re-implements a store transition.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use ds_command_kernel::sync;
@@ -174,6 +175,20 @@ pub trait Reads {
         sha256: &str,
         size_bytes: u64,
     ) -> Result<(), String>;
+    /// The same download, abandoned once `stop` is set: nothing unverified is
+    /// placed, and a later pass reads the object again. A host whose reads
+    /// cannot be interrupted finishes the object.
+    fn download_verified_until(
+        &self,
+        url: &str,
+        destination: &Path,
+        sha256: &str,
+        size_bytes: u64,
+        stop: &AtomicBool,
+    ) -> Result<(), String> {
+        let _ = stop;
+        self.download_verified(url, destination, sha256, size_bytes)
+    }
 }
 
 /// The one seam, implemented over the durable store.
@@ -760,12 +775,36 @@ impl SyncHost for StoreHost<'_> {
     }
 
     fn fetch(&self, project: &str, head: &RemoteRow) -> Result<u64, GatewayError> {
+        static NEVER: AtomicBool = AtomicBool::new(false);
+        self.fetch_until(project, head, &NEVER)?
+            .ok_or_else(|| "a fetch that cannot stop was stopped".into())
+    }
+
+    fn fetch_until(
+        &self,
+        project: &str,
+        head: &RemoteRow,
+        stop: &AtomicBool,
+    ) -> Result<Option<u64>, GatewayError> {
         self.ensure_active()?;
         crate::reads::validate_output_names(head)?;
         let root = self.reads.head_root(project, &head.identity)?;
         let mut bytes = 0_u64;
         for output in &head.outputs {
+            if stop.load(Ordering::Acquire) {
+                return Ok(None);
+            }
             self.ensure_active()?;
+            let destination = root.join(&output.output_id);
+            // An output a stopped pass already placed is these exact bytes
+            // (`place_verified` renames only after the digest); the head is
+            // not readable until `head.json` lands below, after every one.
+            if crate::reads::holds_output(&destination, &output.sha256, output.size_bytes)? {
+                bytes = bytes
+                    .checked_add(output.size_bytes)
+                    .ok_or("download byte count overflow")?;
+                continue;
+            }
             let ticket = self.gateway.post(
                 SyncRoute::ComputeArtifacts,
                 &json!({
@@ -781,12 +820,18 @@ impl SyncHost for StoreHost<'_> {
             if url.is_empty() {
                 return Err("that head output has no readable location".into());
             }
-            self.reads.download_verified(
+            if let Err(error) = self.reads.download_verified_until(
                 &url,
-                &root.join(&output.output_id),
+                &destination,
                 &output.sha256,
                 output.size_bytes,
-            )?;
+                stop,
+            ) {
+                if stop.load(Ordering::Acquire) {
+                    return Ok(None);
+                }
+                return Err(error.into());
+            }
             self.ensure_active()?;
             bytes = bytes
                 .checked_add(output.size_bytes)
@@ -807,7 +852,7 @@ impl SyncHost for StoreHost<'_> {
             &format!("{:x}", sha2::Sha256::digest(&receipt)),
             receipt.len() as u64,
         )?;
-        Ok(bytes)
+        Ok(Some(bytes))
     }
 
     fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {

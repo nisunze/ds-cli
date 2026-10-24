@@ -357,6 +357,11 @@ impl SolarActivity {
                 };
                 let mut observed = false;
                 for project in scopes {
+                    // A stopping Core starts no further project pass, and the
+                    // pass in flight ends at its next step (`drain_until_stopped`).
+                    if worker_stop.load(Ordering::Acquire) {
+                        break;
+                    }
                     let wake = projects
                         .entry(project.clone())
                         .or_insert_with(SyncWake::at_startup);
@@ -376,11 +381,12 @@ impl SolarActivity {
                         };
                         activity
                             .with_producers(&project, |producers| {
-                                crate::server_reports::drain(
+                                crate::server_reports::drain_until_stopped(
                                     &session,
                                     producers,
                                     &activity.reads,
                                     trigger,
+                                    &worker_stop,
                                 )
                             })
                             .map(Some)

@@ -9,6 +9,7 @@
 
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use ds_command_kernel::sync;
 use sha2::{Digest, Sha256};
@@ -256,34 +257,43 @@ pub(crate) fn held_head(root: &Path, head: &crate::rows::RemoteRow) -> Result<bo
     }
     validate_output_names(head)?;
     for output in &head.outputs {
-        let path = root.join(&output.output_id);
-        let metadata = match std::fs::symlink_metadata(&path) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-            Err(error) => return Err(format!("could not inspect the cached output: {error}")),
-        };
-        if !metadata.is_file() || metadata.len() != output.size_bytes {
-            return Ok(false);
-        }
-        let mut file = std::fs::File::open(path)
-            .map_err(|error| error.to_string())?
-            .take(output.size_bytes.saturating_add(1));
-        let mut hash = Sha256::new();
-        let mut count = 0_u64;
-        let mut buffer = [0_u8; READ_SLICE_BYTES];
-        loop {
-            let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
-            if read == 0 {
-                break;
-            }
-            count += read as u64;
-            hash.update(&buffer[..read]);
-        }
-        if count != output.size_bytes || format!("{:x}", hash.finalize()) != output.sha256 {
+        if !holds_output(
+            &root.join(&output.output_id),
+            &output.sha256,
+            output.size_bytes,
+        )? {
             return Ok(false);
         }
     }
     Ok(true)
+}
+
+/// Whether `path` already holds exactly these declared bytes: a regular file
+/// of `size_bytes` whose digest is `sha256`, read again, never assumed.
+pub(crate) fn holds_output(path: &Path, sha256: &str, size_bytes: u64) -> Result<bool, String> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("could not inspect the cached output: {error}")),
+    };
+    if !metadata.is_file() || metadata.len() != size_bytes {
+        return Ok(false);
+    }
+    let mut file = std::fs::File::open(path)
+        .map_err(|error| error.to_string())?
+        .take(size_bytes.saturating_add(1));
+    let mut hash = Sha256::new();
+    let mut count = 0_u64;
+    let mut buffer = [0_u8; READ_SLICE_BYTES];
+    loop {
+        let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
+        if read == 0 {
+            break;
+        }
+        count += read as u64;
+        hash.update(&buffer[..read]);
+    }
+    Ok(count == size_bytes && format!("{:x}", hash.finalize()) == sha256)
 }
 
 pub(crate) fn validate_output_names(head: &crate::rows::RemoteRow) -> Result<(), String> {
@@ -325,6 +335,18 @@ impl Reads for VerifiedReads {
         sha256: &str,
         size_bytes: u64,
     ) -> Result<(), String> {
+        static NEVER: AtomicBool = AtomicBool::new(false);
+        self.download_verified_until(url, destination, sha256, size_bytes, &NEVER)
+    }
+
+    fn download_verified_until(
+        &self,
+        url: &str,
+        destination: &Path,
+        sha256: &str,
+        size_bytes: u64,
+        stop: &AtomicBool,
+    ) -> Result<(), String> {
         let url = validated_ticket_url(url)
             .map_err(|refusal| format!("the download ticket was refused: {refusal:?}"))?;
         let body_budget =
@@ -347,9 +369,30 @@ impl Reads for VerifiedReads {
             .with_config()
             .limit(size_bytes.saturating_add(1))
             .reader();
-        place_verified(reader, destination, sha256, size_bytes)
+        place_verified(Stoppable { reader, stop }, destination, sha256, size_bytes)
     }
 }
+
+/// A body that ends with an error at the next read once the host is
+/// stopping. `place_verified` then removes its partial file, so nothing
+/// unverified is ever placed and a later pass reads the object again.
+struct Stoppable<'a, R> {
+    reader: R,
+    stop: &'a AtomicBool,
+}
+
+impl<R: Read> Read for Stoppable<'_, R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        if self.stop.load(Ordering::Acquire) {
+            return Err(std::io::Error::other("the host is stopping"));
+        }
+        self.reader.read(buffer)
+    }
+}
+
+#[cfg(test)]
+#[path = "reads_stop_tests.rs"]
+mod stop_tests;
 
 #[cfg(test)]
 mod tests {

@@ -68,14 +68,6 @@ is ruled in the sync contract: simple local clean and recompute.
   current placement answers, replay them in the pure kernel and native/WASM
   consumers, and prove identical Solar/reporter bytes and head identity from
   native and locally built Cloud Run adapters. Hosted web Solar remains closed.
-- **Core shutdown waits for a whole sync pass.** `core serve` joins the Solar
-  sync pump, which reads `worker_stop` only between passes, so SIGTERM during a
-  fresh Core's mirror waits for every remaining download (ADERM 10-23: still
-  running 11 min after SIGTERM at 532 of ~950 MB; killed, and the restart then
-  waited out the 5-min lease). Next step: end the pass at its download-step
-  boundary (`ds-sync-runtime` `run_leased`, where `Delivery::sealed_since_plan`
-  already yields) once the host is stopping; prove a stop mid-mirror returns
-  within one step and the restart resumes the mirror.
 - **A transient upload failure mid-mirror waits for the next pass.** Since
   `4fe5605d` a result sealed during a mirror is asked before the next download
   step, but each row is asked once per pass: ADERM 10-23 `calculate-aderm_kyabe`
@@ -83,6 +75,14 @@ is ruled in the sync contract: simple local clean and recompute.
   behind the remaining ~400 MB. Next step: let `Delivery::sealed_since_plan`
   re-ask a held row once the kernel's own retry deadline (`plan.wake`) for it
   has passed, never sooner; decide whether that deadline is per row.
+- **A killed Core leaves `.part-*` files in `sync-downloads` that nothing removes.**
+  `reads::place_verified` removes its temporary on every error, and a stopped
+  pass now abandons the object it reads the same way, but a SIGKILL'd or
+  crashed process leaves the temporary behind (ADERM core-state-2, 10-24: two
+  orphans after the 00:02 kill; a restart writes a new uuid-named file and
+  never reads them). Next step: when a head root is opened for a fetch, remove
+  `.{output}.part-*` entries older than the lease TTL (no live worker can still
+  write one), with a test that a fresh pass's own temporary is untouched.
 - **The Server pump hides its failure.** `solar-sync-pump` stays `failed` with
   "Sync Center could not read or publish durable server work" from one pass until
   a later pass succeeds, and the cause is neither logged nor projected

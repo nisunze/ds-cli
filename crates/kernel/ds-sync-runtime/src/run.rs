@@ -22,6 +22,7 @@
 //! host may honour is the one the plan names in `wake`.
 
 use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use ds_command_kernel::{sync, sync_store::QueueBlock};
 use serde_json::Value;
@@ -103,6 +104,20 @@ pub trait SyncHost {
     ) -> Result<TransferReceipt, String>;
     /// The gateway read of one head's outputs into the local store.
     fn fetch(&self, project: &str, head: &RemoteRow) -> Result<u64, GatewayError>;
+    /// The same read, ended once `stop` is set: between two outputs, or inside
+    /// one where the host's reads can abandon it. `Ok(None)`: stopped; the
+    /// head is not placed, and the next pass fetches it again, keeping every
+    /// output already verified in place. A host that cannot stop mid-head
+    /// reads it whole.
+    fn fetch_until(
+        &self,
+        project: &str,
+        head: &RemoteRow,
+        stop: &AtomicBool,
+    ) -> Result<Option<u64>, GatewayError> {
+        let _ = stop;
+        self.fetch(project, head).map(Some)
+    }
     /// Free the bytes of a publication that lost. Owner, 2026-09-20: "when
     /// there's a conflict, online overwrites local artefacts"; an artefact
     /// never accumulates on the edge. Answers the bytes freed; a batch that
@@ -267,7 +282,31 @@ pub fn run_with_download_interest(
     trigger: sync::Trigger,
     download_interest: Option<&[sync::Identity]>,
 ) -> Result<SyncRun, String> {
-    run_scoped(host, project, trigger, download_interest)
+    static NEVER: AtomicBool = AtomicBool::new(false);
+    run_scoped(host, project, trigger, download_interest, &NEVER)
+}
+
+/// The same pass, ended early once `stop` is set: a host that is shutting
+/// down stops at the next step boundary instead of waiting for the whole pass.
+///
+/// A step is one upload (`open`, its bytes, `finalize`) or one download (one
+/// head). An upload in flight finishes, so a stopped pass never declares a
+/// publication it will not finish and never re-declares one it did. A head in
+/// flight stops between its outputs, and the object being read is abandoned
+/// where the host's reads allow it (`SyncHost::fetch_until`): the head is not
+/// placed, and the next pass keeps every output already verified. The lease
+/// is released as the pass returns, so the next worker starts at once instead
+/// of waiting out the TTL. Whatever was not reached
+/// stays planned: the next pass re-plans from the store and resumes, and the
+/// answer carries one `pass:stopped` receipt naming how many steps remained.
+pub fn run_until_stopped(
+    host: &dyn SyncHost,
+    project: &str,
+    trigger: sync::Trigger,
+    download_interest: Option<&[sync::Identity]>,
+    stop: &AtomicBool,
+) -> Result<SyncRun, String> {
+    run_scoped(host, project, trigger, download_interest, stop)
 }
 
 fn run_scoped(
@@ -275,6 +314,7 @@ fn run_scoped(
     project: &str,
     trigger: sync::Trigger,
     download_interest: Option<&[sync::Identity]>,
+    stop: &AtomicBool,
 ) -> Result<SyncRun, String> {
     if trigger == sync::Trigger::LocalChange {
         if let Some(block) = host.credential_block(project)? {
@@ -362,7 +402,7 @@ fn run_scoped(
         }
     }
     let _lease = Release(host, project);
-    run_leased(host, project, trigger, download_interest)
+    run_leased(host, project, trigger, download_interest, stop)
 }
 
 /// Keep one receipt: in the store first, then in the run's answer. A store
@@ -382,6 +422,7 @@ fn run_leased(
     project: &str,
     trigger: sync::Trigger,
     download_interest: Option<&[sync::Identity]>,
+    stop: &AtomicBool,
 ) -> Result<SyncRun, String> {
     let mut local = host.local(project)?;
     // What the host freed while observing — rows the store had already
@@ -452,7 +493,11 @@ fn run_leased(
     // identity it published: a row is attempted at most once per pass, and a
     // head this pass superseded with its own bytes is not fetched.
     let mut delivery = Delivery::default();
-    for action in &plan.actions {
+    for (step, action) in plan.actions.iter().enumerate() {
+        if stop.load(Ordering::Acquire) && is_step(action) {
+            receipts.push(stopped(&plan.actions[step..]));
+            break;
+        }
         match action {
             sync::Action::Offline => {
                 receipts.push(Receipt::new("offline", "noted"));
@@ -476,7 +521,12 @@ fn run_leased(
                     trigger,
                     download_interest,
                     &mut receipts,
+                    stop,
                 )? {
+                    break;
+                }
+                if stop.load(Ordering::Acquire) {
+                    receipts.push(stopped(&plan.actions[step..]));
                     break;
                 }
                 if delivery.published.contains(identity) {
@@ -485,7 +535,11 @@ fn run_leased(
                     ));
                     continue;
                 }
-                let receipt = download(host, project, &remote, identity);
+                let Some(receipt) = download(host, project, &remote, identity, stop) else {
+                    // Stopped inside this head: it is a remaining step too.
+                    receipts.push(stopped(&plan.actions[step..]));
+                    break;
+                };
                 let credential_refused = receipt.outcome == "credential_refused";
                 keep(host, project, &mut receipts, receipt);
                 if credential_refused {
@@ -671,6 +725,7 @@ impl Delivery {
         trigger: sync::Trigger,
         download_interest: Option<&[sync::Identity]>,
         receipts: &mut Vec<Receipt>,
+        stop: &AtomicBool,
     ) -> Result<bool, String> {
         let rows = host.sealed(project)?;
         let (remote, read_at) = host.held_heads(project)?;
@@ -687,6 +742,10 @@ impl Delivery {
             let sync::Action::Upload { identity, .. } = action else {
                 continue;
             };
+            if stop.load(Ordering::Acquire) {
+                // The caller ends the pass and names what remained.
+                return Ok(false);
+            }
             let Some(row) = rows.iter().find(|row| &row.identity == identity) else {
                 continue;
             };
@@ -702,6 +761,25 @@ impl Delivery {
         }
         Ok(false)
     }
+}
+
+/// An action that leaves the machine: one upload or one download head. Only
+/// these are steps a stopping host must not start; the local verdicts
+/// between them are bookkeeping and finish with the step before them.
+fn is_step(action: &sync::Action) -> bool {
+    matches!(
+        action,
+        sync::Action::Upload { .. } | sync::Action::Download { .. }
+    )
+}
+
+/// The run's own evidence that it ended at a step boundary. It is not kept in
+/// the store: no row changed state, and the next pass re-plans the rest.
+fn stopped(remaining: &[sync::Action]) -> Receipt {
+    let steps = remaining.iter().filter(|action| is_step(action)).count();
+    Receipt::new("pass", "stopped").detail(format!(
+        "the host is stopping; {steps} planned upload or download steps wait for the next pass"
+    ))
 }
 
 /// Bind only the publication selected in this pass, never a fresh lookup
@@ -907,19 +985,25 @@ fn published_revision(head_revision: Option<i64>) -> String {
 }
 
 /// Read one head's outputs into the local store. Downloads need no grant.
+/// One download step. `None`: the host began stopping while the head was
+/// read; nothing was placed as this head and no receipt is kept for it.
 fn download(
     host: &dyn SyncHost,
     project: &str,
     remote: &[RemoteRow],
     identity: &sync::Identity,
-) -> Receipt {
+    stop: &AtomicBool,
+) -> Option<Receipt> {
     let Some(head) = remote.iter().find(|row| &row.identity == identity) else {
-        return Receipt::new("download", "failed")
-            .about(identity)
-            .detail("the planned head is no longer in the shared record");
+        return Some(
+            Receipt::new("download", "failed")
+                .about(identity)
+                .detail("the planned head is no longer in the shared record"),
+        );
     };
-    match host.fetch(project, head) {
-        Ok(bytes) => {
+    Some(match host.fetch_until(project, head, stop) {
+        Ok(None) => return None,
+        Ok(Some(bytes)) => {
             let mut receipt = Receipt::new("download", "downloaded").about(identity);
             receipt.head_revision = Some(head.head_revision);
             receipt.bytes = Some(bytes);
@@ -933,7 +1017,7 @@ fn download(
             .about(identity)
             .detail(error.detail)
             .failure_code(error.code),
-    }
+    })
 }
 
 #[cfg(test)]

@@ -12,6 +12,7 @@ use ds_sync_runtime::{
     store::ArtifactRow,
 };
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 
 /// A local observation of one project's queue: a digest over the store's
 /// rows for it, so the pump can tell "something was sealed or settled" from
@@ -94,6 +95,19 @@ pub fn drain(
     drain_with_download_interest(session, producer, reads, trigger, None)
 }
 
+/// The pump's pass: the same drain, ended at the next upload or download step
+/// once `stop` is set, so a stopping Core never waits for a whole mirror
+/// (`ds_sync_runtime::run_until_stopped`).
+pub fn drain_until_stopped(
+    session: &ServerSyncSession,
+    producer: &dyn ds_sync_runtime::Producer,
+    reads: &dyn Reads,
+    trigger: Trigger,
+    stop: &AtomicBool,
+) -> Result<Pass, String> {
+    drain_scoped(session, producer, reads, trigger, None, stop)
+}
+
 pub fn drain_with_download_interest(
     session: &ServerSyncSession,
     producer: &dyn ds_sync_runtime::Producer,
@@ -101,12 +115,25 @@ pub fn drain_with_download_interest(
     trigger: Trigger,
     download_interest: Option<&[ds_sync_runtime::kernel_sync::Identity]>,
 ) -> Result<Pass, String> {
+    static NEVER: AtomicBool = AtomicBool::new(false);
+    drain_scoped(session, producer, reads, trigger, download_interest, &NEVER)
+}
+
+fn drain_scoped(
+    session: &ServerSyncSession,
+    producer: &dyn ds_sync_runtime::Producer,
+    reads: &dyn Reads,
+    trigger: Trigger,
+    download_interest: Option<&[ds_sync_runtime::kernel_sync::Identity]>,
+    stop: &AtomicBool,
+) -> Result<Pass, String> {
     session.with_host_for_project(session.project(), producer, reads, |host| {
-        let result = ds_sync_runtime::run_with_download_interest(
+        let result = ds_sync_runtime::run_until_stopped(
             host,
             session.project(),
             trigger,
             download_interest,
+            stop,
         );
         match result {
             Ok(run) => Ok(pass(inventory(session)?, run)),
