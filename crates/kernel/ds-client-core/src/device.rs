@@ -1067,57 +1067,16 @@ impl DeviceApiAuthorization<'_> {
         crate::authorized::list_projects(self.profile, transport, self.authority())
     }
 
-    pub fn feeder_configuration<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        bounds: Option<&crate::ProjectConfigurationChange>,
-        now: u64,
-    ) -> Result<crate::FeederConfiguration, ClientError> {
-        crate::authorized::validate_project_report(project)?;
-        self.ensure_active(now)?;
-        crate::authorized::feeder_configuration(
-            self.profile,
-            transport,
-            self.authority(),
-            project,
-            bounds,
-        )
-    }
+    crate::gateway_compat::gateway_domain_command!(device; feeder_configuration);
 
-    /// Read exact persisted analysis bytes using this captured device authority
-    /// and an explicit project/head fence. Server refusals retain their codes.
-    // Keep project, transformer, version and content digest explicit at this
-    // existing authenticated boundary rather than changing its public API.
-    #[allow(clippy::too_many_arguments)]
-    pub fn transformer_analysis<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        transformer: &str,
-        analysis_version: u64,
-        content_digest: &str,
-        analysis_sha256: &str,
-        now: u64,
-    ) -> Result<Vec<u8>, ClientError> {
-        crate::transformer_analysis::validate(
-            project,
-            transformer,
-            analysis_version,
-            content_digest,
-            analysis_sha256,
-        )?;
-        self.ensure_active(now)?;
-        crate::transformer_analysis::read(
-            self.profile,
-            transport,
-            self.authority(),
-            project,
-            transformer,
-            analysis_version,
-            content_digest,
-            analysis_sha256,
-        )
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// Read exact persisted analysis bytes using this captured device authority
+        /// and an explicit project/head fence. Server refusals retain their codes.
+        // Keep project, transformer, version and content digest explicit at this
+        // existing authenticated boundary rather than changing its public API.
+        #[allow(clippy::too_many_arguments)]
+        transformer_analysis
     }
 
     pub fn transformer_context<T: AuthorizedTransport>(
@@ -1180,263 +1139,42 @@ impl DeviceApiAuthorization<'_> {
         )
     }
 
-    pub fn project_forms<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        now: u64,
-    ) -> Result<ProjectFormsSnapshot, ClientError> {
-        crate::authorized::validate_project_forms(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::project_forms(self.profile, transport, self.authority(), ds_project)
+    crate::gateway_compat::gateway_domain_command!(device; project_forms);
+
+    crate::gateway_compat::gateway_domain_command!(device; project_form_editor);
+
+    crate::gateway_compat::gateway_domain_command!(device; solar_snapshot);
+
+    crate::gateway_compat::gateway_domain_command!(device; survey_query);
+
+    crate::gateway_compat::gateway_domain_command!(device; survey_entries_select);
+
+    crate::gateway_compat::gateway_domain_command!(device; survey_entries_changes);
+
+    crate::gateway_compat::gateway_domain_command!(device; survey_delete);
+
+    crate::gateway_compat::gateway_domain_command!(device; survey_update);
+
+    crate::gateway_compat::gateway_domain_command!(device; survey_entry_create);
+
+    crate::gateway_compat::gateway_domain_command!(device; tile_list);
+
+    crate::gateway_compat::gateway_domain_command!(device; tile_add);
+
+    crate::gateway_compat::gateway_domain_command!(device; tile_remove);
+
+    crate::gateway_compat::gateway_domain_command!(device; design_selections);
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// One selected account-private note action under this captured device principal.
+        personal_notes
     }
 
-    pub fn project_form_editor<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        form_slug: &str,
-        now: u64,
-    ) -> Result<ProjectFormSettingsEditor, ClientError> {
-        crate::authorized::validate_project_form_editor(ds_project, form_slug)?;
-        self.ensure_active(now)?;
-        crate::authorized::project_form_editor(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            form_slug,
-        )
-    }
-
-    pub fn solar_snapshot<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        template_id: &str,
-        now: u64,
-    ) -> Result<SolarSnapshot, ClientError> {
-        crate::authorized::validate_solar_snapshot(ds_project, template_id)?;
-        self.ensure_active(now)?;
-        crate::authorized::solar_snapshot(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            template_id,
-        )
-    }
-
-    pub fn survey_query<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        query: &SurveyQueryRequest,
-        now: u64,
-    ) -> Result<SurveyQueryResult, ClientError> {
-        crate::authorized::validate_survey_query(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::survey_query(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            query,
-        )
-    }
-
-    pub fn survey_entries_select<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &SurveyEntriesSelectRequest,
-        now: u64,
-    ) -> Result<SurveyEntriesSelection, ClientError> {
-        crate::authorized::validate_survey_entries_select(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::survey_entries_select(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-        )
-    }
-
-    pub fn survey_entries_changes<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &SurveyEntriesChangesRequest,
-        now: u64,
-    ) -> Result<SurveyEntriesChanges, ClientError> {
-        crate::authorized::validate_survey_entries_changes(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::survey_entries_changes(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-        )
-    }
-
-    pub fn survey_delete<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        request: &crate::SurveyDeleteRequest,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        if request.project() != project {
-            return Err(ClientError::new(
-                ErrorKind::InvalidInput,
-                "Survey delete project mismatch",
-            ));
-        }
-        crate::authorized::validate_survey_entry_create(project)?;
-        self.ensure_active(now)?;
-        crate::survey_delete::run(self.profile, transport, self.authority(), project, request)
-    }
-
-    pub fn survey_update<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        request: &crate::SurveyUpdateRequest,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        if request.project() != project {
-            return Err(ClientError::new(
-                ErrorKind::InvalidInput,
-                "Survey update project mismatch",
-            ));
-        }
-        crate::authorized::validate_survey_entry_create(project)?;
-        self.ensure_active(now)?;
-        crate::survey_update::run(self.profile, transport, self.authority(), project, request)
-    }
-
-    pub fn survey_entry_create<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project_id: &str,
-        request: &SurveyEntryCreateRequest,
-        now: u64,
-    ) -> Result<SurveyEntryCreateReceipt, ClientError> {
-        crate::authorized::validate_survey_entry_create(project_id)?;
-        self.ensure_active(now)?;
-        crate::authorized::survey_entry_create(
-            self.profile,
-            transport,
-            self.authority(),
-            project_id,
-            request,
-        )
-    }
-
-    pub fn tile_list<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        include_global: bool,
-        now: u64,
-    ) -> Result<crate::TileCatalog, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-
-        self.ensure_active(now)?;
-        crate::authorized::tile_list(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            include_global,
-        )
-    }
-
-    pub fn tile_add<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        tile_type: TileType,
-        source_project: &str,
-        now: u64,
-    ) -> Result<crate::TileMutation, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        crate::tiles::validate_catalog_id(source_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::tile_add(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            tile_type,
-            source_project,
-        )
-    }
-
-    pub fn tile_remove<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        tile_id: &str,
-        scope: crate::TileScope,
-        now: u64,
-    ) -> Result<crate::TileMutation, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        crate::tiles::validate_catalog_id(tile_id)?;
-        self.ensure_active(now)?;
-        crate::authorized::tile_remove(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            tile_id,
-            scope,
-        )
-    }
-
-    pub fn design_selections<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &crate::DesignSelectionRequest,
-        now: u64,
-    ) -> Result<crate::DesignSelectionAnswer, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        request.validate()?;
-        self.ensure_active(now)?;
-        crate::authorized::design_selections(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-        )
-    }
-    /// One selected account-private note action under this captured device principal.
-    pub fn personal_notes<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        action: &crate::personal_notes::Action,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        action.validate()?;
-        self.ensure_active(now)?;
-        crate::personal_notes::run(self.profile, transport, self.authority(), action)
-    }
-
-    /// One account-scoped messaging or notification action, authorized under
-    /// this protected device principal by the same owner as a user session.
-    pub fn messaging<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        command: &crate::messaging::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.ensure_active(now)?;
-        crate::messaging::run(self.profile, transport, self.authority(), command)
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// One account-scoped messaging or notification action, authorized under
+        /// this protected device principal by the same owner as a user session.
+        messaging
     }
     /// One governed correspondence action, on a device session — the same
     /// door as [`Self::project_management`].
@@ -1501,224 +1239,34 @@ impl DeviceApiAuthorization<'_> {
             command,
         )
     }
-    pub fn data_distribution<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &crate::DataDistributionRequest,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        request.validate()?;
-        self.ensure_active(now)?;
-        crate::authorized::data_distribution(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-        )
+    crate::gateway_compat::gateway_domain_command!(device; data_distribution);
+    crate::gateway_compat::gateway_domain_command!(device; printing);
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// Read only the explicit project's governed standard and A4 documents.
+        printing_standard
     }
-    pub fn printing<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &crate::PrintingRequest,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        request.validate_for(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::printing(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-        )
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// Plan, census or apply one copy of a project's network documents
+        /// (`ds_project` is the destination).
+        network_documents
     }
-    /// Read only the explicit project's governed standard and A4 documents.
-    pub fn printing_standard<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &crate::PrintingStandardRequest,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        request.validate()?;
-        self.ensure_active(now)?;
-        crate::printing_standard::read(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-        )
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// Plan, census or apply the governed printing-template migration of one
+        /// library (`ds_project` empty for the global one).
+        print_style_keys
     }
-    /// Plan, census or apply one copy of a project's network documents
-    /// (`ds_project` is the destination).
-    pub fn network_documents<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &crate::NetworkDocumentsRequest,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        request.validate_for(ds_project)?;
-        self.ensure_active(now)?;
-        crate::network_documents::call(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-        )
-    }
-    /// Plan, census or apply the governed printing-template migration of one
-    /// library (`ds_project` empty for the global one).
-    pub fn print_style_keys<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &crate::PrintStyleKeysRequest,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        request.validate_for(ds_project)?;
-        self.ensure_active(now)?;
-        crate::printing_style_keys::call(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-        )
-    }
-    pub fn layer_config<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        refresh: bool,
-        now: u64,
-    ) -> Result<crate::LayerSnapshot, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::layer_config(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            refresh,
-        )
-    }
-    pub fn style_catalog<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        now: u64,
-    ) -> Result<crate::StyleSnapshot, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::style_catalog(self.profile, transport, self.authority(), ds_project)
-    }
-    pub fn layer_reorder<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        orders: &[crate::LayerOrder],
-        now: u64,
-    ) -> Result<crate::LayerOrderReceipt, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        crate::layers::validate_orders(orders)?;
-        self.ensure_active(now)?;
-        crate::authorized::layer_reorder(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            orders,
-        )
-    }
-    pub fn layer_default_visibility<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        defaults: &[crate::LayerVisibilityDefault],
-        now: u64,
-    ) -> Result<crate::LayerVisibilityDefaultReceipt, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        crate::layers::validate_visibility_defaults(defaults)?;
-        self.ensure_active(now)?;
-        crate::authorized::layer_default_visibility(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            defaults,
-        )
-    }
-    pub fn project_data<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: crate::ProjectDataCommand<'_>,
-        now: u64,
-    ) -> Result<crate::ProjectDataReceipt, ClientError> {
-        command.validate()?;
-        crate::authorized::validate_tiles(project)?;
-        self.ensure_active(now)?;
-        crate::authorized::project_data(self.profile, transport, self.authority(), project, command)
-    }
-    pub fn status_processing<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: crate::StatusProcessingCommand<'_>,
-        now: u64,
-    ) -> Result<crate::StatusProcessingReceipt, ClientError> {
-        crate::authorized::validate_tiles(project)?;
-        self.ensure_active(now)?;
-        crate::authorized::status_processing(
-            self.profile,
-            transport,
-            self.authority(),
-            project,
-            command,
-        )
-    }
-    pub fn survey_photo<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: crate::survey_photo::Command<'_>,
-        now: u64,
-    ) -> Result<crate::survey_photo::Receipt, ClientError> {
-        crate::authorized::validate_tiles(project)?;
-        self.ensure_active(now)?;
-        crate::survey_photo::run(self.profile, transport, self.authority(), project, command)
-    }
-    pub fn repair_transformer<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        input: &crate::TransformerRepairPublication,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        input.validate(project)?;
-        self.ensure_active(now)?;
-        crate::transformer_repair::run(self.profile, transport, self.authority(), project, input)
-    }
-    pub fn reseal_transformer_digest<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        input: &crate::TransformerDigestReseal,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        input.validate(project)?;
-        self.ensure_active(now)?;
-        crate::transformer_reseal::run(self.profile, transport, self.authority(), project, input)
-    }
+    crate::gateway_compat::gateway_domain_command!(device; layer_config);
+    crate::gateway_compat::gateway_domain_command!(device; style_catalog);
+    crate::gateway_compat::gateway_domain_command!(device; layer_reorder);
+    crate::gateway_compat::gateway_domain_command!(device; layer_default_visibility);
+    crate::gateway_compat::gateway_domain_command!(device; project_data);
+    crate::gateway_compat::gateway_domain_command!(device; status_processing);
+    crate::gateway_compat::gateway_domain_command!(device; survey_photo);
+    crate::gateway_compat::gateway_domain_command!(device; repair_transformer);
+    crate::gateway_compat::gateway_domain_command!(device; reseal_transformer_digest);
     pub fn save_transformers<T: AuthorizedTransport>(
         &self,
         transport: &mut T,
@@ -1730,91 +1278,39 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::transformer_save::run(self.profile, transport, self.authority(), project, batch)
     }
-    pub fn save_collisions<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        publication: &crate::CollisionsPublication,
-        now: u64,
-    ) -> Result<crate::CollisionsPublicationReceipt, ClientError> {
-        publication.validate()?;
-        self.ensure_active(now)?;
-        crate::collisions_publish::run(
-            self.profile,
-            transport,
-            self.authority(),
-            project,
-            publication,
-        )
+    crate::gateway_compat::gateway_domain_command!(device; save_collisions);
+    crate::gateway_compat::gateway_domain_command!(device; feedback);
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// The projectless governance doors, on a device session.
+        ///
+        /// Governance is server-side: ds-brain's `Authentication` middleware admits
+        /// a device credential on `/api/v1/governance` and `/sre/*` exactly as it
+        /// admits a restored user, and `platform.admin`/`app.admin` on the
+        /// principal decides the answer either way. Until these existed, a host
+        /// linked by device could read its projects but not the estate — `ds
+        /// install list` refused `headless_signed_out` on a box whose `ds auth
+        /// status` said signed in. Each delegates to the same `run` the native
+        /// [`crate::Client`] twin uses; only the credential differs.
+        installs
     }
-    pub fn feedback<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        command: &crate::feedback::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.ensure_active(now)?;
-        crate::feedback::run(self.profile, transport, self.authority(), command)
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// Create a project or edit its properties on a device session.
+        ///
+        /// ds-brain's `Authentication` middleware admits a device credential on
+        /// `/api/v1/projects` exactly as it admits a restored user (the principal's
+        /// email and uid are set either way, and the capability gate reads the
+        /// email), so a host linked by device administers projects too.
+        project_properties
     }
-    /// The projectless governance doors, on a device session.
-    ///
-    /// Governance is server-side: ds-brain's `Authentication` middleware admits
-    /// a device credential on `/api/v1/governance` and `/sre/*` exactly as it
-    /// admits a restored user, and `platform.admin`/`app.admin` on the
-    /// principal decides the answer either way. Until these existed, a host
-    /// linked by device could read its projects but not the estate — `ds
-    /// install list` refused `headless_signed_out` on a box whose `ds auth
-    /// status` said signed in. Each delegates to the same `run` the native
-    /// [`crate::Client`] twin uses; only the credential differs.
-    pub fn installs<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        command: &crate::installs::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.ensure_active(now)?;
-        crate::installs::run(self.profile, transport, self.authority(), command)
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// One governed whole-project delete action on a device session; ds-brain
+        /// decides by the device principal's `platform.admin` exactly as for a user.
+        project_deletion
     }
-    /// Create a project or edit its properties on a device session.
-    ///
-    /// ds-brain's `Authentication` middleware admits a device credential on
-    /// `/api/v1/projects` exactly as it admits a restored user (the principal's
-    /// email and uid are set either way, and the capability gate reads the
-    /// email), so a host linked by device administers projects too.
-    pub fn project_properties<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        command: &crate::project_properties::Command,
-        now: u64,
-    ) -> Result<crate::project_properties::Receipt, ClientError> {
-        command.validate()?;
-        self.ensure_active(now)?;
-        crate::project_properties::run(self.profile, transport, self.authority(), command)
-    }
-    /// One governed whole-project delete action on a device session; ds-brain
-    /// decides by the device principal's `platform.admin` exactly as for a user.
-    pub fn project_deletion<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        command: &crate::project_deletion::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.ensure_active(now)?;
-        crate::project_deletion::run(self.profile, transport, self.authority(), command)
-    }
-    pub fn sre<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        command: &crate::sre::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.ensure_active(now)?;
-        crate::sre::run(self.profile, transport, self.authority(), command)
-    }
+    crate::gateway_compat::gateway_domain_command!(device; sre);
     pub fn survey_entries_read<T: AuthorizedTransport>(
         &self,
         transport: &mut T,
@@ -1863,127 +1359,35 @@ impl DeviceApiAuthorization<'_> {
         self.ensure_active(now)?;
         crate::survey_entries_read::query(self.profile, transport, self.authority(), project, body)
     }
-    pub fn admin_bounds<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        command: &crate::admin_bounds::Command,
-        now: u64,
-    ) -> Result<crate::admin_bounds::Answer, ClientError> {
-        command.validate()?;
-        self.ensure_active(now)?;
-        crate::admin_bounds::run(self.profile, transport, self.authority(), command)
+    crate::gateway_compat::gateway_domain_command!(device; admin_bounds);
+    crate::gateway_compat::gateway_domain_command!(device; grid_catalog);
+    crate::gateway_compat::gateway_domain_command!(device; global_tiles);
+    crate::gateway_compat::gateway_domain_command!(device; shared_assets);
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// One governed catalogue action on the project's assets, on a device
+        /// session. The same door the restored-user path takes, including index forms.
+        project_assets
     }
-    pub fn grid_catalog<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        command: &crate::grid_catalog::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.ensure_active(now)?;
-        crate::grid_catalog::run(self.profile, transport, self.authority(), command)
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// One governed design annotation action, on a device session.
+        design_annotations
     }
-    pub fn global_tiles<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        command: &crate::global_tiles::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.ensure_active(now)?;
-        crate::global_tiles::run(self.profile, transport, self.authority(), command)
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// The project's known-column visibility, on a device session.
+        known_columns
     }
-    pub fn shared_assets<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::shared_assets::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::shared_assets::run(self.profile, transport, self.authority(), project, command)
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// One material propagation through the report gate, on a device session.
+        material_propagation
     }
-    /// One governed catalogue action on the project's assets, on a device
-    /// session. The same door the restored-user path takes, including index forms.
-    pub fn project_assets<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::project_assets::Command,
-        reader: Option<&mut dyn std::io::Read>,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::project_assets::run(
-            self.profile,
-            transport,
-            self.authority(),
-            project,
-            command,
-            reader,
-        )
-    }
-    /// One governed design annotation action, on a device session.
-    pub fn design_annotations<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::design_annotations::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::design_annotations::run(self.profile, transport, self.authority(), project, command)
-    }
-    /// The project's known-column visibility, on a device session.
-    pub fn known_columns<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::known_columns::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::known_columns::run(self.profile, transport, self.authority(), project, command)
-    }
-    /// One material propagation through the report gate, on a device session.
-    pub fn material_propagation<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        request: &serde_json::Value,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_project_report(project)?;
-        self.ensure_active(now)?;
-        crate::authorized::material_propagation(
-            self.profile,
-            transport,
-            self.authority(),
-            project,
-            request,
-        )
-    }
-    /// Capture one exact source-authorized PDF grant without reading its bytes.
-    pub fn authorize_asset_preview<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        request: &ds_command_kernel::asset_preview::Request,
-        now: u64,
-    ) -> Result<crate::asset_preview_source::Grant, ClientError> {
-        crate::asset_preview_source::validate_online_request(project, request)?;
-        self.ensure_active(now)?;
-        crate::asset_preview_source::authorize(
-            self.profile,
-            transport,
-            self.authority(),
-            project,
-            request,
-        )
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// Capture one exact source-authorized PDF grant without reading its bytes.
+        authorize_asset_preview
     }
     /// One asset's row and its verified bytes, on a device session.
     pub fn read_asset_bytes<T: AuthorizedTransport>(
@@ -2002,435 +1406,63 @@ impl DeviceApiAuthorization<'_> {
             asset_id,
         )
     }
-    pub fn transformer_history_import<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::transformer_history_import::Import,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project).map_err(|_| {
-            ClientError::new(
-                crate::ErrorKind::InvalidInput,
-                "invalid pinned historical import request; use stable version/revision identities and reviewed fences",
-            )
-        })?;
-        self.ensure_active(now)?;
-        crate::transformer_history_import::run(
-            self.profile,
-            transport,
-            self.authority(),
-            project,
-            command,
-        )
+    crate::gateway_compat::gateway_domain_command!(device; transformer_history_import);
+    crate::gateway_compat::gateway_domain_command!(device; design_version_catalog);
+    crate::gateway_compat::gateway_domain_command!(device; design_versions);
+    crate::gateway_compat::gateway_domain_command!(device; design_attachments);
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// One attachment revision's receipt and its verified bytes, on a device
+        /// session.
+        design_attachment_bytes
     }
-    pub fn design_version_catalog<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::design_version_catalog::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project).map_err(|_| {
-            ClientError::new(
-                crate::ErrorKind::InvalidInput,
-                "invalid catalog request; use stable version/revision identities and reviewed fences",
-            )
-        })?;
-        self.ensure_active(now)?;
-        crate::design_version_catalog::run(
-            self.profile,
-            transport,
-            self.authority(),
-            project,
-            command,
-        )
+    crate::gateway_compat::gateway_domain_command!(device; design_tags);
+    crate::gateway_compat::gateway_domain_command!(device; design_migration);
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// Survey data INTO `project` from the command's source, both explicit.
+        survey_migration
     }
-    pub fn design_versions<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::design_versions::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project).map_err(|_| {
-            ClientError::new(
-                crate::ErrorKind::InvalidInput,
-                "invalid published version request; use distinct vN IDs or --to head",
-            )
-        })?;
-        self.ensure_active(now)?;
-        crate::design_versions::run(self.profile, transport, self.authority(), project, command)
-    }
-    pub fn design_attachments<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::design_attachments::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::design_attachments::run(self.profile, transport, self.authority(), project, command)
-    }
-    /// One attachment revision's receipt and its verified bytes, on a device
-    /// session.
-    pub fn design_attachment_bytes<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        attachment: &str,
-        revision: Option<&str>,
-        now: u64,
-    ) -> Result<(serde_json::Value, Vec<u8>), ClientError> {
-        crate::design_attachments::Command::Download {
-            attachment: attachment.to_owned(),
-            revision: revision.map(str::to_owned),
-        }
-        .validate(project)?;
-        self.ensure_active(now)?;
-        crate::design_attachments::fetch(
-            self.profile,
-            transport,
-            self.authority(),
-            project,
-            attachment,
-            revision,
-        )
-    }
-    pub fn design_tags<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::design_tags::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::design_tags::run(self.profile, transport, self.authority(), project, command)
-    }
-    pub fn design_migration<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::design_migration::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::design_migration::run(self.profile, transport, self.authority(), project, command)
-    }
-    /// Survey data INTO `project` from the command's source, both explicit.
-    pub fn survey_migration<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::survey_migration::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::survey_migration::run(self.profile, transport, self.authority(), project, command)
-    }
-    pub fn report_artifact<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::report_artifact::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::report_artifact::run(self.profile, transport, self.authority(), project, command)
-    }
-    pub fn remove_report_artifact<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::report_artifact::RemoveCommand,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::report_artifact::remove(self.profile, transport, self.authority(), project, command)
-    }
-    pub fn grid_models<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::grid_models::Command,
-        now: u64,
-    ) -> Result<crate::grid_models::Receipt, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::grid_models::run(self.profile, transport, self.authority(), project, command)
-    }
-    pub fn solar_project<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: &str,
-        command: &crate::solar_project::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.ensure_active(now)?;
-        crate::solar_project::run(self.profile, transport, self.authority(), project, command)
-    }
-    pub fn survey_control<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        project: Option<&str>,
-        command: &crate::SurveyControlCommand,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.ensure_active(now)?;
-        crate::survey_control_run::run(self.profile, transport, self.authority(), project, command)
-    }
-    pub fn style_edit<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        reference: &str,
-        instruction: &crate::StyleInstruction,
-        apply: bool,
-        now: u64,
-    ) -> Result<crate::StyleEditReceipt, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::style_edit(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            reference,
-            instruction,
-            apply,
-        )
-    }
-    pub fn style_history<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        command: &ds_command_kernel::style_history::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_active(now)?;
-        crate::styles::history(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            command,
-        )
-    }
-    pub fn style_governance<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        command: &ds_command_kernel::style_governance::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_active(now)?;
-        crate::styles::governance(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            command,
-        )
-    }
-    pub fn tile_status<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        tile_type: TileType,
-        now: u64,
-    ) -> Result<TileOperationResult, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::tile_status(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            tile_type,
-        )
+    crate::gateway_compat::gateway_domain_command!(device; report_artifact);
+    crate::gateway_compat::gateway_domain_command!(device; remove_report_artifact);
+    crate::gateway_compat::gateway_domain_command!(device; grid_models);
+    crate::gateway_compat::gateway_domain_command!(device; solar_project);
+    crate::gateway_compat::gateway_domain_command!(device; survey_control);
+    crate::gateway_compat::gateway_domain_command!(device; style_edit);
+    crate::gateway_compat::gateway_domain_command!(device; style_history);
+    crate::gateway_compat::gateway_domain_command!(device; style_governance);
+    crate::gateway_compat::gateway_domain_command!(device; tile_status);
+
+    crate::gateway_compat::gateway_domain_command!(device; tile_preflight);
+
+    crate::gateway_compat::gateway_domain_command!(device; tile_generate);
+
+    crate::gateway_compat::gateway_domain_command!(device; compounded_report_list);
+
+    crate::gateway_compat::gateway_domain_command!(device; transformer_inventory);
+
+    crate::gateway_compat::gateway_domain_command!(device; transformer_status);
+
+    crate::gateway_compat::gateway_domain_command!(device; transformer_retirement);
+
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// Read one deleted transformer's verified delete backup, fetching its
+        /// exact bytes when `fetch` is set.
+        deleted_transformer_backup
     }
 
-    pub fn tile_preflight<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        tile_type: TileType,
-        now: u64,
-    ) -> Result<TilePreflight, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::tile_preflight(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            tile_type,
-        )
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// Sign the listed artifacts through the authorized signer and hand each
+        /// fetched object's exact bytes and SHA-256 to `sink`, one at a time.
+        download_artifacts
     }
 
-    pub fn tile_generate<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        tile_type: TileType,
-        force: bool,
-        now: u64,
-    ) -> Result<TileOperationResult, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::tile_generate(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            tile_type,
-            force,
-        )
-    }
-
-    pub fn compounded_report_list<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        now: u64,
-    ) -> Result<CompoundedArchiveCatalog, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::compounded_report_list(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-        )
-    }
-
-    pub fn transformer_inventory<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        requested: &TransformerSet,
-        now: u64,
-    ) -> Result<TransformerInventory, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::transformer_inventory(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            requested,
-        )
-    }
-
-    pub fn transformer_status<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        requested: &TransformerSet,
-        now: u64,
-    ) -> Result<TransformerStatusList, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::transformer_status(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            requested,
-        )
-    }
-
-    pub fn transformer_retirement<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        action: RetirementAction,
-        request: &RetirementRequest,
-        now: u64,
-    ) -> Result<RetirementReceipt, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_active(now)?;
-        crate::authorized::transformer_retirement(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            action,
-            request,
-        )
-    }
-
-    /// Read one deleted transformer's verified delete backup, fetching its
-    /// exact bytes when `fetch` is set.
-    pub fn deleted_transformer_backup<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &crate::DeletedBackupRequest,
-        fetch: bool,
-        now: u64,
-    ) -> Result<crate::DeletedBackupRead, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_active(now)?;
-        crate::project_report::deleted_backup_read(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-            fetch,
-        )
-    }
-
-    /// Sign the listed artifacts through the authorized signer and hand each
-    /// fetched object's exact bytes and SHA-256 to `sink`, one at a time.
-    pub fn download_artifacts<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &crate::ArtifactDownloadRequest,
-        sink: &mut dyn FnMut(crate::ArtifactFile) -> Result<(), ClientError>,
-        now: u64,
-    ) -> Result<Vec<(crate::ArtifactIdentity, crate::ArtifactOutcome)>, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_active(now)?;
-        crate::project_report::download_artifacts(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-            sink,
-        )
-    }
-
-    /// Create a deleted transformer again from one pinned, verified backup.
-    pub fn restore_deleted_transformer<T: AuthorizedTransport>(
-        &self,
-        transport: &mut T,
-        ds_project: &str,
-        request: &crate::DeletedBackupRequest,
-        now: u64,
-    ) -> Result<crate::DeletedTransformerRestoration, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.ensure_active(now)?;
-        crate::project_report::deleted_backup_restore(
-            self.profile,
-            transport,
-            self.authority(),
-            ds_project,
-            request,
-        )
+    crate::gateway_compat::gateway_domain_command! {
+        device;
+        /// Create a deleted transformer again from one pinned, verified backup.
+        restore_deleted_transformer
     }
 }
 

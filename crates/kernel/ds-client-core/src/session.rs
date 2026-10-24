@@ -497,51 +497,19 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         })
     }
 
-    /// Read one transformer through the fixed context projection. Project
-    /// membership remains a server-side decision on this authenticated call;
-    /// hosts should pass their selected project from the fresh directory.
-    pub fn feeder_configuration(
-        &mut self,
-        project: &str,
-        bounds: Option<&crate::ProjectConfigurationChange>,
-        now: u64,
-    ) -> Result<crate::FeederConfiguration, ClientError> {
-        crate::authorized::validate_project_report(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::authorized::feeder_configuration(profile, transport, authority, project, bounds)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Read one transformer through the fixed context projection. Project
+        /// membership remains a server-side decision on this authenticated call;
+        /// hosts should pass their selected project from the fresh directory.
+        feeder_configuration
     }
 
-    /// Read a persisted analysis under the exact saved-head fence. No local
-    /// calculation, reserialization, or fallback is performed.
-    pub fn transformer_analysis(
-        &mut self,
-        project: &str,
-        transformer: &str,
-        analysis_version: u64,
-        content_digest: &str,
-        analysis_sha256: &str,
-        now: u64,
-    ) -> Result<Vec<u8>, ClientError> {
-        crate::transformer_analysis::validate(
-            project,
-            transformer,
-            analysis_version,
-            content_digest,
-            analysis_sha256,
-        )?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::transformer_analysis::read(
-                profile,
-                transport,
-                authority,
-                project,
-                transformer,
-                analysis_version,
-                content_digest,
-                analysis_sha256,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Read a persisted analysis under the exact saved-head fence. No local
+        /// calculation, reserialization, or fallback is performed.
+        transformer_analysis
     }
 
     pub fn transformer_context(
@@ -604,394 +572,113 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         })
     }
 
-    /// Read the complete bounded project-form catalogue for one selected
-    /// project. Membership remains a server-side decision on this call.
-    pub fn project_forms(
-        &mut self,
-        ds_project: &str,
-        now_epoch_seconds: u64,
-    ) -> Result<ProjectFormsSnapshot, ClientError> {
-        crate::authorized::validate_project_forms(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::project_forms(profile, transport, authority, ds_project)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Read the complete bounded project-form catalogue for one selected
+        /// project. Membership remains a server-side decision on this call.
+        project_forms
     }
 
-    /// Read one backend-owned settings editor for a form in the selected
-    /// project. Membership and project-form admin authority are rechecked by
-    /// ds-brain; no project or action override exists at this boundary.
-    pub fn project_form_editor(
-        &mut self,
-        ds_project: &str,
-        form_slug: &str,
-        now_epoch_seconds: u64,
-    ) -> Result<ProjectFormSettingsEditor, ClientError> {
-        crate::authorized::validate_project_form_editor(ds_project, form_slug)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::project_form_editor(
-                profile, transport, authority, ds_project, form_slug,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Read one backend-owned settings editor for a form in the selected
+        /// project. Membership and project-form admin authority are rechecked by
+        /// ds-brain; no project or action override exists at this boundary.
+        project_form_editor
     }
 
-    /// Capture one bounded governed Solar input snapshot for a city in the
-    /// audience-fenced selected project. The project root is derived inside
-    /// the fixed call and membership remains a server-side decision.
-    pub fn solar_snapshot(
-        &mut self,
-        ds_project: &str,
-        template_id: &str,
-        now_epoch_seconds: u64,
-    ) -> Result<SolarSnapshot, ClientError> {
-        crate::authorized::validate_solar_snapshot(ds_project, template_id)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::solar_snapshot(
-                profile,
-                transport,
-                authority,
-                ds_project,
-                template_id,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Capture one bounded governed Solar input snapshot for a city in the
+        /// audience-fenced selected project. The project root is derived inside
+        /// the fixed call and membership remains a server-side decision.
+        solar_snapshot
     }
 
-    /// Run one bounded aggregate over one governed form in the selected
-    /// project. The backend rechecks project/form/view authority and refreshes
-    /// the survey mirror before executing the typed grammar.
-    pub fn survey_query(
-        &mut self,
-        ds_project: &str,
-        query: &SurveyQueryRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<SurveyQueryResult, ClientError> {
-        crate::authorized::validate_survey_query(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::survey_query(profile, transport, authority, ds_project, query)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Run one bounded aggregate over one governed form in the selected
+        /// project. The backend rechecks project/form/view authority and refreshes
+        /// the survey mirror before executing the typed grammar.
+        survey_query
     }
 
-    /// Select one bounded, live spatial receipt from a governed Survey form.
-    /// The returned digest identifies these mutable mirror rows; it is not a
-    /// datastore snapshot and a truncated selection must be narrowed.
-    pub fn survey_entries_select(
-        &mut self,
-        ds_project: &str,
-        request: &SurveyEntriesSelectRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<SurveyEntriesSelection, ClientError> {
-        crate::authorized::validate_survey_entries_select(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::survey_entries_select(
-                profile, transport, authority, ds_project, request,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Select one bounded, live spatial receipt from a governed Survey form.
+        /// The returned digest identifies these mutable mirror rows; it is not a
+        /// datastore snapshot and a truncated selection must be narrowed.
+        survey_entries_select
     }
 
-    /// Read one immutable-BigQuery-fence page of coalesced Survey mirror
-    /// changes, including soft-delete tombstones. This is not Firestore
-    /// snapshot/history and hard-deleted documents cannot appear.
-    pub fn survey_entries_changes(
-        &mut self,
-        ds_project: &str,
-        request: &SurveyEntriesChangesRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<SurveyEntriesChanges, ClientError> {
-        crate::authorized::validate_survey_entries_changes(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::survey_entries_changes(
-                profile, transport, authority, ds_project, request,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Read one immutable-BigQuery-fence page of coalesced Survey mirror
+        /// changes, including soft-delete tombstones. This is not Firestore
+        /// snapshot/history and hard-deleted documents cannot appear.
+        survey_entries_changes
     }
 
-    /// Create one Survey entry through the governed, atomically idempotent
-    /// backend authority. The selected project is injected separately and is
-    /// verified again against the exact 201 receipt.
-    /// Replay a fully validated local plan under one captured native principal.
-    pub fn survey_delete(
-        &mut self,
-        project: &str,
-        request: &crate::SurveyDeleteRequest,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        if request.project() != project {
-            return Err(ClientError::new(
-                ErrorKind::InvalidInput,
-                "Survey delete project mismatch",
-            ));
-        }
-        crate::authorized::validate_survey_entry_create(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::survey_delete::run(profile, transport, authority, project, request)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Create one Survey entry through the governed, atomically idempotent
+        /// backend authority. The selected project is injected separately and is
+        /// verified again against the exact 201 receipt.
+        /// Replay a fully validated local plan under one captured native principal.
+        survey_delete
     }
 
-    pub fn survey_update(
-        &mut self,
-        project: &str,
-        request: &crate::SurveyUpdateRequest,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        if request.project() != project {
-            return Err(ClientError::new(
-                ErrorKind::InvalidInput,
-                "Survey update project mismatch",
-            ));
-        }
-        crate::authorized::validate_survey_entry_create(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::survey_update::run(profile, transport, authority, project, request)
-        })
+    crate::gateway_compat::gateway_domain_command!(session; survey_update);
+
+    crate::gateway_compat::gateway_domain_command!(session; survey_entry_create);
+
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Read the current managed state for one selected project's survey or
+        /// design tile archive.
+        tile_list
     }
 
-    pub fn survey_entry_create(
-        &mut self,
-        project_id: &str,
-        request: &SurveyEntryCreateRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<SurveyEntryCreateReceipt, ClientError> {
-        crate::authorized::validate_survey_entry_create(project_id)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::survey_entry_create(
-                profile, transport, authority, project_id, request,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command!(session; tile_add);
+
+    crate::gateway_compat::gateway_domain_command!(session; tile_remove);
+
+    crate::gateway_compat::gateway_domain_command!(session; design_selections);
+
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One data-distribution action against the selected project: the
+        /// reference catalogue, or one bounded derived print-context acquisition.
+        data_distribution
     }
 
-    /// Read the current managed state for one selected project's survey or
-    /// design tile archive.
-    pub fn tile_list(
-        &mut self,
-        ds_project: &str,
-        include_global: bool,
-        now_epoch_seconds: u64,
-    ) -> Result<crate::TileCatalog, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::tile_list(profile, transport, authority, ds_project, include_global)
-        })
+    crate::gateway_compat::gateway_domain_command!(session; printing);
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Read only the explicit project's governed standard and A4 documents.
+        printing_standard
     }
-
-    pub fn tile_add(
-        &mut self,
-        ds_project: &str,
-        tile_type: TileType,
-        source_project: &str,
-        now_epoch_seconds: u64,
-    ) -> Result<crate::TileMutation, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        crate::tiles::validate_catalog_id(source_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::tile_add(
-                profile,
-                transport,
-                authority,
-                ds_project,
-                tile_type,
-                source_project,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Plan, census or apply one copy of a project's network documents
+        /// (`ds_project` is the destination).
+        network_documents
     }
-
-    pub fn tile_remove(
-        &mut self,
-        ds_project: &str,
-        tile_id: &str,
-        scope: crate::TileScope,
-        now_epoch_seconds: u64,
-    ) -> Result<crate::TileMutation, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        crate::tiles::validate_catalog_id(tile_id)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::tile_remove(
-                profile, transport, authority, ds_project, tile_id, scope,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Plan, census or apply the governed printing-template migration of one
+        /// library (`ds_project` empty for the global one).
+        print_style_keys
     }
-
-    pub fn design_selections(
-        &mut self,
-        ds_project: &str,
-        request: &crate::DesignSelectionRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<crate::DesignSelectionAnswer, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        request.validate()?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::design_selections(profile, transport, authority, ds_project, request)
-        })
-    }
-
-    /// One data-distribution action against the selected project: the
-    /// reference catalogue, or one bounded derived print-context acquisition.
-    pub fn data_distribution(
-        &mut self,
-        ds_project: &str,
-        request: &crate::DataDistributionRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        request.validate()?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::data_distribution(profile, transport, authority, ds_project, request)
-        })
-    }
-
-    pub fn printing(
-        &mut self,
-        ds_project: &str,
-        request: &crate::PrintingRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        request.validate_for(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::printing(profile, transport, authority, ds_project, request)
-        })
-    }
-    /// Read only the explicit project's governed standard and A4 documents.
-    pub fn printing_standard(
-        &mut self,
-        ds_project: &str,
-        request: &crate::PrintingStandardRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        request.validate()?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::printing_standard::read(profile, transport, authority, ds_project, request)
-        })
-    }
-    /// Plan, census or apply one copy of a project's network documents
-    /// (`ds_project` is the destination).
-    pub fn network_documents(
-        &mut self,
-        ds_project: &str,
-        request: &crate::NetworkDocumentsRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        request.validate_for(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::network_documents::call(profile, transport, authority, ds_project, request)
-        })
-    }
-    /// Plan, census or apply the governed printing-template migration of one
-    /// library (`ds_project` empty for the global one).
-    pub fn print_style_keys(
-        &mut self,
-        ds_project: &str,
-        request: &crate::PrintStyleKeysRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        request.validate_for(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::printing_style_keys::call(profile, transport, authority, ds_project, request)
-        })
-    }
-    pub fn layer_config(
-        &mut self,
-        ds_project: &str,
-        refresh: bool,
-        now_epoch_seconds: u64,
-    ) -> Result<crate::LayerSnapshot, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::layer_config(profile, transport, authority, ds_project, refresh)
-        })
-    }
-    pub fn style_catalog(
-        &mut self,
-        ds_project: &str,
-        now_epoch_seconds: u64,
-    ) -> Result<crate::StyleSnapshot, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::style_catalog(profile, transport, authority, ds_project)
-        })
-    }
-    pub fn layer_reorder(
-        &mut self,
-        ds_project: &str,
-        orders: &[crate::LayerOrder],
-        now_epoch_seconds: u64,
-    ) -> Result<crate::LayerOrderReceipt, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        crate::layers::validate_orders(orders)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::layer_reorder(profile, transport, authority, ds_project, orders)
-        })
-    }
-    pub fn layer_default_visibility(
-        &mut self,
-        ds_project: &str,
-        defaults: &[crate::LayerVisibilityDefault],
-        now_epoch_seconds: u64,
-    ) -> Result<crate::LayerVisibilityDefaultReceipt, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        crate::layers::validate_visibility_defaults(defaults)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::layer_default_visibility(
-                profile, transport, authority, ds_project, defaults,
-            )
-        })
-    }
-    pub fn project_data(
-        &mut self,
-        project: &str,
-        command: crate::ProjectDataCommand<'_>,
-        now: u64,
-    ) -> Result<crate::ProjectDataReceipt, ClientError> {
-        command.validate()?;
-        crate::authorized::validate_tiles(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::authorized::project_data(profile, transport, authority, project, command)
-        })
-    }
-    pub fn status_processing(
-        &mut self,
-        project: &str,
-        command: crate::StatusProcessingCommand<'_>,
-        now: u64,
-    ) -> Result<crate::StatusProcessingReceipt, ClientError> {
-        crate::authorized::validate_tiles(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::authorized::status_processing(profile, transport, authority, project, command)
-        })
-    }
-    pub fn survey_photo(
-        &mut self,
-        project: &str,
-        command: crate::survey_photo::Command<'_>,
-        now: u64,
-    ) -> Result<crate::survey_photo::Receipt, ClientError> {
-        crate::authorized::validate_tiles(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::survey_photo::run(profile, transport, authority, project, command)
-        })
-    }
-    pub fn repair_transformer(
-        &mut self,
-        project: &str,
-        input: &crate::TransformerRepairPublication,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        input.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::transformer_repair::run(profile, transport, authority, project, input)
-        })
-    }
-    pub fn reseal_transformer_digest(
-        &mut self,
-        project: &str,
-        input: &crate::TransformerDigestReseal,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        input.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::transformer_reseal::run(profile, transport, authority, project, input)
-        })
-    }
+    crate::gateway_compat::gateway_domain_command!(session; layer_config);
+    crate::gateway_compat::gateway_domain_command!(session; style_catalog);
+    crate::gateway_compat::gateway_domain_command!(session; layer_reorder);
+    crate::gateway_compat::gateway_domain_command!(session; layer_default_visibility);
+    crate::gateway_compat::gateway_domain_command!(session; project_data);
+    crate::gateway_compat::gateway_domain_command!(session; status_processing);
+    crate::gateway_compat::gateway_domain_command!(session; survey_photo);
+    crate::gateway_compat::gateway_domain_command!(session; repair_transformer);
+    crate::gateway_compat::gateway_domain_command!(session; reseal_transformer_digest);
     pub fn save_transformers(
         &mut self,
         project: &str,
@@ -1003,102 +690,37 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             crate::transformer_save::run(profile, transport, authority, project, batch)
         })
     }
-    pub fn save_collisions(
-        &mut self,
-        project: &str,
-        publication: &crate::CollisionsPublication,
-        now: u64,
-    ) -> Result<crate::CollisionsPublicationReceipt, ClientError> {
-        publication.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::collisions_publish::run(profile, transport, authority, project, publication)
-        })
+    crate::gateway_compat::gateway_domain_command!(session; save_collisions);
+    crate::gateway_compat::gateway_domain_command!(session; feedback);
+    crate::gateway_compat::gateway_domain_command!(session; shared_assets);
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One governed catalogue action on the project's assets. `reader`
+        /// carries the bytes of an ingest and nothing else. An index form
+        /// answers `index_status: "served"` with the server index response.
+        project_assets
     }
-    pub fn feedback(
-        &mut self,
-        command: &crate::feedback::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::feedback::run(profile, transport, authority, command)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One governed design annotation action — a tag, a group, a grouping,
+        /// an enrichment or a comment thread — for one project.
+        design_annotations
     }
-    pub fn shared_assets(
-        &mut self,
-        project: &str,
-        command: &crate::shared_assets::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::shared_assets::run(profile, transport, authority, project, command)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// The project's known-column visibility: read it, or set one field.
+        known_columns
     }
-    /// One governed catalogue action on the project's assets. `reader`
-    /// carries the bytes of an ingest and nothing else. An index form
-    /// answers `index_status: "served"` with the server index response.
-    pub fn project_assets(
-        &mut self,
-        project: &str,
-        command: &crate::project_assets::Command,
-        reader: Option<&mut dyn std::io::Read>,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::project_assets::run(profile, transport, authority, project, command, reader)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One preview-pinned material propagation through the report gate; the
+        /// receipt comes back whole for the kernel to judge.
+        material_propagation
     }
-    /// One governed design annotation action — a tag, a group, a grouping,
-    /// an enrichment or a comment thread — for one project.
-    pub fn design_annotations(
-        &mut self,
-        project: &str,
-        command: &crate::design_annotations::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::design_annotations::run(profile, transport, authority, project, command)
-        })
-    }
-    /// The project's known-column visibility: read it, or set one field.
-    pub fn known_columns(
-        &mut self,
-        project: &str,
-        command: &crate::known_columns::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::known_columns::run(profile, transport, authority, project, command)
-        })
-    }
-    /// One preview-pinned material propagation through the report gate; the
-    /// receipt comes back whole for the kernel to judge.
-    pub fn material_propagation(
-        &mut self,
-        project: &str,
-        request: &serde_json::Value,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_project_report(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::authorized::material_propagation(profile, transport, authority, project, request)
-        })
-    }
-    /// Capture one exact source-authorized PDF grant without reading its bytes.
-    pub fn authorize_asset_preview(
-        &mut self,
-        project: &str,
-        request: &ds_command_kernel::asset_preview::Request,
-        now: u64,
-    ) -> Result<crate::asset_preview_source::Grant, ClientError> {
-        crate::asset_preview_source::validate_online_request(project, request)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::asset_preview_source::authorize(profile, transport, authority, project, request)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Capture one exact source-authorized PDF grant without reading its bytes.
+        authorize_asset_preview
     }
     /// One asset's row and its verified bytes, through the signed read.
     pub fn read_asset_bytes(
@@ -1111,171 +733,43 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
             crate::project_assets::read_bytes(profile, transport, authority, project, asset_id)
         })
     }
-    pub fn transformer_history_import(
-        &mut self,
-        project: &str,
-        command: &crate::transformer_history_import::Import,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project).map_err(|_| {
-            ClientError::new(
-                crate::ErrorKind::InvalidInput,
-                "invalid pinned historical import request; use stable version/revision identities and reviewed fences",
-            )
-        })?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::transformer_history_import::run(profile, transport, authority, project, command)
-        })
+    crate::gateway_compat::gateway_domain_command!(session; transformer_history_import);
+    crate::gateway_compat::gateway_domain_command!(session; design_version_catalog);
+    crate::gateway_compat::gateway_domain_command!(session; design_versions);
+    crate::gateway_compat::gateway_domain_command!(session; design_attachments);
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One attachment revision's receipt and its verified bytes, through the
+        /// signed read the `download` action authorizes.
+        design_attachment_bytes
     }
-    pub fn design_version_catalog(
-        &mut self,
-        project: &str,
-        command: &crate::design_version_catalog::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project).map_err(|_| {
-            ClientError::new(
-                crate::ErrorKind::InvalidInput,
-                "invalid catalog request; use stable version/revision identities and reviewed fences",
-            )
-        })?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::design_version_catalog::run(profile, transport, authority, project, command)
-        })
+    crate::gateway_compat::gateway_domain_command!(session; design_tags);
+    crate::gateway_compat::gateway_domain_command!(session; design_migration);
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Survey data INTO `project` from the command's source, both explicit;
+        /// the saved selection is neither read nor changed.
+        survey_migration
     }
-    pub fn design_versions(
-        &mut self,
-        project: &str,
-        command: &crate::design_versions::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project).map_err(|_| {
-            ClientError::new(
-                crate::ErrorKind::InvalidInput,
-                "invalid published version request; use distinct vN IDs or --to head",
-            )
-        })?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::design_versions::run(profile, transport, authority, project, command)
-        })
-    }
-    pub fn design_attachments(
-        &mut self,
-        project: &str,
-        command: &crate::design_attachments::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::design_attachments::run(profile, transport, authority, project, command)
-        })
-    }
-    /// One attachment revision's receipt and its verified bytes, through the
-    /// signed read the `download` action authorizes.
-    pub fn design_attachment_bytes(
-        &mut self,
-        project: &str,
-        attachment: &str,
-        revision: Option<&str>,
-        now: u64,
-    ) -> Result<(serde_json::Value, Vec<u8>), ClientError> {
-        crate::design_attachments::Command::Download {
-            attachment: attachment.to_owned(),
-            revision: revision.map(str::to_owned),
-        }
-        .validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::design_attachments::fetch(
-                profile, transport, authority, project, attachment, revision,
-            )
-        })
-    }
-    pub fn design_tags(
-        &mut self,
-        project: &str,
-        command: &crate::design_tags::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::design_tags::run(profile, transport, authority, project, command)
-        })
-    }
-    pub fn design_migration(
-        &mut self,
-        project: &str,
-        command: &crate::design_migration::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::design_migration::run(profile, transport, authority, project, command)
-        })
-    }
-    /// Survey data INTO `project` from the command's source, both explicit;
-    /// the saved selection is neither read nor changed.
-    pub fn survey_migration(
-        &mut self,
-        project: &str,
-        command: &crate::survey_migration::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::survey_migration::run(profile, transport, authority, project, command)
-        })
-    }
-    pub fn report_artifact(
-        &mut self,
-        project: &str,
-        command: &crate::report_artifact::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::report_artifact::run(profile, transport, authority, project, command)
-        })
-    }
-    pub fn remove_report_artifact(
-        &mut self,
-        project: &str,
-        command: &crate::report_artifact::RemoveCommand,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::report_artifact::remove(profile, transport, authority, project, command)
-        })
-    }
-    /// One governed action on the GLOBAL reference publications.
-    ///
-    /// No project: these tiles belong to the product. Publishing needs the
-    /// gateway's `global_tiles.manage`; reading needs a restored user.
-    pub fn global_tiles(
-        &mut self,
-        command: &crate::global_tiles::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::global_tiles::run(profile, transport, authority, command)
-        })
+    crate::gateway_compat::gateway_domain_command!(session; report_artifact);
+    crate::gateway_compat::gateway_domain_command!(session; remove_report_artifact);
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One governed action on the GLOBAL reference publications.
+        ///
+        /// No project: these tiles belong to the product. Publishing needs the
+        /// gateway's `global_tiles.manage`; reading needs a restored user.
+        global_tiles
     }
 
-    /// One exact read of a national administrative hierarchy.
-    ///
-    /// No project: a country's boundaries belong to the country. The restored
-    /// user is the identity the gateway sees, and the answer is the same on
-    /// every host that asks.
-    pub fn admin_bounds(
-        &mut self,
-        command: &crate::admin_bounds::Command,
-        now: u64,
-    ) -> Result<crate::admin_bounds::Answer, ClientError> {
-        command.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::admin_bounds::run(profile, transport, authority, command)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One exact read of a national administrative hierarchy.
+        ///
+        /// No project: a country's boundaries belong to the country. The restored
+        /// user is the identity the gateway sees, and the answer is the same on
+        /// every host that asks.
+        admin_bounds
     }
 
     /// One bounded read of a survey form's entries: every field value and
@@ -1336,92 +830,56 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         })
     }
 
-    /// One bounded read of platform reliability.
-    ///
-    /// No project: a platform is not a project, and nothing about fleet health
-    /// is selected by one. The restored user is the identity the gateway sees,
-    /// and `platform.admin` is what decides whether there is an answer.
-    pub fn sre(
-        &mut self,
-        command: &crate::sre::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::sre::run(profile, transport, authority, command)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One bounded read of platform reliability.
+        ///
+        /// No project: a platform is not a project, and nothing about fleet health
+        /// is selected by one. The restored user is the identity the gateway sees,
+        /// and `platform.admin` is what decides whether there is an answer.
+        sre
     }
 
-    /// One governed action on the GLOBAL installation inventory.
-    ///
-    /// No project: an installation belongs to the product, so nothing here
-    /// selects, fences or sends one. The restored user is the identity the
-    /// gateway sees, and `platform.admin`/`app.admin` decides the answer.
-    pub fn installs(
-        &mut self,
-        command: &crate::installs::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::installs::run(profile, transport, authority, command)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One governed action on the GLOBAL installation inventory.
+        ///
+        /// No project: an installation belongs to the product, so nothing here
+        /// selects, fences or sends one. The restored user is the identity the
+        /// gateway sees, and `platform.admin`/`app.admin` decides the answer.
+        installs
     }
 
-    /// Create one project, or edit one project's properties.
-    ///
-    /// Global on create (the project does not exist yet) and named on update:
-    /// the caller passes the project id, and ds-brain rechecks
-    /// `project.properties.edit` on it. No context lease is taken: this
-    /// command edits the project it names, never the selected one.
-    pub fn project_properties(
-        &mut self,
-        command: &crate::project_properties::Command,
-        now: u64,
-    ) -> Result<crate::project_properties::Receipt, ClientError> {
-        command.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::project_properties::run(profile, transport, authority, command)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Create one project, or edit one project's properties.
+        ///
+        /// Global on create (the project does not exist yet) and named on update:
+        /// the caller passes the project id, and ds-brain rechecks
+        /// `project.properties.edit` on it. No context lease is taken: this
+        /// command edits the project it names, never the selected one.
+        project_properties
     }
 
-    /// One governed whole-project delete action. The project id is an address;
-    /// ds-brain decides by the principal's `platform.admin`. No context lease
-    /// is taken: the command deletes the project it names, never the selected one.
-    pub fn project_deletion(
-        &mut self,
-        command: &crate::project_deletion::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::project_deletion::run(profile, transport, authority, command)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One governed whole-project delete action. The project id is an address;
+        /// ds-brain decides by the principal's `platform.admin`. No context lease
+        /// is taken: the command deletes the project it names, never the selected one.
+        project_deletion
     }
 
-    /// One selected account-private note action; no project or note catalogue read.
-    pub fn personal_notes(
-        &mut self,
-        action: &crate::personal_notes::Action,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        action.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::personal_notes::run(profile, transport, authority, action)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One selected account-private note action; no project or note catalogue read.
+        personal_notes
     }
 
-    /// One account-scoped messaging or notification action. Brain authorizes
-    /// every explicitly addressed conversation or project.
-    pub fn messaging(
-        &mut self,
-        command: &crate::messaging::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::messaging::run(profile, transport, authority, command)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One account-scoped messaging or notification action. Brain authorizes
+        /// every explicitly addressed conversation or project.
+        messaging
     }
 
     /// One governed correspondence action, for one project — the same door
@@ -1466,248 +924,82 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         })
     }
 
-    /// One governed action on the GLOBAL library and example catalog.
-    ///
-    /// No project id, because this catalog has none: a library release belongs
-    /// to the product. The signed-in user is the authority and the gateway
-    /// refuses a write without its publish capability.
-    pub fn grid_catalog(
-        &mut self,
-        command: &crate::grid_catalog::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::grid_catalog::run(profile, transport, authority, command)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// One governed action on the GLOBAL library and example catalog.
+        ///
+        /// No project id, because this catalog has none: a library release belongs
+        /// to the product. The signed-in user is the authority and the gateway
+        /// refuses a write without its publish capability.
+        grid_catalog
     }
-    pub fn grid_models(
-        &mut self,
-        project: &str,
-        command: &crate::grid_models::Command,
-        now: u64,
-    ) -> Result<crate::grid_models::Receipt, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::grid_models::run(profile, transport, authority, project, command)
-        })
-    }
-    pub fn solar_project(
-        &mut self,
-        project: &str,
-        command: &crate::solar_project::Command,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate(project)?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::solar_project::run(profile, transport, authority, project, command)
-        })
-    }
-    pub fn survey_control(
-        &mut self,
-        project: Option<&str>,
-        command: &crate::SurveyControlCommand,
-        now: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        command.validate()?;
-        self.with_authority(now, |profile, transport, authority| {
-            crate::survey_control_run::run(profile, transport, authority, project, command)
-        })
-    }
-    pub fn style_edit(
-        &mut self,
-        ds_project: &str,
-        reference: &str,
-        instruction: &crate::StyleInstruction,
-        apply: bool,
-        now_epoch_seconds: u64,
-    ) -> Result<crate::StyleEditReceipt, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::style_edit(
-                profile,
-                transport,
-                authority,
-                ds_project,
-                reference,
-                instruction,
-                apply,
-            )
-        })
-    }
-    pub fn style_history(
-        &mut self,
-        ds_project: &str,
-        command: &ds_command_kernel::style_history::Command,
-        now_epoch_seconds: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::styles::history(profile, transport, authority, ds_project, command)
-        })
-    }
-    pub fn style_governance(
-        &mut self,
-        ds_project: &str,
-        command: &ds_command_kernel::style_governance::Command,
-        now_epoch_seconds: u64,
-    ) -> Result<serde_json::Value, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::styles::governance(profile, transport, authority, ds_project, command)
-        })
-    }
-    pub fn tile_status(
-        &mut self,
-        ds_project: &str,
-        tile_type: TileType,
-        now_epoch_seconds: u64,
-    ) -> Result<TileOperationResult, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::tile_status(profile, transport, authority, ds_project, tile_type)
-        })
+    crate::gateway_compat::gateway_domain_command!(session; grid_models);
+    crate::gateway_compat::gateway_domain_command!(session; solar_project);
+    crate::gateway_compat::gateway_domain_command!(session; survey_control);
+    crate::gateway_compat::gateway_domain_command!(session; style_edit);
+    crate::gateway_compat::gateway_domain_command!(session; style_history);
+    crate::gateway_compat::gateway_domain_command!(session; style_governance);
+    crate::gateway_compat::gateway_domain_command!(session; tile_status);
+
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Inspect the bounded source shape that the managed tile job would use.
+        tile_preflight
     }
 
-    /// Inspect the bounded source shape that the managed tile job would use.
-    pub fn tile_preflight(
-        &mut self,
-        ds_project: &str,
-        tile_type: TileType,
-        now_epoch_seconds: u64,
-    ) -> Result<TilePreflight, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::tile_preflight(profile, transport, authority, ds_project, tile_type)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Request one managed tile run. The server retains admission, source,
+        /// destination, lifecycle, and dispatch authority.
+        tile_generate
     }
 
-    /// Request one managed tile run. The server retains admission, source,
-    /// destination, lifecycle, and dispatch authority.
-    pub fn tile_generate(
-        &mut self,
-        ds_project: &str,
-        tile_type: TileType,
-        force: bool,
-        now_epoch_seconds: u64,
-    ) -> Result<TileOperationResult, ClientError> {
-        crate::authorized::validate_tiles(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::tile_generate(
-                profile, transport, authority, ds_project, tile_type, force,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// List the selected project's published compounded archives.
+        compounded_report_list
     }
 
-    /// List the selected project's published compounded archives.
-    pub fn compounded_report_list(
-        &mut self,
-        ds_project: &str,
-        now_epoch_seconds: u64,
-    ) -> Result<CompoundedArchiveCatalog, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::compounded_report_list(profile, transport, authority, ds_project)
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Read the lifecycle inventory of the selected project's transformers,
+        /// or of the exact requested names.
+        transformer_inventory
     }
 
-    /// Read the lifecycle inventory of the selected project's transformers,
-    /// or of the exact requested names.
-    pub fn transformer_inventory(
-        &mut self,
-        ds_project: &str,
-        requested: &TransformerSet,
-        now_epoch_seconds: u64,
-    ) -> Result<TransformerInventory, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::transformer_inventory(
-                profile, transport, authority, ds_project, requested,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Read the status rows of the selected project's transformers, or of the
+        /// exact requested names. The rows are returned as ds-brain sent them;
+        /// this crate bounds them and reshapes nothing.
+        transformer_status
     }
 
-    /// Read the status rows of the selected project's transformers, or of the
-    /// exact requested names. The rows are returned as ds-brain sent them;
-    /// this crate bounds them and reshapes nothing.
-    pub fn transformer_status(
-        &mut self,
-        ds_project: &str,
-        requested: &TransformerSet,
-        now_epoch_seconds: u64,
-    ) -> Result<TransformerStatusList, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::transformer_status(
-                profile, transport, authority, ds_project, requested,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Retire or restore exact transformers reversibly. ds-brain owns the
+        /// governance, ownership, lock, and lifecycle decisions per name.
+        transformer_retirement
     }
 
-    /// Retire or restore exact transformers reversibly. ds-brain owns the
-    /// governance, ownership, lock, and lifecycle decisions per name.
-    pub fn transformer_retirement(
-        &mut self,
-        ds_project: &str,
-        action: RetirementAction,
-        request: &RetirementRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<RetirementReceipt, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::authorized::transformer_retirement(
-                profile, transport, authority, ds_project, action, request,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Read one deleted transformer's verified delete backup, fetching its
+        /// exact bytes when `fetch` is set.
+        deleted_transformer_backup
     }
 
-    /// Read one deleted transformer's verified delete backup, fetching its
-    /// exact bytes when `fetch` is set.
-    pub fn deleted_transformer_backup(
-        &mut self,
-        ds_project: &str,
-        request: &crate::DeletedBackupRequest,
-        fetch: bool,
-        now_epoch_seconds: u64,
-    ) -> Result<crate::DeletedBackupRead, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::project_report::deleted_backup_read(
-                profile, transport, authority, ds_project, request, fetch,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Sign the listed artifacts through the authorized signer and hand each
+        /// fetched object's exact bytes and SHA-256 to `sink`, one at a time.
+        download_artifacts
     }
 
-    /// Sign the listed artifacts through the authorized signer and hand each
-    /// fetched object's exact bytes and SHA-256 to `sink`, one at a time.
-    pub fn download_artifacts(
-        &mut self,
-        ds_project: &str,
-        request: &crate::ArtifactDownloadRequest,
-        sink: &mut dyn FnMut(crate::ArtifactFile) -> Result<(), ClientError>,
-        now_epoch_seconds: u64,
-    ) -> Result<Vec<(crate::ArtifactIdentity, crate::ArtifactOutcome)>, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::project_report::download_artifacts(
-                profile, transport, authority, ds_project, request, sink,
-            )
-        })
-    }
-
-    /// Create a deleted transformer again from one pinned, verified backup.
-    pub fn restore_deleted_transformer(
-        &mut self,
-        ds_project: &str,
-        request: &crate::DeletedBackupRequest,
-        now_epoch_seconds: u64,
-    ) -> Result<crate::DeletedTransformerRestoration, ClientError> {
-        crate::authorized::validate_project_report(ds_project)?;
-        self.with_authority(now_epoch_seconds, |profile, transport, authority| {
-            crate::project_report::deleted_backup_restore(
-                profile, transport, authority, ds_project, request,
-            )
-        })
+    crate::gateway_compat::gateway_domain_command! {
+        session;
+        /// Create a deleted transformer again from one pinned, verified backup.
+        restore_deleted_transformer
     }
 
     // Keep freshness and capture in one place. Every public method validates its
