@@ -44,7 +44,9 @@ here hands out a durable link to anything above `open`.
 file. A document reader can stream a large PDF through it; the bounded
 `assets.read` copy keeps its existing memory limit. The JSON download response
 contains temporary read authority and must be consumed immediately, not stored
-as a durable document link. Human output excludes the signed URL.
+as a durable document link. Human output excludes the signed URL. A Project
+Work attachment (`sys:pm_attachment:<id>`) answers its own generation-pinned
+reference the same way, at any size.
 
 Every project command runs headless, under the restored native user or device
 credential, against the explicit `--project <id>` on that call, on `--lane`.
@@ -316,7 +318,7 @@ catalogue's.
 | `assets_not_implemented` | this lane's ds-brain does not serve this action yet |
 | `assets_service_failed` | the catalogue service faulted (HTTP 5xx, `detail.http_status`); retry once |
 | `assets_index_moved` | a `list --cursor` from an index generation that has since been rebuilt; restart from the first page without `--cursor` |
-| `asset_too_large` | the bytes are above the 32 MiB read bound; open the asset from its own surface |
+| `asset_too_large` | the bytes are above the 32 MiB read bound; stream them through `ds assets download` |
 | `origin_read_failed` | the signed read expired, the bytes did not match the row's digest, or the destination could not be written; retry once |
 | `origin_read_unavailable` | a projected `sys:` row was named; its bytes are served by the surface that owns it, not by the catalogue |
 | `unknown_folder` | a `--folder` names a path no declared folder has; declare it with `folder`, or read the declared folders with `tree` |

@@ -3,7 +3,7 @@
 //! A failed upload returns the committed task and ready receipts, never a
 //! claim of atomic file delivery or permission to repeat an ambiguous write.
 
-use super::{project_note_id_valid, send, AttachmentFile, Command, MAX_ATTACHMENT_BYTES};
+use super::{project_note_id_valid, send, AttachmentFile, Command};
 use crate::{authorized::Authority, AuthorizedTransport, ClientError, ClientProfile, ErrorKind};
 use ds_command_kernel::project_management::writes;
 use serde_json::{json, Value};
@@ -15,19 +15,19 @@ pub fn validate_files(files: &[AttachmentFile]) -> Result<(), ClientError> {
     if files.is_empty() || files.len() > MAX_CREATE_ATTACHMENTS {
         return Err(ClientError::new(
             ErrorKind::InvalidInput,
-            "task creation accepts 1..10 distinct attachments, at most 100 MiB combined",
+            "task creation accepts 1..10 distinct attachments",
         ));
     }
     let mut unique = std::collections::BTreeSet::new();
-    let total: usize = files.iter().map(AttachmentFile::len).sum();
-    if total > MAX_ATTACHMENT_BYTES
-        || files
-            .iter()
-            .any(|file| !unique.insert((file.name(), file.sha256())))
+    // Each file is already within the storage maximum; there is no combined
+    // cap, because every file streams to its own resumable session.
+    if files
+        .iter()
+        .any(|file| !unique.insert((file.name(), file.sha256())))
     {
         return Err(ClientError::new(
             ErrorKind::InvalidInput,
-            "task creation accepts 1..10 distinct attachments, at most 100 MiB combined",
+            "task creation accepts 1..10 distinct attachments",
         ));
     }
     Ok(())

@@ -365,7 +365,14 @@ impl Command {
                     && optional(since, 64)
                     && optional(cursor, 512)
             }
-            Self::Get { asset_id } | Self::Download { asset_id } => minted(asset_id),
+            Self::Get { asset_id } => minted(asset_id),
+            // A Project Work attachment is read through its own grant (`run`).
+            Self::Download { asset_id } => {
+                minted(asset_id)
+                    || asset_id
+                        .strip_prefix(pm_attachment::PREFIX)
+                        .is_some_and(crate::project_management::project_note_id_valid)
+            }
             Self::IndexList(list) => {
                 (1..=MAX_PAGE_SIZE).contains(&list.limit)
                     && list.folder.as_deref().is_none_or(folder_path)
@@ -799,6 +806,13 @@ pub(crate) fn run<T: AuthorizedTransport>(
     command: &Command,
     reader: Option<&mut dyn Read>,
 ) -> Result<Value, ClientError> {
+    // A Project Work attachment has no catalogue row: its own generation-pinned
+    // grant is the read reference, so it streams at any size.
+    if let Command::Download { asset_id } = command {
+        if let Some(id) = asset_id.strip_prefix(pm_attachment::PREFIX) {
+            return pm_attachment::download(profile, transport, authority, project, id);
+        }
+    }
     command.validate(project)?;
     if let Command::Semantic(command) = command {
         return crate::document_semantic::run(

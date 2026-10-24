@@ -16,13 +16,16 @@ use sha2::{Digest, Sha256};
 
 pub(super) const PREFIX: &str = "sys:pm_attachment:";
 
-pub(super) fn read_bytes<T: AuthorizedTransport>(
+/// The attachment's own generation-pinned grant, checked: the answer names
+/// this project and attachment, a positive size and generation, and a Storage
+/// URL signed for exactly that generation. No bytes are fetched.
+fn grant<T: AuthorizedTransport>(
     profile: &ClientProfile,
     transport: &mut T,
     authority: Authority<'_>,
     project: &str,
     id: &str,
-) -> Result<(Value, Vec<u8>), ClientError> {
+) -> Result<(Value, u64), ClientError> {
     if !crate::project_management::project_note_id_valid(id) {
         return Err(ClientError::new(
             ErrorKind::InvalidInput,
@@ -57,6 +60,55 @@ pub(super) fn read_bytes<T: AuthorizedTransport>(
     {
         return Err(bad());
     }
+    if !data["url"]
+        .as_str()
+        .is_some_and(|url| signed_at(url, generation))
+    {
+        return Err(bad());
+    }
+    Ok((data.clone(), size))
+}
+
+/// The row a projected attachment answers, from its checked grant source.
+fn row(project: &str, id: &str, source: &Value, digest: Value) -> Value {
+    json!({"asset_id": format!("{PREFIX}{id}"), "project_id": project,
+        "name": source["original_name"], "content_type": source["content_type"],
+        "bytes": source["size_bytes"], "version": source["version"],
+        "generation": source["generation"], "digest": digest})
+}
+
+/// A fresh signed read reference for one attachment of any size, without
+/// fetching it: the same answer shape as a catalogued `download`, so a large
+/// attachment streams from storage instead of through memory. The digest is
+/// the advertised SHA-256 when the row carries one.
+pub(super) fn download<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    id: &str,
+) -> Result<Value, ClientError> {
+    let (data, _) = grant(profile, transport, authority, project, id)?;
+    let source = &data["source"];
+    let digest = source["advertised_sha256"]
+        .as_str()
+        .map_or(Value::Null, |sha| json!(format!("sha256:{sha}")));
+    if !data["expires_at"].is_string() {
+        return Err(bad());
+    }
+    Ok(json!({"asset": row(project, id, source, digest),
+        "download_url": data["url"], "expires_at": data["expires_at"]}))
+}
+
+pub(super) fn read_bytes<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    id: &str,
+) -> Result<(Value, Vec<u8>), ClientError> {
+    let (data, size) = grant(profile, transport, authority, project, id)?;
+    let source = &data["source"];
     if size > MAX_READ_BYTES {
         return Err(ClientError::new(
             ErrorKind::InvalidInput,
@@ -64,9 +116,6 @@ pub(super) fn read_bytes<T: AuthorizedTransport>(
         ));
     }
     let url = data["url"].as_str().ok_or_else(bad)?;
-    if !signed_at(url, generation) {
-        return Err(bad());
-    }
     let mut bytes = transport.shared_asset_bytes(DownloadCall::new(url, size as usize))?;
     if bytes.status != 200 || bytes.body.len() != size as usize {
         return Err(bad());
@@ -84,10 +133,9 @@ pub(super) fn read_bytes<T: AuthorizedTransport>(
     // The attachment has no catalogue classification, so its format and kind
     // are what the kernel recognises in the verified bytes, as for any asset.
     let found = recognise(source["original_name"].as_str(), &bytes.body, size);
-    let row = json!({"asset_id": format!("{PREFIX}{id}"), "project_id": project,
-        "name": source["original_name"], "content_type": source["content_type"],
-        "bytes": size, "version": source["version"], "generation": generation,
-        "digest": digest, "format": found.format.as_str(), "kind": found.kind.as_str()});
+    let mut row = row(project, id, source, json!(digest));
+    row["format"] = json!(found.format.as_str());
+    row["kind"] = json!(found.kind.as_str());
     // The response scrubs its body on drop; the verified bytes are taken out.
     Ok((row, std::mem::take(&mut bytes.body)))
 }

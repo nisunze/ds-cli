@@ -21,8 +21,10 @@ use super::task_attachment_detach::{reference, Request as Detach};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-/// The largest file Brain reserves: 100 MiB.
-pub const MAX_ATTACHMENT_BYTES: u64 = 100 * 1024 * 1024;
+/// The largest file Brain reserves: Cloud Storage's own 5 TiB object
+/// maximum. There is no product cap: the bytes go straight to storage in
+/// resumable chunks, so neither a host nor Brain ever holds the whole file.
+pub const MAX_ATTACHMENT_BYTES: u64 = 5 << 40;
 const SURVEY_PAGE: u64 = 100;
 const MAX_SURVEY_PAGES: u32 = 20;
 const MAX_RECLAIM: usize = 16;
@@ -81,7 +83,7 @@ impl Upload {
                 .any(|key| !METADATA.contains(&key.as_str()))
         {
             return Err(
-                "an attachment needs one project entity, the signed-in principal, a file name, a type/subtype and 1 byte to 100 MiB",
+                "an attachment needs one project entity, the signed-in principal, a file name, a type/subtype and 1 byte to 5 TiB",
             );
         }
         Ok(())

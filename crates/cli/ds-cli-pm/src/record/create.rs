@@ -23,7 +23,7 @@ const ATTACH_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Attach files after filing; up to 10, 100 MiB combined, all checked first.",
+    summary: "Attach files after filing; up to 10, any size, all checked first.",
 };
 const ATTACH_PARTIAL: Refusal = Refusal {
     code: "record_attachments_incomplete",
@@ -129,9 +129,9 @@ pub(crate) fn attachments(inputs: &Inputs) -> Result<Vec<AttachmentFile>, Failur
             |_| {
                 Failure::invalid(
                     crate::task::attach::FILE_INVALID.code,
-                    "a record or note takes 1 to 10 distinct attachments, at most 100 MiB combined",
+                    "a record or note takes 1 to 10 distinct attachments",
                 )
-                .remedy("pass up to 10 distinct readable files, at most 100 MiB combined")
+                .remedy("pass up to 10 distinct readable files")
             },
         )?;
     }

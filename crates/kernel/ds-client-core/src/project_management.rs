@@ -30,6 +30,7 @@
 
 use serde_json::{json, Map, Value};
 
+mod attachment_file;
 mod attachment_upload;
 pub mod checklist;
 pub mod create_attached;
@@ -60,100 +61,12 @@ const MAX_PROJECT_NOTE_ID_BYTES: usize = 256;
 /// The most commands one saved draft may carry — ds-brain's own batch bound,
 /// republished per project as `field_model.max_batch_commands`.
 pub const MAX_BATCH_COMMANDS: usize = 200;
-/// The largest file one task attachment may carry — ds-brain's
-/// `maxPMAttachmentBytes` (100 MiB).
-pub const MAX_ATTACHMENT_BYTES: usize = 100 << 20;
-/// A stored attachment name is at most this many UTF-8 bytes.
-const MAX_ATTACHMENT_NAME_BYTES: usize = 255;
-
-/// One file a task attachment uploads, checked once when it is made: a plain
-/// file name, 1 byte to 100 MiB, and a media type (given, or named from the
-/// file extension the way a browser names `File.type`). `Debug` prints the
-/// size, never the bytes.
-#[derive(Clone, PartialEq)]
-pub struct AttachmentFile {
-    name: String,
-    content_type: String,
-    bytes: Vec<u8>,
-}
-
-impl std::fmt::Debug for AttachmentFile {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AttachmentFile")
-            .field("name", &self.name)
-            .field("content_type", &self.content_type)
-            .field("bytes", &self.bytes.len())
-            .finish()
-    }
-}
-
-impl AttachmentFile {
-    pub fn new(
-        name: &str,
-        content_type: Option<&str>,
-        bytes: Vec<u8>,
-    ) -> Result<Self, ClientError> {
-        let invalid = |message: &'static str| ClientError::new(ErrorKind::InvalidInput, message);
-        let name = name.trim();
-        if name.is_empty()
-            || name.len() > MAX_ATTACHMENT_NAME_BYTES
-            || name == "."
-            || name == ".."
-            || name
-                .chars()
-                .any(|c| c.is_control() || matches!(c, '/' | '\\'))
-        {
-            return Err(invalid(
-                "a task attachment needs a plain file name of at most 255 UTF-8 bytes",
-            ));
-        }
-        if bytes.is_empty() || bytes.len() > MAX_ATTACHMENT_BYTES {
-            return Err(invalid("a task attachment is from 1 byte to 100 MiB"));
-        }
-        let content_type = match content_type.map(str::trim) {
-            Some(given) => {
-                let lowered = given.to_ascii_lowercase();
-                let valid = !lowered.is_empty()
-                    && lowered.len() <= 200
-                    && lowered.split_once('/').is_some_and(|(kind, sub)| {
-                        !kind.is_empty() && !sub.is_empty() && !sub.contains('/')
-                    })
-                    && !lowered
-                        .chars()
-                        .any(|c| c.is_whitespace() || c.is_control() || c == ';');
-                if !valid {
-                    return Err(invalid(
-                        "a task attachment content type is one `type/subtype`",
-                    ));
-                }
-                lowered
-            }
-            None => attachment_media_type(name).to_owned(),
-        };
-        Ok(Self {
-            name: name.to_owned(),
-            content_type,
-            bytes,
-        })
-    }
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    pub fn content_type(&self) -> &str {
-        &self.content_type
-    }
-    pub fn len(&self) -> usize {
-        self.bytes.len()
-    }
-    pub fn is_empty(&self) -> bool {
-        self.bytes.is_empty()
-    }
-    /// Lowercase hex SHA-256 of the bytes this attachment uploads.
-    pub fn sha256(&self) -> String {
-        use sha2::{Digest, Sha256};
-        format!("{:x}", Sha256::digest(&self.bytes))
-    }
-}
+/// The largest file one task or record attachment may carry: Cloud Storage's
+/// own 5 TiB object maximum, the same bound ds-brain states before it mints a
+/// session (`maxPMAttachmentBytes`). There is no product cap; files stream.
+pub const MAX_ATTACHMENT_BYTES: u64 =
+    ds_command_kernel::project_management::attachment_upload::MAX_ATTACHMENT_BYTES;
+pub use attachment_file::AttachmentFile;
 
 /// The media type a browser would name for this file extension; anything
 /// unrecognised is `application/octet-stream`, as the server defaults it.

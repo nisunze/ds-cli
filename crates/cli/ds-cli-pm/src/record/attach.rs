@@ -22,7 +22,7 @@ use crate::task::attach::{FILE_INVALID, read_attachment};
 const FILE: Arg = Arg::value(
     "file",
     "<path>",
-    "The local file to attach, 1 byte to 100 MiB; its file name is kept.",
+    "The local file to attach, from 1 byte up to the 5 TiB storage maximum; it streams from disk and its file name is kept.",
 )
 .required();
 const CONTENT_TYPE: Arg = Arg::value(
@@ -104,7 +104,7 @@ pub(crate) fn upload(
     if item["state"] != "ready"
         || item["linked_entity_type"] != "record"
         || item["linked_entity_id"].as_str() != Some(record)
-        || item["size_bytes"].as_u64() != Some(file.len() as u64)
+        || item["size_bytes"].as_u64() != Some(file.len())
         || result["sha256"].as_str() != Some(file.sha256().as_str())
     {
         return Err(Failure::invalid(

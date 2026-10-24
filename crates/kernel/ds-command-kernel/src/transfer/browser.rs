@@ -706,4 +706,34 @@ export interface UploadSource {
             .unwrap_or(SINGLE_PUT_DEFAULT_TIMEOUT_MS);
         typed(&single_put(&host, &url, source, &content_type, timeout_ms, signal).await)
     }
+
+    /// The most bytes one digest read holds.
+    const DIGEST_SLICE_BYTES: u64 = 8 * 1024 * 1024;
+
+    /// Lowercase hex SHA-256 of one byte source, read in bounded slices so a
+    /// large file is never held whole. `null` when a slice cannot be read or
+    /// the signal aborts; the page then refuses the attachment.
+    #[wasm_bindgen(js_name = uploadSourceSha256, unchecked_return_type = "string | null")]
+    pub async fn upload_source_sha256(
+        source: UploadSource,
+        signal: Option<AbortSignal>,
+    ) -> JsValue {
+        use sha2::{Digest, Sha256};
+        let size = source.size().max(0.0) as u64;
+        let parts = Parts(source);
+        let mut digest = Sha256::new();
+        let mut offset = 0;
+        while offset < size {
+            if signal.as_ref().is_some_and(AbortSignal::aborted) {
+                return JsValue::NULL;
+            }
+            let length = (size - offset).min(DIGEST_SLICE_BYTES);
+            match parts.read(offset, length).await {
+                Ok(bytes) if bytes.len() as u64 == length => digest.update(&bytes),
+                _ => return JsValue::NULL,
+            }
+            offset += length;
+        }
+        JsValue::from_str(&format!("{:x}", digest.finalize()))
+    }
 }

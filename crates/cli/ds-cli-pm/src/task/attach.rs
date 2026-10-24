@@ -12,15 +12,13 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
-use ds_client_core::project_management::{
-    AttachmentFile, Command as PMCommand, MAX_ATTACHMENT_BYTES,
-};
+use ds_client_core::project_management::{AttachmentFile, Command as PMCommand};
 use serde_json::{Value, json};
 
 const FILE: Arg = Arg::value(
     "file",
     "<path>",
-    "The local file to attach, 1 byte to 100 MiB; its file name is kept.",
+    "The local file to attach, from 1 byte up to the 5 TiB storage maximum; it streams from disk and its file name is kept.",
 )
 .required();
 const CONTENT_TYPE: Arg = Arg::value(
@@ -31,8 +29,8 @@ const CONTENT_TYPE: Arg = Arg::value(
 
 pub const FILE_INVALID: Refusal = Refusal {
     code: "attachment_file_invalid",
-    when: "--file cannot be read, is empty or above 100 MiB, has no plain file name, or --content-type is not one type/subtype",
-    remedy: "pass a readable file of 1 byte to 100 MiB, and omit --content-type or give one like application/pdf",
+    when: "--file cannot be read, is empty or above 5 TiB, changed while read, has no plain file name, or --content-type is not one type/subtype",
+    remedy: "pass a readable file not being written, and omit --content-type or give one like application/pdf",
 };
 pub const UNVERIFIED: Refusal = Refusal {
     code: "attachment_unverified",
@@ -84,8 +82,8 @@ fn file_invalid(message: impl Into<String>) -> Failure {
     Failure::invalid(FILE_INVALID.code, message).remedy(FILE_INVALID.remedy)
 }
 
-/// The file to attach, read whole and bounded before any byte is read past
-/// the limit, then checked by the core's own rules.
+/// The file to attach, measured and hashed in bounded reads (never held in
+/// memory), then checked by the core's own rules.
 fn attachment(inputs: &Inputs) -> Result<AttachmentFile, Failure> {
     read_attachment(inputs.require("file")?, inputs.value("content-type"))
 }
@@ -99,21 +97,8 @@ pub(crate) fn read_attachment(
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| file_invalid("--file has no plain UTF-8 file name"))?;
-    let metadata = std::fs::metadata(path)
-        .map_err(|error| file_invalid(format!("--file could not be read: {error}")))?;
-    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_ATTACHMENT_BYTES as u64 {
-        return Err(file_invalid(
-            "--file is not a regular file of 1 byte to 100 MiB",
-        ));
-    }
-    use std::io::Read;
-    let mut bytes = Vec::new();
-    std::fs::File::open(path)
-        .map_err(|error| file_invalid(format!("--file could not be read: {error}")))?
-        .take(MAX_ATTACHMENT_BYTES as u64 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| file_invalid(format!("--file could not be read: {error}")))?;
-    AttachmentFile::new(name, content_type, bytes).map_err(|error| file_invalid(error.to_string()))
+    AttachmentFile::from_path(name, content_type, path)
+        .map_err(|error| file_invalid(format!("--file: {error}")))
 }
 
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
@@ -132,7 +117,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let item = &result["item"];
     if item["state"] != "ready"
         || item["linked_entity_id"].as_str() != Some(task)
-        || item["size_bytes"].as_u64() != Some(file.len() as u64)
+        || item["size_bytes"].as_u64() != Some(file.len())
         || result["sha256"].as_str() != Some(file.sha256().as_str())
     {
         return Err(Failure::invalid(

@@ -167,3 +167,67 @@ fn a_foreign_unpinned_resized_or_mismatched_grant_is_refused() {
     );
     assert!(none.calls.is_empty());
 }
+
+fn download(transport: &mut Grant, id: &str) -> Result<Value, ClientError> {
+    super::super::run(
+        &crate::data_distribution::tests::profile_for_tests(),
+        transport,
+        Authority {
+            bearer_token: "bearer",
+            uid: "uid",
+            email: "user@example.com",
+            device_id: None,
+        },
+        "project-a",
+        &super::super::Command::Download {
+            asset_id: format!("{PREFIX}{id}"),
+        },
+        None,
+    )
+}
+
+/// A large attachment streams from storage: `download` answers its own
+/// generation-pinned reference at any size and fetches no bytes.
+#[test]
+fn a_projected_attachment_of_any_size_answers_a_signed_reference_without_bytes() {
+    let mut transport = grant(300_000_000);
+    let answer = download(&mut transport, "att").expect("reference");
+    assert_eq!(transport.calls.len(), 1, "only the grant is read");
+    assert_eq!(answer["download_url"], URL);
+    assert_eq!(answer["expires_at"], "2026-10-20T09:00:00Z");
+    assert_eq!(answer["asset"]["asset_id"], "sys:pm_attachment:att");
+    assert_eq!(answer["asset"]["bytes"], 300_000_000u64);
+    assert_eq!(answer["asset"]["generation"], 42);
+    assert!(answer["asset"]["digest"].is_null());
+    let mut advertised = grant(300_000_000);
+    advertised.grant["data"]["source"]["advertised_sha256"] = json!("a".repeat(64));
+    assert_eq!(
+        download(&mut advertised, "att").unwrap()["asset"]["digest"],
+        format!("sha256:{}", "a".repeat(64))
+    );
+    // Control: a grant not pinned to its generation is refused.
+    let mut unpinned = grant(300_000_000);
+    unpinned.grant["data"]["url"] = json!(URL.replace("generation=42&", ""));
+    assert!(download(&mut unpinned, "att").is_err());
+}
+
+/// The session door validates before it runs: an exact attachment id is a
+/// valid download, anything else stays outside the vocabulary.
+#[test]
+fn a_projected_attachment_download_passes_command_validation() {
+    let download = |asset_id: &str| super::super::Command::Download {
+        asset_id: asset_id.to_owned(),
+    };
+    assert!(
+        download("sys:pm_attachment:1b80916c-2187-4442-8bce-a1ff1f41ac8d")
+            .validate("project-a")
+            .is_ok()
+    );
+    for bad in [
+        "sys:pm_attachment:a/b",
+        "sys:pm_attachment:",
+        "sys:grid_export:x",
+    ] {
+        assert!(download(bad).validate("project-a").is_err(), "{bad}");
+    }
+}

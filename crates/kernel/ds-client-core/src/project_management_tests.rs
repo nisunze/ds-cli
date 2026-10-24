@@ -262,6 +262,9 @@ struct AttachTransport {
     payloads: Vec<Value>,
     authorities: Vec<(String, String)>,
     uploaded: Vec<(String, Vec<u8>)>,
+    /// When set, uploads are hashed in place and never collected: (bytes,
+    /// sha256, widest single read).
+    streamed: Option<Vec<(u64, String, usize)>>,
 }
 macro_rules! no_other_call {
     ($name:ident, $call:ident) => {
@@ -293,6 +296,27 @@ impl AuthorizedTransport for AttachTransport {
         &mut self,
         mut call: crate::UploadBytesCall<'_>,
     ) -> Result<crate::TransportResponse, crate::TransportError> {
+        if let Some(streamed) = self.streamed.as_mut() {
+            use sha2::{Digest, Sha256};
+            let (mut digest, mut total, mut widest) = (Sha256::new(), 0u64, 0usize);
+            let mut buffer = vec![0u8; 1 << 20];
+            loop {
+                let count = call.reader().read(&mut buffer).expect("upload reader");
+                if count == 0 {
+                    break;
+                }
+                widest = widest.max(count);
+                digest.update(&buffer[..count]);
+                total += count as u64;
+            }
+            assert_eq!(total, call.size());
+            streamed.push((total, format!("{:x}", digest.finalize()), widest));
+            self.uploaded.push((call.uri().to_owned(), Vec::new()));
+            return Ok(crate::TransportResponse::new(
+                self.upload_status,
+                Vec::new(),
+            ));
+        }
         let mut bytes = Vec::new();
         call.reader()
             .read_to_end(&mut bytes)
@@ -409,6 +433,7 @@ fn records_transport(finalized: Value) -> AttachTransport {
         payloads: vec![],
         authorities: vec![],
         uploaded: vec![],
+        streamed: None,
     }
 }
 
@@ -638,6 +663,7 @@ fn attach_transport(state: &str, size: usize) -> AttachTransport {
         payloads: Vec::new(),
         authorities: Vec::new(),
         uploaded: Vec::new(),
+        streamed: None,
     }
 }
 
@@ -1114,7 +1140,11 @@ fn attachment_files_are_bounded_named_plainly_and_typed() {
     }
     assert!(AttachmentFile::new(&"n".repeat(256), None, vec![1]).is_err());
     assert!(AttachmentFile::new("a.pdf", None, Vec::new()).is_err());
-    assert!(AttachmentFile::new("a.pdf", None, vec![0; MAX_ATTACHMENT_BYTES + 1]).is_err());
+    // Above the storage maximum refuses from the size alone: a sparse file is
+    // never read.
+    let huge = tempfile::NamedTempFile::new().unwrap();
+    huge.as_file().set_len(MAX_ATTACHMENT_BYTES + 1).unwrap();
+    assert!(AttachmentFile::from_path("a.pdf", None, huge.path()).is_err());
     for bad in ["pdf", "a/b/c", "text/plain; charset=utf-8", "a /b"] {
         assert!(
             AttachmentFile::new("a.pdf", Some(bad), vec![1]).is_err(),
@@ -1204,5 +1234,85 @@ fn record_attach_runs_the_same_resumable_flow_on_the_record() {
     assert!(
         foreign.uploaded.is_empty(),
         "no byte moves for a row reserved elsewhere"
+    );
+}
+
+/// Write `len` bytes of a repeating pattern in 1 MiB pieces, never holding
+/// the file, and answer the SHA-256 of what was written.
+fn large_file(len: u64) -> (tempfile::NamedTempFile, String) {
+    use sha2::{Digest, Sha256};
+    use std::io::Write;
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    let mut piece = vec![0u8; 1 << 20];
+    let (mut digest, mut written) = (Sha256::new(), 0u64);
+    while written < len {
+        for (index, byte) in piece.iter_mut().enumerate() {
+            *byte = ((written as usize + index) % 251) as u8;
+        }
+        let count = ((len - written) as usize).min(piece.len());
+        file.write_all(&piece[..count]).unwrap();
+        digest.update(&piece[..count]);
+        written += count as u64;
+    }
+    file.flush().unwrap();
+    (file, format!("{:x}", digest.finalize()))
+}
+
+#[test]
+fn task_attach_streams_a_300_mb_file_from_disk_and_proves_its_digest() {
+    const LEN: u64 = 300_000_000;
+    let (local, expected) = large_file(LEN);
+    let file = AttachmentFile::from_path("drone survey.zip", None, local.path()).unwrap();
+    assert_eq!((file.len(), file.sha256()), (LEN, expected.clone()));
+    assert!(format!("{file:?}").contains("300000000"));
+    let mut transport = attach_transport("ready", LEN as usize);
+    transport.streamed = Some(Vec::new());
+    let receipt = attach(&mut transport, file.clone()).expect("a 300 MB attachment uploads");
+    let streamed = transport.streamed.take().unwrap();
+    assert_eq!(streamed.len(), 1);
+    assert_eq!(
+        (streamed[0].0, streamed[0].1.as_str()),
+        (LEN, expected.as_str())
+    );
+    assert!(
+        streamed[0].2 <= 64 * 1024,
+        "the upload reads in bounded pieces, never the whole file: widest read {}",
+        streamed[0].2
+    );
+    assert_eq!(
+        transport.payloads[1]["data"]["size_bytes"],
+        json!(LEN),
+        "the reservation declares the real size; there is no product cap"
+    );
+    assert_eq!(
+        transport.payloads[2]["action"],
+        "finalize_attachment_upload"
+    );
+    assert_eq!(receipt["item"]["state"], "ready");
+    assert_eq!(receipt["bytes"], LEN);
+    assert_eq!(receipt["sha256"], expected);
+}
+
+#[test]
+fn task_attach_refuses_when_the_file_is_corrupted_after_its_check() {
+    use std::io::{Seek, SeekFrom, Write};
+    const LEN: u64 = 8 * 1024 * 1024 + 7;
+    let (mut local, _) = large_file(LEN);
+    let file = AttachmentFile::from_path("plan.pdf", None, local.path()).unwrap();
+    // One byte in a middle chunk changes; the size stays the same.
+    local.as_file_mut().seek(SeekFrom::Start(LEN / 2)).unwrap();
+    local.as_file_mut().write_all(&[0xFF]).unwrap();
+    local.as_file_mut().flush().unwrap();
+    let mut transport = attach_transport("ready", LEN as usize);
+    transport.streamed = Some(Vec::new());
+    let error = attach(&mut transport, file).expect_err("changed bytes never attach");
+    assert_eq!(error.kind(), ErrorKind::InvalidInput);
+    assert!(error.to_string().contains("changed"), "{error}");
+    assert!(
+        !transport
+            .payloads
+            .iter()
+            .any(|payload| payload["action"] == "finalize_attachment_upload"),
+        "a corrupted upload is never finalized"
     );
 }

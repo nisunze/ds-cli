@@ -41,7 +41,7 @@ pub(super) fn attach<T: AuthorizedTransport>(
         principal: authority.email.to_owned(),
         name: file.name().to_owned(),
         content_type: file.content_type().to_owned(),
-        size_bytes: file.len() as u64,
+        size_bytes: file.len(),
         metadata: Map::new(),
     });
     let mut failure = None;
@@ -63,12 +63,18 @@ pub(super) fn attach<T: AuthorizedTransport>(
                 continuation,
                 ..
             } => {
-                let mut reader = std::io::Cursor::new(file.bytes.as_slice());
-                let observed = match transport.upload_bytes(crate::UploadBytesCall {
+                // The file streams from disk in bounded reads; the second
+                // hash taken on the way must name the bytes checked when the
+                // attachment was made, or nothing is reported as uploaded.
+                let mut reader = file.open()?;
+                let sent = transport.upload_bytes(crate::UploadBytesCall {
                     uri: &session_uri,
                     size: size_bytes,
                     reader: &mut reader,
-                }) {
+                });
+                let same = file.same_bytes(reader.finish());
+                let observed = match sent {
+                    Ok(_) if !same => return Err(CHANGED),
                     Ok(response) => Observed::Upload {
                         status: response.status,
                     },
@@ -102,6 +108,13 @@ pub(super) fn attach<T: AuthorizedTransport>(
     }
     Err(UNREADABLE)
 }
+
+/// The file was edited between its check and its upload. The reservation stays
+/// uploading, so attaching the file again completes the same row.
+const CHANGED: ClientError = ClientError::new(
+    ErrorKind::InvalidInput,
+    "the file changed after it was checked; attach it again",
+);
 
 const UNREADABLE: ClientError = ClientError::new(
     ErrorKind::UnreadableResponse,

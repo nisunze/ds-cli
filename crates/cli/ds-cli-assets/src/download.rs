@@ -12,7 +12,7 @@ pub static COMMAND: Command = Command {
     path: &["assets", "download"],
     contract: 1,
     summary: "Authorize a fresh read reference for one project file.",
-    purpose: "Return the exact asset row, its short-lived signed download URL and expiry after the existing project and sensitivity checks. No asset bytes are fetched, so large PDFs can be streamed by their document reader without the assets.read memory limit. The URL is temporary: use it immediately, never keep it as a link. A projected sys: row is refused before authentication.",
+    purpose: "Return the exact asset row, its short-lived signed download URL and expiry after the existing project and sensitivity checks. No asset bytes are fetched, so large PDFs can be streamed by their document reader without the assets.read memory limit. The URL is temporary: use it immediately, never keep it as a link. A Project Work attachment (sys:pm_attachment:<id>) answers its own generation-pinned signed reference at any size; other projected sys: rows are refused before authentication.",
     chapter: Chapter::Assets,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessProject,
@@ -37,7 +37,7 @@ pub static COMMAND: Command = Command {
 
 fn request(inputs: &Inputs) -> Result<CatalogueCommand, Failure> {
     let asset_id = crate::asset_id(inputs.require("asset")?, "asset")?;
-    if crate::is_projected(&asset_id) {
+    if crate::is_projected(&asset_id) && !asset_id.starts_with("sys:pm_attachment:") {
         return Err(crate::projected_unavailable(&asset_id));
     }
     Ok(CatalogueCommand::Download { asset_id })

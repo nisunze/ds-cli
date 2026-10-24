@@ -321,6 +321,7 @@ const NOT_ROWS: &[(&str, Why)] = &[
     ("uiEngineBuildIdentity", Mechanics("helper")),
     ("uploadBatchEffect", Pending("migration lane in flight")),
     ("uploadCleaningEffect", Pending("migration lane in flight")),
+    ("uploadSourceSha256", Mechanics("helper")),
     ("validateSolarPortfolioCatalog", Mechanics("helper")),
     ("validateSolarPortfolioMutationReceipt", Mechanics("helper")),
     ("validateSolarPortfolioResult", Mechanics("helper")),

@@ -18,7 +18,7 @@ const ATTACH_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Attach local files after creation; repeat up to 10, at most 100 MiB combined. All files are checked before creating anything.",
+    summary: "Attach local files after creation; repeat up to 10 files of any size. All files are checked before creating anything.",
 };
 const ATTACH_PARTIAL: Refusal = Refusal {
     code: "task_attachments_incomplete",
@@ -181,7 +181,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         ds_client_core::project_management::create_attached::validate_files(&files).map_err(
             |error| {
                 Failure::invalid(super::attach::FILE_INVALID.code, error.to_string())
-                    .remedy("Pass up to 10 distinct readable files, at most 100 MiB combined")
+                    .remedy("Pass up to 10 distinct readable files")
             },
         )?;
     }

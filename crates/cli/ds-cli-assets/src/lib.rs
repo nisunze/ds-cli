@@ -275,29 +275,25 @@ fn is_read_bound(failure: &Failure) -> bool {
 }
 
 /// The read-bound refusal with the asset's measured size and the exact
-/// command that streams it. A catalogued asset's size is its row's; a Project
-/// Work attachment has no catalogue row and no streaming read, so its size is
-/// not measured here and its remedy says so.
+/// command that streams it. The size is the signed read reference's own: a
+/// catalogued row's, or a Project Work attachment's grant source.
 fn read_bound_exceeded(lane: &str, project: &str, asset_id: &str, failure: Failure) -> Failure {
     let bound = failure
         .detail_value()
         .and_then(|detail| detail["read_bound_bytes"].as_u64())
         .unwrap_or(33_554_432);
-    let size = (!is_projected(asset_id))
-        .then(|| {
-            let download = CatalogueCommand::Download {
-                asset_id: asset_id.to_owned(),
-            };
-            catalogue(lane, project, &download).ok()
-        })
-        .flatten()
+    let download = CatalogueCommand::Download {
+        asset_id: asset_id.to_owned(),
+    };
+    let size = catalogue(lane, project, &download)
+        .ok()
         .and_then(|answer| answer["asset"]["bytes"].as_u64());
     read_bound_failure(project, asset_id, bound, size)
 }
 
-/// The refusal itself, from the measured facts.
+/// The refusal itself, from the measured facts. Every asset `read` accepts
+/// also has a streaming `download` reference, so the remedy always names it.
 fn read_bound_failure(project: &str, asset_id: &str, bound: u64, size: Option<u64>) -> Failure {
-    let catalogued = !is_projected(asset_id);
     let message = match size {
         Some(size) => format!(
             "the asset is {size} bytes, above the {bound}-byte (32 MiB) bound for reading its bytes into memory"
@@ -306,28 +302,14 @@ fn read_bound_failure(project: &str, asset_id: &str, bound: u64, size: Option<u6
             "the asset is above the {bound}-byte (32 MiB) bound for reading its bytes into memory"
         ),
     };
-    let (remedy, next) = if catalogued {
-        (
-            "stream it instead: `ds assets download` returns a short-lived signed URL for a document reader, and no bytes are held in memory",
-            Some(format!("ds assets download --project {project} --asset {asset_id}")),
-        )
-    } else {
-        (
-            "a Project Work attachment has no streaming read; open it from the Project Work surface that holds it",
-            None,
-        )
-    };
-    let failure = Failure::invalid("asset_too_large", message)
-        .remedy(remedy)
+    Failure::invalid("asset_too_large", message)
+        .remedy("stream it instead: `ds assets download` returns a short-lived signed URL for a document reader, and no bytes are held in memory")
         .detail(json!({
             "read_bound_bytes": bound,
             "asset_bytes": size,
             "asset": asset_id,
-        }));
-    match next {
-        Some(next) => failure.next(next),
-        None => failure,
-    }
+        }))
+        .next(format!("ds assets download --project {project} --asset {asset_id}"))
 }
 
 /// The declared folder at `path`, from the one folder authority.

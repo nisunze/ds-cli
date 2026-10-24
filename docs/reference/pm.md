@@ -157,11 +157,15 @@ and command id; do not create a second id for the same intended deletion.
 ds pm task attach --project <exact-id> --task T-0007 --file ./crossing-survey.pdf --yes --output json
 ```
 
-One command puts one local file (1 byte to 100 MiB) on an existing task: the
-server reserves an attachment row, the bytes go straight to storage, and the
-server checks the stored size and type before the row turns `ready`. Only a
-ready row on the named task is reported, with the local `sha256`. The media
-type is named from the file extension unless `--content-type` gives one.
+One command puts one local file of any size (1 byte up to Cloud Storage's
+5 TiB object maximum) on an existing task: the server reserves an attachment
+row, the file streams from disk straight to storage in resumable chunks (never
+held in memory, never through ds-brain), and the server checks the
+stored size and type before the row turns `ready`. Only a ready row on the
+named task is reported, with the local `sha256`. The media type is named from
+the file extension unless `--content-type` gives one. Read a large attachment
+back with `ds assets download --asset sys:pm_attachment:<id>`, which answers
+its generation-pinned signed URL without fetching it.
 There is no Assets ingest or separate link step.
 
 An interrupted upload leaves its row `uploading`. Attaching the same file
@@ -391,7 +395,7 @@ what a person may set is a waiver, with a reason, and it is not withdrawn.
 | `model_link_invalid` | a model or revision id is not an exact catalog id, neither `--revision` nor `--version` was given, or the item holds 128 links |
 | `model_version_not_found` | the project's catalog has no such model, revision or version |
 | `model_version_mismatch` | `--version` disagrees with the catalog version of `--revision` |
-| `attachment_file_invalid` | `--file` is unreadable, empty, above 100 MiB or unnamed, or `--content-type` is not one `type/subtype` |
+| `attachment_file_invalid` | `--file` is unreadable, empty, above the 5 TiB storage maximum, changed while it was read, or unnamed, or `--content-type` is not one `type/subtype` |
 | `attachment_unverified` | the server did not verify a ready attachment on the named task or record; read it before repeating |
 | `record_attachments_incomplete` | `record create --attach` filed the record but one upload was not verified ready; attach the rest with `ds pm record attach` |
 

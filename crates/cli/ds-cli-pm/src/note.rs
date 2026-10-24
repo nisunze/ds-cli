@@ -12,7 +12,7 @@ const ATTACH_ARG: Arg = Arg {
     required: false,
     default: None,
     choices: &[],
-    summary: "Attach files after creating; up to 10, 100 MiB combined, all checked first.",
+    summary: "Attach files after creating; up to 10, any size, all checked first.",
 };
 pub(crate) const ATTACH_PARTIAL: Refusal = Refusal {
     code: "note_attachments_incomplete",
