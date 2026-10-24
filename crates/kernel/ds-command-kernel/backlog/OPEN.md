@@ -668,7 +668,6 @@ Rules: [PRINCIPLES.md ยง5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) โ
 
 - **Project and instance isolation** (`docs/prompts/claude-project-instance-isolation.md`; contract `project-and-instance-isolation-contract.md`): after the Server execution context: live Desktop instance discovery and CLI/MCP routing that refuses stale or ambiguous targets; generation-fenced UI session state; multi-principal authority and fair capacity across Solar, printing and a third operation on one Server.
 
-- **Dead Profile structure-type suggestion in the Kernel** (rules-move lane, 2026-10-24): `ds-command-kernel/src/profile_structure_type.rs` (394 lines, page export `profileStructureTypeSelection`) decides an engineering rule (bend from one projected alignment, "smallest covering angle range wins") but has no caller: ds-web deleted its Profile authoring on 2026-09-23 (`6cccf0ce8`) and `grep -rn profileStructureTypeSelection ds-web/src` is empty. Structure choice is already the Network engine's (`RetypeStructure`, `RetypeStructuresWithSupports`, spotting). Next step: delete the module, its wasm export and its `capabilities_owners_tests.rs` row exactly as `profile_supports.rs` was deleted, after checking no CLI/MCP descriptor names it; if a caller is found instead, it moves to the Network engine as a typed task.
 
 ## 24. Owner feature requests (CLI-first, after stabilization)
 
