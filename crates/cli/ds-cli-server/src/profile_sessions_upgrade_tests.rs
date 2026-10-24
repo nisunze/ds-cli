@@ -166,7 +166,7 @@ fn same_original_ignores_only_the_engine_pin() {
 fn discard_recovery_removes_only_the_exact_stale_recovery_without_a_process() {
     let root = ds_cli_contract::testing::private_tempdir(".ds-profile-upgrade-");
     let scratch = root.path().join("scratch");
-    fs::create_dir(&scratch).unwrap();
+    private_scratch(&scratch);
     let database = root.path().join("state.sqlite");
     let source = stale(&database);
     let before = retained(&database, &source).unwrap();
@@ -298,7 +298,7 @@ fn real_v1_drafts_move_to_the_current_authored_network() {
     };
     match std::env::var("DS_PROFILE_UPGRADE_PHASE").as_deref() {
         Ok("legacy") => {
-            fs::create_dir(&scratch).unwrap();
+            private_scratch(&scratch);
             // A: three authored moves retained as one opaque v1 checkpoint.
             let opened = execute(open(&bytes, false)).unwrap();
             let snapshot: Value =
@@ -456,7 +456,7 @@ fn real_v1_drafts_move_to_the_current_authored_network() {
 fn real_store_copy_drafts_move_to_the_current_authored_network() {
     let database = env_path("DS_PROFILE_STORE_COPY");
     let scratch = database.with_file_name("profile-scratch");
-    fs::create_dir_all(&scratch).unwrap();
+    private_scratch(&scratch);
     let headers = std::env::var("DS_PROFILE_SOURCE_HEADERS").expect("explicit source headers");
     for path in headers.split(':') {
         let header: ProfileSourceHeader = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
@@ -549,7 +549,7 @@ fn real_authored_draft_rebinds_selected_network_and_keeps_saved_positions() {
     let manifest_path = root.join("authored.json");
     match std::env::var("DS_PROFILE_REBIND_PHASE").as_deref() {
         Ok("retain") => {
-            fs::create_dir(&scratch).unwrap();
+            private_scratch(&scratch);
             let mut cases = Vec::new();
             for index in 0..3 {
                 let opened = execute(open(&bytes, false)).unwrap();
@@ -691,7 +691,7 @@ fn real_opaque_draft_keeps_working_with_the_selected_legacy_network() {
     let bytes = fs::read(env_path("DS_PROFILE_LARGE_PACKAGE")).unwrap();
     let root = ds_cli_contract::testing::private_tempdir(".ds-profile-opaque-");
     let scratch = root.path().join("scratch");
-    fs::create_dir(&scratch).unwrap();
+    private_scratch(&scratch);
     let database = root.path().join("state.sqlite");
     let sessions = Sessions::default();
     let execute = |request| sessions.execute(scope(), &scratch, &database, request, &|| Ok(()));
@@ -732,4 +732,15 @@ fn real_opaque_draft_keeps_working_with_the_selected_legacy_network() {
         recovery(&database, id).draft,
         Some(ds_sync_store::ProfileDraft::Checkpoint { .. })
     ));
+}
+
+fn private_scratch(path: &std::path::Path) {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path).unwrap();
 }

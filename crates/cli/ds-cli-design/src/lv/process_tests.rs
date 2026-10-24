@@ -52,10 +52,10 @@ fn actual_network_process_retains_historical_cli_bytes_and_ordered_failures() {
     let source = directory.path().join("request.json");
     let output = directory.path().join("result.json");
     let request = include_bytes!(
-        "../../../../../../ds-network/crates/ds-network/tests/fixtures/native-engine-boundary/v1/mixed.request.json"
+        "../../tests/fixtures/native-engine-boundary/v1/mixed.request.json"
     );
     let golden = include_bytes!(
-        "../../../../../../ds-network/crates/ds-network/tests/fixtures/native-engine-boundary/v1/mixed.insertion.result.json"
+        "../../tests/fixtures/native-engine-boundary/v1/mixed.insertion.result.json"
     );
     std::fs::write(&source, request).unwrap();
     let receipt = execute(&source, &output).unwrap();

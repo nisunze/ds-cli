@@ -1,0 +1,31 @@
+{
+  "success": true,
+  "message": "Messaging configuration",
+  "data": {
+    "available": true,
+    "schema_version": 1,
+    "max_message_bytes": 4000,
+    "default_page_size": 40,
+    "max_page_size": 50,
+    "max_attachments_per_message": 4,
+    "max_attachment_bytes": 10485760,
+    "max_message_attachment_bytes": 20971520,
+    "allowed_attachment_types": [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp"
+    ],
+    "max_people_results": 25,
+    "min_people_query_length": 3,
+    "name_search_supported": true,
+    "wire_contract": "messages-v1",
+    "max_installations_per_user": 10,
+    "push_target_kind": "firebase_installation_id",
+    "push_preview_enabled": false,
+    "append_only": true
+  },
+  "timestamp": "2026-07-30T00:00:00Z",
+  "service": "data-solutions-backend",
+  "version": "1.0.0"
+}

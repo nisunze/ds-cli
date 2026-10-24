@@ -140,10 +140,7 @@ fn context() -> Context {
 
 fn fixture() -> ds_grid_exchange::package::GridPackage {
     use ds_grid_engine::{GridSession, clearance_criteria::*, feature_code_ops::*};
-    let source = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../../ds-network/crates/ds-grid-exchange/tests/fixtures/native-engine-boundary/v1/model.dsgrid"
-    ));
+    let source = include_bytes!("../fixtures/native-engine-boundary/v1/model.dsgrid");
     let current = ds_grid_exchange::package_migration::migrate(source).unwrap();
     let mut package = ds_grid_exchange::package::unpack(&current.bytes).unwrap();
     // Derived span pins belong to the original fixture's authored state.
@@ -364,10 +361,7 @@ fn real_engine_preserves_clearance_bytes_render_and_typed_refusals() {
     let blank = ds_grid_exchange::create_blank_model(&Default::default())
         .unwrap()
         .bytes;
-    let unconfigured = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../../ds-network/crates/ds-grid-exchange/tests/fixtures/native-engine-boundary/v1/model.dsgrid"
-    ));
+    let unconfigured = include_bytes!("../fixtures/native-engine-boundary/v1/model.dsgrid");
     for refused in [blank.as_slice(), unconfigured.as_slice()] {
         std::fs::write(&path, refused).unwrap();
         let args = input(&["--package", path.to_str().unwrap()]);

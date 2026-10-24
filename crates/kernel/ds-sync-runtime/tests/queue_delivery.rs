@@ -3,6 +3,8 @@
 //! whose prerequisite was refused parks with a typed reason. Driven through the
 //! real `StoreHost` over a real store on disk, against the deterministic fakes.
 
+#[path = "../src/test_directory.rs"]
+mod test_directory;
 use ds_sync_runtime::fakes::{
     self, local_row, record_head, FakeGateway, FakeProducer, FakeReads, SharedWorld,
 };
@@ -32,7 +34,7 @@ struct Queue {
 
 impl Queue {
     fn new() -> Self {
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = test_directory::tempdir().expect("temp dir");
         let store = open_store(&dir.path().join("store.sqlite")).expect("open store");
         Queue {
             reads_root: dir.path().join("sync-downloads"),

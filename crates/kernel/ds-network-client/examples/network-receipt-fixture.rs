@@ -78,10 +78,10 @@ fn main() {
             let request = fs::read(&args[2]).unwrap();
             let call: Value = serde_json::from_slice(&request).unwrap();
             assert_eq!(call["call"]["operation"], "lv_processor_catalog");
-            let catalog: Value = serde_json::from_str(include_str!(
-                "../../../../../ds-network/crates/ds-network-contracts/src/processor_presets.json"
-            ))
-            .unwrap();
+            // Fixture snapshot of ds-network-contracts/src/processor_presets.json;
+            // this test addon must build without the producer's implementation tree.
+            let catalog: Value =
+                serde_json::from_str(include_str!("fixtures/processor_presets.json")).unwrap();
             let result = serde_json::to_vec(&json!({"schema":"ds.grid.native-operation-result/v1","operation":"lv_processor_catalog","engine_version":"fixture-core","package_sha256":null,"result":{"schema":"ds.lv.processor-catalog/v1","catalog":catalog},"artifacts":[]})).unwrap();
             fs::write(Path::new(&args[4]).join("result.json"), &result).unwrap();
             println!(

@@ -542,7 +542,7 @@ mod tests {
         // handed the Server work for two projects those two are the answer,
         // read from the rows on disk with no upstream anywhere. It is an
         // answer about this host's own work, not a gate on anything.
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let database = dir.path().join("store.sqlite");
         let sessions = sessions(database.clone());
         assert_eq!(sessions.durable_projects().unwrap(), Vec::<String>::new());

@@ -191,9 +191,10 @@ mod tests {
             panic!("Explicit reference exchange must never acquire through a provider")
         }
     }
+    // Consumer-owned sealed reference bytes copied from ds-solar; see fixtures/solar/README.md.
     fn fixture(path: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../../ds-solar/fixtures")
+            .join("../../../tests/fixtures/solar")
             .join(path)
     }
     fn host(root: &std::path::Path, change_after: usize) -> (NativeHost, String, PathBuf) {
@@ -244,7 +245,7 @@ mod tests {
         assert_eq!(result["source_fingerprint"], "b".repeat(64));
         assert!(execute(&host, json!({"operation":"reference_plan","command":{"workspace_handle":handle,"city_id":"aderm_bere","output":output}})).unwrap_err().contains("already exists"));
         assert!(!ws.join("solar-rust/v1/weather-cache").exists());
-        let request = import_request(&handle, &fixture("reference/aderm_bere"));
+        let request = import_request(&handle, &fixture("aderm_bere/reference"));
         let first = execute(&host, request.clone()).unwrap();
         assert_eq!(first["acquired"], true);
         let second = execute(&host, request).unwrap();
@@ -300,7 +301,7 @@ mod tests {
         assert!(
             execute(
                 &host,
-                import_request(&handle, &fixture("reference/aderm_bere"))
+                import_request(&handle, &fixture("aderm_bere/reference"))
             )
             .unwrap_err()
             .contains("verification")
@@ -314,7 +315,7 @@ mod tests {
         assert!(
             execute(
                 &host,
-                import_request(&handle, &fixture("reference/aderm_gagal"))
+                import_request(&handle, &fixture("aderm_gagal/reference"))
             )
             .is_err()
         );
@@ -322,7 +323,7 @@ mod tests {
         std::fs::create_dir(&bundle).unwrap();
         for name in ds_solar_host::cache::ARTIFACT_NAMES {
             std::fs::copy(
-                fixture("reference/aderm_bere").join(name),
+                fixture("aderm_bere/reference").join(name),
                 bundle.join(name),
             )
             .unwrap();

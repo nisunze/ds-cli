@@ -2,6 +2,8 @@
 //! when it is published, read by the gallery, removed by a clean — and
 //! absent, never an error, in a store written before the table existed.
 
+#[path = "../src/test_directory.rs"]
+mod test_directory;
 use ds_command_kernel::survey_moments::{MediaRecord, SyncState, RECORD_SCHEMA};
 use ds_command_kernel::sync_store::Fence;
 use ds_sync_store::Store;
@@ -41,7 +43,7 @@ fn record(project: &str, path: &str, state: SyncState, updated: u64) -> MediaRec
 
 #[test]
 fn records_are_written_replaced_read_and_removed_per_project() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let mut store = Store::open(&path).unwrap();
     let a = record("p", "p/forms/poles/e1/a.jpg", SyncState::Waiting, 5);
@@ -110,7 +112,7 @@ fn records_are_written_replaced_read_and_removed_per_project() {
 
 #[test]
 fn a_store_without_the_table_holds_no_media() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     {
         let connection = rusqlite::Connection::open(&path).unwrap();

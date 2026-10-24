@@ -103,7 +103,7 @@ fn real_profile_package_open_rebind_and_refusals() {
     );
     let root = private_root();
     let scratch = root.path().join("scratch");
-    fs::create_dir(&scratch).unwrap();
+    private_scratch(&scratch);
     let database = root.path().join("state.sqlite");
     let sessions = Sessions::default();
     if std::env::var("DS_PROFILE_PACKAGE_CASE").as_deref() == Ok("old") {
@@ -205,7 +205,7 @@ fn real_profile_package_open_rebind_and_refusals() {
     for stop in [3, 4] {
         let root = private_root();
         let scratch = root.path().join("scratch");
-        fs::create_dir(&scratch).unwrap();
+        private_scratch(&scratch);
         let database = root.path().join("state.sqlite");
         let count = Cell::new(0);
         let error = sessions
@@ -248,7 +248,7 @@ fn real_profile_edits_are_durable_exact_recoverable_and_save_excluded() {
     assert!(std::env::var_os("DS_NETWORK_ENGINE_BIN").is_some());
     let root = private_root();
     let scratch = root.path().join("scratch");
-    fs::create_dir(&scratch).unwrap();
+    private_scratch(&scratch);
     let database = root.path().join("state.sqlite");
     let sessions = Sessions::default();
     let execute = |sessions: &Sessions, request| {
@@ -511,7 +511,7 @@ fn real_large_model_edits_retain_authored_rows_without_results() {
     assert!(std::env::var_os("DS_NETWORK_ENGINE_BIN").is_some());
     let root = private_root();
     let scratch = root.path().join("scratch");
-    fs::create_dir(&scratch).unwrap();
+    private_scratch(&scratch);
     let database = root.path().join("state.sqlite");
     let sessions = Sessions::default();
     let execute = |sessions: &Sessions, request| {
@@ -637,4 +637,15 @@ fn real_large_model_edits_retain_authored_rows_without_results() {
         journal_of(&database, &id).header.history,
         receipt["history"]
     );
+}
+
+fn private_scratch(path: &std::path::Path) {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path).unwrap();
 }

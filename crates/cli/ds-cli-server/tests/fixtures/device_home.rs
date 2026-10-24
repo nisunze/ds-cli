@@ -59,7 +59,7 @@ const ZERO_KEY: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 impl DeviceHome {
     /// A machine signed in on `lane`, holding `device_id`.
     pub fn linked(lane: &str, device_id: &str) -> Self {
-        let home = tempfile::tempdir().expect("private config home");
+        let home = ds_cli_contract::testing::private_tempdir("core-test-");
         let audience = audience(lane);
         let machine = Self {
             home,

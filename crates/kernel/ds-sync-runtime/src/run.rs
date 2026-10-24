@@ -1066,7 +1066,7 @@ mod publication_tests {
 
     #[test]
     fn authority_failure_codes_survive_native_restart_without_changing_the_verdict() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = crate::test_directory::tempdir().unwrap();
         let database = directory.path().join("sync.sqlite3");
         let fence = store::Fence {
             account: "account".into(),

@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn native_wrapper_returns_owner_errors_exactly_and_releases_admission() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = crate::test_directory::tempdir().unwrap();
         let path = directory.path().join("store.sqlite");
         let error = with_component_removal_admission::<()>(
             &path,
@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn invalid_native_lane_never_calls_selection_removal() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = crate::test_directory::tempdir().unwrap();
         let path = directory.path().join("store.sqlite");
         let mut identity = identity();
         identity.principal.lane = "foreign".into();

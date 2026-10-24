@@ -78,7 +78,7 @@ mod tests {
     use std::io::{Seek, SeekFrom, Write};
     #[test]
     fn missing_and_healthy_stores_are_not_created_or_modified() {
-        let root = tempfile::tempdir().unwrap();
+        let root = crate::test_directory::tempdir().unwrap();
         let path = root.path().join("store.sqlite");
         assert_eq!(assess(&path).unwrap(), CacheHealth::Missing);
         assert!(!path.exists());
@@ -89,7 +89,7 @@ mod tests {
     }
     #[test]
     fn broken_btree_page_is_positive_structural_evidence_without_repair() {
-        let root = tempfile::tempdir().unwrap();
+        let root = crate::test_directory::tempdir().unwrap();
         let path = root.path().join("store.sqlite");
         let store = crate::Store::open(&path).unwrap();
         let c = store.connection_for_test();
@@ -114,14 +114,14 @@ mod tests {
     }
     #[test]
     fn invalid_sqlite_format_is_positive_evidence() {
-        let root = tempfile::tempdir().unwrap();
+        let root = crate::test_directory::tempdir().unwrap();
         let path = root.path().join("store.sqlite");
         std::fs::write(&path, b"not a SQLite cache").unwrap();
         assert_eq!(assess(&path).unwrap(), CacheHealth::StructurallyCorrupt);
     }
     #[test]
     fn healthy_constraint_failure_is_not_corruption() {
-        let root = tempfile::tempdir().unwrap();
+        let root = crate::test_directory::tempdir().unwrap();
         let path = root.path().join("store.sqlite");
         let c = Connection::open(&path).unwrap();
         c.execute_batch("CREATE TABLE constrained(value INTEGER CHECK(value>0)); PRAGMA ignore_check_constraints=ON; INSERT INTO constrained VALUES(-1);").unwrap();
@@ -147,7 +147,7 @@ mod tests {
     }
     #[test]
     fn incompatible_schema_and_unknown_healthy_database_remain_sound() {
-        let root = tempfile::tempdir().unwrap();
+        let root = crate::test_directory::tempdir().unwrap();
         let path = root.path().join("store.sqlite");
         let store = crate::Store::open(&path).unwrap();
         store

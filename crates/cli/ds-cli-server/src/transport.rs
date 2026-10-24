@@ -633,7 +633,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_socket_path_that_is_not_this_accounts_socket_is_refused_before_connecting() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let absent = call(
             &socket_path(dir.path()),
             "GET",
@@ -664,7 +664,7 @@ mod tests {
     #[test]
     fn one_host_per_state_directory_and_a_dead_hosts_socket_is_replaced() {
         use std::os::unix::fs::{FileTypeExt, PermissionsExt};
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let first = listen(dir.path()).expect("the first host binds");
         let socket = socket_path(dir.path());
         let meta = std::fs::symlink_metadata(&socket).unwrap();

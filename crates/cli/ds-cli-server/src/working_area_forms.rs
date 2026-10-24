@@ -119,7 +119,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn the_choice_is_per_project_survives_restart_and_never_defaults_to_all() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let upstream = fixture_upstream("uid-a");
         let allowed = Arc::new(AtomicBool::new(true));
         let server = start(dir.path(), upstream.clone(), allowed.clone()).await;

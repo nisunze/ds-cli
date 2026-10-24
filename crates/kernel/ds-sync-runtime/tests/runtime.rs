@@ -8,6 +8,8 @@
 //! by a second host; a transfer failure; and a cancellation. They run the same
 //! `run()` every host runs, so a drift between hosts is a drift here.
 
+#[path = "../src/test_directory.rs"]
+mod test_directory;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -167,7 +169,7 @@ struct Harness {
 
 impl Harness {
     fn new() -> Self {
-        let dir = tempfile::tempdir().expect("temp dir");
+        let dir = test_directory::tempdir().expect("temp dir");
         let store = open_store(&dir.path().join("sync").join("store.sqlite")).expect("open store");
         let world = fakes::world();
         fakes::lock(&world)

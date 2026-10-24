@@ -101,7 +101,7 @@ fn malformed_and_cross_lane_requests_stop_before_database_or_store_effects() {
                 "component_request_invalid"
             );
         }
-        let base = tempfile::tempdir().unwrap();
+        let base = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
         let database = base.path().join("absent.sqlite");
         let mut crossed = request(activate, 0);
         match &mut crossed {
@@ -137,8 +137,8 @@ fn malformed_and_cross_lane_requests_stop_before_database_or_store_effects() {
 }
 #[test]
 fn absent_previous_and_corrupt_receipts_preserve_state() {
-    let base = tempfile::tempdir().unwrap();
-    let runtime = tempfile::tempdir().unwrap();
+    let base = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
+    let runtime = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
     let database = runtime.path().join("store.sqlite");
     let open = |component, channel: &str| ModuleStore::new(base.path(), component, channel);
     let store = open(ModuleComponent::Network, "canary").unwrap();
@@ -276,7 +276,7 @@ async fn route(
 }
 #[tokio::test]
 async fn actual_routes_refuse_foreign_peers_excessive_requests_and_uncaptured_jobs() {
-    let runtime = tempfile::tempdir().unwrap();
+    let runtime = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
     let app = app(runtime.path());
     let store = ds_compute_runtime::open(&app.database).unwrap();
     let legacy = serde_json::json!({"id":"a".repeat(64),"owner":identity().owner,"lane":"canary","input_sha256":"b".repeat(64),"engine":"lv_processing","input_tag":"ds.lv.process/v1","phase":"queued","attempts":0,"created_at_ms":1,"updated_at_ms":1,"worker":null,"lease_until_ms":0,"result_sha256":null,"error":null});
@@ -317,8 +317,8 @@ fn qualified_staged_network_activates_reopens_and_rolls_back_without_probes() {
         std::env::var_os("DS_COMPONENT_LIFECYCLE_STAGE_TREE")
             .expect("select qualified Network canary tree"),
     );
-    let base = tempfile::tempdir().unwrap();
-    let runtime = tempfile::tempdir().unwrap();
+    let base = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
+    let runtime = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
     let database = runtime.path().join("store.sqlite");
     let store = ModuleStore::new(base.path(), ModuleComponent::Network, "canary").unwrap();
     let root = base.path().join("network/canary");

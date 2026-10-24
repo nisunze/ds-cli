@@ -140,7 +140,7 @@ fn wait_complete(app: &App, job: &Job) -> Job {
 #[tokio::test]
 async fn result_wait_completion_race_fanout_and_immediate_bytes_are_durable() {
     use base64::Engine;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = ds_cli_contract::testing::private_tempdir("core-wait-");
     let (app, _, mut checked, job) = wait_fixture(dir.path());
     let first = wait_call(app.clone(), &job.id);
     wait_registered(&mut checked).await;
@@ -183,7 +183,7 @@ async fn result_wait_completion_race_fanout_and_immediate_bytes_are_durable() {
 
 #[tokio::test]
 async fn result_wait_queued_cancellation_wakes_without_holding_request_door() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = ds_cli_contract::testing::private_tempdir("core-wait-");
     let (mut app, _, mut checked, job) = wait_fixture(dir.path());
     app.requests = Arc::new(Door::new(1));
     let observer = wait_call(app.clone(), &job.id);
@@ -226,7 +226,7 @@ async fn result_wait_queued_cancellation_wakes_without_holding_request_door() {
 
 #[tokio::test]
 async fn result_wait_runtime_failure_wakes_after_failed_commit() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = ds_cli_contract::testing::private_tempdir("core-wait-");
     let (app, _, mut checked, job) = wait_fixture(dir.path());
     let observer = wait_call(app.clone(), &job.id);
     wait_registered(&mut checked).await;
@@ -258,7 +258,7 @@ async fn result_wait_runtime_failure_wakes_after_failed_commit() {
 
 #[tokio::test]
 async fn result_wait_timeout_detach_refusal_and_revocation_preserve_job() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = ds_cli_contract::testing::private_tempdir("core-wait-");
     let (app, auth, mut checked, job) = wait_fixture(dir.path());
     let (status, refusal) = call(
         app.clone(),
@@ -328,7 +328,7 @@ async fn result_wait_timeout_detach_refusal_and_revocation_preserve_job() {
 
 #[tokio::test]
 async fn result_wait_budget_is_separate_and_released_on_detach() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = ds_cli_contract::testing::private_tempdir("core-wait-");
     let (mut app, _, mut checked, job) = wait_fixture(dir.path());
     app.requests = Arc::new(Door::new(1));
     let mut observers = Vec::new();
@@ -389,7 +389,7 @@ async fn wait_socket(
 #[cfg(unix)]
 async fn result_wait_socket_disconnect_and_restart_detach_without_cancel() {
     use std::io::Write;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = ds_cli_contract::testing::private_tempdir("core-wait-");
     let (app, _, mut checked, job) = wait_fixture(dir.path());
     let (stop, serving) = wait_socket(&app, dir.path()).await;
     let mut stream = std::os::unix::net::UnixStream::connect(&app.connection.socket).unwrap();
@@ -457,7 +457,7 @@ async fn result_wait_socket_disconnect_and_restart_detach_without_cancel() {
 #[tokio::test]
 #[cfg(unix)]
 async fn result_wait_cli_file_receipt_and_timeout_are_truthful() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = ds_cli_contract::testing::private_tempdir("core-wait-");
     let (app, _, mut checked, job) = wait_fixture(dir.path());
     let (stop, serving) = wait_socket(&app, dir.path()).await;
     let output = dir.path().join("result.json");
@@ -510,7 +510,7 @@ async fn result_wait_cli_file_receipt_and_timeout_are_truthful() {
 #[ignore = "requires an explicitly selected compatible native Network executable"]
 async fn result_wait_real_network_completion_preserves_admitted_pin() {
     use base64::Engine;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = ds_cli_contract::testing::private_tempdir("core-wait-");
     let mut app = app(dir.path(), true);
     app.requests = Arc::new(Door::new(1));
     let (checked, mut receiver) = tokio::sync::mpsc::unbounded_channel();
@@ -578,7 +578,7 @@ async fn result_wait_real_network_completion_preserves_admitted_pin() {
 #[tokio::test]
 async fn result_wait_running_cancel_and_post_wait_visibility_fence() {
     for mutate_scope in [false, true] {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-wait-");
         let (app, _, mut checked, job) = wait_fixture(dir.path());
         runtime::open(&app.database)
             .unwrap()

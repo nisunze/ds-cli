@@ -81,7 +81,7 @@ mod tests {
     use super::*;
     #[test]
     fn keepalive_renews_during_io_and_fences_after_ownership_loss() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::test_directory::tempdir().unwrap();
         let shared = crate::open_store(&dir.path().join("sync.sqlite")).unwrap();
         let fence = store::Fence {
             account: "a".into(),

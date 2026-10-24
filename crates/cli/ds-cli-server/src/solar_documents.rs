@@ -232,7 +232,7 @@ mod tests {
     #[ignore = "requires locally installed Pandoc and LibreOffice"]
     fn installed_tools_finish_word_with_embedded_image_and_pdf() {
         use base64::Engine;
-        let directory = tempfile::tempdir().unwrap();
+        let directory = ds_cli_contract::testing::private_tempdir("core-test-");
         let image = base64::engine::general_purpose::STANDARD.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=").unwrap();
         let copy = || ds_command_kernel::solar_report_bundle::RenderCopy {
             markdown:

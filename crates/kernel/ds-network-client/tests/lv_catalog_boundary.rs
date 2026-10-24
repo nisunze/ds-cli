@@ -127,7 +127,7 @@ fn the_actual_engine_answers_the_catalogue_it_offers() {
     let shipped: Value = serde_json::from_str(
         &fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../../ds-network/crates/ds-network-contracts/src/processor_presets.json"
+            "/examples/fixtures/processor_presets.json"
         ))
         .unwrap(),
     )

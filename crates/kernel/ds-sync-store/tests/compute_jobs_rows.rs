@@ -8,6 +8,8 @@
 //! about a real SQLite file, not about a serde attribute. These tests write
 //! and read actual rows.
 
+#[path = "../src/test_directory.rs"]
+mod test_directory;
 use ds_command_kernel::compute_jobs::{
     EngineKind, EngineLane, EnginePin, EnginePinSource, Event, Job, Phase,
 };
@@ -105,7 +107,7 @@ fn pin(job: &Job) -> EnginePin {
 #[test]
 fn admission_captures_once_inside_the_insert_and_never_for_duplicate_or_full_queue() {
     use std::cell::Cell;
-    let directory = tempfile::tempdir().unwrap();
+    let directory = test_directory::tempdir().unwrap();
     let mut store = store(directory.path());
     let calls = Cell::new(0);
     let first = job(Some(context()));
@@ -149,7 +151,7 @@ fn admission_captures_once_inside_the_insert_and_never_for_duplicate_or_full_que
 
 #[test]
 fn historical_and_misbound_pins_are_parked_without_blocking_valid_work_or_cancellation() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = test_directory::tempdir().unwrap();
     drop(store(directory.path()));
     let mut historical = nth("project-a", 1);
     historical.engine_pin = None;
@@ -266,7 +268,7 @@ fn insert_row(directory: &std::path::Path, job: &Job, input: &[u8]) {
 
 #[test]
 fn a_context_survives_submission_restart_claim_and_completion() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let submitted = store(directory.path())
         .submit_job(&job(Some(context())), b"input", roomy())
         .expect("submit");
@@ -308,7 +310,7 @@ fn a_context_survives_submission_restart_claim_and_completion() {
 
 #[test]
 fn a_row_written_before_the_context_existed_reads_but_is_never_claimed() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     drop(store(directory.path()));
     insert_legacy(
         directory.path(),
@@ -351,7 +353,7 @@ fn a_row_written_before_the_context_existed_reads_but_is_never_claimed() {
 
 #[test]
 fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_never_does() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     drop(store(directory.path()));
     insert_legacy(
         directory.path(),
@@ -457,7 +459,7 @@ fn a_legacy_solar_row_recovers_from_its_sealed_input_and_a_transformer_row_never
 /// allocation the contract forbids, paid every time for nothing.
 #[test]
 fn reopening_a_queue_reads_only_the_rows_that_still_need_a_context() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let mut store = store(directory.path());
     store
         .submit_job(&job(Some(context())), b"sealed for project-a", roomy())
@@ -510,7 +512,7 @@ fn reopening_a_queue_reads_only_the_rows_that_still_need_a_context() {
 
 #[test]
 fn a_transformer_row_written_before_contexts_is_named_unrecoverable_not_guessed() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     drop(store(directory.path()));
     insert_legacy(
         directory.path(),
@@ -568,7 +570,7 @@ fn a_transformer_row_written_before_contexts_is_named_unrecoverable_not_guessed(
 
 #[test]
 fn a_row_written_before_contexts_is_never_adopted_by_a_later_submission() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     drop(store(directory.path()));
     insert_legacy(
         directory.path(),
@@ -632,7 +634,7 @@ fn a_row_written_before_contexts_is_never_adopted_by_a_later_submission() {
 
 #[test]
 fn a_context_carrying_row_is_still_fenced_by_owner_and_lane() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     store(directory.path())
         .submit_job(&job(Some(context())), b"input", roomy())
         .expect("submit");
@@ -646,7 +648,7 @@ fn a_context_carrying_row_is_still_fenced_by_owner_and_lane() {
 
 #[test]
 fn two_projects_overlap_on_one_connection_and_neither_can_read_the_other() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     {
         let mut store = store(directory.path());
         store
@@ -728,7 +730,7 @@ fn two_projects_overlap_on_one_connection_and_neither_can_read_the_other() {
 
 #[test]
 fn a_narrowed_page_is_not_shortened_by_another_projects_rows() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let mut store = store(directory.path());
     // A's one row is the oldest; B's three are newer.
     store
@@ -763,7 +765,7 @@ fn a_narrowed_page_is_not_shortened_by_another_projects_rows() {
 
 #[test]
 fn cancelling_another_projects_job_answers_exactly_what_a_missing_row_answers() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let mut store = store(directory.path());
     store
         .submit_job(&job(Some(context())), b"input", roomy())
@@ -789,7 +791,7 @@ fn cancelling_another_projects_job_answers_exactly_what_a_missing_row_answers() 
 
 #[test]
 fn a_resubmitted_key_may_not_move_its_project_or_operation() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let mut store = store(directory.path());
     store
         .submit_job(&job(Some(context())), b"input", roomy())
@@ -831,7 +833,7 @@ fn a_resubmitted_key_may_not_move_its_project_or_operation() {
 
 #[test]
 fn a_row_without_a_context_is_never_written_by_this_build() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let mut store = store(directory.path());
     assert!(store
         .submit_job(&job(None), b"input", roomy())
@@ -853,7 +855,7 @@ fn a_row_without_a_context_is_never_written_by_this_build() {
 
 #[test]
 fn a_submission_is_bounded_inside_the_write_transaction() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let mut store = store(directory.path());
     let tight = Limits {
         per_project_queued: 2,
@@ -950,7 +952,7 @@ fn a_submission_is_bounded_inside_the_write_transaction() {
 
 #[test]
 fn the_census_names_running_and_queued_work_by_project_only() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let mut store = store(directory.path());
     store
         .submit_job(&job(Some(context())), b"input", roomy())
@@ -1028,7 +1030,7 @@ fn the_census_names_running_and_queued_work_by_project_only() {
 /// never run.
 #[test]
 fn a_row_whose_context_does_not_read_is_in_no_census_and_in_no_ones_way() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let mut store = store(directory.path());
     let mut wedged = job_b();
     wedged.context.as_mut().expect("context").project = String::new();
@@ -1079,7 +1081,7 @@ fn a_row_whose_context_does_not_read_is_in_no_census_and_in_no_ones_way() {
 
 #[test]
 fn a_claim_skips_the_project_over_its_share_and_takes_the_next_that_can_run() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let mut store = store(directory.path());
     let share = Limits {
         global_running: 4,
@@ -1146,7 +1148,7 @@ fn a_claim_skips_the_project_over_its_share_and_takes_the_next_that_can_run() {
 
 #[test]
 fn concurrent_claims_keep_the_share_because_the_census_is_read_in_the_claim() {
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let path = directory.path().join("store.sqlite");
     {
         let mut store = store(directory.path());
@@ -1198,7 +1200,7 @@ fn concurrent_claims_keep_the_share_because_the_census_is_read_in_the_claim() {
 fn a_retired_result_frees_only_the_bytes_and_keeps_the_row_as_evidence() {
     // WHY: a Solar publication that lost is freed the way a report batch is —
     // its bytes leave, the job row stays — and asking again frees nothing.
-    let directory = tempfile::tempdir().expect("temp");
+    let directory = test_directory::tempdir().expect("temp");
     let mut store = store(directory.path());
     store
         .submit_job(&job(Some(context())), b"input", roomy())

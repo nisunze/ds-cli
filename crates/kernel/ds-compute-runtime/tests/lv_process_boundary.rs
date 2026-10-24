@@ -1,5 +1,7 @@
 //! The durable host runs detached Network engineering and retains its admitted
 //! inputs/context across execution, missing-component failures and cancellation.
+#[path = "../src/test_directory.rs"]
+mod test_directory;
 use ds_command_kernel::{
     compute_jobs::{EngineKind, Event, Phase},
     execution_context::{Limits, Principal},
@@ -77,7 +79,7 @@ fn required(name: &str) -> PathBuf {
 
 #[test]
 fn current_schema_engine_name_and_admission_pin_are_persisted_together() {
-    let root = tempfile::tempdir().unwrap();
+    let root = test_directory::tempdir().unwrap();
     let path = root.path().join("store.sqlite");
     let identity = identity();
     let input = request();
@@ -102,7 +104,7 @@ fn current_schema_engine_name_and_admission_pin_are_persisted_together() {
 
 #[test]
 fn a_replayed_input_cannot_switch_its_admitted_schema() {
-    let root = tempfile::tempdir().unwrap();
+    let root = test_directory::tempdir().unwrap();
     let source = root.path().join("source.sqlite");
     let replay = root.path().join("replay.sqlite");
     let identity = identity();
@@ -146,7 +148,7 @@ fn a_replayed_input_cannot_switch_its_admitted_schema() {
 fn detached_runtime_preserves_historical_batch_bytes_and_context() {
     let fixtures = required("DS_COMPUTE_NETWORK_FIXTURES");
     let goldens = required("DS_COMPUTE_NETWORK_GOLDENS");
-    let root = tempfile::tempdir().unwrap();
+    let root = test_directory::tempdir().unwrap();
     let path = root.path().join("store.sqlite");
     let identity = identity();
     for name in ["mixed", "approved"] {
@@ -217,7 +219,7 @@ fn isolated(engine: &Path, mode: &str, marker: Option<&Path>) {
 #[test]
 #[ignore = "executes the missing-component path in a separate process"]
 fn missing_retained_component_fails_execution_and_retains_durable_work() {
-    let root = tempfile::tempdir().unwrap();
+    let root = test_directory::tempdir().unwrap();
     let retained = root.path().join("retained-network");
     fs::copy(required("DS_NETWORK_ENGINE_BIN"), &retained).unwrap();
     isolated(&retained, "missing", None);
@@ -246,7 +248,7 @@ fn cancelling_a_running_component_keeps_the_terminal_context_and_input() {
 fn isolated_failure_or_cancel() {
     use std::time::{Duration, Instant};
     let mode = env::var("DS_COMPUTE_CASE").expect("explicit case");
-    let root = tempfile::tempdir().unwrap();
+    let root = test_directory::tempdir().unwrap();
     let path = root.path().join("store.sqlite");
     let identity = identity();
     let input = request();

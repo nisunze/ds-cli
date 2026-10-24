@@ -1,3 +1,5 @@
+#[path = "../src/test_directory.rs"]
+mod test_directory;
 use ds_command_kernel::{
     sync::engines::ENGINES,
     sync_store::{
@@ -71,7 +73,7 @@ fn settle(store: &mut Store, row: &ArtifactRow, outcome: &str, code: Option<&str
 #[test]
 fn exact_retry_survives_restart_keeps_bytes_and_refuses_crossed_fences_and_live_workers() {
     for engine in ENGINES {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = test_directory::tempdir().unwrap();
         let database = dir.path().join("sync.sqlite");
         let mut store = Store::open(&database).unwrap();
         let original = row(engine, "publication", &["one"]);
@@ -182,7 +184,7 @@ fn exact_retry_survives_restart_keeps_bytes_and_refuses_crossed_fences_and_live_
 fn sanitation_pins_the_complete_snapshot_and_archives_only_complete_supersession_without_deleting_bytes(
 ) {
     for engine in ENGINES {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = test_directory::tempdir().unwrap();
         let database = dir.path().join("sync.sqlite");
         let mut store = Store::open(&database).unwrap();
         let old = row(engine, "old", &["one", "two"]);
@@ -287,7 +289,7 @@ fn terminal_source_integrity_permission_and_untyped_failures_never_reopen() {
                 "The producing engine build is not admitted",
             ),
         ] {
-            let dir = tempfile::tempdir().unwrap();
+            let dir = test_directory::tempdir().unwrap();
             let mut store = Store::open(&dir.path().join("sync.sqlite")).unwrap();
             let row = row(engine, "current", &["one"]);
             seal(&mut store, row.clone());

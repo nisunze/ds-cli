@@ -394,7 +394,7 @@ mod publication_tests {
     }
     #[test]
     fn the_server_retains_under_its_captured_owner_without_a_gateway() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let path = dir.path().join("server.sqlite");
         let host = retention(
             Arc::new(LocalAuth(Arc::new(AtomicBool::new(true)))),
@@ -422,7 +422,7 @@ mod publication_tests {
     }
     #[test]
     fn a_changed_server_owner_or_foreign_session_identity_retains_nothing() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let path = dir.path().join("server.sqlite");
         let refused = retention(
             Arc::new(LocalAuth(Arc::new(AtomicBool::new(false)))),
@@ -473,7 +473,7 @@ mod workspace_selection_tests {
     }
     #[test]
     fn actual_solar_application_selection_reopens_the_same_sqlite_custom_receipt() {
-        let temp = tempfile::tempdir().unwrap();
+        let temp = ds_cli_contract::testing::private_tempdir("core-test-");
         let database = temp.path().join("core.sqlite");
         let data = temp.path().join("application");
         let effects = Arc::new(provider(database.clone(), Arc::new(|| Ok(()))));
@@ -503,7 +503,7 @@ mod workspace_selection_tests {
     }
     #[test]
     fn missing_selection_read_and_foreign_or_signed_out_scope_create_no_store() {
-        let temp = tempfile::tempdir().unwrap();
+        let temp = ds_cli_contract::testing::private_tempdir("core-test-");
         let path = temp.path().join("core.sqlite");
         let allowed = provider(path.clone(), Arc::new(|| Ok(())));
         assert!(allowed.read("project-a").unwrap().is_none());
@@ -515,7 +515,7 @@ mod workspace_selection_tests {
     }
     #[test]
     fn late_owner_refusal_does_not_adopt_another_scopes_selection() {
-        let temp = tempfile::tempdir().unwrap();
+        let temp = ds_cli_contract::testing::private_tempdir("core-test-");
         let allowed = Arc::new(AtomicBool::new(true));
         let current = allowed.clone();
         let effects = provider(
@@ -561,7 +561,7 @@ mod workspace_selection_tests {
         Arc<WorkspaceSelections>,
         ds_solar_native::workspace::NativeSolarWorkspace,
     ) {
-        let temp = tempfile::tempdir().unwrap();
+        let temp = ds_cli_contract::testing::private_tempdir("core-test-");
         let effects = Arc::new(provider(
             temp.path().join("core.sqlite"),
             Arc::new(|| Ok(())),
@@ -578,7 +578,7 @@ mod workspace_selection_tests {
     }
     #[test]
     fn native_selection_absence_and_closed_requests_have_no_default_or_sqlite_effect() {
-        let temp = tempfile::tempdir().unwrap();
+        let temp = ds_cli_contract::testing::private_tempdir("core-test-");
         let path = temp.path().join("core.sqlite");
         let effects = Arc::new(provider(path.clone(), Arc::new(|| Ok(()))));
         let host = NativeHost::headless(temp.path().join("native"))

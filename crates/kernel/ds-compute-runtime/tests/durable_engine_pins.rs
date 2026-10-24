@@ -2,6 +2,8 @@
 //! receipts live only in ordinary scratch; producer artifacts remain exact.
 #![cfg(unix)]
 mod common;
+#[path = "../src/test_directory.rs"]
+mod test_directory;
 use ds_cli_exec::{addons, External};
 use ds_command_kernel::{
     compute_jobs::{Event, Phase},
@@ -180,7 +182,7 @@ fn admitted_program_survives_lane_activation_restart_retry_and_cancellation() {
     assert!(std::env::var_os("DS_NETWORK_ENGINE_BIN").is_none());
     assert!(std::env::var_os("DS_SOLAR_ENGINE_BIN").is_none());
     for solar in [false, true] {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = test_directory::tempdir().unwrap();
         let base = directory.path().join("addons");
         let database = directory.path().join("store.sqlite");
         let host = identity();

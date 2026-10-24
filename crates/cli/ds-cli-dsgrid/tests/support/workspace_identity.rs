@@ -11,15 +11,9 @@ fn real_engine_identity_matches_full_package_crs_revision_digest_and_authored_he
     })
     .unwrap()
     .bytes;
-    let fixture = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../../ds-network/crates/ds-grid-exchange/tests/fixtures/native-engine-boundary/v1/model.dsgrid"
-    ));
+    let fixture = include_bytes!("../fixtures/native-engine-boundary/v1/model.dsgrid");
     let current = ds_grid_exchange::package_migration::migrate(fixture).unwrap();
-    let historical = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../../ds-network/crates/ds-grid-exchange/tests/fixtures/ground-basis-schema4/schema4.dsgrid"
-    ));
+    let historical = include_bytes!("../fixtures/ground-basis-schema4/schema4.dsgrid");
     // Existing read-through migration is owner behavior and retains source bytes.
     for bytes in [
         blank.as_slice(),

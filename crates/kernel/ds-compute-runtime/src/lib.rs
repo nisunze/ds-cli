@@ -28,6 +28,9 @@
 //! discarding hours of durable work over one unreachable moment is loss with
 //! no gain. A host that reaches upstream in `authorize` therefore delays new
 //! work while it cannot answer; it can never destroy work already done.
+#[cfg(test)]
+mod test_directory;
+
 mod claim;
 mod component_removal;
 mod engine_pins;
@@ -1239,7 +1242,7 @@ mod tests {
 
     #[test]
     fn server_state_directory_uses_an_explicit_absolute_server_root() {
-        let temp = tempfile::tempdir().unwrap();
+        let temp = crate::test_directory::tempdir().unwrap();
         let root = temp.path().join("ds-server");
         assert_eq!(server_state_directory("stable", Some(&root)).unwrap(), root);
         assert!(server_state_directory("stable", Some(Path::new("relative"))).is_err());

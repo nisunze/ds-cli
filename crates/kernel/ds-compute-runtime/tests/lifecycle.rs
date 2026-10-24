@@ -7,6 +7,8 @@
 //! exactly what was admitted with no upstream anywhere; and a row written by a
 //! released Server recovers from its own sealed bytes or is named unrunnable.
 
+#[path = "../src/test_directory.rs"]
+mod test_directory;
 use ds_command_kernel::compute_jobs::{Event, Phase};
 use ds_command_kernel::execution_context::{Limits, Principal};
 use ds_compute_runtime::{self as runtime, Admission, Authorizer, HostIdentity, WorkerContext};
@@ -98,7 +100,7 @@ fn request() -> Vec<u8> {
 #[test]
 #[ignore = "requires an explicitly selected compatible native Network executable"]
 fn real_compute_survives_reopen_and_never_recomputes_completed_work() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let bytes = request();
     let identity = host("owner", "stable");
@@ -140,7 +142,7 @@ fn real_compute_survives_reopen_and_never_recomputes_completed_work() {
 
 #[test]
 fn two_projects_share_one_queue_and_neither_context_ever_crosses() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     let first =
@@ -187,7 +189,7 @@ fn two_projects_share_one_queue_and_neither_context_ever_crosses() {
 
 #[test]
 fn a_key_keeps_its_scope_inside_its_project_and_is_other_work_outside_it() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     let bytes = request();
@@ -245,7 +247,7 @@ fn a_key_keeps_its_scope_inside_its_project_and_is_other_work_outside_it() {
 
 #[test]
 fn capacity_bounds_the_queue_per_project_and_globally_with_retry_guidance() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     let bytes = request();
@@ -302,7 +304,7 @@ fn capacity_bounds_the_queue_per_project_and_globally_with_retry_guidance() {
 
 #[test]
 fn a_claim_keeps_one_projects_share_while_another_project_is_waiting() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     // Two batches each, so that after one slot apiece both projects still
@@ -378,7 +380,7 @@ fn a_claim_keeps_one_projects_share_while_another_project_is_waiting() {
 #[test]
 #[ignore = "requires an explicitly selected compatible native Network executable"]
 fn a_claimed_job_runs_exactly_what_was_admitted_and_asks_no_one_first() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     let first =
@@ -430,7 +432,7 @@ fn a_finished_result_is_written_down_even_if_the_credential_check_stops_answerin
             }
         }
     }
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     let job = runtime::submit(&path, &admission(&identity, "for-a", Some(A)), &request()).unwrap();
@@ -467,7 +469,7 @@ fn a_finished_result_is_written_down_even_if_the_credential_check_stops_answerin
 
 #[test]
 fn a_transformer_row_written_by_a_released_server_is_named_and_never_claimed() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     let bytes = request();
@@ -529,7 +531,7 @@ fn a_transformer_row_written_by_a_released_server_is_named_and_never_claimed() {
 
 #[test]
 fn prepared_solar_survives_reopen_without_a_client_path_or_live_request() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "stable");
     let mut request: serde_json::Value = serde_json::from_slice(&prepared_solar_request()).unwrap();
@@ -635,7 +637,7 @@ fn server_submission_binds_existing_preparation_claim_to_exact_sealed_input() {
     .is_err());
     let (input, provenance) =
         runtime::decode_solar_server_submission(&serde_json::to_vec(&envelope).unwrap()).unwrap();
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     let job = runtime::submit_solar_with_provenance(
@@ -684,7 +686,7 @@ fn server_submission_binds_existing_preparation_claim_to_exact_sealed_input() {
 
 #[test]
 fn direct_submission_and_durable_replay_reject_invalid_snapshot_provenance() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "stable");
     let mut request: serde_json::Value = serde_json::from_slice(&prepared_solar_request()).unwrap();
@@ -748,7 +750,7 @@ fn direct_submission_and_durable_replay_reject_invalid_snapshot_provenance() {
 
 #[test]
 fn parallel_claims_are_unique_and_revocation_and_cancellation_stop_work() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let bytes = request();
     let identity = host("owner", "stable");
@@ -838,7 +840,7 @@ fn workers_complete_real_batches_inside_the_shared_resource_bound() {
             Ok(())
         }
     }
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "stable");
     // One batch per project, so the pool proves it serves both at once.
@@ -879,7 +881,7 @@ fn workers_complete_real_batches_inside_the_shared_resource_bound() {
 #[test]
 #[ignore = "requires an explicitly selected compatible native Network executable"]
 fn resubmitting_a_released_rows_key_under_a_project_is_new_work_beside_it() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "canary");
     let bytes = request();
@@ -955,7 +957,7 @@ fn a_worker_pool_is_never_larger_than_the_running_pool_it_claims_from() {
     // the bound is threads that can never claim and will not idle quietly —
     // each reopens the store and takes an immediate transaction five times a
     // second for a slot the kernel is bound to refuse.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "stable");
     let context = || Arc::new(worker(&path, &identity, Arc::new(Allowed)));
@@ -980,7 +982,7 @@ fn a_host_learns_its_limits_make_no_share_before_it_starts_workers_not_per_claim
     // nothing, and prints the same host fault several times a second for as
     // long as it runs. The numbers are wrong before the first request, so
     // they are answered before the first worker — and the message names both.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let identity = host("owner", "stable");
     for (broken, share, pool) in [

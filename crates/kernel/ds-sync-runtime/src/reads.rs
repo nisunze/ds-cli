@@ -518,7 +518,7 @@ mod tests {
     #[test]
     fn retained_full_head_is_read_only_and_requires_exact_revision_and_physical_bytes() {
         use serde_json::json;
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::test_directory::tempdir().unwrap();
         let reads = VerifiedReads::new(dir.path().join("absent"));
         let bytes = b"report";
         let sha = format!("{:x}", Sha256::digest(bytes));
@@ -566,7 +566,7 @@ mod tests {
 
     #[test]
     fn bytes_are_placed_only_when_digest_and_size_match() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::test_directory::tempdir().unwrap();
         let destination = dir.path().join("xlsx");
         let bytes = b"hello world".to_vec();
         let digest = format!("{:x}", Sha256::digest(&bytes));
@@ -587,7 +587,7 @@ mod tests {
 
     #[test]
     fn a_verified_cache_survives_reader_restart_without_trusting_new_bytes() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::test_directory::tempdir().unwrap();
         let root = dir.path().join("sync-downloads");
         let identity = sync::Identity {
             engine: "network_reporter".into(),
@@ -612,7 +612,7 @@ mod tests {
 
     #[test]
     fn a_head_root_is_keyed_by_project_and_identity_only() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::test_directory::tempdir().unwrap();
         let reads = VerifiedReads::new(dir.path().join("sync-downloads"));
         let identity = sync::Identity {
             engine: "network_reporter".into(),

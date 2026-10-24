@@ -12,7 +12,16 @@ use ds_grid_model::EntityId;
 #[ignore = "requires an explicitly qualified native Network grid-publication executable"]
 fn immutable_library_adoption_and_detach_publish_distinct_revisions_with_project_fences() {
     let blank = create_blank_model(&BlankModelRequest::default()).unwrap();
-    let imported = import_structure_package(&blank.bytes, "hp-m1-strain.012", include_bytes!("../../../../../ds-network/fixtures/pls-public/humble-pole/workspace/structures/hp-m1-strain.012"), None, None).unwrap();
+    // Consumer-owned copy of ds-network/fixtures/pls-public/humble-pole/
+    // workspace/structures/hp-m1-strain.012; preserve its native bytes.
+    let imported = import_structure_package(
+        &blank.bytes,
+        "hp-m1-strain.012",
+        include_bytes!("fixtures/hp-m1-strain.012"),
+        None,
+        None,
+    )
+    .unwrap();
     let source = imported.bytes;
     let library = create_model_library(
         &source,

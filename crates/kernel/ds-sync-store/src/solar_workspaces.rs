@@ -214,7 +214,7 @@ mod tests {
     }
     #[test]
     fn selection_survives_real_sqlite_reopen_without_a_second_store_or_schema_change() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::test_directory::tempdir().unwrap();
         let path = dir.path().join("core.sqlite");
         assert!(Store::open_read_only(&path).unwrap().is_none());
         let mut store = Store::open(&path).unwrap();
@@ -266,7 +266,7 @@ mod tests {
     }
     #[test]
     fn two_connections_cas_refuses_late_default_without_losing_custom_selection() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::test_directory::tempdir().unwrap();
         let path = dir.path().join("core.sqlite");
         let mut first = Store::open(&path).unwrap();
         let mut second = Store::open(&path).unwrap();

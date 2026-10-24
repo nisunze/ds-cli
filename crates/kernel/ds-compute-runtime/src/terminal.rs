@@ -78,7 +78,7 @@ mod tests {
 
     #[tokio::test]
     async fn terminal_notification_before_await_is_retained_for_all_registered_observers() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = crate::test_directory::tempdir().unwrap();
         let job = job(Phase::Completed);
         let mut first = observe_terminal(directory.path(), &job.id);
         let mut second = observe_terminal(directory.path(), &job.id);
@@ -106,7 +106,7 @@ mod tests {
 
     #[tokio::test]
     async fn queued_and_unrelated_notifications_do_not_wake_an_observer() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = crate::test_directory::tempdir().unwrap();
         let queued = job(Phase::Queued);
         let mut observer = observe_terminal(directory.path(), &queued.id);
         notify_terminal(directory.path(), &queued);

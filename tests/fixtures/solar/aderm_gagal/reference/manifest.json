@@ -1,0 +1,36 @@
+{
+  "bundle_digest": "sha256:5f4231f4ec31ed4378348f7cfa11b5892dbcdec4377bb0a280e288c62b8f22e7",
+  "created_by": "ds-solar-weather/0.1.0",
+  "encoding": {
+    "json_form": "utf-8, sort_keys, indent=2, ensure_ascii=false, trailing newline",
+    "parquet_compression": "zstd",
+    "parquet_compression_level": 9,
+    "parquet_data_page_version": "1.0",
+    "parquet_use_dictionary": false,
+    "parquet_write_statistics": true,
+    "parquet_writer": "pyarrow 21.0.0",
+    "storage": "four immutable objects under a content-addressed prefix"
+  },
+  "entries": [
+    {
+      "bytes": 1313886,
+      "media_type": "application/json",
+      "name": "weather.json",
+      "sha256": "689303608a803362de2b591d8ababc8c4473a350aad6027e3782b00faa0a112f"
+    },
+    {
+      "bytes": 6825,
+      "media_type": "application/json",
+      "name": "reference-unit.json",
+      "sha256": "fd012edc45724a7cfba7d69c4120091b72b002898c1d20ff1c307636a2da1f77"
+    },
+    {
+      "bytes": 141573,
+      "media_type": "application/vnd.apache.parquet",
+      "name": "reference-unit.parquet",
+      "sha256": "e97f1e93ca159658437708c52d9742c6acb1f5e745502fe12f45ca7c78b53ffa"
+    }
+  ],
+  "schema_version": "ds-solar.reference-bundle/v1",
+  "source_key": "sha256:cb1d4b7c06afc12653d3f391b4ca38fac0e6fdc2f994b4edaae47318cf348586"
+}

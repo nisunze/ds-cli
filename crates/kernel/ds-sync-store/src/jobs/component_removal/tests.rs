@@ -85,7 +85,7 @@ fn observe(store: &mut Store, component: ModuleComponent) -> Result<()> {
 
 #[test]
 fn captured_queued_running_and_reopened_jobs_keep_their_exact_pin_and_input() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = crate::test_directory::tempdir().unwrap();
     let path = directory.path().join("store.sqlite");
     let mut database = store(&path);
     let queued = job(1);
@@ -122,7 +122,7 @@ fn missing_and_crossed_pending_pins_refuse_without_removal_or_job_mutation() {
         |job| job.context = None,
     ];
     for (index, mutate) in mutations.into_iter().enumerate() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = crate::test_directory::tempdir().unwrap();
         let mut database = store(&directory.path().join("store.sqlite"));
         let mut pending = job(index);
         mutate(&mut pending);
@@ -160,7 +160,7 @@ fn missing_and_crossed_pending_pins_refuse_without_removal_or_job_mutation() {
 
 #[test]
 fn other_owners_lanes_components_and_terminal_rows_do_not_block_removal() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = crate::test_directory::tempdir().unwrap();
     let mut database = store(&directory.path().join("store.sqlite"));
     let mut other_owner = job(1);
     other_owner.owner = "other-owner".into();
@@ -182,7 +182,7 @@ fn other_owners_lanes_components_and_terminal_rows_do_not_block_removal() {
 
 #[test]
 fn contextless_legacy_rows_beyond_ui_pages_refuse_even_with_project_narrowing() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = crate::test_directory::tempdir().unwrap();
     let mut database = store(&directory.path().join("store.sqlite"));
     let mut legacy = job(0);
     legacy.context = None;
@@ -211,7 +211,7 @@ fn contextless_legacy_rows_beyond_ui_pages_refuse_even_with_project_narrowing() 
 
 #[test]
 fn historic_contextless_network_engine_alias_is_included_in_the_census() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = crate::test_directory::tempdir().unwrap();
     let mut database = store(&directory.path().join("store.sqlite"));
     let mut legacy = job(1);
     legacy.engine = EngineKind::LvProcessing;
@@ -237,7 +237,7 @@ fn historic_contextless_network_engine_alias_is_included_in_the_census() {
 
 #[test]
 fn removal_holds_admission_until_selection_is_committed() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = crate::test_directory::tempdir().unwrap();
     let path = directory.path().join("store.sqlite");
     let mut removal_store = store(&path);
     let mut submit_store = store(&path);
@@ -279,7 +279,7 @@ fn removal_holds_admission_until_selection_is_committed() {
 
 #[test]
 fn submission_capture_and_retention_finish_before_racing_removal() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = crate::test_directory::tempdir().unwrap();
     let path = directory.path().join("store.sqlite");
     let mut submit_store = store(&path);
     let mut removal_store = store(&path);
@@ -324,7 +324,7 @@ fn submission_capture_and_retention_finish_before_racing_removal() {
 
 #[test]
 fn callback_and_row_read_errors_release_writer_without_changing_jobs() {
-    let directory = tempfile::tempdir().unwrap();
+    let directory = crate::test_directory::tempdir().unwrap();
     let path = directory.path().join("store.sqlite");
     let mut database = store(&path);
     let error = database

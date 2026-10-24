@@ -701,7 +701,7 @@ pub(crate) mod tests {
     #[cfg(unix)]
     #[tokio::test(flavor = "multi_thread")]
     async fn the_project_is_named_by_the_caller_and_never_assumed() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let upstream = fixture_upstream("uid-a");
         let allowed = Arc::new(AtomicBool::new(true));
         let server = start(dir.path(), upstream.clone(), allowed).await;
@@ -814,7 +814,7 @@ pub(crate) mod tests {
     #[cfg(unix)]
     #[tokio::test(flavor = "multi_thread")]
     async fn a_second_project_the_owner_names_is_served_on_its_own_terms() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let upstream = fixture_upstream("uid-a");
         let allowed = Arc::new(AtomicBool::new(true));
         let server = start(dir.path(), upstream.clone(), allowed).await;
@@ -895,7 +895,7 @@ pub(crate) mod tests {
     #[cfg(unix)]
     #[tokio::test(flavor = "multi_thread")]
     async fn the_workflow_runs_through_a_real_listener_and_survives_restart() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let upstream = fixture_upstream("uid-a");
         let allowed = Arc::new(AtomicBool::new(true));
         let server = start(dir.path(), upstream.clone(), allowed.clone()).await;

@@ -1,6 +1,8 @@
 //! The store survives what the runtime contract names: restart, a second
 //! worker, another account, and an incompatible upgrade.
 
+#[path = "../src/test_directory.rs"]
+mod test_directory;
 use ds_command_kernel::sync::Identity;
 use ds_command_kernel::sync_store::ABANDONED_AFTER_MS;
 use ds_command_kernel::sync_store::{
@@ -25,7 +27,7 @@ fn downgrade_fixture_to_v1(path: &std::path::Path) {
 
 #[test]
 fn v1_upgrade_preserves_artifact_bytes_and_receipts() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let mut store = Store::open(&path).unwrap();
     store
@@ -61,7 +63,7 @@ fn v1_upgrade_preserves_artifact_bytes_and_receipts() {
 #[test]
 fn unknown_legacy_or_unversioned_artifacts_are_not_silently_relabelled() {
     for unversioned in [false, true] {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = test_directory::tempdir().unwrap();
         let path = dir.path().join("store.sqlite");
         let mut store = Store::open(&path).unwrap();
         store
@@ -116,7 +118,7 @@ fn unknown_legacy_or_unversioned_artifacts_are_not_silently_relabelled() {
 
 #[test]
 fn v2_keeps_prior_publication_rows_and_projects_one_standing_identity() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let mut store = Store::open(&path).unwrap();
     store
@@ -167,7 +169,7 @@ fn v2_keeps_prior_publication_rows_and_projects_one_standing_identity() {
 
 #[test]
 fn unknown_v2_layout_refuses_without_relabeling_or_losing_rows() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let mut store = Store::open(&path).unwrap();
     store
@@ -261,7 +263,7 @@ fn row(op: &str, key: &str) -> ArtifactRow {
 
 #[test]
 fn rows_survive_a_restart_and_stay_fenced_by_account() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("sync").join("store.sqlite");
     {
         let mut store = Store::open(&path).unwrap();
@@ -361,7 +363,7 @@ fn a_read_of_an_empty_record_is_still_a_read() {
 
 #[test]
 fn two_workers_on_one_file_never_hold_the_same_lease() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let mut first = Store::open(&path).unwrap();
     let mut second = Store::open(&path).unwrap();
@@ -417,7 +419,7 @@ fn two_workers_on_one_file_never_hold_the_same_lease() {
 
 #[test]
 fn a_newer_schema_on_disk_is_refused_and_left_alone() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     {
         let mut store = Store::open(&path).unwrap();
@@ -457,7 +459,7 @@ fn an_acknowledged_write_is_synced_to_disk_before_it_is_acknowledged() {
     // acknowledges a commit before the log reaches the platter; an
     // acknowledged seal could vanish with the cut. `FULL` is the decision,
     // and this pins it so a later "performance" edit cannot quietly undo it.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let store = Store::open(&dir.path().join("store.sqlite")).unwrap();
     let synchronous: i64 = store
         .connection_for_test()
@@ -476,7 +478,7 @@ fn the_queue_is_read_from_the_rows_and_a_read_only_open_leaves_nothing_behind() 
     // WHY: `ds report outbox status` must answer with no session, no gateway
     // and no running host — on exactly the machines where a stopped queue
     // goes unnoticed — and it must not create a store where none was.
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("sync").join("store.sqlite");
     assert!(
         Store::open_read_only(&path).unwrap().is_none(),
@@ -657,7 +659,7 @@ fn the_store_and_its_directory_are_private_to_the_account() {
     use std::os::unix::fs::PermissionsExt;
     let mode =
         |path: &std::path::Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("sync").join("store.sqlite");
     let mut store = Store::open(&path).unwrap();
     store
@@ -696,7 +698,7 @@ fn late_ack_reads_replacement_after_acquiring_the_same_write_transaction() {
         std::thread::sleep(Duration::from_millis(1));
         attempt < 5000
     }
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("store.sqlite");
     let mut writer = Store::open(&path).unwrap();
     writer
@@ -774,7 +776,7 @@ fn late_ack_reads_replacement_after_acquiring_the_same_write_transaction() {
 #[test]
 fn publication_payload_is_atomic_fenced_immutable_and_retired_without_losing_evidence() {
     use ds_sync_store::{PublicationBytes, PublicationPayload};
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("publications.sqlite");
     let mut store = Store::open(&path).unwrap();
     let payload = PublicationPayload {
@@ -856,7 +858,7 @@ fn publication_payload_is_atomic_fenced_immutable_and_retired_without_losing_evi
 #[test]
 fn failed_publication_output_insert_rolls_back_the_queue_row_and_receipt() {
     use ds_sync_store::{PublicationBytes, PublicationPayload};
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let mut store = Store::open(&dir.path().join("atomic.sqlite")).unwrap();
     let payload = PublicationPayload {
         receipt: "closed".into(),

@@ -138,7 +138,7 @@ fn a_pole_move_through_the_profile_session_is_the_same_authored_edit_and_survive
     let sha = format!("{:x}", Sha256::digest(&bytes));
     let machine = device_home::DeviceHome::linked(LANE, "profile-acceptance-device");
     let mut server = LiveServer::start(&machine, 1);
-    let room = tempfile::tempdir().expect("private request room");
+    let room = ds_cli_contract::testing::private_tempdir("core-test-");
     let mut steps = Vec::new();
 
     // Session A: open, enter editing, draw, preview and apply one station move.

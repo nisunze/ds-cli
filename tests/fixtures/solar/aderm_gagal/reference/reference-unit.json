@@ -1,0 +1,243 @@
+{
+  "algorithm_version": "ds-solar.reference-unit.algorithm/1",
+  "annual": {
+    "capacity_factor": 0.2731060453453058,
+    "unit_energy_mwh": 239.2408957224879,
+    "unit_gross_energy_mwh": 244.12336298213052,
+    "unit_inverter_loss_mwh": 4.882467259642613
+  },
+  "capacity_scaling": {
+    "mode": "compatibility_override",
+    "reason": "frozen ds-solar-calc corpus parity",
+    "scale_factor": 1.0,
+    "source_inverter_capacity_kw": 100.0,
+    "source_module_capacity_w": 509.97,
+    "target_inverter_capacity_kw": 100.0,
+    "target_module_capacity_w": 509.0
+  },
+  "equipment": {
+    "dc_ac_ratio": 1.3,
+    "inverter": {
+      "catalog": "CECInverter",
+      "model_id": "Chint_Power_Systems_America__CPS_SCH100KTL_DO_US_600__600V_",
+      "record": {
+        "C0": -7.325387e-08,
+        "C1": 1.8e-05,
+        "C2": 0.00188,
+        "C3": 0.000293,
+        "CEC_Date": "10/15/2018",
+        "CEC_Type": "Utility Interactive",
+        "Idcmax": 101.610352,
+        "Mppt_high": 1300.0,
+        "Mppt_low": 870.0,
+        "Paco": 100000.0,
+        "Pdco": 101610.351563,
+        "Pnt": 30.0,
+        "Pso": 114.909843,
+        "Vac": "600",
+        "Vdcmax": 1300.0,
+        "Vdco": 1000.0
+      },
+      "record_digest": "sha256:c8d605bbd3420eb3f262440d2ecffdf0ef985b78fdbac255112d55ef0517465f"
+    },
+    "module": {
+      "catalog": "CECMod",
+      "model_id": "Sunpreme_Inc__SNPM_GxB_510",
+      "record": {
+        "A_c": 2.591,
+        "Adjust": -20.561962,
+        "BIPV": "N",
+        "Bifacial": 1.0,
+        "Date": "1/3/2019",
+        "I_L_ref": 9.40894,
+        "I_mp_ref": 8.9,
+        "I_o_ref": 3.237911e-13,
+        "I_sc_ref": 9.4,
+        "Length": 1.981,
+        "N_s": 96.0,
+        "PTC": 479.6,
+        "R_s": 1.135045,
+        "R_sh_ref": 1193.327026,
+        "STC": 509.97,
+        "T_NOCT": 45.5,
+        "Technology": "Thin Film",
+        "V_mp_ref": 57.3,
+        "V_oc_ref": 74.7,
+        "Version": "SAM 2018.11.11 r2",
+        "Width": 1.308,
+        "a_ref": 2.41017,
+        "alpha_sc": 0.00094,
+        "beta_oc": -0.19422,
+        "gamma_r": -0.3
+      },
+      "record_digest": "sha256:83d8c19448ce2c3275d920ab184edecbb701ebd401e46fad7418a0874771cc13"
+    }
+  },
+  "losses": {
+    "ac_inverter_percent": 2.0,
+    "application": "no_loss",
+    "applied": false,
+    "dc": {
+      "connections_percent": 0.5,
+      "lid_percent": 1.5,
+      "mismatch_percent": 1.0,
+      "nameplate_percent": 1.0,
+      "shading_percent": 1.0,
+      "snow_percent": 0.0,
+      "soiling_percent": 5.0,
+      "wiring_percent": 2.0
+    },
+    "dc_total_percent": 12.0
+  },
+  "mounting": {
+    "albedo": 0.25,
+    "aoi_model": "no_loss",
+    "spectral_model": "no_loss",
+    "surface_azimuth_degrees": 180.0,
+    "surface_tilt_degrees": 13.0,
+    "temperature_model": {
+      "configuration": "open_rack_glass_glass",
+      "family": "sapm",
+      "parameters": {
+        "a": -3.47,
+        "b": -0.0594,
+        "deltaT": 3.0
+      }
+    },
+    "tilt_search": {
+      "floor_degrees": 0.0,
+      "span_degrees": 20.0,
+      "step_degrees": 1.0
+    },
+    "tilt_source": "optimised",
+    "transposition_model": "haydavies"
+  },
+  "profile": {
+    "columns": [
+      {
+        "name": "epoch_seconds",
+        "type": "int64",
+        "unit": "s"
+      },
+      {
+        "name": "local_timestamp",
+        "type": "string",
+        "unit": "iso8601"
+      },
+      {
+        "name": "effective_irradiance_w_m2",
+        "type": "double",
+        "unit": "W/m2"
+      },
+      {
+        "name": "gross_unit_ac_energy_mwh",
+        "type": "double",
+        "unit": "MWh"
+      },
+      {
+        "name": "net_unit_energy_mwh",
+        "type": "double",
+        "unit": "MWh"
+      },
+      {
+        "name": "unit_inverter_loss_mwh",
+        "type": "double",
+        "unit": "MWh"
+      }
+    ],
+    "first_epoch_seconds": 1262300400,
+    "last_epoch_seconds": 1293832800,
+    "parquet_bytes": 141573,
+    "parquet_sha256": "e97f1e93ca159658437708c52d9742c6acb1f5e745502fe12f45ca7c78b53ffa",
+    "rows": 8760
+  },
+  "profile_version": "ds-solar.reference-profile/2026-08-22",
+  "runtime": {
+    "pvlib_version": "0.15.0",
+    "pyarrow_version": "21.0.0",
+    "python_version": "3.13.14",
+    "service_version": "ds-solar-weather/0.1.0"
+  },
+  "schema_version": "ds-solar.reference-unit/v1",
+  "site": {
+    "altitude_m": 340.0,
+    "city": "aderm_gagal",
+    "country": "Tchad",
+    "latitude": 9.053895,
+    "longitude": 15.146482,
+    "timezone": "Africa/Ndjamena"
+  },
+  "solar_geometry": {
+    "annual_poa_by_tilt": {
+      "0.0": 2138366.407165771,
+      "1.0": 2143819.2645918434,
+      "10.0": 2172986.2486218023,
+      "11.0": 2174048.5120405676,
+      "12.0": 2174675.8006148394,
+      "13.0": 2174869.3655147674,
+      "14.0": 2174643.4615711006,
+      "15.0": 2173967.6484127976,
+      "16.0": 2172839.161325326,
+      "17.0": 2171257.663088091,
+      "18.0": 2169223.8047054103,
+      "19.0": 2166737.244031117,
+      "2.0": 2148823.153793164,
+      "20.0": 2163799.3108237335,
+      "21.0": 2160409.794663023,
+      "22.0": 2156569.360648049,
+      "23.0": 2152278.610953917,
+      "24.0": 2147538.589792447,
+      "25.0": 2142350.213701063,
+      "26.0": 2136712.4614155963,
+      "27.0": 2130628.133037977,
+      "28.0": 2124098.4430759326,
+      "29.0": 2117125.033873918,
+      "3.0": 2153378.211993169,
+      "4.0": 2157491.498801488,
+      "5.0": 2161161.9520523464,
+      "6.0": 2164387.8531548525,
+      "7.0": 2167187.057131029,
+      "8.0": 2169555.311551861,
+      "9.0": 2171488.229894763
+    },
+    "annual_poa_wh_m2": 2174869.3655147674,
+    "azimuth_degrees": 180.0,
+    "optimal_tilt_degrees": 13.0
+  },
+  "source_key": "sha256:cb1d4b7c06afc12653d3f391b4ca38fac0e6fdc2f994b4edaae47318cf348586",
+  "string_configuration": {
+    "inverter_maximum_dc_voltage_v": 1300.0,
+    "maximum_string_dc_voltage_v": 1299.61566,
+    "maximum_voc_v": 76.44798,
+    "module_capacity_w": 509.97,
+    "modules_per_reference_inverter": 238,
+    "modules_per_string": 17,
+    "reference_inverter_capacity_kw": 100.0,
+    "reference_unit_dc_capacity_kw": 121.142,
+    "reported_module_capacity_w": 509.0,
+    "reported_reference_inverter_capacity_kw": 100.0,
+    "string_stc_power_w": 8669.49,
+    "strings_per_reference_inverter": 14
+  },
+  "temperature": {
+    "maximum_c": 41.05,
+    "maximum_day_of_year": 88,
+    "maximum_month": 3,
+    "minimum_c": 16.0,
+    "minimum_day_of_year": 30,
+    "minimum_month": 1
+  },
+  "weather": {
+    "content_digest": "sha256:fe49f09103505facfd39623da0dabf7167d67788422ec2a099cbca00b3548973",
+    "dataset_kind": "tmy",
+    "latitude": 9.053895,
+    "longitude": 15.146482,
+    "provider": "pvgis",
+    "provider_dataset": "PVGIS-TMY",
+    "source_period": {
+      "end_year": 2020,
+      "start_year": 2005
+    },
+    "timezone": "Africa/Ndjamena"
+  }
+}

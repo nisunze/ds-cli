@@ -33,7 +33,7 @@ fn inventory(path: &Path) -> Vec<(std::path::PathBuf, Vec<u8>, u32)> {
 #[test]
 fn native_retained_read_preserves_protected_auth_and_default_state_without_daemon() {
     let home = device_home::DeviceHome::linked("stable", "sync-read-device");
-    let work = tempfile::tempdir().unwrap();
+    let work = ds_cli_contract::testing::private_tempdir("core-test-");
     private_dir(work.path());
     // Bind the older shared fixture's routes to the current native owner's schema.
     let mut catalogue: Value =

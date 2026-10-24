@@ -484,8 +484,8 @@ impl Host {
     }
 
     fn start_with(limits: Limits, queue: Option<&Path>, door: usize) -> Self {
-        let state = tempfile::tempdir().expect("state directory");
-        let prefs = tempfile::tempdir().expect("preference root");
+        let state = ds_cli_contract::testing::private_tempdir("core-test-");
+        let prefs = ds_cli_contract::testing::private_tempdir("core-test-");
         if let Some(queue) = queue {
             std::fs::copy(queue, state.path().join("store.sqlite")).expect("stage legacy queue");
         }
@@ -567,8 +567,8 @@ impl Host {
     /// for the production-true configuration; pass this Server's own [`OWNER`]
     /// to take the durable fence away and leave only the execution context.
     pub fn shadow(&mut self, uid: &str, lane: &str, owner: &str) -> Loopback {
-        let state = tempfile::tempdir().expect("shadow state");
-        let prefs = tempfile::tempdir().expect("shadow preferences");
+        let state = ds_cli_contract::testing::private_tempdir("core-test-");
+        let prefs = ds_cli_contract::testing::private_tempdir("core-test-");
         let listening = bind(state.path());
         let socket = listening.socket().to_owned();
         let app = build_app_as(
@@ -944,7 +944,7 @@ pub fn ds_binary() -> PathBuf {
 /// descriptor, so nothing here can reach the operator's running app. The
 /// `--target server` path reads neither: it reads `connection.json`.
 pub fn run_ds(args: &[&str]) -> DsRun {
-    let config = tempfile::tempdir().expect("private config home");
+    let config = ds_cli_contract::testing::private_tempdir("core-test-");
     run_ds_in(config.path(), args)
 }
 
@@ -1068,7 +1068,7 @@ impl LiveServer {
         // Taken before anything is spawned and held for this Server's whole
         // life. A poisoned lock is a panicking test, not a broken machine.
         let machine = MACHINE.lock().unwrap_or_else(|held| held.into_inner());
-        let state = tempfile::tempdir().expect("protected server state");
+        let state = ds_cli_contract::testing::private_tempdir("core-test-");
         owner_only(state.path());
         // The state directory is EMPTY, deliberately: every start here is a
         // cold start, store and all. It used to be warmed by this harness,
@@ -1312,7 +1312,7 @@ pub fn legacy_transformer_id() -> String {
 fn sealed_prepared() -> &'static [u8] {
     static SEALED: OnceLock<Vec<u8>> = OnceLock::new();
     SEALED.get_or_init(|| {
-        let staging = tempfile::tempdir().expect("staging");
+        let staging = ds_cli_contract::testing::private_tempdir("core-test-");
         let database = staging.path().join("store.sqlite");
         std::fs::copy(legacy_queue_fixture(), &database).expect("stage the fixture queue");
         let identity = identity(UID, LANE);

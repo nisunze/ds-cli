@@ -616,7 +616,7 @@ mod tests {
 
     #[tokio::test]
     async fn actual_private_route_refuses_foreign_peers_and_uncaptured_legacy_jobs() {
-        let base = tempfile::tempdir().unwrap();
+        let base = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
         let app = app(base.path());
         let store = ds_compute_runtime::open(&app.database).unwrap();
         let legacy = serde_json::json!({
@@ -764,7 +764,7 @@ mod tests {
                 .code(),
             "component_request_invalid"
         );
-        let base = tempfile::tempdir().unwrap();
+        let base = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
         let database = base.path().join("not-created.sqlite");
         let opened = Cell::new(false);
         let mut request = removal_request(&inputs("0")).unwrap();
@@ -784,8 +784,8 @@ mod tests {
 
     #[test]
     fn removal_returns_owner_receipt_retains_versions_and_fences_stale_generation() {
-        let base = tempfile::tempdir().unwrap();
-        let runtime = tempfile::tempdir().unwrap();
+        let base = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
+        let runtime = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
         let database = runtime.path().join("store.sqlite");
         let open = |component, channel: &str| ModuleStore::new(base.path(), component, channel);
         let store = open(ModuleComponent::Network, "canary").unwrap();
@@ -868,8 +868,8 @@ mod tests {
 
     #[test]
     fn corrupt_selection_is_preserved_and_owner_refusal_is_actionable() {
-        let base = tempfile::tempdir().unwrap();
-        let runtime = tempfile::tempdir().unwrap();
+        let base = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
+        let runtime = ds_cli_contract::testing::private_tempdir(".ds-lifecycle-fixture-");
         let database = runtime.path().join("store.sqlite");
         let open = |component, channel: &str| ModuleStore::new(base.path(), component, channel);
         open(ModuleComponent::Network, "canary").unwrap();

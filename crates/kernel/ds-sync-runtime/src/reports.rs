@@ -687,7 +687,7 @@ mod tests {
     /// and the same three batches list the same on every machine and run.
     #[test]
     fn every_committed_batch_is_one_row_naming_its_batch_in_production_order() {
-        let directory = tempfile::tempdir().expect("temp root");
+        let directory = crate::test_directory::tempdir().expect("temp root");
         let held =
             ds_report_artifacts::confined_fs::HeldDirectory::ensure_absolute(directory.path())
                 .expect("hold root");
@@ -767,7 +767,7 @@ mod tests {
     /// recorded before locators named batch ids.
     #[test]
     fn a_lost_row_is_reclaimed_once_by_its_locator_or_its_publish_id() {
-        let directory = tempfile::tempdir().expect("temp root");
+        let directory = crate::test_directory::tempdir().expect("temp root");
         let held =
             ds_report_artifacts::confined_fs::HeldDirectory::ensure_absolute(directory.path())
                 .expect("hold root");
@@ -842,7 +842,7 @@ mod tests {
 
     #[test]
     fn project_inventory_is_shared_and_owner_fenced() {
-        let directory = tempfile::tempdir().expect("temp root");
+        let directory = crate::test_directory::tempdir().expect("temp root");
         let held =
             ds_report_artifacts::confined_fs::HeldDirectory::ensure_absolute(directory.path())
                 .expect("hold root");
@@ -949,7 +949,7 @@ mod tests {
 
     #[test]
     fn preview_seal_keeps_binding_in_the_committed_producer_and_refuses_crossed_open() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::test_directory::tempdir().unwrap();
         let root = dir.path().join("report-artifacts");
         let store = crate::open_store(&dir.path().join("store.sqlite")).unwrap();
         let binding = preview_binding();
@@ -1074,7 +1074,7 @@ mod tests {
 
     #[test]
     fn preview_seal_refuses_a_debug_build_without_recording_or_committing() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::test_directory::tempdir().unwrap();
         let root = dir.path().join("report-artifacts");
         let store = crate::open_store(&dir.path().join("store.sqlite")).unwrap();
         let binding = preview_binding();
@@ -1122,7 +1122,7 @@ mod tests {
     /// written, row `held` — and the queue reads the row, not the disk.
     #[test]
     fn a_seal_writes_bytes_receipt_and_row_in_one_step_and_the_queue_reads_the_row() {
-        let dir = tempfile::tempdir().expect("temp");
+        let dir = crate::test_directory::tempdir().expect("temp");
         let root = dir.path().join("report-artifacts");
         let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
         let staged = [staged(dir.path(), "tx_1.xlsx", b"first bytes")];
@@ -1172,7 +1172,7 @@ mod tests {
     /// second seal leaves no second batch on disk.
     #[test]
     fn invariant_2_the_same_bytes_sealed_twice_are_one_row_and_one_batch() {
-        let dir = tempfile::tempdir().expect("temp");
+        let dir = crate::test_directory::tempdir().expect("temp");
         let root = dir.path().join("report-artifacts");
         let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
         let deadline = Instant::now() + std::time::Duration::from_secs(30);
@@ -1211,7 +1211,7 @@ mod tests {
     #[test]
     fn normal_report_same_bytes_with_changed_provenance_seal_a_new_publication() {
         for changed in ["inputs", "engine", "build"] {
-            let dir = tempfile::tempdir().expect("temp");
+            let dir = crate::test_directory::tempdir().expect("temp");
             let root = dir.path().join("report-artifacts");
             let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
             let deadline = Instant::now() + std::time::Duration::from_secs(30);
@@ -1276,7 +1276,7 @@ mod tests {
     /// poisoned by a panicking holder — no fake store, no flag.
     #[test]
     fn a_seal_the_store_cannot_record_leaves_no_bytes_behind() {
-        let dir = tempfile::tempdir().expect("temp");
+        let dir = crate::test_directory::tempdir().expect("temp");
         let root = dir.path().join("report-artifacts");
         let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
         let poisoned = store.clone();
@@ -1308,7 +1308,7 @@ mod tests {
     /// one. An artefact never accumulates on the edge.
     #[test]
     fn a_new_seal_of_a_room_frees_the_batch_it_supersedes_and_says_so() {
-        let dir = tempfile::tempdir().expect("temp");
+        let dir = crate::test_directory::tempdir().expect("temp");
         let root = dir.path().join("report-artifacts");
         let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
         let deadline = Instant::now() + std::time::Duration::from_secs(30);
@@ -1374,7 +1374,7 @@ mod tests {
 
     #[test]
     fn partial_seal_preserves_published_unselected_bytes_and_refuses_pending_loss() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::test_directory::tempdir().unwrap();
         let root = dir.path().join("report-artifacts");
         let store = crate::open_store(&dir.path().join("store.sqlite")).unwrap();
         let fence = seal_fence();
@@ -1511,7 +1511,7 @@ mod tests {
     /// between the copy and the commit seals nothing and records nothing.
     #[test]
     fn a_guard_that_refuses_at_the_boundary_seals_nothing() {
-        let dir = tempfile::tempdir().expect("temp");
+        let dir = crate::test_directory::tempdir().expect("temp");
         let root = dir.path().join("report-artifacts");
         let store = crate::open_store(&dir.path().join("store.sqlite")).expect("store");
         let staged = [staged(dir.path(), "tx_1.xlsx", b"scoped bytes")];

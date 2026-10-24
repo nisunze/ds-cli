@@ -308,7 +308,7 @@ mod artifact_tests {
     }
     #[test]
     fn file_handoff_keeps_exact_large_bytes_and_bounded_scope_receipt() {
-        let root = tempfile::tempdir().unwrap();
+        let root = ds_cli_contract::testing::private_tempdir("core-test-");
         let path = root.path().join("profile.json");
         let value = serde_json::json!({"schema":RECEIPT_SCHEMA,"session_id":"one","project":"fixture-project","lane":"canary","history":{"model_revision":"rev:fixture"},"payload":"x".repeat(5*1024*1024)});
         let bytes = serde_json::to_vec(&value).unwrap();
@@ -324,7 +324,7 @@ mod artifact_tests {
     }
     #[test]
     fn occupied_output_refuses_before_request_read_or_core_effect() {
-        let root = tempfile::tempdir().unwrap();
+        let root = ds_cli_contract::testing::private_tempdir("core-test-");
         let path = root.path().join("occupied.json");
         std::fs::write(&path, b"original").unwrap();
         let inputs = ds_cli_contract::args::parse(
@@ -362,7 +362,7 @@ mod artifact_tests {
     }
     #[test]
     fn late_output_failure_closes_only_its_new_open_and_reports_completed_scope() {
-        let root = tempfile::tempdir().unwrap();
+        let root = ds_cli_contract::testing::private_tempdir("core-test-");
         let path = root.path().join("occupied.json");
         std::fs::write(&path, b"original").unwrap();
         let value = serde_json::json!({"session_id":"captured","model_id":"fixture-model","project":"fixture-project","history":{"model_revision":"head"}});
@@ -391,7 +391,7 @@ mod artifact_tests {
         assert!(validate_output(std::path::Path::new("relative.json")).is_err());
         #[cfg(unix)]
         {
-            let root = tempfile::tempdir().unwrap();
+            let root = ds_cli_contract::testing::private_tempdir("core-test-");
             let target = root.path().join("missing");
             let link = root.path().join("link");
             std::os::unix::fs::symlink(target, &link).unwrap();

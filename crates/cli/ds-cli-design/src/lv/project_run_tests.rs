@@ -46,7 +46,7 @@ fn export(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
             )]),
             &CALLS.with(|c| {
                 let mut document: Value = serde_json::from_str(include_str!(
-                    "../../../../../../ds-network-reporter/tests/fixtures/lv-standard/a4-document.json"
+                    "../../tests/fixtures/lv-standard/a4-document.json"
                 )).unwrap();
                 document["project_id"] = json!("explicit-project");
                 let mut sheets = std::collections::BTreeMap::from([

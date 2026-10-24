@@ -1,0 +1,667 @@
+{
+  "groups": [
+    {
+      "key": "network",
+      "label": "Network Build",
+      "settings": [
+        "build_network",
+        "detect_non_snapping_lv_lines",
+        "keep_network_as_drawn"
+      ]
+    },
+    {
+      "key": "lv_lines",
+      "label": "LV Lines",
+      "settings": [
+        "keep_lv_lines_topology",
+        "keep_lv_lines_length",
+        "keep_lv_lines_sizes",
+        "join_lv_cables_of_same_size",
+        "weld_tolerance"
+      ]
+    },
+    {
+      "key": "poles",
+      "label": "Poles & Structures",
+      "settings": [
+        "keep_lv_poles",
+        "connect_unconnected_poles",
+        "compute_num_houses",
+        "consider_cable_size_in_pole_placement",
+        "remove_inline_vertex",
+        "weak_angle_threshold_deg",
+        "keep_flying_stay",
+        "assign_assemblies",
+        "assign_struct_types",
+        "assign_earthing",
+        "assign_stays"
+      ]
+    },
+    {
+      "key": "service_connections",
+      "label": "Service Connections",
+      "settings": [
+        "keep_service_cables",
+        "extend_service_cables"
+      ]
+    },
+    {
+      "key": "transformer_sizing",
+      "label": "Transformer Sizing",
+      "settings": [
+        "size_transformer_kva"
+      ]
+    },
+    {
+      "key": "voltage_drop",
+      "label": "Voltage Drop",
+      "settings": [
+        "assign_customer_phases",
+        "rebalance_customer_phases"
+      ]
+    },
+    {
+      "key": "renumbering",
+      "label": "Renumbering",
+      "settings": [
+        "renumber_poles",
+        "renumber_houses",
+        "renumber_lines"
+      ]
+    },
+    {
+      "key": "customers",
+      "label": "Customers",
+      "settings": [
+        "pull_customers_from_bldg",
+        "pull_customers_from_hh_table",
+        "override_uploaded_customers",
+        "connect_unconnected_customers"
+      ]
+    },
+    {
+      "key": "reporting",
+      "label": "Reporting",
+      "settings": [
+        "export_reports_for_download",
+        "include_in_combined_reports"
+      ]
+    },
+    {
+      "key": "output_properties",
+      "label": "Output Properties",
+      "settings": [
+        "calculate_geometry_properties",
+        "write_desirable_properties",
+        "delete_strange_cols"
+      ]
+    },
+    {
+      "key": "metadata",
+      "label": "Metadata",
+      "settings": [
+        "derive_transfo_before_mirror",
+        "enrich_admin_bounds_before_mirror"
+      ]
+    }
+  ],
+  "labels": {
+    "assign_assemblies": "Assign assemblies",
+    "assign_earthing": "Assign earthing",
+    "assign_stays": "Assign stays",
+    "assign_struct_types": "Assign structure types",
+    "build_network": "Build network",
+    "calculate_geometry_properties": "Calculate x/y/length",
+    "connect_unconnected_customers": "Connect unconnected customers",
+    "connect_unconnected_poles": "Connect unconnected poles",
+    "compute_num_houses": "Compute number of houses",
+    "consider_cable_size_in_pole_placement": "Use cable span rules for pole placement",
+    "derive_transfo_before_mirror": "Check transfo name",
+    "delete_strange_cols": "Drop unknown columns",
+    "detect_non_snapping_lv_lines": "Flag non-snapping LV lines",
+    "enrich_admin_bounds_before_mirror": "Enrich admin bounds",
+    "export_reports_for_download": "Export Report",
+    "extend_service_cables": "Extend generated service cables",
+    "include_in_combined_reports": "Add to Combined",
+    "keep_network_as_drawn": "Keep network as drawn",
+    "join_lv_cables_of_same_size": "Join same-size LV lines",
+    "keep_flying_stay": "Keep flying stay",
+    "keep_lv_lines_length": "Keep LV line length",
+    "keep_lv_lines_sizes": "Keep LV line sizes",
+    "keep_lv_lines_topology": "Keep LV line topology",
+    "keep_lv_poles": "Keep LV poles",
+    "keep_service_cables": "Keep service cables",
+    "keep_service_cables_sizes": "Preserve service cable size fields",
+    "override_uploaded_customers": "Override uploaded customers",
+    "pull_customers_from_bldg": "Pull customers from buildings",
+    "pull_customers_from_hh_table": "Pull customers from survey table",
+    "remove_inline_vertex": "Remove weak angles",
+    "renumber_houses": "Renumber houses",
+    "renumber_lines": "Renumber LV lines",
+    "renumber_poles": "Renumber poles",
+    "size_transformer_kva": "Size transformer kVA",
+    "weak_angle_threshold_deg": "Angle threshold",
+    "write_desirable_properties": "Write computed properties"
+  },
+  "numeric_settings": [
+    {
+      "default": 0.1,
+      "description": "Maximum endpoint gap, in metres, that draft LV work may heal onto another carrier. Retained existing/approved endpoints are never moved by this tolerance.",
+      "key": "weld_tolerance",
+      "label": "Draft endpoint heal tolerance",
+      "max": 2,
+      "min": 0,
+      "step": 0.05,
+      "unit": "m",
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": 1,
+      "description": "Deflection-angle threshold for generated pole cleanup. 0° removes true inline vertices only; positive values also remove bends below that angle. Applies only when Keep LV poles is off and Remove weak angles is on.",
+      "key": "weak_angle_threshold_deg",
+      "label": "Angle threshold",
+      "max": 90,
+      "step": 0.1,
+      "unit": "deg",
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        },
+        {
+          "equals": false,
+          "key": "keep_lv_poles"
+        },
+        {
+          "equals": true,
+          "key": "remove_inline_vertex"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "description": "Rebuild poles, spans, and service cables from scratch; size cables and transformer KVA. Reports and combined mirror are off by default so transformer design iteration stays cheap.",
+      "label": "Drafting",
+      "name": "drafting",
+      "overrides": {
+        "assign_assemblies": true,
+        "assign_earthing": true,
+        "assign_stays": true,
+        "assign_struct_types": true,
+        "build_network": true,
+        "calculate_geometry_properties": false,
+        "connect_unconnected_customers": true,
+        "connect_unconnected_poles": false,
+        "compute_num_houses": true,
+        "consider_cable_size_in_pole_placement": false,
+        "delete_strange_cols": true,
+        "derive_transfo_before_mirror": true,
+        "detect_non_snapping_lv_lines": true,
+        "enrich_admin_bounds_before_mirror": true,
+        "export_reports_for_download": false,
+        "extend_service_cables": false,
+        "include_in_combined_reports": false,
+        "join_lv_cables_of_same_size": true,
+        "keep_flying_stay": false,
+        "keep_lv_lines_length": false,
+        "keep_lv_lines_sizes": true,
+        "keep_lv_lines_topology": true,
+        "keep_lv_poles": false,
+        "keep_service_cables": false,
+        "keep_service_cables_sizes": false,
+        "override_uploaded_customers": false,
+        "pull_customers_from_bldg": false,
+        "pull_customers_from_hh_table": false,
+        "remove_inline_vertex": true,
+        "renumber_houses": true,
+        "renumber_poles": true,
+        "size_transformer_kva": true,
+        "write_desirable_properties": false
+      }
+    },
+    {
+      "description": "Preserve uploaded topology and key attributes while recomputing LV-line lengths from geometry. Reports and combined mirror are ON by default — sketch is the deliverable preset, so the operator gets exports + a refreshed combined mirror in one click.",
+      "label": "Sketch",
+      "name": "sketch",
+      "overrides": {
+        "assign_assemblies": false,
+        "assign_earthing": false,
+        "assign_stays": false,
+        "assign_struct_types": false,
+        "build_network": true,
+        "calculate_geometry_properties": false,
+        "connect_unconnected_customers": false,
+        "connect_unconnected_poles": true,
+        "compute_num_houses": true,
+        "consider_cable_size_in_pole_placement": false,
+        "delete_strange_cols": false,
+        "derive_transfo_before_mirror": false,
+        "detect_non_snapping_lv_lines": true,
+        "enrich_admin_bounds_before_mirror": false,
+        "export_reports_for_download": true,
+        "extend_service_cables": false,
+        "include_in_combined_reports": true,
+        "join_lv_cables_of_same_size": false,
+        "keep_flying_stay": true,
+        "keep_lv_lines_length": false,
+        "keep_lv_lines_sizes": true,
+        "keep_lv_lines_topology": true,
+        "keep_lv_poles": true,
+        "keep_service_cables": true,
+        "keep_service_cables_sizes": true,
+        "override_uploaded_customers": false,
+        "pull_customers_from_bldg": false,
+        "pull_customers_from_hh_table": false,
+        "remove_inline_vertex": false,
+        "renumber_houses": true,
+        "renumber_poles": true,
+        "size_transformer_kva": false,
+        "write_desirable_properties": false
+      }
+    }
+  ],
+  "settings": [
+    {
+      "default": true,
+      "key": "build_network",
+      "label": "Build network"
+    },
+    {
+      "default": true,
+      "key": "detect_non_snapping_lv_lines",
+      "label": "Detect non-snapping LV lines",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "keep_network_as_drawn",
+      "label": "Keep network as drawn"
+    },
+    {
+      "default": true,
+      "key": "keep_lv_lines_sizes",
+      "label": "Keep LV line sizes",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        },
+        {
+          "equals": true,
+          "key": "keep_lv_lines_topology"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "keep_service_cables_sizes",
+      "label": "Preserve service cable size fields",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "keep_service_cables"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "size_transformer_kva",
+      "label": "Size transformer kVA",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        },
+        {
+          "equals": false,
+          "key": "keep_lv_lines_length"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "assign_assemblies",
+      "label": "Assign assemblies",
+      "value_when_hidden": true,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "keep_lv_poles"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "assign_struct_types",
+      "label": "Assign structure types",
+      "value_when_hidden": true,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "keep_lv_poles"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "assign_earthing",
+      "label": "Assign earthing",
+      "value_when_hidden": true,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "keep_lv_poles"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "assign_stays",
+      "label": "Assign stays",
+      "value_when_hidden": true,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "keep_lv_poles"
+        }
+      ]
+    },
+    {
+      "default": true,
+      "key": "renumber_poles",
+      "label": "Renumber poles",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": true,
+      "key": "renumber_houses",
+      "label": "Renumber houses",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": true,
+      "key": "renumber_lines",
+      "label": "Renumber LV lines",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": true,
+      "key": "keep_lv_poles",
+      "label": "Keep LV poles",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "connect_unconnected_poles",
+      "label": "Connect unconnected poles",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        },
+        {
+          "equals": true,
+          "key": "keep_lv_poles"
+        }
+      ]
+    },
+    {
+      "default": true,
+      "key": "compute_num_houses",
+      "label": "Compute number of houses",
+      "value_when_hidden": true,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "keep_lv_poles"
+        }
+      ]
+    },
+    {
+      "default": true,
+      "key": "keep_lv_lines_topology",
+      "label": "Keep LV line topology",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": true,
+      "key": "join_lv_cables_of_same_size",
+      "label": "Join same-size LV lines",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        },
+        {
+          "equals": false,
+          "key": "keep_lv_lines_length"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "consider_cable_size_in_pole_placement",
+      "label": "Use cable max span for poles",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        },
+        {
+          "equals": false,
+          "key": "keep_lv_poles"
+        }
+      ]
+    },
+    {
+      "default": true,
+      "key": "remove_inline_vertex",
+      "label": "Remove weak angles",
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        },
+        {
+          "equals": false,
+          "key": "keep_lv_poles"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "keep_lv_lines_length",
+      "label": "Keep LV line length",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        },
+        {
+          "equals": true,
+          "key": "keep_lv_lines_topology"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "keep_flying_stay",
+      "label": "Keep flying stay",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        },
+        {
+          "equals": true,
+          "key": "keep_lv_poles"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "pull_customers_from_bldg",
+      "label": "Pull customers from buildings"
+    },
+    {
+      "default": false,
+      "key": "pull_customers_from_hh_table",
+      "label": "Pull customers from survey table"
+    },
+    {
+      "default": false,
+      "key": "override_uploaded_customers",
+      "label": "Override uploaded customers"
+    },
+    {
+      "default": true,
+      "key": "connect_unconnected_customers",
+      "label": "Connect unconnected customers",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "keep_service_cables",
+      "label": "Keep service cables",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "extend_service_cables",
+      "label": "Extend generated service cables",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        },
+        {
+          "equals": false,
+          "key": "keep_service_cables"
+        }
+      ]
+    },
+    {
+      "default": true,
+      "key": "derive_transfo_before_mirror",
+      "label": "Check transfo name"
+    },
+    {
+      "default": true,
+      "key": "enrich_admin_bounds_before_mirror",
+      "label": "Enrich admin bounds"
+    },
+    {
+      "default": false,
+      "key": "export_reports_for_download",
+      "label": "Export Report"
+    },
+    {
+      "default": false,
+      "key": "include_in_combined_reports",
+      "label": "Add to Combined"
+    },
+    {
+      "default": false,
+      "key": "calculate_geometry_properties",
+      "label": "Calculate x/y/length"
+    },
+    {
+      "default": false,
+      "key": "write_desirable_properties",
+      "label": "Write computed alternatives",
+      "value_when_hidden": false
+    },
+    {
+      "default": true,
+      "key": "delete_strange_cols",
+      "label": "Drop unknown columns"
+    },
+    {
+      "default": true,
+      "key": "assign_customer_phases",
+      "label": "Assign customer connection phases",
+      "value_when_hidden": true,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    },
+    {
+      "default": false,
+      "key": "rebalance_customer_phases",
+      "label": "Rebalance draft customer phases",
+      "value_when_hidden": false,
+      "visible_when": [
+        {
+          "equals": true,
+          "key": "build_network"
+        }
+      ]
+    }
+  ]
+}

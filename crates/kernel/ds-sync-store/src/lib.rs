@@ -14,6 +14,9 @@
 //! strands or erases a queue silently (`ds-headless-application-runtime.md`
 //! §6).
 
+#[cfg(test)]
+mod test_directory;
+
 pub mod cache_health;
 mod durable;
 pub mod survey_entries;
@@ -1110,7 +1113,7 @@ mod preparation_tests {
     #[test]
     fn read_only_open_waits_until_fresh_creator_descriptor_is_closed() {
         use std::os::unix::fs::OpenOptionsExt;
-        let root = tempfile::tempdir().unwrap();
+        let root = crate::test_directory::tempdir().unwrap();
         let path = root.path().join("fresh.sqlite");
         let guard = super::preparation_guard().unwrap();
         let fresh = std::fs::OpenOptions::new()

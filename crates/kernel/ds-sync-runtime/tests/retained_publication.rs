@@ -1,4 +1,6 @@
 //! Native producer closure survives offline completion, restart and refusals.
+#[path = "../src/test_directory.rs"]
+mod test_directory;
 use ds_sync_runtime::store::Fence;
 use ds_sync_runtime::{
     fakes, open_store, retained_publication as retained, rows, seal::Recorded, Producer,
@@ -47,7 +49,7 @@ fn seal(
 }
 #[test]
 fn offline_completion_survives_restart_and_supports_verified_local_download() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("queue.sqlite");
     let bytes = b"immutable native report";
     let row = row(bytes);
@@ -92,7 +94,7 @@ fn offline_completion_survives_restart_and_supports_verified_local_download() {
 }
 #[test]
 fn invalid_closure_never_records_bytes_and_replays_preserve_the_standing_publication() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let store = open_store(&dir.path().join("queue.sqlite")).unwrap();
     let original = row(b"original");
     assert!(seal(&store, &original, b"corrupted").is_err());
@@ -127,7 +129,7 @@ fn invalid_closure_never_records_bytes_and_replays_preserve_the_standing_publica
 }
 #[test]
 fn account_project_output_and_declaration_substitution_are_refused() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let store = open_store(&dir.path().join("queue.sqlite")).unwrap();
     let row = row(b"retained");
     seal(&store, &row, b"retained").unwrap();
@@ -168,7 +170,7 @@ fn account_project_output_and_declaration_substitution_are_refused() {
 }
 #[test]
 fn supersession_retires_only_old_derived_bytes_and_keeps_new_outputs_readable() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let store = open_store(&dir.path().join("queue.sqlite")).unwrap();
     let old = row(b"old report");
     seal(&store, &old, b"old report").unwrap();
@@ -197,7 +199,7 @@ fn supersession_retires_only_old_derived_bytes_and_keeps_new_outputs_readable() 
 
 #[test]
 fn solar_derived_outputs_use_the_same_offline_closure_and_verified_read_functions() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let store = open_store(&dir.path().join("solar.sqlite")).unwrap();
     let bytes = b"# Reviewed Solar draft";
     let mut row = row(bytes);
@@ -232,7 +234,7 @@ fn solar_derived_outputs_use_the_same_offline_closure_and_verified_read_function
 
 #[test]
 fn corrupted_retained_bytes_fail_verified_reads_before_a_transfer_can_start() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let store = open_store(&dir.path().join("corrupt.sqlite")).unwrap();
     let row = row(b"retained immutable report");
     seal(&store, &row, b"retained immutable report").unwrap();
@@ -280,7 +282,7 @@ fn corrupted_retained_bytes_fail_verified_reads_before_a_transfer_can_start() {
 /// fence is derived from the host's captured identity.
 #[test]
 fn the_shared_producer_set_answers_for_retained_solar_bytes_on_every_host() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let database = dir.path().join("store.sqlite");
     let store = open_store(&database).unwrap();
     let bytes = b"# Retained Solar draft";
@@ -342,7 +344,7 @@ fn the_shared_producer_set_answers_for_retained_solar_bytes_on_every_host() {
 /// this host's projects.
 #[test]
 fn one_publication_inventory_reads_the_work_and_never_creates_the_store() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let database = dir.path().join("store.sqlite");
     let reports = dir.path().join("report-artifacts");
     assert!(
@@ -372,7 +374,7 @@ fn one_publication_inventory_reads_the_work_and_never_creates_the_store() {
 #[test]
 fn one_recovery_execution_reads_without_creating_and_refuses_unknown_rows() {
     use ds_sync_runtime::store::recovery::{Command, Control, SCHEMA};
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let database = dir.path().join("store.sqlite");
     let control = |command| Control {
         schema: SCHEMA.into(),
@@ -423,7 +425,7 @@ fn one_recovery_execution_reads_without_creating_and_refuses_unknown_rows() {
 #[test]
 fn explicit_artifact_verification_streams_exact_bytes_without_mutating_work() {
     use ds_sync_runtime::store::recovery::{Command, Control, SCHEMA};
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("queue.sqlite");
     let bytes = vec![42u8; 2 * 65536 + 17];
     let row = row(&bytes);
@@ -553,7 +555,7 @@ fn explicit_artifact_verification_streams_exact_bytes_without_mutating_work() {
 #[test]
 fn artifact_verification_never_creates_an_absent_store() {
     use ds_sync_runtime::store::recovery::{Command, Control, SCHEMA};
-    let dir = tempfile::tempdir().unwrap();
+    let dir = test_directory::tempdir().unwrap();
     let path = dir.path().join("absent.sqlite");
     let result = ds_sync_runtime::recover(
         &path,

@@ -54,13 +54,11 @@ fn every_command_has_a_real_owner_request() {
     for (command, args) in samples {
         let call = request(command.path[1], &parse(command, &args)).unwrap();
         assert!(call.payload()["action"].is_string(), "{}", command.id);
-        assert!(
-            !call
-                .payload()
-                .as_object()
-                .unwrap()
-                .contains_key("sender_uid")
-        );
+        assert!(!call
+            .payload()
+            .as_object()
+            .unwrap()
+            .contains_key("sender_uid"));
     }
 }
 #[test]
@@ -101,10 +99,11 @@ fn human_tables_bound_text_and_make_missing_pages_visible() {
 }
 #[test]
 fn producer_configuration_is_messages_v1_and_server_bounded() {
-    let fixture: Value = serde_json::from_slice(include_bytes!(
-        "../../../../../ds-brain/docs/contracts/messaging-wire/messages-v1/config.json"
-    ))
-    .unwrap();
+    // Consumer-owned snapshot of ds-brain/docs/contracts/messaging-wire/
+    // messages-v1/config.json; update deliberately with the wire contract.
+    let fixture: Value =
+        serde_json::from_slice(include_bytes!("../tests/fixtures/messages-v1-config.json"))
+            .unwrap();
     assert_eq!(fixture["data"]["wire_contract"], "messages-v1");
     assert_eq!(fixture["data"]["default_page_size"], 40);
     assert_eq!(fixture["data"]["max_page_size"], 50);
@@ -131,12 +130,10 @@ fn installation_controls_use_only_redacted_identity_and_known_epoch() {
     );
     assert_eq!(INSTALLATIONS.effect, Effect::ReadOnly);
     assert_eq!(REVOKE_INSTALLATION.effect, Effect::GlobalWrite);
-    assert!(
-        DOMAIN
-            .commands
-            .iter()
-            .any(|c| c.id == REVOKE_INSTALLATION.id)
-    );
+    assert!(DOMAIN
+        .commands
+        .iter()
+        .any(|c| c.id == REVOKE_INSTALLATION.id));
     assert!(
         ds_cli_contract::parse(&REVOKE_INSTALLATION, &["--installation-hash".into(), hash])
             .is_err()
