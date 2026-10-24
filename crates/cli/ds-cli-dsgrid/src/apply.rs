@@ -139,7 +139,7 @@ const OWN_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "admin_authority_required",
         when: "a generic command envelope attempts to author Rwanda admin fields without exact local index resolution",
-        remedy: "use ds dsgrid structure admin-refresh with a verified village index",
+        remedy: "structure admin refresh is not available in this release; remove the Rwanda admin field edits from the envelope",
     },
     Refusal {
         code: "revision_conflict",

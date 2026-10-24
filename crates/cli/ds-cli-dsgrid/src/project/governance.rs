@@ -27,7 +27,7 @@ pub static BUMP_VERSION: Command = Command {
     path: &["dsgrid", "project", "bump-version"],
     contract: 1,
     summary: "Start the next version from the current head (needs --yes).",
-    purpose: "Close the current version for new saves and start v(n+1) when the design goes out, without uploading anything: the new version's first revision re-pins the head's exact bytes. Use it when the content to submit is already the head; to submit new content, publish it with dsgrid publish-version --bump-version instead. The approval restarts as draft. One head starts at most one next version; an exact retry returns it.",
+    purpose: "Close the current version for new saves and start v(n+1) when the design goes out, without uploading anything: the new version's first revision re-pins the head's exact bytes. Use it when the content to submit is already the head; submitting new content as a revision is not available in this release. The approval restarts as draft. One head starts at most one next version; an exact retry returns it.",
     chapter: Chapter::GridModel,
     effect: Effect::GlobalWrite,
     authority: Authority::HeadlessProject,

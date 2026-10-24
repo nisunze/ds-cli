@@ -34,7 +34,7 @@ const OWN: &[Refusal] = &[
     Refusal {
         code: "feature_codes_without_clearances",
         when: "no feature code in the model carries clearances",
-        remedy: "run `ds dsgrid feature-codes import` and `migrate` first",
+        remedy: "feature-code clearance import and migration are not available in this release; use a model whose feature codes already carry clearances",
     },
     Refusal {
         code: "alignment_not_found",
@@ -382,7 +382,7 @@ fn project_refusal(refusal: &Value, owner: &Value) -> Option<Failure> {
             .remedy("use a routed alignment"),
         "no_feature_code_clearances" => Failure::invalid("feature_codes_without_clearances",
             "no feature code carries clearances")
-            .remedy("run `ds dsgrid feature-codes import` and `migrate` first"),
+            .remedy("feature-code clearance import and migration are not available in this release; use a model whose feature codes already carry clearances"),
         _ => return None,
     })
 }

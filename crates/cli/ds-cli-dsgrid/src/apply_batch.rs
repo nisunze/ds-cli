@@ -175,7 +175,7 @@ const OWN_REFUSALS: &[Refusal] = &[
     Refusal {
         code: "admin_authority_required",
         when: "a batch carries Rwanda admin facts that have not been resolved from the exact local village index",
-        remedy: "use ds dsgrid structure admin-refresh with a verified village index",
+        remedy: "structure admin refresh is not available in this release; remove the Rwanda admin field edits from the envelope",
     },
     Refusal {
         code: "revision_conflict",

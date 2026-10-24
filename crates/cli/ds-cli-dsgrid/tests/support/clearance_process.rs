@@ -120,7 +120,7 @@ fn old_map_error(error: ClearanceReportError) -> Failure {
             "feature_codes_without_clearances",
             "no feature code carries clearances",
         )
-        .remedy("run `ds dsgrid feature-codes import` and `migrate` first"),
+        .remedy("feature-code clearance import and migration are not available in this release; use a model whose feature codes already carry clearances"),
     }
 }
 

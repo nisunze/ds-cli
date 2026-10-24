@@ -82,8 +82,8 @@ working copy was converted from: the folder, the exchange digest of its \
 member tree (the digest `ds dsgrid-exchange inspect` prints), the PLS-CADD \
 program version and each native member family's version (DON 57, CRI 94, \
 FEA 15 …). The folder must digest to the workspace the package preserved at \
-import; any other folder is refused. With the link, `ds dsgrid-exchange \
-sync` writes DS edits back into that folder in place. Relinking replaces the \
+import; any other folder is refused. Writing DS edits back into that folder \
+(workspace sync) is not available in this release. Relinking replaces the \
 previous link. Nothing in the workspace is read for engineering and nothing \
 in it is written.",
     chapter: Chapter::GridModel,
@@ -103,7 +103,7 @@ previous link was overwritten, and a `streamed_volume` warning when the \
 folder is on a streamed or network drive.",
     examples: &[Example {
         command: "ds dsgrid model link --model local-5ff16cd0a3d6416b --workspace \"/srv/pls/Nyamagabe\" --account <uid> --output json",
-        note: "Then `ds dsgrid-exchange sync --model local-5ff16cd0a3d6416b --dry-run`.",
+        note: "Pin this copy to the PLS-CADD workspace folder it was converted from.",
         runnable: false,
     }],
     refusals: REFUSALS,

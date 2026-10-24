@@ -55,7 +55,7 @@ PLS-CADD workspace — its `pls_source` {path, digest, pls_version, \
 member_versions}. Never model content.",
     examples: &[Example {
         command: "ds dsgrid model list --output json",
-        note: "Read .data.models[].model to feed set-active or publish-version.",
+        note: "Read .data.models[].model to feed set-active.",
         runnable: false,
     }],
     refusals: crate::model::workspace::REFUSALS,

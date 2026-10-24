@@ -28,7 +28,7 @@ pub static COMMAND: Command = Command {
     path: &["dsgrid", "model", "unlink"],
     contract: 1,
     summary: "Remove a working copy's link to its PLS-CADD workspace.",
-    purpose: "Stops `ds dsgrid-exchange sync` writing into the folder `ds dsgrid model link` recorded. The working copy, its package and the workspace folder are unchanged; relink with `ds dsgrid model link`. A copy with no link is refused as local_model_request_invalid.",
+    purpose: "Removes the PLS-CADD workspace link `ds dsgrid model link` recorded. The working copy, its package and the workspace folder are unchanged; relink with `ds dsgrid model link`. A copy with no link is refused as local_model_request_invalid.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -37,7 +37,7 @@ pub static COMMAND: Command = Command {
     output: "status unlinked, the model row (pls_source now null) and the removed link {path, digest, pls_version, member_versions, member_count, linked_at}.",
     examples: &[Example {
         command: "ds dsgrid model unlink --model local-5ff16cd0a3d6416b --account <uid> --output json",
-        note: "Stop syncing this copy into its PLS-CADD folder.",
+        note: "Remove this copy's link to its PLS-CADD folder.",
         runnable: false,
     }],
     refusals: workspace::REFUSALS,

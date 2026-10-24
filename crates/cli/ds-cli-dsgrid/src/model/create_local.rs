@@ -59,7 +59,7 @@ Writes one empty model into this machine's own catalogue and opens it as the \
 active copy — the single local command that changes which copy an editing \
 session starts from, so the receipt says so rather than leaving it to be \
 discovered. It needs no sign-in, no project and no application, and reaches \
-nothing governed: publishing a revision is `ds dsgrid publish-version`.",
+nothing governed: publishing a revision to a project is not available in this release.",
     chapter: Chapter::GridModel,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
