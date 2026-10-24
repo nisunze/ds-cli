@@ -614,12 +614,12 @@ fn adopt_style_capture(
     identity: &dyn Fn() -> Result<ds_cli_auth::ProviderIdentity, Failure>,
 ) -> Result<(), Failure> {
     authorized()?;
-    if let Some(capture) = capture.as_ref() {
-        if identity()? != capture.identity {
-            return Err(style_error(
-                "Native account/lane/audience changed before Profile style adoption",
-            ));
-        }
+    if let Some(capture) = capture.as_ref()
+        && identity()? != capture.identity
+    {
+        return Err(style_error(
+            "Native account/lane/audience changed before Profile style adoption",
+        ));
     }
     // A successful supplied successor deliberately clears the older null-demand
     // capture; failed preparation never reaches this adoption boundary.
@@ -708,75 +708,74 @@ impl Sessions {
             );
         }
         let mut rehydrated = false;
-        if let Some((id, model, expected)) = operation_owner(&request.operation) {
-            if !held.contains_key(id) {
-                let source_scope = source_scope(&scope);
-                let source = Store::open_read_only(database)
-                    .map_err(source_error)?
-                    .map(|store| store.profile_recovery(&source_scope, id))
-                    .transpose()
-                    .map_err(source_error)?
-                    .flatten();
-                if let Some(recovery) = source {
-                    let header = recovery.source.clone();
-                    let retained_history = recovery.draft.as_ref().map_or(
-                        &header.initial_history,
-                        ds_sync_store::ProfileDraft::history,
-                    );
-                    if header.model_id != model || retained_history != expected {
-                        return Err(Failure::conflict(
-                            "core_profile_history_conflict",
-                            "Retained original differs from the exact requested model/initial history",
-                        ));
-                    }
-                    authorized()?;
-                    if matches!(request.operation, Operation::Close { .. })
-                        && recovery.draft.is_none()
-                    {
-                        Store::open(database)
-                            .map_err(source_error)?
-                            .remove_profile_source(&source_scope, &header)
-                            .map_err(source_error)?;
-                        authorized()?;
-                        return Ok(closed_source_receipt(&scope, &header));
-                    }
-                    if held.len() >= MAX_SESSIONS {
-                        return Err(Failure::unavailable(
-                            "core_profile_capacity",
-                            "Core already retains eight Profile sessions",
-                        ));
-                    }
-                    let (value, _) = if recovery.draft.is_some() {
-                        // The exact retained source, or its verified upgrade.
-                        controls::restore(
-                            scope.clone(),
-                            scratch,
-                            database,
-                            &recovery,
-                            authorized,
-                            required_capability.clone(),
-                        )?
-                    } else {
-                        controls::upgrade::original(
-                            scope.clone(),
-                            scratch,
-                            database,
-                            &recovery,
-                            authorized,
-                            required_capability.clone(),
-                        )?
-                    };
-                    authorized()?;
-                    if recovery.draft.is_none() {
-                        Store::open(database)
-                            .map_err(source_error)?
-                            .touch_profile_source(&source_scope, &value.source, now_ms())
-                            .map_err(source_error)?;
-                    }
-                    authorized()?;
-                    held.insert(id.to_owned(), value);
-                    rehydrated = true;
+        if let Some((id, model, expected)) = operation_owner(&request.operation)
+            && !held.contains_key(id)
+        {
+            let source_scope = source_scope(&scope);
+            let source = Store::open_read_only(database)
+                .map_err(source_error)?
+                .map(|store| store.profile_recovery(&source_scope, id))
+                .transpose()
+                .map_err(source_error)?
+                .flatten();
+            if let Some(recovery) = source {
+                let header = recovery.source.clone();
+                let retained_history = recovery.draft.as_ref().map_or(
+                    &header.initial_history,
+                    ds_sync_store::ProfileDraft::history,
+                );
+                if header.model_id != model || retained_history != expected {
+                    return Err(Failure::conflict(
+                        "core_profile_history_conflict",
+                        "Retained original differs from the exact requested model/initial history",
+                    ));
                 }
+                authorized()?;
+                if matches!(request.operation, Operation::Close { .. }) && recovery.draft.is_none()
+                {
+                    Store::open(database)
+                        .map_err(source_error)?
+                        .remove_profile_source(&source_scope, &header)
+                        .map_err(source_error)?;
+                    authorized()?;
+                    return Ok(closed_source_receipt(&scope, &header));
+                }
+                if held.len() >= MAX_SESSIONS {
+                    return Err(Failure::unavailable(
+                        "core_profile_capacity",
+                        "Core already retains eight Profile sessions",
+                    ));
+                }
+                let (value, _) = if recovery.draft.is_some() {
+                    // The exact retained source, or its verified upgrade.
+                    controls::restore(
+                        scope.clone(),
+                        scratch,
+                        database,
+                        &recovery,
+                        authorized,
+                        required_capability.clone(),
+                    )?
+                } else {
+                    controls::upgrade::original(
+                        scope.clone(),
+                        scratch,
+                        database,
+                        &recovery,
+                        authorized,
+                        required_capability.clone(),
+                    )?
+                };
+                authorized()?;
+                if recovery.draft.is_none() {
+                    Store::open(database)
+                        .map_err(source_error)?
+                        .touch_profile_source(&source_scope, &value.source, now_ms())
+                        .map_err(source_error)?;
+                }
+                authorized()?;
+                held.insert(id.to_owned(), value);
+                rehydrated = true;
             }
         }
         let mut answer = match request.operation {
@@ -793,8 +792,8 @@ impl Sessions {
                 recover,
             } => {
                 let bytes = decode_package(&package_base64, &package_sha256)?;
-                if recover {
-                    if let Some(recovery) = Store::open_read_only(database)
+                if recover
+                    && let Some(recovery) = Store::open_read_only(database)
                         .map_err(source_error)?
                         .map(|store| {
                             store.profile_draft_for_package(&source_scope(&scope), &package_sha256)
@@ -802,16 +801,15 @@ impl Sessions {
                         .transpose()
                         .map_err(source_error)?
                         .flatten()
-                    {
-                        if recovery.source_bytes != bytes {
-                            return Err(invalid(
-                                "Recovery source bytes differ from the opened exact package",
-                            ));
-                        }
-                        return controls::resume(
-                            &mut held, scope, scratch, database, &recovery, authorized,
-                        );
+                {
+                    if recovery.source_bytes != bytes {
+                        return Err(invalid(
+                            "Recovery source bytes differ from the opened exact package",
+                        ));
                     }
+                    return controls::resume(
+                        &mut held, scope, scratch, database, &recovery, authorized,
+                    );
                 }
                 if held.len() >= MAX_SESSIONS {
                     return Err(Failure::unavailable(
@@ -1362,16 +1360,15 @@ fn read_projection_operation(
             request,
             expected_history,
             ..
-        } => {
-            if expected_history["model_revision"].as_str() != Some(request.model_revision.as_str())
-                || request.axis_pin_digest.is_empty()
-                || request.from_entity_id.is_empty()
-                || request.to_entity_id.is_empty()
-            {
-                return Err(invalid(
-                    "Use retained revision/axis and exact range endpoints",
-                ));
-            }
+        } if (expected_history["model_revision"].as_str()
+            != Some(request.model_revision.as_str())
+            || request.axis_pin_digest.is_empty()
+            || request.from_entity_id.is_empty()
+            || request.to_entity_id.is_empty()) =>
+        {
+            return Err(invalid(
+                "Use retained revision/axis and exact range endpoints",
+            ));
         }
         _ => {}
     }
@@ -1392,7 +1389,7 @@ fn read_projection_operation(
         ),
         Operation::EngineeringAttributes { table, .. } => {
             Some(NativeProfileOperationV1::EngineeringAttributes {
-                table: table.clone(),
+                table: *table,
             })
         }
         Operation::GisProjection { label_fields, .. } => {

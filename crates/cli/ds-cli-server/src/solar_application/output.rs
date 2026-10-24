@@ -11,6 +11,8 @@ use std::{
 const MAX_REQUEST: usize = 32 * 1024 * 1024;
 const MAX_COMPLETION: usize = 64 * 1024;
 const FILE_SCHEMA: &str = "ds-solar.application-artifact/v1";
+/// One bounded request: project, body, response byte limit and timeout.
+type Transport<'a> = dyn Fn(&str, &[u8], usize, u64) -> Result<Vec<u8>, Failure> + 'a;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -35,10 +37,7 @@ pub(crate) fn command(inputs: &Inputs) -> Result<Value, Failure> {
     })
 }
 
-fn command_with(
-    inputs: &Inputs,
-    request: &dyn Fn(&str, &[u8], usize, u64) -> Result<Vec<u8>, Failure>,
-) -> Result<Value, Failure> {
+fn command_with(inputs: &Inputs, request: &Transport) -> Result<Value, Failure> {
     crate::require_native_host()?;
     let output = inputs.value("out").map(PathBuf::from);
     if let Some(path) = &output {

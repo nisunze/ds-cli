@@ -117,10 +117,12 @@ fn explicit_local_proof_capture_keeps_original_server_receipt_and_admits_only_it
     );
     let capture = printing::style_capture::Capture::new(
         &snapshot,
-        "project-a",
-        "stable",
-        "user-a",
-        &"a".repeat(64),
+        &printing::style_capture::Scope {
+            project: "project-a",
+            lane: "stable",
+            principal: "user-a",
+            audience: &"a".repeat(64),
+        },
         &source.sheets_sha256,
         &proof.sheets().unwrap(),
         &[draft.clone()],

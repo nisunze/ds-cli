@@ -1766,10 +1766,12 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         Some(
             ds_command_kernel::printing::style_capture::Capture::new(
                 &snapshot,
-                &project_id,
-                lane,
-                identity.uid(),
-                identity.credential_audience_sha256(),
+                &ds_command_kernel::printing::style_capture::Scope {
+                    project: &project_id,
+                    lane,
+                    principal: identity.uid(),
+                    audience: identity.credential_audience_sha256(),
+                },
                 &server_sheets_sha256,
                 &sheets,
                 &layouts,
@@ -3610,10 +3612,12 @@ fn read_inputs(
         Some(
             ds_command_kernel::printing::style_capture::Capture::new(
                 &snapshot,
-                project,
-                lane,
-                identity.uid(),
-                identity.credential_audience_sha256(),
+                &ds_command_kernel::printing::style_capture::Scope {
+                    project,
+                    lane,
+                    principal: identity.uid(),
+                    audience: identity.credential_audience_sha256(),
+                },
                 &receipt.sheets_sha256,
                 &source_sheets,
                 &captured_layouts,

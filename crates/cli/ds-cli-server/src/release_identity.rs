@@ -147,12 +147,11 @@ pub fn inspect(inputs: &Inputs, _: &Context, core: Value) -> Result<Value, Failu
             }
             let mut identity = core;
             // Only a public lane retains a record, so only it binds the bytes.
-            if channel != "local" {
-                if let (Some(object), Some(digest)) =
+            if channel != "local"
+                && let (Some(object), Some(digest)) =
                     (identity.as_object_mut(), executable_sha256())
-                {
-                    object.insert("executable_sha256".into(), json!(digest));
-                }
+            {
+                object.insert("executable_sha256".into(), json!(digest));
             }
             identity
         }
@@ -197,10 +196,10 @@ pub fn inspect(inputs: &Inputs, _: &Context, core: Value) -> Result<Value, Failu
     )
     .map_err(invalid)?;
     // A record that could not be read is never overwritten blindly.
-    if let (Some(store), Some(record), None) = (&store, &answer.record, &record_error) {
-        if let Err(error) = store.write(record) {
-            record_error = Some(error);
-        }
+    if let (Some(store), Some(record), None) = (&store, &answer.record, &record_error)
+        && let Err(error) = store.write(record)
+    {
+        record_error = Some(error);
     }
     let mut value = serde_json::to_value(&answer)
         .map_err(|e| Failure::internal("release_identity_invalid", e.to_string()))?;

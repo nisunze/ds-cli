@@ -27,6 +27,15 @@ pub struct Capture {
     pub source_sheets_sha256: String,
     pub layouts: BTreeMap<String, LayoutCapture>,
 }
+/// The caller identity a capture is fenced to: project, lane, principal and
+/// the credential audience digest.
+#[derive(Clone, Copy, Debug)]
+pub struct Scope<'a> {
+    pub project: &'a str,
+    pub lane: &'a str,
+    pub principal: &'a str,
+    pub audience: &'a str,
+}
 pub fn source_digest(value: &Value) -> Result<String, String> {
     fn canonical(value: &Value) -> Value {
         match value {
@@ -150,14 +159,17 @@ impl Capture {
     }
     pub fn new(
         snapshot: &Snapshot,
-        project: &str,
-        lane: &str,
-        principal: &str,
-        audience: &str,
+        scope: &Scope<'_>,
         server_sheets_sha256: &str,
         sheets: &Value,
         layouts: &[Layout],
     ) -> Result<Self, String> {
+        let Scope {
+            project,
+            lane,
+            principal,
+            audience,
+        } = *scope;
         if snapshot.project_id != project {
             return Err("print_style_capture_context_mismatch: resolver project changed".into());
         }
@@ -342,7 +354,7 @@ mod tests {
             "user-a",
             &"a".repeat(64),
             &receipt(&sheets),
-            &[layout.clone()],
+            std::slice::from_ref(&layout),
         )
         .unwrap();
         assert_eq!(
@@ -356,7 +368,7 @@ mod tests {
             "user-a",
             &"a".repeat(64),
             &receipt(&sheets),
-            &[layout.clone()],
+            std::slice::from_ref(&layout),
         )
         .unwrap();
         assert!(local
@@ -416,7 +428,7 @@ mod tests {
                     "user-a",
                     &"a".repeat(64),
                     &receipt(&changed),
-                    &[layout.clone()]
+                    std::slice::from_ref(&layout)
                 )
                 .is_err(),
                 "{field}"
@@ -429,13 +441,15 @@ mod tests {
         let before = serde_json::to_vec(&layout).unwrap();
         let capture = Capture::new(
             &snapshot,
-            "project-a",
-            "stable",
-            "user-a",
-            &"a".repeat(64),
+            &Scope {
+                project: "project-a",
+                lane: "stable",
+                principal: "user-a",
+                audience: &"a".repeat(64),
+            },
             &"c".repeat(64),
             &sheets,
-            &[layout.clone()],
+            std::slice::from_ref(&layout),
         )
         .unwrap();
         let held = capture.for_layout(&layout).unwrap();
@@ -505,13 +519,15 @@ mod tests {
         let (snapshot, mut layout, sheets) = source();
         let capture = Capture::new(
             &snapshot,
-            "project-a",
-            "stable",
-            "user-a",
-            &"a".repeat(64),
+            &Scope {
+                project: "project-a",
+                lane: "stable",
+                principal: "user-a",
+                audience: &"a".repeat(64),
+            },
             &"c".repeat(64),
             &sheets,
-            &[layout.clone()],
+            std::slice::from_ref(&layout),
         )
         .unwrap();
         for (project, lane, principal, audience) in [

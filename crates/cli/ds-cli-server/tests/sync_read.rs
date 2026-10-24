@@ -88,7 +88,7 @@ fn native_retained_read_preserves_protected_auth_and_default_state_without_daemo
     assert!(
         parse(
             &READ,
-            &vec![
+            &[
                 "--view".into(),
                 "projects".into(),
                 "--out".into(),

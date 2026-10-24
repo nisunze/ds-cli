@@ -2542,10 +2542,12 @@ mod style_context_capture_tests {
         let sheets = json!({"project_settings":[]});
         let capture = printing::style_capture::Capture::new(
             &snapshot,
-            "project-a",
-            "stable",
-            "user-a",
-            &"a".repeat(64),
+            &printing::style_capture::Scope {
+                project: "project-a",
+                lane: "stable",
+                principal: "user-a",
+                audience: &"a".repeat(64),
+            },
             &"c".repeat(64),
             &sheets,
             &[printing::default_layout()],

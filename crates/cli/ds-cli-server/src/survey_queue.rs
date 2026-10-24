@@ -338,12 +338,12 @@ fn perform(
             None => read(None, scope, project, &request, direct),
         };
     }
-    if let Request::CommitDiscard { expected, now } = &request {
-        if expected.is_empty() {
-            survey_entries::prepare_discard(None, scope, project, &[], *now)
-                .map_err(|e| failure(STORE, e))?;
-            return Ok(json!({"removed":[]}));
-        }
+    if let Request::CommitDiscard { expected, now } = &request
+        && expected.is_empty()
+    {
+        survey_entries::prepare_discard(None, scope, project, &[], *now)
+            .map_err(|e| failure(STORE, e))?;
+        return Ok(json!({"removed":[]}));
     }
     let parent = database
         .parent()

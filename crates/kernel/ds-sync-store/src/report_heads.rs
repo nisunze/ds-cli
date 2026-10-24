@@ -164,7 +164,7 @@ mod tests {
         let f = fence();
         let h = head();
         store
-            .observe_report_heads(&f, "project", 10, &[h.clone()])
+            .observe_report_heads(&f, "project", 10, std::slice::from_ref(&h))
             .unwrap();
         assert!(store
             .observe_report_heads(&f, "project", 11, &[h.clone(), h])

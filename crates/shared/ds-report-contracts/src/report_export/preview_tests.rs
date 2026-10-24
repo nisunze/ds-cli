@@ -47,14 +47,14 @@ fn a_new_draft_becomes_the_only_output_and_touches_nothing_else() {
     assert_eq!(plan[0].content_type, "image/svg+xml");
     assert_eq!(plan[0].suffix, ".draft-a3.svg");
     assert_eq!(
-        engine_outputs(&sheets, &[preview.output_id.clone()], recipe).unwrap(),
+        engine_outputs(&sheets, std::slice::from_ref(&preview.output_id), recipe).unwrap(),
         plan
     );
     assert!(engine_outputs(&sheets, &["xlsx".into()], recipe).is_err());
     let mut changed = recipe.clone();
     changed.source_sheets_sha256 = "A".repeat(64);
     assert!(
-        engine_outputs(&sheets, &[preview.output_id.clone()], &changed)
+        engine_outputs(&sheets, std::slice::from_ref(&preview.output_id), &changed)
             .is_err_and(|error| error.contains("source receipt digest"))
     );
     // A delivery planner cannot claim this caller-authored SVG list is an

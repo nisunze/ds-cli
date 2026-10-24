@@ -391,10 +391,10 @@ pub fn command(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     authorized().map_err(refusal)?;
     let plan = inspect(&directory, lane, owner).map_err(refusal)?;
     let plan_digest = digest(&plan).map_err(refusal)?;
-    if let Some(expected) = inputs.value("digest") {
-        if expected != plan_digest {
-            return Err(refusal("plan digest changed; inspect a fresh dry run"));
-        }
+    if let Some(expected) = inputs.value("digest")
+        && expected != plan_digest
+    {
+        return Err(refusal("plan digest changed; inspect a fresh dry run"));
     }
     let dry_run = inputs.switch("dry-run");
     if !dry_run {

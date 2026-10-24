@@ -189,6 +189,99 @@ fn write_output(path: &std::path::Path, bytes: &[u8], value: &Value) -> Result<V
     Ok(receipt)
 }
 
+fn read_request_file(path: &std::path::Path) -> Result<std::fs::File, Failure> {
+    #[cfg(windows)]
+    {
+        return ds_cli_auth::windows_host::read_file(path)
+            .map_err(|e| Failure::invalid("core_profile_request_invalid", e));
+    }
+    #[cfg(not(windows))]
+    {
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NOFOLLOW);
+        }
+        options
+            .open(path)
+            .map_err(|e| Failure::invalid("core_profile_request_invalid", e.to_string()))
+    }
+}
+
+fn require_style_owner(expected: &str, actual: Result<String, String>) -> Result<(), Failure> {
+    let actual = actual.map_err(|error| Failure::unauthorized("server_owner_changed", error))?;
+    if actual != expected {
+        return Err(Failure::unauthorized(
+            "server_owner_changed",
+            "Profile style demand no longer belongs to this Core connection",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) async fn invoke(
+    State(app): State<App>,
+    query: Option<Query<ProjectQuery>>,
+    body: Bytes,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let project = crate::host::project_query(query)?;
+    crate::host::admitting(move || {
+        let request = Request::parse(&body)?;
+        let context = app.sessions.admit_read(
+            ds_command_kernel::execution_context::PROFILE_SESSION,
+            project.as_deref(),
+            &body,
+            ds_compute_runtime::now_ms(),
+        )?;
+        let scope = Scope {
+            principal: context.principal_uid,
+            lane: context.lane,
+            deployment: context.deployment,
+            install: context.install_id,
+            project: context.project,
+        };
+        let parent = app.database.parent().ok_or_else(|| {
+            Failure::invalid(
+                "core_profile_request_invalid",
+                "Core has no protected state parent",
+            )
+        })?;
+        let scratch = parent.join("profile-sessions");
+        crate::host::prepare_directory(&scratch).map_err(crate::failure)?;
+        let style_demand = request.operation.demands_style();
+        let editing = matches!(
+            &request.operation,
+            Operation::PackageCheckpoint { .. }
+                | Operation::EditMode { .. }
+                | Operation::Control { .. }
+                | Operation::SaveControl { .. }
+                | Operation::Discard { .. }
+                | Operation::DiscardRecovery { .. }
+        );
+        let authorized = || {
+            app.auth
+                .authorize(&app.connection.owner)
+                .map_err(|e| Failure::unauthorized("server_owner_changed", e))?;
+            if style_demand || editing {
+                // Null style acquisition crosses the existing authenticated
+                // metadata owner. Bind it immediately to this Core connection,
+                // rather than its ordinary fifteen-second local observation.
+                require_style_owner(
+                    &app.connection.owner,
+                    crate::auth::owner_fence(&app.connection.lane),
+                )?;
+            }
+            Ok(())
+        };
+        app.profiles
+            .execute(scope, &scratch, &app.database, request, &authorized)
+            .map(Json)
+    })
+    .await
+}
+
 #[cfg(test)]
 mod artifact_tests {
     use super::*;
@@ -305,86 +398,4 @@ mod artifact_tests {
             assert!(validate_output(&link).is_err());
         }
     }
-}
-
-fn read_request_file(path: &std::path::Path) -> Result<std::fs::File, Failure> {
-    #[cfg(windows)]
-    {
-        return ds_cli_auth::windows_host::read_file(path)
-            .map_err(|e| Failure::invalid("core_profile_request_invalid", e));
-    }
-    #[cfg(not(windows))]
-    {
-        let mut options = std::fs::OpenOptions::new();
-        options.read(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.custom_flags(libc::O_NOFOLLOW);
-        }
-        options
-            .open(path)
-            .map_err(|e| Failure::invalid("core_profile_request_invalid", e.to_string()))
-    }
-}
-
-fn require_style_owner(expected: &str, actual: Result<String, String>) -> Result<(), Failure> {
-    let actual = actual.map_err(|error| Failure::unauthorized("server_owner_changed", error))?;
-    if actual != expected {
-        return Err(Failure::unauthorized(
-            "server_owner_changed",
-            "Profile style demand no longer belongs to this Core connection",
-        ));
-    }
-    Ok(())
-}
-
-pub(crate) async fn invoke(
-    State(app): State<App>,
-    query: Option<Query<ProjectQuery>>,
-    body: Bytes,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let project = crate::host::project_query(query)?;
-    crate::host::admitting(move || {
-        let request = Request::parse(&body)?;
-        let context = app.sessions.admit_read(
-            ds_command_kernel::execution_context::PROFILE_SESSION,
-            project.as_deref(),
-            &body,
-            ds_compute_runtime::now_ms(),
-        )?;
-        let scope = Scope {
-            principal: context.principal_uid,
-            lane: context.lane,
-            deployment: context.deployment,
-            install: context.install_id,
-            project: context.project,
-        };
-        let parent = app.database.parent().ok_or_else(|| {
-            Failure::invalid(
-                "core_profile_request_invalid",
-                "Core has no protected state parent",
-            )
-        })?;
-        let scratch = parent.join("profile-sessions");
-        crate::host::prepare_directory(&scratch).map_err(crate::failure)?;
-        let style_demand = request.operation.demands_style();
-        let editing = matches!(&request.operation, Operation::PackageCheckpoint { .. } | Operation::EditMode { .. } | Operation::Control { .. }
-            | Operation::SaveControl { .. } | Operation::Discard { .. } | Operation::DiscardRecovery { .. });
-        let authorized = || {
-            app.auth.authorize(&app.connection.owner)
-                .map_err(|e| Failure::unauthorized("server_owner_changed", e))?;
-            if style_demand || editing {
-                // Null style acquisition crosses the existing authenticated
-                // metadata owner. Bind it immediately to this Core connection,
-                // rather than its ordinary fifteen-second local observation.
-                require_style_owner(&app.connection.owner, crate::auth::owner_fence(&app.connection.lane))?;
-            }
-            Ok(())
-        };
-        app.profiles
-            .execute(scope, &scratch, &app.database, request, &authorized)
-            .map(Json)
-    })
-    .await
 }

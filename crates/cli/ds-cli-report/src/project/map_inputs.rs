@@ -644,10 +644,12 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     }
     let style_capture = ds_command_kernel::printing::style_capture::Capture::new(
         &snapshot,
-        project,
-        lane,
-        identity.uid(),
-        identity.credential_audience_sha256(),
+        &ds_command_kernel::printing::style_capture::Scope {
+            project,
+            lane,
+            principal: identity.uid(),
+            audience: identity.credential_audience_sha256(),
+        },
         &server_sheets_sha256,
         &sheets,
         std::slice::from_ref(&layout),
