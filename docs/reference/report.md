@@ -369,6 +369,14 @@ Core reads the lifecycle inventory and the configuration receipt (or this
 machine's held copy when offline), then every active LV transformer's saved
 room through the same held copy `report project export` keeps: a held room
 whose head has not moved is reused and only a missing or moved room is read.
+The heads come from the one status listing each run reads. The configuration
+receipt comes from Core's retained project configuration (the document `ds
+design config read` holds, forgotten by every native configuration save):
+`--dry-run` answers from it and reads the service only when nothing is held,
+while a publication or `--refresh` reads it once and retains it. The receipt's
+`inputs.configuration` says which (`held` or `refresh`, with `saved_at_ms`).
+An unchanged second dry run therefore reads only the inventory, the status
+listing and the nature projection, and no room.
 Each room is projected onto the report layers, staged and released, so the
 project is never held in memory. `--transformer` narrows the run to exact
 active names. A room with no report feature is named in `scope.emptyRooms`

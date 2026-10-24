@@ -31,23 +31,23 @@ pub const NOT_HELD: DeclaredRefusal = DeclaredRefusal {
 };
 pub const CONTEXT_CHANGED: DeclaredRefusal = DeclaredRefusal {
     code: "project_config_context_changed",
-    when: "the protected account, lane or credential audience changed during the read",
-    remedy: "restore the intended account and repeat the explicit project read",
+    when: "the account, lane or credential audience changed during the read",
+    remedy: "restore the intended account and read again",
 };
 pub const STORE_REFUSED: DeclaredRefusal = DeclaredRefusal {
     code: "project_config_store_refused",
-    when: "the protected native Store cannot read or retain the configuration",
-    remedy: "resolve the named protected Store refusal; retained work is left in place",
+    when: "the native Store cannot read or retain the configuration",
+    remedy: "resolve the named Store refusal; retained work is kept",
 };
 pub const STALE: DeclaredRefusal = DeclaredRefusal {
     code: "retained_reads_stale",
     when: "configuration was invalidated while its refresh was in flight",
-    remedy: "repeat the explicit refresh after the configuration save completes",
+    remedy: "refresh again after the configuration save completes",
 };
 pub const ANSWER_INVALID: DeclaredRefusal = DeclaredRefusal {
     code: "design_answer_invalid",
-    when: "the complete configuration response does not match the shared Rust document contract",
-    remedy: "keep the held configuration and retry the explicit refresh after the gateway response is corrected",
+    when: "the configuration response does not match the shared document contract",
+    remedy: "keep the held configuration; refresh again once the gateway answer is corrected",
 };
 
 fn failure(declared: DeclaredRefusal, message: impl ToString) -> Failure {

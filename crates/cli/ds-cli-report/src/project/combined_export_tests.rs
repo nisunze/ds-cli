@@ -173,3 +173,190 @@ fn the_render_says_what_was_queued_and_what_was_warned() {
     assert!(rendered.contains("combined_transformer.xlsx"), "{rendered}");
     assert!(rendered.contains("voltage-drop"), "{rendered}");
 }
+
+fn saved_room(name: &str, version: i64, poles: usize) -> ds_project_data::room_hold::Room {
+    let layers = BTreeMap::from([(
+        "lv_poles".to_string(),
+        json!({
+            "type": "FeatureCollection",
+            "features": (0..poles).map(|pole| json!({
+                "type": "Feature",
+                "properties": {"pole_id": format!("{name}-{pole}")},
+            })).collect::<Vec<_>>(),
+        }),
+    )]);
+    ds_project_data::room_hold::Room {
+        transformer: name.into(),
+        version: Some(version),
+        content_digest: Some(
+            ds_command_kernel::report_export::jcs::layers_content_digest(&layers).unwrap(),
+        ),
+        layers,
+    }
+}
+
+/// One combined run's room acquisition, exactly as `run` drives it: one plan
+/// over the status listing's heads, then each room through the hold, with
+/// every service read counted. Returns the rooms' staged document bytes.
+fn combined_rooms(
+    hold: Hold,
+    names: &[String],
+    heads: Vec<Value>,
+    saved: &BTreeMap<String, ds_project_data::room_hold::Room>,
+    reads: &mut Vec<String>,
+) -> (Vec<Vec<u8>>, Value) {
+    let mut link = Link::with_schedule(ds_cli_auth::WeakNetwork::new(
+        &[std::time::Duration::ZERO; 3],
+    ));
+    let mut rooms = Rooms::plan(hold, names, hold::Heads::Read(heads)).unwrap();
+    let staged = names
+        .iter()
+        .map(|name| {
+            let room = rooms
+                .room(name, &mut link, || {
+                    reads.push(name.clone());
+                    Ok(saved[name].clone())
+                })
+                .unwrap();
+            ds_command_kernel::report_export::transformer_document_bytes(&room.layers).unwrap()
+        })
+        .collect();
+    (staged, rooms.receipt())
+}
+
+fn listing(saved: &BTreeMap<String, ds_project_data::room_hold::Room>) -> Vec<Value> {
+    saved
+        .values()
+        .map(|room| json!({"name": room.transformer, "version": room.version}))
+        .collect()
+}
+
+/// feedback b428693b: a second combined run with nothing changed answers
+/// every room from this machine's hold. The status listing is its only
+/// freshness evidence; no room is read again and the staged rooms are the
+/// same bytes a full read stages.
+#[test]
+fn an_unchanged_second_run_reads_only_the_listing_and_stages_the_same_rooms() {
+    let dir = tempfile::tempdir().unwrap();
+    let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
+    let names: Vec<String> = ["tx_a", "tx_b", "tx_c"].map(String::from).to_vec();
+    let saved: BTreeMap<_, _> = names
+        .iter()
+        .map(|name| (name.clone(), saved_room(name, 3, 4)))
+        .collect();
+
+    let mut cold_reads = Vec::new();
+    let (cold, cold_receipt) =
+        combined_rooms(hold(), &names, listing(&saved), &saved, &mut cold_reads);
+    assert_eq!(cold_reads, names, "a cold run reads every room once");
+    assert_eq!(cold_receipt["rooms_fetched"], 3);
+
+    let mut warm_reads = Vec::new();
+    let (warm, warm_receipt) =
+        combined_rooms(hold(), &names, listing(&saved), &saved, &mut warm_reads);
+    assert!(
+        warm_reads.is_empty(),
+        "unchanged rooms were read: {warm_reads:?}"
+    );
+    assert_eq!(warm_receipt["rooms_fetched"], 0);
+    assert_eq!(warm_receipt["reused"], 3);
+    assert_eq!(warm_receipt["heads"], "read");
+    assert_eq!(warm, cold, "held rooms stage the bytes a full read stages");
+
+    // The configuration of that unchanged dry run is the retained one too.
+    assert_eq!(
+        configuration_read(false, false),
+        ProjectConfigurationRead::Acquire
+    );
+}
+
+/// The control: one moved head reads exactly that room again, and the run
+/// stages what a full read of the new heads stages.
+#[test]
+fn one_moved_head_reads_only_that_room_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let hold = || Hold::at(dir.path().to_path_buf(), "uid-1", "project-1");
+    let names: Vec<String> = ["tx_a", "tx_b", "tx_c"].map(String::from).to_vec();
+    let mut saved: BTreeMap<_, _> = names
+        .iter()
+        .map(|name| (name.clone(), saved_room(name, 3, 4)))
+        .collect();
+    combined_rooms(hold(), &names, listing(&saved), &saved, &mut Vec::new());
+
+    saved.insert("tx_b".into(), saved_room("tx_b", 4, 5));
+    let mut reads = Vec::new();
+    let (staged, receipt) = combined_rooms(hold(), &names, listing(&saved), &saved, &mut reads);
+    assert_eq!(reads, ["tx_b"]);
+    assert_eq!(receipt["rooms_fetched"], 1);
+    assert_eq!(receipt["reused"], 2);
+
+    let fresh = tempfile::tempdir().unwrap();
+    let mut full_reads = Vec::new();
+    let (full, _) = combined_rooms(
+        Hold::at(fresh.path().to_path_buf(), "uid-1", "project-1"),
+        &names,
+        listing(&saved),
+        &saved,
+        &mut full_reads,
+    );
+    assert_eq!(full_reads.len(), 3);
+    assert_eq!(
+        staged, full,
+        "the mixed run is byte-identical to a full read"
+    );
+}
+
+/// A publication, or an explicit --refresh, reads the configuration from the
+/// service; only a run that publishes nothing answers from the retained one.
+#[test]
+fn only_an_unrefreshed_dry_run_uses_the_retained_configuration() {
+    assert_eq!(
+        configuration_read(true, false),
+        ProjectConfigurationRead::Refresh
+    );
+    assert_eq!(
+        configuration_read(true, true),
+        ProjectConfigurationRead::Refresh
+    );
+    assert_eq!(
+        configuration_read(false, true),
+        ProjectConfigurationRead::Refresh
+    );
+    assert_eq!(
+        configuration_read(false, false),
+        ProjectConfigurationRead::Acquire
+    );
+    assert!(COMMAND.arg("refresh").is_some());
+    let declared: Vec<&str> = REFUSALS.iter().map(|refusal| refusal.code).collect();
+    for code in [
+        "project_config_context_changed",
+        "project_config_store_refused",
+        "retained_reads_stale",
+        "design_answer_invalid",
+    ] {
+        assert!(declared.contains(&code), "{code} undeclared");
+    }
+}
+
+/// The retained document carries every configuration member; a combined run
+/// keeps only the receipt and its refusal, exactly as it read them before.
+#[test]
+fn the_retained_configuration_yields_only_the_receipt_members() {
+    let document: ProjectConfigurationDocument = serde_json::from_value(json!({
+        "sheets": {"project_settings": [{"parameter": "x", "value": 1}]},
+        "groups": {"g": 1},
+        "models": [],
+        "network_reporter_input_receipt": {"schema": "r", "sheets_sha256": "s"},
+        "network_reporter_input_receipt_refusal": "why",
+    }))
+    .unwrap();
+    assert_eq!(
+        receipt_members(&document),
+        json!({
+            "network_reporter_input_receipt": {"schema": "r", "sheets_sha256": "s"},
+            "network_reporter_input_receipt_refusal": "why",
+        })
+    );
+    let bare: ProjectConfigurationDocument = serde_json::from_value(json!({"sheets": {}})).unwrap();
+    assert_eq!(receipt_members(&bare), json!({}));
+}

@@ -23,6 +23,9 @@ use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Example, Execution, Refusal, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_command_kernel::gateway_exchange::design::{
+    ProjectConfigurationDocument, ProjectConfigurationRead,
+};
 use ds_command_kernel::report_export::{InputReceipt, combined as decisions};
 use ds_report_host::HostFailure;
 use ds_report_host::combined::{CombinedExtras, CombinedSettings, CombinedStaging};
@@ -46,6 +49,10 @@ const STATE_DIR_ARG: Arg = Arg::value(
     "core-state-dir",
     "<absolute-path>",
     "Publication queue root; the same absolute path as ds core serve when overridden.",
+);
+const REFRESH_ARG: Arg = Arg::switch(
+    "refresh",
+    "Re-read the project configuration this machine holds; publishing always does.",
 );
 /// The staging directory a run keeps below its output root while it runs.
 const STAGING_DIRECTORY: &str = ".staging";
@@ -180,6 +187,10 @@ pub(super) const REFUSALS: &[Refusal] = &[
     super::export::PUBLISH_ROOT,
     hold::INPUTS_NOT_HELD,
     hold::ROOM_NOT_HELD,
+    ds_cli_auth::config_document::CONTEXT_CHANGED,
+    ds_cli_auth::config_document::STORE_REFUSED,
+    ds_cli_auth::config_document::STALE,
+    ds_cli_auth::config_document::ANSWER_INVALID,
 ];
 
 pub static COMMAND: Command = Command {
@@ -187,7 +198,7 @@ pub static COMMAND: Command = Command {
     path: &["report", "project", "combined"],
     contract: 1,
     summary: "Produce the Combined Report data set locally and queue it.",
-    purpose: "Builds the combined_transformer SHP, XLSX and GeoJSONSeq (plus GPKG or Network Information when the project's outputs name them; never a PDF) here from every active LV room, re-reading only moved rooms, and seals the set into the Sync queue unless --dry-run. Refuses before compute past the collision policy; missing voltage drop is only a warning.",
+    purpose: "Builds the combined_transformer SHP, XLSX and GeoJSONSeq (plus GPKG or Network Information when the project's outputs name them; never a PDF) here from every active LV room, re-reading only moved rooms, and seals the set into the Sync queue unless --dry-run. A dry run uses the configuration this machine holds unless --refresh. Refuses before compute past the collision policy; missing voltage drop is only a warning.",
     chapter: Chapter::Reports,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -196,6 +207,7 @@ pub static COMMAND: Command = Command {
         TRANSFORMER_ARG,
         OUT_DIR_ARG,
         DRY_RUN_ARG,
+        REFRESH_ARG,
         STATE_DIR_ARG,
         LANE_ARG,
         PROJECT_ARG,
@@ -317,8 +329,39 @@ fn same_context(
         .map_err(host_failure)
 }
 
+/// How a run reads the project configuration. Core's retained configuration
+/// (the document `design config read` holds, forgotten by every native
+/// configuration save) answers a run that publishes nothing, so an unchanged
+/// rerun does not download the whole configuration again; the room heads are
+/// still read from the one status listing. A publication, or `--refresh`,
+/// reads it once from the service and retains it.
+pub(super) fn configuration_read(publish: bool, refresh: bool) -> ProjectConfigurationRead {
+    if publish || refresh {
+        ProjectConfigurationRead::Refresh
+    } else {
+        ProjectConfigurationRead::Acquire
+    }
+}
+
+/// The configuration receipt members a combined run reads, and nothing else.
+pub(super) fn receipt_members(document: &ProjectConfigurationDocument) -> Value {
+    use ds_command_kernel::report_export::{INPUT_RECEIPT_MEMBER, INPUT_RECEIPT_REFUSAL_MEMBER};
+    Value::Object(
+        [INPUT_RECEIPT_MEMBER, INPUT_RECEIPT_REFUSAL_MEMBER]
+            .into_iter()
+            .filter_map(|member| {
+                document
+                    .additional
+                    .get(member)
+                    .map(|value| (member.to_string(), value.clone()))
+            })
+            .collect(),
+    )
+}
+
 /// The lifecycle inventory and the project's configuration receipt members:
-/// read now, or this machine's held copy when the service cannot be reached.
+/// the inventory read now and the configuration as `configuration_read`
+/// says, or this machine's held copy when the service cannot be reached.
 /// A combined run reads only these two; it never rewrites the held print
 /// inputs an individual export keeps.
 fn project_inputs(
@@ -327,13 +370,13 @@ fn project_inputs(
     identity: &ds_cli_auth::ProviderIdentity,
     hold: &Hold,
     link: &mut Link,
+    mode: ProjectConfigurationRead,
 ) -> Result<(Vec<hold::Row>, Value, Value), Failure> {
-    use ds_command_kernel::report_export::{INPUT_RECEIPT_MEMBER, INPUT_RECEIPT_REFUSAL_MEMBER};
     let inventory = link.read(|| {
         ds_cli_auth::transformer_inventory_for_project(lane, project, &TransformerSet::default())
     })?;
     let configuration = match &inventory {
-        Some(_) => link.read(|| ds_cli_auth::feeder_configuration_for_project(lane, project))?,
+        Some(_) => link.read(|| ds_cli_auth::config_document::read(lane, project, mode))?,
         None => None,
     };
     if let (Some(inventory), Some(configuration)) = (inventory, configuration) {
@@ -343,26 +386,14 @@ fn project_inputs(
             inventory.identity(),
             inventory.project_id(),
         )?;
-        same_context(
-            identity,
-            project,
-            configuration.identity(),
-            configuration.project_id(),
-        )?;
-        let document = &configuration.result().document;
-        let members: serde_json::Map<String, Value> =
-            [INPUT_RECEIPT_MEMBER, INPUT_RECEIPT_REFUSAL_MEMBER]
-                .into_iter()
-                .filter_map(|member| {
-                    document
-                        .get(member)
-                        .map(|value| (member.to_string(), value.clone()))
-                })
-                .collect();
+        // The retained read fences its own protected principal; this run's
+        // account must still be the one that read it.
+        let now = ds_cli_auth::headless_identity_for_named_project(lane)?;
+        same_context(identity, project, &now, &configuration.project)?;
         return Ok((
             hold::rows(inventory.result()),
-            Value::Object(members),
-            json!({"source": "service"}),
+            receipt_members(&configuration.document),
+            json!({"source": "service", "configuration": configuration.observation}),
         ));
     }
     let unreachable = link.unreachable().unwrap_or("unreachable").to_string();
@@ -489,8 +520,14 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let hold = Hold::open(&identity, project)?;
     let mut link = Link::default();
 
-    let (rows, configuration, inputs_receipt) =
-        project_inputs(lane, project, &identity, &hold, &mut link)?;
+    let (rows, configuration, inputs_receipt) = project_inputs(
+        lane,
+        project,
+        &identity,
+        &hold,
+        &mut link,
+        configuration_read(publish, inputs.switch("refresh")),
+    )?;
     let receipt = InputReceipt::from_config(&configuration).map_err(invalid)?;
     let names = scope_names(&rows, &requested)?;
     if names.is_empty() {
