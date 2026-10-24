@@ -186,6 +186,11 @@ fn validate_artifacts_v2(connection: &Connection) -> Result<()> {
 
 fn migrate_artifacts_v1(connection: &mut Connection) -> Result<()> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if schema_version(&transaction)? == Some(SCHEMA_VERSION) {
+        // A concurrent opener migrated first; validate what it wrote.
+        drop(transaction);
+        return validate_artifacts_v2(connection);
+    }
     let columns = transaction
         .prepare("PRAGMA table_info(artifacts)")?
         .query_map([], |row| {
@@ -231,12 +236,63 @@ fn migrate_artifacts_v1(connection: &mut Connection) -> Result<()> {
     Ok(())
 }
 
+/// Switching a fresh rollback-journal file to WAL needs an exclusive lock,
+/// and SQLite answers a concurrent first opener `SQLITE_BUSY` without running
+/// the busy handler; retry within the same 5 s budget the handler has.
+fn enter_wal(connection: &Connection) -> Result<()> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match connection.pragma_update(None, "journal_mode", "WAL") {
+            Err(rusqlite::Error::SqliteFailure(error, _))
+                if error.code == rusqlite::ErrorCode::DatabaseBusy
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            other => return Ok(other?),
+        }
+    }
+}
+
+/// Creates the schema of an empty file under SQLite's write lock, re-reading
+/// the version there: of several concurrent first openers only one creates
+/// it, the others read the version it wrote.
+fn create_schema(connection: &mut Connection) -> Result<i64> {
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    if let Some(found) = schema_version(&transaction)? {
+        return Ok(found);
+    }
+    let existing: Option<i64> = transaction
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifacts'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if existing.is_some() {
+        return Err(Error::Open(
+            "an unversioned artifact store is unknown; all rows are left untouched".into(),
+        ));
+    }
+    transaction.execute_batch(SCHEMA)?;
+    transaction.execute(
+        "INSERT INTO meta(key, value) VALUES ('schema_version', ?1)",
+        params![SCHEMA_VERSION],
+    )?;
+    transaction.commit()?;
+    Ok(SCHEMA_VERSION)
+}
+
 fn scope_key(scope: &Scope) -> String {
     match scope {
         Scope::Project { project } => format!("project:{project}"),
         Scope::Personal => "personal".to_string(),
     }
 }
+
+/// Bounded re-looks at a sidecar caught mid-unlink (zero links) before judging it.
+#[cfg(unix)]
+const SIDECAR_UNLINK_RECHECKS: u32 = 64;
 
 /// The store holds signed work grants and queued user data, so its directory
 /// is created `0700` and the database file is `0600` before SQLite opens it
@@ -329,21 +385,44 @@ fn prepare_private(path: &Path) -> std::io::Result<()> {
         for suffix in ["-wal", "-shm", "-journal"] {
             let mut sidecar = path.as_os_str().to_owned();
             sidecar.push(suffix);
-            match std::fs::symlink_metadata(&sidecar) {
-                Ok(meta) => {
-                    if !meta.is_file()
-                        || meta.file_type().is_symlink()
-                        || meta.nlink() != 1
-                        || meta.uid() != parent_metadata.uid()
+            let mut rechecks = 0;
+            loop {
+                match std::fs::symlink_metadata(&sidecar) {
+                    // Another connection's last close unlinks its own
+                    // `-wal`/`-shm`/`-journal`; a lookup racing that unlink
+                    // sees our ordinary file with zero links. That inode no
+                    // longer names the path, so look again (bounded) and
+                    // judge whatever the path names now.
+                    Ok(meta)
+                        if meta.nlink() == 0
+                            && meta.is_file()
+                            && meta.uid() == parent_metadata.uid()
+                            && rechecks < SIDECAR_UNLINK_RECHECKS =>
                     {
-                        return Err(std::io::Error::other("Store sidecar must be an ordinary single-link file with the same private owner"));
+                        rechecks += 1;
+                        std::thread::yield_now();
+                        continue;
                     }
-                    if meta.permissions().mode() & 0o077 != 0 {
-                        std::fs::set_permissions(&sidecar, private.clone())?;
+                    Ok(meta) => {
+                        if !meta.is_file()
+                            || meta.file_type().is_symlink()
+                            || meta.nlink() != 1
+                            || meta.uid() != parent_metadata.uid()
+                        {
+                            return Err(std::io::Error::other("Store sidecar must be an ordinary single-link file with the same private owner"));
+                        }
+                        if meta.permissions().mode() & 0o077 != 0 {
+                            match std::fs::set_permissions(&sidecar, private.clone()) {
+                                // Unlinked by its connection's close meanwhile.
+                                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                                other => other?,
+                            }
+                        }
                     }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error),
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error),
+                break;
             }
         }
     }
@@ -365,7 +444,7 @@ impl Store {
         let mut connection = Connection::open_with_flags(path, flags)
             .map_err(|error| Error::Open(error.to_string()))?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        connection.pragma_update(None, "journal_mode", "WAL")?;
+        enter_wal(&connection)?;
         // The power-loss guarantee, decided (owner, 2026-09-20, after a
         // power cut): an acknowledged seal survives a sudden power cut. Under
         // WAL, `NORMAL` syncs the log only at checkpoints, so a transaction
@@ -375,40 +454,23 @@ impl Store {
         // that sees a few transitions per pass — against the durability of
         // every acknowledged row, receipt and lease. Durability wins.
         connection.pragma_update(None, "synchronous", "FULL")?;
-        let found = schema_version(&connection)?;
+        let found = match schema_version(&connection)? {
+            Some(found) => found,
+            None => create_schema(&mut connection)?,
+        };
         match found {
-            Some(found) if found > SCHEMA_VERSION => {
+            found if found > SCHEMA_VERSION => {
                 return Err(Error::Incompatible {
                     found,
                     supported: SCHEMA_VERSION,
                 })
             }
-            Some(2) => validate_artifacts_v2(&connection)?,
-            Some(1) => migrate_artifacts_v1(&mut connection)?,
-            Some(found) => {
+            2 => validate_artifacts_v2(&connection)?,
+            1 => migrate_artifacts_v1(&mut connection)?,
+            found => {
                 return Err(Error::Open(format!(
                     "unknown sync store schema {found}; store left untouched"
                 )))
-            }
-            None => {
-                let existing: Option<i64> = connection
-                    .query_row(
-                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifacts'",
-                        [],
-                        |row| row.get(0),
-                    )
-                    .optional()?;
-                if existing.is_some() {
-                    return Err(Error::Open(
-                        "an unversioned artifact store is unknown; all rows are left untouched"
-                            .into(),
-                    ));
-                }
-                connection.execute_batch(SCHEMA)?;
-                connection.execute(
-                    "INSERT INTO meta(key, value) VALUES ('schema_version', ?1)",
-                    params![SCHEMA_VERSION],
-                )?;
             }
         }
         Ok(Store { connection })
