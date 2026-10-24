@@ -195,10 +195,33 @@ fn browser_engine_and_ui_units_answer_their_unit_facts() {
         stderr.starts_with("module_engine_incompatible:"),
         "{stderr}"
     );
+    // Solar is a browser engine unit admitted by its prepared city calculation.
+    let solar = json!({"schema":"ds.solar-engine/v1","protocolMajor":1,"environment":"wasm","coreVersion":"0.1.0",
+        "sourceSha":"c".repeat(40),"dependencyClosureSha256":"d".repeat(64),"capabilities":["calculate_prepared_city_v1"]});
+    let (code, stdout, stderr) = run(&request("solar", "browser", solar.clone()), &[]);
+    assert_eq!(code, 0, "{stderr}");
+    let answer: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(answer["kind"], "engine");
+    assert_eq!(answer["owner"], "ds-solar");
+    assert_eq!(answer["protocol"], "ds.solar-wasm/v1");
+    assert_eq!(answer["files"][0], "ds_solar_wasm.js");
+    assert_eq!(
+        answer["release"],
+        format!("ds-solar@0.1.0+{}", "c".repeat(40))
+    );
     let (code, _, stderr) = run(&request("solar", "browser", json!({})), &[]);
     assert_eq!(code, 1);
     assert!(
-        stderr.starts_with("module_admission_request_invalid:"),
+        stderr.starts_with("module_engine_incompatible:"),
+        "{stderr}"
+    );
+    let mut uncapable = solar;
+    // A unit without the prepared city entry the Kernel calls refuses.
+    uncapable["capabilities"] = json!(["calculate_prepared_v1"]);
+    let (code, _, stderr) = run(&request("solar", "browser", uncapable), &[]);
+    assert_eq!(code, 1);
+    assert!(
+        stderr.starts_with("module_engine_incompatible:"),
         "{stderr}"
     );
     let (code, _, _) = run(&request("command-kernel", "browser", identity), &[]);

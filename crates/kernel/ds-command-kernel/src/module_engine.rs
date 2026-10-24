@@ -345,7 +345,7 @@ fn require_tokens(value: &Value, required: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-/// A browser engine unit (Network, Reporter) and the identity it exports.
+/// A browser engine unit (Network, Reporter, Solar) and the identity it exports.
 pub struct BrowserEngineProfile {
     pub protocol: &'static str,
     pub identity_schema: &'static str,
@@ -367,7 +367,13 @@ pub fn browser_engine_profile(component: ModuleComponent) -> Option<BrowserEngin
             capability: "render_held_svg_pdf_v1",
             stem: "ds_reporter_wasm",
         }),
-        ModuleComponent::Solar => None,
+        // Solar prepared calculation (owner 24 Oct: Web computes Solar).
+        ModuleComponent::Solar => Some(BrowserEngineProfile {
+            protocol: "ds.solar-wasm/v1",
+            identity_schema: "ds.solar-engine/v1",
+            capability: "calculate_prepared_city_v1",
+            stem: "ds_solar_wasm",
+        }),
     }
 }
 
@@ -389,7 +395,7 @@ pub fn admit_browser_engine_build(
         return Err("module_engine_incompatible: Browser identity exceeds 16 KiB".into());
     }
     let profile = browser_engine_profile(component).ok_or_else(|| {
-        "module_release_target_unsupported: Solar has no admitted browser publication contract"
+        "module_release_target_unsupported: this component has no admitted browser publication contract"
             .to_string()
     })?;
     let core_version = identity["coreVersion"].as_str().unwrap_or_default();

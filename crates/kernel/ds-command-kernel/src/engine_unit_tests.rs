@@ -250,7 +250,8 @@ fn local_build_is_canary_local_dev_only_and_admits_exactly_its_tested_identity()
         local_unit(ModuleComponent::Solar, "canary", &identity, &local_files())
             .unwrap_err()
             .code,
-        "module_release_target_unsupported"
+        // A Network identity never admits the Solar unit.
+        "module_engine_incompatible"
     );
     // A local unit cannot borrow a release authority, nor the reverse.
     let unit = local_unit(ModuleComponent::Network, "canary", &identity, &local_files()).unwrap();
@@ -373,11 +374,18 @@ fn each_build_declares_one_host_effect_with_its_own_lane_and_scope() {
             .code,
         "module_scope_invalid"
     );
+    // Owner 24 Oct: Solar is a page engine unit on every host.
+    assert_eq!(
+        host_for(ModuleComponent::Solar, "canary", false, false)
+            .unwrap()
+            .host,
+        "browser"
+    );
     assert_eq!(
         host_for(ModuleComponent::Solar, "canary", false, true)
-            .unwrap_err()
-            .code,
-        "module_release_target_unsupported"
+            .unwrap()
+            .host,
+        "core"
     );
 }
 
@@ -407,8 +415,12 @@ fn page_requests_are_closed_and_bounded() {
         ModuleComponent::Network
     );
     assert_eq!(
-        admit_target("solar", "canary").unwrap_err().code,
-        "module_release_target_unsupported"
+        admit_target("solar", "canary").unwrap(),
+        ModuleComponent::Solar
+    );
+    assert_eq!(
+        admit_target("solarium", "canary").unwrap_err().code,
+        "module_release_component_invalid"
     );
     assert_eq!(
         admit_target("network", "beta").unwrap_err().code,

@@ -60,22 +60,17 @@ fn browser_release_inspection_is_explicit_and_native_default_is_preserved() {
 fn unsupported_browser_target_refuses_before_file_access_and_unknown_runtime_is_not_ignored() {
     let dir = tempfile::tempdir().unwrap();
     let absent = dir.path().join("must-not-read.json");
-    let error = inspect_file(&absent, "solar", Some("wasm")).unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("module_release_target_unsupported"),
-        "{error}"
-    );
-    // Reporter has an admitted browser unit (Kernel 6a8ad64), so its target
-    // passes and only then is the absent file refused.
-    let error = inspect_file(&absent, "reporter", Some("wasm")).unwrap_err();
-    assert!(
-        !error
-            .to_string()
-            .contains("module_release_target_unsupported"),
-        "{error}"
-    );
+    // Reporter (Kernel 6a8ad64) and Solar (owner 24 Oct) have admitted browser
+    // units, so their target passes and only then is the absent file refused.
+    for component in ["reporter", "solar"] {
+        let error = inspect_file(&absent, component, Some("wasm")).unwrap_err();
+        assert!(
+            !error
+                .to_string()
+                .contains("module_release_target_unsupported"),
+            "{component}: {error}"
+        );
+    }
     assert_eq!(
         inspect_file(&absent, "network", Some("other"))
             .unwrap_err()

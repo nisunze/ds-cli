@@ -70,7 +70,7 @@ fn admit(bytes: &[u8]) -> Result<Value, String> {
     }))
 }
 
-/// Browser units: the two engine units and the two UI units.
+/// Browser units: the three engine units and the two UI units.
 fn admit_browser(request: &Request) -> Result<Value, String> {
     let files = |stem: &str| {
         json!([
@@ -100,7 +100,7 @@ fn admit_browser(request: &Request) -> Result<Value, String> {
     let component = ModuleComponent::from_name(&request.component)
         .filter(|component| browser_engine_profile(*component).is_some())
         .ok_or_else(|| {
-            "module_admission_request_invalid: browser units are network, reporter, interactions or command-kernel".to_string()
+            "module_admission_request_invalid: browser units are network, reporter, solar, interactions or command-kernel".to_string()
         })?;
     let profile = browser_engine_profile(component).expect("filtered browser engine");
     let admitted = admit_browser_engine_build(component, &request.build_info, None)?;

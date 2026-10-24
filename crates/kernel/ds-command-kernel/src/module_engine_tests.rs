@@ -370,11 +370,23 @@ fn browser_engine_units_admit_their_identity_facts() {
             .stem,
         "ds_reporter_wasm"
     );
-    assert!(browser_engine_profile(ModuleComponent::Solar).is_none());
-    let solar = admit_browser_engine_build(ModuleComponent::Solar, &browser_network(), None);
-    assert!(solar
-        .unwrap_err()
-        .starts_with("module_release_target_unsupported:"));
+    // Owner 24 Oct: Solar is the browser prepared-calculation unit.
+    assert_eq!(
+        browser_engine_profile(ModuleComponent::Solar).unwrap().stem,
+        "ds_solar_wasm"
+    );
+    let solar = json!({"schema":"ds.solar-engine/v1","protocolMajor":1,"coreVersion":"0.1.0","sourceSha":SOURCE,
+        "dependencyClosureSha256":CLOSURE,"environment":"wasm","capabilities":["calculate_prepared_city_v1"]});
+    let admitted = admit_browser_engine_build(ModuleComponent::Solar, &solar, None).unwrap();
+    assert_eq!(admitted.release, format!("ds-solar@0.1.0+{SOURCE}"));
+    // Another unit's identity never admits the Solar unit.
+    for wrong in [browser_network(), browser_reporter()] {
+        assert!(
+            admit_browser_engine_build(ModuleComponent::Solar, &wrong, None)
+                .unwrap_err()
+                .starts_with("module_engine_incompatible:")
+        );
+    }
 }
 
 #[test]

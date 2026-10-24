@@ -28,6 +28,12 @@ const REPORTER_FILES: [(&str, &str); 4] = [
     ("ds_reporter_wasm.d.ts", "module-types"),
     ("ds_reporter_wasm_bg.wasm.d.ts", "module-types"),
 ];
+const SOLAR_FILES: [(&str, &str); 4] = [
+    ("ds_solar_wasm.js", "module-javascript"),
+    ("ds_solar_wasm_bg.wasm", "module-wasm"),
+    ("ds_solar_wasm.d.ts", "module-types"),
+    ("ds_solar_wasm_bg.wasm.d.ts", "module-types"),
+];
 struct ComponentProfile {
     protocol: &'static str,
     files: &'static [(&'static str, &'static str); 4],
@@ -37,15 +43,15 @@ fn profile(component: ModuleComponent) -> Result<ComponentProfile, ModuleRelease
     let Some(engine) = browser_engine_profile(component) else {
         return fail(
             "module_release_target_unsupported",
-            "Solar has no admitted browser publication contract",
+            "This component has no admitted browser publication contract",
         );
     };
     Ok(ComponentProfile {
         protocol: engine.protocol,
-        files: if component == ModuleComponent::Network {
-            &NETWORK_FILES
-        } else {
-            &REPORTER_FILES
+        files: match component {
+            ModuleComponent::Network => &NETWORK_FILES,
+            ModuleComponent::Reporter => &REPORTER_FILES,
+            ModuleComponent::Solar => &SOLAR_FILES,
         },
         owner: component.engine_owner(),
     })

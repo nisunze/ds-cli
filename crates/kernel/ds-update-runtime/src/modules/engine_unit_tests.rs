@@ -299,9 +299,13 @@ fn absent_stores_read_offline_without_creating_state() {
             .is_none()
     );
     assert_eq!(fs::read_dir(base.path()).unwrap().count(), 0);
-    assert!(EngineUnitStore::selection_from(base.path(), ModuleComponent::Solar, "canary", UiScope::Release)
-        .unwrap_err()
-        .starts_with("module_release_target_unsupported"));
+    // Owner 24 Oct: Solar is a page engine unit; its absent store reads the same.
+    assert!(
+        EngineUnitStore::selection_from(base.path(), ModuleComponent::Solar, "canary", UiScope::Release)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(fs::read_dir(base.path()).unwrap().count(), 0);
     // The native addon store keys its directories by component; engine units
     // never share them.
     let store = EngineUnitStore::new(base.path(), NETWORK, "canary", UiScope::Release).unwrap();

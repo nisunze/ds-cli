@@ -134,7 +134,7 @@ fn acquisition_requires_exact_consent_lane_and_current_complete_catalog() {
             .code,
         "module_selection_changed"
     );
-    for component in ["solar"] {
+    for component in ["solarium", "core"] {
         assert!(admit_target(component, "canary").is_err());
     }
     let mut withdrawn = catalog();
@@ -424,7 +424,7 @@ fn reporter_ready() -> InstalledBrowserModule {
 fn reporter_requires_its_complete_closed_unit_owner_protocol_and_identity() {
     let receipt = reporter_ready();
     admit_target("reporter", "canary").unwrap();
-    assert!(admit_target("solar", "canary").is_err());
+    admit_target("solar", "canary").unwrap();
     let files = receipt
         .unit
         .release
@@ -649,4 +649,64 @@ fn newer_catalog_and_protocol_revisions_admit_the_same_unit() {
         inspect("canary", &missing).unwrap_err().code,
         "module_release_invalid"
     );
+}
+/// Owner 24 Oct: Web computes Solar. The Solar unit is admitted by its own
+/// complete closed unit, owner, protocol and the city entry the Kernel calls.
+fn solar_catalog() -> Value {
+    serde_json::from_str::<Value>(
+        &include_str!("fixtures/reporter-wasm-canary.json")
+            .replace("ds-network-reporter", "ds-solar")
+            .replace("reporter", "solar"),
+    )
+    .unwrap()["release"]
+        .clone()
+}
+#[test]
+fn solar_requires_its_complete_closed_unit_owner_protocol_and_capability() {
+    let unit = inspect("canary", &solar_catalog()).unwrap();
+    assert_eq!(unit.release.component, ModuleComponent::Solar);
+    let verified = unit
+        .release
+        .assets
+        .iter()
+        .map(|asset| VerifiedFile {
+            filename: filename(asset).unwrap(),
+            sha256: asset.sha256.clone(),
+            size_bytes: asset.size_bytes,
+        })
+        .collect::<Vec<_>>();
+    let identity = json!({"schema":"ds.solar-engine/v1","protocolMajor":1,"environment":"wasm",
+        "coreVersion":"0.1.0","sourceSha":unit.release.assets[0].source_sha,
+        "dependencyClosureSha256":unit.release.assets[0].engines[0].manifest_sha256,
+        "capabilities":["calculate_prepared_city_v1"]});
+    let authority = BrowserAuthority {
+        gateway_origin: "https://gateway.example".into(),
+        route_manifest_sha256: "a".repeat(64),
+    };
+    prepare(
+        unit.clone(),
+        authority.clone(),
+        &verified,
+        identity.clone(),
+        true,
+    )
+    .unwrap();
+    // A Reporter identity cannot admit the Solar unit, nor can one that lacks
+    // the prepared calculation capability.
+    let mut reporter = identity.clone();
+    reporter["schema"] = json!("ds.reporter-engine/v1");
+    let mut incapable = identity;
+    incapable["capabilities"] = json!(["calculate_prepared_v1"]);
+    for wrong in [reporter, incapable] {
+        assert_eq!(
+            prepare(unit.clone(), authority.clone(), &verified, wrong, true)
+                .unwrap_err()
+                .code,
+            "module_engine_incompatible"
+        );
+    }
+    // A Reporter catalog member cannot be relabelled as the Solar unit.
+    let mut crossed = solar_catalog();
+    crossed["assets"][0]["engines"][0]["engine"] = json!("ds-network-reporter");
+    assert!(inspect("canary", &crossed).is_err());
 }

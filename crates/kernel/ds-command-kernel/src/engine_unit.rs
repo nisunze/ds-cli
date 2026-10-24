@@ -1,6 +1,6 @@
 //! Page engine units held by installed Core (Desktop and Local Dev).
 //!
-//! The Network (and Reporter) browser WASM unit is released separately and
+//! The Network, Reporter and Solar browser WASM units are released separately and
 //! never bundled into a page. On a Desktop, Core's component system installs,
 //! verifies and selects it the way it holds the UI units; Local Dev selects a
 //! unit built from the working tree in Core's separate local-dev scope. Core
@@ -41,6 +41,12 @@ const REPORTER_FILES: [&str; 4] = [
     "ds_reporter_wasm.d.ts",
     "ds_reporter_wasm_bg.wasm.d.ts",
 ];
+const SOLAR_FILES: [&str; 4] = [
+    "ds_solar_wasm.js",
+    "ds_solar_wasm_bg.wasm",
+    "ds_solar_wasm.d.ts",
+    "ds_solar_wasm_bg.wasm.d.ts",
+];
 
 fn refuse(code: &'static str, message: &str) -> ModuleReleaseError {
     ModuleReleaseError {
@@ -73,10 +79,7 @@ pub fn member_names(component: ModuleComponent) -> Result<[&'static str; 4], Mod
     match component {
         ModuleComponent::Network => Ok(NETWORK_FILES),
         ModuleComponent::Reporter => Ok(REPORTER_FILES),
-        ModuleComponent::Solar => fail(
-            "module_release_target_unsupported",
-            "Solar has no page engine unit",
-        ),
+        ModuleComponent::Solar => Ok(SOLAR_FILES),
     }
 }
 
@@ -86,7 +89,7 @@ pub fn admit_target(component: &str, lane: &str) -> Result<ModuleComponent, Modu
     let component = ModuleComponent::from_name(component).ok_or_else(|| {
         refuse(
             "module_release_component_invalid",
-            "Expected the network or reporter engine unit",
+            "Expected the network, reporter or solar engine unit",
         )
     })?;
     member_names(component)?;
