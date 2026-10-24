@@ -107,6 +107,8 @@ fn transfer_timeouts_after(elapsed: Duration) -> Option<TransferTimeouts> {
     })
 }
 
+const HEARTBEAT: Duration = Duration::from_secs(1);
+
 #[derive(Clone, Debug)]
 pub struct TransferProgress {
     pub status: &'static str,
@@ -562,6 +564,7 @@ where
     let mut buffer = vec![0u8; 1024 * 1024];
     let mut received = offset;
     let mut last_progress = 0;
+    let mut last_report = Instant::now();
     loop {
         check_cancelled()?;
         admit_transport()?;
@@ -578,8 +581,10 @@ where
             return Err(format!("{label} exceeds its declared size"));
         }
         let progress = ((received as f64 / expected_size as f64) * 95.0).floor() as u8;
-        if progress > last_progress {
-            last_progress = progress;
+        // A slow link crosses a percent rarely: repeat the figures once a second.
+        if progress > last_progress || last_report.elapsed() >= HEARTBEAT {
+            last_progress = last_progress.max(progress);
+            last_report = Instant::now();
             report(TransferProgress {
                 status: "downloading",
                 progress,

@@ -233,7 +233,10 @@ absent or removed unit is installed (`outcome: installed`); an older one is
 replaced (`updated`); a unit that already is the active release is kept with no
 download (`current`). The result is `ds.ui-module-convergence/v1`; stderr
 carries `<component>: <step> <percent>% (<bytes>/<total>)` progress with steps
-`checking`, the transfer steps, and `installed`. The Desktop recovery panel
+`checking`, the transfer steps, and `installed`. One earlier
+`<component>: version <release>` line names the target release; a shell that
+does not know it ignores it. Download lines repeat at least once a second and
+at most four times a second. The Desktop recovery panel
 calls only this command through its shell.
 
 The Tauri loader uses two typed read-only commands, with explicit runtime wasm:

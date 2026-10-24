@@ -1,6 +1,7 @@
 //! Typed Core CLI projection of opaque UI installation. This OS-user scope
 //! bootstraps before sign-in; it grants no project or engineering authority.
 use crate::core_components::{CHANNEL, REFUSALS, RUNTIME, owner_failure};
+use crate::ui_install_progress::{Pace, progress_line, version_line};
 use base64::Engine;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
@@ -325,7 +326,7 @@ pub static INSTALL_LATEST: Command = Command {
             .choices(&["wasm"])
             .default("wasm"),
     ],
-    output: "ds.ui-module-convergence/v1: component, channel, outcome (installed, updated or current), generation, releaseVersion and unitSha256. Step progress goes to stderr as `<component>: <step> <percent>% (<bytes>/<total>)`.",
+    output: "ds.ui-module-convergence/v1: component, channel, outcome (installed, updated or current), generation, releaseVersion and unitSha256. Step progress goes to stderr as `<component>: <step> <percent>% (<bytes>/<total>)`, preceded by one `<component>: version <release>` line naming the target release.",
     examples: &[],
     refusals: INSTALL_REFUSALS,
     reference: Some("docs/reference/core.md"),
@@ -334,10 +335,7 @@ pub static INSTALL_LATEST: Command = Command {
     availability: ui_availability,
 };
 fn note(component: UiComponent, step: &str, progress: u8, done: u64, total: u64) {
-    ds_cli_contract::output::note(&format!(
-        "{}: {step} {progress}% ({done}/{total})",
-        component.as_str()
-    ));
+    ds_cli_contract::output::note(&progress_line(component, step, progress, done, total));
 }
 pub fn install_latest(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
     if !context.confirmed {
@@ -363,21 +361,32 @@ pub fn install_latest(inputs: &Inputs, context: &Context) -> Result<Value, Failu
     let grant = authority
         .acquire_active_ui(component, &|| false)
         .map_err(install_failure)?;
+    if let Some(line) = version_line(component, &grant.release_version()) {
+        ds_cli_contract::output::note(&line);
+    }
     let store = UiModuleStore::managed(component, channel).map_err(install_failure)?;
     let mut total = 0;
+    let mut pace = Pace::new();
     let installed = store
         .install_active(
             grant,
             guard(),
             |progress| {
                 total = progress.bytes_total;
-                note(
-                    component,
+                if pace.admit(
                     progress.status,
-                    progress.progress,
                     progress.bytes_downloaded,
                     progress.bytes_total,
-                )
+                    std::time::Instant::now(),
+                ) {
+                    note(
+                        component,
+                        progress.status,
+                        progress.progress,
+                        progress.bytes_downloaded,
+                        progress.bytes_total,
+                    )
+                }
             },
             &|| false,
         )

@@ -14,6 +14,7 @@ pub mod profile_session;
 pub mod profile_sessions;
 pub mod release_identity;
 pub mod ui_components;
+mod ui_install_progress;
 mod ui_updates;
 // The HTTP host and the layer binding are reachable from an integration test
 // so the isolation proof can stand up a real owner-only socket over a fixture

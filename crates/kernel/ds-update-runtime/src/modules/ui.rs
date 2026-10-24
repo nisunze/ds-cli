@@ -89,6 +89,12 @@ pub struct TrustedUiGrant {
     unit: UiUnit,
     authority: UiAuthority,
 }
+impl TrustedUiGrant {
+    /// The release version this admitted grant installs; display only.
+    pub fn release_version(&self) -> String {
+        self.unit.version()
+    }
+}
 impl CapturedReleaseAuthority {
     /// A person's confirmed unit: refuses when the channel moved since it was read.
     pub fn acquire_ui(
