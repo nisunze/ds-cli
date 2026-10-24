@@ -44,7 +44,7 @@ pub const REVOKED: &str = "auth_session_revoked";
 pub const OFFLINE: &str = "auth_refresh_offline";
 /// The held token expired and the refresh got no usable answer this time.
 pub const UNAVAILABLE: &str = "auth_refresh_unavailable";
-/// A record or a legacy record that does not admit.
+/// A record that does not admit.
 pub const INVALID: &str = "auth_session_invalid";
 /// A sign-in intent before the page started its session.
 pub const NOT_STARTED: &str = "auth_session_not_started";
@@ -53,8 +53,6 @@ const MAX_SECRET: usize = 16 * 1024;
 const MAX_UID: usize = 128;
 const MAX_EMAIL: usize = 320;
 const MAX_TEXT: usize = 2048;
-/// The largest legacy record the migration reads.
-pub const MAX_LEGACY_BYTES: usize = 64 * 1024;
 
 /// The signed-in account, as the page shows it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -553,155 +551,36 @@ pub fn unavailable() -> Refusal {
     }
 }
 
-/// What a page does with the held record and the legacy one at start.
+/// What a page does with the held record at start.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Restore {
     /// The session to adopt.
     pub adopt: Option<Record>,
-    /// Write this record before adopting it as stored (a migrated record).
-    pub write: Option<Record>,
     /// Remove this stored session id: it no longer admits.
     pub forget: Option<String>,
-    pub legacy: LegacyFate,
 }
 
-/// What happens to the record the TypeScript store left in `localStorage`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LegacyFate {
-    /// There is none, or this build cannot judge it: leave it.
-    Keep,
-    /// Remove it now: the Kernel's record decides, or it does not admit.
-    Remove,
-    /// Remove it only once `write` committed, so a failed write keeps the
-    /// person signed in on the next start.
-    RemoveAfterWrite,
-}
-
-/// The one-time migration and the restore, decided together. `session` is a
-/// fresh session id for a migrated record.
-pub fn restore(
-    stored: Option<Record>,
-    legacy: Option<&str>,
-    project: Option<&str>,
-    session: &str,
-    now: u64,
-) -> Restore {
-    let Some(project) = project else {
+/// The restore: the held record is adopted when it admits for this build's
+/// Firebase project, and forgotten when it does not.
+pub fn restore(stored: Option<Record>, project: Option<&str>) -> Restore {
+    let (Some(project), Some(stored)) = (project, stored) else {
         return Restore {
             adopt: None,
-            write: None,
             forget: None,
-            legacy: LegacyFate::Keep,
         };
     };
-    let mut forget = None;
-    if let Some(stored) = stored {
-        if stored.admits(project).is_ok() {
-            return Restore {
-                adopt: Some(stored),
-                write: None,
-                forget: None,
-                legacy: if legacy.is_some() {
-                    LegacyFate::Remove
-                } else {
-                    LegacyFate::Keep
-                },
-            };
+    if stored.admits(project).is_ok() {
+        Restore {
+            adopt: Some(stored),
+            forget: None,
         }
-        forget = Some(stored.session.clone());
-    }
-    let Some(legacy) = legacy else {
-        return Restore {
+    } else {
+        Restore {
             adopt: None,
-            write: None,
-            forget,
-            legacy: LegacyFate::Keep,
-        };
-    };
-    match from_legacy(legacy, project, session, now) {
-        Ok(record) => Restore {
-            adopt: Some(record.clone()),
-            write: Some(record),
-            forget,
-            legacy: LegacyFate::RemoveAfterWrite,
-        },
-        Err(_) => Restore {
-            adopt: None,
-            write: None,
-            forget,
-            legacy: LegacyFate::Remove,
-        },
-    }
-}
-
-/// The record the retired TypeScript store kept in `localStorage`
-/// (`ds_auth:<project>`): `{user: {uid, email, displayName?, photoUrl?},
-/// token, refreshToken, tokenTimestamp (ms), expiresAtEpochSeconds?}`.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Legacy {
-    user: Option<AuthUser>,
-    token: Option<String>,
-    refresh_token: Option<String>,
-    #[serde(default)]
-    token_timestamp: Option<f64>,
-    #[serde(default)]
-    expires_at_epoch_seconds: Option<f64>,
-}
-
-impl Drop for Legacy {
-    fn drop(&mut self) {
-        if let Some(token) = &mut self.token {
-            token.zeroize();
-        }
-        if let Some(token) = &mut self.refresh_token {
-            token.zeroize();
+            forget: Some(stored.session.clone()),
         }
     }
 }
-
-/// Admit one legacy record as a Kernel record of this project's account.
-pub fn from_legacy(text: &str, project: &str, session: &str, now: u64) -> Result<Record, String> {
-    if text.len() > MAX_LEGACY_BYTES {
-        return Err(invalid("the legacy record exceeds its bound"));
-    }
-    let mut legacy: Legacy =
-        serde_json::from_str(text).map_err(|_| invalid("the legacy record is unreadable"))?;
-    let user = legacy
-        .user
-        .clone()
-        .ok_or_else(|| invalid("the legacy record names no account"))?;
-    let token = legacy.token.take().unwrap_or_default();
-    let refresh_token = legacy.refresh_token.take().unwrap_or_default();
-    let exp = crate::validate_firebase_id_token(&token, &user.uid, &user.email, project, 0)
-        .map_err(|_| invalid("the legacy ID token names another account or project"))?;
-    let seconds = |value: Option<f64>| {
-        value
-            .filter(|value| value.is_finite() && *value > 0.0)
-            .map(|value| value as u64)
-    };
-    let expires_at = seconds(legacy.expires_at_epoch_seconds).map_or(exp, |held| held.min(exp));
-    let obtained_at = seconds(legacy.token_timestamp.map(|ms| ms / 1000.0)).unwrap_or(0);
-    let record = Record {
-        schema: SCHEMA.into(),
-        session: session.into(),
-        user,
-        id_token: token,
-        refresh_token,
-        expires_at_epoch_seconds: expires_at,
-        obtained_at_epoch_seconds: obtained_at.min(now),
-    };
-    record.validate()?;
-    Ok(record)
-}
-
-/// The legacy record's `localStorage` key for a build's Firebase project.
-pub fn legacy_key(project: &str) -> String {
-    format!("ds_auth:{project}")
-}
-
-/// The key every project once shared; dropped on sight, as it always was.
-pub const LEGACY_SHARED_KEY: &str = "ds_auth";
 
 fn invalid(message: &str) -> String {
     format!("{INVALID}: {message}")

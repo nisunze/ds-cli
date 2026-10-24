@@ -310,123 +310,24 @@ fn the_view_and_the_debug_forms_never_carry_a_credential() {
     );
 }
 
-/// The record the retired TypeScript store wrote.
-fn legacy(uid: &str, token: &str, extra: Value) -> String {
-    let mut value = json!({
-        "user": {"uid": uid, "email": email(uid), "displayName": "Legacy Operator"},
-        "token": token, "refreshToken": format!("legacy-refresh-{uid}"),
-        "tokenTimestamp": (NOW - 600) as f64 * 1000.0, "loading": false,
-    });
-    value
-        .as_object_mut()
-        .unwrap()
-        .extend(extra.as_object().unwrap().clone());
-    value.to_string()
-}
-
 #[test]
-fn a_legacy_record_migrates_with_its_account_and_expiry() {
-    let token = id_token(A, PROJECT, NOW + 3_000, "legacy");
-    let with_expiry = legacy(A, &token, json!({"expiresAtEpochSeconds": NOW + 2_000}));
-    let migrated = from_legacy(&with_expiry, PROJECT, S1, NOW).unwrap();
-    assert_eq!(migrated.user.uid, A);
-    assert_eq!(
-        migrated.user.display_name.as_deref(),
-        Some("Legacy Operator")
-    );
-    assert_eq!(migrated.session, S1);
-    assert_eq!(migrated.id_token, token);
-    assert_eq!(migrated.refresh_token, "legacy-refresh-uid-account-a");
-    assert_eq!(migrated.expires_at_epoch_seconds, NOW + 2_000);
-    assert_eq!(migrated.obtained_at_epoch_seconds, NOW - 600);
-    assert_eq!(migrated.admits(PROJECT), Ok(()));
-    // Older records named no expiry: the token's own claim decides.
-    let without = from_legacy(&legacy(A, &token, json!({})), PROJECT, S1, NOW).unwrap();
-    assert_eq!(without.expires_at_epoch_seconds, NOW + 3_000);
-    // An unknown age refreshes before first use.
-    let undated = from_legacy(
-        &legacy(A, &token, json!({"tokenTimestamp": 0})),
-        PROJECT,
-        S1,
-        NOW,
-    )
-    .unwrap();
-    assert!(matches!(
-        {
-            let mut session = Session::new();
-            session.restored(Some(undated), true);
-            session.plan(NOW, false)
-        },
-        Plan::Refresh(_)
-    ));
-}
-
-#[test]
-fn a_legacy_record_of_another_account_or_project_never_migrates() {
-    let ours = id_token(A, PROJECT, NOW + 3_000, "legacy");
-    for text in [
-        legacy(A, &id_token(B, PROJECT, NOW + 3_000, "x"), json!({})),
-        legacy(
-            A,
-            &id_token(A, "another-project", NOW + 3_000, "x"),
-            json!({}),
-        ),
-        legacy(A, &ours, json!({"refreshToken": null})),
-        legacy(A, &ours, json!({"user": null})),
-        legacy(A, "not-a-jwt", json!({})),
-        "{not json".to_owned(),
-        format!("{{\"pad\":\"{}\"}}", "x".repeat(MAX_LEGACY_BYTES)),
-    ] {
-        assert!(from_legacy(&text, PROJECT, S1, NOW)
-            .unwrap_err()
-            .starts_with(INVALID));
-    }
-}
-
-#[test]
-fn restore_prefers_the_store_and_migrates_the_legacy_record_once() {
-    let token = id_token(A, PROJECT, NOW + 3_000, "legacy");
-    let old = legacy(A, &token, json!({}));
-    // The Kernel's record decides; the legacy one goes.
-    let plan = restore(Some(record(B, S2, NOW)), Some(&old), Some(PROJECT), S1, NOW);
+fn restore_adopts_only_a_held_record_that_admits() {
+    let plan = restore(Some(record(B, S2, NOW)), Some(PROJECT));
     assert_eq!(plan.adopt.as_ref().map(|r| r.user.uid.as_str()), Some(B));
-    assert_eq!(
-        (plan.write, plan.forget, plan.legacy),
-        (None, None, LegacyFate::Remove)
-    );
-    // No Kernel record: the legacy one is written, adopted, then removed.
-    let plan = restore(None, Some(&old), Some(PROJECT), S1, NOW);
-    assert_eq!(plan.adopt, plan.write);
-    assert_eq!(
-        plan.write
-            .as_ref()
-            .map(|r| (r.user.uid.as_str(), r.session.as_str())),
-        Some((A, S1))
-    );
-    assert_eq!(plan.legacy, LegacyFate::RemoveAfterWrite);
-    // An unusable legacy record is removed and nobody is signed in.
-    let plan = restore(None, Some("{broken"), Some(PROJECT), S1, NOW);
-    assert_eq!(
-        (plan.adopt, plan.write, plan.legacy),
-        (None, None, LegacyFate::Remove)
-    );
+    assert_eq!(plan.forget, None);
     // A stored record that no longer admits is forgotten.
     let mut foreign = record(A, S2, NOW);
     foreign.id_token = id_token(A, "another-project", NOW + 3_000, "x");
-    let plan = restore(Some(foreign), None, Some(PROJECT), S1, NOW);
-    assert_eq!(
-        (plan.adopt, plan.forget, plan.legacy),
-        (None, Some(S2.into()), LegacyFate::Keep)
-    );
+    let plan = restore(Some(foreign), Some(PROJECT));
+    assert_eq!((plan.adopt, plan.forget), (None, Some(S2.into())));
     // Nothing held; and a build without a Firebase project judges nothing.
     assert_eq!(
-        restore(None, None, Some(PROJECT), S1, NOW).legacy,
-        LegacyFate::Keep
+        restore(None, Some(PROJECT)),
+        Restore {
+            adopt: None,
+            forget: None
+        }
     );
-    let plan = restore(Some(record(A, S1, NOW)), Some(&old), None, S1, NOW);
-    assert_eq!(
-        (plan.adopt, plan.write, plan.legacy),
-        (None, None, LegacyFate::Keep)
-    );
-    assert_eq!(legacy_key(PROJECT), "ds_auth:ds-test-project");
+    let plan = restore(Some(record(A, S1, NOW)), None);
+    assert_eq!((plan.adopt, plan.forget), (None, None));
 }

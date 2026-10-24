@@ -5,9 +5,7 @@
 //! `authSessionSignal` and renders it. Sign-in, sign-up, Google's redirect and
 //! sign-out are intents; every request's bearer is read here by the gateway
 //! executor ([`credentials`]), refreshed first when it is due, so no token
-//! crosses to TypeScript. The record the retired TypeScript store left in
-//! `localStorage` is read once here, written to the store, and removed only
-//! after that write committed.
+//! crosses to TypeScript.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -25,8 +23,8 @@ use wasm_bindgen_futures::{future_to_promise, spawn_local, JsFuture};
 use super::google::{self, Taken};
 use super::store::{Operation, ENDED};
 use super::{
-    legacy_key, restore, Answer, AuthSessionView, Credentials, LegacyFate, Persist, Plan, Record,
-    RefreshCall, Session, LEGACY_SHARED_KEY, NOT_STARTED,
+    restore, Answer, AuthSessionView, Credentials, Persist, Plan, Record, RefreshCall, Session,
+    NOT_STARTED,
 };
 use crate::client_state::browser::StateSignal;
 use crate::client_state::{Demand, OnDemand};
@@ -96,32 +94,6 @@ fn google_unavailable() -> AuthRefusal {
     }
 }
 
-/// One `localStorage` method, or `None` when the page has none or refuses.
-fn local_storage(method: &str, key: &str) -> Option<JsValue> {
-    let storage = Reflect::get(&js_sys::global(), &"localStorage".into())
-        .ok()
-        .filter(JsValue::is_object)?;
-    let function: Function = Reflect::get(&storage, &method.into())
-        .ok()?
-        .dyn_into()
-        .ok()?;
-    function.call1(&storage, &JsValue::from_str(key)).ok()
-}
-
-/// The retired TypeScript store's record, read once; the key every project
-/// once shared is dropped on sight.
-fn legacy_read() -> Option<String> {
-    let project = FIREBASE_PROJECT?;
-    let _ = local_storage("removeItem", LEGACY_SHARED_KEY);
-    local_storage("getItem", &legacy_key(project))?.as_string()
-}
-
-fn legacy_remove() {
-    if let Some(project) = FIREBASE_PROJECT {
-        let _ = local_storage("removeItem", &legacy_key(project));
-    }
-}
-
 /// The page's origin (`location.origin`).
 fn page_origin() -> Option<String> {
     Reflect::get(&js_sys::global(), &"location".into())
@@ -181,9 +153,8 @@ impl Page {
         }
     }
 
-    /// Read the held record, migrate the legacy one once, and adopt it.
+    /// Read the held record and adopt it.
     async fn restore(self: Rc<Self>) {
-        let now = now_epoch_seconds();
         let stored = match self.call(Operation::Read).await {
             Ok(answer) => serde_json::from_value::<Option<Record>>(answer["session"].clone())
                 .ok()
@@ -195,28 +166,11 @@ impl Page {
                 None
             }
         };
-        let legacy = legacy_read();
-        let plan = restore(stored, legacy.as_deref(), FIREBASE_PROJECT, &token(), now);
+        let plan = restore(stored, FIREBASE_PROJECT);
         if let Some(session) = plan.forget {
             let _ = self.call(Operation::SignOut { session }).await;
         }
-        let mut stored = plan.adopt.is_some() && plan.write.is_none();
-        if let Some(record) = plan.write {
-            match self.call(Operation::SignIn { record }).await {
-                Ok(_) => {
-                    stored = true;
-                    if plan.legacy == LegacyFate::RemoveAfterWrite {
-                        legacy_remove();
-                    }
-                }
-                Err(error) => warn(&format!(
-                    "auth session: the earlier sign-in could not be moved into this browser's store: {error}"
-                )),
-            }
-        }
-        if plan.legacy == LegacyFate::Remove {
-            legacy_remove();
-        }
+        let stored = plan.adopt.is_some();
         let view = {
             let mut session = self.session.borrow_mut();
             session.restored(plan.adopt, stored);
@@ -253,7 +207,7 @@ impl Page {
 
     /// Bind a validated sign-in as this page's session and keep it.
     async fn bind(self: &Rc<Self>, login: crate::ValidatedLogin) -> AuthSessionView {
-        // A restore still migrating must not write after this sign-in.
+        // A restore still running must finish before this sign-in.
         self.ready().await;
         let record = Record::from_login(&login, &token(), now_epoch_seconds());
         let (persist, generation, view) = {
@@ -359,8 +313,7 @@ pub(crate) async fn credentials() -> Result<GatewayCredentials, Refusal> {
 }
 
 /// Start this page's session with the profile's store host: read the held
-/// record (migrating the retired `localStorage` one once). A second call
-/// answers the first call's promise.
+/// record. A second call answers the first call's promise.
 #[wasm_bindgen(js_name = authSessionStart, unchecked_return_type = "Promise<void>")]
 pub fn start(store: StoreHost) -> Promise {
     if let Some(page) = page() {
@@ -439,11 +392,8 @@ impl EndedSession {
 
 /// The person signs out: the view turns signed out before this returns and
 /// the profile's record is removed. Answers the ended session, if one was.
-/// The retired `localStorage` record goes too, whether or not its migration
-/// committed, so the next launch cannot restore the account signed out here.
 #[wasm_bindgen(js_name = authSessionSignOut)]
 pub fn sign_out() -> Option<EndedSession> {
-    legacy_remove();
     let page = page()?;
     let (ended, generation, view) = {
         let mut session = page.session.borrow_mut();
