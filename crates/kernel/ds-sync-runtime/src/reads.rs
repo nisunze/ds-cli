@@ -14,7 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use ds_command_kernel::sync;
 use sha2::{Digest, Sha256};
 
+use crate::gateway::GatewayError;
 use crate::host::Reads;
+use crate::read_cause;
 
 /// The ONE host a DS-minted download ticket may address (contract §3 of the
 /// transport authority: the same pinned host the resumable sessions use).
@@ -160,14 +162,25 @@ pub fn owned_directory(base: &Path, relative: &Path) -> Result<PathBuf, String> 
 /// Stream `reader` into `destination` through a private temporary file,
 /// proving the digest and the size before the file is placed.
 pub fn place_verified(
-    mut reader: impl Read,
+    reader: impl Read,
     destination: &Path,
     sha256: &str,
     size_bytes: u64,
 ) -> Result<(), String> {
+    place_verified_cause(reader, destination, sha256, size_bytes).map_err(String::from)
+}
+
+/// [`place_verified`] with the closed cause of the failure when the network or
+/// the verification named one (`read_cause`): the sentence is the same.
+pub fn place_verified_cause(
+    mut reader: impl Read,
+    destination: &Path,
+    sha256: &str,
+    size_bytes: u64,
+) -> Result<(), GatewayError> {
     let parent = destination
         .parent()
-        .ok_or_else(|| "the download destination has no directory".to_string())?;
+        .ok_or_else(|| GatewayError::from("the download destination has no directory"))?;
     let temporary = parent.join(format!(
         ".{}.part-{}",
         destination
@@ -183,9 +196,9 @@ pub fn place_verified(
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options
-        .open(&temporary)
-        .map_err(|error| format!("could not create the download file: {error}"))?;
+    let mut file = options.open(&temporary).map_err(|error| {
+        GatewayError::from(format!("could not create the download file: {error}"))
+    })?;
     let mut hasher = Sha256::new();
     let mut total = 0_u64;
     let mut buffer = vec![0_u8; READ_SLICE_BYTES];
@@ -193,34 +206,38 @@ pub fn place_verified(
         let read = match reader.read(&mut buffer) {
             Ok(0) => break Ok(()),
             Ok(read) => read,
-            Err(error) => break Err(format!("the download stopped: {}", error.kind())),
+            Err(error) => break Err(read_cause::body_failure(error.kind())),
         };
         total = total.saturating_add(read as u64);
         if total > size_bytes {
-            break Err("the download exceeds the size the head declares".to_string());
+            break Err(read_cause::size_exceeded());
         }
         hasher.update(&buffer[..read]);
         if let Err(error) = file.write_all(&buffer[..read]) {
-            break Err(format!("could not write the download file: {error}"));
+            break Err(GatewayError::from(format!(
+                "could not write the download file: {error}"
+            )));
         }
     };
     let outcome = outcome.and_then(|()| {
         if total != size_bytes {
-            return Err("the download ended before the size the head declares".to_string());
+            return Err(read_cause::size_short());
         }
         if format!("{:x}", hasher.finalize()) != sha256 {
-            return Err(
-                "the downloaded bytes do not match the digest the head declares".to_string(),
-            );
+            return Err(read_cause::digest_mismatch());
         }
-        file.sync_all()
-            .map_err(|error| format!("could not sync the download file: {error}"))?;
-        std::fs::rename(&temporary, destination)
-            .map_err(|error| format!("could not place the download file: {error}"))?;
+        file.sync_all().map_err(|error| {
+            GatewayError::from(format!("could not sync the download file: {error}"))
+        })?;
+        std::fs::rename(&temporary, destination).map_err(|error| {
+            GatewayError::from(format!("could not place the download file: {error}"))
+        })?;
         #[cfg(unix)]
         std::fs::File::open(parent)
             .and_then(|directory| directory.sync_all())
-            .map_err(|error| format!("could not sync the download directory: {error}"))?;
+            .map_err(|error| {
+                GatewayError::from(format!("could not sync the download directory: {error}"))
+            })?;
         Ok(())
     });
     if outcome.is_err() {
@@ -426,8 +443,21 @@ impl Reads for VerifiedReads {
         size_bytes: u64,
         stop: &AtomicBool,
     ) -> Result<(), String> {
-        let url = validated_ticket_url(url)
-            .map_err(|refusal| format!("the download ticket was refused: {refusal:?}"))?;
+        self.download_verified_cause_until(url, destination, sha256, size_bytes, stop)
+            .map_err(String::from)
+    }
+
+    fn download_verified_cause_until(
+        &self,
+        url: &str,
+        destination: &Path,
+        sha256: &str,
+        size_bytes: u64,
+        stop: &AtomicBool,
+    ) -> Result<(), GatewayError> {
+        let url = validated_ticket_url(url).map_err(|refusal| {
+            GatewayError::from(format!("the download ticket was refused: {refusal:?}"))
+        })?;
         let body_budget =
             std::time::Duration::from_secs(size_bytes / MIN_PROGRESS_BYTES_PER_SECOND)
                 .saturating_add(PROGRESS_GRACE);
@@ -439,16 +469,16 @@ impl Reads for VerifiedReads {
             .timeout_recv_body(Some(body_budget))
             .build()
             .into();
-        let response = agent.get(&url).call().map_err(|error| match error {
-            ureq::Error::StatusCode(status) => format!("the storage host answered {status}"),
-            _ => "the storage host could not be reached".to_string(),
-        })?;
+        let response = agent
+            .get(&url)
+            .call()
+            .map_err(|error| read_cause::request_failure(&error))?;
         let mut body = response.into_body();
         let reader = body
             .with_config()
             .limit(size_bytes.saturating_add(1))
             .reader();
-        place_verified(Stoppable { reader, stop }, destination, sha256, size_bytes)
+        place_verified_cause(Stoppable { reader, stop }, destination, sha256, size_bytes)
     }
 
     fn sweep_temporaries(

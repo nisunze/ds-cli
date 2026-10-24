@@ -20,7 +20,7 @@ use sha2::{Digest, Sha256};
 
 use crate::gateway::{Gateway, GatewayError};
 use crate::host::{Producer, Reads};
-use crate::reads::place_verified;
+use crate::reads::place_verified_cause;
 use crate::routes::SyncRoute;
 use crate::rows::{inventory_digest, LocalOutput, LocalRow, TransferReceipt};
 
@@ -564,12 +564,25 @@ impl Reads for FakeReads {
         sha256: &str,
         size_bytes: u64,
     ) -> Result<(), String> {
+        static NEVER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        self.download_verified_cause_until(url, destination, sha256, size_bytes, &NEVER)
+            .map_err(String::from)
+    }
+
+    fn download_verified_cause_until(
+        &self,
+        url: &str,
+        destination: &Path,
+        sha256: &str,
+        size_bytes: u64,
+        _stop: &std::sync::atomic::AtomicBool,
+    ) -> Result<(), GatewayError> {
         let bytes = lock(&self.world)
             .objects
             .get(url)
             .cloned()
-            .ok_or_else(|| "the storage host answered 404".to_string())?;
-        place_verified(&bytes[..], destination, sha256, size_bytes)
+            .ok_or_else(|| GatewayError::from("the storage host answered 404"))?;
+        place_verified_cause(&bytes[..], destination, sha256, size_bytes)
     }
 
     fn sweep_temporaries(

@@ -81,7 +81,10 @@ private head receipt is committed atomically after the verified outputs.
 bounded HTTPS signed ticket on `storage.googleapis.com`, refuses redirects and
 userinfo, stages bytes privately, and places an output only after its declared
 size and SHA-256 match. Desktop and Server give it different private cache
-roots; neither keeps a second downloader.
+roots; neither keeps a second downloader. A failed read names its closed cause on
+the failed `download` receipt (`failure_code`: the gateway transport's tokens,
+plus `digest_mismatch` and `size_mismatch`; `read_cause`), and a retry is
+unchanged.
 
 `native_transfer::drive_verified_output` is the corresponding one native
 resumable upload driver for receipt-sealed, seekable artifact handles. It pins

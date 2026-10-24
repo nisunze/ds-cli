@@ -43,6 +43,7 @@ pub mod host;
 mod lease;
 pub mod native_transfer;
 pub mod producers;
+pub mod read_cause;
 pub mod reads;
 pub mod retained_preview;
 pub mod retained_publication;

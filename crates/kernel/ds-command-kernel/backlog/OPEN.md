@@ -85,10 +85,7 @@ is ruled in the sync contract: simple local clean and recompute.
   was reached: ...`, the held row `failure_code: null`), and the error is a
   String by then. Next step: derive the owner fence locally before the refresh
   (`headless_principal`, install id) and let the pump keep one `pass/failed`
-  receipt with the refresh Failure's `detail.transport.cause`. Storage object
-  reads (`Reads::download_verified`, e.g. "the storage host could not be
-  reached") still fail as prose with no code; give `VerifiedReads` the same
-  closed cause tokens.
+  receipt with the refresh Failure's `detail.transport.cause`.
 - **Store sidecar race at Core startup.** `compute worker: the sync store could
   not be opened: Store sidecar must be an ordinary single-link file with the
   same private owner` printed twice at a Core start on 10-24 01:17

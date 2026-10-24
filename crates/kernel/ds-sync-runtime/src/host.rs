@@ -189,6 +189,21 @@ pub trait Reads {
         let _ = stop;
         self.download_verified(url, destination, sha256, size_bytes)
     }
+    /// [`Reads::download_verified_until`] with the closed cause of a failure
+    /// when the network or the verification named one (`read_cause`), so the
+    /// failed `download` receipt carries `failure_code`. The default keeps the
+    /// host's own sentence with no code; no retry depends on the code.
+    fn download_verified_cause_until(
+        &self,
+        url: &str,
+        destination: &Path,
+        sha256: &str,
+        size_bytes: u64,
+        stop: &AtomicBool,
+    ) -> Result<(), GatewayError> {
+        self.download_verified_until(url, destination, sha256, size_bytes, stop)
+            .map_err(GatewayError::from)
+    }
     /// Remove this project's `.part-*` download temporaries last written
     /// before `before` (`reads::sweep_temporaries`). A host whose reads
     /// leave no temporaries removes nothing.
@@ -835,7 +850,7 @@ impl SyncHost for StoreHost<'_> {
             if url.is_empty() {
                 return Err("that head output has no readable location".into());
             }
-            if let Err(error) = self.reads.download_verified_until(
+            if let Err(error) = self.reads.download_verified_cause_until(
                 &url,
                 &destination,
                 &output.sha256,
@@ -845,7 +860,7 @@ impl SyncHost for StoreHost<'_> {
                 if stop.load(Ordering::Acquire) {
                     return Ok(None);
                 }
-                return Err(error.into());
+                return Err(error);
             }
             self.ensure_active()?;
             bytes = bytes
