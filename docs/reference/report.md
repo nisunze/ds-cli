@@ -661,8 +661,8 @@ replaced; a template that moved before the write refuses as
 ## Context layers
 
 `ds report layout context` answers what the Printing setup page's context
-picker answers, from the same kernel module (`printing::context`), with no
-browser: `--action defaults` (the default) lists the derived sources every
+picker answers, from the Reporter's layout editor (the `edit_print_layout`
+task of the `--lane` Reporter), with no browser: `--action defaults` (the default) lists the derived sources every
 template may carry — project DS Grid MV, building footprints, elevation
 contours — with their print styles and the catalogue layers excluded from a
 default selection; `--action catalog --resources facts.json` takes the
@@ -692,7 +692,7 @@ print styles a print layer may bind, from the layers snapshot's style facts
 map print may ask for, with their defaults.
 
 `ds report layout pens --layout l.json --documents styles.json` lists the
-template's pens (`printing::pens`): one row per print layer bound to a governed
+template's pens (the Reporter's `edit_print_layout` task): one row per print layer bound to a governed
 `_print` style, design layers first in engineering order, with the base
 colour, size, opacity, visibility, category table and label read from the
 resolved document given as a fact (`[{style_ref, document}]`), the
@@ -704,7 +704,17 @@ JSON` sets one bounded property of that layer's `style_overrides` entry
 ID` removes the whole override. A layer without a bound style refuses
 `printing_pen_unbound`. `report.layout.edit` accepts the same `print_pens`,
 `pen_edit` and `set_style_override` ops as raw requests; the Printing setup
-page's pen panel is these rows and edits.
+page's pen panel is these rows and edits. A pen lists the categories of its own
+print document (the physical pen's colour table, or the `match` arms of a drawn
+document's colour), never the screen legend's.
+
+`report.layout.edit` sends every layout edit (pens, paper, furniture, frames,
+placement areas, tables, context layers, adjacent circuits, transformer
+overrides, style resolution, element order) to that task, and evaluates the
+Kernel's own intents (`new`, `validate`, sessions, output selection,
+inventory, lifecycle, previews, `mv_*`) locally; `report layout schema` names
+the task that holds the edit grammar. A Reporter that does not register the
+task refuses `unknown_task` before any layout is read.
 
 ## The editor's workflow
 

@@ -45,6 +45,7 @@ pub enum Task {
     PlanContourLattice,
     DeriveContours,
     BindPrintText,
+    EditPrintLayout,
 }
 
 impl Task {
@@ -69,6 +70,7 @@ impl Task {
             Self::PlanContourLattice => "plan_contour_lattice",
             Self::DeriveContours => "derive_contours",
             Self::BindPrintText => "bind_print_text",
+            Self::EditPrintLayout => "edit_print_layout",
         }
     }
 
@@ -93,6 +95,7 @@ impl Task {
             Self::PlanContourLattice => "plan-contour-lattice",
             Self::DeriveContours => "derive-contours",
             Self::BindPrintText => "bind-print-text",
+            Self::EditPrintLayout => "edit-print-layout",
         }
     }
 }

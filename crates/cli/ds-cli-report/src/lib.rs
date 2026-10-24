@@ -34,6 +34,7 @@ pub mod export;
 pub mod inventory;
 pub mod inventory_copy;
 pub mod layout;
+mod layout_editor;
 mod layout_preview;
 pub mod mv_frontmatter;
 pub mod outbox;

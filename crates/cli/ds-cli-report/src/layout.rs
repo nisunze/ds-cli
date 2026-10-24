@@ -8,6 +8,8 @@ use ds_cli_contract::{Context, Inputs};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::io::Read;
+
+use crate::layout_editor::Editor;
 fn local() -> Availability {
     Availability::Available
 }
@@ -42,6 +44,24 @@ const REFUSALS: &[Refusal] = &[
     },
 ];
 const REQUEST: Arg = Arg::value("request", "<json-file>", "Bounded typed request file.").required();
+/// The lane whose Reporter runs a layout edit.
+const EDITOR_LANE: Arg =
+    LANE.summary("Reporter lane that runs the layout editor; stable is the default.");
+/// A command whose every action is a Reporter layout edit: a Reporter
+/// installed for some lane.
+fn reporter() -> Availability {
+    ds_cli_exec::reporter::available()
+}
+const EDITOR_REFUSALS: &[Refusal] = &crate::project::joined::<{ REFUSALS.len() + 5 }>(&[
+    REFUSALS,
+    &crate::layout_editor::ENGINE_REFUSALS,
+]);
+const CONTEXT_EDITOR_REFUSALS: [Refusal; CONTEXT_REFUSALS.len() + 5] =
+    crate::project::joined(&[CONTEXT_REFUSALS, &crate::layout_editor::ENGINE_REFUSALS]);
+const STYLE_EDITOR_REFUSALS: [Refusal; STYLE_REFUSALS.len() + 5] =
+    crate::project::joined(&[STYLE_REFUSALS, &crate::layout_editor::ENGINE_REFUSALS]);
+const PENS_EDITOR_REFUSALS: [Refusal; PENS_REFUSALS.len() + 5] =
+    crate::project::joined(&[PENS_REFUSALS, &crate::layout_editor::ENGINE_REFUSALS]);
 const SCOPE: Arg = Arg::value(
     "scope",
     "<scope>",
@@ -105,24 +125,27 @@ pub static EDIT: Command = Command {
     path: &["report", "layout", "edit"],
     contract: 2,
     summary: "Validate and apply one print document intent.",
-    purpose: "Apply a local kernel print intent. mv_standardize preserves approved cover/naming and canonizes A3 booklet defaults; mv_booklet_preview admits every PNG against its plan. Discover typed grammar with report layout schema. Adjacent circuits require held API resolver references; transformer overrides, table and shade edits remain kernel intents. Saving and selection use the revision-fenced library; this call returns a document or receipt.",
+    purpose: "Apply one print intent. Layout edits run in the Reporter (edit_print_layout); new, validate, sessions, output selection and mv_* stay Kernel intents. mv_standardize preserves approved cover/naming and canonizes A3 booklet defaults; mv_booklet_preview admits every PNG against its plan. Discover typed grammar with report layout schema. Adjacent circuits require held API resolver references. Saving and selection use the revision-fenced library; this call returns a document or receipt.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[Arg::value(
-        "request",
-        "<json-file>",
-        "Typed request containing op and layout; see map.print.schema --section edit.",
-    )
-    .required()],
+    args: &[
+        Arg::value(
+            "request",
+            "<json-file>",
+            "Typed request containing op and layout; see map.print.schema --section edit.",
+        )
+        .required(),
+        EDITOR_LANE,
+    ],
     output: "The authoritative edited layout or the selected kernel intent's receipt; no project template is saved.",
     examples: &[Example {
         command: "ds report layout edit --request edit-request.json --output json",
         note: "Create the request from map.print.schema --section edit; it contains op, layout and the selected operation's fields.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: EDITOR_REFUSALS,
     reference: Some("docs/reference/report.md"),
     search: &[
         "mv booklet",
@@ -139,7 +162,7 @@ pub static SCHEMA: Command = Command {
     path: &["report", "layout", "schema"],
     contract: 1,
     summary: "Describe the exact print document and editing grammar.",
-    purpose: "Returns the versioned kernel standard registry, identity and override schemas, and the print document/edit grammar. LV standards provide A0/A3 transformer sheets and combined sets that open with six front-matter pages on their own paper. Printing commands delegate to their owning Rust and native client contracts. Shared saved templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and validation in ds-command-kernel.",
+    purpose: "Returns the versioned kernel standard registry, identity and override schemas, the print document and Kernel intent grammar, and (layout_edit) the Reporter task holding the edit grammar. LV standards provide A0/A3 transformer sheets and combined sets that open with six front-matter pages on their own paper. Printing commands delegate to their owning Rust and native client contracts. Shared saved templates live in ds-brain; project scope names its project with --project. Geometry stays in ds-network and validation in ds-command-kernel.",
     chapter: Chapter::Reports,
     effect: Effect::Discovery,
     authority: Authority::None,
@@ -187,12 +210,12 @@ pub static CONTEXT: Command = Command {
     path: &["report", "layout", "context"],
     contract: 1,
     summary: "Decide a layout's context layers: defaults, catalogue, selection.",
-    purpose: "Which context layers exist, which a template starts with, and whether a catalogue dataset may be switched on are decided once in ds-command-kernel (printing::context) for the desktop page and this command alike. The host reports the catalogue's facts; the kernel returns rows, a selection or a refusal.",
+    purpose: "Which context layers exist, which a template starts with, and whether a catalogue dataset may be switched on are decided once by the Reporter's layout editor (edit_print_layout). The host reports the catalogue's facts; the editor returns rows, a selection or a refusal.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[ACTION, LAYOUT_FILE, RESOURCES, LAYER, ENABLED],
+    args: &[ACTION, LAYOUT_FILE, RESOURCES, LAYER, ENABLED, EDITOR_LANE],
     output: "defaults: {derived,fallback_styles,excluded_catalog_layers}; catalog: {rows}; select/toggle: {layout}.",
     examples: &[
         Example {
@@ -206,11 +229,11 @@ pub static CONTEXT: Command = Command {
             runnable: false,
         },
     ],
-    refusals: CONTEXT_REFUSALS,
+    refusals: &CONTEXT_EDITOR_REFUSALS,
     reference: Some("docs/reference/report.md"),
     search: &[],
     requires: Requires::Server,
-    availability: local,
+    availability: reporter,
 };
 const CONTEXT_REFUSALS: &[Refusal] = &[
     Refusal {
@@ -330,23 +353,23 @@ pub static ADD: Command = Command {
     path: &["report", "layout", "add"],
     contract: 1,
     summary: "Add the canonical new element of a kind to a layout.",
-    purpose: "What a newly added text, frame, table, legend or logo element is — its frame, ink, type size and bindings — is decided once in ds-command-kernel (printing::elements) for the Printing setup page and this command alike, so an author never retypes the defaults. A legend carries its binding from the start; a logo names an asset the layout holds.",
+    purpose: "What a newly added text, frame, table, legend or logo element is — its frame, ink, type size and bindings — is decided once by the Reporter's layout editor (edit_print_layout), so an author never retypes the defaults. A legend carries its binding from the start; a logo names an asset the layout holds.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,
     execution: Execution::Sync,
-    args: &[ADD_LAYOUT, ADD_KIND, ADD_ID, ADD_ASSET],
+    args: &[ADD_LAYOUT, ADD_KIND, ADD_ID, ADD_ASSET, EDITOR_LANE],
     output: "{layout, index}: the layout with the new element and where it sits.",
     examples: &[Example {
         command: "ds report layout add --layout layout.json --kind table --output json",
         note: "The new table binds lv_print_info with Description/Unit/Quantity.",
         runnable: false,
     }],
-    refusals: REFUSALS,
+    refusals: EDITOR_REFUSALS,
     reference: Some("docs/reference/report.md"),
     search: &[],
     requires: Requires::Server,
-    availability: local,
+    availability: reporter,
 };
 const STYLE_ACTION: Arg = Arg::value(
     "action",
@@ -373,7 +396,7 @@ pub static STYLE_REF_COMMAND: Command = Command {
     path: &["report", "layout", "style-ref"],
     contract: 1,
     summary: "Which governed print styles a print layer may bind; bind one.",
-    purpose: "Which `_print` style documents may be bound to a print layer, and what binding one means, are decided once in ds-command-kernel (printing::elements) from the style catalogue's facts — the same decision the Printing setup page's picker takes. The governed clones themselves are created with style.print.create.",
+    purpose: "Which `_print` style documents may be bound to a print layer, and what binding one means, are decided once by the Reporter's layout editor (edit_print_layout) from the style catalogue's facts. The governed clones themselves are created with style.print.create.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -384,6 +407,7 @@ pub static STYLE_REF_COMMAND: Command = Command {
         STYLE_LAYOUT,
         STYLE_LAYER,
         STYLE_REF,
+        EDITOR_LANE,
     ],
     output: "choices: {refs}; set: {layout}.",
     examples: &[Example {
@@ -391,11 +415,11 @@ pub static STYLE_REF_COMMAND: Command = Command {
         note: "The print styles a layer may bind, in stable order.",
         runnable: false,
     }],
-    refusals: STYLE_REFUSALS,
+    refusals: &STYLE_EDITOR_REFUSALS,
     reference: Some("docs/reference/report.md"),
     search: &[],
     requires: Requires::Server,
-    availability: local,
+    availability: reporter,
 };
 const PENS_ACTION: Arg = Arg::value(
     "action",
@@ -441,7 +465,7 @@ pub static PENS: Command = Command {
     path: &["report", "layout", "pens"],
     contract: 1,
     summary: "Read or edit the layout's print pens.",
-    purpose: "Read each layer's governed print pens after layout overrides. Edit sets one bounded property; reset removes a layer's override. The Printing setup panel, preview and delivery use the same projection. Unheld styles are reported explicitly.",
+    purpose: "Read each layer's governed print pens after layout overrides, as the Reporter's layout editor lists them. Edit sets one bounded property; reset removes a layer's override. The Printing setup panel, preview and delivery use the same projection. Unheld styles are reported explicitly.",
     chapter: Chapter::Reports,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -453,6 +477,7 @@ pub static PENS: Command = Command {
         PENS_LAYER,
         PENS_PROPERTY,
         PENS_VALUE,
+        EDITOR_LANE,
     ],
     output: "list: {pens: [{layer_id, label, style_ref, group, geometry, held, size_unit, base, effective, override, categorical, category_field, categories, labelled, label_visible}]}; edit, reset: {layout}.",
     examples: &[
@@ -467,11 +492,11 @@ pub static PENS: Command = Command {
             runnable: false,
         },
     ],
-    refusals: PENS_REFUSALS,
+    refusals: &PENS_EDITOR_REFUSALS,
     reference: Some("docs/reference/report.md"),
     search: &[],
     requires: Requires::Server,
-    availability: local,
+    availability: reporter,
 };
 const PENS_REFUSALS: &[Refusal] = &[
     Refusal {
@@ -728,7 +753,7 @@ pub fn new(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
 }
 pub fn schema(_i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     Ok(
-        json!({"standards":ds_command_kernel::printing::standards::registry(),"mv_selection":ds_command_kernel::printing::mv::selection_schema(),"mv_resolved":ds_command_kernel::printing::mv::resolved_schema(),"map_request":ds_command_kernel::printing::map::request_schema(),"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"output_selection":ds_command_kernel::report_formats::output_selection_schema(),"transactions":{"create":{"action":"create","layout":"<layout document>"},"update":{"action":"update","layout":"<layout document>","expected_revision":"<exact revision>"},"save":{"action":"save","layout":"<layout document>","expected_revision":"<empty to create, or the exact revision to update>"},"delete":"use --id and --expected-revision","copy":{"action":"copy","source":{"scope":"project","project":"<optional exact source project>","id":"<id>","revision":"<exact revision>"},"destination":{"scope":"project","id":"<new id>","name":"<optional name>","expected_revision":"<empty for create or exact revision>"}}},"render":"ds report tasks --task render_print_layout --output json"}),
+        json!({"standards":ds_command_kernel::printing::standards::registry(),"mv_selection":ds_command_kernel::printing::mv::selection_schema(),"mv_resolved":ds_command_kernel::printing::mv::resolved_schema(),"map_request":ds_command_kernel::printing::map::request_schema(),"layout":ds_command_kernel::printing::layout_schema(),"edit":ds_command_kernel::printing::command_schema(),"layout_edit":"ds report tasks --task edit_print_layout --output json","output_selection":ds_command_kernel::report_formats::output_selection_schema(),"transactions":{"create":{"action":"create","layout":"<layout document>"},"update":{"action":"update","layout":"<layout document>","expected_revision":"<exact revision>"},"save":{"action":"save","layout":"<layout document>","expected_revision":"<empty to create, or the exact revision to update>"},"delete":"use --id and --expected-revision","copy":{"action":"copy","source":{"scope":"project","project":"<optional exact source project>","id":"<id>","revision":"<exact revision>"},"destination":{"scope":"project","id":"<new id>","name":"<optional name>","expected_revision":"<empty for create or exact revision>"}}},"render":"ds report tasks --task render_print_layout --output json"}),
     )
 }
 pub fn edit(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
@@ -736,20 +761,25 @@ pub fn edit(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         i.require("request")?,
         ds_command_kernel::printing::MAX_INPUT_BYTES,
     )?;
+    // The Kernel evaluates its own operations; a layout edit is the Reporter's.
+    let op = serde_json::from_slice::<Value>(&input)
+        .ok()
+        .and_then(|request| request["op"].as_str().map(str::to_owned));
+    if op.is_some_and(|op| !ds_command_kernel::printing::owns_op(&op)) {
+        return Editor::capture(i)?.edit(&input)?.map_err(invalid);
+    }
     let result = ds_command_kernel::printing::evaluate(&input).map_err(invalid)?;
     serde_json::from_str(&result).map_err(invalid)
 }
-fn context_eval(request: Value) -> Result<Value, Failure> {
-    let input = serde_json::to_vec(&request).map_err(invalid)?;
-    let result = ds_command_kernel::printing::evaluate(&input).map_err(|e| {
+fn context_eval(editor: &Editor, request: Value) -> Result<Value, Failure> {
+    editor.edit_value(&request)?.map_err(|e| {
         if e.contains("printing_context_no_dataset") {
             Failure::invalid("printing_context_no_dataset", e)
                 .remedy("Download the dataset first, or choose one the catalogue reports as ready")
         } else {
             invalid(e)
         }
-    })?;
-    serde_json::from_str(&result).map_err(invalid)
+    })
 }
 fn json_file(i: &Inputs, name: &str) -> Result<Value, Failure> {
     serde_json::from_slice(&bytes(i.require(name)?, 800_000)?).map_err(invalid)
@@ -761,22 +791,29 @@ fn optional_json_file(i: &Inputs, name: &str) -> Result<Value, Failure> {
     }
 }
 pub fn context(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let editor = &Editor::capture(i)?;
     match i.require("action")? {
-        "defaults" => context_eval(json!({"op": "context_defaults"})),
-        "catalog" => context_eval(json!({
-            "op": "context_catalog",
-            "resources": json_file(i, "resources")?,
-        })),
-        "select" => context_eval(json!({
-            "op": "context_default_selection",
-            "layout": json_file(i, "layout")?,
-            "resources": optional_json_file(i, "resources")?,
-        })),
+        "defaults" => context_eval(editor, json!({"op": "context_defaults"})),
+        "catalog" => context_eval(
+            editor,
+            json!({
+                "op": "context_catalog",
+                "resources": json_file(i, "resources")?,
+            }),
+        ),
+        "select" => context_eval(
+            editor,
+            json!({
+                "op": "context_default_selection",
+                "layout": json_file(i, "layout")?,
+                "resources": optional_json_file(i, "resources")?,
+            }),
+        ),
         "toggle" => {
             let id = i.require("layer")?;
             let enabled = i.require("enabled")? == "true";
             let resources = optional_json_file(i, "resources")?;
-            let derived = context_eval(json!({"op": "context_defaults"}))?;
+            let derived = context_eval(editor, json!({"op": "context_defaults"}))?;
             let mut layer = derived["derived"]
                 .as_array()
                 .into_iter()
@@ -785,7 +822,10 @@ pub fn context(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
                 .cloned();
             let mut resource = Value::Null;
             if layer.is_none() {
-                let rows = context_eval(json!({"op": "context_catalog", "resources": resources}))?;
+                let rows = context_eval(
+                    editor,
+                    json!({"op": "context_catalog", "resources": resources}),
+                )?;
                 if let Some(row) = rows["rows"]
                     .as_array()
                     .into_iter()
@@ -816,12 +856,13 @@ pub fn context(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             if !resource.is_null() {
                 request["resource"] = resource;
             }
-            context_eval(request)
+            context_eval(editor, request)
         }
         other => Err(invalid(format!("unknown action `{other}`"))),
     }
 }
 pub fn add(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let editor = Editor::capture(i)?;
     let mut request = json!({
         "op": "add_element",
         "layout": json_file(i, "layout")?,
@@ -831,11 +872,10 @@ pub fn add(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     if let Some(id) = i.value("id") {
         request["id"] = Value::String(id.into());
     }
-    let input = serde_json::to_vec(&request).map_err(invalid)?;
-    let result = ds_command_kernel::printing::evaluate(&input).map_err(invalid)?;
-    serde_json::from_str(&result).map_err(invalid)
+    editor.edit_value(&request)?.map_err(invalid)
 }
 pub fn style_ref(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let editor = Editor::capture(i)?;
     let catalogue = json_file(i, "catalogue")?;
     let request = match i.require("action")? {
         "choices" => json!({"op": "style_ref_choices", "catalogue": catalogue}),
@@ -847,18 +887,17 @@ pub fn style_ref(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             "catalogue": catalogue,
         }),
     };
-    let input = serde_json::to_vec(&request).map_err(invalid)?;
-    let result = ds_command_kernel::printing::evaluate(&input).map_err(|e| {
+    editor.edit_value(&request)?.map_err(|e| {
         if e.starts_with("printing_style_ref_ineligible") {
             Failure::invalid("printing_style_ref_ineligible", e)
                 .remedy("Create the governed clone with style.print.create, or pick one from --action choices")
         } else {
             invalid(e)
         }
-    })?;
-    serde_json::from_str(&result).map_err(invalid)
+    })
 }
 pub fn pens(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
+    let editor = Editor::capture(i)?;
     let layout = json_file(i, "layout")?;
     let request = match i.require("action")? {
         "list" => {
@@ -889,16 +928,14 @@ pub fn pens(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             "change": Value::Null,
         }),
     };
-    let input = serde_json::to_vec(&request).map_err(invalid)?;
-    let result = ds_command_kernel::printing::evaluate(&input).map_err(|e| {
+    editor.edit_value(&request)?.map_err(|e| {
         if e.starts_with("printing_pen_unbound") {
             Failure::invalid("printing_pen_unbound", e)
                 .remedy("Bind one with report.layout.style-ref first")
         } else {
             invalid(e)
         }
-    })?;
-    serde_json::from_str(&result).map_err(invalid)
+    })
 }
 pub fn session(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let (state, event) = (i.value("state"), i.value("event"));

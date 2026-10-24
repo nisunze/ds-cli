@@ -239,6 +239,7 @@ fn every_task_has_one_catalogue_name_and_one_fixed_subcommand() {
         Task::PlanContourLattice,
         Task::DeriveContours,
         Task::BindPrintText,
+        Task::EditPrintLayout,
     ];
     let names: std::collections::BTreeSet<_> = all.iter().map(|task| task.name()).collect();
     assert_eq!(names.len(), all.len());

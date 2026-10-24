@@ -1,6 +1,9 @@
 //! Kernel printing operations over the shared print-layout contract
-//! (ds-report-contracts): sessions, previews, inventory and the command
-//! evaluator. The documents and their policies live in the contract.
+//! (ds-report-contracts): sessions, previews, inventory and the evaluator of
+//! the Kernel's own printing operations. The documents and their admission
+//! live in the contract; a layout edit (pens, paper, furniture, frames,
+//! placement, tables, context layers, adjacent circuits, style resolution) is
+//! the Reporter's `edit_print_layout` task, which Core's layout commands call.
 pub use ds_report_contracts::printing::*;
 pub mod custom;
 pub mod held_context;
@@ -9,7 +12,6 @@ pub mod lifecycle;
 pub mod map;
 pub mod mv_models;
 pub mod mv_preview;
-pub mod pens;
 pub mod preview;
 pub mod project_sources;
 pub mod retained_preview;
@@ -39,12 +41,6 @@ pub enum Command {
         #[serde(default)]
         choices: BTreeMap<String, crate::style_resolution::Key>,
     },
-    SetTransformerOverride {
-        layout: Layout,
-        transformer: String,
-        #[serde(default)]
-        patch: Option<overrides::PrintOverride>,
-    },
     StandardRegistry,
     ConsumeResolvedStyles {
         capture: Value,
@@ -58,35 +54,6 @@ pub enum Command {
         identity: standards::Identity,
         #[serde(default)]
         overrides: Option<standards::Overrides>,
-    },
-    /// Native and WASM hosts pass measured occupied furniture after layout.
-    AssessFurniture {
-        page_mm: [f64; 2],
-        occupied: Vec<diagnostics::Occupied>,
-        /// The paper edge furniture keeps inside of; default 1 mm.
-        #[serde(default)]
-        margin_mm: Option<f64>,
-    },
-    /// The collision role of every element of a layout (see `diagnostics`):
-    /// which rectangles are furniture, and how movable each is.
-    FurnitureRoles {
-        layout: Layout,
-    },
-    /// The free surface of the sheet around measured fixed furniture (see
-    /// `placement`): the maximal free rectangles, and the stepping
-    /// rectangles from each corner for panels of `panel_w` mm.
-    PlacementAreas {
-        page_mm: [f64; 2],
-        #[serde(default)]
-        occupied: Vec<diagnostics::Occupied>,
-        #[serde(default)]
-        margin_mm: Option<f64>,
-        #[serde(default)]
-        gap_mm: Option<f64>,
-        #[serde(default)]
-        panel_w: Option<f64>,
-        #[serde(default)]
-        max_panels: Option<usize>,
     },
     ProjectSettings {
         sheets: serde_json::Value,
@@ -160,25 +127,6 @@ pub enum Command {
         current_user: String,
         limit: usize,
     },
-    /// Available plain-schedule columns from this transformer's actual engineering data.
-    TableColumns {
-        layout: Layout,
-        element_id: String,
-        layers: BTreeMap<String, Value>,
-    },
-    /// Show selected source columns, preserving headings and physical column widths.
-    TableColumnSelection {
-        layout: Layout,
-        element_id: String,
-        columns: Vec<String>,
-        layers: BTreeMap<String, Value>,
-    },
-    /// Author a design/as-built schedule; design removes installed-connection columns.
-    TablePhase {
-        layout: Layout,
-        element_id: String,
-        phase: table_columns::SchedulePhase,
-    },
     /// May a PDF preview of this layout be produced right now, and from what:
     /// every bound print style must be available and there must be map data
     /// to draw. The host assembles the render request from the answer.
@@ -192,63 +140,6 @@ pub enum Command {
         text: serde_json::Value,
         #[serde(default)]
         date: String,
-    },
-    /// The context sources a template starts with, and the styles their
-    /// layers print with when none are authored (see `context`).
-    ContextDefaults {},
-    /// Every catalogue dataset as a selectable row with its default decision.
-    ContextCatalog {
-        resources: Vec<context::CatalogResource>,
-    },
-    /// The selection a new project template starts with.
-    ContextDefaultSelection {
-        layout: Layout,
-        resources: Vec<context::CatalogResource>,
-    },
-    /// The canonical new page element of a kind (see `elements`); the id is
-    /// minted when absent, a logo names the layout asset it shows.
-    AddElement {
-        layout: Layout,
-        kind: ElementKind,
-        #[serde(default)]
-        id: Option<String>,
-        #[serde(default)]
-        asset: String,
-    },
-    /// Which governed print styles a print layer may bind, from the host's
-    /// style catalogue facts.
-    StyleRefChoices {
-        catalogue: Vec<elements::StyleFacts>,
-    },
-    /// Bind (or, with an empty reference, unbind) a print layer's style.
-    SetLayerStyleRef {
-        layout: Layout,
-        layer_id: String,
-        style_ref: String,
-        catalogue: Vec<elements::StyleFacts>,
-    },
-    /// Every pen of the layout — each bound print layer with what it prints
-    /// with, from the governed documents the host holds (see `pens`).
-    PrintPens {
-        layout: Layout,
-        #[serde(default)]
-        documents: Vec<pens::PenDocument>,
-    },
-    /// Set, or with `null` clear, one property of a layer's template-local
-    /// pen; an override left with nothing to say is removed.
-    PenEdit {
-        layout: Layout,
-        layer_id: String,
-        property: pens::PenProperty,
-        #[serde(default)]
-        value: serde_json::Value,
-    },
-    /// Replace, or with `null` remove, a layer's whole template-local pen.
-    SetStyleOverride {
-        layout: Layout,
-        layer_id: String,
-        #[serde(default)]
-        change: Option<PrintStyleOverride>,
     },
     /// May a live transformer preview be produced right now, and as what
     /// (see `preview`). Rendering remains a host effect.
@@ -270,23 +161,6 @@ pub enum Command {
         request: view::Request,
         facts: view::Facts,
     },
-    /// Switch one context layer on or off, seeding fallback styles.
-    ContextToggle {
-        layout: Layout,
-        layer: PrintContextLayer,
-        enabled: bool,
-        #[serde(default)]
-        resource: Option<context::CatalogResource>,
-    },
-    TransformerInstructions {
-        layout: Layout,
-        current: Vec<serde_json::Value>,
-        instructions: BTreeMap<String, Option<overrides::PrintOverride>>,
-    },
-    TransformerOverride {
-        layout: Layout,
-        instructions: overrides::PrintOverride,
-    },
     TransformerViews {
         views: BTreeMap<String, BTreeMap<String, GeographicView>>,
     },
@@ -299,14 +173,6 @@ pub enum Command {
         paper: Paper,
         #[serde(default)]
         orientation: Orientation,
-    },
-    Rename {
-        layout: Layout,
-        name: String,
-    },
-    SetClassification {
-        layout: Layout,
-        classification: Option<catalogue::Classification>,
     },
     TemplateCatalogue {
         rows: Vec<catalogue::Row>,
@@ -344,66 +210,8 @@ pub enum Command {
         #[serde(default)]
         date: String,
     },
-    Duplicate {
-        layout: Layout,
-        id: String,
-        name: String,
-    },
     Validate {
         layout: Layout,
-    },
-    Edit {
-        layout: Layout,
-        element: Box<Element>,
-    },
-    Remove {
-        layout: Layout,
-        id: String,
-    },
-    SetPaper {
-        layout: Layout,
-        paper: Paper,
-        orientation: Orientation,
-    },
-    SetViewport {
-        layout: Layout,
-        id: String,
-        name: String,
-        view_slot: String,
-    },
-    /// Set the project template's opt-in footprint and physical print-scale policy.
-    SetFitPolicy {
-        layout: Layout,
-        network_fit: Option<network_fit::NetworkFit>,
-        scale_limits: Option<network_fit::ScaleLimits>,
-    },
-    /// Configure print-only neighbouring circuits beneath the focused network,
-    /// preserving each role's governed symbol and explicit lifecycle palette.
-    SetAdjacentNetworks {
-        layout: Layout,
-        enabled: bool,
-        #[serde(default)]
-        style_refs: BTreeMap<String, String>,
-        #[serde(default)]
-        policy: Option<adjacent_networks::Policy>,
-    },
-    /// Resolve an exact held API table into the renderer's held document map.
-    /// Style documents own all pens; this operation selects no style by name.
-    ResolveStyles {
-        layout: Layout,
-        resolution: crate::style_resolution::Snapshot,
-        #[serde(default)]
-        style_keys: BTreeMap<String, crate::style_resolution::Key>,
-    },
-    /// Toggle the configured project transformer shade without changing its style.
-    SetFocusVisibility {
-        layout: Layout,
-        visible: bool,
-    },
-    /// Before rendering a draft preview, prepare its selected context. Rendering itself reads held state.
-    PreviewContextPreparation {
-        layout: Layout,
-        online: bool,
     },
     /// Map space -> printable border -> independent container -> local table.
     SheetStatus {
@@ -412,50 +220,6 @@ pub enum Command {
     },
     ContextStatus {
         omitted: Vec<sheet_status::ContextOmission>,
-    },
-    TableDrafts {
-        layout: Layout,
-    },
-    SheetFrames {
-        layout: Layout,
-    },
-    TableContainerRect {
-        layout: Layout,
-        element_id: String,
-        rect_mm: [f64; 4],
-    },
-    FurnitureHit {
-        layout: Layout,
-        measured: BTreeMap<String, Vec<[f64; 4]>>,
-        point_mm: [f64; 2],
-    },
-    SetContextLayers {
-        layout: Layout,
-        context_layers: Vec<PrintContextLayer>,
-    },
-    /// Author explicit back-to-front layer order without changing pens,
-    /// geometry, selected sources or furniture order.
-    SetLayerOrder {
-        layout: Layout,
-        layer_order: Vec<String>,
-    },
-    BringToFront {
-        layout: Layout,
-        id: String,
-    },
-    SendToBack {
-        layout: Layout,
-        id: String,
-    },
-    MoveAbove {
-        layout: Layout,
-        id: String,
-        relative_to: String,
-    },
-    MoveBelow {
-        layout: Layout,
-        id: String,
-        relative_to: String,
     },
 }
 /// Tell "the key is absent" apart from "the key is present and null". Serde
@@ -591,19 +355,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 choices,
             })?)
         }
-        Command::SetTransformerOverride {
-            mut layout,
-            transformer,
-            patch,
-        } => {
-            if let Some(patch) = patch {
-                layout.transformer_overrides.insert(transformer, patch);
-            } else {
-                layout.transformer_overrides.remove(&transformer);
-            }
-            validate(&layout)?;
-            json!({"layout":layout})
-        }
         Command::StandardRegistry => standards::registry(),
         Command::ConsumeResolvedStyles {
             capture,
@@ -619,25 +370,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         } => {
             json!({"layout":standards::layout(&templates, kind, role, &identity, overrides.as_ref())?})
         }
-        Command::TableColumns {
-            layout,
-            element_id,
-            layers,
-        } => serde_json::to_value(table_columns::catalog(&layout, &element_id, &layers)?)
-            .map_err(|e| e.to_string())?,
-        Command::TableColumnSelection {
-            layout,
-            element_id,
-            columns,
-            layers,
-        } => {
-            json!({ "layout": table_columns::select_columns(&layout, &element_id, &columns, &layers)? })
-        }
-        Command::TablePhase {
-            layout,
-            element_id,
-            phase,
-        } => json!({ "layout": table_columns::set_phase(&layout, &element_id, phase)? }),
         Command::ProjectSettings {
             sheets,
             mode,
@@ -806,51 +538,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
                 "text": composed,
             })
         }
-        Command::ContextDefaults {} => json!({
-            "derived": context::derived_layers(),
-            "corridor_default": context::default_corridor(),
-            "style_keys": context::derived_style_keys(),
-            "excluded_catalog_layers": context::DEFAULT_CATALOG_EXCLUSIONS,
-        }),
-        Command::ContextCatalog { resources } => json!({"rows": context::catalog(&resources)?}),
-        Command::ContextDefaultSelection { layout, resources } => {
-            let layout = upgrade(layout)?;
-            json!({"layout": context::default_selection(layout, &resources)?})
-        }
-        Command::AddElement {
-            layout,
-            kind,
-            id,
-            asset,
-        } => {
-            let (layout, index) = elements::add(upgrade(layout)?, kind, id, &asset)?;
-            json!({"layout": layout, "index": index})
-        }
-        Command::StyleRefChoices { catalogue } => {
-            json!({"refs": elements::style_ref_choices(&catalogue)})
-        }
-        Command::SetLayerStyleRef {
-            layout,
-            layer_id,
-            style_ref,
-            catalogue,
-        } => {
-            json!({"layout": elements::set_layer_style_ref(upgrade(layout)?, &layer_id, &style_ref, &catalogue)?})
-        }
-        Command::PrintPens { layout, documents } => {
-            json!({"pens": pens::pens(&upgrade(layout)?, &documents)?})
-        }
-        Command::PenEdit {
-            layout,
-            layer_id,
-            property,
-            value,
-        } => json!({"layout": pens::edit(upgrade(layout)?, &layer_id, property, &value)?}),
-        Command::SetStyleOverride {
-            layout,
-            layer_id,
-            change,
-        } => json!({"layout": pens::set_override(upgrade(layout)?, &layer_id, change)?}),
         Command::PreviewPlan { facts } => preview::evaluate(preview::Facts {
             layout: upgrade(facts.layout)?,
             ..facts
@@ -866,30 +553,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
         Command::ViewPlan { request, facts } => {
             serde_json::to_value(view::plan(&request, &facts)?).map_err(|e| e.to_string())?
         }
-        Command::ContextToggle {
-            layout,
-            layer,
-            enabled,
-            resource,
-        } => {
-            let layout = upgrade(layout)?;
-            json!({"layout": context::toggle(layout, layer, enabled, resource.as_ref())?})
-        }
-        Command::TransformerInstructions {
-            layout,
-            current,
-            instructions,
-        } => {
-            let layout = upgrade(layout)?;
-            json!({"project_settings": overrides::update_settings(&layout, &current, &instructions)?})
-        }
-        Command::TransformerOverride {
-            layout,
-            instructions,
-        } => {
-            let layout = overrides::apply(&upgrade(layout)?, &instructions)?;
-            json!({"layout": layout, "instructions": instructions})
-        }
         Command::TransformerViews { views } => {
             validate_transformer_views(&views)?;
             json!({"views":views})
@@ -900,24 +563,6 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             paper,
             orientation,
         } => json!({"layout":named_layout(id,name,paper,orientation)?}),
-        Command::Rename { layout, name } => {
-            let mut layout = upgrade(layout)?;
-            layout.name = name;
-            validate(&layout)?;
-            json!({"layout":layout})
-        }
-        Command::SetClassification {
-            layout,
-            classification,
-        } => {
-            let mut layout = upgrade(layout)?;
-            if let Some(classification) = &classification {
-                classification.admit_for(&layout)?;
-            }
-            layout.classification = classification;
-            validate(&layout)?;
-            json!({"layout":layout})
-        }
         Command::TemplateCatalogue {
             rows,
             project_id,
@@ -946,273 +591,17 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
             text,
             date,
         } => standard_read::capture_project_preview(project, response, &resolution, text, date)?,
-        Command::Duplicate { layout, id, name } => {
-            let mut layout = upgrade(layout)?;
-            if layout.id == id {
-                return Err("A duplicate requires a new template id".into());
-            }
-            layout.id = id;
-            layout.name = name;
-            validate(&layout)?;
-            json!({"layout":layout})
-        }
-        Command::AssessFurniture {
-            page_mm,
-            occupied,
-            margin_mm,
-        } => serde_json::to_value(diagnostics::assess_sheet(
-            page_mm,
-            margin_mm.unwrap_or(diagnostics::DEFAULT_MARGIN_MM),
-            &occupied,
-        )?)
-        .map_err(|e| e.to_string())?,
-        Command::PlacementAreas {
-            page_mm,
-            occupied,
-            margin_mm,
-            gap_mm,
-            panel_w,
-            max_panels,
-        } => {
-            let margin = margin_mm.unwrap_or(diagnostics::DEFAULT_MARGIN_MM);
-            if !margin.is_finite() || !(0. ..=diagnostics::MAX_MARGIN_MM).contains(&margin) {
-                return Err(format!(
-                    "the collision margin is 0 through {} mm",
-                    diagnostics::MAX_MARGIN_MM
-                ));
-            }
-            let area = [
-                margin,
-                margin,
-                page_mm[0] - 2. * margin,
-                page_mm[1] - 2. * margin,
-            ];
-            let obstacles: Vec<placement::Rect> = occupied.iter().map(|o| o.rect_mm).collect();
-            let gap = gap_mm.unwrap_or(sheet_margin::MARGIN_MM);
-            let free = placement::free_rectangles(area, &obstacles, gap)?;
-            let mut skylines = serde_json::Map::new();
-            if let Some(panel_w) = panel_w {
-                for corner in placement::CORNERS {
-                    let steps = placement::skyline(
-                        area,
-                        &obstacles,
-                        gap,
-                        corner,
-                        panel_w,
-                        max_panels.unwrap_or(8),
-                    )?;
-                    let key = serde_json::to_value(corner)
-                        .map_err(|e| e.to_string())?
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_owned();
-                    skylines.insert(key, json!(steps));
-                }
-            }
-            json!({"area_mm": area, "margin_mm": margin, "gap_mm": gap, "free": free, "skylines": skylines})
-        }
-        Command::FurnitureRoles { layout } => {
-            let layout = upgrade(layout)?;
-            json!({
-                "margin_mm": layout.collision_margin_mm(),
-                "roles": layout.elements.iter().map(|e| json!({"id": e.id, "kind": e.kind, "role": diagnostics::role_of(e)})).collect::<Vec<_>>(),
-            })
-        }
         Command::Validate { layout } => {
             let layout = upgrade(layout)?;
             validate(&layout)?;
             json!({"layout":layout,"valid":true})
         }
-        Command::Edit { layout, element } => {
-            let mut layout = upgrade(layout)?;
-            let element = *element;
-            if let Some(existing) = layout.elements.iter_mut().find(|e| e.id == element.id) {
-                *existing = element
-            } else {
-                layout.elements.push(element)
-            }
-            validate(&layout)?;
-            json!({"layout":layout})
-        }
-        Command::Remove { layout, id } => {
-            let mut layout = upgrade(layout)?;
-            if !layout.elements.iter().any(|e| e.id == id) {
-                return Err("page element was not found".into());
-            }
-            layout.elements.retain(|e| e.id != id);
-            validate(&layout)?;
-            json!({"layout":layout})
-        }
-        Command::SetPaper {
-            layout,
-            paper,
-            orientation,
-        } => {
-            json!({"layout":fit_to_paper(upgrade(layout)?, PaperSpec { size: paper, orientation })?})
-        }
-        Command::SetViewport {
-            layout,
-            id,
-            name,
-            view_slot,
-        } => {
-            let mut layout = upgrade(layout)?;
-            let index = element_index(&layout, &id)?;
-            if layout.elements[index].kind != ElementKind::Map {
-                return Err("print viewport properties require a map element".into());
-            }
-            layout.elements[index].viewport = Some(PrintViewport {
-                name,
-                view_slot,
-                clip: true,
-                fit_around: layout.elements[index]
-                    .viewport
-                    .as_ref()
-                    .map(|v| v.fit_around.clone())
-                    .unwrap_or_default(),
-                graticule: layout.elements[index]
-                    .viewport
-                    .as_ref()
-                    .and_then(|v| v.graticule.clone()),
-            });
-            validate(&layout)?;
-            json!({"layout":layout})
-        }
         Command::ContextStatus { omitted } => json!(sheet_status::context_status(omitted)?),
-        Command::PreviewContextPreparation { layout, online: _ } => {
-            let layout = upgrade(layout)?;
-            let (shown, hidden): (Vec<_>, Vec<_>) = layout
-                .context_layers
-                .iter()
-                .partition(|layer| context::prints_in(&layout, layer));
-            let hidden: Vec<Value> = hidden
-                .into_iter()
-                .map(|layer| context::hidden_context(&layout.id, layer))
-                .collect();
-            json!({"contexts":shown,"acquire_missing":false,"hidden":hidden})
-        }
-        Command::SetFocusVisibility { layout, visible } => {
-            let mut layout = upgrade(layout)?;
-            if let Some(focus) = &mut layout.focus {
-                focus.visible = visible;
-            } else if visible {
-                return Err(
-                    "configure the template's focus styling before enabling its shade".into(),
-                );
-            }
-            validate(&layout)?;
-            json!({"layout": layout})
-        }
-        Command::SetFitPolicy {
-            layout,
-            network_fit,
-            scale_limits,
-        } => {
-            let mut layout = upgrade(layout)?;
-            layout.network_fit = network_fit;
-            layout.scale_limits = scale_limits;
-            validate(&layout)?;
-            json!({"layout":layout})
-        }
-        Command::TableContainerRect {
-            layout,
-            element_id,
-            rect_mm,
-        } => {
-            let mut layout = upgrade(layout)?;
-            let border = sheet_margin::boundary(&layout);
-            let element = layout
-                .elements
-                .iter_mut()
-                .find(|e| e.id == element_id && e.kind == ElementKind::Table)
-                .ok_or("table container does not exist")?;
-            element.rect = [
-                border[0] + rect_mm[0],
-                border[1] + rect_mm[1],
-                rect_mm[2],
-                rect_mm[3],
-            ];
-            element.sheet_anchor = sheet_margin::SheetAnchor::Authored;
-            // Explicit placement makes this container independent of a sibling.
-            element.flow = None;
-            validate(&layout)?;
-            json!({"layout": layout})
-        }
-        Command::FurnitureHit {
-            layout,
-            measured,
-            point_mm,
-        } => {
-            let layout = upgrade(layout)?;
-            json!({"index": frames::hit(&layout, &measured, point_mm)?})
-        }
         Command::SheetStatus {
             assessments,
             warnings,
         } => serde_json::to_value(sheet_status::summarize(&assessments, &warnings)?)
             .map_err(|e| e.to_string())?,
-        Command::TableDrafts { layout } => {
-            let layout = upgrade(layout)?;
-            json!({"tables": frames::drafts(&layout)?})
-        }
-        Command::SheetFrames { layout } => {
-            let layout = upgrade(layout)?;
-            json!({"map_space": frames::hierarchy(&layout)})
-        }
-        Command::SetAdjacentNetworks {
-            layout,
-            enabled,
-            style_refs,
-            policy,
-        } => {
-            json!({"layout": adjacent_networks::configure(upgrade(layout)?, enabled, style_refs, policy)?})
-        }
-        Command::ResolveStyles {
-            layout,
-            resolution,
-            style_keys,
-        } => {
-            let mut layout = upgrade(layout)?;
-            if !style_keys.is_empty() {
-                layout.style_keys = style_keys;
-            }
-            let (layout, captured) = resolve_style_documents(layout, &resolution)?;
-            json!({"layout":layout,"capture":captured})
-        }
-        Command::SetContextLayers {
-            mut layout,
-            context_layers,
-        } => {
-            layout = upgrade(layout)?;
-            layout.context_layers = context_layers;
-            validate(&layout)?;
-            json!({"layout":layout})
-        }
-        Command::SetLayerOrder {
-            layout,
-            layer_order,
-        } => {
-            let mut layout = upgrade(layout)?;
-            layout.layer_order = layer_order;
-            validate(&layout)?;
-            json!({"layout":layout})
-        }
-        Command::BringToFront { layout, id } => {
-            json!({"layout":move_to_edge(upgrade(layout)?, &id, true)?})
-        }
-        Command::SendToBack { layout, id } => {
-            json!({"layout":move_to_edge(upgrade(layout)?, &id, false)?})
-        }
-        Command::MoveAbove {
-            layout,
-            id,
-            relative_to,
-        } => json!({"layout":move_relative(upgrade(layout)?, &id, &relative_to, true)?}),
-        Command::MoveBelow {
-            layout,
-            id,
-            relative_to,
-        } => json!({"layout":move_relative(upgrade(layout)?, &id, &relative_to, false)?}),
     };
     serde_json::to_string(&value).map_err(|e| e.to_string())
 }
@@ -1220,12 +609,52 @@ pub fn evaluate(input: &[u8]) -> Result<String, String> {
 pub fn command_schema() -> serde_json::Value {
     serde_json::to_value(schemars::schema_for!(Command)).expect("command schema serializes")
 }
-#[cfg(test)]
-#[path = "contract_command_tests.rs"]
-mod contract_command_tests;
+
+/// Whether this evaluator owns an operation, read from its own grammar. A
+/// layout edit it does not own is the Reporter's `edit_print_layout` task
+/// (pens, paper, furniture, frames, placement, tables, context layers,
+/// adjacent circuits, style resolution); Core routes the edit there.
+pub fn owns_op(op: &str) -> bool {
+    static OPS: std::sync::OnceLock<BTreeSet<String>> = std::sync::OnceLock::new();
+    OPS.get_or_init(|| {
+        command_schema()["oneOf"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|variant| variant["properties"]["op"]["const"].as_str())
+            .map(str::to_owned)
+            .collect()
+    })
+    .contains(op)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_evaluator_names_its_own_operations_and_leaves_layout_edits_to_the_reporter() {
+        for op in [
+            "new",
+            "validate",
+            "output_selection",
+            "session_step",
+            "render_plan",
+        ] {
+            assert!(owns_op(op), "{op}");
+        }
+        for op in [
+            "set_paper",
+            "print_pens",
+            "context_toggle",
+            "placement_areas",
+            "no_such_op",
+        ] {
+            assert!(!owns_op(op), "{op}");
+            assert!(evaluate(format!(r#"{{"op":"{op}"}}"#).as_bytes())
+                .unwrap_err()
+                .contains("unknown variant"));
+        }
+    }
 
     #[test]
     fn graticule_label_ink_is_optional_and_legacy_documents_round_trip_unchanged() {
@@ -1240,43 +669,6 @@ mod tests {
             .unwrap()
             .get("label_color")
             .is_none());
-    }
-
-    #[test]
-    fn graticule_label_ink_validates_independently_and_typed_edit_preserves_it() {
-        let mut layout = default_layout();
-        let index = element_index(&layout, "map").unwrap();
-        layout.elements[index].viewport.as_mut().unwrap().graticule = Some(Graticule {
-            label_color: Some("#18212b".into()),
-            font_pt: 8.,
-            ..Default::default()
-        });
-        validate(&layout).unwrap();
-        let edited = evaluated_layout(json!({
-            "op":"edit", "layout":layout, "element":layout.elements[index]
-        }));
-        let graticule = edited.elements[index]
-            .viewport
-            .as_ref()
-            .unwrap()
-            .graticule
-            .as_ref()
-            .unwrap();
-        assert_eq!(graticule.color, "#6B7280");
-        assert_eq!(graticule.label_color.as_deref(), Some("#18212b"));
-        assert_eq!(graticule.font_pt, 8.);
-        for invalid in ["black", "#12345g", "#12345678", ""] {
-            let mut bad = edited.clone();
-            bad.elements[index]
-                .viewport
-                .as_mut()
-                .unwrap()
-                .graticule
-                .as_mut()
-                .unwrap()
-                .label_color = Some(invalid.into());
-            assert!(validate(&bad).is_err(), "accepted {invalid:?}");
-        }
     }
 
     #[test]
@@ -1484,40 +876,6 @@ mod tests {
         assert!(validate(&layout).unwrap_err().contains("text halo"));
     }
     #[test]
-    fn layer_order_changes_only_the_authored_back_to_front_stack() {
-        let original = default_layout();
-        let stack = vec![
-            "sector".to_string(),
-            "hv_line".to_string(),
-            "lv_lines".to_string(),
-        ];
-        let reply: Value = serde_json::from_str(
-            &evaluate(
-                &serde_json::to_vec(&json!({
-                    "op":"set_layer_order", "layout":original, "layer_order":stack
-                }))
-                .unwrap(),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let result: Layout = serde_json::from_value(reply["layout"].clone()).unwrap();
-        let mut expected = original.clone();
-        expected.layer_order = stack;
-        assert_eq!(
-            result, expected,
-            "layer ordering must preserve geometry, sources, pens and furniture"
-        );
-        for stack in [vec!["sector", "sector"], vec!["../sector"], vec![""]] {
-            let request = serde_json::to_vec(
-                &json!({"op":"set_layer_order", "layout":original, "layer_order":stack}),
-            )
-            .unwrap();
-            assert!(evaluate(&request).is_err());
-        }
-        assert_eq!(original.layer_order, default_layout().layer_order);
-    }
-    #[test]
     fn layout_ink_identity_is_closed_and_preserves_authored_pens() {
         let colour = default_layout();
         let mut value = serde_json::to_value(&colour).unwrap();
@@ -1708,19 +1066,6 @@ mod tests {
             .unwrap()
             .panels = 0;
         assert!(validate(&layout).is_err());
-    }
-
-    #[test]
-    fn focus_visibility_retains_saved_style_and_defaults_old_templates_visible() {
-        let mut layout = default_layout();
-        layout.focus = Some(serde_json::from_value(json!({"buffer_m":100.,"outside_color":"#eeeeee","outside_opacity":0.4,"border_color":"#888888","border_width_mm":0.2})).unwrap());
-        assert!(layout.focus.as_ref().unwrap().visible);
-        let off =
-            evaluated_layout(json!({"op":"set_focus_visibility","layout":layout,"visible":false}));
-        assert!(!off.focus.as_ref().unwrap().visible);
-        let restored =
-            evaluated_layout(json!({"op":"set_focus_visibility","layout":off,"visible":true}));
-        assert_eq!(restored.focus, layout.focus);
     }
 
     #[test]
@@ -1915,56 +1260,6 @@ mod tests {
         assert!(evaluate(br#"{"op":"project_output_patch","current":[],"selection":{"schema":"ds.design-output-selection/v1"},"unknown":1}"#).is_err());
     }
 
-    /// The host passes the stored value through; deciding which legacy shape
-    /// it is was the TypeScript half this op replaces.
-    #[test]
-    fn context_ops_answer_defaults_catalogue_rows_and_toggles_over_host_facts() {
-        let defaults: serde_json::Value =
-            serde_json::from_str(&evaluate(br#"{"op":"context_defaults"}"#).unwrap()).unwrap();
-        assert_eq!(defaults["derived"].as_array().unwrap().len(), 3);
-        assert_eq!(
-            defaults["style_keys"]["contours_index"]["entity_class"],
-            "contours_index"
-        );
-        assert_eq!(defaults["excluded_catalog_layers"][0], "rwanda_upi_parcels");
-        let rows: serde_json::Value = serde_json::from_str(
-            &evaluate(
-                br#"{"op":"context_catalog","resources":[{"layer":"roads","label":"Roads","country":"Rwanda","ready":true},{"layer":"wetlands","label":"Wetlands","country":"Rwanda"}]}"#,
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(rows["rows"][0]["default_on"], true);
-        assert_eq!(rows["rows"][1]["refusal"], "printing_context_no_dataset");
-        let layout = serde_json::to_string(&default_layout()).unwrap();
-        let selected: serde_json::Value = serde_json::from_str(
-            &evaluate(
-                format!(
-                    r#"{{"op":"context_default_selection","layout":{layout},"resources":[{{"layer":"roads","label":"Roads","country":"Rwanda","ready":true}}]}}"#
-                )
-                .as_bytes(),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(
-            selected["layout"]["context_layers"]
-                .as_array()
-                .unwrap()
-                .len(),
-            4
-        );
-        assert!(selected["layout"]["style_keys"]["dsgrid_mv_lines"].is_object());
-        assert!(evaluate(
-            format!(
-                r#"{{"op":"context_toggle","layout":{layout},"layer":{{"id":"wetlands","label":"Wetlands","source":{{"kind":"catalog","country":"Rwanda","layer":"wetlands"}}}},"enabled":true,"resource":{{"layer":"wetlands","label":"Wetlands","country":"Rwanda"}}}}"#
-            )
-            .as_bytes()
-        )
-        .unwrap_err()
-        .contains("printing_context_no_dataset"));
-    }
-
     #[test]
     fn lifecycle_plan_is_one_printing_op_over_host_facts() {
         let plan: serde_json::Value = serde_json::from_str(
@@ -2135,67 +1430,6 @@ mod tests {
     }
 
     #[test]
-    fn context_layers_are_explicit_and_parameter_bounded() {
-        let layout = default_layout();
-        let result = evaluated_layout(json!({
-            "op":"set_context_layers",
-            "layout":layout,
-            "context_layers":[
-                {"id":"roads","label":"Roads","source":{"kind":"catalog","country":"Rwanda","layer":"roads"}},
-                {"id":"buildings_context","label":"Building footprints","source":{"kind":"google_open_buildings","buffer_m":200.0,"min_area_m2":25.0,"min_confidence":0.7}},
-                {"id":"elevation_contours","label":"10 m contours","source":{"kind":"elevation_contours","buffer_m":200.0,"minor_interval_m":10,"index_interval_m":50,"sample_spacing_m":10.0}},
-                {"id":"project_dsgrid_mv","label":"Project MV models","source":{"kind":"project_dsgrid_mv","buffer_m":200.0}}
-            ]
-        }));
-        assert_eq!(result.context_layers.len(), 4);
-        let mut invalid = result;
-        invalid.context_layers[2].source = PrintContextSource::ElevationContours {
-            buffer_m: 200.,
-            minor_interval_m: 10,
-            index_interval_m: 55,
-            sample_spacing_m: 10.,
-        };
-        assert!(validate(&invalid).is_err());
-    }
-    #[test]
-    fn named_paper_templates_and_copies_keep_identity_explicit() {
-        for paper in [
-            Paper::A0,
-            Paper::A1,
-            Paper::A2,
-            Paper::A3,
-            Paper::A4,
-            Paper::A5,
-        ] {
-            for orientation in [Orientation::Portrait, Orientation::Landscape] {
-                let layout = named_layout(
-                    Some("sample".into()),
-                    Some("My template".into()),
-                    paper,
-                    orientation,
-                )
-                .unwrap();
-                validate(&layout).unwrap();
-                assert_eq!(layout.name, "My template");
-            }
-        }
-        let layout = default_layout();
-        assert!(evaluate(
-            &serde_json::to_vec(
-                &json!({"op":"duplicate","layout":layout,"id":layout.id,"name":"Copy"})
-            )
-            .unwrap()
-        )
-        .is_err());
-        let result = evaluate(
-            &serde_json::to_vec(&json!({"op":"rename","layout":layout,"name":"Renamed"})).unwrap(),
-        )
-        .unwrap();
-        let result: serde_json::Value = serde_json::from_str(&result).unwrap();
-        assert_eq!(result["layout"]["id"], layout.id);
-        assert_eq!(result["layout"]["name"], "Renamed");
-    }
-    #[test]
     fn invalid_frames_and_unheld_logos_refuse() {
         let mut layout = default_layout();
         layout.elements[0].rect[2] = 1000.;
@@ -2217,31 +1451,6 @@ mod tests {
         );
         assert!(validate(&layout).is_err());
     }
-    #[test]
-    fn edit_validates_whole_document_and_map_cannot_be_removed() {
-        let layout = default_layout();
-        let mut element = layout.elements[1].clone();
-        element.text = "New title".into();
-        let result = evaluate(
-            &serde_json::to_vec(
-                &serde_json::json!({"op":"edit","layout":layout,"element":element}),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let result: serde_json::Value = serde_json::from_str(&result).unwrap();
-        assert_eq!(result["layout"]["elements"][1]["text"], "New title");
-        assert_eq!(
-            result["layout"]["elements"][0]["rect"],
-            serde_json::json!([12., 32., 300., 235.])
-        );
-        assert!(evaluate(
-            &serde_json::to_vec(&serde_json::json!({"op":"remove","layout":layout,"id":"map"}))
-                .unwrap()
-        )
-        .is_err());
-    }
-
     /// Front matter: the default sheet with every map-bound element removed.
     fn map_free_page() -> Layout {
         let mut layout = default_layout();
@@ -2384,31 +1593,6 @@ mod tests {
     }
 
     #[test]
-    fn a_geographic_sheet_keeps_exactly_one_map_frame() {
-        let layout = default_layout();
-        validate(&layout).unwrap();
-        validate_geographic(&layout).unwrap();
-        let mut two = layout.clone();
-        two.elements.push(Element {
-            id: "map-2".into(),
-            ..layout.elements[0].clone()
-        });
-        assert!(refused(&two, "exactly one map frame"));
-        // Removing the map leaves a sheet whose north arrow has nothing to point at.
-        assert_eq!(
-            evaluate(
-                &serde_json::to_vec(&json!({"op":"remove","layout":layout,"id":"map"})).unwrap()
-            )
-            .unwrap_err(),
-            "north arrow north needs a map frame; layout network-map has none"
-        );
-    }
-
-    fn refused(layout: &Layout, reason: &str) -> bool {
-        validate(layout).is_err_and(|e| e.contains(reason))
-    }
-
-    #[test]
     fn legacy_layout_upgrades_to_explicit_paper_and_clipped_viewport() {
         let mut legacy = serde_json::to_value(default_layout()).unwrap();
         legacy["schema"] = json!(LEGACY_SCHEMA);
@@ -2445,179 +1629,6 @@ mod tests {
         );
     }
 
-    // Exact furniture from Rwanda Template's governed transformer-focus-a0
-    // document. The map fit list is bounded to the captured furniture; logos
-    // and unrelated title-block elements are not needed for this regression.
-    fn authored_a0_furniture() -> Layout {
-        serde_json::from_str(include_str!(
-            "../../tests/fixtures/printing-paper-furniture-a0.json"
-        ))
-        .unwrap()
-    }
-
-    #[test]
-    fn paper_fit_scales_authored_schedule_furniture_with_its_frame() {
-        let a0 = authored_a0_furniture();
-        validate(&a0).unwrap();
-        let a3 = evaluated_layout(json!({
-            "op":"set_paper", "layout":a0, "paper":"A3", "orientation":"landscape"
-        }));
-        let close = |actual: f64, expected: f64| {
-            assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
-        };
-        let scale = 297. / 841.;
-        let pole = &a3.elements[element_index(&a3, "pole-schedule").unwrap()];
-        let table = pole.table.as_ref().unwrap();
-        // Each panel kept its 127 mm A0 column minimum even though the whole
-        // A3 container is only 148 mm wide, refusing a two-panel schedule.
-        close(pole.rect[2], 420. * scale);
-        close(table.min_widths_mm.iter().sum(), 127. * scale);
-        close(table.max_widths_mm[2], 58. * scale);
-        close(table.gap_mm, 5. * scale);
-        assert_eq!(table.row_mm, Some(2.));
-        assert_eq!(pole.font_pt, 4.);
-        let info = &a3.elements[element_index(&a3, "lv-print-info").unwrap()];
-        assert_eq!(info.table.as_ref().unwrap().max_widths_mm[0], 3.);
-
-        for (before, after) in a0.elements.iter().zip(&a3.elements) {
-            assert_eq!(before.id, after.id);
-            assert_eq!(before.viewport, after.viewport);
-            if let Some(original) = &before.table {
-                // Changing paper never drops/reorders fields or data, changes
-                // panel limits, or converts proportional column weights to mm.
-                let scaled = after.table.as_ref().unwrap();
-                let mut content = scaled.clone();
-                content.min_widths_mm = original.min_widths_mm.clone();
-                content.max_widths_mm = original.max_widths_mm.clone();
-                content.row_mm = original.row_mm;
-                content.gap_mm = original.gap_mm;
-                assert_eq!(&content, original);
-            }
-        }
-        let legend = &a3.elements[element_index(&a3, "legend").unwrap()];
-        assert_eq!(legend.legend.as_ref().unwrap().row_mm, 3.);
-        close(legend.legend.as_ref().unwrap().indent_mm, 4. * scale);
-        close(legend.flow.as_ref().unwrap().gap_mm, 5. * scale);
-        close(a3.composition.as_ref().unwrap().gap_mm, 5. * scale);
-        assert_eq!(a3.composition.as_ref().unwrap().min_font_scale, 1.);
-        // The cloned command input and the original A0 remain unchanged.
-        assert_eq!(a0, authored_a0_furniture());
-    }
-
-    #[test]
-    fn paper_fit_same_paper_preserves_the_authored_a0_document() {
-        let a0 = authored_a0_furniture();
-        assert_eq!(
-            evaluated_layout(json!({
-                "op":"set_paper", "layout":a0, "paper":"A0", "orientation":"landscape"
-            })),
-            a0
-        );
-    }
-
-    #[test]
-    fn paper_fit_preserves_automatic_table_sizing_and_geographic_policy() {
-        let mut a0 = authored_a0_furniture();
-        let index = element_index(&a0, "pole-schedule").unwrap();
-        let table = a0.elements[index].table.as_mut().unwrap();
-        table.min_widths_mm.clear();
-        table.max_widths_mm.clear();
-        table.row_mm = None;
-        a0.network_fit = Some(
-            serde_json::from_value(json!({"source_layers":["lv_lines"],"clearance_mm":2.}))
-                .unwrap(),
-        );
-        a0.styles = default_layout().styles;
-        a0.scale_rounding = Some(500.);
-        let a3 = evaluated_layout(json!({
-            "op":"set_paper", "layout":a0, "paper":"A3", "orientation":"landscape"
-        }));
-        let table = a3.elements[index].table.as_ref().unwrap();
-        assert!(table.min_widths_mm.is_empty());
-        assert!(table.max_widths_mm.is_empty());
-        assert_eq!(table.row_mm, None);
-        assert_eq!(a3.network_fit, a0.network_fit);
-        assert_eq!(a3.styles, a0.styles);
-        assert_eq!(a3.scale_rounding, a0.scale_rounding);
-    }
-
-    #[test]
-    fn paper_viewport_and_stack_commands_have_one_canonical_result() {
-        let a0 = evaluated_layout(json!({
-            "op":"set_paper",
-            "layout":default_layout(),
-            "paper":"A0",
-            "orientation":"landscape"
-        }));
-        assert_eq!(a0.paper.size, Paper::A0);
-        assert_eq!(a0.paper.orientation, Orientation::Landscape);
-        assert_eq!(a0.page_mm, [1189., 841.]);
-
-        let viewport = evaluated_layout(json!({
-            "op":"set_viewport",
-            "layout":a0,
-            "id":"map",
-            "name":"Transformer map",
-            "view_slot":"transformer_primary"
-        }));
-        let binding = viewport.elements[0].viewport.as_ref().unwrap();
-        assert_eq!(binding.name, "Transformer map");
-        assert_eq!(binding.view_slot, "transformer_primary");
-        assert!(binding.clip);
-
-        let front = evaluated_layout(json!({
-            "op":"bring_to_front",
-            "layout":viewport,
-            "id":"map"
-        }));
-        assert_eq!(front.elements.last().unwrap().id, "map");
-        let back = evaluated_layout(json!({
-            "op":"send_to_back",
-            "layout":front,
-            "id":"legend"
-        }));
-        assert_eq!(back.elements.first().unwrap().id, "legend");
-        let above = evaluated_layout(json!({
-            "op":"move_above",
-            "layout":back,
-            "id":"footer",
-            "relative_to":"map"
-        }));
-        let map = element_index(&above, "map").unwrap();
-        assert_eq!(above.elements[map + 1].id, "footer");
-        let below = evaluated_layout(json!({
-            "op":"move_below",
-            "layout":above,
-            "id":"footer",
-            "relative_to":"map"
-        }));
-        let map = element_index(&below, "map").unwrap();
-        assert_eq!(below.elements[map - 1].id, "footer");
-    }
-
-    #[test]
-    fn viewport_metadata_cannot_be_attached_to_non_map_elements() {
-        let mut layout = default_layout();
-        layout.elements[1].viewport = Some(PrintViewport {
-            name: "Wrong".into(),
-            view_slot: "wrong".into(),
-            clip: true,
-            fit_around: Vec::new(),
-            graticule: None,
-        });
-        assert!(validate(&layout).is_err());
-        assert!(evaluate(
-            &serde_json::to_vec(&json!({
-                "op":"set_viewport",
-                "layout":default_layout(),
-                "id":"title",
-                "name":"Wrong",
-                "view_slot":"wrong"
-            }))
-            .unwrap()
-        )
-        .is_err());
-    }
     #[test]
     fn category_sizes_need_a_field_and_scale_rounding_is_bounded() {
         let mut layout = default_layout();
