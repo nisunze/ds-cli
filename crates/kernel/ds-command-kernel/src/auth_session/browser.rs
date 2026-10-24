@@ -439,8 +439,11 @@ impl EndedSession {
 
 /// The person signs out: the view turns signed out before this returns and
 /// the profile's record is removed. Answers the ended session, if one was.
+/// The retired `localStorage` record goes too, whether or not its migration
+/// committed, so the next launch cannot restore the account signed out here.
 #[wasm_bindgen(js_name = authSessionSignOut)]
 pub fn sign_out() -> Option<EndedSession> {
+    legacy_remove();
     let page = page()?;
     let (ended, generation, view) = {
         let mut session = page.session.borrow_mut();

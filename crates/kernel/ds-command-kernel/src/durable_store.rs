@@ -1,8 +1,9 @@
 //! The Kernel's durable stores on SQLite: one call vocabulary, one
 //! transaction and the same rusqlite code on every edge.
 //!
-//! Core runs it natively in its protected Store for the Desktop and headless
-//! hosts (`core.store`); the hosted Web runs it in the browser's storage
+//! Core runs it natively in its protected Store for the CLI and headless
+//! hosts (`core.store`); the Desktop shell runs it on its own native file for
+//! the Desktop page; the hosted Web runs it in the browser's storage
 //! worker on OPFS (rusqlite over sqlite-wasm-rs and the sahpool VFS). Which
 //! edge executes a call is the platform adapter's choice, never a second
 //! implementation. Contract: `docs/contracts/durable-store.md`.
