@@ -34,6 +34,9 @@ pub const SOURCE_BYTE_LIMIT: u64 = 32 * 1024 * 1024;
 const TILE_BYTE_LIMIT: usize = 2 * 1024 * 1024;
 const BLOCK_BYTE_LIMIT: usize = 32 * 1024 * 1024;
 const FETCH_BYTE_LIMIT: usize = 256 * 1024 * 1024;
+/// Attempts for one public raster read whose transport failed.
+const FETCH_ATTEMPTS: u32 = 3;
+const FETCH_RETRY_BACKOFF: Duration = Duration::from_millis(500);
 const RWANDA_BASE: &str = "https://storage.googleapis.com/edcl/reference/rwanda_dem/2026-08-28";
 const INDEX_SIZE: usize = 184_412;
 const INDEX_SHA256: &str = "c0bdd9c9058a999cebb5b34e1f4f39b3056f24dcf28892227833983f923f10e7";
@@ -252,7 +255,22 @@ impl<T: Transport> Fetcher<T> {
         range: Option<(u64, u64)>,
         limit: usize,
     ) -> Result<Response, ComparisonError> {
-        let response = self.transport.get(url, range, limit)?;
+        // One stalled connection must not end a seed that reads hundreds of
+        // blocks: a transport failure (connect, timeout, cut body) is retried
+        // a bounded number of times with a short backoff. What the provider
+        // answered — a status, a range, bytes — is judged once, never retried.
+        let mut attempt = 1;
+        let response = loop {
+            match self.transport.get(url, range, limit) {
+                Err(ComparisonError::Provider(_) | ComparisonError::Io(_))
+                    if attempt < FETCH_ATTEMPTS =>
+                {
+                    std::thread::sleep(FETCH_RETRY_BACKOFF * attempt);
+                    attempt += 1;
+                }
+                other => break other?,
+            }
+        };
         if response.body.len() > limit
             || self.bytes.saturating_add(response.body.len()) > FETCH_BYTE_LIMIT
         {

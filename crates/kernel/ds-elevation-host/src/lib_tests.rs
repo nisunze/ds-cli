@@ -193,3 +193,59 @@ fn the_engine_compares_both_sources_and_the_host_places_its_csv() {
     assert_eq!(error.code(), "elevation_integrity_failed");
     assert!(!out.exists());
 }
+
+/// The fixture behind a link that stalls `failures` times on block reads.
+struct Stalling {
+    inner: Fixture,
+    failures: u32,
+    calls: u32,
+}
+
+impl Transport for Stalling {
+    fn get(
+        &mut self,
+        url: &str,
+        range: Option<(u64, u64)>,
+        limit: usize,
+    ) -> Result<Response, ComparisonError> {
+        if url.ends_with(".tif") {
+            self.calls += 1;
+            if self.calls <= self.failures {
+                return Err(ComparisonError::Io("timeout: global".into()));
+            }
+        }
+        self.inner.get(url, range, limit)
+    }
+}
+
+fn stalled_block_read(failures: u32) -> (Result<(), ComparisonError>, usize) {
+    let fixture = Fixture::new();
+    let block = fixture.block_v1();
+    let contract = fixture.contract();
+    let mut rasters = PublicRasters::with(
+        Stalling {
+            inner: fixture,
+            failures,
+            calls: 0,
+        },
+        contract,
+    )
+    .unwrap();
+    let result = rasters.acquire(&Needed {
+        rwanda_index: true,
+        rwanda_blocks: vec![block],
+        terrarium_tiles: vec![],
+    });
+    (result, rasters.evidence().len())
+}
+
+#[test]
+fn a_stalled_block_read_is_retried_and_a_persistent_one_still_fails() {
+    // Two stalls, then the bytes: the read lands once, with one evidence row.
+    let (recovered, evidence) = stalled_block_read(FETCH_ATTEMPTS - 1);
+    recovered.unwrap();
+    assert_eq!(evidence, 2, "the index and the block, each recorded once");
+    // Control: a link that never answers fails with the transport's error.
+    let (failed, _) = stalled_block_read(FETCH_ATTEMPTS);
+    assert!(matches!(failed, Err(ComparisonError::Io(message)) if message.contains("timeout")));
+}
