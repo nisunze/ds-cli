@@ -97,6 +97,11 @@ struct Request {
     zoom: Option<f64>,
     #[serde(default)]
     isolation: Option<Isolation>,
+    /// Desktops released before the 20 Oct 3D removal still send their renderer
+    /// mode. The map is 2D only, so the value is accepted and never read; the
+    /// request stays closed to every other field.
+    #[serde(default, rename = "mode")]
+    _legacy_renderer_mode: Option<serde::de::IgnoredAny>,
     op: Op,
 }
 
@@ -1459,3 +1464,7 @@ mod stacking_tests;
 #[cfg(test)]
 #[path = "layer_state_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "layer_state_legacy_tests.rs"]
+mod legacy_tests;
