@@ -201,7 +201,6 @@ const NOT_ROWS: &[(&str, Why)] = &[
     ("processSettings", Shared("design.process.settings")),
     ("processingUpload", Dead("never imported")),
     ("profileStructureTypeSelection", Shared("map.profile.retype")),
-    ("profileSupports", Shared("map.profile.calculation")),
     ("projectConfigAcquire", Step("design.config.read")),
     ("projectConfigAdmit", Mechanics("decoder")),
     ("projectConfigDocumentAdmit", Mechanics("decoder")),

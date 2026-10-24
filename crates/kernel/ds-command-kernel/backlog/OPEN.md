@@ -30,7 +30,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 7 |
 | [22. Operations product code](#22-operations-product-code) | 5 |
-| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 9 |
+| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 10 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 7 |
 | [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 5 |
 <!-- /toc -->
@@ -667,6 +667,8 @@ Rules: [PRINCIPLES.md ยง5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) โ
 - **Status cell-lock vocabulary and fast-process table acquisition** (audit-ui item 4, lane-workflows 2026-10-22): `ds-web/src/lib/design/status-fields.ts` still mirrors ds-network `cell_authority::feature_retained` and the per-layer construction-status vocabularies; expose them through `ds-network-contracts` and a Kernel op, then delete the mirror. `fast-process-tables.ts` still resolves held survey rows and sketch layers into LV `local_tables` in TypeScript (the run itself is the Kernel/Core executor); move held-table acquisition into the Kernel capture.
 
 - **Project and instance isolation** (`docs/prompts/claude-project-instance-isolation.md`; contract `project-and-instance-isolation-contract.md`): after the Server execution context: live Desktop instance discovery and CLI/MCP routing that refuses stale or ambiguous targets; generation-fenced UI session state; multi-principal authority and fair capacity across Solar, printing and a third operation on one Server.
+
+- **Dead Profile structure-type suggestion in the Kernel** (rules-move lane, 2026-10-24): `ds-command-kernel/src/profile_structure_type.rs` (394 lines, page export `profileStructureTypeSelection`) decides an engineering rule (bend from one projected alignment, "smallest covering angle range wins") but has no caller: ds-web deleted its Profile authoring on 2026-09-23 (`6cccf0ce8`) and `grep -rn profileStructureTypeSelection ds-web/src` is empty. Structure choice is already the Network engine's (`RetypeStructure`, `RetypeStructuresWithSupports`, spotting). Next step: delete the module, its wasm export and its `capabilities_owners_tests.rs` row exactly as `profile_supports.rs` was deleted, after checking no CLI/MCP descriptor names it; if a caller is found instead, it moves to the Network engine as a typed task.
 
 ## 24. Owner feature requests (CLI-first, after stabilization)
 
