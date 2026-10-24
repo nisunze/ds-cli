@@ -2226,7 +2226,6 @@ dependencies = [
  "arrow-array",
  "arrow-ipc",
  "arrow-schema",
- "ds-design-session",
  "ds-geo-lite",
  "ds-network-contracts",
  "regex",
@@ -2477,7 +2476,6 @@ name = "ds-network"
 version = "0.1.0"
 dependencies = [
  "ds-cleaning",
- "ds-design-session",
  "ds-geo",
  "ds-geo-lite",
  "ds-graph",
