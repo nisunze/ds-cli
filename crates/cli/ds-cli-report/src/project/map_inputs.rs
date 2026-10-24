@@ -1,4 +1,5 @@
-//! Native source acquisition only; overview projection and extents are kernel-owned.
+//! Native source acquisition only; overview projection and extents are
+//! kernel-owned, and the sheet text is decided by the Reporter.
 use ds_cli_contract::outcome::Failure;
 use ds_cli_contract::spec::{
     Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
@@ -73,7 +74,7 @@ pub static COMMAND: Command = Command {
     reference: Some("docs/reference/report.md"),
     search: &[],
     requires: Requires::Server,
-    availability: ds_cli_auth::native_availability,
+    availability: crate::reporter_availability,
 };
 fn invalid(e: impl std::fmt::Display) -> Failure {
     Failure::invalid("report_inputs_invalid", e.to_string())
@@ -280,6 +281,48 @@ fn read_layout(path: &str) -> Result<printing::Layout, Failure> {
     printing::validate(&layout).map_err(invalid)?;
     Ok(layout)
 }
+/// The Reporter task that decides a map sheet's `{key}` text.
+const PRINT_TEXT_REQUEST: &str = "ds.print-text.request/v1";
+const PRINT_TEXT_RESULT: &str = "ds.print-text/v1";
+
+/// The text one sheet prints, decided by the Reporter's `bind_print_text`
+/// task from the authored layout and the sheet's identity. A Reporter that
+/// does not register the task refuses `unknown_task` before any work; a key
+/// nobody binds refuses `print_text_missing`, as the layout's own error.
+fn print_text(
+    engine: &crate::Reporter,
+    layout: &printing::Layout,
+    sheet: Value,
+) -> Result<std::collections::BTreeMap<String, String>, Failure> {
+    let scratch = tempfile::tempdir().map_err(invalid)?;
+    let (request, result) = (
+        scratch.path().join("print-text-request.json"),
+        scratch.path().join("print-text-result.json"),
+    );
+    let body = json!({"schema": PRINT_TEXT_REQUEST, "layout": layout, "sheet": sheet});
+    std::fs::write(&request, serde_json::to_vec(&body).map_err(invalid)?).map_err(invalid)?;
+    let reply = engine.run(
+        crate::ReporterTask::BindPrintText,
+        &request,
+        &result,
+        crate::DISCOVERY_TIMEOUT,
+    )?;
+    if !reply.succeeded() {
+        let message = reply.stderr().trim();
+        return Err(if message.starts_with("print_text_missing") {
+            invalid(message)
+        } else {
+            reply.refusal()
+        });
+    }
+    let answer: Value =
+        serde_json::from_slice(&std::fs::read(&result).map_err(invalid)?).map_err(invalid)?;
+    if answer["schema"] != PRINT_TEXT_RESULT {
+        return Err(invalid("the Reporter answered another print text request"));
+    }
+    serde_json::from_value(answer["text"].clone()).map_err(invalid)
+}
+
 pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     let layout = read_layout(i.require("layout")?)?;
     let out = PathBuf::from(i.require("out-dir")?);
@@ -352,7 +395,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
         .transpose()
         .map_err(invalid)?;
     let receipt = InputReceipt::from_config(&config.result().document).map_err(invalid)?;
-    // The Kernel decides the sheet text; a layout printing text nobody can
+    // The Reporter decides the sheet text; a layout printing text nobody can
     // bind refuses here, before any source is acquired.
     let caption = receipt
         .printing_context_for_project(project)
@@ -364,14 +407,12 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
             .date()
             .to_string(),
     );
-    let sheet = |incomplete| printing::map_text::Sheet {
-        caption: caption.as_deref(),
-        country: &country,
-        date: &date,
-        page: (1, 1),
-        incomplete,
+    let sheet = |incomplete: bool| {
+        json!({"caption": caption, "country": country, "date": date, "page": [1, 1],
+            "incomplete": incomplete})
     };
-    printing::map_text::bindings(&layout, &sheet(false)).map_err(invalid)?;
+    let engine = crate::capture_engine(i)?;
+    print_text(&engine, &layout, sheet(false))?;
     let server_sheets_sha256 = receipt.sheets_sha256.clone();
     let styles = {
         let (lane, project) = (lane.to_owned(), project.to_owned());
@@ -656,8 +697,7 @@ pub fn run(i: &Inputs, _c: &Context) -> Result<Value, Failure> {
     )
     .map_err(invalid)?;
     let report_config = json!({"sheets":sheets,"printing_style_capture":style_capture});
-    let text = printing::map_text::bindings(&layout, &sheet(!context.omitted.is_empty()))
-        .map_err(invalid)?;
+    let text = print_text(&engine, &layout, sheet(!context.omitted.is_empty()))?;
     let render = json!({"schema":"ds.print-layout-export/v1","renderer_defaults":renderer_defaults,"render":{"admin_reference":admin_reference,"project_crs":project_crs,"report_config":report_config,"renderer_defaults":renderer_defaults,"layout":layout,"layers":render_layers,"extent":extent,"focus_extent":extent,"print_styles":resolved_styles["print_styles"],"symbol_assets":sheets.get("printing_symbol_assets").cloned().unwrap_or_else(||json!({})),"text":text},"formats":["pdf","png"],"dpi":300,"out_dir":out.join("rendered")});
     let path = out.join("render-request.json");
     let data = serde_json::to_vec(&render).map_err(invalid)?;

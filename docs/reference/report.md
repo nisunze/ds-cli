@@ -1435,13 +1435,14 @@ from the emitted capture. The command reports `area_bounds` and
 `render_extent` for review. `--area-bounds` and `--focus-bounds` are mutually
 exclusive. Leave both off for an overview fitted to the complete project.
 Read its omissions before passing the emitted request to `report.layout.render`.
-The sheet text is decided once, by the Kernel (`printing::map_text`): the
+The sheet text is decided once, by the Reporter's `bind_print_text` task: the
 layout's authored `title_block` values first, then the sealed project caption
 for `{project}`, the layout's name for `{title}`, paper and page for
 `{drawing}`, the capture date for `{date}`, and for `{source}` whether every
 requested context source was held. A layout that prints a key nobody binds
 refuses `report_inputs_invalid` (`print_text_missing`) before any source read;
-author that value in the layout's `title_block`.
+author that value in the layout's `title_block`. A Reporter that does not register
+the task refuses `unknown_task` before any read; install a current Reporter.
 A fresh capture also pins every transformer source it read in
 `transformer-contexts.json` and names that file and its SHA-256 under
 `transformer_contexts` in `sources.json`. For the next sheet of the same

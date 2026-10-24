@@ -7,7 +7,6 @@ pub mod held_context;
 pub mod inventory;
 pub mod lifecycle;
 pub mod map;
-pub mod map_text;
 pub mod mv_models;
 pub mod mv_preview;
 pub mod pens;
