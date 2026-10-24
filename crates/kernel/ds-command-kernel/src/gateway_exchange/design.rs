@@ -1147,7 +1147,7 @@ impl Exchange for DesignCall {
 /// The typed browser export Svelte and JSON windows call; it runs the shared
 /// executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{DesignCall, ProjectConfigurationFileFailure, ProjectConfigurationRead};
     use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};
     use wasm_bindgen::prelude::*;

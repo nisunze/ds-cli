@@ -222,7 +222,7 @@ async fn retain_shown(edge: &impl super::retained::Edge, project: &str, shown: &
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{rejection, typed, GatewayHost};
     use crate::gateway_exchange::retained::browser::BrowserEdge;

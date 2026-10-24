@@ -566,7 +566,7 @@ pub async fn discard(edge: &impl Edge, store: &impl StorePort, project: &str, id
 
 /// The typed browser exports: the page's gateway, store and storage link.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod browser {
+pub(crate) mod browser {
     use super::{discard, drain, enqueue, retry, steps, Author, Drained, Firestore, Posted, Refusal};
     use crate::durable_store::port::{PageStore, StoreHost};
     use crate::gateway_exchange::browser::{credentials, direct_post, facts, rejection, typed, GatewayHost};

@@ -475,7 +475,7 @@ pub async fn held_profile(edge: &impl super::retained::Edge) -> Option<Map<Strin
 
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{
         held_profile, kept_profile, AccountDeletion, Capabilities, DeviceApproval, DeviceDecision,
         IdentityRepair, Profile, ProfileWrite,

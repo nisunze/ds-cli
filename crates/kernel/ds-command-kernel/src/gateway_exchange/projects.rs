@@ -272,7 +272,7 @@ pub async fn held_directory(edge: &impl super::retained::Edge, status: &str) -> 
 
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{directory, held_directory, ProjectAction, ProjectEndpoint};
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};

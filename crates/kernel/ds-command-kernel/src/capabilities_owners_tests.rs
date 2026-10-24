@@ -180,6 +180,8 @@ const NOT_ROWS: &[(&str, Why)] = &[
     ("gridUploadStart", Step("design.model.publish")),
     ("installationInventory", Step("install.list")),
     ("installationsHeld", Mechanics("store")),
+    // The one door: it runs every row by its id, so it owns none itself.
+    ("invoke", Mechanics("capability routing")),
     ("layerDocument", Mechanics("helper")),
     ("layerExportEffect", Pending("migration lane in flight")),
     ("layerImportEffect", Pending("migration lane in flight")),

@@ -764,7 +764,7 @@ impl Exchange for GridModelDelete {
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use wasm_bindgen::prelude::*;
 
     use super::{

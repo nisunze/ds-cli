@@ -503,7 +503,7 @@ pub async fn held_page(edge: &impl super::retained::Edge) -> Option<Notification
 
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{
         chunks, held_page, page, BrowserPushSubscription, Config, MarkResult, Marked,
         NotificationMark, Register, Revoke,

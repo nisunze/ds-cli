@@ -379,7 +379,7 @@ pub fn revoked(refusal: &Refusal) -> bool {
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use std::cell::RefCell;
     use std::collections::BTreeMap;
     use std::rc::Rc;

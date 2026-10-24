@@ -410,7 +410,7 @@ pub async fn keep_graph(
 
 /// The typed browser export Svelte calls; it runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{held_graph, keep_graph, ProjectWork};
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};

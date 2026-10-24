@@ -210,7 +210,7 @@ impl Exchange for GeodataAudit {
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use js_sys::Function;
     use wasm_bindgen::prelude::*;
 

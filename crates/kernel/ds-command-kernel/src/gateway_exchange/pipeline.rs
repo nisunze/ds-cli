@@ -407,7 +407,7 @@ impl Exchange for PipelineCall {
 /// The typed browser export Svelte and JSON windows call; it runs the shared
 /// executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::PipelineCall;
     use crate::gateway_exchange::browser::{run, typed, GatewayHost};
     use wasm_bindgen::prelude::*;

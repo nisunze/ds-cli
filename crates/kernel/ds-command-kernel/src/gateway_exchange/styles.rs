@@ -138,7 +138,7 @@ pub fn with_issues(mut refusal: Refusal) -> Refusal {
 
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{with_issues, StyleAction};
     use crate::gateway_exchange::browser::{attempt, rejection, typed, GatewayHost};
     use serde_json::Value;

@@ -74,7 +74,7 @@ pub fn reply(
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod browser {
+pub(crate) mod browser {
     use super::*;
     use tsify::Tsify;
     use wasm_bindgen::prelude::*;

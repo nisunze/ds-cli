@@ -179,7 +179,7 @@ pub async fn invoke(edge: &impl Edge, principal: &str, value: Value) -> Value {
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod browser {
+pub(crate) mod browser {
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{facts, typed, GatewayHost};
     use crate::gateway_exchange::retained::browser::BrowserEdge;

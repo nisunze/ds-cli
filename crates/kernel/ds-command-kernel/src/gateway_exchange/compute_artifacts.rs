@@ -422,7 +422,7 @@ pub fn admit_read(download: &Download, expected: &Expected, max_bytes: u64) -> R
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{
         admit_read, unpublished, Download, Expected, HeadIdentity, ListHeads, Locator, OutputRef,
         ReadHead, ResolveDownload,

@@ -470,7 +470,7 @@ pub mod transformer_versions {
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{
         assets_catalogue, backup_ledger, pipeline_status, project_config, release,
         transformer_versions,

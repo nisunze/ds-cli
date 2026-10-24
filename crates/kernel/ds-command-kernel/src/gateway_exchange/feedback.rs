@@ -317,7 +317,7 @@ impl Exchange for SubmitHuman {
 
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{Backlog, FeedbackStatus, SubmitHuman, UpdateStatus};
     use crate::gateway_exchange::browser::{run, typed, GatewayHost};
     use wasm_bindgen::prelude::*;

@@ -232,7 +232,7 @@ pub async fn refresh(edge: &impl Edge) -> Result<GovernancePage, Refusal> {
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{held, refresh, RemoveFromAllProjects, SetAccessState, SetAppRoles};
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};

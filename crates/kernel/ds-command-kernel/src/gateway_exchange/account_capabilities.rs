@@ -143,7 +143,7 @@ pub async fn refresh(edge: &impl Edge, project: Option<&str>) -> Result<Map<Stri
 
 /// The typed browser exports Svelte calls.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{rejection, typed, GatewayHost};
     use crate::gateway_exchange::retained::browser::BrowserEdge;

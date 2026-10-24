@@ -336,7 +336,7 @@ impl Exchange for DesignCollab {
 
 /// The typed browser export Svelte calls; it runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{DesignCollab, Surface};
     use crate::gateway_exchange::browser::{run, typed, GatewayHost};
     use serde_json::{Map, Value};

@@ -443,7 +443,7 @@ pub async fn held(
 
 /// The typed browser export Svelte calls; it runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{acquire, held, project_acquire, request, FormsEndpoint, ReadMode};
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{rejection, typed, GatewayHost};

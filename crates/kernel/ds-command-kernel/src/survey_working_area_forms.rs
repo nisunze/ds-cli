@@ -49,7 +49,7 @@ pub const MAX_SELECTION_BYTES: usize = MAX_FORMS * (4 * MAX_SLUG_CHARS + 3) + 2;
 
 #[cfg(feature = "durable-store")]
 #[path = "survey_working_area_forms_store.rs"]
-mod store;
+pub(crate) mod store;
 
 /// The sentence a read carries when the working area would load nothing.
 pub const NOTHING_SELECTED_REMEDY: &str = "no survey form is selected for the working area on this host, so it loads nothing; select forms with `ds survey working-area select --form <slug> …` or `--all`";

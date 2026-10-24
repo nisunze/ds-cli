@@ -30,6 +30,11 @@ use serde::Serialize;
 #[path = "capability_command.rs"]
 pub mod command;
 
+/// The page's one door: a capability id and a JSON request in, the CLI's
+/// command envelope out.
+#[path = "capability_invoke.rs"]
+pub mod invoke;
+
 pub const SCHEMA: &str = "ds.capability-route/v1";
 pub const CODE_PENDING: &str = "capability_pending";
 pub const CODE_DISCARDED: &str = "capability_discarded";

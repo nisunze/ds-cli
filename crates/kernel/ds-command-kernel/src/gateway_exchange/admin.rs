@@ -365,7 +365,7 @@ pub async fn boundary(
 
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{boundary, held_children, refresh_children, Boundary, Children, Descendants, Locate, Name};
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};

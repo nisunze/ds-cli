@@ -30,7 +30,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 7 |
 | [22. Operations product code](#22-operations-product-code) | 5 |
-| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 11 |
+| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 12 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 7 |
 | [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 5 |
 <!-- /toc -->
@@ -681,6 +681,8 @@ Rules: [PRINCIPLES.md §5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) �
 
 
 - **Desktop page stores left Core's protected Store** (desktop-auth-store lane 2026-10-24): every Kernel durable store the Desktop page uses now runs in the shell's native file `<app local data dir>/kernel-store.sqlite` (ds-web 474951f0f `src-tauri/src/kernel_store.rs`, command `desktop_kernel_store`; ds-cli 85360572 `durable-store.md`), and a sign-in survives a relaunch on the installed Linux build. Left: (1) Rows the page wrote into Core's Store through `core.store` before this change are ignored (owner decision 24 Oct: no drain, no import; unsent work is re-entered). (2) The storage worker's Desktop realm admission (ds-web 2a4d14e05, `desktop-ui-storage-worker.test`, now on `workerStoreCall`) no longer runs on the Desktop; delete it once that is confirmed. (3) A unit operation of an internally tagged Kernel store operation (`{"action":"read", …}`) accepts unknown members, because serde ignores them on unit variants; close those variants (`Read {}`) across the durable stores.
+
+- **invoke door: owners it does not carry yet** (capability-invoke lane 2026-10-24; `src/capability_invoke.rs`, `UNBOUND`): `invoke` answers `capability_invoke_unbound` for `messagingCommand` and `messagingOutboxDrain` (once the messaging-attachments lane lands: make `messaging::exports` and `messaging_outbox::exports` `pub(crate)` and add two `page_owners!` lines) and for the byte-carrying owners `assetsBytes`, `assetsPreview`, `computeArtifactBytes`, `storedObjectBytes`, `surveyPhotoMediaProcess`, `geodataUpload` and `vectorToolEffect`, which need a byte door beside the JSON envelope. Shared exports with no request-to-row derivation (`designCall`, `pipelineCall`, `installationsCommand`, `stylePlan`, `notesTrash`, `gridModelsList`, `surveyHoldRead`, `surveyWorkingAreaFormsInvoke`, ...) admit by row only; give each a `capability()` like `project_work::capability` so a request cannot run a sibling row under another id. The generated TypeScript declares `host: InvokeHost | undefined` (pass `undefined` explicitly), not an optional parameter.
 
 ## 24. Owner feature requests (CLI-first, after stabilization)
 

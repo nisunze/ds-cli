@@ -263,7 +263,7 @@ pub fn address(outcome: Result<GeocodeAddress, Refusal>) -> Result<GeocodeAddres
 
 /// The typed browser exports Svelte calls; each runs the shared executor.
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{address, places, Availability, GeocodePoint, Reverse, Search};
     use crate::gateway_exchange::browser::{attempt, rejection, typed, GatewayHost};
     use wasm_bindgen::prelude::*;

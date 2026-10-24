@@ -631,7 +631,7 @@ impl Exchange for AttachmentRemove {
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use serde_json::Value;
     use wasm_bindgen::prelude::*;
 

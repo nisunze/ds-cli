@@ -298,7 +298,7 @@ pub async fn retain_catalogue(
 }
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
-mod exports {
+pub(crate) mod exports {
     use super::{Catalogue, Publication, QueryPage, Reconcile, QUERY_BYTES, QUERY_ROWS};
     use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};
     use crate::gateway_exchange::Refusal;
