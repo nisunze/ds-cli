@@ -312,3 +312,28 @@ fn absent_stores_read_offline_without_creating_state() {
     assert!(store.root.starts_with(base.path().join("engine-units")));
     assert!(!base.path().join("network").exists());
 }
+#[test]
+fn concurrent_engine_unit_readers_share_the_store_and_a_writer_still_excludes_them() {
+    let base = private_base();
+    let store = EngineUnitStore::new(base.path(), NETWORK, "canary", UiScope::Release).unwrap();
+    let first = stage_published(&store, 1);
+    store
+        .activate(&first.receipt_id, 0, ActivationGuard::default(), &|| false)
+        .unwrap();
+    let name = policy::member_names(NETWORK).unwrap()[0];
+    let reader = store.lock_retained().unwrap();
+    assert!(store.capture(&|| false).is_ok());
+    assert!(store.member(&first.sha256, name, 0, 4, &|| false).is_ok());
+    drop(reader);
+    let writer = store.lock().unwrap();
+    assert!(store
+        .capture(&|| false)
+        .unwrap_err()
+        .starts_with("module_update_busy:"));
+    assert!(store
+        .member(&first.sha256, name, 0, 4, &|| false)
+        .unwrap_err()
+        .starts_with("module_update_busy:"));
+    drop(writer);
+    assert!(store.capture(&|| false).is_ok());
+}

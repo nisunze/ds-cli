@@ -343,6 +343,7 @@ impl EngineUnitStore {
         })?;
         Ok(ModuleLock(file))
     }
+    /// Shared read lock of a retained store: captures and member reads.
     fn lock_retained(&self) -> Result<ModuleLock, String> {
         self.check_root()?;
         let path = self.root.join("update.lock");
@@ -363,9 +364,10 @@ impl EngineUnitStore {
         {
             return Err("module_store_invalid: invalid retained engine unit lock".into());
         }
-        file.try_lock_exclusive().map_err(|_| {
-            "module_update_busy: another update owns this engine unit".to_owned()
-        })?;
+        // Readers share the lock (concurrent member reads of one page load);
+        // only a writer's exclusive `lock` refuses them, and they refuse it.
+        FileExt::try_lock_shared(&file)
+            .map_err(|_| "module_update_busy: another update owns this engine unit".to_owned())?;
         Ok(ModuleLock(file))
     }
     pub fn selection(&self) -> Result<Option<EngineUnitSelection>, String> {

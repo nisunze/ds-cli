@@ -506,6 +506,7 @@ impl UiModuleStore {
             .map_err(|_| "module_update_busy: another update owns this UI component".to_owned())?;
         Ok(ModuleLock(file))
     }
+    /// Shared read lock of a retained store: captures and member reads.
     fn lock_retained(&self) -> Result<ModuleLock, String> {
         self.check_root()?;
         let path = self.root.join("update.lock");
@@ -526,7 +527,10 @@ impl UiModuleStore {
         {
             return Err("module_store_invalid: invalid retained UI lock".into());
         }
-        file.try_lock_exclusive()
+        // Readers share the lock: a page reads members concurrently, and a
+        // capture never changes the store. Only a writer's exclusive lock
+        // (`lock`) refuses a reader, and a reader refuses a writer.
+        FileExt::try_lock_shared(&file)
             .map_err(|_| "module_update_busy: another update owns this UI component".to_owned())?;
         Ok(ModuleLock(file))
     }

@@ -932,3 +932,48 @@ fn an_explicit_install_never_activates_a_changed_or_unverified_release() {
         .starts_with("module_update_cancelled"));
     assert!(store.selection().unwrap().is_none());
 }
+#[test]
+fn concurrent_readers_share_the_store_and_an_install_still_excludes_them_and_another_install() {
+    for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
+        let base = private_base();
+        let store = UiModuleStore::new(base.path(), component, "canary").unwrap();
+        let downloads = Cell::new(0);
+        install_to(&store, 1, &downloads).unwrap();
+        let name = component.files()[0].0;
+        let digest = store
+            .capture(&|| false)
+            .unwrap()
+            .receipt
+            .unit
+            .unit_sha256()
+            .to_owned();
+        // Another Core process's member read holds its read lock, as the
+        // page's second concurrent reader does on every launch.
+        let reader = store.lock_retained().unwrap();
+        assert!(store.capture(&|| false).is_ok());
+        assert!(store.member(&digest, name, 0, 4, &|| false).is_ok());
+        // Asking for the active release while it is current changes nothing
+        // and takes no lock, so it never blocks a capture.
+        let current = install_to(&store, 1, &downloads).unwrap();
+        assert_eq!(current.outcome, UiConvergenceOutcome::Current);
+        assert!(store.capture(&|| false).is_ok());
+        // A real install still waits for the reader to finish.
+        assert!(install_to(&store, 2, &downloads)
+            .unwrap_err()
+            .starts_with("module_update_busy:"));
+        drop(reader);
+        // An install in progress excludes readers and another install.
+        let writer = store.lock().unwrap();
+        for refused in [
+            store.capture(&|| false).map(|_| ()),
+            store.member(&digest, name, 0, 4, &|| false).map(|_| ()),
+            install_to(&store, 2, &downloads).map(|_| ()),
+        ] {
+            assert!(refused.unwrap_err().starts_with("module_update_busy:"));
+        }
+        drop(writer);
+        let updated = install_to(&store, 2, &downloads).unwrap();
+        assert_eq!(updated.outcome, UiConvergenceOutcome::Updated);
+        assert!(store.member(&digest, name, 0, 4, &|| false).is_ok());
+    }
+}
