@@ -1,5 +1,7 @@
 use super::*;
 use crate::gateway_exchange::retained::testing::{Answer, TestEdge, block_on};
+// The generated MediaAction route must keep its wire path.
+const PATH: &str = "/api/v1/media";
 const PHOTO: &str = "demo/forms/poles/entry/photo.jpg";
 const BUCKET: &str = "demo.firebasestorage.app";
 fn answer(path: &str, generation: &str) -> Value {
