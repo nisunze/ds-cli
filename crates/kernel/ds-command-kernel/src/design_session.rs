@@ -10,9 +10,19 @@ thread_local! {
     static LAST_HOVER_LOG_KEY: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
-fn row_window_to_feature_ipc(
+/// One layer's row window as the session holds it: its own feature ids,
+/// geometry and property values, in source row order. The page reads it as
+/// typed JSON, so no column codec is built for rows that never left the page.
+fn row_window_json(window: &ds_design_session::dataframe::RowWindow) -> Result<String, String> {
+    serde_json::to_string(window).map_err(|err| err.to_string())
+}
+
+/// The window's rows as the Network unit's `tableChunk` request: exactly the
+/// features and first-seen columns the Kernel encoded itself until it linked
+/// no Arrow codec, so the unit's chunk is byte-identical to the former one.
+fn row_window_chunk_request(
     window: ds_design_session::dataframe::RowWindow,
-) -> Result<Vec<u8>, String> {
+) -> Result<String, String> {
     let features = window
         .rows
         .into_iter()
@@ -25,8 +35,10 @@ fn row_window_to_feature_ipc(
             }))
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let columns = ds_columnar::columns_for_features(&features);
-    ds_columnar::features_to_ipc(&features, &columns)
+    serde_json::to_string(&ds_network_contracts::table_query::TableChunkRequest::new(
+        features,
+    ))
+    .map_err(|err| err.to_string())
 }
 
 fn log_hash(value: &str) -> String {
@@ -566,23 +578,47 @@ impl SessionHandle {
         stringify_json(&next)
     }
 
-    /// Return an Arrow IPC row window for one layer, or an empty vector
-    /// when the layer has no session features.
-    #[wasm_bindgen(js_name = "getRows")]
-    pub fn get_rows(
+    /// Return one layer's bounded row window, or `undefined` when the layer
+    /// has no session features. (It replaced `getRows`, the same window as
+    /// Arrow IPC bytes, on 24 Oct 2026: the Kernel UI links no Arrow codec.)
+    #[wasm_bindgen(js_name = "getRowWindow")]
+    pub fn get_row_window(
         &self,
         layer_name: &str,
         offset: usize,
         limit: usize,
-    ) -> Result<Vec<u8>, JsError> {
+    ) -> Result<Option<tsify::Ts<ds_design_session::dataframe::RowWindow>>, JsError> {
         let window = self
             .inner
             .get_rows(layer_name, offset, limit)
             .map_err(|err| JsError::new(&err))?;
         let Some(window) = window else {
-            return Ok(Vec::new());
+            return Ok(None);
         };
-        row_window_to_feature_ipc(window).map_err(|err| JsError::new(&err))
+        let text = row_window_json(&window).map_err(|err| JsError::new(&err))?;
+        js_sys::JSON::parse(&text)
+            .map(|value| Some(tsify::Ts::new_unchecked(value)))
+            .map_err(|_| JsError::new("design_session_response_invalid: row window is not JSON"))
+    }
+
+    /// The same window as the Network unit's `tableChunk` request (GeoJSON
+    /// features in row order with the session's ids, and their columns), or
+    /// `undefined` when the layer has no session features. The unit encodes
+    /// the IPC chunk its table operations read.
+    #[wasm_bindgen(js_name = "getTableChunkRequest")]
+    pub fn get_table_chunk_request(
+        &self,
+        layer_name: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Option<String>, JsError> {
+        let window = self
+            .inner
+            .get_rows(layer_name, offset, limit)
+            .map_err(|err| JsError::new(&err))?;
+        window
+            .map(|window| row_window_chunk_request(window).map_err(|err| JsError::new(&err)))
+            .transpose()
     }
 
     /// Phase C read probe. Returns one row as JSON, or JSON `null` when

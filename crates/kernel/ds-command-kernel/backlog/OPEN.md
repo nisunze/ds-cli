@@ -675,7 +675,6 @@ Rules: [PRINCIPLES.md ยง5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) โ
 
 - **Project and instance isolation** (`docs/prompts/claude-project-instance-isolation.md`; contract `project-and-instance-isolation-contract.md`): after the Server execution context: live Desktop instance discovery and CLI/MCP routing that refuses stale or ambiguous targets; generation-fenced UI session state; multi-principal authority and fair capacity across Solar, printing and a third operation on one Server.
 
-- **Kernel UI still compiles Parquet/Arrow** (columnar-move, 2026-10-24): `ds` and the native Kernel no longer link them (`ds/tests/core_links_no_columnar_codecs.rs`), but the Kernel UI `wasm` feature still enables `ds-columnar/artifacts` for two page uses: `design_session.rs` `getRows` (row window to Arrow IPC) and `table_query.rs` `row_count` (IPC rows that admit the unit's table answers). Both need Network page unit calls (encode features, count chunk rows) and a ds-web binding to them (UI frozen); `getRows` also moves with the design-session dataframe (Polars lane). Next step: add the unit calls, have the Kernel return features or ask the counts, rebind ds-web, then drop `ds-columnar/artifacts` from `wasm` and extend the closure test to the wasm32 graph.
 
 ## 24. Owner feature requests (CLI-first, after stabilization)
 

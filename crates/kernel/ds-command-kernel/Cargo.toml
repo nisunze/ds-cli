@@ -40,7 +40,6 @@ wasm = [
     "ds-module-contracts/bindings",
     "ds-network-contracts/bindings",
     "ds-design-session/enable_dataframes",
-    "ds-columnar/artifacts",
     "ds-columnar/bindings",
     "ds-upload-rules/bindings",
     "vector-tools",

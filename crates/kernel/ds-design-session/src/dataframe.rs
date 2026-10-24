@@ -42,6 +42,10 @@ pub struct LayerRow {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
 pub struct RowWindow {
     pub layer_name: String,
     pub offset: usize,
