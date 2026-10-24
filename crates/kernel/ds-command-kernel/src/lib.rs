@@ -88,6 +88,7 @@ pub fn solar_saved_analysis_wasm(input: &[u8]) -> Result<String, wasm_bindgen::J
     solar_saved_analysis::evaluate(input).map_err(|error| wasm_bindgen::JsValue::from_str(&error))
 }
 pub mod solar_snapshot;
+pub mod solar_unit;
 #[cfg(feature = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = solarDashboard)]
 pub fn solar_dashboard_wasm(input: &[u8]) -> Result<String, wasm_bindgen::JsValue> {

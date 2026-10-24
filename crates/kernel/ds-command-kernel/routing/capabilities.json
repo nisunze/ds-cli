@@ -49,7 +49,7 @@
     "page_engine_session": "An engine session inside the page; `ds` works on DS Grid models with its own `dsgrid` commands.",
     "page_session": "The page's own sign-in; `ds` signs in with `ds auth login` or `ds account connect`.",
     "printing_on_core": "Printing runs on DS Core: use DS GridDesign Desktop or `ds report`.",
-    "solar_web_parity": "Solar on the Web waits for parity: use DS GridDesign Desktop or `ds solar`.",
+    "solar_web_parity": "Solar preparation, runs and publication stay on DS GridDesign Desktop or `ds solar`; the Web calculates a Core-prepared city in its Solar unit.",
     "survey_admin_on_core": "Survey administration runs on DS Core: use DS GridDesign Desktop or `ds survey`.",
     "survey_capture_web_android": "Survey capture lives on Web and Android.",
     "terminal_only": "A terminal command of `ds` itself; DS GridDesign Desktop and the Web have their own.",
