@@ -176,7 +176,7 @@ pub(super) fn validate_completion_stamp(
     Ok(())
 }
 
-fn same_family(actual: &str, expected: &str) -> bool {
+pub(super) fn same_family(actual: &str, expected: &str) -> bool {
     let Some((family, version)) = actual.rsplit_once("/v") else {
         return false;
     };

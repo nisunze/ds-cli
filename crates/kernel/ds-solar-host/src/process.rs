@@ -252,6 +252,7 @@ pub struct PreparedEngine {
 mod batch;
 mod budget;
 mod encoding;
+pub mod final_lint;
 mod portfolio;
 pub(crate) mod preparation;
 pub use batch::{
@@ -530,6 +531,7 @@ fn check_cancel(cancel: &CancelToken) -> Result<(), String> {
 
 enum Task<'a> {
     BuildInfo,
+    FinalLint { request: &'a Path, out: &'a Path },
     Preparation { request: &'a Path, out: &'a Path },
     Encoding { request: &'a Path, out: &'a Path },
     Calculate { request: &'a Path, out: &'a Path },
@@ -586,6 +588,7 @@ fn run_task_observed(
     check_cancel(cancel)?;
     let bounds = match &task {
         Task::BuildInfo => None,
+        Task::FinalLint { .. } => Some(FileBounds::final_lint()),
         Task::Preparation { .. } => Some(FileBounds::preparation()),
         Task::Encoding { .. } => Some(FileBounds::encoding()),
         Task::Calculate { .. } => Some(FileBounds::prepared()),
@@ -596,6 +599,14 @@ fn run_task_observed(
     match task {
         Task::BuildInfo => {
             command.arg("build-info");
+        }
+        Task::FinalLint { request, out } => {
+            command
+                .arg(ds_cli_exec::solar::Task::FinalLint.subcommand())
+                .arg("--request")
+                .arg(request)
+                .arg("--out")
+                .arg(out);
         }
         Task::Preparation { request, out } => {
             command
@@ -779,6 +790,17 @@ struct FileBounds {
     depth: usize,
 }
 impl FileBounds {
+    fn final_lint() -> Self {
+        use ds_solar_contracts::final_lint::*;
+        Self {
+            request: MAX_FINAL_LINT_REQUEST_BYTES,
+            result: MAX_FINAL_LINT_RESULT_BYTES,
+            output: 0,
+            files: 3,
+            file: 0,
+            depth: 2,
+        }
+    }
     fn preparation() -> Self {
         use ds_solar_contracts::preparation_task::*;
         Self {

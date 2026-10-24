@@ -10,6 +10,9 @@ use std::path::PathBuf;
 /// Ordinary stdout transport retains its separate 32 MiB response bound.
 pub const MAX_FILE_RESPONSE_BYTES: usize = 257 * 1024 * 1024;
 
+/// Retain declared addon refusals through the native application boundary.
+pub use ds_solar_host::process::final_lint::Error;
+
 /// Server preparation accepts authored inputs; provider authority is host-owned.
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -221,6 +224,11 @@ impl Request {
         }
     }
     pub fn execute(self, host: NativeHost, project: &str) -> Result<Value, String> {
+        self.execute_typed(host, project)
+            .map_err(|error| error.to_string())
+    }
+
+    fn execute_typed(self, host: NativeHost, project: &str) -> Result<Value, Error> {
         if !ds_solar_contracts::is_solar_id(project) {
             return Err("An explicit canonical Solar project is required".into());
         }
@@ -274,7 +282,7 @@ impl Request {
             Self::ReportFinish { command } => solar_native_finish_report(host, command)?,
             Self::PortfolioPublish { command } => solar_native_publish_portfolio(host, command)?,
             Self::PortfolioFinalImport { command } => {
-                json!(solar_native_import_portfolio_final(host, command)?)
+                json!(solar_native_import_portfolio_final_checked(host, command)?)
             }
             Self::PortfolioFinalInspect { command } => {
                 json!(solar_native_inspect_portfolio_final(host, command)?)
@@ -370,7 +378,9 @@ impl Request {
                 let bytes = solar_native_read_portfolio_batch_artifact(host, command)?;
                 export_bytes(&destination, &expected, &bytes)?
             }
-            Self::FinalImport { command } => json!(solar_native_import_final(host, command)?),
+            Self::FinalImport { command } => {
+                json!(solar_native_import_final_checked(host, command)?)
+            }
             Self::FinalInspect { command } => json!(solar_native_inspect_final(host, command)?),
         };
         Ok(
@@ -421,12 +431,17 @@ pub(crate) fn export_bytes(
 }
 
 pub fn execute(host: NativeHost, project: &str, bytes: &[u8]) -> Result<Value, String> {
+    execute_typed(host, project, bytes).map_err(|error| error.to_string())
+}
+
+/// Typed native host entry; String-facing adapters retain their public API.
+pub fn execute_typed(host: NativeHost, project: &str, bytes: &[u8]) -> Result<Value, Error> {
     if bytes.is_empty() || bytes.len() > 32 * 1024 * 1024 {
         return Err("Solar application request exceeds 32 MiB".into());
     }
     let request: Request =
         serde_json::from_slice(bytes).map_err(|_| "Invalid closed Solar application request")?;
-    request.execute(host, project)
+    request.execute_typed(host, project)
 }
 
 /// Discover the exact serde contract without opening a workspace or restoring

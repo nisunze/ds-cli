@@ -32,6 +32,8 @@ pub enum Task {
     CalculatePrepared,
     PrepareReference,
     EncodeOutputs,
+    /// Lint one reviewed final against its immutable authoring draft.
+    FinalLint,
     /// An ordered prepared-city batch into a fresh artifact directory.
     CalculateBatch,
     /// One exact saved city batch aggregated into a portfolio.
@@ -44,6 +46,7 @@ impl Task {
             Self::CalculatePrepared => "calculate_prepared",
             Self::PrepareReference => "prepare_reference",
             Self::EncodeOutputs => "encode_outputs",
+            Self::FinalLint => "final.lint",
             Self::CalculateBatch => "calculate_batch",
             Self::CalculatePortfolio => "calculate_portfolio",
         }
@@ -55,6 +58,7 @@ impl Task {
             Self::CalculatePrepared => "calculate-prepared",
             Self::PrepareReference => "prepare-reference",
             Self::EncodeOutputs => "encode-outputs",
+            Self::FinalLint => "lint-final",
             Self::CalculateBatch => "calculate-batch",
             Self::CalculatePortfolio => "calculate-portfolio",
         }
@@ -68,6 +72,7 @@ impl Task {
                 ds_solar_contracts::preparation_task::REFERENCE_PREPARATION_REQUEST_SCHEMA
             }
             Self::EncodeOutputs => ds_solar_contracts::output_task::OUTPUT_ENCODING_REQUEST_SCHEMA,
+            Self::FinalLint => ds_solar_contracts::final_lint::FINAL_LINT_REQUEST_SCHEMA,
             Self::CalculateBatch => {
                 ds_solar_contracts::prepared_batch::PREPARED_BATCH_REQUEST_SCHEMA
             }
@@ -150,10 +155,12 @@ impl Solar {
             .flatten()
             .any(|schema| {
                 schema == task.catalogue_schema()
-                    || matches!(task, Task::PrepareReference | Task::EncodeOutputs)
-                        && schema
-                            .as_str()
-                            .is_some_and(|actual| same_task_family(actual, task.catalogue_schema()))
+                    || matches!(
+                        task,
+                        Task::PrepareReference | Task::EncodeOutputs | Task::FinalLint
+                    ) && schema
+                        .as_str()
+                        .is_some_and(|actual| same_task_family(actual, task.catalogue_schema()))
             });
         if declared {
             Ok(identity)
@@ -239,7 +246,7 @@ fn unsupported(task: Task) -> Failure {
     );
     // Literal owner codes also feed the refusal-coverage scan.
     let failure = match task {
-        Task::PrepareReference | Task::EncodeOutputs => {
+        Task::PrepareReference | Task::EncodeOutputs | Task::FinalLint => {
             Failure::unavailable("solar_engine_update_required", message)
         }
         _ => Failure::unavailable("unknown_task", message),

@@ -55,6 +55,9 @@ fn capture_engine_at(
 
 #[cfg(test)]
 mod engine_selection_tests;
+#[cfg(test)]
+#[path = "../../../kernel/ds-compute-runtime/tests/common/mod.rs"]
+mod prepared_fixture;
 
 pub const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(20);
 

@@ -87,6 +87,12 @@ pub fn solar_native_import_portfolio_final(
 ) -> Result<ImportedFinal, String> {
     portfolio_finals::import(app, command)
 }
+pub(crate) fn solar_native_import_portfolio_final_checked(
+    app: AppHandle,
+    command: PortfolioFinalImportCommand,
+) -> Result<ImportedFinal, crate::application::Error> {
+    portfolio_finals::import_checked(app, command)
+}
 pub fn solar_native_inspect_portfolio_final(
     app: AppHandle,
     command: PortfolioFinalSelector,
@@ -1967,6 +1973,24 @@ pub struct DocumentSlice {
 const MAX_DOCUMENT_SLICE: u64 = 64 * 1024;
 /// The largest document this module will read at all.
 const MAX_DOCUMENT_BYTES: u64 = 32 * 1024 * 1024;
+
+/// The native host retains authority and files; Solar owns the final verdict.
+fn lint_final(
+    app: &AppHandle,
+    draft: &str,
+    final_markdown: &str,
+) -> Result<ds_solar_contracts::final_lint::FinalLintTaskResult, crate::application::Error> {
+    let engine = ds_cli_exec::solar::Solar::from_captured(app.capture_engine()?);
+    let scratch = secure_private_directory(&app.data_dir()?.join("solar-workers"))?;
+    ds_solar_host::process::final_lint::invoke(
+        &engine,
+        &scratch,
+        draft,
+        final_markdown,
+        &CancelToken::new(),
+    )
+}
+
 /// The uploader's hard cap for one sealed native batch artifact.
 const MAX_BATCH_ARTIFACT_BYTES: u64 = 64 * 1024 * 1024;
 /// A closed manifest is metadata, never an unbounded artifact transport.
@@ -3873,6 +3897,13 @@ pub fn solar_native_import_final(
     app: AppHandle,
     command: ImportFinalCommand,
 ) -> Result<Option<ImportedFinal>, String> {
+    solar_native_import_final_checked(app, command).map_err(|error| error.to_string())
+}
+
+pub(crate) fn solar_native_import_final_checked(
+    app: AppHandle,
+    command: ImportFinalCommand,
+) -> Result<Option<ImportedFinal>, crate::application::Error> {
     let run_dir = run_directory(
         &app,
         &command.workspace_handle,
@@ -3906,15 +3937,17 @@ pub fn solar_native_import_final(
         &lineage.source_draft.name,
         MAX_DOCUMENT_BYTES,
     )?;
-    let lint = ds_solar_contracts::lint_final(
+    let lint = lint_final(
+        &app,
         std::str::from_utf8(&draft.bytes).map_err(|_| "the APD draft is not UTF-8 Markdown")?,
         final_markdown,
-    );
-    if !lint.ok() {
+    )?;
+    if !lint.report.errors.is_empty() {
         return Err(format!(
             "the interpreted final violates its authoring draft contract:\n{}",
-            lint.render()
-        ));
+            lint.rendered
+        )
+        .into());
     }
     let final_name = if lineage.source_draft.name.ends_with(APD_DRAFT_EN_NAME) {
         FINAL_APD_EN_NAME
@@ -6203,6 +6236,10 @@ mod tests {
 
     #[test]
     fn final_import_keeps_calculation_closed_and_reopens_verified_bytes_after_restart() {
+        final_import_scenario(false);
+    }
+
+    pub(super) fn final_import_scenario(old_addon: bool) {
         use ds_solar_contracts::{
             ArtifactRole, BatchArtifact, BatchCity, BatchRunIdentity, SolarArtifactBatch,
         };
@@ -6231,7 +6268,15 @@ mod tests {
             "[LLM interpretation will be inserted here]",
             "Résumé vérifié.",
         );
-        assert!(ds_solar_contracts::lint_final(draft, &final_text).ok());
+        if !old_addon {
+            assert!(
+                lint_final(&host, draft, &final_text)
+                    .unwrap()
+                    .report
+                    .errors
+                    .is_empty()
+            );
+        }
         let report = b"{\"source\":\"sealed\"}";
         let png = b"\x89PNG\r\n\x1a\nverified-chart";
         write_new_final_file(&city_dir.join("chart.png"), png).unwrap();
@@ -6293,6 +6338,29 @@ mod tests {
             city_id: "town".into(),
             source_path: Some(final_path.to_string_lossy().into()),
         };
+        if old_addon {
+            let request = serde_json::json!({"operation":"final_import","command":{
+                "workspace_handle":command.workspace_handle,"root":command.root,
+                "run_id":command.run_id,"city_id":command.city_id,"source_path":command.source_path,
+            }});
+            let error = crate::application::execute_typed(
+                host.clone(),
+                "project-test",
+                &serde_json::to_vec(&request).unwrap(),
+            )
+            .unwrap_err();
+            assert_eq!(error.code(), Some("solar_engine_update_required"));
+            assert!(!source_dir.join("finals/town").exists());
+            assert_eq!(
+                std::fs::read(source_dir.join("batch.json")).unwrap(),
+                original_manifest
+            );
+            assert_eq!(
+                std::fs::read(source_dir.join("sync-intent.json")).unwrap(),
+                original_intent
+            );
+            return;
+        }
         // Changed source bytes are refused before committing any final.
         std::fs::write(city_dir.join(PARITY_DRAFT_NAME), b"changed").unwrap();
         assert!(solar_native_import_final(host.clone(), command.clone()).is_err());
@@ -7527,3 +7595,7 @@ mod tests {
 
 #[cfg(all(test, unix))]
 mod engine_integrity_tests;
+
+#[cfg(all(test, unix))]
+#[path = "native/final_lint_application_tests.rs"]
+mod final_lint_application_tests;

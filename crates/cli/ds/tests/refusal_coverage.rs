@@ -980,7 +980,7 @@ fn every_constructible_refusal_code_is_documented() {
         // layer owner's, re-raised across that transport, by `ds map layer …`.
         // The working-area form owner's travel the same transport for
         // `ds survey working-area … --target server`, declared there.
-        ("ds-cli-server", &["core", "map", "survey"]),
+        ("ds-cli-server", &["core", "map", "survey", "solar"]),
         ("ds-cli-solar", &["solar"]),
         ("ds-solar-cli", &["solar"]),
         ("ds-cli-pm", &["pm", "notes"]),

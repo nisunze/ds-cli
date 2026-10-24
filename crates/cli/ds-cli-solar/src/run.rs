@@ -407,7 +407,7 @@ fn execute_batch(
         let task = BatchEngine::capture(path, scratch.path(), ds_solar_host::compute_parallelism(), &cancel).map_err(process_failure)?;
         let timeout = remaining(deadline)?;
         attempted.set(true);
-        task.calculate_with_timeout(&request, &cancel, Some(&progress), timeout).map_err(process_failure)
+        task.calculate_with_timeout(request, &cancel, Some(&progress), timeout).map_err(process_failure)
     }).map_err(|failure| {
         if attempted.get() {
             failure.detail(json!({"phase":"completed_task_integrity_check", "engine_path":engine_path, "out":out, "local_output_committed":false}))

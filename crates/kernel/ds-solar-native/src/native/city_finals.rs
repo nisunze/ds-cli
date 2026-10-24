@@ -199,7 +199,10 @@ pub fn inspect(app: AppHandle, command: Selector) -> Result<ImportedFinal, Strin
     })
 }
 
-pub fn import(app: AppHandle, command: ImportCommand) -> Result<ImportedFinal, String> {
+pub(crate) fn import(
+    app: AppHandle,
+    command: ImportCommand,
+) -> Result<ImportedFinal, crate::application::Error> {
     let (directory, source) = source(&app, &command.batch)?;
     let city = checked_segment(&command.city_id, "city id")?;
     let name = final_name(&command.source_name)?;
@@ -208,7 +211,7 @@ pub fn import(app: AppHandle, command: ImportCommand) -> Result<ImportedFinal, S
         if legacy.source_draft.name != format!("cities/{city}/{}", command.source_name) {
             return Err("Select the exact APD language declared by the source batch".into());
         }
-        return solar_native_import_final(
+        return solar_native_import_final_checked(
             app,
             ImportFinalCommand {
                 workspace_handle: command.batch.workspace_handle,
@@ -243,15 +246,17 @@ pub fn import(app: AppHandle, command: ImportCommand) -> Result<ImportedFinal, S
     )?;
     let reviewed =
         std::str::from_utf8(&bytes).map_err(|_| "Reviewed city Markdown must be UTF-8")?;
-    let lint = ds_solar_contracts::lint_final(
+    let lint = lint_final(
+        &app,
         std::str::from_utf8(&draft.bytes).map_err(|_| "City authoring draft must be UTF-8")?,
         reviewed,
-    );
-    if !lint.ok() {
+    )?;
+    if !lint.report.errors.is_empty() {
         return Err(format!(
             "The reviewed city report violates its authoring contract:\n{}",
-            lint.render()
-        ));
+            lint.rendered
+        )
+        .into());
     }
     let parent = secure_private_directory(&directory.join("finals-reports").join(&city))?;
     let folder = command

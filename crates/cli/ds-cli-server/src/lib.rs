@@ -698,6 +698,9 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
         _ => default_class(code, status),
     };
     let refusal = match code {
+        Some("solar_engine_update_required") => {
+            Failure::new(class, "solar_engine_update_required", message)
+        }
         // The execution context's own vocabulary, kept literal: a caller that
         // learned these names on the desktop plans for them here unchanged.
         Some("project_required") => Failure::new(class, "project_required", message),
@@ -775,6 +778,19 @@ fn typed_refusal(status: u16, body: &[u8]) -> Failure {
     // Capacity is the one refusal a caller can act on programmatically, so its
     // numbers travel as structured detail and not only inside a sentence.
     match (code, value.get("retry_after_ms")) {
+        (Some("solar_engine_update_required"), _) => {
+            let detail = ["task", "subcommand", "schema"]
+                .into_iter()
+                .filter_map(|key| {
+                    value[key].as_str().map(|text| (key.to_owned(), json!(text)))
+                })
+                .collect::<serde_json::Map<_, _>>();
+            if detail.is_empty() {
+                refusal
+            } else {
+                refusal.detail(Value::Object(detail))
+            }
+        }
         (Some("result_pending" | "result_failed" | "result_cancelled"), _) => {
             refusal.detail(json!({
                 "job":value["job"], "wait_seconds":value.get("wait_seconds")

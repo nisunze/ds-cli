@@ -1,9 +1,22 @@
 //! CLI/MCP transport for the closed Core-owned Solar application surface.
 use ds_cli_contract::{
     Context, Failure, Inputs,
-    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires},
+    spec::{Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires},
 };
 use serde_json::Value;
+const APPLICATION_REFUSALS: [Refusal; ds_cli_server::STATUS.refusals.len() + 1] = {
+    let mut result = [Refusal {
+        code: "solar_engine_update_required",
+        when: "the selected Solar addon does not declare the final.lint task required to import a reviewed final",
+        remedy: "install a Solar addon for this lane that declares final.lint",
+    }; ds_cli_server::STATUS.refusals.len() + 1];
+    let mut index = 0;
+    while index < ds_cli_server::STATUS.refusals.len() {
+        result[index] = ds_cli_server::STATUS.refusals[index];
+        index += 1;
+    }
+    result
+};
 pub static COMMAND: Command = Command {
     id: "solar.application",
     path: &["solar", "application"],
@@ -44,7 +57,7 @@ pub static COMMAND: Command = Command {
     ],
     output: "ds-solar.application-receipt/v1 pinned to the project. With --out, the full JSON is written privately and stdout returns ds-solar.application-artifact/v1 (out, byte_count, sha256, project_id, root, lane). A failure after the effect keeps server_refused with the completed operation; inspect it before retrying. Launches continue natively; read their progress.",
     examples: &[],
-    refusals: ds_cli_server::STATUS.refusals,
+    refusals: &APPLICATION_REFUSALS,
     reference: Some("docs/reference/solar.md"),
     search: &[],
     requires: Requires::Server,

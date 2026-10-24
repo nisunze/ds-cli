@@ -1519,8 +1519,7 @@ mod supervised_tests {
                 &fixture("fixture_malformed"),
                 Duration::from_secs(2),
             )
-            .err()
-            .expect("protocol prose must not become a result");
+            .expect_err("protocol prose must not become a result");
         assert_eq!(failure.code(), "callee_contract_mismatch");
     }
     #[test]
@@ -1860,6 +1859,10 @@ mod supervised_tests {
     #[cfg(target_os = "linux")]
     #[test]
     #[ignore]
+    #[expect(
+        clippy::zombie_processes,
+        reason = "the supervisor test terminates and reaps this descendant after its fixture parent exits"
+    )]
     fn fixture_descendant_hang() {
         let child = Command::new(std::env::current_exe().unwrap())
             .arg("--exact")
@@ -1891,6 +1894,10 @@ mod supervised_tests {
     }
     #[test]
     #[ignore]
+    #[expect(
+        clippy::zombie_processes,
+        reason = "the supervisor test terminates and reaps this descendant after its fixture parent exits"
+    )]
     fn fixture_descendant() {
         let child = Command::new(std::env::current_exe().unwrap())
             .arg("--exact")

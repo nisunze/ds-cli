@@ -32,6 +32,19 @@ development. The application tool `ds-solar` and its `DS_SOLAR_BIN` override
 remain separate while native batch and portfolio orchestration are extracted;
 the addon inventory does not claim those workflows are already detached.
 
+Final-document lint is the Solar addon's fixed `final.lint` task, invoked as
+`lint-final --request <file> --out <fresh-directory>`. Core's city, report and
+portfolio final imports pass the verified source draft and reviewed Markdown;
+Core owns authorization, source lineage and the atomic final commit. Contracts
+carry findings and request/result values only. The addon owns all lint rules and
+renders their explanation. An addon without this declared task refuses
+`solar_engine_update_required` before import; no linked lint fallback exists.
+The host admits typed future schema families and verifies the exact request
+digest and captured producer identity/stamp. These producer checks establish
+integrity of this response, not equality between independently released units.
+Each input document remains bounded to 32 MiB, with a 64 MiB result and a
+60-second task deadline; cancellation and invalid replies cannot commit a final.
+
 ## There is no generic invoker
 
 The rule, stated as what is actually enforced:

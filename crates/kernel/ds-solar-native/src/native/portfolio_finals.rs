@@ -190,6 +190,13 @@ pub(super) fn import(
     app: AppHandle,
     command: PortfolioFinalImportCommand,
 ) -> Result<ImportedFinal, String> {
+    import_checked(app, command).map_err(|error| error.to_string())
+}
+
+pub(crate) fn import_checked(
+    app: AppHandle,
+    command: PortfolioFinalImportCommand,
+) -> Result<ImportedFinal, crate::application::Error> {
     let (directory, source) = source(&app, &command.batch)?;
     let name = final_name(&command.source_name)?;
     let expected = lineage(&directory, &source, &command.source_name)?;
@@ -211,15 +218,17 @@ pub(super) fn import(
         &command.source_name,
         MAX_DOCUMENT_BYTES,
     )?;
-    let lint = ds_solar_contracts::lint_final(
+    let lint = lint_final(
+        &app,
         std::str::from_utf8(&draft.bytes).map_err(|_| "Portfolio draft must be UTF-8")?,
         text,
-    );
-    if !lint.ok() {
+    )?;
+    if !lint.report.errors.is_empty() {
         return Err(format!(
             "The reviewed portfolio report violates its authoring contract:\n{}",
-            lint.render()
-        ));
+            lint.rendered
+        )
+        .into());
     }
     let parent = secure_private_directory(&directory.join("finals"))?;
     let folder = command

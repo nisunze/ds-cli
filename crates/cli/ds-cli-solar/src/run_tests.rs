@@ -3,8 +3,7 @@ use super::*;
 use ds_cli_contract::args::parse;
 use ds_solar_contracts::{PreparedCalculationRequest, PreparedSolarCityInput};
 use std::fs;
-#[path = "../../../kernel/ds-compute-runtime/tests/common/mod.rs"]
-mod prepared_fixture;
+use crate::prepared_fixture;
 
 fn prepared(root: &Path) -> PathBuf {
     let dir = root.join("prepared");

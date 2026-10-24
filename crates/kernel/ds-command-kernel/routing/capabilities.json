@@ -58,6 +58,7 @@
   },
   "capabilities": {
     "account.connect": {"cli": "core", "desktop": "discarded:terminal_only", "web": "discarded:terminal_only", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported"},
+    "account.delete": {"cli": "core", "desktop": "kernel:account", "web": "kernel:account", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported", "export": "accountDelete"},
     "account.profile.read": {"cli": "pending:not_yet_a_ds_command", "desktop": "kernel:account", "web": "kernel:account", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported", "export": "accountProfile"},
     "account.profile.update": {"cli": "pending:not_yet_a_ds_command", "desktop": "kernel:account", "web": "kernel:account", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported", "export": "accountProfileWrite"},
     "architecture.read": {"cli": "pending:not_yet_a_ds_command", "desktop": "kernel:architecture", "web": "kernel:architecture", "android": "discarded:mobile_not_offered", "ios": "discarded:mobile_not_offered", "macos": "pending:macos_not_yet_supported", "export": "architectureSnapshot"},

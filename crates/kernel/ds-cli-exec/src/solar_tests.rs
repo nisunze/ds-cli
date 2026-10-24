@@ -68,6 +68,7 @@ fn every_task_names_one_subcommand_and_one_catalogue_schema() {
         Task::CalculatePortfolio,
         Task::PrepareReference,
         Task::EncodeOutputs,
+        Task::FinalLint,
     ];
     let subcommands: std::collections::BTreeSet<_> =
         tasks.iter().map(|task| task.subcommand()).collect();
@@ -154,7 +155,7 @@ fn an_identity_that_is_not_the_solar_engine_is_a_contract_mismatch() {
 fn new_tasks_require_update_only_at_the_named_boundary_and_accept_typed_future_families() {
     let (dir, solar) = fixture(&[Task::CalculatePrepared.catalogue_schema()]);
     assert!(solar.require(Task::CalculatePrepared).is_ok());
-    for task in [Task::PrepareReference, Task::EncodeOutputs] {
+    for task in [Task::PrepareReference, Task::EncodeOutputs, Task::FinalLint] {
         let error = solar
             .with_task_executable(task, |_| unreachable!("unsupported task started"))
             .unwrap_err();
@@ -169,7 +170,9 @@ fn new_tasks_require_update_only_at_the_named_boundary_and_accept_typed_future_f
     let (_dir, future) = fixture(&[
         "ds-solar.reference-preparation-request/v2",
         "ds-solar.output-encoding-request/v2",
+        "ds-solar.final-lint-request/v2",
     ]);
     assert!(future.require(Task::PrepareReference).is_ok());
     assert!(future.require(Task::EncodeOutputs).is_ok());
+    assert!(future.require(Task::FinalLint).is_ok());
 }

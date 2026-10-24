@@ -329,12 +329,27 @@ pub(crate) async fn invoke(
                 app.activity.clone(),
             )))
             .with_snapshot_provider(producer);
-        ds_solar_native::application::execute(host, &context.project, &body)
+        ds_solar_native::application::execute_typed(host, &context.project, &body)
             .map(Json)
-            .map_err(|e| Failure::invalid("server_refused", e))
+            .map_err(application_failure)
     })
     .await
 }
+
+fn application_failure(error: ds_solar_native::application::Error) -> Failure {
+    match error {
+        ds_solar_native::application::Error::Task(failure)
+            if failure.code() == "solar_engine_update_required" =>
+        {
+            *failure
+        }
+        error => Failure::invalid("server_refused", error.to_string()),
+    }
+}
+
+#[cfg(test)]
+#[path = "solar_application_failure_tests.rs"]
+mod failure_tests;
 
 #[cfg(test)]
 mod publication_tests {

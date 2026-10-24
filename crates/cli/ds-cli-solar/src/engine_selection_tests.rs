@@ -7,8 +7,7 @@ use serde_json::{Value, json};
 use std::{fs, path::Path, path::PathBuf};
 
 // Use the existing Solar owner's retained-input fixture; no test preparation IO.
-#[path = "../../../kernel/ds-compute-runtime/tests/common/mod.rs"]
-mod prepared_fixture;
+use crate::prepared_fixture;
 
 pub(super) fn select(
     base: &Path,
