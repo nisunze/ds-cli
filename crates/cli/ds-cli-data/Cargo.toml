@@ -25,11 +25,10 @@ ds-client-core = { path = "../../kernel/ds-client-core" }
 ds-command-kernel = { workspace = true }
 ds-layer-store = { path = "../../kernel/ds-layer-store" }
 ds-project-data = { path = "../../kernel/ds-project-data" }
-# The centralized converter. `ds` links the same implementation Desktop import
-# links; neither reimplements the format decisions it encodes. See
-# ds-network/docs/contracts/columnar-format-contract.md. It is Core's own
-# shared crate; the engine reads, it encodes.
-ds-columnar = { path = "../../shared/ds-columnar" }
+# The columnar format contract's identity, digests and source kinds only.
+# The Network engine encodes and reads GeoParquet (`columnar_io_v1`); `ds`
+# moves the bytes. See ds-network/docs/contracts/columnar-format-contract.md.
+ds-columnar = { path = "../../shared/ds-columnar", default-features = false }
 # Reading a local GIS source is the Network engine's typed task; this crate
 # keeps the host half (paths, a bare shapefile's sidecars, output files).
 ds-network-client = { workspace = true }
@@ -50,4 +49,6 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]
+# Test fixtures only: artifacts a test reads back through the engine.
+ds-columnar = { path = "../../shared/ds-columnar" }
 flate2 = "1"

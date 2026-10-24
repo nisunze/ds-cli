@@ -5,6 +5,7 @@ use ds_cli_contract::spec::{
     Arg, ArgKind, Authority, Chapter, Command, Effect, Example, Execution, Requires,
 };
 use ds_cli_contract::{Context, Inputs};
+use ds_network_contracts::columnar_io::GeoparquetEncodeParamsV1;
 use ds_network_contracts::source_io::{SourceInspectV1, SourceReaderV1, SourceReadingV1};
 use serde_json::{Value, json};
 
@@ -79,13 +80,14 @@ features retain kml_style_id and decoded style properties.",
         note: "Run `ds data inspect` first to learn the sheet key and column names.",
         runnable: false,
     }],
-    refusals: &crate::source_engine::with_refusals::<{ 5 + crate::source_engine::REFUSALS.len() }>(
+    refusals: &crate::source_engine::with_refusals::<{ 6 + crate::source_engine::REFUSALS.len() }>(
         &[
             crate::UNREADABLE,
             crate::UNSUPPORTED,
             crate::NO_SHEET,
             crate::NOT_CONVERTIBLE,
             crate::OUTPUT_REFUSED,
+            crate::source_engine::ENGINE_UPDATE,
         ],
     ),
     reference: Some("docs/reference/data.md"),
@@ -196,33 +198,31 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .map(serde_json::to_value)
         .transpose()
         .map_err(|error| Failure::internal("source_not_convertible", error.to_string()))?;
-    let layers = read
-        .layers
-        .into_iter()
-        .map(|layer| ds_columnar::SourceLayer {
-            name: layer.name,
-            features: layer.features,
-            style_document: layer.style_document,
-        })
-        .collect();
-    let conversion = ds_columnar::layers_to_geoparquet(
-        &name,
-        &bytes,
-        reading.as_ref(),
-        layers,
-        inputs.value("layer"),
-        read.skipped_coordinate_rows.unwrap_or(0),
-    )
-    .map_err(not_convertible)?;
+    // The engine encodes the layers it read; Core addresses the artifact by
+    // the source digest and writes the bytes it returns.
+    let params = GeoparquetEncodeParamsV1 {
+        name: name.clone(),
+        source_sha256: ds_columnar::digest(&bytes),
+        reading,
+        layer: inputs.value("layer").map(str::to_string),
+        skipped_coordinate_rows: read.skipped_coordinate_rows.unwrap_or(0),
+    };
+    let layers = serde_json::to_vec(&read)
+        .map_err(|error| Failure::internal("source_not_convertible", error.to_string()))?;
+    let (receipt, parquet) = engine
+        .geoparquet_encode(params, layers, &|| false)
+        .map_err(|error| match crate::source_engine::split(error) {
+            Ok(error) => not_convertible(error),
+            Err(failure) => failure,
+        })?;
 
-    std::fs::write(&out_path, &conversion.parquet).map_err(|error| {
+    std::fs::write(&out_path, &parquet).map_err(|error| {
         Failure::failed(
             "output_refused",
             format!("Could not write the output file: {error}"),
         )
     })?;
 
-    let receipt = &conversion.receipt;
     Ok(json!({
         "out": out,
         "layer_name": receipt.layer_name,

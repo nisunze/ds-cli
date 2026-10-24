@@ -20,8 +20,11 @@ tempfile = "3"
 
 ds-network-client = { path = "../ds-network-client" }
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
-ds-columnar = { path = "../../shared/ds-columnar" }
+# The artifact digest only: the Network engine writes and reads GeoParquet.
+ds-columnar = { path = "../../shared/ds-columnar", default-features = false }
 
 [dev-dependencies]
+# Test fixtures only: artifacts a test hands the engine.
+ds-columnar = { path = "../../shared/ds-columnar" }
 
 # Native host crate, separate from the portable WASM workspace.

@@ -292,3 +292,42 @@ fn concurrent_consumers_share_one_conversion() {
     assert_eq!(results.iter().map(|r| r.1).sum::<usize>(), 1);
     assert_eq!(results.iter().filter(|r| r.0).count(), 1);
 }
+
+/// The Network engine now writes the footprints artifact. It must be the very
+/// bytes the in-process streamed writer wrote for the same merged features in
+/// the same 512-feature appends, so a retained source reads identically.
+#[test]
+fn the_engine_writes_the_bytes_the_in_process_writer_wrote() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("held");
+    let input = input(dir.path(), Origin::MicrosoftBuildings);
+    let rows: Vec<Value> = (0..1300)
+        .map(|i| footprint(&format!("microsoft:{i:05}"), 30.0 + f64::from(i) * 1e-5))
+        .collect();
+    let mut engine = Engine::new(vec![rows.clone()]);
+    let produced = produce(&root, &scope(), &input, &mut |r| engine.convert(r)).unwrap();
+    let written = std::fs::read(&produced.source.artifact_path).unwrap();
+
+    let merged: BTreeMap<String, Value> = rows
+        .into_iter()
+        .map(|feature| (feature["id"].as_str().unwrap().to_owned(), feature))
+        .collect();
+    let local = dir.path().join("in-process.parquet");
+    let mut writer = ds_columnar::ConversionStream::create(
+        &local,
+        ds_columnar::Provenance {
+            source_digest: Some(sha(input.pins().to_string().as_bytes())),
+            conversion: Some(input.identity()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let features: Vec<Value> = merged.into_values().collect();
+    for batch in features.chunks(BATCH) {
+        writer.append(batch, &[]).unwrap();
+    }
+    writer.finish(&input.asset_id).unwrap();
+    assert_eq!(written, std::fs::read(&local).unwrap());
+    assert_eq!(produced.receipt["feature_count"], 1300);
+    assert_eq!(produced.receipt["artifact_bytes"], written.len());
+}

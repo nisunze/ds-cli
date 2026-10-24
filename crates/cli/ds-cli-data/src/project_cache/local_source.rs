@@ -102,18 +102,27 @@ fn publisher_refused(error: ds_project_data::publisher_footprints::Error) -> Fai
         Error::Store(_) => {
             Failure::unavailable(STORE_FAILED.code, message).remedy(STORE_FAILED.remedy)
         }
-        // The converting engine's own typed refusal (missing, incompatible,
-        // refused or an invalid answer), declared on seed.
+        // The converting engines' own typed refusals (missing, incompatible,
+        // refused or an invalid answer), declared on seed. The Network engine
+        // writes the GeoParquet artifact; one released before that, or one
+        // that sorts members, is incompatible.
         Error::Engine(code, _) => {
-            let declared = [
-                REPORTER_MISSING,
-                REPORTER_INCOMPATIBLE,
-                ENGINE_REFUSED,
-                ENGINE_RESPONSE_INVALID,
-            ]
-            .into_iter()
-            .find(|refusal| refusal.code == code)
-            .unwrap_or(ENGINE_REFUSED);
+            let declared = match code {
+                "network_engine_update_required" | "network_serialization_incompatible" => {
+                    NETWORK_ENGINE_INCOMPATIBLE
+                }
+                _ => [
+                    REPORTER_MISSING,
+                    REPORTER_INCOMPATIBLE,
+                    ENGINE_REFUSED,
+                    ENGINE_RESPONSE_INVALID,
+                    NETWORK_ENGINE_MISSING,
+                    NETWORK_ENGINE_INCOMPATIBLE,
+                ]
+                .into_iter()
+                .find(|refusal| refusal.code == code)
+                .unwrap_or(ENGINE_REFUSED),
+            };
             Failure::unavailable(declared.code, message).remedy(declared.remedy)
         }
     }

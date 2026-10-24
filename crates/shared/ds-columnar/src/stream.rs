@@ -25,6 +25,9 @@
 
 use crate::batch::{self, FeatureBatch, Layout};
 use crate::geoparquet::{self, Provenance};
+#[cfg(test)]
+use crate::identity::DIGEST_CHUNK_BYTES;
+pub use crate::identity::digest_file;
 use crate::schema::{
     self, FEATURE_ID_COLUMN, IPC_GEOMETRY_COLUMN, PARQUET_GEOMETRY_COLUMN, PropertyKind,
 };
@@ -41,37 +44,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-
-/// Bytes hashed per read while digesting a source. Bounded on purpose: the
-/// point of streaming identity is that a 1.15 GiB source never becomes a 1.15
-/// GiB allocation.
-const DIGEST_CHUNK_BYTES: usize = 1024 * 1024;
-
-/// sha256 of a file's bytes, read in bounded chunks.
-///
-/// The same value [`crate::identity::digest`] returns for the same bytes — it is
-/// the source identity in [`crate::ConversionReceipt`], and a second definition
-/// of it would mean two artifacts for one file.
-pub fn digest_file(path: &Path) -> Result<String, String> {
-    let file =
-        File::open(path).map_err(|error| format!("could not read {}: {error}", path.display()))?;
-    let mut reader = BufReader::with_capacity(DIGEST_CHUNK_BYTES, file);
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0u8; DIGEST_CHUNK_BYTES];
-    loop {
-        let read = reader
-            .read(&mut buffer)
-            .map_err(|error| format!("could not read {}: {error}", path.display()))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
-}
 
 /// Identity of ordered Arrow fields, including nested types, nullability and
 /// field metadata. Schema-level artifact provenance is deliberately excluded.
@@ -427,12 +401,44 @@ impl ArtifactReader {
                 )
             })?
             .len() as usize;
-        let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|error| {
-            format!(
-                "could not read the converted artifact {}: {error}",
-                artifact_path.display()
-            )
-        })?;
+        Self::build(
+            file,
+            byte_count,
+            batch_rows,
+            0,
+            &artifact_path.display().to_string(),
+        )
+    }
+
+    /// The same read over artifact bytes already held, starting `offset_rows`
+    /// into the artifact. `label` names the artifact in a refusal (a file
+    /// name, never a host path). Batches after an offset that is a multiple of
+    /// `batch_rows` are exactly the batches a read from the start yields there.
+    pub fn from_bytes(
+        bytes: Vec<u8>,
+        batch_rows: usize,
+        offset_rows: usize,
+        label: &str,
+    ) -> Result<Self, String> {
+        let byte_count = bytes.len();
+        Self::build(
+            bytes::Bytes::from(bytes),
+            byte_count,
+            batch_rows,
+            offset_rows,
+            label,
+        )
+    }
+
+    fn build<T: parquet::file::reader::ChunkReader + 'static>(
+        source: T,
+        byte_count: usize,
+        batch_rows: usize,
+        offset_rows: usize,
+        label: &str,
+    ) -> Result<Self, String> {
+        let builder = ParquetRecordBatchReaderBuilder::try_new(source)
+            .map_err(|error| format!("could not read the converted artifact {label}: {error}"))?;
         let metadata = builder.metadata().clone();
         let schema = builder.schema().clone();
         let file_metadata = metadata.file_metadata();
@@ -477,15 +483,13 @@ impl ArtifactReader {
             source_digest: entry("ds:source_digest"),
             conversion: entry("ds:conversion"),
         };
+        let mut builder = builder.with_batch_size(batch_rows.max(1));
+        if offset_rows > 0 {
+            builder = builder.with_offset(offset_rows);
+        }
         let reader = builder
-            .with_batch_size(batch_rows.max(1))
             .build()
-            .map_err(|error| {
-                format!(
-                    "could not read the converted artifact {}: {error}",
-                    artifact_path.display()
-                )
-            })?;
+            .map_err(|error| format!("could not read the converted artifact {label}: {error}"))?;
         Ok(Self {
             reader,
             summary,

@@ -5,6 +5,7 @@
 //! construction (§0.8c).
 
 use crate::batch::FeatureBatch;
+pub use crate::contract::{GEOPARQUET_VERSION, LAYER_NAME_KEY, SKIPPED_ROWS_KEY, crs84_projjson};
 use crate::schema::PARQUET_GEOMETRY_COLUMN;
 use crate::wkb::bbox_of;
 use arrow_array::RecordBatch;
@@ -14,61 +15,12 @@ use parquet::file::properties::WriterProperties;
 use parquet::format::KeyValue;
 use serde_json::{Value, json};
 
-/// GeoParquet specification version written into the `geo` metadata. Declared,
-/// never left for a reader to infer.
-pub const GEOPARQUET_VERSION: &str = "1.1.0";
 /// Row group ceiling in rows. Paired with the byte target below: whichever
 /// bound is reached first closes the group.
 pub const MAX_ROW_GROUP_ROWS: usize = 1_000_000;
 /// Uncompressed bytes per row group. Small enough that a range read over a
 /// bucket fetches a useful fraction; large enough that footer metadata is cheap.
 pub const ROW_GROUP_TARGET_BYTES: usize = 64 * 1024 * 1024;
-
-/// Geometry is stored in longitude/latitude WGS 84 — what `ds-io` produces for
-/// every import, and GeoParquet's own default. Written explicitly all the same:
-/// an unstated CRS is the same class of failure as an unstated vertical datum.
-pub fn crs84_projjson() -> Value {
-    json!({
-        "$schema": "https://proj.org/schemas/v0.5/projjson.schema.json",
-        "type": "GeographicCRS",
-        "name": "WGS 84 (CRS84)",
-        "datum_ensemble": {
-            "name": "World Geodetic System 1984 ensemble",
-            // Every realization in the ensemble, not just the newest. PROJ
-            // rejects a one-member ensemble outright ("ensemble should have at
-            // least 2 datums"), so a single entry made every artifact this
-            // writer has ever produced unreadable by geopandas and anything
-            // else built on PROJ — the failure surfaced only in the reader,
-            // long after the conversion reported success.
-            "members": [
-                {"name": "World Geodetic System 1984 (Transit)"},
-                {"name": "World Geodetic System 1984 (G730)"},
-                {"name": "World Geodetic System 1984 (G873)"},
-                {"name": "World Geodetic System 1984 (G1150)"},
-                {"name": "World Geodetic System 1984 (G1674)"},
-                {"name": "World Geodetic System 1984 (G1762)"},
-                {"name": "World Geodetic System 1984 (G2139)"},
-                {"name": "World Geodetic System 1984 (G2296)"}
-            ],
-            "ellipsoid": {
-                "name": "WGS 84",
-                "semi_major_axis": 6378137,
-                "inverse_flattening": 298.257223563
-            },
-            "accuracy": "2.0"
-        },
-        "coordinate_system": {
-            "subtype": "ellipsoidal",
-            "axis": [
-                {"name": "Geodetic longitude", "abbreviation": "Lon",
-                 "direction": "east", "unit": "degree"},
-                {"name": "Geodetic latitude", "abbreviation": "Lat",
-                 "direction": "north", "unit": "degree"}
-            ]
-        },
-        "id": {"authority": "OGC", "code": "CRS84"}
-    })
-}
 
 /// Provenance recorded alongside the data, so a converted artifact can be
 /// matched back to its source without a side-channel manifest.
@@ -90,11 +42,6 @@ pub struct Provenance {
     /// moment the run that produced it ends.
     pub skipped_coordinate_rows: Option<usize>,
 }
-
-/// Metadata key holding [`Provenance::layer_name`].
-pub const LAYER_NAME_KEY: &str = "ds:layer_name";
-/// Metadata key holding [`Provenance::skipped_coordinate_rows`].
-pub const SKIPPED_ROWS_KEY: &str = "ds:skipped_coordinate_rows";
 
 /// The `geo` metadata document, from what a file actually holds. Shared by the
 /// whole-file writer and the streaming one so a streamed artifact and a

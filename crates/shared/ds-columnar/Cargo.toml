@@ -8,16 +8,17 @@ authors.workspace = true
 publish.workspace = true
 
 # The single centralized implementation of the columnar format contract
-# (ds-network/docs/contracts/columnar-format-contract.md), owned by Core and
-# shared by the Kernel, its stores and the CLI. It writes and reads the
-# formats only: reading a GIS source into layers is the Network engine's
-# typed task, so this crate links no reader. Native-only by design for the
-# artifacts; the browser keeps the pooled-WASM path it already has.
+# (ds-network/docs/contracts/columnar-format-contract.md). Its encoders and
+# decoders (`artifacts`: Arrow and Parquet) run only in the Network engine and
+# page unit, behind the typed `columnar_io_v1` calls. Core and the Kernel link
+# it without default features: the pure artifact identity, digests, column
+# order and the format constants they address and admit artifacts by. They
+# store and move columnar bytes and never build or read a column.
 
 [features]
 default = ["artifacts"]
 bindings = ["dep:tsify", "dep:wasm-bindgen"]
-artifacts = ["dep:arrow-array", "dep:arrow-ipc", "dep:arrow-schema", "dep:parquet", "dep:sha2", "dep:ds-geo-lite"]
+artifacts = ["dep:arrow-array", "dep:arrow-ipc", "dep:arrow-schema", "dep:parquet", "dep:bytes", "dep:ds-geo-lite"]
 
 [dependencies]
 tsify = { version = "0.5.8", default-features = false, features = ["js"], optional = true }
@@ -29,7 +30,9 @@ arrow-schema = { version = "56", features = ["serde"], optional = true }
 parquet = { version = "56", default-features = false, features = ["arrow", "snap", "base64"], optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha2 = { workspace = true, optional = true }
+sha2 = { workspace = true }
+# Held artifact bytes the engine reads without a file.
+bytes = { version = "1", optional = true }
 # Every Core binary links this crate, so it names the DEFLATE backend Core's
 # written bytes (PNG, PDF, zip packages) have always used. It arrived through
 # ds-io's calamine while Core linked the readers; naming it here keeps every
@@ -37,4 +40,3 @@ sha2 = { workspace = true, optional = true }
 flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 
 [dev-dependencies]
-bytes = "1"

@@ -14,6 +14,13 @@ dirs = "6"
 uuid = { version = "1", features = ["v4"] }
 rusqlite = { version = "0.40.2", features = ["bundled", "fallible_uint"] }
 sha2 = "0.10"
+# Digests only: the Network engine decodes columnar chunks (`columnar_io_v1`).
+ds-columnar = { path = "../../shared/ds-columnar", default-features = false }
+ds-network-client = { path = "../ds-network-client" }
+ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
+
+[dev-dependencies]
+# Test fixtures only: chunks a test hands the engine.
 ds-columnar = { path = "../../shared/ds-columnar" }
 
 [target.'cfg(unix)'.dependencies]

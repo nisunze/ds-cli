@@ -25,6 +25,12 @@ pub const ENGINE_ORDER: Refusal = Refusal {
     when: "The Network engine sorts JSON members; a source read keeps its reader's order.",
     remedy: "Select the insertion-order Network engine the release ships.",
 };
+/// GeoParquet is encoded and decoded in the Network engine (`columnar_io_v1`).
+pub const ENGINE_UPDATE: Refusal = Refusal {
+    code: "network_engine_update_required",
+    when: "The Network engine predates GeoParquet encoding and decoding (columnar_io_v1).",
+    remedy: "Update Network; GeoParquet is encoded and read there.",
+};
 
 pub(crate) const REFUSALS: [Refusal; ds_network_client::SOURCE_ENGINE_REFUSALS.len()] =
     source_refusals();
@@ -83,10 +89,10 @@ pub(crate) fn capture() -> Result<CapturedNetworkClient, Failure> {
     .map_err(engine_failure)
 }
 
-/// Split a call's failure: the reader's own refusal (its words, for the
-/// command to state in its own code), or a typed engine refusal.
+/// Split a call's failure: the reader's or the converter's own refusal (its
+/// words, for the command to state in its own code), or a typed engine refusal.
 pub(crate) fn split(error: NetworkFailure) -> Result<String, Failure> {
-    if error.is_source_refusal() {
+    if error.is_source_refusal() || error.is_columnar_refusal() {
         Ok(error.message)
     } else {
         Err(engine_failure(error))
@@ -107,6 +113,9 @@ pub(crate) fn engine_failure(error: NetworkFailure) -> Failure {
             .remedy(ENGINE_INCOMPATIBLE.remedy),
         "network_serialization_incompatible" => {
             Failure::unavailable(ENGINE_ORDER.code, message).remedy(ENGINE_ORDER.remedy)
+        }
+        "network_engine_update_required" => {
+            Failure::unavailable(ENGINE_UPDATE.code, message).remedy(ENGINE_UPDATE.remedy)
         }
         "network_engine_path_invalid"
         | "network_engine_invalid"
@@ -161,6 +170,7 @@ fn unknown_owner_cause(error: &NetworkFailure) -> bool {
     error.owner_code().is_some_and(|code| {
         code != "module_removed"
             && code != ds_network_client::SOURCE_UNREADABLE
+            && code != ds_network_contracts::columnar_io::COLUMNAR_REFUSED
             && !ds_network_client::SOURCE_ENGINE_REFUSALS
                 .iter()
                 .any(|row| row.code == code)

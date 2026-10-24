@@ -112,6 +112,25 @@ fn store(e: impl std::fmt::Display) -> Error {
 fn malformed(e: impl std::fmt::Display) -> Error {
     Error::Malformed(e.to_string())
 }
+/// The converter's own refusal is malformed input in its words; an engine
+/// that is absent, too old or failed keeps its code.
+fn engine(failure: ds_network_client::NetworkFailure) -> Error {
+    if failure.is_columnar_refusal() {
+        malformed(failure.message)
+    } else {
+        Error::Engine(failure.code(), failure.message)
+    }
+}
+/// One append of the streamed writer's log, as one line.
+fn append_line(log: &mut Vec<u8>, features: &[Value]) -> Result<(), Error> {
+    serde_json::to_writer(
+        &mut *log,
+        &json!({"features": features, "columns": [], "skipped_coordinate_rows": 0}),
+    )
+    .map_err(store)?;
+    log.push(b'\n');
+    Ok(())
+}
 fn sha(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -262,22 +281,32 @@ pub fn produce(
     let artifact = stage.path().join("footprints.parquet");
     let pins = input.pins();
     let producer_digest = sha(pins.to_string().as_bytes());
-    let provenance = ds_columnar::geoparquet::Provenance {
-        source_digest: Some(producer_digest.clone()),
-        conversion: Some(input.identity()),
-        ..Default::default()
-    };
-    let mut writer = ds_columnar::ConversionStream::create(&artifact, provenance).map_err(store)?;
-    let mut batch = Vec::with_capacity(BATCH);
-    for feature in features.into_values() {
-        batch.push(feature);
-        if batch.len() == BATCH {
-            writer.append(&batch, &[]).map_err(malformed)?;
-            batch.clear();
-        }
+    // The canonical artifact is the Network engine's streamed GeoParquet
+    // writer fed these exact appends; this owner stores the bytes it returns.
+    let mut appends = Vec::new();
+    let features: Vec<Value> = features.into_values().collect();
+    for batch in features.chunks(BATCH) {
+        append_line(&mut appends, batch)?;
     }
-    writer.append(&batch, &[]).map_err(malformed)?;
-    let conversion = writer.finish(&input.asset_id).map_err(store)?;
+    drop(features);
+    let client = ds_network_client::CapturedNetworkClient::capture(1, &|| false).map_err(engine)?;
+    let (conversion, parquet) = client
+        .geoparquet_stream(
+            ds_network_contracts::columnar_io::GeoparquetStreamParamsV1 {
+                source_digest: Some(producer_digest.clone()),
+                conversion: Some(input.identity()),
+                layer_name: input.asset_id.clone(),
+            },
+            appends,
+            &|| false,
+        )
+        .map_err(engine)?;
+    {
+        let mut file = crate::private::create_file(&artifact).map_err(store)?;
+        file.write_all(&parquet).map_err(store)?;
+        file.sync_all().map_err(store)?;
+    }
+    drop(parquet);
     crate::private::prepare_file(&artifact).map_err(store)?;
     for page in &converted.pages {
         let _ = std::fs::remove_file(&page.path);

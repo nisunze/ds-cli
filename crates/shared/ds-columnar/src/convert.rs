@@ -8,6 +8,7 @@
 
 use crate::batch;
 use crate::batch::Layout;
+pub use crate::contract::carries_geometry;
 use crate::geoparquet::{self, Provenance};
 use crate::identity::{conversion_identity, digest};
 use serde::Serialize;
@@ -45,19 +46,6 @@ pub struct SourceLayer {
     pub style_document: Option<Value>,
 }
 
-/// Whether a source carries geometry of its own, or is a table whose
-/// coordinates live in named columns.
-///
-/// A shapefile already knows its geometry; a CSV does not, and someone has to
-/// say which columns hold it. Conflating the two would mean guessing for one of
-/// them, which is precisely what the contract forbids.
-pub fn carries_geometry(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    [".geojson", ".json", ".kml", ".kmz", ".zip", ".shp"]
-        .iter()
-        .any(|extension| lower.ends_with(extension))
-}
-
 /// Convert one source, already read into its layers, to GeoParquet.
 ///
 /// `name` and `bytes` are the source exactly as read; `reading` is the table
@@ -72,7 +60,27 @@ pub fn layers_to_geoparquet(
     layer_name: Option<&str>,
     skipped_coordinate_rows: usize,
 ) -> Result<Conversion, String> {
-    let source_digest = digest(bytes);
+    layers_to_geoparquet_with_digest(
+        name,
+        &digest(bytes),
+        reading,
+        layers,
+        layer_name,
+        skipped_coordinate_rows,
+    )
+}
+
+/// [`layers_to_geoparquet`] for a caller that already digested the source:
+/// the engine receives the layers and the source digest, never the source.
+pub fn layers_to_geoparquet_with_digest(
+    name: &str,
+    source_digest: &str,
+    reading: Option<&Value>,
+    layers: Vec<SourceLayer>,
+    layer_name: Option<&str>,
+    skipped_coordinate_rows: usize,
+) -> Result<Conversion, String> {
+    let source_digest = source_digest.to_string();
     let conversion_id = conversion_identity(&source_digest, name, reading, layer_name, None)?;
 
     let available: Vec<String> = layers.iter().map(|l| l.name.clone()).collect();

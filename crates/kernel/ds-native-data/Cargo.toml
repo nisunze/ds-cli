@@ -11,7 +11,9 @@ publish.workspace = true
 [dependencies]
 uuid = { version = "1", features = ["v4"] }
 fs2 = "0.4.3"
-ds-columnar = { path = "../../shared/ds-columnar" }
+# Artifact identity and column order only: the Network engine encodes and reads
+# GeoParquet and Arrow IPC (`columnar_io_v1`).
+ds-columnar = { path = "../../shared/ds-columnar", default-features = false }
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts", default-features = false }
 ds-network-client = { path = "../ds-network-client" }
 tempfile = "3"
@@ -30,3 +32,5 @@ crc32c = "0.6"
 libc = { workspace = true }
 
 [dev-dependencies]
+# Test fixtures only: decoding what the engine returned.
+ds-columnar = { path = "../../shared/ds-columnar" }

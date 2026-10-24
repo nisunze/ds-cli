@@ -1,5 +1,6 @@
 //! Detached native host adapter; no Network computation is linked here.
 mod captured;
+mod columnar_io;
 mod design_snapshot;
 mod differential;
 mod elevation;
@@ -19,6 +20,7 @@ mod report_engineering;
 mod source_io;
 mod staging;
 pub use captured::{CapturedNetworkClient, NetworkEnginePin};
+pub use columnar_io::{IpcPage, COLUMNAR_PAGE_BYTES};
 pub use elevation::{ElevationCompleted, Needed, MAX_ELEVATION_ROUNDS};
 pub use design_snapshot::{
     design_snapshot_engine_pin, process_design_snapshot, DesignSnapshotEnginePin,

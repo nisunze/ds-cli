@@ -46,13 +46,13 @@ use shared::{SharedSeeding, shared_seed_row};
 
 const NETWORK_ENGINE_MISSING: Refusal = Refusal {
     code: "network_engine_missing",
-    when: "MV route coverage is requested but the Network executable is absent",
-    remedy: "Install or activate a compatible Network engine for MV geographic projection",
+    when: "MV route coverage or a GeoParquet source needs the absent Network executable",
+    remedy: "Install or activate a compatible Network engine",
 };
 const NETWORK_ENGINE_INCOMPATIBLE: Refusal = Refusal {
     code: "network_engine_incompatible",
-    when: "MV route coverage's captured Network executable or encoding profile cannot be admitted",
-    remedy: "Install or activate a compatible Network engine for MV geographic projection",
+    when: "the captured Network executable, its encoding profile or its GeoParquet calls cannot be admitted",
+    remedy: "Install or activate a compatible Network engine",
 };
 
 const DATASET_ARG: Arg = Arg::value(

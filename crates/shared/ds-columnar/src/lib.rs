@@ -36,13 +36,13 @@
 
 #[cfg(feature = "artifacts")]
 pub mod batch;
+pub mod contract;
 #[cfg(feature = "artifacts")]
 pub mod convert;
 #[cfg(feature = "artifacts")]
 pub mod features;
 #[cfg(feature = "artifacts")]
 pub mod geoparquet;
-#[cfg(feature = "artifacts")]
 pub mod identity;
 #[cfg(feature = "artifacts")]
 pub mod ipc;
@@ -53,26 +53,26 @@ pub mod stream;
 pub mod wkb;
 #[cfg(feature = "artifacts")]
 pub use batch::{FeatureBatch, Layout};
+pub use contract::{GEOPARQUET_VERSION, carries_geometry};
 #[cfg(feature = "artifacts")]
 pub use convert::{
-    Conversion, ConversionReceipt, SourceLayer, carries_geometry, layers_to_geoparquet,
+    Conversion, ConversionReceipt, SourceLayer, layers_to_geoparquet,
+    layers_to_geoparquet_with_digest,
 };
 #[cfg(feature = "artifacts")]
 pub use features::batch_to_features;
 #[cfg(feature = "artifacts")]
-pub use geoparquet::{GEOPARQUET_VERSION, Provenance};
-#[cfg(feature = "artifacts")]
-pub use identity::{conversion_identity, digest};
+pub use geoparquet::Provenance;
+pub use identity::{conversion_identity, digest, digest_file};
 #[cfg(feature = "artifacts")]
 pub use ipc::{features_to_ipc, ipc_to_batches, ipc_to_geometry_wkb, ipc_to_rows};
-#[cfg(feature = "artifacts")]
 pub use schema::{
     FEATURE_ID_COLUMN, IPC_GEOMETRY_COLUMN, PARQUET_GEOMETRY_COLUMN, columns_for_features,
 };
 #[cfg(feature = "artifacts")]
 pub use stream::{
     ArtifactChunk, ArtifactReader, ArtifactSummary, ConversionStream, StreamedConversion,
-    digest_file, schema_digest,
+    schema_digest,
 };
 #[cfg(feature = "artifacts")]
 pub use wkb::point_xy;

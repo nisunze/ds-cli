@@ -3,10 +3,10 @@
 //! file handles and project selection never supply filesystem authority.
 
 use crate::columnar::{
-    self, ColumnarPlan, NativeColumnarConversion, ReadingParameters, ARTIFACT_REPLAY_ROWS,
+    self, engine_message, ArtifactReplay, ArtifactSpool, ColumnarPlan, NativeColumnarConversion,
+    ReadingParameters,
 };
 use crate::RequestContext;
-use ds_columnar::{ArtifactReader, ConversionStream, Provenance};
 use crate::native_source::{
     prepare_native_source, NativeLinkAccess, NativeSourceDisposition, NativeSourceFingerprint,
     NativeSourcePrepareRequest,
@@ -191,13 +191,14 @@ struct ConvertLane {
     /// Where the artifact belongs. `None` when the store could not even be
     /// addressed, which is recorded and never fatal.
     plan: Option<ColumnarPlan>,
-    /// The artifact being written. `None` once it has been given up, which
-    /// leaves the import running against the very same parsed batches.
-    stream: Option<ConversionStream>,
+    /// The artifact being written: its append log until the source ends.
+    /// `None` once it has been given up, which leaves the import running
+    /// against the very same parsed batches.
+    spool: Option<ArtifactSpool>,
 }
 
 struct ReplayLane {
-    reader: ArtifactReader,
+    reader: ArtifactReplay,
     rows_total: u64,
     rows_read: u64,
 }
@@ -643,11 +644,15 @@ fn open_tabular_session(
 
     // The artifact decides the lane. Opening it IS the completeness check: an
     // interrupted write never reached this path (it lives under `.partial`
-    // until it is whole), and a file with no readable footer converts again.
+    // until it is whole), and a file the engine cannot read converts again.
     let opened = plan
         .as_ref()
         .ok()
-        .and_then(|plan| ArtifactReader::open(&plan.artifact_path, ARTIFACT_REPLAY_ROWS).ok());
+        .filter(|plan| plan.artifact_path.is_file())
+        .and_then(|plan| {
+            let engine = capture_reader().ok()?;
+            ArtifactReplay::open(&plan.artifact_path, engine).ok()
+        });
 
     // The replay lane never opens the source at all — not to read it, and not
     // to hold a handle on it.
@@ -696,17 +701,12 @@ fn open_tabular_session(
     let header_prefix = read_header_prefix(&mut reader, prefix_lines)?;
     let bytes_read = u64::try_from(header_prefix.len()).unwrap_or(u64::MAX);
     let mut conversion_error = plan.as_ref().err().cloned();
-    let stream = match plan.as_ref().map_err(String::clone).and_then(|plan| {
-        ConversionStream::create(
-            &plan.artifact_path,
-            Provenance {
-                source_digest: Some(plan.source_digest.clone()),
-                conversion: Some(plan.conversion_id.clone()),
-                ..Provenance::default()
-            },
-        )
-    }) {
-        Ok(stream) => Some(stream),
+    let spool = match plan
+        .as_ref()
+        .map_err(String::clone)
+        .and_then(ArtifactSpool::create)
+    {
+        Ok(spool) => Some(spool),
         Err(error) => {
             conversion_error = Some(error);
             None
@@ -729,7 +729,7 @@ fn open_tabular_session(
             schema_locked,
             data_records_read: 0,
             plan: plan.ok(),
-            stream,
+            spool,
         })),
         columns,
         bytes_read,
@@ -967,8 +967,14 @@ fn absorb_parsed_batch(
         session.invalid_rows = session
             .invalid_rows
             .saturating_add(u64::try_from(invalid_coordinates).unwrap_or(u64::MAX));
-        if let Some(stream) = lane.stream.as_mut() {
-            stream.note_skipped_rows(invalid_coordinates);
+        let mut give_up: Option<String> = None;
+        if let Some(spool) = lane.spool.as_mut() {
+            if let Err(error) = spool.append(&[], &[], invalid_coordinates) {
+                give_up = Some(error);
+            }
+        }
+        if let Some(error) = give_up {
+            abandon_conversion(session, &error);
         }
         return Ok(Vec::new());
     }
@@ -1032,9 +1038,8 @@ fn absorb_parsed_batch(
     // The artifact is written from the SAME features the import receives, so
     // the two can never describe different data and the source is read once.
     let mut give_up: Option<String> = None;
-    if let Some(stream) = lane.stream.as_mut() {
-        stream.note_skipped_rows(invalid_coordinates);
-        if let Err(error) = stream.append(&features, &session.columns) {
+    if let Some(spool) = lane.spool.as_mut() {
+        if let Err(error) = spool.append(&features, &session.columns, invalid_coordinates) {
             give_up = Some(error);
         }
     }
@@ -1051,7 +1056,13 @@ fn absorb_parsed_batch(
     session.chunk_count += 1;
     session.layer_name = Some(layer.name);
     session.geometry_type = layer.geometry_type;
-    ds_columnar::features_to_ipc(&features, &session.columns)
+    // The engine encodes the browser chunk from the same features.
+    let SessionLane::Convert(lane) = &session.lane else {
+        return Err("the import is not converting".to_string());
+    };
+    lane.engine
+        .features_ipc(&features, &session.columns, &|| false)
+        .map_err(engine_message)
 }
 
 /// Publish the artifact, once the source has been read to its end.
@@ -1062,14 +1073,14 @@ fn finish_conversion(session: &mut NativeTabularSession) {
     let SessionLane::Convert(lane) = &mut session.lane else {
         return;
     };
-    let Some(stream) = lane.stream.take() else {
+    let Some(spool) = lane.spool.take() else {
         return;
     };
     let Some(plan) = lane.plan.clone() else {
-        stream.abandon();
+        spool.abandon();
         return;
     };
-    match stream.finish(&layer_name) {
+    match spool.finish(&lane.engine, &layer_name) {
         Ok(conversion) => {
             session.conversion = Some(columnar::receipt_for_conversion(
                 &plan,
@@ -1086,8 +1097,8 @@ fn finish_conversion(session: &mut NativeTabularSession) {
 /// is the difference between losing analysis and losing the operator's layer.
 fn abandon_conversion(session: &mut NativeTabularSession, reason: &str) {
     if let SessionLane::Convert(lane) = &mut session.lane {
-        if let Some(stream) = lane.stream.take() {
-            stream.abandon();
+        if let Some(spool) = lane.spool.take() {
+            spool.abandon();
             session.conversion_error = Some(reason.to_string());
         }
     }
@@ -1179,7 +1190,7 @@ fn tabular_status(session_id: &str, session: &NativeTabularSession) -> NativeTab
         elapsed_seconds: session.started_at.elapsed().as_secs_f64(),
         conversion: session.conversion.clone(),
         conversion_error: session.conversion_error.clone(),
-        converting: matches!(&session.lane, SessionLane::Convert(lane) if lane.stream.is_some()),
+        converting: matches!(&session.lane, SessionLane::Convert(lane) if lane.spool.is_some()),
     }
 }
 
@@ -1208,12 +1219,4 @@ fn read_batch(
             &|| false,
         )
         .map_err(engine_message)
-}
-
-fn engine_message(failure: ds_network_client::NetworkFailure) -> String {
-    if failure.is_source_refusal() {
-        failure.message
-    } else {
-        format!("{}: {}", failure.code(), failure.message)
-    }
 }

@@ -2326,6 +2326,8 @@ dependencies = [
  "dirs",
  "ds-columnar",
  "ds-command-kernel",
+ "ds-network-client",
+ "ds-network-contracts",
  "fs2",
  "libc",
  "rusqlite",

@@ -8,18 +8,27 @@
 //! So conversion is not a step beside the import — it IS the import's read.
 //! The streaming session in `native_compute` parses each bounded batch once and
 //! sends it two places: to the browser as an Arrow IPC chunk, and to the
-//! `ds-columnar` stream that writes the artifact. When the artifact for this
-//! exact reading of this exact file already exists, the session reads THAT and
-//! the source is not parsed at all.
+//! artifact's append log. When the source has been read to its end, the
+//! Network engine's streamed writer replays that log into the artifact. When
+//! the artifact for this exact reading of this exact file already exists, the
+//! session reads THAT, through the engine, and the source is not parsed at all.
 //!
-//! Nothing here decides a format. Schema, types, row groups, `geo` metadata,
-//! provenance and identity all belong to `ds-columnar` (§0.8c); this module
-//! decides only WHERE an artifact lives and what the frontend is told about it.
+//! Nothing here decides a format. Schema, types, row groups, `geo` metadata
+//! and provenance are the converter's, which runs in the Network engine
+//! (`columnar_io_v1`); the identity is `ds-columnar`'s. This module decides
+//! only WHERE an artifact lives, moves its bytes, and what the frontend is told.
 
-use ds_columnar::{ArtifactSummary, StreamedConversion};
+use ds_network_client::{CapturedNetworkClient, NetworkFailure};
+use ds_network_contracts::columnar_io::{
+    GeoparquetStreamParamsV1, GeoparquetStreamResultV1, GeoparquetSummaryV1,
+};
+use ds_network_contracts::grid_operation::MAX_GRID_OPERATION_INPUT_BYTES;
 use ds_network_contracts::source_io::SourceReadingV1;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
+use std::collections::VecDeque;
+use std::fs::File;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 /// Rows per chunk when replaying an artifact. The bound the streamed import
@@ -31,7 +40,7 @@ pub(crate) const ARTIFACT_REPLAY_ROWS: usize = 1024;
 ///
 /// Every identity here is the converter's. The shell computes none of it: it
 /// asks `ds-columnar` where the artifact for a reading belongs, and reports
-/// what the conversion or the artifact itself said.
+/// what the engine's conversion or the artifact itself said.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeColumnarConversion {
@@ -118,11 +127,11 @@ pub(crate) fn plan(
 /// The receipt for a conversion this run produced.
 pub(crate) fn receipt_for_conversion(
     plan: &ColumnarPlan,
-    conversion: &StreamedConversion,
+    conversion: &GeoparquetStreamResultV1,
     elapsed_seconds: f64,
 ) -> NativeColumnarConversion {
     NativeColumnarConversion {
-        artifact_path: conversion.artifact_path.clone(),
+        artifact_path: plan.artifact_path.clone(),
         reused: false,
         layer_name: conversion.layer_name.clone(),
         feature_count: conversion.feature_count,
@@ -141,7 +150,7 @@ pub(crate) fn receipt_for_conversion(
 pub(crate) fn receipt_for_artifact(
     plan: &ColumnarPlan,
     artifact_path: &Path,
-    summary: &ArtifactSummary,
+    summary: &GeoparquetSummaryV1,
     fallback_layer_name: &str,
     elapsed_seconds: f64,
 ) -> NativeColumnarConversion {
@@ -178,133 +187,240 @@ pub(crate) fn fallback_layer_name(input: &SourceReadingV1, file_name: &str) -> S
         })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Write;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn workspace(tag: &str) -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "ds-web-native-columnar-{tag}-{}-{nonce}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&root).unwrap();
-        root
-    }
-
-    fn source(root: &Path, bytes: &[u8]) -> PathBuf {
-        let path = root.join("points.txt");
-        std::fs::File::create(&path)
-            .unwrap()
-            .write_all(bytes)
-            .unwrap();
-        path
-    }
-
-    fn input() -> SourceReadingV1 {
-        SourceReadingV1 {
-            sheet_key: "text".to_string(),
-            separator: Some("whitespace".to_string()),
-            header_row: None,
-            x_column: Some("x".to_string()),
-            y_column: Some("y".to_string()),
-            crs: "wgs84_lonlat".to_string(),
-            utm_zone: None,
-            utm_southern: None,
-            attributes_only: false,
-            layer_name: Some("points".to_string()),
-            column_renames: vec![],
-            drop_columns: vec![],
-        }
-    }
-
-    #[test]
-    fn an_artifact_is_addressed_by_the_converters_own_identity() {
-        let root = workspace("address");
-        let path = source(&root, b"x y\n30 -2\n");
-        let store = root.join("columnar");
-
-        let plan = plan(
-            &store,
-            &path,
-            "points.txt",
-            &input(),
-            Some("points"),
-            &ReadingParameters::default(),
-        )
-        .unwrap();
-
-        assert_eq!(plan.source_digest.len(), 64);
-        assert_eq!(plan.conversion_id.len(), 64);
-        assert_eq!(
-            plan.artifact_path,
-            store
-                .join(&plan.source_digest)
-                .join(format!("{}.parquet", plan.conversion_id)),
-        );
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn a_different_post_parse_reading_of_the_same_bytes_is_a_different_artifact() {
-        let root = workspace("reading");
-        let path = source(&root, b"x y z\n30 -2 100\n");
-        let store = root.join("columnar");
-        let plain = ReadingParameters {
-            data_start: 1,
-            columns: vec!["x".into(), "y".into(), "z".into()],
-            z_column: None,
-        };
-        let elevated = ReadingParameters {
-            z_column: Some("z".into()),
-            ..plain.clone()
-        };
-
-        let a = plan(&store, &path, "points.txt", &input(), None, &plain).unwrap();
-        let b = plan(&store, &path, "points.txt", &input(), None, &elevated).unwrap();
-
-        assert_eq!(a.source_digest, b.source_digest, "the same bytes");
-        assert_ne!(
-            a.conversion_id, b.conversion_id,
-            "promoting elevation changes what is written"
-        );
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn an_unchanged_reading_addresses_the_same_artifact_twice() {
-        let root = workspace("stable");
-        let path = source(&root, b"x y\n30 -2\n");
-        let store = root.join("columnar");
-        let reading = ReadingParameters {
-            data_start: 1,
-            columns: vec!["x".into(), "y".into()],
-            z_column: None,
-        };
-
-        let a = plan(&store, &path, "points.txt", &input(), None, &reading).unwrap();
-        let b = plan(&store, &path, "points.txt", &input(), None, &reading).unwrap();
-
-        assert_eq!(a.artifact_path, b.artifact_path);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn a_layer_name_falls_back_to_the_file_stem_only_when_nothing_named_it() {
-        let mut named = input();
-        assert_eq!(
-            fallback_layer_name(&named, "rwanda_sub1_orthocut.txt"),
-            "points"
-        );
-        named.layer_name = Some("   ".to_string());
-        assert_eq!(
-            fallback_layer_name(&named, "rwanda_sub1_orthocut.txt"),
-            "rwanda_sub1_orthocut",
-        );
+/// An engine failure in the words the import reports: the converter's own
+/// refusal unchanged, anything else with its code.
+pub(crate) fn engine_message(failure: NetworkFailure) -> String {
+    if failure.is_source_refusal() || failure.is_columnar_refusal() {
+        failure.message
+    } else {
+        format!("{}: {}", failure.code(), failure.message)
     }
 }
+
+/// The appends one conversion makes, spooled beside the artifact's address
+/// while the source is read. Nothing appears at the artifact's path until
+/// [`finish`](Self::finish) has the engine replay the whole log and the bytes
+/// it returns are durable: publication is still a rename.
+pub(crate) struct ArtifactSpool {
+    artifact_path: PathBuf,
+    spool_path: PathBuf,
+    writer: Option<BufWriter<File>>,
+    bytes: u64,
+    source_digest: String,
+    conversion: String,
+}
+
+fn sibling(artifact_path: &Path, suffix: &str) -> PathBuf {
+    let mut name = artifact_path.file_name().unwrap_or_default().to_os_string();
+    name.push(suffix);
+    artifact_path.with_file_name(name)
+}
+
+impl ArtifactSpool {
+    pub(crate) fn create(plan: &ColumnarPlan) -> Result<Self, String> {
+        let artifact_path = plan.artifact_path.clone();
+        if let Some(parent) = artifact_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "could not create the conversion directory {}: {error}",
+                    parent.display()
+                )
+            })?;
+        }
+        let spool_path = sibling(&artifact_path, ".appends");
+        // Leftovers from an interrupted run are scratch, never input.
+        let _ = std::fs::remove_file(sibling(&artifact_path, ".partial"));
+        let file = File::create(&spool_path).map_err(|error| {
+            format!(
+                "could not open the conversion log {}: {error}",
+                spool_path.display()
+            )
+        })?;
+        Ok(Self {
+            artifact_path,
+            spool_path,
+            writer: Some(BufWriter::new(file)),
+            bytes: 0,
+            source_digest: plan.source_digest.clone(),
+            conversion: plan.conversion_id.clone(),
+        })
+    }
+
+    /// One bounded append: these features, the column order hint, and the
+    /// rows the reader rejected for unusable coordinates in this batch.
+    pub(crate) fn append(
+        &mut self,
+        features: &[Value],
+        columns: &[String],
+        skipped_coordinate_rows: usize,
+    ) -> Result<(), String> {
+        let line = serde_json::to_vec(&json!({
+            "features": features,
+            "columns": columns,
+            "skipped_coordinate_rows": skipped_coordinate_rows,
+        }))
+        .map_err(|error| format!("could not encode the conversion log: {error}"))?;
+        self.bytes = self.bytes.saturating_add(line.len() as u64 + 1);
+        if self.bytes > MAX_GRID_OPERATION_INPUT_BYTES {
+            return Err(format!(
+                "the analytical artifact's features exceed the Network engine's {} MiB staged \
+                 input bound; the layer import is unaffected",
+                MAX_GRID_OPERATION_INPUT_BYTES / (1024 * 1024)
+            ));
+        }
+        let writer = self.writer.as_mut().ok_or("the conversion log is closed")?;
+        writer
+            .write_all(&line)
+            .and_then(|()| writer.write_all(b"\n"))
+            .map_err(|error| format!("could not write the conversion log: {error}"))
+    }
+
+    /// Have the engine replay the log into the artifact, then publish it.
+    pub(crate) fn finish(
+        mut self,
+        engine: &CapturedNetworkClient,
+        layer_name: &str,
+    ) -> Result<GeoparquetStreamResultV1, String> {
+        let mut writer = self.writer.take().ok_or("the conversion log is closed")?;
+        writer
+            .flush()
+            .map_err(|error| format!("could not flush the conversion log: {error}"))?;
+        drop(writer);
+        let log = std::fs::read(&self.spool_path)
+            .map_err(|error| format!("could not read the conversion log: {error}"))?;
+        let (conversion, bytes) = engine
+            .geoparquet_stream(
+                GeoparquetStreamParamsV1 {
+                    source_digest: Some(self.source_digest.clone()),
+                    conversion: Some(self.conversion.clone()),
+                    layer_name: layer_name.to_string(),
+                },
+                log,
+                &|| false,
+            )
+            .map_err(engine_message)?;
+        let partial = sibling(&self.artifact_path, ".partial");
+        let written = File::create(&partial)
+            .and_then(|mut file| {
+                file.write_all(&bytes)?;
+                // Durable before visible: a rename that outruns its own
+                // bytes would publish an artifact a crash could truncate.
+                file.sync_all()
+            })
+            .and_then(|()| std::fs::rename(&partial, &self.artifact_path));
+        if let Err(error) = written {
+            let _ = std::fs::remove_file(&partial);
+            return Err(format!(
+                "could not publish the conversion artifact {}: {error}",
+                self.artifact_path.display()
+            ));
+        }
+        Ok(conversion)
+    }
+
+    /// Give up on the artifact, leaving nothing behind.
+    pub(crate) fn abandon(self) {}
+}
+
+impl Drop for ArtifactSpool {
+    fn drop(&mut self) {
+        self.writer = None;
+        let _ = std::fs::remove_file(&self.spool_path);
+    }
+}
+
+/// One bounded chunk replayed out of an artifact, in the browser layout.
+pub(crate) struct ReplayChunk {
+    pub ipc: Vec<u8>,
+    pub rows: usize,
+}
+
+/// Bounded read-back of a converted artifact as Arrow IPC chunks, decoded by
+/// the Network engine one page at a time. Re-importing an already-converted
+/// source reads THIS, and the original is never parsed a second time (§0.8a).
+pub(crate) struct ArtifactReplay {
+    engine: CapturedNetworkClient,
+    artifact_path: PathBuf,
+    summary: GeoparquetSummaryV1,
+    pending: VecDeque<ReplayChunk>,
+    next_row: Option<usize>,
+}
+
+impl ArtifactReplay {
+    /// Opening reads the first page: an artifact the engine cannot read is
+    /// not an artifact, so a truncated file converts again.
+    pub(crate) fn open(
+        artifact_path: &Path,
+        engine: CapturedNetworkClient,
+    ) -> Result<Self, String> {
+        let mut replay = Self {
+            engine,
+            artifact_path: artifact_path.to_path_buf(),
+            summary: GeoparquetSummaryV1 {
+                layer_name: None,
+                feature_count: 0,
+                columns: Vec::new(),
+                byte_count: 0,
+                skipped_coordinate_rows: 0,
+                geometry_type: None,
+                source_digest: None,
+                conversion: None,
+                schema_sha256: String::new(),
+                geo: None,
+            },
+            pending: VecDeque::new(),
+            next_row: Some(0),
+        };
+        replay.fetch()?;
+        Ok(replay)
+    }
+
+    pub(crate) fn summary(&self) -> &GeoparquetSummaryV1 {
+        &self.summary
+    }
+
+    fn fetch(&mut self) -> Result<(), String> {
+        let Some(start_row) = self.next_row.take() else {
+            return Ok(());
+        };
+        let held = std::fs::read(&self.artifact_path).map_err(|error| {
+            format!(
+                "could not open the converted artifact {}: {error}",
+                self.artifact_path.display()
+            )
+        })?;
+        let name = self
+            .artifact_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let page = self
+            .engine
+            .geoparquet_ipc_page(&name, &held, ARTIFACT_REPLAY_ROWS, start_row, &|| false)
+            .map_err(engine_message)?;
+        if start_row > 0 && page.summary != self.summary {
+            return Err("the converted artifact changed while it was replayed".into());
+        }
+        self.summary = page.summary;
+        self.pending.extend(
+            page.chunks
+                .into_iter()
+                .map(|(rows, ipc)| ReplayChunk { ipc, rows }),
+        );
+        self.next_row = page.next_row;
+        Ok(())
+    }
+
+    /// The next bounded chunk. `None` when the artifact is exhausted.
+    pub(crate) fn next_chunk(&mut self) -> Result<Option<ReplayChunk>, String> {
+        if self.pending.is_empty() {
+            self.fetch()?;
+        }
+        Ok(self.pending.pop_front())
+    }
+}
+
+#[cfg(test)]
+#[path = "columnar_tests.rs"]
+mod tests;

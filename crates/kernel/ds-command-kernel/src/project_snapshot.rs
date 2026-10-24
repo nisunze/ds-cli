@@ -191,6 +191,9 @@ pub enum RefusalCode {
     SnapshotStaleDelta,
     SnapshotBudgetExceeded,
     SnapshotAccessRevoked,
+    /// The Network engine that decodes columnar chunks is absent, too old or
+    /// failed; the reason names its own code. Held chunks are intact.
+    SnapshotEngineUnavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
