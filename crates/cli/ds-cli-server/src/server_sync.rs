@@ -55,16 +55,54 @@ impl ServerSyncSession {
     /// The project is the caller's, verified before this is reached; this
     /// function never asks what is selected.
     pub fn open(database: &Path, connection: &Connection, project: &str) -> Result<Self, String> {
+        Self::open_with(database, connection, project, false)
+    }
+
+    fn open_for_sync(
+        database: &Path,
+        connection: &Connection,
+        project: &str,
+    ) -> Result<Self, String> {
+        Self::open_with(database, connection, project, true)
+    }
+
+    fn open_with(
+        database: &Path,
+        connection: &Connection,
+        project: &str,
+        sync_pass: bool,
+    ) -> Result<Self, String> {
         let context = ds_cli_auth::headless_principal(&connection.lane)
             .map_err(|error| error.message().to_owned())?;
-        let principal = ds_cli_auth::refresh_runtime_identity(&connection.lane)
+        let owner = auth::owner_fence(&connection.lane)?;
+        let local_identity = local_sync_identity(&context, &connection.lane)?;
+        let opening_credential = ds_cli_auth::runtime_credential_binding(&connection.lane)
             .map_err(|error| error.message().to_owned())?;
+        let principal = refresh_for_sync_pass(
+            SyncOpening {
+                database,
+                connection_owner: &connection.owner,
+                current_owner: &owner,
+                identity: &local_identity,
+                project,
+                sync_pass,
+            },
+            || ds_cli_auth::refresh_runtime_identity(&connection.lane),
+            || {
+                let current = ds_cli_auth::headless_principal_read_only(&connection.lane)
+                    .map_err(|error| error.message().to_owned())?;
+                let credential = ds_cli_auth::runtime_credential_binding(&connection.lane)
+                    .map_err(|error| error.message().to_owned())?;
+                require_opening_identity(
+                    &local_identity,
+                    &local_sync_identity(&current, &connection.lane)?,
+                    &opening_credential,
+                    &credential,
+                )
+            },
+        )?;
         let credential_binding = ds_cli_auth::runtime_credential_binding(&connection.lane)
             .map_err(|error| error.message().to_owned())?;
-        // The owner fence this machine HOLDS, read locally. The refresh above
-        // is the gateway session's own, which is what a Sync Center pass is;
-        // the fence itself never depends on an upstream answering.
-        let owner = auth::owner_fence(&connection.lane)?;
         let principal_owner = digest(
             &serde_json::to_vec(&(
                 principal.uid(),
@@ -244,6 +282,96 @@ impl ServerSyncSession {
     }
 }
 
+fn local_sync_identity(
+    context: &ds_cli_auth::HeadlessPrincipal,
+    lane: &str,
+) -> Result<ds_compute_runtime::HostIdentity, String> {
+    Ok(ds_compute_runtime::HostIdentity {
+        owner: context
+            .job_owner()
+            .map_err(|error| error.message().to_owned())?,
+        principal: ds_command_kernel::execution_context::Principal {
+            uid: context.account_uid().to_owned(),
+            lane: lane.to_owned(),
+            deployment: context.deployment().to_owned(),
+            install_id: context.install_id().to_owned(),
+        },
+    })
+}
+
+fn require_opening_identity(
+    expected: &ds_compute_runtime::HostIdentity,
+    current: &ds_compute_runtime::HostIdentity,
+    expected_credential: &str,
+    current_credential: &str,
+) -> Result<(), String> {
+    if expected != current || expected_credential != current_credential {
+        return Err("server identity changed; Sync Center access is fenced".into());
+    }
+    Ok(())
+}
+
+struct SyncOpening<'a> {
+    database: &'a Path,
+    connection_owner: &'a str,
+    current_owner: &'a str,
+    identity: &'a ds_compute_runtime::HostIdentity,
+    project: &'a str,
+    sync_pass: bool,
+}
+
+/// Keep only a typed cause and a fixed sentence, never transport diagnostics or
+/// credential-derived values. Ordinary session reads do not record a pass.
+fn refresh_for_sync_pass<T>(
+    opening: SyncOpening<'_>,
+    refresh: impl FnOnce() -> Result<T, ds_cli_contract::Failure>,
+    still_current: impl FnOnce() -> Result<(), String>,
+) -> Result<T, String> {
+    let SyncOpening {
+        database,
+        connection_owner,
+        current_owner,
+        identity,
+        project,
+        sync_pass,
+    } = opening;
+    require_sync_owner(connection_owner, current_owner, &identity.owner)?;
+    sessions::narrowing_project(Some(project)).map_err(|error| error.message().to_owned())?;
+    match refresh() {
+        Ok(principal) => Ok(principal),
+        Err(error) => {
+            if sync_pass {
+                still_current()?;
+                let cause = error
+                    .detail_value()
+                    .and_then(|detail| detail.pointer("/transport/cause"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_else(|| error.code());
+                let receipt = ds_sync_runtime::rows::Receipt::new("pass", "failed")
+                    .detail("the native sync session could not open; retained work waits for the next pass")
+                    .failure_code(Some(cause.to_owned()));
+                let now = ds_cli_contract::util::now_ms();
+                let store = open_store(database)?;
+                let transition = store
+                    .lock()
+                    .map_err(|_| "the sync store is unavailable".to_owned())?
+                    .apply(
+                        &fence_of(identity),
+                        now,
+                        ds_sync_runtime::store::Event::ActionReceipt {
+                            receipt: ds_sync_runtime::rows::receipt_row(project, &receipt, now),
+                        },
+                    )
+                    .map_err(|error| error.to_string())?;
+                if let Some(refusal) = transition.refusals.first() {
+                    return Err(refusal.detail.clone());
+                }
+            }
+            Err(error.message().to_owned())
+        }
+    }
+}
+
 fn require_sync_identity(
     connection_owner: &str,
     current_owner: &str,
@@ -251,10 +379,19 @@ fn require_sync_identity(
     context_uid: &str,
     principal_uid: &str,
 ) -> Result<(), String> {
-    if connection_owner != current_owner
-        || current_owner != principal_owner
-        || context_uid != principal_uid
-    {
+    require_sync_owner(connection_owner, current_owner, principal_owner)?;
+    if context_uid != principal_uid {
+        return Err("server identity changed; Sync Center access is fenced".into());
+    }
+    Ok(())
+}
+
+fn require_sync_owner(
+    connection_owner: &str,
+    current_owner: &str,
+    principal_owner: &str,
+) -> Result<(), String> {
+    if connection_owner != current_owner || current_owner != principal_owner {
         return Err("server identity changed; Sync Center access is fenced".into());
     }
     Ok(())
@@ -337,100 +474,5 @@ fn require_session_project(project: &str, session_project: &str) -> Result<(), S
 }
 
 #[cfg(test)]
-mod tests {
-
-    /// A drain frees a lease only from a provably dead process of this same
-    /// install (b06fad17): a live holder, another install's worker, this
-    /// session itself, a malformed id and an unobservable pid all keep it.
-    #[test]
-    fn a_lease_is_reclaimed_only_from_a_dead_process_of_this_install() {
-        let dead = |_pid: u32| Some(false);
-        let live = |_pid: u32| Some(true);
-        let unknown = |_pid: u32| None;
-        let own = "install-a#cred#100";
-        assert!(super::abandoned_holder(
-            "install-a",
-            own,
-            "install-a#cred#3930728",
-            dead
-        ));
-        assert!(!super::abandoned_holder(
-            "install-a",
-            own,
-            "install-a#cred#3930728",
-            live
-        ));
-        assert!(!super::abandoned_holder(
-            "install-a",
-            own,
-            "install-a#cred#3930728",
-            unknown
-        ));
-        assert!(!super::abandoned_holder(
-            "install-a",
-            own,
-            "install-b#cred#3930728",
-            dead
-        ));
-        assert!(!super::abandoned_holder("install-a", own, own, dead));
-        assert!(!super::abandoned_holder(
-            "install-a",
-            own,
-            "install-a#3930728",
-            dead
-        ));
-        assert!(!super::abandoned_holder(
-            "install-a",
-            own,
-            "install-a#cred#pid",
-            dead
-        ));
-        assert_eq!(
-            super::holder_pid("install-a", "install-a#cred#42"),
-            Some(42)
-        );
-        assert_eq!(super::holder_pid("install-a", "install-a#cred#42#x"), None);
-    }
-    use super::*;
-
-    #[test]
-    fn sync_accepts_matching_owner_digests_and_compares_user_ids_separately() {
-        let owner = digest(b"uid/lane/audience");
-        assert_ne!(owner, "uid-a");
-        assert!(require_sync_identity(&owner, &owner, &owner, "uid-a", "uid-a").is_ok());
-        assert!(require_sync_identity("previous-owner", &owner, &owner, "uid-a", "uid-a").is_err());
-        assert!(
-            require_sync_identity(&owner, &owner, "other-principal", "uid-a", "uid-a").is_err()
-        );
-        assert!(require_sync_identity(&owner, &owner, &owner, "uid-b", "uid-a").is_err());
-    }
-
-    #[test]
-    fn fence_carries_native_principal_deployment_and_registered_install() {
-        let first = fence_for(
-            "uid-a",
-            "https://gateway.example.com",
-            "550e8400-e29b-41d4-a716-446655440000",
-        );
-        let same = fence_for(
-            "uid-a",
-            "https://gateway.example.com",
-            "550e8400-e29b-41d4-a716-446655440000",
-        );
-        let different_install = fence_for(
-            "uid-a",
-            "https://gateway.example.com",
-            "550e8400-e29b-41d4-a716-446655440001",
-        );
-        assert_eq!(first.account, "uid-a");
-        assert_eq!(first.deployment, "https://gateway.example.com");
-        assert_eq!(first.install_id, same.install_id);
-        assert_ne!(first.install_id, different_install.install_id);
-    }
-
-    #[test]
-    fn a_produced_project_must_match_the_project_its_session_was_opened_for() {
-        assert!(require_session_project("project-a", "project-a").is_ok());
-        assert!(require_session_project("project-b", "project-a").is_err());
-    }
-}
+#[path = "server_sync_tests.rs"]
+mod tests;
