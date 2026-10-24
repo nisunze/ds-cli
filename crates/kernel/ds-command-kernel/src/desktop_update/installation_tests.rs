@@ -265,16 +265,22 @@ fn a_carried_platform_asset_keeps_the_release_that_first_published_its_bytes() {
     );
     assert_eq!(answer.installation.source, "catalog");
     assert!(answer.record.is_none() && answer.installation.recorded_at.is_none());
-    // A folder of another version, or none, is the member's own publication.
+    // Carrying a package across a semantic-version change still keeps the
+    // package's own publication, with no invented date.
     let mut foreign = r119();
     foreign["assets"][0]["url"] =
         json!("https://storage.googleapis.com/releases/desktop/canary/0.1.9-r7/app.deb");
+    foreign["assets"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("released_at");
     assert_eq!(
-        shell(CatalogRead::Read(foreign), desktop(), None)
-            .published
-            .unwrap()
-            .build_number,
-        Some(119)
+        shell(CatalogRead::Read(foreign), desktop(), None).published,
+        Some(ReleaseIdentity {
+            version: Some("0.1.9".into()),
+            build_number: Some(7),
+            release_date: None
+        })
     );
 }
 

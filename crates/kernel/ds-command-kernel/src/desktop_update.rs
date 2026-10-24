@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 mod core_release;
+pub use core_release::core_release_presentation;
 pub mod installation;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -143,7 +144,7 @@ fn semver(value: &str) -> Option<[u64; 3]> {
 /// platform asset into a later catalog member, keeping its object under the
 /// release folder that first published it (`…/{version}-r{n}/{file}`) and its
 /// own date. That folder and date are the asset's publication; an asset
-/// without such a folder of the member's version is the member's own. A
+/// without such a release folder is the member's own. A
 /// carried asset without its own date has no known date, never the member's.
 fn asset_publication(
     member_version: &str,
@@ -151,13 +152,10 @@ fn asset_publication(
     url: &str,
     asset_date: &str,
 ) -> (String, String) {
-    let member_base = parse_release_number(member_version).map_or(member_version, |(b, _)| b);
     let folder = url::Url::parse(url).ok().and_then(|url| {
         let segments: Vec<String> = url.path_segments()?.map(str::to_owned).collect();
         let folder = segments.len().checked_sub(2).map(|i| segments[i].clone())?;
-        parse_release_number(&folder)
-            .is_some_and(|(base, _)| base == member_base)
-            .then_some(folder)
+        parse_release_number(&folder).is_some().then_some(folder)
     });
     let carried = folder.as_deref().is_some_and(|f| f != member_version);
     let date = match (asset_date.is_empty(), carried) {

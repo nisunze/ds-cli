@@ -41,6 +41,164 @@ struct CoreRelease {
     assets: Vec<CoreAsset>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CatalogRequest {
+    channel: String,
+    platform: String,
+    read: Option<CatalogRead>,
+}
+
+#[derive(Deserialize)]
+struct CatalogRead {
+    release: Value,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogPresentation {
+    state: &'static str,
+    version: String,
+    released_at: String,
+    assets: Vec<CatalogAsset>,
+}
+
+/// The presentation window keeps unknown dates and provenance explicit. The
+/// older catalog asset DTO omits empty optional members on its wire.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogAsset {
+    platform: String,
+    arch: String,
+    kind: String,
+    url: String,
+    size_bytes: u64,
+    sha256: String,
+    source_sha: String,
+    built_at: String,
+    released_at: String,
+    source_revisions: BTreeMap<String, String>,
+}
+
+impl CatalogPresentation {
+    fn empty(state: &'static str) -> Self {
+        Self {
+            state,
+            version: String::new(),
+            released_at: String::new(),
+            assets: vec![],
+        }
+    }
+}
+
+/// Shared read-only presentation of Core's independent catalog. Hosts supply
+/// the anonymous member; they neither admit it nor infer Core from Desktop.
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen(js_name = coreReleasePresentation))]
+pub fn core_release_presentation(input: &[u8]) -> Result<String, String> {
+    if input.len() > 128 * 1024 {
+        return Err("The Core catalog request exceeds its bound".into());
+    }
+    let request: CatalogRequest = serde_json::from_slice(input)
+        .map_err(|_| "The Core catalog request is malformed".to_owned())?;
+    if !matches!(request.channel.as_str(), "stable" | "canary")
+        || !matches!(request.platform.as_str(), "windows" | "linux" | "macos")
+    {
+        return Err("Name the exact Core release lane and platform".into());
+    }
+    serde_json::to_string(&present_catalog(request))
+        .map_err(|_| "The Core catalog presentation is unreadable".to_owned())
+}
+
+fn present_catalog(request: CatalogRequest) -> CatalogPresentation {
+    let empty = CatalogPresentation::empty;
+    let Some(kind) = executable_kind(&request.platform) else {
+        return empty("unsupported");
+    };
+    let Some(read) = request.read else {
+        return empty("failed");
+    };
+    if read.release.is_null() {
+        return empty("unpublished");
+    }
+    let Ok(release) = admit(&request.channel, read.release) else {
+        return empty("malformed");
+    };
+    if release.status != "active" {
+        return empty("withdrawn");
+    }
+    let mut assets = release.assets.iter().filter(|asset| {
+        asset.platform == request.platform && asset.arch == "x86_64" && asset.kind == kind
+    });
+    let Some(asset) = assets.next() else {
+        return empty("unpublished");
+    };
+    if assets.next().is_some()
+        || !catalog_package(asset, &request.channel)
+        || super::OffsetDateTime::parse(&release.released_at, &super::Rfc3339).is_err()
+        || (!asset.released_at.is_empty()
+            && super::OffsetDateTime::parse(&asset.released_at, &super::Rfc3339).is_err())
+    {
+        return empty("malformed");
+    }
+    let (version, released_at) = asset_publication(
+        &release.version,
+        &release.released_at,
+        &asset.url,
+        &asset.released_at,
+    );
+    CatalogPresentation {
+        state: "available",
+        version,
+        released_at: released_at.clone(),
+        assets: vec![CatalogAsset {
+            platform: asset.platform.clone(),
+            arch: asset.arch.clone(),
+            kind: asset.kind.clone(),
+            url: asset.url.clone(),
+            size_bytes: asset.size_bytes,
+            sha256: asset.sha256.clone(),
+            source_sha: asset.source_sha.clone(),
+            built_at: asset.built_at.clone(),
+            released_at,
+            source_revisions: asset.source_revisions.clone(),
+        }],
+    }
+}
+
+fn catalog_package(asset: &CoreAsset, channel: &str) -> bool {
+    let Ok(url) = url::Url::parse(&asset.url) else {
+        return false;
+    };
+    if asset.url.len() > 2048
+        || url.scheme() != "https"
+        || url.host_str() != Some("storage.googleapis.com")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || asset.url != url.as_str()
+        || !matches!(asset.source_sha.len(), 40 | 64)
+        || !asset.source_sha.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return false;
+    }
+    // Core publications have their own immutable namespace. A Desktop asset
+    // in a historical shared pointer cannot become a Core publication here.
+    let Some(segments) = url.path_segments() else {
+        return false;
+    };
+    let segments: Vec<_> = segments.collect();
+    if segments.len() != 5 || segments[0].is_empty() {
+        return false;
+    }
+    let part = &segments[1..];
+    part[0] == "core"
+        && part[1] == channel
+        && super::parse_release_number(part[2]).is_some()
+        && !part[3].is_empty()
+}
+
 /// The executable this platform installs; receipts are not Core itself.
 fn executable_kind(platform: &str) -> Option<&'static str> {
     match platform {
@@ -175,3 +333,7 @@ pub(super) fn inspect(
     };
     Ok((inspection, proven))
 }
+
+#[cfg(test)]
+#[path = "core_release_catalog_tests.rs"]
+mod catalog_tests;

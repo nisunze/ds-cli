@@ -84,6 +84,7 @@ const NOT_ROWS: &[(&str, Why)] = &[
     ("computeArtifactLocator", Mechanics("helper")),
     ("computeArtifactPublishedHead", Shared("report.publication.show")),
     ("connectivityCommand", Shared("desktop.offline.set")),
+    ("coreReleasePresentation", Shared("core.release-identity")),
     ("deadLetterSummary", Mechanics("sync diagnostics")),
     ("decodeDesignCellLockVocabulary", Mechanics("decoder")),
     ("decodeDesignDomainValue", Mechanics("decoder")),
