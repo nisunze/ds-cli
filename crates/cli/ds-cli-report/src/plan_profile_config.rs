@@ -323,6 +323,30 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             project,
             config.model_fields.clone(),
         )?;
+    // A configuration that binds no approved PDFs reads them through DS
+    // assets, each checked against the adopted setup's own pin.
+    let acquired = if config.publication_assets.is_empty() && !resolved.preserved_pages.is_empty() {
+        let lane = inputs.require("lane")?;
+        Some(crate::plan_profile::assets::acquire_publication_assets(
+            &resolved.preserved_pages,
+            |asset_id| {
+                ds_cli_auth::read_asset_bytes_for_project(lane, project, asset_id)
+                    .map(|read| read.into_result().1)
+            },
+        )?)
+    } else {
+        None
+    };
+    let publication_assets = match &acquired {
+        Some(acquired) => acquired.map.clone(),
+        None => json!(
+            config
+                .publication_assets
+                .iter()
+                .map(|(id, p)| (id.clone(), resolve(base, p)))
+                .collect::<BTreeMap<_, _>>()
+        ),
+    };
     let engine = capture_engine(inputs)?;
     let staging =
         tempfile::tempdir_in(output_root.parent().ok_or_else(|| {
@@ -351,7 +375,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             "style_resolution": style_resolution,
             "renderer_defaults": renderer_defaults,
             "mv_setup": resolved,
-            "publication_assets": config.publication_assets.iter().map(|(id,p)|(id.clone(),resolve(base,p))).collect::<BTreeMap<_,_>>(),
+            "publication_assets": publication_assets,
             "sample_pages": config.sample_pages,
             "model_crs": config.model_crs,
             "context_page_files": config.context_page_files.iter().map(|p| resolve(base, p)).collect::<Vec<_>>(),
@@ -433,9 +457,11 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         &variants,
     )?;
     commit_job(staging, &output_root)?;
-    Ok(
-        json!({"config_sha256":config_sha256,"project_id":project,"status":"ok","receipt_path":receipt_path,"variants":variants}),
-    )
+    let mut answer = json!({"config_sha256":config_sha256,"project_id":project,"status":"ok","receipt_path":receipt_path,"variants":variants});
+    if let Some(acquired) = &acquired {
+        answer["publication_assets"] = acquired.receipt.clone();
+    }
+    Ok(answer)
 }
 
 fn commit_job(staging: tempfile::TempDir, destination: &Path) -> Result<(), Failure> {

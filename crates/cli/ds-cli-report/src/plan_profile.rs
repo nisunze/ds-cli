@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{EXPORT_TIMEOUT, capture_engine};
-mod assets;
+pub(crate) mod assets;
 mod context;
 mod model_mode;
 use model_mode::RenderTask;
@@ -118,7 +118,7 @@ pub static COMMAND: Command = Command {
         Arg::value(
             "publication-assets",
             "<json-file>",
-            "Map approved preserved_pdf asset ids to absolute held PDF paths; digests come from the adopted template.",
+            "Map approved preserved_pdf asset ids to absolute held PDF paths; omitted, they are read through DS assets. Digests come from the adopted template.",
         ),
         Arg::value(
             "side-profiles",
@@ -236,8 +236,8 @@ pub static COMMAND: Command = Command {
             },
             Refusal {
                 code: "mv_print_asset_missing",
-                when: "--publication-assets omits an approved preserved_pdf asset the adopted setup names, or supplies one it does not",
-                remedy: "Map exactly the setup's asset ids to absolute held PDF paths acquired through DS assets",
+                when: "--publication-assets omits an approved preserved_pdf asset the adopted setup names or supplies one it does not, or a read approved asset differs from its pin",
+                remedy: "Omit --publication-assets to read them through DS assets, or map exactly the setup's asset ids to absolute held paths",
             },
             Refusal {
                 code: "context_manifest_invalid",
@@ -683,7 +683,25 @@ fn run_project(inputs: &Inputs, model: Option<model_mode::ModelSource>) -> Resul
     // The held PDFs the adopted setup names are known now. Refuse a missing or
     // surplus asset before the minutes-long context acquisition and render,
     // exactly as the reporter would after them.
-    let publication_assets = read_manifest("publication-assets", json!({}))?;
+    // Omitted, they are read through DS assets and checked against the
+    // setup's own pins, so one command prints the approved booklet.
+    let acquired = match inputs.value("publication-assets") {
+        None if !resolved.preserved_pages.is_empty() => {
+            let lane = inputs.require("lane")?;
+            Some(assets::acquire_publication_assets(
+                &resolved.preserved_pages,
+                |asset_id| {
+                    ds_cli_auth::read_asset_bytes_for_project(lane, project, asset_id)
+                        .map(|read| read.into_result().1)
+                },
+            )?)
+        }
+        _ => None,
+    };
+    let publication_assets = match &acquired {
+        Some(acquired) => acquired.map.clone(),
+        None => read_manifest("publication-assets", json!({}))?,
+    };
     assets::check_publication_assets(&resolved.preserved_pages, &publication_assets)?;
     // A pinned model carries the governed geographic context by default, read
     // from what this machine holds. Explicit captures replace it.
@@ -735,6 +753,9 @@ fn run_project(inputs: &Inputs, model: Option<model_mode::ModelSource>) -> Resul
     let mut document = staged.render(&engine, bytes, task)?;
     if let Some(context) = &context {
         document["mv_context"] = context.receipt.clone();
+    }
+    if let Some(acquired) = &acquired {
+        document["publication_assets"] = acquired.receipt.clone();
     }
     if let Some(selected) = &selected {
         document["alignment_selection"] = selected.receipt.clone();

@@ -1263,10 +1263,13 @@ A `model_preserved_pdf` page declares an explicit bounded `bindings` list of
 setup/revision/policy while selecting different approved covers; the shared
 naming page remains one fixed PDF pin. Identity matching is exact. Missing or
 ambiguous binding refuses; there is no fallback, generated naming inventory,
-or model-specific setup. The operator acquires approved PDFs through assets
-and passes a `publication_assets` map of only the resolved asset ids to held
-absolute paths. The reporter validates every digest and retains original
-components unchanged alongside the assembled booklet.
+or model-specific setup. Without `--publication-assets` (or with an empty
+`publication_assets` configuration) Core reads each resolved approved PDF
+through DS assets, refuses `mv_print_asset_missing` when its bytes differ from
+the setup's pin, and records `publication_assets.source: ds_assets` in the
+receipt. An operator may instead pass a map of exactly the resolved asset ids
+to held absolute paths. The reporter validates every digest and retains
+original components unchanged alongside the assembled booklet.
 
 `report plan-profile --preview-layout <json-file> --project <id> --scene
 <path> --plan <path> [--model-crs <crs>]` previews a saved or draft MV layout

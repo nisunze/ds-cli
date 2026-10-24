@@ -709,6 +709,28 @@ pub fn named_layouts(
     }
     Ok(layouts)
 }
+/// A local selection may name only a setup the sealed project inputs carry,
+/// and ds-brain seals exactly the setups of the project's saved selection.
+/// Say so, name the ones this run can print, and the command that adds one.
+fn unsealed_setup(
+    id: &str,
+    layouts: &std::collections::BTreeMap<String, crate::printing::Layout>,
+) -> String {
+    let sealed = layouts
+        .iter()
+        .filter(|(_, layout)| layout.mv.is_none())
+        .map(|(id, _)| id.as_str())
+        .collect::<Vec<_>>();
+    let printable = if sealed.is_empty() {
+        "none".to_owned()
+    } else {
+        sealed.join(", ")
+    };
+    format!(
+        "print_setup_not_in_saved_selection: printing setup {id} is not in the project's saved output selection, so its sealed printing inputs do not carry it (printable here: {printable}); select one of those, or add {id} with `ds report project outputs set` and retry"
+    )
+}
+
 pub const SETTING_ALIASES: &[&str] = &[
     "design_export_format",
     "design_export_formats",
@@ -1374,7 +1396,7 @@ fn selected_plan_for_purpose(
                 return Err(format!("mv_print_requires_model_geometry: {id}: use report plan-profile with same-revision model projections"));
             }
             if !layouts.contains_key(id) {
-                return Err(format!("Prepare printing setup {id} before selecting it"));
+                return Err(unsealed_setup(id, &layouts));
             }
         }
         outputs.push(output);
@@ -1596,3 +1618,7 @@ pub fn plan(sheets: &Value, is_combined: bool) -> Result<Vec<Output>, String> {
 #[cfg(test)]
 #[path = "report_formats_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "report_formats_unsealed_tests.rs"]
+mod unsealed_tests;

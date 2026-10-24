@@ -169,6 +169,21 @@ pub(crate) const INPUTS_INVALID: Refusal = Refusal {
     when: "the input receipt, a transformer's saved layers or the output policy cannot be run as given",
     remedy: "run `ds report project settings`; it names the missing input and the repair",
 };
+/// A local selection naming a setup the saved selection does not hold
+/// cannot be repaired from project settings; name the command that can.
+const UNSEALED_SETUP_REMEDY: &str = "print a setup the project's saved output selection holds (`ds report project settings` lists them), or add this one with `ds report project outputs set --selection <file> --yes` and retry";
+
+/// `report_inputs_invalid` with the remedy its own message calls for.
+pub(crate) fn inputs_invalid<M: Into<String>>(message: M) -> Failure {
+    let message = message.into();
+    let remedy = if message.starts_with("print_setup_not_in_saved_selection") {
+        UNSEALED_SETUP_REMEDY
+    } else {
+        INPUTS_INVALID.remedy
+    };
+    Failure::invalid("report_inputs_invalid", message).remedy(remedy)
+}
+
 const TRANSFORMER_NATURE_UNAVAILABLE: Refusal = Refusal {
     code: "report_transformer_nature_unavailable",
     when: "a voltage-drop output is selected but the current project transformer_nature projection could not be verified",
@@ -876,9 +891,7 @@ fn failure_to_host(failure: Failure) -> HostFailure {
 pub(crate) fn host_failure(failure: HostFailure) -> Failure {
     let message = failure.message.clone();
     let mapped = match failure.code.as_str() {
-        "report_inputs_invalid" => {
-            Failure::invalid("report_inputs_invalid", message).remedy(INPUTS_INVALID.remedy)
-        }
+        "report_inputs_invalid" => inputs_invalid(message),
         "report_staging_failed" => {
             Failure::failed("report_staging_failed", message).remedy(STAGING_FAILED.remedy)
         }
@@ -1694,9 +1707,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     // The project-wide input base: the receipt ds-brain minted beside the
     // configuration. The kernel proves it before anything is staged.
-    let receipt = InputReceipt::from_config(&held_inputs.configuration).map_err(|error| {
-        Failure::invalid("report_inputs_invalid", error).remedy(INPUTS_INVALID.remedy)
-    })?;
+    let receipt = InputReceipt::from_config(&held_inputs.configuration).map_err(inputs_invalid)?;
     // Original server authority remains provenance even for an explicit local proof.
     let server_sheets_sha256 = receipt.sheets_sha256.clone();
     requested_outputs = run_outputs(inputs, &receipt, requested_outputs)?;
@@ -2251,9 +2262,7 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let processors = std::thread::available_parallelism()
         .map(|count| count.get())
         .unwrap_or(1);
-    let plan = batch_plan(&names, processors, resident_limit).map_err(|error| {
-        Failure::invalid("report_inputs_invalid", error).remedy(INPUTS_INVALID.remedy)
-    })?;
+    let plan = batch_plan(&names, processors, resident_limit).map_err(inputs_invalid)?;
 
     // A sheet opts into the neighboring transformer marker layer through its
     // governed style binding. Build the project point catalogue once; held
@@ -3561,9 +3570,7 @@ fn read_inputs(
             })
             .collect();
     let configuration = Value::Object(configuration);
-    let receipt = InputReceipt::from_config(&configuration).map_err(|error| {
-        Failure::invalid("report_inputs_invalid", error).remedy(INPUTS_INVALID.remedy)
-    })?;
+    let receipt = InputReceipt::from_config(&configuration).map_err(inputs_invalid)?;
     let Some(setups) = named_printing_setups(lane, project, &receipt, link, selection)? else {
         return Ok(None);
     };
@@ -3584,7 +3591,7 @@ fn read_inputs(
             )
         })
         .transpose()
-        .map_err(|e| Failure::invalid("report_inputs_invalid", e).remedy(INPUTS_INVALID.remedy))?;
+        .map_err(inputs_invalid)?;
     let rows = super::hold::rows(inventory.result());
     let source_sheets = receipt
         .sheets()
@@ -3711,9 +3718,7 @@ fn named_printing_setups(
     link: &mut super::hold::Link,
     selection: &DesignOutputSelection,
 ) -> Result<Option<Vec<Value>>, Failure> {
-    let invalid = |message: String| {
-        Failure::invalid("report_inputs_invalid", message).remedy(INPUTS_INVALID.remedy)
-    };
+    let invalid = inputs_invalid::<String>;
     let sheets: Value = serde_json::from_str(&receipt.sheets_json)
         .map_err(|error| invalid(format!("sealed sheets: {error}")))?;
     if sheets.get("printing_setups").is_some() {
@@ -3754,9 +3759,7 @@ fn selected_contexts(
     ),
     Failure,
 > {
-    let invalid = |message: String| {
-        Failure::invalid("report_inputs_invalid", message).remedy(INPUTS_INVALID.remedy)
-    };
+    let invalid = inputs_invalid::<String>;
     let mut sheets: Value = serde_json::from_str(&receipt.sheets_json)
         .map_err(|error| invalid(format!("sealed sheets: {error}")))?;
     if sheets.get("printing_setups").is_none() {
