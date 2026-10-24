@@ -3,7 +3,7 @@
 //! value. `Key` answers all four from here, so a new key does not compile
 //! until it is placed in every column.
 use super::design::{self, SourceKind};
-use super::{map, workbench};
+use super::{map, project_view, window, workbench};
 use crate::ui_preferences::{Key, DEFAULT_MAX_BYTES};
 use serde_json::Value;
 
@@ -40,6 +40,27 @@ pub(in crate::ui_preferences) fn name(key: Key) -> &'static str {
         Key::PinnedTransformers => "pinned_transformers",
         Key::FastModeCustomerSource => "fast_mode_customer_source",
         Key::FastModePoleSource => "fast_mode_pole_source",
+        Key::Theme => "theme",
+        Key::Language => "language",
+        Key::OfflineMode => "offline_mode",
+        Key::ActivityHints => "activity_hints",
+        Key::DesktopRecommendationShownAt => "desktop_recommendation_shown_at",
+        Key::LayerGroupSettings => "layer_group_settings",
+        Key::CommandShortcutsVisible => "command_shortcuts_visible",
+        Key::DrawerWidth => "drawer_width",
+        Key::ConnectorStyle => "connector_style",
+        Key::ToolsPanelSize => "tools_panel_size",
+        Key::PdfScreenScale => "pdf_screen_scale",
+        Key::ProfileWorkspace => "profile_workspace",
+        Key::ProfileViewports => "profile_viewports",
+        Key::LayerWorkspace => "layer_workspace",
+        Key::ProjectWorkspace => "project_workspace",
+        Key::BoardView => "board_view",
+        Key::PaperPlacements => "paper_placements",
+        Key::PaperNoteStyle => "paper_note_style",
+        Key::PaperSnap => "paper_snap",
+        Key::PaperCollapsedGroups => "paper_collapsed_groups",
+        Key::PaperToolDock => "paper_tool_dock",
     }
 }
 
@@ -58,7 +79,15 @@ pub(in crate::ui_preferences) fn project_scoped(key: Key) -> bool {
         | Key::MapViewport
         | Key::PinnedTransformers
         | Key::FastModeCustomerSource
-        | Key::FastModePoleSource => true,
+        | Key::FastModePoleSource
+        | Key::LayerWorkspace
+        | Key::ProjectWorkspace
+        | Key::BoardView
+        | Key::PaperPlacements
+        | Key::PaperNoteStyle
+        | Key::PaperSnap
+        | Key::PaperCollapsedGroups
+        | Key::PaperToolDock => true,
         Key::ActiveProject
         | Key::LayerGroupCollapse
         | Key::HillshadeExaggeration
@@ -76,7 +105,20 @@ pub(in crate::ui_preferences) fn project_scoped(key: Key) -> bool {
         | Key::PropertiesPreferDocked
         | Key::StyleCenterLayout
         | Key::MessagingNotificationDismissals
-        | Key::LocalClassStyles => false,
+        | Key::LocalClassStyles
+        | Key::Theme
+        | Key::Language
+        | Key::OfflineMode
+        | Key::ActivityHints
+        | Key::DesktopRecommendationShownAt
+        | Key::LayerGroupSettings
+        | Key::CommandShortcutsVisible
+        | Key::DrawerWidth
+        | Key::ConnectorStyle
+        | Key::ToolsPanelSize
+        | Key::PdfScreenScale
+        | Key::ProfileWorkspace
+        | Key::ProfileViewports => false,
     }
 }
 
@@ -90,6 +132,8 @@ pub(in crate::ui_preferences) fn max_bytes(key: Key) -> usize {
         Key::WorkingArea => workbench::MAX_BOUNDARY_BYTES + 64 * 1024,
         Key::WorkingAreaForms => crate::survey_working_area_forms::MAX_SELECTION_BYTES,
         Key::ProfileOccupancy => workbench::PROFILE_OCCUPANCY_MAX_BYTES,
+        Key::PaperPlacements => 512 * 1024,
+        Key::ProfileViewports | Key::PaperCollapsedGroups => 256 * 1024,
         _ => DEFAULT_MAX_BYTES,
     }
 }
@@ -127,6 +171,27 @@ pub(in crate::ui_preferences) fn admit(key: Key, value: &Value) -> Option<Value>
         Key::CreateTransformerMapSources => design::create_transformer_map_sources(value),
         Key::FastModeCustomerSource => design::fast_mode_sources(SourceKind::Customers, value),
         Key::FastModePoleSource => design::fast_mode_sources(SourceKind::Poles, value),
+        Key::Theme => window::theme(value),
+        Key::Language => window::language(value),
+        Key::OfflineMode => design::switch(value),
+        Key::ActivityHints => window::activity_hints(value),
+        Key::DesktopRecommendationShownAt => window::instant(value),
+        Key::LayerGroupSettings => window::layer_group_settings(value),
+        Key::CommandShortcutsVisible => window::command_shortcuts(value),
+        Key::DrawerWidth => window::drawer_width(value),
+        Key::ConnectorStyle => window::connector_style(value),
+        Key::ToolsPanelSize => window::tools_panel_size(value),
+        Key::PdfScreenScale => window::pdf_screen_scale(value),
+        Key::ProfileWorkspace => window::profile_workspace(value),
+        Key::ProfileViewports => window::profile_viewports(value),
+        Key::LayerWorkspace => project_view::layer_workspace(value),
+        Key::ProjectWorkspace => project_view::project_workspace(value),
+        Key::BoardView => project_view::board_view(value),
+        Key::PaperPlacements => project_view::paper_placements(value),
+        Key::PaperNoteStyle => project_view::paper_note_style(value),
+        Key::PaperSnap => design::switch(value),
+        Key::PaperCollapsedGroups => project_view::paper_collapsed_groups(value),
+        Key::PaperToolDock => project_view::paper_tool_dock(value),
     }
 }
 

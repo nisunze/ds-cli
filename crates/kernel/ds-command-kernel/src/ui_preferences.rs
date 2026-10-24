@@ -35,8 +35,11 @@ pub enum Key {
     // overlays, the application settings, the editing projection, the pinned
     // group's visibility, the Profile restart record, the map-data sources a
     // new transformer preselects, panel and dialog geometry, the messages
-    // dismissed from the foreground notifications, and the class styles kept
-    // on this device for temporary layers.
+    // dismissed from the foreground notifications, the class styles kept on
+    // this device for temporary layers, and the window's presentation (theme,
+    // language, the Web page's offline isolation, hints shown, drawer groups
+    // and width, command shortcuts, connector style, Tools panel and PDF
+    // preview geometry, the Profile surface's display and cameras).
     LayerGroupCollapse,
     HillshadeExaggeration,
     MapDefaults,
@@ -54,10 +57,26 @@ pub enum Key {
     StyleCenterLayout,
     MessagingNotificationDismissals,
     LocalClassStyles,
+    Theme,
+    Language,
+    OfflineMode,
+    ActivityHints,
+    DesktopRecommendationShownAt,
+    LayerGroupSettings,
+    CommandShortcutsVisible,
+    DrawerWidth,
+    ConnectorStyle,
+    ToolsPanelSize,
+    PdfScreenScale,
+    ProfileWorkspace,
+    ProfileViewports,
     // One project's choices: layer visibility, disabled popups, the survey
     // working area, the process preset and process setup, the active LV
     // transformer, the status register's warning filter and sort, the camera,
-    // the pinned transformers and the Fast-mode customer and pole sources.
+    // the pinned transformers, the Fast-mode customer and pole sources, the
+    // layer drawer's chapter, the workspace a restart returns to, the board's
+    // view and the Plan sheet's placements, note style, snap, folded groups
+    // and tool rail.
     LayerVisibility,
     PopupLayersDisabled,
     WorkingArea,
@@ -71,6 +90,14 @@ pub enum Key {
     PinnedTransformers,
     FastModeCustomerSource,
     FastModePoleSource,
+    LayerWorkspace,
+    ProjectWorkspace,
+    BoardView,
+    PaperPlacements,
+    PaperNoteStyle,
+    PaperSnap,
+    PaperCollapsedGroups,
+    PaperToolDock,
 }
 impl Key {
     pub const ALL: &'static [Key] = &[
@@ -92,6 +119,19 @@ impl Key {
         Key::StyleCenterLayout,
         Key::MessagingNotificationDismissals,
         Key::LocalClassStyles,
+        Key::Theme,
+        Key::Language,
+        Key::OfflineMode,
+        Key::ActivityHints,
+        Key::DesktopRecommendationShownAt,
+        Key::LayerGroupSettings,
+        Key::CommandShortcutsVisible,
+        Key::DrawerWidth,
+        Key::ConnectorStyle,
+        Key::ToolsPanelSize,
+        Key::PdfScreenScale,
+        Key::ProfileWorkspace,
+        Key::ProfileViewports,
         Key::LayerVisibility,
         Key::PopupLayersDisabled,
         Key::WorkingArea,
@@ -105,6 +145,14 @@ impl Key {
         Key::PinnedTransformers,
         Key::FastModeCustomerSource,
         Key::FastModePoleSource,
+        Key::LayerWorkspace,
+        Key::ProjectWorkspace,
+        Key::BoardView,
+        Key::PaperPlacements,
+        Key::PaperNoteStyle,
+        Key::PaperSnap,
+        Key::PaperCollapsedGroups,
+        Key::PaperToolDock,
     ];
     pub fn name(self) -> &'static str {
         values::name(self)

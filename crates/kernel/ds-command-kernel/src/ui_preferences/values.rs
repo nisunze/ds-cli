@@ -7,7 +7,9 @@ use serde_json::Value;
 mod catalog;
 pub(super) mod design;
 pub(super) mod map;
+pub(super) mod project_view;
 pub(super) mod shape;
+pub(super) mod window;
 pub(super) mod workbench;
 
 pub(super) use catalog::{admit, max_bytes, name, project_scoped};
