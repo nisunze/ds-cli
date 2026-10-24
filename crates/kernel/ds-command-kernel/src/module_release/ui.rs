@@ -317,6 +317,12 @@ pub fn admit_target(component: &str, lane: &str) -> Result<(), ModuleReleaseErro
     channel(lane)?;
     UiComponent::parse(component).map(|_| ())
 }
+/// The repositories that own both UI units' sources since the workspace
+/// consolidation: the release packager keys the producer closure by the
+/// owning repository (ds-cli), while units published before it were keyed by
+/// the component owner itself (`UiComponent::owner`). Either names the same
+/// exact source snapshot.
+const OWNER_REPOSITORIES: &[&str] = &["ds-cli"];
 fn validate_provenance(
     component: UiComponent,
     asset: &ModuleReleaseAsset,
@@ -329,7 +335,10 @@ fn validate_provenance(
         );
     };
     if !hex(&asset.source_sha, 40)
-        || asset.source_revisions.get(component.owner()) != Some(&asset.source_sha)
+        || !OWNER_REPOSITORIES
+            .iter()
+            .chain(std::iter::once(&component.owner()))
+            .any(|owner| asset.source_revisions.get(*owner) == Some(&asset.source_sha))
         || asset
             .source_revisions
             .iter()

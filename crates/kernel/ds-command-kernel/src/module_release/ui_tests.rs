@@ -520,3 +520,33 @@ fn different_contract_metadata_admits_the_same_working_typed_exchange() {
         );
     }
 }
+
+#[test]
+fn the_consolidated_owner_repository_names_the_same_exact_source_closure() {
+    for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
+        let (catalog, _) = fixture(component);
+        let admitted = inspect(component.as_str(), "canary", &catalog).unwrap();
+        let rekey = |owner: &str, sha: &str| {
+            let mut changed = catalog.clone();
+            for asset in changed["assets"].as_array_mut().unwrap() {
+                asset["source_revisions"] = json!({ owner: sha });
+            }
+            changed
+        };
+        let source = catalog["assets"][0]["source_sha"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        // The release packager keys the closure by the owning repository since
+        // the workspace consolidation; it is the same snapshot.
+        let consolidated =
+            inspect(component.as_str(), "canary", &rekey("ds-cli", &source)).unwrap();
+        assert_eq!(consolidated.version(), admitted.version());
+        assert_eq!(consolidated.identity(), admitted.identity());
+        // Another repository, or the owner at another snapshot, still refuses.
+        for (owner, sha) in [("ds-web", source.clone()), ("ds-cli", "c".repeat(40))] {
+            let error = inspect(component.as_str(), "canary", &rekey(owner, &sha)).unwrap_err();
+            assert_eq!(error.code, "module_release_provenance_invalid", "{owner}");
+        }
+    }
+}
