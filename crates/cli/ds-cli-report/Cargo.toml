@@ -53,8 +53,6 @@ tempfile = "3"
 
 # Reuse workstation-owned verified browser configuration before any project effect.
 ds-cli-workstation = { path = "../ds-cli-workstation" }
-# Verify the reporter PDF page receipt using the reporter's parser/version.
-lopdf = { version = "0.45", default-features = false }
 
 [dev-dependencies]
 # Actual engine scenes prove the transport-only publication selection.

@@ -298,7 +298,10 @@ pub fn voltage_drop_browser_preflight() -> Result<(), String> {
     Ok(())
 }
 
-/// Verify the owner's receipt against its local artifact. No rendering or analysis here.
+/// Verify the owner's receipt against its local artifact. No rendering,
+/// analysis or PDF parsing here: the Reporter counted the pages of the exact
+/// bytes it wrote (and refuses a page-less document), so Core proves only that
+/// these are those bytes (SHA-256 and length) and that the receipt names them.
 pub fn verify_voltage_drop_pdf(
     receipt: &Value,
     pdf: &Path,
@@ -321,10 +324,6 @@ pub fn verify_voltage_drop_pdf(
     if bytes.len() > 64 * 1024 * 1024 {
         return Err(invalid());
     }
-    let pages = lopdf::Document::load_mem(&bytes)
-        .map_err(|_| invalid())?
-        .get_pages()
-        .len();
     if receipt["schema"] != "ds.voltage-drop-pdf.render/v1"
         || receipt["transformer"] != transformer
         || receipt["project_label"] != project_label
@@ -332,8 +331,7 @@ pub fn verify_voltage_drop_pdf(
         || receipt["out_pdf"] != pdf.to_string_lossy().as_ref()
         || receipt["output_sha256"] != format!("{:x}", Sha256::digest(&bytes))
         || receipt["bytes"].as_u64() != Some(bytes.len() as u64)
-        || pages == 0
-        || receipt["pages"].as_u64() != Some(pages as u64)
+        || receipt["pages"].as_u64().is_none_or(|pages| pages == 0)
         || receipt["publication"] != "nothing_published"
     {
         return Err(invalid());
@@ -778,22 +776,11 @@ mod voltage_drop_tests {
     }
 
     #[test]
-    fn pdf_receipt_must_prove_identity_exact_digest_bytes_and_actual_pages() {
+    fn pdf_receipt_must_prove_identity_exact_digest_bytes_and_counted_pages() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("a4.pdf");
-        let mut doc = lopdf::Document::with_version("1.5");
-        let pages = doc.new_object_id();
-        let page = doc.add_object(lopdf::dictionary! {"Type" => "Page", "Parent" => pages,
-        "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()]});
-        doc.objects.insert(
-            pages,
-            lopdf::dictionary! {"Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1}
-                .into(),
-        );
-        let catalog = doc.add_object(lopdf::dictionary! {"Type" => "Catalog", "Pages" => pages});
-        doc.trailer.set("Root", catalog);
-        let mut bytes = Vec::new();
-        doc.save_to(&mut bytes).unwrap();
+        // Core never parses the PDF: the Reporter counted these bytes' pages.
+        let bytes = b"%PDF-1.5\n% bytes the Reporter wrote and counted\n%%EOF\n".to_vec();
         std::fs::write(&path, &bytes).unwrap();
         let sha = "a".repeat(64);
         let receipt = json!({"schema":"ds.voltage-drop-pdf.render/v1","out_pdf":path,"source_sha256":sha,
@@ -819,7 +806,7 @@ mod voltage_drop_tests {
             );
         }
         let mut bad = receipt.clone();
-        bad["pages"] = json!(2);
+        bad["pages"] = json!(0);
         assert!(verify_voltage_drop_pdf(&bad, &path, &sha, "T1", "project-a").is_err());
         std::fs::write(&path, b"%PDF-truncated").unwrap();
         assert!(verify_voltage_drop_pdf(&receipt, &path, &sha, "T1", "project-a").is_err());

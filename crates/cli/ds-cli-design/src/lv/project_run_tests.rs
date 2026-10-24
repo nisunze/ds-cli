@@ -240,18 +240,8 @@ fn print(
     assert!(request.get("printing_identity").is_none());
     let path = request["out_pdf"].as_str().unwrap();
     assert!(!Path::new(path).exists());
-    let mut doc = lopdf::Document::with_version("1.5");
-    let pages = doc.new_object_id();
-    let page = doc.add_object(lopdf::dictionary! {"Type" => "Page", "Parent" => pages,
-    "MediaBox" => vec![0.into(),0.into(),595.into(),842.into()]});
-    doc.objects.insert(
-        pages,
-        lopdf::dictionary! {"Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1}.into(),
-    );
-    let catalog = doc.add_object(lopdf::dictionary! {"Type" => "Catalog", "Pages" => pages});
-    doc.trailer.set("Root", catalog);
-    let mut pdf = Vec::new();
-    doc.save_to(&mut pdf).unwrap();
+    // The Reporter counts pages; Core verifies only the bytes it names.
+    let pdf = b"%PDF-1.5\n% one page the Reporter counted\n%%EOF\n".to_vec();
     std::fs::write(path, &pdf).unwrap();
     Ok(
         json!({"schema":"ds.voltage-drop-pdf.render/v1","transformer":"T1","project_label":"Gisagara, CJIC",
