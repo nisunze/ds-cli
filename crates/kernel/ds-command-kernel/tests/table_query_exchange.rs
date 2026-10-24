@@ -117,3 +117,20 @@ fn compatible_additions_do_not_change_the_filter_exchange() {
         [0, 1, 2]
     );
 }
+
+#[test]
+fn retired_page_exports_answer_the_typed_update_refusal() {
+    use ds_command_kernel::table_query::{retired_page_export, UI_UNIT_UPDATE_REQUIRED};
+    for export in [
+        "SessionHandle.getRows",
+        "decodeTableFilterResult",
+        "decodeTableProfilesResult",
+    ] {
+        let refusal = retired_page_export(export);
+        assert!(
+            refusal.starts_with(&format!("{UI_UNIT_UPDATE_REQUIRED}: ")),
+            "{refusal}"
+        );
+        assert!(refusal.contains(export) && refusal.ends_with("update DS GridDesign"));
+    }
+}

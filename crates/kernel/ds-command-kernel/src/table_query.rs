@@ -31,6 +31,22 @@ pub fn admit_profiles(
     validate_profiles_result(query, rows.total_rows, result)
 }
 
+/// The refusal code of a page export that a newer Kernel UI keeps only so an
+/// older page still boots: the page's own exchange left the unit.
+pub const UI_UNIT_UPDATE_REQUIRED: &str = "ui_unit_update_required";
+
+/// The typed refusal a retired page export answers. The Kernel UI linked
+/// Arrow for `getRows` (a row window as IPC) and for the row counts of
+/// `decodeTableFilterResult` / `decodeTableProfilesResult` until 24 Oct 2026;
+/// they stay exported, Arrow-free, so a page built before the row-window
+/// exchange boots and only its attribute table names the update.
+pub fn retired_page_export(export: &str) -> String {
+    format!(
+        "{UI_UNIT_UPDATE_REQUIRED}: this page predates the Kernel UI row-window exchange \
+         ({export}); update DS GridDesign"
+    )
+}
+
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod browser {
     use super::*;
@@ -73,5 +89,33 @@ mod browser {
             .map_err(|error| JsError::new(&error.to_string()))?
             .into_ts()
             .map_err(response_error)
+    }
+
+    // Retired page exports, kept so a page built before the row-window
+    // exchange (Desktop r100 / Windows r99 and older) still boots: its start
+    // check finds every export it calls. Each answers the typed update
+    // refusal; the Kernel UI reads no Arrow for them.
+    /// Retired: count the chunks with `tableRowCount` and admit with
+    /// `decodeTableFilterAnswer`.
+    #[wasm_bindgen(js_name = decodeTableFilterResult, unchecked_return_type = "TableFilterResult")]
+    pub fn decode_filter_result_retired(
+        #[wasm_bindgen(unchecked_param_type = "Uint8Array[]")] _chunks: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "TableFilterResult")] _result: JsValue,
+    ) -> Result<JsValue, JsError> {
+        Err(JsError::new(&retired_page_export(
+            "decodeTableFilterResult",
+        )))
+    }
+    /// Retired: count the chunks with `tableRowCount` and admit with
+    /// `decodeTableProfilesAnswer`.
+    #[wasm_bindgen(js_name = decodeTableProfilesResult, unchecked_return_type = "TableProfilesResult")]
+    pub fn decode_profiles_result_retired(
+        #[wasm_bindgen(unchecked_param_type = "Uint8Array[]")] _chunks: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "TableProfilesQuery")] _query: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "TableProfilesResult")] _result: JsValue,
+    ) -> Result<JsValue, JsError> {
+        Err(JsError::new(&retired_page_export(
+            "decodeTableProfilesResult",
+        )))
     }
 }

@@ -578,6 +578,21 @@ impl SessionHandle {
         stringify_json(&next)
     }
 
+    /// Retired: read `getRowWindow`. A page built before the row-window
+    /// exchange still finds this export at start, so it boots; the call
+    /// answers the typed `ui_unit_update_required` refusal (no Arrow).
+    #[wasm_bindgen(js_name = "getRows")]
+    pub fn get_rows_retired(
+        &self,
+        _layer_name: &str,
+        _offset: usize,
+        _limit: usize,
+    ) -> Result<Vec<u8>, JsError> {
+        Err(JsError::new(&crate::table_query::retired_page_export(
+            "SessionHandle.getRows",
+        )))
+    }
+
     /// Return one layer's bounded row window, or `undefined` when the layer
     /// has no session features. (It replaced `getRows`, the same window as
     /// Arrow IPC bytes, on 24 Oct 2026: the Kernel UI links no Arrow codec.)
