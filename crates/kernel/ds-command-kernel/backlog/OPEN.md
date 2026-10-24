@@ -30,7 +30,7 @@ Tried cases removed from the small-fix queue now live in [HARD-PROBLEMS.md](HARD
 | [19. Country neutrality and duplicated rules](#19-country-neutrality-and-duplicated-rules) | 2 |
 | [21. Windows release code](#21-windows-release-code) | 7 |
 | [22. Operations product code](#22-operations-product-code) | 5 |
-| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 10 |
+| [23. Kernel controls, JSON UI and TypeScript retirement](#23-kernel-controls-json-ui-and-typescript-retirement) | 11 |
 | [24. Owner feature requests (CLI-first, after stabilization)](#24-owner-feature-requests-cli-first-after-stabilization) | 7 |
 | [25. CLI reliability reporting and proactive feedback (priority)](#25-cli-reliability-reporting-and-proactive-feedback-priority) | 5 |
 <!-- /toc -->
@@ -673,6 +673,8 @@ Rules: [PRINCIPLES.md ยง5](PRINCIPLES.md#5-kernel-cli-and-ui-owner-2026-10-07) โ
 
 - **Project and instance isolation** (`docs/prompts/claude-project-instance-isolation.md`; contract `project-and-instance-isolation-contract.md`): after the Server execution context: live Desktop instance discovery and CLI/MCP routing that refuses stale or ambiguous targets; generation-fenced UI session state; multi-principal authority and fair capacity across Solar, printing and a third operation on one Server.
 
+
+- **Desktop profile store worker has no installed Kernel unit** (blank-screen lane 2026-10-24): on the installed Desktop `profileStoreHost` (ds-web `src/lib/storage/kernel-store.ts`) runs `auth_session` in `src/lib/storage/status.worker.ts`, which imports `@ds-platform/command-kernel` without the `ui-init`/`ui-admitted` handshake the compute, grid and survey-photo workers use (`src/lib/desktop/ui-unit-worker.ts`). Every call refuses `command-kernel_unavailable: no admitted installed UI capture in this realm`, so the page session is never read or kept: a Desktop sign-in does not survive a restart and the retired `localStorage` record is re-migrated in memory on every launch (console: "auth session: the record could not be kept"). Fix: give the storage worker the admitted Kernel capture exactly as `src/lib/media/photo-processing.ts` does, prove a sign-in survives a Desktop relaunch, and keep the Web path unchanged. (The blank window itself was a dropped `StateSubscription`, fixed in ds-web 6db3eb7dc.)
 
 ## 24. Owner feature requests (CLI-first, after stabilization)
 
