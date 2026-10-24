@@ -571,4 +571,12 @@ impl Reads for FakeReads {
             .ok_or_else(|| "the storage host answered 404".to_string())?;
         place_verified(&bytes[..], destination, sha256, size_bytes)
     }
+
+    fn sweep_temporaries(
+        &self,
+        project: &str,
+        before: std::time::SystemTime,
+    ) -> Result<(usize, u64), String> {
+        crate::reads::sweep_temporaries(&self.root, project, before)
+    }
 }

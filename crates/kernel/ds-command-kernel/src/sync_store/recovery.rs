@@ -86,9 +86,69 @@ pub struct Decision {
     pub engine_release: String,
     pub engine_build_manifest_sha256: Option<String>,
     pub failure_code: Option<String>,
+    /// The bounded sentence of the same receipt as `failure_code`: what the
+    /// authority or the transport said. Never parsed; `failure_code` is the
+    /// typed fact.
+    pub failure_detail: Option<String>,
     pub retry_eligible: bool,
     pub action: &'static str,
     pub reason: &'static str,
+    /// What retries this row next, and when, with nobody acting.
+    pub next_retry: NextRetry,
+}
+
+/// The next retry of one row: a closed `when` and its sentence.
+#[derive(Debug, Serialize)]
+pub struct NextRetry {
+    /// `next_pass`, `after_sign_in`, `explicit` or `none`.
+    pub when: &'static str,
+    pub detail: &'static str,
+}
+
+/// The longest receipt sentence a status row repeats.
+const MAX_FAILURE_DETAIL_BYTES: usize = 400;
+
+fn bounded_detail(detail: &str) -> String {
+    if detail.len() <= MAX_FAILURE_DETAIL_BYTES {
+        return detail.to_string();
+    }
+    let mut end = MAX_FAILURE_DETAIL_BYTES;
+    while !detail.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &detail[..end])
+}
+
+/// Decided from the row and the receipt that explains it, nothing else.
+fn next_retry(row: &ArtifactRow, attempt: Option<&ReceiptRow>, eligible: bool) -> NextRetry {
+    let (when, detail) = if row.archived {
+        ("none", "archived history; nothing retries it")
+    } else if matches!(row.state, ArtifactState::Held | ArtifactState::Uploading) {
+        if attempt.is_some_and(|receipt| receipt.outcome == "credential_refused") {
+            (
+                "after_sign_in",
+                "waits for sign-in: run `ds account connect` (or sign in to DS GridDesign Desktop); the next pass then retries it",
+            )
+        } else {
+            (
+                "next_pass",
+                "retries next pass: the next sync pass asks the record again (a running `ds core serve` passes every 30 s, on a new seal and when the network returns); nothing to do",
+            )
+        }
+    } else if row.state == ArtifactState::Published {
+        ("none", "published; nothing to retry")
+    } else if eligible {
+        (
+            "explicit",
+            "retries only when asked: `ds core sync retry --project <id> --row <id> --yes`",
+        )
+    } else {
+        (
+            "none",
+            "settled by the record's verdict; it is never retried",
+        )
+    };
+    NextRetry { when, detail }
 }
 
 /// Native verification reads one sealed SQLite payload, never publication authority.
@@ -254,9 +314,18 @@ pub fn resolve(mut request: Request) -> std::result::Result<Result, String> {
                 .last_attempt
                 .as_ref()
                 .and_then(|r| r.failure_code.clone()),
+            // The same receipt's sentence, when it was a failure: a committed
+            // attempt or a restored session explains nothing.
+            failure_detail: entry
+                .last_attempt
+                .as_ref()
+                .filter(|r| !matches!(r.outcome.as_str(), "committed" | "connected"))
+                .and_then(|r| r.detail.as_deref())
+                .map(bounded_detail),
             retry_eligible: eligible,
             action,
             reason,
+            next_retry: next_retry(row, entry.last_attempt.as_ref(), eligible),
         });
     }
     let lease_held = request

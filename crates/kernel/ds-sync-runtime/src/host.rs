@@ -189,6 +189,17 @@ pub trait Reads {
         let _ = stop;
         self.download_verified(url, destination, sha256, size_bytes)
     }
+    /// Remove this project's `.part-*` download temporaries last written
+    /// before `before` (`reads::sweep_temporaries`). A host whose reads
+    /// leave no temporaries removes nothing.
+    fn sweep_temporaries(
+        &self,
+        project: &str,
+        before: std::time::SystemTime,
+    ) -> Result<(usize, u64), String> {
+        let _ = (project, before);
+        Ok((0, 0))
+    }
 }
 
 /// The one seam, implemented over the durable store.
@@ -663,6 +674,10 @@ impl SyncHost for StoreHost<'_> {
                 | "reclaimed"
                 | "reclaim_failed"
                 | "adopted"
+                // A pass that failed before any step, with its typed cause;
+                // download temporaries a killed pass left, once removed.
+                | "pass"
+                | "sweep"
                 | store::IN_SYNC
         ) {
             return Ok(());
@@ -853,6 +868,20 @@ impl SyncHost for StoreHost<'_> {
             receipt.len() as u64,
         )?;
         Ok(Some(bytes))
+    }
+
+    fn sweep_temporaries(&self, project: &str) -> Result<(usize, u64), String> {
+        // This pass's start: a temporary written since is not an orphan.
+        let started = std::time::SystemTime::now();
+        // Only the lease holder deletes: no other worker drains this project
+        // while it holds the lease, so no live step of theirs owns one.
+        let holds = self.snapshot()?.lease.is_some_and(|lease| {
+            lease.worker_id == self.worker_id && lease.expires_at_ms > now_ms()
+        });
+        if !holds {
+            return Err("only this project's lease holder may remove download temporaries".into());
+        }
+        self.reads.sweep_temporaries(project, started)
     }
 
     fn reclaim(&self, project: &str, row: &LocalRow) -> Result<u64, String> {

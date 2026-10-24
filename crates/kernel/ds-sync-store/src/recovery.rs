@@ -34,6 +34,24 @@ impl Store {
             .transpose()
     }
 
+    /// Why a queued row still waits, newest first by the append sequence: its
+    /// own last upload attempt, a pass that failed before any step (`pass` /
+    /// `failed`, carrying the transport's or the gateway's typed cause), or
+    /// the session verdict (`session`: a refused or restored credential). A
+    /// queued row is never retry-eligible, so this never opens a recovery.
+    fn held_by_on(
+        connection: &Connection,
+        fence: &Fence,
+        row: &ArtifactRow,
+    ) -> Result<Option<ReceiptRow>> {
+        let raw: Option<String> = connection.query_row(
+            "SELECT row FROM receipts WHERE account=?1 AND deployment=?2 AND install_id=?3 AND scope=?4 AND ((json_extract(row,'$.action')='upload' AND json_extract(row,'$.client_publish_id')=?5) OR (json_extract(row,'$.action')='pass' AND json_extract(row,'$.outcome')='failed') OR json_extract(row,'$.action')='session') ORDER BY sequence DESC LIMIT 1",
+            params![fence.account, fence.deployment, fence.install_id, scope_key(&row.scope), row.client_publish_id], |row| row.get(0),
+        ).optional()?;
+        raw.map(|raw| serde_json::from_str(&raw).map_err(Error::Row))
+            .transpose()
+    }
+
     /// Status and apply share one snapshot shape; apply holds an IMMEDIATE transaction.
     /// The caller binds the local owner fence. No network, producer labels or file paths are accepted.
     pub fn recovery(
@@ -65,7 +83,18 @@ impl Store {
             fence, &scope_key(scope))?;
         let mut entries = Vec::new();
         for row in rows {
-            let last_attempt = Self::last_attempt_on(&tx, fence, &row)?;
+            // A queued row has no verdict to recover from; what it shows is why
+            // it still waits: the newest of its own attempt, a pass that could
+            // not reach it, or a session verdict (`held_by_on`).
+            let last_attempt = if matches!(
+                row.state,
+                ds_command_kernel::sync_store::ArtifactState::Held
+                    | ds_command_kernel::sync_store::ArtifactState::Uploading
+            ) {
+                Self::held_by_on(&tx, fence, &row)?
+            } else {
+                Self::last_attempt_on(&tx, fence, &row)?
+            };
             entries.push(recovery::Entry {
                 standing: standing.contains(row.replay_key.as_str()),
                 row,

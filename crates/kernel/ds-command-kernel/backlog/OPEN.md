@@ -75,22 +75,26 @@ is ruled in the sync contract: simple local clean and recompute.
   behind the remaining ~400 MB. Next step: let `Delivery::sealed_since_plan`
   re-ask a held row once the kernel's own retry deadline (`plan.wake`) for it
   has passed, never sooner; decide whether that deadline is per row.
-- **A killed Core leaves `.part-*` files in `sync-downloads` that nothing removes.**
-  `reads::place_verified` removes its temporary on every error, and a stopped
-  pass now abandons the object it reads the same way, but a SIGKILL'd or
-  crashed process leaves the temporary behind (ADERM core-state-2, 10-24: two
-  orphans after the 00:02 kill; a restart writes a new uuid-named file and
-  never reads them). Next step: when a head root is opened for a fetch, remove
-  `.{output}.part-*` entries older than the lease TTL (no live worker can still
-  write one), with a test that a fresh pass's own temporary is untouched.
-- **The Server pump hides its failure.** `solar-sync-pump` stays `failed` with
-  "Sync Center could not read or publish durable server work" from one pass until
-  a later pass succeeds, and the cause is neither logged nor projected
-  (`ds-cli-server` `solar_sync.rs` `note_publication_failure` drops it). The one
-  seen cause on 10-23 was a startup `Store sidecar must be an ordinary single-link
-  file` race in `ds-sync-store` `prepare_private`. Next step: log the bounded
-  cause on the Core's stderr and project a typed code; then reproduce the sidecar
-  race with two openers of a fresh store.
+- **A Core whose session cannot open runs no pass, so a held row shows no cause.**
+  Since the typed-cause slice a failed step or heads read keeps its transport
+  or gateway code on the receipt (`failure_code`, e.g. `deadline_exceeded`,
+  `service_status`) and `ds core sync status` shows it with `next_retry`. But
+  at a startup outage `ServerSyncSession::open` fails in
+  `refresh_runtime_identity` before any run (live 10-24 01:17, core-state-2
+  behind a refusing proxy: `core activity` says `unavailable: no DS service
+  was reached: ...`, the held row `failure_code: null`), and the error is a
+  String by then. Next step: derive the owner fence locally before the refresh
+  (`headless_principal`, install id) and let the pump keep one `pass/failed`
+  receipt with the refresh Failure's `detail.transport.cause`. Storage object
+  reads (`Reads::download_verified`, e.g. "the storage host could not be
+  reached") still fail as prose with no code; give `VerifiedReads` the same
+  closed cause tokens.
+- **Store sidecar race at Core startup.** `compute worker: the sync store could
+  not be opened: Store sidecar must be an ordinary single-link file with the
+  same private owner` printed twice at a Core start on 10-24 01:17
+  (`solar-work/core-serve-8-proxyfail.log`), as on 10-23; the pump's sentence
+  stays generic. Next step: reproduce with two openers of a fresh store in
+  `ds-sync-store` `prepare_private`, then log the bounded cause on stderr.
 
 ## Solar CLI: a calculation reachable from the documented commands (Claude)
 

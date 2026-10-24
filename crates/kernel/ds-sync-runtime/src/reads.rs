@@ -229,6 +229,85 @@ pub fn place_verified(
     outcome
 }
 
+/// The most directory entries one sweep inspects: a bounded walk, whatever a
+/// cache has grown to. What it does not reach waits for the next pass.
+const SWEEP_MAX_ENTRIES: usize = 100_000;
+
+/// Remove the temporaries `place_verified` left under one project's download
+/// root (`<root>/<project>/<engine>/<operation>/<variant>/.<output>.part-<uuid>`)
+/// when its process was killed or crashed mid-object: only regular files of
+/// exactly that name, last written before `before`. A live writer keeps its
+/// file's mtime moving, and one opened after `before` is never touched; links
+/// are neither followed nor removed. Answers the files and bytes removed.
+/// The caller holds the project's lease (`SyncHost::sweep_temporaries`).
+pub fn sweep_temporaries(
+    root: &Path,
+    project: &str,
+    before: std::time::SystemTime,
+) -> Result<(usize, u64), String> {
+    if !ds_command_kernel::execution_context::valid_project(project) {
+        return Err("download temporaries are swept for one valid project".into());
+    }
+    let mut removed = (0_usize, 0_u64);
+    let mut visited = 0_usize;
+    // (directory, depth below the project root); heads sit at depth 3.
+    let mut pending = vec![(root.join(project), 0_u8)];
+    while let Some((directory, depth)) = pending.pop() {
+        let entries = match std::fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(format!("could not read the download cache: {error}")),
+        };
+        for entry in entries {
+            visited += 1;
+            if visited > SWEEP_MAX_ENTRIES {
+                return Ok(removed);
+            }
+            let entry =
+                entry.map_err(|error| format!("could not read the download cache: {error}"))?;
+            let Ok(metadata) = std::fs::symlink_metadata(entry.path()) else {
+                continue;
+            };
+            if metadata.is_dir() && depth < 3 {
+                pending.push((entry.path(), depth + 1));
+                continue;
+            }
+            let orphan = depth == 3
+                && metadata.is_file()
+                && entry.file_name().to_str().is_some_and(is_temporary_name)
+                && metadata.modified().is_ok_and(|written| written < before);
+            if orphan {
+                match std::fs::remove_file(entry.path()) {
+                    Ok(()) => {
+                        removed.0 += 1;
+                        removed.1 = removed.1.saturating_add(metadata.len());
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => {
+                        return Err(format!("could not remove a download temporary: {error}"))
+                    }
+                }
+            }
+        }
+    }
+    Ok(removed)
+}
+
+/// `.<output>.part-<32 lowercase hex>`, the one name `place_verified` writes.
+fn is_temporary_name(name: &str) -> bool {
+    let Some(stem) = name.strip_prefix('.') else {
+        return false;
+    };
+    let Some((output, id)) = stem.rsplit_once(".part-") else {
+        return false;
+    };
+    !output.is_empty()
+        && id.len() == 32
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 /// Inspect a downloaded replica against the current authoritative head. These
 /// facts are never producer rows: a stale or removed remote head cannot turn a
 /// cached download into a local publication.
@@ -370,6 +449,14 @@ impl Reads for VerifiedReads {
             .limit(size_bytes.saturating_add(1))
             .reader();
         place_verified(Stoppable { reader, stop }, destination, sha256, size_bytes)
+    }
+
+    fn sweep_temporaries(
+        &self,
+        project: &str,
+        before: std::time::SystemTime,
+    ) -> Result<(usize, u64), String> {
+        sweep_temporaries(&self.root, project, before)
     }
 }
 

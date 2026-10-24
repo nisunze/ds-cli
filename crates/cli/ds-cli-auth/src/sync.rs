@@ -453,10 +453,30 @@ fn gateway_error(error: ClientError) -> GatewayError {
     let refusal = error
         .service_refusal()
         .map(|refusal| (refusal.status(), refusal.code().map(str::to_owned)));
+    // A transient that the native transport classified names its cause: the
+    // closed token becomes the receipt's `failure_code` and its sentence the
+    // detail, instead of "temporarily unreachable". No status: still the
+    // moment, never a verdict on a publication.
+    let cause = (refusal.is_none() && error.kind() == ds_client_core::ErrorKind::Transient)
+        .then(crate::network_cause::take_gateway_cause)
+        .flatten();
+    let retries = error.retries();
     let detail = client_error(error);
-    match refusal {
-        Some((status, code)) => GatewayError::refused(status, code, detail),
-        None => detail.into(),
+    match (refusal, cause) {
+        (Some((status, code)), _) => GatewayError::refused(status, code, detail),
+        (None, Some((code, sentence))) => {
+            GatewayError::unanswered(code, format!("{sentence}{}", retried(retries)))
+        }
+        (None, None) => detail.into(),
+    }
+}
+
+/// The same tail `ClientError` prints after a weak-network retry curve.
+fn retried(retries: u8) -> String {
+    match retries {
+        0 => String::new(),
+        1 => " (retried once)".into(),
+        retries => format!(" (retried {retries} times)"),
     }
 }
 
@@ -489,7 +509,16 @@ fn credential_error(detail: impl Into<String>) -> GatewayError {
 }
 fn classify_device_refresh_error(error: ds_cli_contract::Failure) -> GatewayError {
     if error.code() == "device_auth_transient" {
-        error.message().to_owned().into()
+        // `network_cause::explain` already named the cause in the message
+        // and in `detail.transport.cause`; carry that token as the code.
+        let cause = error
+            .detail_value()
+            .and_then(|detail| detail.get("transport"))
+            .and_then(|transport| transport.get("cause"))
+            .and_then(Value::as_str)
+            .unwrap_or("device_auth_transient")
+            .to_owned();
+        GatewayError::unanswered(cause, error.message())
     } else {
         credential_error(error.message())
     }
@@ -573,3 +602,7 @@ fn pins(lane: Lane) -> Result<AuthorityPins, String> {
 #[cfg(test)]
 #[path = "sync_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "sync_cause_tests.rs"]
+mod cause_tests;

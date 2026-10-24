@@ -270,6 +270,21 @@ pub(crate) fn take() -> Option<Observed> {
     LAST.with(Cell::take)
 }
 
+/// What the last request on this thread recorded, as a Sync Center gateway
+/// failure names it: the closed cause token and its bounded sentence, taken
+/// once. The sync loop keeps both on the receipt of the step or pass that
+/// failed (`failure_code` and `detail`), so a held row says why it waits.
+pub(crate) fn take_gateway_cause() -> Option<(&'static str, String)> {
+    let observed = take()?;
+    let cause = observed.cause;
+    let sentence = cause.sentence(observed.proxy_configured);
+    let lead = match cause.reach() {
+        Reach::NotReached => format!("no DS service was reached: {sentence}"),
+        _ => sentence,
+    };
+    Some((cause.token(), lead))
+}
+
 fn cause_of(error: &ureq::Error) -> Cause {
     use ureq::Error;
     use ureq::Timeout;

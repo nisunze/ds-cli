@@ -118,6 +118,15 @@ pub trait SyncHost {
         let _ = stop;
         self.fetch(project, head).map(Some)
     }
+    /// Remove the download temporaries (`.part-*`) of this project that a
+    /// killed or crashed pass left, last written before this call. Only the
+    /// project's lease holder calls it, once, as its pass starts, so no live
+    /// step owns one: this pass has opened none yet. Answers the files and
+    /// bytes removed. A host with no download cache removes nothing.
+    fn sweep_temporaries(&self, project: &str) -> Result<(usize, u64), String> {
+        let _ = project;
+        Ok((0, 0))
+    }
     /// Free the bytes of a publication that lost. Owner, 2026-09-20: "when
     /// there's a conflict, online overwrites local artefacts"; an artefact
     /// never accumulates on the edge. Answers the bytes freed; a batch that
@@ -429,6 +438,19 @@ fn run_leased(
     // settled as lost — is this pass's evidence too, never a silent side
     // effect of reading the inventory.
     let mut receipts: Vec<Receipt> = host.take_receipts(project);
+    // This worker holds the lease: what a killed or crashed pass left half
+    // written is nobody's now. A failed sweep never stops the pass.
+    match host.sweep_temporaries(project) {
+        Ok((0, _)) => {}
+        Ok((files, bytes)) => {
+            let mut receipt = Receipt::new("sweep", "removed").detail(format!(
+                "removed {files} download temporaries a stopped or killed pass left"
+            ));
+            receipt.bytes = Some(bytes);
+            keep(host, project, &mut receipts, receipt);
+        }
+        Err(error) => receipts.push(Receipt::new("sweep", "failed").detail(error)),
+    }
     let (mut remote, mut read_at) = host.held_heads(project)?;
     let mut plan = plan_once_with_interest(
         host,
@@ -457,6 +479,11 @@ fn run_leased(
                             .detail(credential_refusal_detail())
                             .failure_code(error.code.clone()),
                     )?;
+                } else {
+                    // Every other failure ends the pass before any step: keep
+                    // its typed cause, so a held row names why it waits and
+                    // the next pass retries (`ds core sync status`).
+                    host.record_receipt(project, &pass_failed(&error))?;
                 }
                 return Err(error.into());
             }
@@ -780,6 +807,18 @@ fn stopped(remaining: &[sync::Action]) -> Receipt {
     Receipt::new("pass", "stopped").detail(format!(
         "the host is stopping; {steps} planned upload or download steps wait for the next pass"
     ))
+}
+
+/// The kept evidence of a pass the record did not let start: the gateway's
+/// own code (or the transport's closed cause) and its bounded detail. No row
+/// changed state; every held row waits for the next pass.
+fn pass_failed(error: &GatewayError) -> Receipt {
+    Receipt::new("pass", "failed")
+        .detail(format!(
+            "the project heads could not be read: {}",
+            error.detail
+        ))
+        .failure_code(error.code.clone())
 }
 
 /// Bind only the publication selected in this pass, never a fresh lookup

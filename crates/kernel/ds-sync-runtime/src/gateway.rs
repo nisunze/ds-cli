@@ -24,7 +24,9 @@ use crate::routes::SyncRoute;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GatewayError {
     pub status: Option<u16>,
-    /// The authority's closed error code (`error.code`), when it named one.
+    /// The authority's closed error code (`error.code`), when it named one;
+    /// with no `status`, the transport's closed cause, when it named one
+    /// ([`GatewayError::unanswered`]).
     pub code: Option<String>,
     pub detail: String,
 }
@@ -34,6 +36,18 @@ impl GatewayError {
         GatewayError {
             status: Some(status),
             code,
+            detail: detail.into(),
+        }
+    }
+
+    /// No verdict arrived, and the transport named why: a closed cause token
+    /// (`deadline_exceeded`, `service_status`, `connection_refused`, ...)
+    /// and its bounded sentence. `status` stays `None`, so the loop still
+    /// reads it as the moment, never as a verdict on a publication.
+    pub fn unanswered(code: impl Into<String>, detail: impl Into<String>) -> Self {
+        GatewayError {
+            status: None,
+            code: Some(code.into()),
             detail: detail.into(),
         }
     }
