@@ -261,12 +261,7 @@ impl ProjectListCall<'_> {
         canonical_uid: normal,
         device_id: normal,
     }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         PROJECT_RESPONSE_LIMIT
@@ -328,25 +323,9 @@ impl TransformerContextCall<'_> {
     pub const fn projection(&self) -> TransformerContextProjection {
         self.fields
     }
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
 
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         TRANSFORMER_CONTEXT_RESPONSE_LIMIT
@@ -391,23 +370,8 @@ impl ProjectFormEditorCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::ProjectForms;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         PROJECT_FORMS_RESPONSE_LIMIT
@@ -438,23 +402,8 @@ impl ProjectFormsCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::ProjectForms;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         PROJECT_FORMS_RESPONSE_LIMIT
@@ -495,23 +444,8 @@ impl SolarSnapshotCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::SolarAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         SOLAR_SNAPSHOT_RESPONSE_LIMIT
@@ -539,17 +473,7 @@ pub struct SurveyQueryCall<'a> {
 }
 
 impl SurveyQueryCall<'_> {
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
     pub const fn path(&self) -> &'static str {
         SURVEY_QUERY_PATH
     }
@@ -580,17 +504,7 @@ pub struct SurveyEntriesSelectCall<'a> {
 }
 
 impl SurveyEntriesSelectCall<'_> {
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
     pub const fn path(&self) -> &'static str {
         SURVEY_ENTRIES_SELECT_PATH
     }
@@ -621,17 +535,7 @@ pub struct SurveyEntriesChangesCall<'a> {
 }
 
 impl SurveyEntriesChangesCall<'_> {
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
     pub const fn path(&self) -> &'static str {
         SURVEY_ENTRIES_CHANGES_PATH
     }
@@ -728,12 +632,7 @@ impl StatusProcessingCall<'_> {
         bearer_token: normal,
         canonical_email: normal,
     }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         crate::STATUS_PROCESSING_RESPONSE_LIMIT
@@ -768,12 +667,7 @@ impl SurveyPhotoCall<'_> {
         bearer_token: normal,
         canonical_email: normal,
     }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         crate::survey_photo::RESPONSE_LIMIT
@@ -791,23 +685,8 @@ impl ProjectDataCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::ProjectDataAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         crate::LAYERS_RESPONSE_LIMIT
@@ -833,17 +712,7 @@ impl SurveyControlCall<'_> {
         self.route.generated_operation()
     }
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
     pub fn path(&self) -> String {
         self.route.path()
     }
@@ -895,23 +764,8 @@ impl FeedbackCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::FeedbackAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
@@ -946,17 +800,7 @@ impl SharedAssetsCall<'_> {
                 .expect("generated closed semantic derivative Bulk route")
         })
     }
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
     pub fn path(&self) -> String {
         self.generated_operation().path_template().into()
     }
@@ -996,23 +840,8 @@ impl ProjectManagementCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::PmAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     /// A whole plan with its tasks, records and residuals. Bounded like the
     /// shared-assets read rather than like a tile.
@@ -1044,23 +873,8 @@ impl MemberFormGrantCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::ProjectsAccessAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     /// One finite grant snapshot and exact receipt, capped at 128 KiB.
     pub const fn response_limit(&self) -> usize {
@@ -1096,23 +910,8 @@ impl ProjectPropertiesCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::ProjectsAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     /// One project document's receipt: far smaller than a tile or a plan.
     pub const fn response_limit(&self) -> usize {
@@ -1155,12 +954,7 @@ impl ProjectDeletionCall<'_> {
         canonical_uid: normal,
         device_id: normal,
     }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     pub const fn response_limit(&self) -> usize {
         crate::project_deletion::MAX_RESPONSE_BYTES
@@ -1199,23 +993,8 @@ impl DeviceApproveCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::DecideDeviceAuthorization;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     pub const fn response_limit(&self) -> usize {
         DEVICE_APPROVE_RESPONSE_LIMIT
@@ -1266,17 +1045,7 @@ impl DesignVersionsCall<'_> {
         };
         Some(crate::gateway_operation(operation).expect("generated closed history Bulk route"))
     }
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
     pub fn path(&self) -> String {
         self.generated_operation().path_template().into()
     }
@@ -1308,23 +1077,8 @@ impl DesignAttachmentsCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::DesignAttachmentsAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
@@ -1350,23 +1104,8 @@ impl DesignTagsCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::DesignAnnotationsAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
@@ -1390,24 +1129,11 @@ impl DesignMigrationCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::DataInterop;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    /// The design data plane, the same door the transformer copy path this
-    /// endpoint extends already answers on.
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route! {
+        /// The design data plane, the same door the transformer copy path this
+        /// endpoint extends already answers on.
+        owned
     }
 
     pub const fn response_limit(&self) -> usize {
@@ -1441,23 +1167,8 @@ impl SurveyMigrationCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::DataPipeline;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     pub const fn response_limit(&self) -> usize {
         crate::survey_migration::MAX_RESPONSE_BYTES
@@ -1480,17 +1191,7 @@ pub struct ReportArtifactCall<'a> {
 }
 
 impl ReportArtifactCall<'_> {
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
     pub fn path(&self) -> String {
         "/api/v1/report_artifacts".into()
     }
@@ -1522,23 +1223,8 @@ impl GridModelsCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::ProjectGridModelsAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     pub const fn response_limit(&self) -> usize {
         8 * 1024 * 1024
@@ -1562,23 +1248,8 @@ impl GlobalTilesCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::TilesAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         TILE_RESPONSE_LIMIT
@@ -1609,23 +1280,8 @@ impl AdminBoundsCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::GetRwandaAdmin;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
     pub fn url(&self) -> String {
         format!("{}{}?{}", self.gateway_origin(), self.path(), self.query)
     }
@@ -1651,23 +1307,8 @@ impl SreOverviewCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::SreOverview;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
     pub fn url(&self) -> String {
         format!("{}{}", self.gateway_origin(), self.path())
     }
@@ -1695,23 +1336,8 @@ impl SreEventsCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::DataInterop;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
     pub const fn action(&self) -> &'static str {
         SRE_EVENTS_ACTIONS[0]
     }
@@ -1749,23 +1375,8 @@ impl SurveyEntriesReadCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::DataInterop;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn accept(&self) -> &'static str {
         "application/x-ndjson"
@@ -1795,23 +1406,8 @@ impl SurveyMediaGrantCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::DsSystemReport;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         crate::survey_media_fetch::GRANT_RESPONSE_LIMIT
@@ -1863,23 +1459,8 @@ impl InstallsCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::Governance;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     pub const fn response_limit(&self) -> usize {
         1024 * 1024
@@ -1905,23 +1486,8 @@ impl GridCatalogCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::GridCatalogAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub fn path(&self) -> String {
-        Self::GATEWAY_OPERATION.path_template().into()
-    }
-    pub fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(owned);
 
     /// The reviewed descriptor's cap for this operation.
     pub const fn response_limit(&self) -> usize {
@@ -1953,17 +1519,7 @@ impl SolarProjectCall<'_> {
         }
     }
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
     pub fn path(&self) -> String {
         self.generated_operation().path_template().into()
     }
@@ -1995,23 +1551,8 @@ impl StylesCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::StylesAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         crate::LAYERS_RESPONSE_LIMIT
@@ -2050,23 +1591,8 @@ impl LayersCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::LayersAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         self.operation.response_limit()
@@ -2091,23 +1617,8 @@ impl PrintingCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::PrintingAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         crate::PRINTING_RESPONSE_LIMIT
@@ -2135,23 +1646,8 @@ impl DesignSelectionsCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::DesignSelectionsAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
     pub const fn action(&self) -> &'static str {
         self.operation.action()
     }
@@ -2184,23 +1680,8 @@ impl DataDistributionCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::DataDistributionAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
     pub const fn action(&self) -> &'static str {
         self.operation.action()
     }
@@ -2324,23 +1805,8 @@ impl TileCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::TilesAction;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
 
     pub const fn response_limit(&self) -> usize {
         TILE_RESPONSE_LIMIT
@@ -2371,23 +1837,8 @@ impl ProjectReportCall<'_> {
     pub(crate) const GATEWAY_OPERATION: ds_gateway_client::Operation =
         ds_gateway_client::Operation::DsSystemReport;
 
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
-    pub const fn path(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.path_template()
-    }
-    pub const fn method(&self) -> &'static str {
-        Self::GATEWAY_OPERATION.method().as_str()
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
+    crate::gateway_compat::gateway_fixed_route!(borrowed);
     pub const fn action(&self) -> &'static str {
         self.operation.action()
     }
@@ -2481,17 +1932,7 @@ pub struct KnownColumnsCall<'a> {
 }
 
 impl KnownColumnsCall<'_> {
-    crate::gateway_compat::gateway_common_accessors! {
-        gateway_origin: normal,
-        content_type: const,
-        correlation_headers: const,
-        gateway_api_key: normal,
-        client_id: const,
-        bearer_token: normal,
-        canonical_email: normal,
-        canonical_uid: normal,
-        device_id: normal,
-    }
+    crate::gateway_compat::gateway_common_accessors!(standard);
     pub fn path(&self) -> String {
         format!(
             "/config/{}/known-columns",

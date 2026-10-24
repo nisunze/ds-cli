@@ -54,14 +54,49 @@ macro_rules! gateway_accessor_mode {
 }
 
 macro_rules! gateway_common_accessors {
+    (standard) => {
+        crate::gateway_compat::gateway_common_accessors! {
+            gateway_origin: normal,
+            content_type: const,
+            correlation_headers: const,
+            gateway_api_key: normal,
+            client_id: const,
+            bearer_token: normal,
+            canonical_email: normal,
+            canonical_uid: normal,
+            device_id: normal,
+        }
+    };
     ($($name:ident : $mode:ident),* $(,)?) => {
         $(crate::gateway_compat::gateway_accessor_mode!($name, $mode);)*
+    };
+}
+
+macro_rules! gateway_fixed_route {
+    ($(#[$path_meta:meta])* borrowed) => {
+        $(#[$path_meta])*
+        pub const fn path(&self) -> &'static str {
+            Self::GATEWAY_OPERATION.path_template()
+        }
+        pub const fn method(&self) -> &'static str {
+            Self::GATEWAY_OPERATION.method().as_str()
+        }
+    };
+    ($(#[$path_meta:meta])* owned) => {
+        $(#[$path_meta])*
+        pub fn path(&self) -> String {
+            Self::GATEWAY_OPERATION.path_template().into()
+        }
+        pub fn method(&self) -> &'static str {
+            Self::GATEWAY_OPERATION.method().as_str()
+        }
     };
 }
 
 pub(crate) use gateway_accessor;
 pub(crate) use gateway_accessor_mode;
 pub(crate) use gateway_common_accessors;
+pub(crate) use gateway_fixed_route;
 
 /// One reviewed list of existing ordinary native gateway methods.
 /// Kinds preserve byte-send, GET, Accept, processing-lane and fixture mechanics.
