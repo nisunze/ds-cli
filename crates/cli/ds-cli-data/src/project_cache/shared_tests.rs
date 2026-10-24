@@ -155,3 +155,50 @@ fn the_publisher_object_path_is_encoded_and_fixed() {
 fn contour_revisions_name_the_governed_surface() {
     assert!(surface_version().starts_with("rwanda_dem_10m/"));
 }
+
+fn seeded(uncovered: Vec<[f64; 4]>, answered: bool) -> ds_project_data::revisions::SharedOutcome {
+    ds_project_data::revisions::SharedOutcome {
+        ensure: ds_project_data::EnsureOutcome {
+            dataset_key: "contours".into(),
+            status: json!({}),
+            coverage: Default::default(),
+            coverage_geometry: None,
+            clusters: 1,
+            covered: uncovered.is_empty(),
+            acquired: 1,
+            skipped: 0,
+            uncovered,
+            features: if answered { 108 } else { 0 },
+            warnings: vec![],
+        },
+        head_revision: answered.then_some(1),
+        replayed: vec![],
+        source_cells: 3,
+        published: None,
+        stale_retries: 0,
+        chain: None,
+        freshness: None,
+        answered,
+    }
+}
+
+#[test]
+fn uncovered_contour_cells_are_an_itemised_gap_and_only_a_wholly_uncovered_project_refuses() {
+    let goma = [29.20, -1.70, 29.21, -1.69];
+    let border = [29.25, -1.70, 29.26, -1.69];
+    // Mixed: the covered cells published, the uncovered one is itemised.
+    let gaps = surface_gaps(&seeded(vec![goma], true), &[border])
+        .unwrap()
+        .expect("a gap is listed");
+    assert_eq!(gaps[0]["reason"], OUTSIDE_DEM);
+    assert_eq!(gaps[0]["count"], 1);
+    assert_eq!(gaps[0]["cells"], json!([goma]));
+    assert_eq!(gaps[1]["reason"], "partially_outside_rwanda_dem");
+    assert_eq!(gaps[1]["published"], true);
+    // Fully covered: no gap, the row is unchanged.
+    assert_eq!(surface_gaps(&seeded(vec![], true), &[]).unwrap(), None);
+    // Control: the surface reaches none of the project — the typed refusal.
+    let (code, message) = surface_gaps(&seeded(vec![goma, border], false), &[]).unwrap_err();
+    assert_eq!(code, "contour_surface_uncovered");
+    assert!(message.contains("covers none of this project's 2 planned contour cell(s)"));
+}

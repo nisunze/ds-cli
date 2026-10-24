@@ -148,6 +148,7 @@ impl SourceHost for Source {
             source_version: self.version.clone(),
             receipt: json!({"publisher": "fixture", "version": self.version}),
             pages,
+            uncovered: Vec::new(),
         })
     }
 }
@@ -228,7 +229,7 @@ impl Machine {
         dataset: &Dataset,
         source: &DeclaredSource,
         door: &Door,
-        publisher: &mut Source,
+        publisher: &mut dyn SourceHost,
         sites: &[&str],
         refresh: bool,
     ) -> Result<SharedOutcome, SharedFailure> {
@@ -647,4 +648,129 @@ fn contours_seed_through_the_same_chain_under_their_own_head() {
         (vec![1], 0)
     );
     assert_eq!(second.ensure.features, 1);
+}
+
+/// A surface that reaches only part of the project: cells west of `edge`
+/// are answered by the fixture, the rest are declared uncovered.
+struct Bordered {
+    inner: Source,
+    edge: f64,
+    asked: usize,
+}
+
+impl SourceHost for Bordered {
+    fn current_version(&self, dataset: &Dataset) -> Option<String> {
+        self.inner.current_version(dataset)
+    }
+    fn acquire(
+        &mut self,
+        dataset: &Dataset,
+        cells: &[[f64; 4]],
+        scratch: &Path,
+    ) -> Result<SourceBatch, SharedFailure> {
+        self.asked += cells.len();
+        let (inside, outside): (Vec<[f64; 4]>, Vec<[f64; 4]>) =
+            cells.iter().partition(|cell| cell[2] <= self.edge);
+        let mut batch = self.inner.acquire(dataset, &inside, scratch)?;
+        batch.uncovered = outside;
+        Ok(batch)
+    }
+}
+
+fn bordered_contours(edge: f64) -> (Dataset, DeclaredSource, Bordered) {
+    let settings = ContourSettings {
+        minor_interval_m: 10,
+        index_interval_m: 50,
+        sample_spacing_m: 10.0,
+    };
+    let line = |id: &str, x: f64| {
+        json!({"type":"Feature","id":id,"properties":{"elevation":1510.0,"contour_kind":"intermediate"},
+            "geometry":{"type":"LineString","coordinates":[[x,-1.9995],[x+0.0005,-1.9993]]}})
+    };
+    let surface = Source {
+        features: vec![
+            line("contour:1510:a", 30.0003),
+            line("contour:1510:b", 30.0603),
+        ],
+        version: "rwanda_dem_10m/fixture".into(),
+        cells_asked: 0,
+        calls: 0,
+    };
+    (
+        contours_dataset(settings),
+        DeclaredSource::Contours(settings),
+        Bordered {
+            inner: surface,
+            edge,
+            asked: 0,
+        },
+    )
+}
+
+#[test]
+fn covered_contour_cells_publish_and_uncovered_cells_are_itemised_and_asked_again() {
+    let door = Door(Rc::default());
+    let (a, b) = (Machine::new("user-a"), Machine::new("user-b"));
+    // Site a lies on the surface, site b beyond its edge.
+    let (dataset, source, mut surface) = bordered_contours(30.05);
+    let first = a
+        .seed_dataset(&dataset, &source, &door, &mut surface, &["a", "b"], false)
+        .unwrap();
+    assert!(first.answered, "site a is covered");
+    assert!(!first.ensure.covered, "site b stays a gap");
+    assert!(!first.ensure.uncovered.is_empty());
+    assert!(first.ensure.uncovered.iter().all(|cell| cell[0] >= 30.05));
+    assert_eq!(first.ensure.features, 1, "only site a's contour is held");
+    let published = first.published.as_ref().expect("the covered cells publish");
+    assert_eq!(published["revision"], 1);
+    assert_eq!(published["features"], 1);
+    let brain = door.0.borrow();
+    let chain = chain::decode(
+        &Door::manifest_bytes(&brain).unwrap(),
+        "fixture-project",
+        &dataset,
+    )
+    .unwrap();
+    drop(brain);
+    assert!(chain.revisions[0]
+        .coverage
+        .cells
+        .iter()
+        .all(|cell| cell[2] <= 30.05));
+    assert!(first
+        .ensure
+        .warnings
+        .iter()
+        .all(|warning| !warning.contains("Another acquisition")));
+    // A reseed asks the surface again for exactly the uncovered cells and
+    // publishes nothing new.
+    let asked = surface.asked;
+    let again = a
+        .seed_dataset(&dataset, &source, &door, &mut surface, &["a", "b"], false)
+        .unwrap();
+    assert_eq!(surface.asked - asked, first.ensure.uncovered.len());
+    assert_eq!(again.ensure.uncovered, first.ensure.uncovered);
+    assert!(again.answered && again.published.is_none());
+    // Another member replays the covered revision without the surface.
+    let (_, _, mut untouched) = bordered_contours(30.05);
+    let second = b
+        .seed_dataset(&dataset, &source, &door, &mut untouched, &["a"], false)
+        .unwrap();
+    assert_eq!((second.replayed.clone(), untouched.asked), (vec![1], 0));
+    assert!(second.ensure.covered && second.ensure.features == 1);
+    assert_eq!(door.0.borrow().published, 1);
+}
+
+#[test]
+fn a_project_the_surface_reaches_nowhere_is_unanswered_and_publishes_nothing() {
+    let door = Door(Rc::default());
+    let a = Machine::new("user-a");
+    let (dataset, source, mut surface) = bordered_contours(29.0);
+    let outcome = a
+        .seed_dataset(&dataset, &source, &door, &mut surface, &["a", "b"], false)
+        .unwrap();
+    assert!(!outcome.answered);
+    assert!(!outcome.ensure.covered && !outcome.ensure.uncovered.is_empty());
+    assert!(outcome.published.is_none());
+    assert_eq!((outcome.ensure.features, door.0.borrow().published), (0, 0));
 }

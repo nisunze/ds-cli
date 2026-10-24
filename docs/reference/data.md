@@ -268,7 +268,11 @@ Each row carries `shared`: `head_revision`, `replayed_revisions`,
 stale and re-acquired only by an explicit `--refresh`, which republishes as a
 refresh revision. Status, query and prints stay local and offline. A Reporter
 is needed to convert, derive or name a revision's producer
-(`reporter_engine_missing`); contours outside the Rwanda DEM refuse
+(`reporter_engine_missing`). Contour cells outside the Rwanda DEM are an
+itemised gap, not a refusal: the row lists `gaps` (`reason`
+`outside_rwanda_dem`, `count`, `cells`; derived cells the DEM answered only in
+part as `partially_outside_rwanda_dem`) and the seed succeeds with what is
+covered. Only a project the DEM covers nowhere refuses
 `contour_surface_uncovered`.
 
 `seed --remote-context` is retired: it refuses with `native_compute_required`

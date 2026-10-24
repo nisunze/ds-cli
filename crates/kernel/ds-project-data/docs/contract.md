@@ -178,7 +178,13 @@ its edges. Web reads a published head through the Kernel's existing
 
 Bounds: 99 revisions per head (the door holds 100 outputs; compaction is
 backlog), 64 MiB and 500000 features per delta, 24 publisher tiles per seed.
-Contours outside the Rwanda DEM refuse `contour_surface_uncovered`.
+Contours are judged cell by cell: a planned cell the Rwanda DEM resolves nowhere
+is never committed or published; the source declares it `uncovered`, the room
+keeps it a gap, `EnsureOutcome::uncovered` itemises it and the next seed asks
+again. Covered cells (fully, or in part where the DEM answers) publish as
+usual. Only a project whose planned coverage the DEM answers nowhere
+(`SharedOutcome::answered` false) refuses `contour_surface_uncovered`; no other
+surface is admitted for contours yet.
 
 ## Declared, not available
 

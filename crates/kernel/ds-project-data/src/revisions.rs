@@ -174,6 +174,10 @@ pub struct SourceBatch {
     /// One GeoJSON-lines file per cell, holding every row the dataset's rule
     /// selects for that cell.
     pub pages: Vec<([f64; 4], PathBuf)>,
+    /// Cells asked that the source has nothing to answer with (a surface
+    /// that does not reach them). Every asked cell is in `pages` or here.
+    /// They are never committed or published; the next seed asks again.
+    pub uncovered: Vec<[f64; 4]>,
 }
 
 /// Core's own acquisition for a derived dataset, lent by the host.
@@ -213,6 +217,10 @@ pub struct SharedOutcome {
     pub stale_retries: u32,
     pub chain: Option<Value>,
     pub freshness: Option<Value>,
+    /// Whether the room completed any of the planned coverage, now or
+    /// before: false with `ensure.uncovered` set means the source reaches
+    /// none of the project.
+    pub answered: bool,
 }
 
 struct Chain {
@@ -420,6 +428,7 @@ fn replay(
 /// Pages a source batch prepared, answered cell by cell to `ensure`.
 struct Prepared {
     pages: BTreeMap<String, PathBuf>,
+    uncovered: std::collections::BTreeSet<String>,
     version: String,
     receipt: Value,
 }
@@ -440,6 +449,10 @@ fn bounds(area: &Value) -> Option<[f64; 4]> {
 }
 
 impl Provider for Prepared {
+    fn uncovered(&self, cell: [f64; 4]) -> bool {
+        self.uncovered.contains(&cell_key(cell))
+    }
+
     fn acquire(&mut self, dataset: &Dataset, area: &Value) -> Result<Acquisition, Failure> {
         let cell = bounds(area)
             .ok_or_else(|| Failure::Store("an acquisition area is not a cell".into()))?;
@@ -602,6 +615,7 @@ pub fn seed(
         ensure::planned_cells(root, scope, dataset, policy, extents, focus, refresh)?;
     let mut prepared = Prepared {
         pages: BTreeMap::new(),
+        uncovered: std::collections::BTreeSet::new(),
         version: String::new(),
         receipt: json!({}),
     };
@@ -613,10 +627,13 @@ pub fn seed(
         for (cell, path) in batch.pages {
             prepared.pages.insert(cell_key(cell), path);
         }
-        if cells
-            .iter()
-            .any(|cell| !prepared.pages.contains_key(&cell_key(*cell)))
-        {
+        for cell in batch.uncovered {
+            prepared.uncovered.insert(cell_key(cell));
+        }
+        if cells.iter().any(|cell| {
+            let key = cell_key(*cell);
+            !prepared.pages.contains_key(&key) && !prepared.uncovered.contains(&key)
+        }) {
             return Err(SharedFailure::Project(Failure::AcquisitionFailed(
                 "the acquisition owner answered fewer cells than were asked".into(),
             )));
@@ -788,6 +805,11 @@ pub fn seed(
     settled.features = settled.status["feature_count"]
         .as_i64()
         .unwrap_or(settled.features);
+    let held: Coverage = serde_json::from_value(settled.status["completed"].clone())
+        .map_err(|error| Failure::Store(error.to_string()))?;
+    let answered = !chain::delta(&wanted, &held, &Coverage::default(), true)
+        .map_err(|error| SharedFailure::Project(Failure::Store(error)))?
+        .is_empty();
     Ok(SharedOutcome {
         ensure: settled,
         head_revision,
@@ -797,6 +819,7 @@ pub fn seed(
         stale_retries: retries,
         chain: chain_summary,
         freshness,
+        answered,
     })
 }
 

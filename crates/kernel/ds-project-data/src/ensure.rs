@@ -52,6 +52,13 @@ pub struct Acquisition {
 /// acquisition stage, once per gap cell.
 pub trait Provider {
     fn acquire(&mut self, dataset: &Dataset, area: &Value) -> Result<Acquisition, Failure>;
+    /// The owner already knows it has nothing to answer this cell with (a
+    /// surface that does not reach it). Such a cell is never begun or
+    /// committed: it stays a gap, is itemised in the outcome's `uncovered`,
+    /// and the next acquisition asks again.
+    fn uncovered(&self, _cell: [f64; 4]) -> bool {
+        false
+    }
 }
 
 /// What a host lends an acquiring call: the provider door and the byte
@@ -89,6 +96,9 @@ pub struct EnsureOutcome {
     pub acquired: usize,
     /// Cells another process was already acquiring; read, not fetched.
     pub skipped: usize,
+    /// Planned cells the provider declared it cannot answer in THIS call.
+    /// They stay gaps: neither committed nor counted as covered.
+    pub uncovered: Vec<[f64; 4]>,
     pub features: i64,
     pub warnings: Vec<String>,
 }
@@ -448,6 +458,7 @@ fn settle(
             covered: true,
             acquired: 0,
             skipped: 0,
+            uncovered: Vec::new(),
             features: status["feature_count"].as_i64().unwrap_or(0),
             coverage_geometry: plan.coverage_geometry,
             coverage: plan.coverage,
@@ -457,6 +468,7 @@ fn settle(
     }
     let mut assessment = assess(&completed(&status)?, &plan.coverage).map_err(crate::store)?;
     let (mut acquired, mut skipped) = (0_usize, 0_usize);
+    let mut uncovered: Vec<[f64; 4]> = Vec::new();
     if refresh || !assessment.covered {
         if let Mode::Acquire(hosts) = &mut mode {
             // A gap is acquired in tiles no provider read may exceed: a whole
@@ -481,6 +493,10 @@ fn settle(
                 pending.extend(tiles(cell)?.into_iter().rev().map(|tile| (tile, 0)));
             }
             while let Some((cell, depth)) = pending.pop() {
+                if hosts.provider.uncovered(cell) {
+                    uncovered.push(cell);
+                    continue;
+                }
                 let cells = Coverage { cells: vec![cell] };
                 let area = polygon(cell);
                 // A national subset is read from this machine's own index
@@ -555,7 +571,7 @@ fn settle(
                 }
             }
             assessment = assess(&completed(&status)?, &plan.coverage).map_err(crate::store)?;
-            if refresh && !assessment.covered {
+            if refresh && !assessment.covered && uncovered.is_empty() {
                 // Every planned tile committed, and a commit only extends
                 // completed coverage; a plan still unanswered is a defect.
                 return Err(Failure::Store(
@@ -563,7 +579,13 @@ fn settle(
                         .into(),
                 ));
             }
-            if !assessment.covered {
+            if !uncovered.is_empty() {
+                warnings.push(format!(
+                    "{} planned cell(s) have no source surface; they stay uncovered, are itemised, and are asked again by the next seed.",
+                    uncovered.len()
+                ));
+            }
+            if !assessment.covered && (uncovered.is_empty() || skipped > 0) {
                 warnings.push(
                     "Another acquisition is still preparing this project area. Coverage is not complete yet."
                         .into(),
@@ -577,6 +599,7 @@ fn settle(
         covered: assessment.covered,
         acquired,
         skipped,
+        uncovered,
         features: status["feature_count"].as_i64().unwrap_or(0),
         coverage_geometry: plan.coverage_geometry,
         coverage: plan.coverage,

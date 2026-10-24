@@ -254,8 +254,8 @@ refusal!(
 refusal!(
     SURFACE_UNCOVERED,
     "contour_surface_uncovered",
-    "the Rwanda DEM does not cover the project area contours were asked for",
-    "seed contours only inside Rwanda's surface"
+    "the Rwanda DEM covers none of the project's planned contour cells; cells it misses beside covered ones are listed as gaps instead",
+    "seed contours only for a project inside Rwanda's surface"
 );
 refusal!(
     ENGINE_REFUSED,

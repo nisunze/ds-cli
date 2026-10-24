@@ -277,6 +277,9 @@ pub(super) struct CoreSource<'a> {
     /// Publisher tiles downloaded by this run.
     pub(super) tiles_fetched: usize,
     pub(super) cells_derived: usize,
+    /// Derived cells the surface resolved only in part (a border or a
+    /// surface hole): published with what the surface answered.
+    pub(super) partial_cells: Vec<[f64; 4]>,
     surface: Option<ds_elevation_host::RwandaSampler>,
 }
 
@@ -287,6 +290,7 @@ impl<'a> CoreSource<'a> {
             engine: None,
             tiles_fetched: 0,
             cells_derived: 0,
+            partial_cells: Vec::new(),
             surface: None,
         }
     }
@@ -454,6 +458,7 @@ impl<'a> CoreSource<'a> {
                 .into_iter()
                 .map(|page| (page.cell, page.path))
                 .collect(),
+            uncovered: Vec::new(),
         })
     }
 
@@ -479,6 +484,8 @@ impl<'a> CoreSource<'a> {
         let evidence = ds_elevation_host::RwandaSampler::source_evidence();
         let mut pages = Vec::with_capacity(cells.len());
         let mut sampled = 0_u64;
+        let mut unresolved = 0_u64;
+        let mut uncovered = Vec::new();
         for (index, cell) in cells.iter().enumerate() {
             let points_path = scratch.join(format!("contour-points-{index}.json"));
             let plan: tasks::ContourPlanResult = self.task(
@@ -509,11 +516,20 @@ impl<'a> CoreSource<'a> {
                     unavailable(format!("the Rwanda DEM could not be read: {error}"))
                 })?);
             }
-            if samples.iter().any(Option::is_none) {
-                return Err(host(
-                    SURFACE_UNCOVERED,
-                    "the Rwanda DEM does not cover this project area; no other surface is admitted for contours yet",
-                ));
+            // A cell is judged on its own: one the DEM resolves nowhere is an
+            // itemised gap (no other surface is admitted for contours yet),
+            // one it resolves in part is derived where it answers — the
+            // Reporter's own rule. The whole dataset refuses only when no
+            // planned cell is covered, decided over the room by the caller.
+            let resolved = samples.iter().flatten().count();
+            if resolved == 0 {
+                let _ = std::fs::remove_file(&points_path);
+                uncovered.push(*cell);
+                continue;
+            }
+            if resolved < samples.len() {
+                self.partial_cells.push(*cell);
+                unresolved += (samples.len() - resolved) as u64;
             }
             sampled += samples.len() as u64;
             let samples_path = scratch.join(format!("contour-samples-{index}.json"));
@@ -554,13 +570,20 @@ impl<'a> CoreSource<'a> {
             self.cells_derived += 1;
             pages.push((*cell, out));
         }
-        Ok(SourceBatch {
-            source_version: surface_version(),
-            receipt: json!({"surface": evidence, "version": surface_version(),
+        let mut receipt = json!({"surface": evidence, "version": surface_version(),
                 "minor_interval_m": settings.minor_interval_m, "index_interval_m": settings.index_interval_m,
                 "sample_spacing_m": settings.sample_spacing_m, "sampled_points": sampled,
-                "contour_tile_m": tasks::CONTOUR_TILE_M}),
+                "contour_tile_m": tasks::CONTOUR_TILE_M});
+        // A fully covered batch keeps its receipt exactly as before.
+        if unresolved > 0 || !uncovered.is_empty() {
+            receipt["unresolved_points"] = json!(unresolved);
+            receipt["uncovered_cells"] = json!(uncovered.len());
+        }
+        Ok(SourceBatch {
+            source_version: surface_version(),
+            receipt,
             pages,
+            uncovered,
         })
     }
 }
@@ -820,6 +843,7 @@ pub(super) fn shared_seed_row<'a>(
     }
     let state = seeding.as_mut().expect("opened above");
     let (tiles_before, cells_before) = (state.source.tiles_fetched, state.source.cells_derived);
+    let partial_before = state.source.partial_cells.len();
     let mut shared_seed = ds_project_data::revisions::SharedSeed {
         revisions: &mut state.revisions,
         source: &mut state.source,
@@ -863,7 +887,18 @@ pub(super) fn shared_seed_row<'a>(
                 "coverage": outcome.ensure.coverage,
                 "warnings": outcome.ensure.warnings,
             });
-            if !outcome.ensure.covered {
+            let partial = &state.source.partial_cells[partial_before..];
+            match surface_gaps(&outcome, partial) {
+                Ok(Some(gaps)) => row["gaps"] = gaps,
+                Ok(None) => {}
+                Err((code, message)) => {
+                    let mut failed = failed_row(code, &message);
+                    failed["gaps"] = surface_gap_list(&outcome.ensure.uncovered, partial);
+                    return failed;
+                }
+            }
+            let explained = !outcome.ensure.uncovered.is_empty() && outcome.ensure.skipped == 0;
+            if !outcome.ensure.covered && !explained {
                 row["error"] = json!(
                     "coverage is not complete; another acquisition may still be preparing this area"
                 );
@@ -872,6 +907,53 @@ pub(super) fn shared_seed_row<'a>(
         }
         Err(error) => failed_row(error.code(), error.message()),
     }
+}
+
+/// Why a planned contour cell holds no contours.
+pub(super) const OUTSIDE_DEM: &str = "outside_rwanda_dem";
+
+/// The itemised surface gap: cells the DEM resolves nowhere, and derived
+/// cells it resolved only in part.
+pub(super) fn surface_gap_list(uncovered: &[[f64; 4]], partial: &[[f64; 4]]) -> Value {
+    let mut gaps = Vec::new();
+    if !uncovered.is_empty() {
+        gaps.push(json!({
+            "reason": OUTSIDE_DEM,
+            "count": uncovered.len(),
+            "cells": uncovered,
+        }));
+    }
+    if !partial.is_empty() {
+        gaps.push(json!({
+            "reason": "partially_outside_rwanda_dem",
+            "count": partial.len(),
+            "cells": partial,
+            "published": true,
+        }));
+    }
+    Value::Array(gaps)
+}
+
+/// A seed with uncovered cells reports them as an itemised gap; it refuses
+/// only when the surface covers none of the project's planned cells.
+pub(super) fn surface_gaps(
+    outcome: &ds_project_data::revisions::SharedOutcome,
+    partial: &[[f64; 4]],
+) -> Result<Option<Value>, (&'static str, String)> {
+    let uncovered = &outcome.ensure.uncovered;
+    if uncovered.is_empty() {
+        return Ok((!partial.is_empty()).then(|| surface_gap_list(&[], partial)));
+    }
+    if !outcome.answered {
+        return Err((
+            SURFACE_UNCOVERED,
+            format!(
+                "the Rwanda DEM covers none of this project's {} planned contour cell(s); no other surface is admitted for contours yet",
+                uncovered.len()
+            ),
+        ));
+    }
+    Ok(Some(surface_gap_list(uncovered, partial)))
 }
 
 /// The Reporter conversion a `--publisher-input` seed lends the producer:
