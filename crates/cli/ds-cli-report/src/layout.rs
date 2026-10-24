@@ -57,7 +57,7 @@ const PROJECT: Arg = Arg::value(
 const LANE: ds_cli_contract::spec::Arg = ds_cli_contract::spec::LANE
     .placeholder("<lane>")
     .choices(&["canary", "stable"])
-    .default("canary");
+    .default("stable");
 fn invalid(e: impl std::fmt::Display) -> Failure {
     Failure::invalid("printing_invalid", e.to_string())
         .remedy("Use report.layout.schema and correct the reported layout constraint")

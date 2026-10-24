@@ -15,7 +15,7 @@ use serde_json::Value;
 const LANE: Arg = ds_cli_contract::spec::LANE
     .placeholder("<lane>")
     .choices(&["canary", "stable"])
-    .default("canary");
+    .default("stable");
 const PROJECT: Arg = Arg::value(
     "project",
     "<exact-id>",

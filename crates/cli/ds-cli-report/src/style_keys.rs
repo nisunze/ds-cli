@@ -21,7 +21,7 @@ use std::io::Read;
 const LANE: Arg = ds_cli_contract::spec::LANE
     .placeholder("<lane>")
     .choices(&["canary", "stable"])
-    .default("canary");
+    .default("stable");
 const SCOPE: Arg = Arg::value(
     "scope",
     "<scope>",
