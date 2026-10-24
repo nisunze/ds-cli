@@ -7,6 +7,7 @@ fn command(endpoint: MessagingEndpoint, payload: Value) -> Messaging {
         endpoint,
         payload: payload.as_object().cloned().unwrap(),
         timeout_ms: None,
+        accepts: Vec::new(),
     }
 }
 
@@ -31,6 +32,42 @@ fn a_command_names_its_contract_and_carries_only_the_admitted_headers() {
         .plan()
         .unwrap();
     assert_eq!(upload.request.path, "/api/v1/messaging/attachments");
+}
+
+#[test]
+fn what_the_reader_accepts_rides_the_query_once_and_never_the_closed_body() {
+    let declared = Messaging {
+        accepts: vec![
+            MessagingAccepts::AttachmentStorageMax,
+            MessagingAccepts::AttachmentStorageMax,
+        ],
+        ..command(MessagingEndpoint::Commands, json!({"action": "config"}))
+    }
+    .plan()
+    .unwrap();
+    assert_eq!(
+        declared.request.query,
+        [
+            ("wire_contract".to_owned(), "messages-v1".to_owned()),
+            ("accepts".to_owned(), "attachment-storage-max".to_owned()),
+        ]
+    );
+    assert_eq!(declared.request.body.unwrap(), json!({"action": "config"}));
+    // A page that declares nothing (every page before this input) sends the
+    // contract exactly as before, so Brain answers it the first ceilings.
+    let silent = command(MessagingEndpoint::Attachments, json!({"action": "start"}))
+        .plan()
+        .unwrap();
+    assert_eq!(
+        silent.request.query,
+        [("wire_contract".to_owned(), "messages-v1".to_owned())]
+    );
+    // The vocabulary is closed: an unknown member is not a MessagingAccepts.
+    assert!(serde_json::from_value::<Vec<MessagingAccepts>>(json!(["anything"])).is_err());
+    assert_eq!(
+        serde_json::from_value::<Vec<MessagingAccepts>>(json!(["attachment-storage-max"])).unwrap(),
+        [MessagingAccepts::AttachmentStorageMax]
+    );
 }
 
 #[test]

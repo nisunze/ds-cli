@@ -20,6 +20,32 @@ const RESPONSE_CAP: u64 = 2 * 1024 * 1024;
 pub const INPUT_INVALID: &str = "messaging_input_invalid";
 pub const INVALID: &str = "messaging_answer_invalid";
 
+/// What the reader of these answers decodes beyond messages-v1's first
+/// attachment ceilings (10 MiB a file, 20 MiB a message). The page declares
+/// it because its decoders are what read the answer; the Kernel only sends it.
+/// Brain may answer more to a reader that declares it, and a Brain that does
+/// not know a member ignores it, so declaring is always safe.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+#[serde(rename_all = "kebab-case")]
+pub enum MessagingAccepts {
+    /// Attachment sizes up to Cloud Storage's object maximum, uploaded
+    /// through the resumable session.
+    AttachmentStorageMax,
+}
+
+impl MessagingAccepts {
+    /// The query value Brain reads under [`ACCEPTS_QUERY_KEY`].
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::AttachmentStorageMax => "attachment-storage-max",
+        }
+    }
+}
+
+/// The query member that carries [`MessagingAccepts`], once per member.
+pub const ACCEPTS_QUERY_KEY: &str = "accepts";
+
 /// Which messaging route a command belongs to.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
@@ -74,9 +100,10 @@ pub const EXCHANGE: &str = "messaging";
 pub fn capability(endpoint: MessagingEndpoint, action: &str) -> Option<&'static str> {
     Some(match (endpoint, action) {
         (MessagingEndpoint::Commands, "config") => "messaging.config",
-        (MessagingEndpoint::Commands, "search_people" | "search_project_people" | "list_contacts") => {
-            "messaging.people"
-        }
+        (
+            MessagingEndpoint::Commands,
+            "search_people" | "search_project_people" | "list_contacts",
+        ) => "messaging.people",
         (MessagingEndpoint::Commands, "list_conversations") => "messaging.conversations",
         (MessagingEndpoint::Commands, "resolve_direct") => "messaging.direct",
         (MessagingEndpoint::Commands, "resolve_project") => "messaging.project",
@@ -102,6 +129,8 @@ pub struct Messaging {
     pub endpoint: MessagingEndpoint,
     pub payload: Map<String, Value>,
     pub timeout_ms: Option<u64>,
+    /// What the reader declares; empty sends the first ceilings' contract.
+    pub accepts: Vec<MessagingAccepts>,
 }
 
 impl Messaging {
@@ -159,8 +188,17 @@ impl Exchange for Messaging {
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect(),
         );
+        let mut query = vec![("wire_contract".to_owned(), WIRE_CONTRACT.to_owned())];
+        let mut accepts = self.accepts.clone();
+        accepts.sort();
+        accepts.dedup();
+        query.extend(
+            accepts
+                .into_iter()
+                .map(|member| (ACCEPTS_QUERY_KEY.to_owned(), member.wire().to_owned())),
+        );
         let request = Request {
-            query: vec![("wire_contract".into(), WIRE_CONTRACT.into())],
+            query,
             ..Request::generated(self.endpoint.operation(), Some(body))?
         }
         .timeout_ms(timeout_ms)
@@ -260,7 +298,8 @@ pub async fn forget_cache(edge: &impl super::retained::Edge) -> Result<(), Refus
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
     use super::{
-        forget_cache, held_cache, keep_cache, Messaging, MessagingCache, MessagingEndpoint,
+        forget_cache, held_cache, keep_cache, Messaging, MessagingAccepts, MessagingCache,
+        MessagingEndpoint,
     };
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{rejection, run, typed, GatewayHost};
@@ -272,22 +311,35 @@ mod exports {
         js_sys::Error::new(&error.to_string()).into()
     }
 
-    /// One messaging command; answers Brain's envelope as served.
+    /// One messaging command; answers Brain's envelope as served. `accepts`
+    /// is what the calling page decodes. It is an optional trailing argument,
+    /// so a page written before it still calls and type-checks unchanged and
+    /// gets the first ceilings' contract; an unknown member is refused.
     #[wasm_bindgen(js_name = messagingCommand, unchecked_return_type = "Record<string, unknown>")]
     pub async fn messaging_command(
         host: GatewayHost,
         #[wasm_bindgen(unchecked_param_type = "MessagingEndpoint")] endpoint: JsValue,
         #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] payload: JsValue,
         timeout_ms: Option<u32>,
+        // Plain strings, so the generated declaration keeps it optional
+        // (`accepts?: string[] | null`); each is read as a MessagingAccepts.
+        accepts: Option<Vec<String>>,
     ) -> Result<JsValue, JsValue> {
         let endpoint: MessagingEndpoint =
             tsify::serde_wasm_bindgen::from_value(endpoint).map_err(unreadable)?;
         let payload: Map<String, Value> =
             tsify::serde_wasm_bindgen::from_value(payload).map_err(unreadable)?;
+        let accepts = accepts
+            .unwrap_or_default()
+            .into_iter()
+            .map(|member| serde_json::from_value::<MessagingAccepts>(Value::String(member)))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(unreadable)?;
         let call = Messaging {
             endpoint,
             payload,
             timeout_ms: timeout_ms.map(u64::from),
+            accepts,
         };
         call.admit_in_page(crate::capabilities::PLATFORM)
             .map_err(|refusal| crate::gateway_exchange::browser::rejection(&refusal))?;

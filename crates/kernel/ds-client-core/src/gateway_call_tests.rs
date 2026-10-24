@@ -200,7 +200,7 @@ fn solar_and_messaging_select_generated_paths_and_keep_the_domain_query() {
         (
             crate::messaging::Command::ResolveNotifications,
             Operation::MessagingCommands,
-            "/api/v1/messaging?wire_contract=messages-v1",
+            "/api/v1/messaging?wire_contract=messages-v1&accepts=attachment-storage-max",
         ),
     ] {
         let call = crate::messaging::MessagingCall {

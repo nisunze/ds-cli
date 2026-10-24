@@ -293,6 +293,7 @@ pub async fn drain(edge: &impl Edge, lease: &str) -> Result<Drained, Refusal> {
                     endpoint: MessagingEndpoint::Commands,
                     payload: body.clone(),
                     timeout_ms: None,
+                    accepts: Vec::new(),
                 };
                 match edge.fetch(send).await {
                     Ok(answer) if delivered(&answer, &body) => {

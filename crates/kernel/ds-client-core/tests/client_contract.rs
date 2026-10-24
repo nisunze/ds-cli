@@ -14570,7 +14570,10 @@ impl Transport for InstallationControlTransport {
         &mut self,
         call: ds_client_core::messaging::MessagingCall<'_>,
     ) -> Result<TransportResponse, TransportError> {
-        assert_eq!(call.path(), "/api/v1/messaging?wire_contract=messages-v1");
+        assert_eq!(
+            call.path(),
+            "/api/v1/messaging?wire_contract=messages-v1&accepts=attachment-storage-max"
+        );
         assert_eq!(call.method(), "POST");
         assert_eq!(call.client_id(), "ds-native-client");
         assert_eq!(call.canonical_email(), "user@example.com");
@@ -14690,7 +14693,7 @@ fn installation_invalid_receipts_and_foreign_identity_replies_cannot_acquire_or_
 }
 #[path = "client_contract/configuration_save.rs"]
 mod configuration_save_exchange;
-#[path = "client_contract/transformer_reseal.rs"]
-mod transformer_reseal_exchange;
 #[path = "client_contract/preflight_admission_tests.rs"]
 mod preflight_admission_tests;
+#[path = "client_contract/transformer_reseal.rs"]
+mod transformer_reseal_exchange;

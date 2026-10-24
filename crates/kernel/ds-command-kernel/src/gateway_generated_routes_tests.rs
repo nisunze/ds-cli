@@ -240,6 +240,7 @@ fn messaging_keeps_query_order_minimal_headers_and_the_exact_body() {
                 endpoint,
                 payload,
                 timeout_ms: Some(12_345),
+                accepts: Vec::new(),
             },
             expected,
             0,
@@ -306,7 +307,8 @@ fn invalid_generated_parameters_refuse_and_domain_validation_still_precedes_plan
                 .as_object()
                 .unwrap()
                 .clone(),
-            timeout_ms: None
+            timeout_ms: None,
+            accepts: Vec::new(),
         }
         .plan()
         .unwrap_err()

@@ -109,10 +109,13 @@ impl Command {
                 self.generated_operation().path_template()
             }
             _ => {
+                // This client reads every answer as an open JSON value, so it
+                // decodes any attachment size Brain stores: it declares that
+                // (`accepts`), and a Brain that does not know it ignores it.
                 static PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
                 PATH.get_or_init(|| {
                     format!(
-                        "{}?wire_contract=messages-v1",
+                        "{}?wire_contract=messages-v1&accepts=attachment-storage-max",
                         self.generated_operation().path_template()
                     )
                 })
@@ -407,7 +410,10 @@ mod tests {
             text: "hello".into(),
             uploads: vec!["u".into()],
         };
-        assert_eq!(send.path(), "/api/v1/messaging?wire_contract=messages-v1");
+        assert_eq!(
+            send.path(),
+            "/api/v1/messaging?wire_contract=messages-v1&accepts=attachment-storage-max"
+        );
         assert_eq!(
             send.payload(),
             json!({"action":"send_message","conversation_id":"c","client_message_id":"k","text":"hello","upload_ids":["u"]})
@@ -490,7 +496,10 @@ mod tests {
             epoch: "b".repeat(32),
         };
         good.validate().unwrap();
-        assert_eq!(good.path(), "/api/v1/messaging?wire_contract=messages-v1");
+        assert_eq!(
+            good.path(),
+            "/api/v1/messaging?wire_contract=messages-v1&accepts=attachment-storage-max"
+        );
         assert_eq!(
             good.payload(),
             json!({"action":"revoke_installation", "installation_hash":"a".repeat(64), "epoch":"b".repeat(32)})

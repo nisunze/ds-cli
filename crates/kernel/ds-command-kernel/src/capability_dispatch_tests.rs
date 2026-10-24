@@ -168,6 +168,7 @@ fn messaging_commands_name_their_rows() {
         endpoint,
         payload: action(name),
         timeout_ms: None,
+        accepts: Vec::new(),
     };
     assert_eq!(call(Commands, " Advance_Read ").admit_in_page("web").unwrap(), "messaging.mark-read");
     assert_eq!(call(Attachments, "start").admit_in_page("desktop").unwrap(), "messaging.attachment.upload");
