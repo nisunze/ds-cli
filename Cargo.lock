@@ -2451,7 +2451,6 @@ dependencies = [
  "ds-network-contracts",
  "ds-update-runtime",
  "fs2",
- "image",
  "libc",
  "rayon",
  "serde",
