@@ -11,7 +11,10 @@ use ds_command_kernel::compute_jobs::{Event, Phase};
 use ds_command_kernel::execution_context::{Limits, Principal};
 use ds_compute_runtime::{self as runtime, Admission, Authorizer, HostIdentity, WorkerContext};
 mod common;
+#[path = "common/job_wait_tests.rs"]
+mod job_wait;
 use common::prepared_solar_request;
+use job_wait::{wait_for_completed_job, wait_for_completed_jobs};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -505,19 +508,15 @@ fn a_transformer_row_written_by_a_released_server_is_named_and_never_claimed() {
         &serde_json::to_vec(&other).unwrap(),
     )
     .unwrap();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    loop {
-        let job = runtime::open(&path)
-            .unwrap()
-            .job(&identity.caller(Some(A)), &running.id)
-            .unwrap()
-            .expect("the new job is in project A");
-        if job.phase == Phase::Completed {
-            break;
-        }
-        assert!(std::time::Instant::now() < deadline, "{job:?}");
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    wait_for_completed_job(
+        || {
+            runtime::open(&path)
+                .unwrap()
+                .job(&identity.caller(Some(A)), &running.id)
+                .unwrap()
+        },
+        job_wait::CEILING,
+    );
     drop(workers);
     let legacy = runtime::open(&path)
         .unwrap()
@@ -829,7 +828,6 @@ fn parallel_claims_are_unique_and_revocation_and_cancellation_stop_work() {
 #[ignore = "requires an explicitly selected compatible native Network executable"]
 fn workers_complete_real_batches_inside_the_shared_resource_bound() {
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::time::{Duration, Instant};
     struct Bound(Arc<AtomicBool>);
     impl Authorizer for Bound {
         fn authorize(&self, _: &str) -> Result<(), String> {
@@ -857,29 +855,23 @@ fn workers_complete_real_batches_inside_the_shared_resource_bound() {
     let observed = Arc::new(AtomicBool::new(false));
     let context = Arc::new(worker(&path, &identity, Arc::new(Bound(observed.clone()))));
     let workers = runtime::Workers::start(context, 2).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    loop {
-        let jobs = runtime::open(&path)
-            .unwrap()
-            .jobs(&identity.caller(None), 10)
-            .unwrap();
-        if jobs.iter().all(|job| job.phase == Phase::Completed) {
-            assert_eq!(jobs.len(), 2);
-            assert!(jobs.iter().all(|job| job.attempts == 1));
-            let mut projects = jobs
-                .iter()
-                .map(|job| job.context.as_ref().unwrap().project.clone())
-                .collect::<Vec<_>>();
-            projects.sort();
-            assert_eq!(projects, vec![A.to_owned(), B.to_owned()]);
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "workers did not complete: {jobs:?}"
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    let jobs = wait_for_completed_jobs(
+        || {
+            runtime::open(&path)
+                .unwrap()
+                .jobs(&identity.caller(None), 10)
+                .unwrap()
+        },
+        2,
+        job_wait::CEILING,
+    );
+    assert!(jobs.iter().all(|job| job.attempts == 1));
+    let mut projects = jobs
+        .iter()
+        .map(|job| job.context.as_ref().unwrap().project.clone())
+        .collect::<Vec<_>>();
+    projects.sort();
+    assert_eq!(projects, vec![A.to_owned(), B.to_owned()]);
     drop(workers);
     assert!(observed.load(Ordering::Acquire));
 }

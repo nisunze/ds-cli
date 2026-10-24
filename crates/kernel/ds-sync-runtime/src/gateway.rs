@@ -366,16 +366,14 @@ mod tests {
         let gateway = UnavailableGateway {
             reason: "no native gateway adapter".into(),
         };
-        for route in [SyncRoute::ComputeArtifacts] {
-            assert_eq!(
-                gateway.post(route, &serde_json::json!({})),
-                Err(GatewayError {
-                    status: None,
-                    code: None,
-                    detail: "no native gateway adapter".to_string()
-                })
-            );
-        }
+        assert_eq!(
+            gateway.post(SyncRoute::ComputeArtifacts, &serde_json::json!({})),
+            Err(GatewayError {
+                status: None,
+                code: None,
+                detail: "no native gateway adapter".to_string()
+            })
+        );
     }
 
     /// A refusal says who refused and why, in the authority's words, and

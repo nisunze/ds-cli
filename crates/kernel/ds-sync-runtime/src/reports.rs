@@ -390,7 +390,7 @@ pub struct Sealed {
 pub enum SealOutcome {
     /// Bytes on disk, integrity receipt written, row recorded — one
     /// acknowledged step.
-    Sealed(Sealed),
+    Sealed(Box<Sealed>),
     /// The store already holds this exact publication for the room (same
     /// inventory digest). Nothing was written, or what was written was
     /// removed again; the store's row is the one that stands.
@@ -594,12 +594,12 @@ fn seal_with_preview(
         Ok(crate::seal::Recorded::Recorded {
             row: stored,
             superseded,
-        }) => Ok(SealOutcome::Sealed(Sealed {
+        }) => Ok(SealOutcome::Sealed(Box::new(Sealed {
             receipt: committed.receipt,
             artifacts: committed.artifacts,
             row: *stored,
             superseded,
-        })),
+        }))),
         Ok(crate::seal::Recorded::AlreadyRecorded { replay_key, state }) => {
             // A race with another seal of the same bytes: theirs stands.
             let _ = reclaim_batch(

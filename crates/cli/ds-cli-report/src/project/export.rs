@@ -1273,7 +1273,7 @@ pub(super) fn seal_run_for_server(
         guard: &scope_guard,
     };
     match ds_sync_runtime::reports::seal(&queue.store, &queue.fence, &queue.root, &request) {
-        Ok(SealOutcome::Sealed(sealed)) => Ok(SealedRun::Queued(Box::new(sealed))),
+        Ok(SealOutcome::Sealed(sealed)) => Ok(SealedRun::Queued(sealed)),
         Ok(SealOutcome::AlreadyRecorded { replay_key, state }) => {
             Ok(SealedRun::AlreadyRecorded { replay_key, state })
         }

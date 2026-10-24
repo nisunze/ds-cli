@@ -2845,8 +2845,8 @@ fn freed() -> Freed {
     Arc::new(Mutex::new(Vec::new()))
 }
 
-/// The seal is one acknowledged step after the completion: the row is in
-/// the queue before any pump has run, and the pump adopts nothing.
+// The seal is one acknowledged step after the completion: the row is in
+// the queue before any pump has run, and the pump adopts nothing.
 
 /// A city computed again on this machine: the new seal frees the result
 /// it supersedes through the producer, says so, and the row is the new
@@ -3029,34 +3029,34 @@ fn a_solar_completion_sealed_behind_a_newer_one_frees_its_own_result_and_the_new
     }
 }
 
-/// Invariant (1), Solar: a pump killed after the seal, after the transfer,
-/// or before the acknowledgement, then restarted against the same store,
-/// neither duplicates nor loses the publication.
+// Invariant (1), Solar: a pump killed after the seal, after the transfer,
+// or before the acknowledgement, then restarted against the same store,
+// neither duplicates nor loses the publication.
 
-/// Invariant (2), Solar: the same completed job sealed twice is one row
-/// (`already_recorded`), published once, and a later pump answers nothing.
+// Invariant (2), Solar: the same completed job sealed twice is one row
+// (`already_recorded`), published once, and a later pump answers nothing.
 
-/// Invariant (3), Solar: two pumps over one store and one project — one
-/// holds the lease and publishes, the other records that it is held, names
-/// the holder and leaves; once released, the next pump finds nothing left.
+// Invariant (3), Solar: two pumps over one store and one project — one
+// holds the lease and publishes, the other records that it is held, names
+// the holder and leaves; once released, the next pump finds nothing left.
 
-/// Invariant (4), Solar: two projects' rows interleave in one store, and
-/// each pump publishes under its own scope only.
+// Invariant (4), Solar: two projects' rows interleave in one store, and
+// each pump publishes under its own scope only.
 
-/// Invariant (5), Solar: a row sealed under one fence is invisible to a
-/// pump under another account, deployment or install of the same file —
-/// not read, not published, not counted — while the whole file's queue
-/// still counts it for a status with no identity to name a fence.
+// Invariant (5), Solar: a row sealed under one fence is invisible to a
+// pump under another account, deployment or install of the same file —
+// not read, not published, not counted — while the whole file's queue
+// still counts it for a status with no identity to name a fence.
 
-/// Invariant (6), Solar: a pump that loses its authority between the
-/// transfer and the acknowledgement records nothing — the row stays held,
-/// never published — and the next pump resumes it; a cancellation racing
-/// the publication keeps the row refused (`solar_cancellation_racing_...`).
+// Invariant (6), Solar: a pump that loses its authority between the
+// transfer and the acknowledgement records nothing — the row stays held,
+// never published — and the next pump resumes it; a cancellation racing
+// the publication keeps the row refused (`solar_cancellation_racing_...`).
 
-/// Invariant (7), Solar: `published` is set only from the authority's
-/// own published receipt, never from transport success. A transfer that
-/// succeeds while the authority never commits leaves the row held and no
-/// head; a stale answer is a conflict with no head.
+// Invariant (7), Solar: `published` is set only from the authority's
+// own published receipt, never from transport success. A transfer that
+// succeeds while the authority never commits leaves the row held and no
+// head; a stale answer is a conflict with no head.
 
 #[test]
 fn both_engines_seal_offline_survive_restart_and_publish_only_after_reconnect() {

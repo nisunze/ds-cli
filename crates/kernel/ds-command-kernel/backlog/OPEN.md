@@ -120,21 +120,17 @@ is ruled in the sync contract: simple local clean and recompute.
 
 ## 2. Green `run` and release gates
 
-- **Strict sync-runtime Clippy fails on the report seal enum.** `cargo clippy
-  --offline -p ds-sync-runtime --no-deps --all-targets --all-features -- -D
-  warnings` reports `large_enum_variant` at `src/reports.rs:390`
-  (`SealOutcome::Sealed`; Solar's own `SealOutcome` already boxes it). Boxing it
-  changes the ds-cli-report seal callers (`project/export.rs`, `publish.rs`,
-  `combined.rs`); land it with the report lane. Without `--no-deps` the same
-  command first fails on Kernel lints (next entry). Proof: the strict command
-  passes without suppression. (Moved from the Solar sync section 10-23.)
-- **Strict kernel/store Clippy has baseline diagnostics.** `cargo clippy
-  --offline -p ds-command-kernel -p ds-sync-store --all-targets --all-features --
-  -D warnings` still reports the Profile, style and printing findings recorded
-  before, plus new dead code (`survey_working_area_forms_store.rs`,
-  `media_outbox.rs` `MIB`) and `result_large_err`. Leave each to its owning gate
-  slice; proof requires the strict command to pass without lint suppression.
-  (Moved from the Solar sync section 10-23.)
+- **Strict kernel/store Clippy has baseline diagnostics (measured 24 Oct on origin/run).**
+  `cargo clippy --locked --offline -p ds-command-kernel -p ds-sync-store
+  --all-targets -- -D warnings` (not `--all-features`: the Kernel build refuses
+  `platform-core` + `platform-desktop` + `platform-web` together) reports ~160
+  lib diagnostics: 117 `result_large_err`, 7 `large_enum_variant`, 5
+  `type_complexity`, 4 `too_many_arguments`, dead code (`survey_working_area_forms_store.rs`,
+  `media_outbox.rs` `MIB`, `survey_moments.rs` `waiting`) and small style lints;
+  the lib-test target does not compile (`gateway_exchange/survey_media_inspect_tests.rs:25`
+  uses `PATH`, a private const of `media_outbox_tests.rs`). `ds-sync-runtime`
+  (`--no-deps --all-targets --all-features`) is clean. Leave each to its owning
+  gate slice; proof requires the strict command to pass without lint suppression.
 
 - **Standalone columnar benchmark lock is stale.** `ds-network/benchmarks/columnar/Cargo.lock` still retains retired `ds-geo-ops` and omits the already-consolidated `ds-geo-lite`/`ds-cleaning`/`ds-kml` graph. Its isolated lock refresh needs unrelated package removals beyond the Calamine addition, so it was preserved rather than swept into application lock updates. Refresh and qualify that benchmark workspace separately before relying on its locked builds or measurements.
 
