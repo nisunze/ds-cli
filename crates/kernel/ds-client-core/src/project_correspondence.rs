@@ -755,14 +755,11 @@ fn unreadable() -> ClientError {
     )
 }
 
-/// Send one governed action for one project and return its `data`.
-pub(crate) fn run<T: AuthorizedTransport>(
-    profile: &ClientProfile,
-    transport: &mut T,
-    authority: Authority<'_>,
-    project: &str,
+/// Admit the exact domain input before a caller acquires or refreshes authority.
+pub(crate) fn validate_request<'a>(
+    project: &'a str,
     action: &Action,
-) -> Result<Value, ClientError> {
+) -> Result<&'a str, ClientError> {
     let project = project.trim();
     if project.is_empty() {
         return Err(ClientError::new(
@@ -771,6 +768,18 @@ pub(crate) fn run<T: AuthorizedTransport>(
         ));
     }
     action.validate()?;
+    Ok(project)
+}
+
+/// Send one governed action for one project and return its `data`.
+pub(crate) fn run<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    action: &Action,
+) -> Result<Value, ClientError> {
+    let project = validate_request(project, action)?;
     let response = transport.project_management(ProjectManagementCall {
         profile,
         authority: authority.call(),

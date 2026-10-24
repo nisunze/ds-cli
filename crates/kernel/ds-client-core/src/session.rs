@@ -891,6 +891,7 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         action: &crate::project_correspondence::Action,
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
+        crate::project_correspondence::validate_request(project, action)?;
         self.with_authority(now, |profile, transport, authority| {
             crate::project_correspondence::run(profile, transport, authority, project, action)
         })
@@ -908,6 +909,7 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         command: &crate::project_management::Command,
         now: u64,
     ) -> Result<serde_json::Value, ClientError> {
+        crate::project_management::validate_request(project, command)?;
         self.with_authority(now, |profile, transport, authority| {
             crate::project_management::run(profile, transport, authority, project, command)
         })
@@ -919,6 +921,7 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         command: &crate::member_form_grants::Request,
         now: u64,
     ) -> Result<crate::member_form_grants::GrantResult, ClientError> {
+        command.validate(project)?;
         self.with_authority(now, |profile, transport, authority| {
             crate::member_form_grants::run(profile, transport, authority, project, command)
         })

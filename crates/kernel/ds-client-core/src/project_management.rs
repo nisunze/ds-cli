@@ -17,11 +17,8 @@
 //! `ds_command_kernel::project_management`, so the CLI, the Server and the
 //! browser fold one answer rather than three.
 //!
-//! The path is written here rather than declared in the client profile, like
-//! `/api/v1/assets` and `/api/v1/governance` beside it. The profile supplies
-//! the gateway origin and the credentials; declaring a route there would bump
-//! `CLIENT_PROFILE_SCHEMA` and strand every installed `ds` until a package is
-//! cut, for nothing this needs.
+//! The declared gateway operation supplies the path; the profile supplies
+//! the gateway origin and credentials. This owner builds the closed payload.
 //!
 //! Closed by construction, like every other governed door in this crate: the
 //! [`Command`] enum is the complete set of actions this owner can send, and
@@ -809,14 +806,11 @@ fn send<T: AuthorizedTransport>(
     Ok(data)
 }
 
-/// Send one governed action for one project and return its `data`.
-pub(crate) fn run<T: AuthorizedTransport>(
-    profile: &ClientProfile,
-    transport: &mut T,
-    authority: Authority<'_>,
-    project: &str,
+/// Admit the exact domain input before a caller acquires or refreshes authority.
+pub(crate) fn validate_request<'a>(
+    project: &'a str,
     command: &Command,
-) -> Result<Value, ClientError> {
+) -> Result<&'a str, ClientError> {
     let project = if matches!(command, Command::PublicProjects { .. }) {
         if !project.is_empty() {
             return Err(ClientError::new(
@@ -829,6 +823,18 @@ pub(crate) fn run<T: AuthorizedTransport>(
         readable_project(project)?
     };
     command.validate()?;
+    Ok(project)
+}
+
+/// Send one governed action for one project and return its `data`.
+pub(crate) fn run<T: AuthorizedTransport>(
+    profile: &ClientProfile,
+    transport: &mut T,
+    authority: Authority<'_>,
+    project: &str,
+    command: &Command,
+) -> Result<Value, ClientError> {
+    let project = validate_request(project, command)?;
     let request = command.payload(project);
     let authoring_model = command.authoring_model();
     let command = command.base();
