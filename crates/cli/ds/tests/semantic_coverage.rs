@@ -1397,6 +1397,7 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     ("core.cache.retire", "machine_write", "headless_user"),
     ("core.component.activate", "machine_write", "none"),
     ("core.component.stage-local", "machine_write", "none"),
+    ("core.component.install-latest", "machine_write", "none"),
     ("core.component.capture", "read_only", "none"),
     ("core.component.member", "read_only", "none"),
     ("core.component.remove", "machine_write", "none"),
@@ -1495,6 +1496,7 @@ fn one_operation_has_one_command_id_whichever_host_executes_it() {
                 | "core.serve"
                 | "core.module-stage"
                 | "core.component.stage-local"
+                | "core.component.install-latest"
                 | "core.component.selection"
                 | "core.component.capture"
                 | "core.component.member"

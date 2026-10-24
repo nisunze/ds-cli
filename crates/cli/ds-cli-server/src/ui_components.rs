@@ -2,7 +2,9 @@
 //! bootstraps before sign-in; it grants no project or engineering authority.
 use crate::core_components::{CHANNEL, REFUSALS, RUNTIME, owner_failure};
 use base64::Engine;
-use ds_cli_contract::spec::{Arg, Authority, Chapter, Command, Effect, Execution, Requires};
+use ds_cli_contract::spec::{
+    Arg, Authority, Chapter, Command, Effect, Execution, Refusal, Requires,
+};
 use ds_cli_contract::{Context, Failure, Inputs};
 use ds_command_kernel::module_install::ActivationGuard;
 use ds_command_kernel::module_release::ui::{UiComponent, UiScope};
@@ -127,6 +129,262 @@ pub fn selection(inputs: &Inputs) -> Result<Value, Failure> {
     )
 }
 
+const UI_ONLY: Arg = Arg::value(
+    "component",
+    "<interactions|command-kernel>",
+    "Exact fixed UI component owner.",
+)
+.choices(&["interactions", "command-kernel"])
+.required();
+
+/// Every code this composite can return: catalog admission and staging
+/// (core.module-stage), installed-page admission and activation.
+const INSTALL_REFUSALS: &[Refusal] = &[
+    Refusal {
+        code: "ui_component_platform_unavailable",
+        when: "UI installation runs on an unqualified native platform",
+        remedy: "use Linux x86_64 or the registered Windows x86_64 SID/DACL owner",
+    },
+    Refusal {
+        code: "module_release_component_invalid",
+        when: "the component is not a UI unit or the runtime is not wasm",
+        remedy: "select interactions or command-kernel with runtime wasm",
+    },
+    Refusal {
+        code: "invalid_choice",
+        when: "component or channel is outside the declared closed choices",
+        remedy: "select interactions or command-kernel and stable or canary",
+    },
+    Refusal {
+        code: "module_scope_invalid",
+        when: "a UI release selection crosses its scope or lane",
+        remedy: "install published units into the release scope of the installed lane",
+    },
+    Refusal {
+        code: "module_authority_unavailable",
+        when: "the packaged native profile cannot authorize a public release read",
+        remedy: "use the exact packaged production native profile for this installed lane",
+    },
+    Refusal {
+        code: "native_profile_not_configured",
+        when: "this binary has no complete packaged native client catalog",
+        remedy: "install a complete release with its digest-pinned native client profiles",
+    },
+    Refusal {
+        code: "native_profile_unsafe",
+        when: "the packaged native catalog is missing, unsafe, excessive or malformed",
+        remedy: "reinstall one complete release with its native client profiles",
+    },
+    Refusal {
+        code: "native_profile_digest_mismatch",
+        when: "the packaged native catalog bytes differ from this binary's pin",
+        remedy: "reinstall one complete release with its exact native client profiles",
+    },
+    Refusal {
+        code: "module_release_unavailable",
+        when: "the one public release read fails",
+        remedy: "retain the installed unit and retry once connectivity is restored",
+    },
+    Refusal {
+        code: "module_release_unpublished",
+        when: "the lane publishes no release of this UI unit",
+        remedy: "retain the installed unit until its owner publishes a qualified release",
+    },
+    Refusal {
+        code: "module_release_inactive",
+        when: "the published release is withdrawn, stopped or blocked",
+        remedy: "retain the installed unit until an active qualified release exists",
+    },
+    Refusal {
+        code: "module_release_invalid",
+        when: "the release response, unit identity or digest is malformed or crossed",
+        remedy: "retain the installed unit and obtain a corrected qualified publication",
+    },
+    Refusal {
+        code: "module_release_schema_invalid",
+        when: "the release names an unsupported schema",
+        remedy: "obtain the fixed owner's supported UI release schema",
+    },
+    Refusal {
+        code: "module_release_identity_mismatch",
+        when: "the release crosses component, lane or product identity",
+        remedy: "retain the lane and obtain its exact owner publication",
+    },
+    Refusal {
+        code: "module_release_provenance_invalid",
+        when: "the release has incomplete or crossed producer source closure",
+        remedy: "obtain the owner's complete qualified producer provenance",
+    },
+    Refusal {
+        code: "module_release_url_invalid",
+        when: "the release names a mutable or unadmitted member URL",
+        remedy: "obtain an immutable public HTTPS owner publication",
+    },
+    Refusal {
+        code: "module_artifact_invalid",
+        when: "downloaded member bytes differ from the admitted unit",
+        remedy: "retain the installed unit and retry; repeated refusal needs a corrected publication",
+    },
+    Refusal {
+        code: "ui_unit_incompatible_with_installed_page",
+        when: "the active release lacks exports the installed Desktop page calls",
+        remedy: "retain the installed unit until a release providing them is published",
+    },
+    Refusal {
+        code: "ui_page_requirements_invalid",
+        when: "the recorded installed-page requirements are malformed",
+        remedy: "reinstall the Desktop so its page records valid requirements",
+    },
+    Refusal {
+        code: "module_selection_changed",
+        when: "the selection changed while this install ran",
+        remedy: "run the install again; the newer selection is retained",
+    },
+    Refusal {
+        code: "module_activation_deferred",
+        when: "native observations defer activation",
+        remedy: "finish the owning native session, then run the install again",
+    },
+    Refusal {
+        code: "module_update_busy",
+        when: "another update holds this UI component and lane",
+        remedy: "wait for that update to finish",
+    },
+    Refusal {
+        code: "module_update_cancelled",
+        when: "cancellation interrupts the install before activation",
+        remedy: "run the install again when ready; verified bytes may be reused",
+    },
+    Refusal {
+        code: "module_store_invalid",
+        when: "the native UI store is linked, unavailable or unsafe",
+        remedy: "retain the current selection and repair its native owned store",
+    },
+    Refusal {
+        code: "module_receipt_invalid",
+        when: "retained UI receipts or selection are corrupt or crossed",
+        remedy: "retain the current selection and repair its exact UI installation",
+    },
+    Refusal {
+        code: "module_stage_failed",
+        when: "verified transfer, staging or activation cannot complete",
+        remedy: "retain the current selection and resolve the named native failure",
+    },
+];
+fn install_failure(message: String) -> Failure {
+    let code = message.split(':').next().unwrap_or_default();
+    let refusal = INSTALL_REFUSALS
+        .iter()
+        .find(|refusal| refusal.code == code)
+        .unwrap_or_else(|| {
+            INSTALL_REFUSALS
+                .iter()
+                .find(|refusal| refusal.code == "module_stage_failed")
+                .expect("declared fallback")
+        });
+    let bounded: String = message.chars().take(1024).collect();
+    let failure = match refusal.code {
+        "module_release_component_invalid"
+        | "invalid_choice"
+        | "module_scope_invalid"
+        | "module_release_invalid"
+        | "module_release_schema_invalid"
+        | "module_release_identity_mismatch"
+        | "module_release_provenance_invalid"
+        | "module_release_url_invalid" => Failure::invalid(refusal.code, bounded),
+        "module_selection_changed" | "module_update_busy" => {
+            Failure::conflict(refusal.code, bounded)
+        }
+        "ui_component_platform_unavailable"
+        | "module_authority_unavailable"
+        | "native_profile_not_configured"
+        | "module_release_unavailable"
+        | "module_release_unpublished"
+        | "module_release_inactive"
+        | "ui_unit_incompatible_with_installed_page"
+        | "module_activation_deferred" => Failure::unavailable(refusal.code, bounded),
+        _ => Failure::failed(refusal.code, bounded),
+    };
+    failure.remedy(refusal.remedy)
+}
+
+pub static INSTALL_LATEST: Command = Command {
+    id: "core.component.install-latest",
+    path: &["core", "component", "install-latest"],
+    contract: 1,
+    summary: "Install the active published UI unit before sign-in.",
+    purpose: "First run and recovery for Interactions or UI Kernel, with no UI unit loaded. Reads the packaged lane's fixed public catalog once, admits the active release with its complete trusted identity, stages all four members by exact digest, admits the installed page's exports and activates at the current generation. Absent or removed units are installed; a current unit is kept without download. No login, project data or JavaScript/WASM evaluation.",
+    chapter: Chapter::Workstation,
+    effect: Effect::MachineWrite,
+    authority: Authority::None,
+    execution: Execution::Sync,
+    args: &[
+        UI_ONLY,
+        CHANNEL,
+        Arg::value("runtime", "<wasm>", "UI units are WASM.")
+            .choices(&["wasm"])
+            .default("wasm"),
+    ],
+    output: "ds.ui-module-convergence/v1: component, channel, outcome (installed, updated or current), generation, releaseVersion and unitSha256. Step progress goes to stderr as `<component>: <step> <percent>% (<bytes>/<total>)`.",
+    examples: &[],
+    refusals: INSTALL_REFUSALS,
+    reference: Some("docs/reference/core.md"),
+    search: &["recover", "bootstrap", "first-run"],
+    requires: Requires::Server,
+    availability: ui_availability,
+};
+fn note(component: UiComponent, step: &str, progress: u8, done: u64, total: u64) {
+    ds_cli_contract::output::note(&format!(
+        "{}: {step} {progress}% ({done}/{total})",
+        component.as_str()
+    ));
+}
+pub fn install_latest(inputs: &Inputs, context: &Context) -> Result<Value, Failure> {
+    if !context.confirmed {
+        return Err(Failure::invalid(
+            "confirmation_required",
+            "Confirm UI installation with --yes",
+        ));
+    }
+    if inputs.value("runtime").unwrap_or("wasm") != "wasm" {
+        return Err(install_failure(
+            "module_release_component_invalid: UI installation requires runtime wasm".into(),
+        ));
+    }
+    #[cfg(windows)]
+    ds_cli_auth::windows_host::register_ui_store_owner().map_err(install_failure)?;
+    ds_update_runtime::modules::ui::ui_platform().map_err(install_failure)?;
+    let component = UiComponent::parse(inputs.require("component")?)
+        .map_err(|e| install_failure(e.to_string()))?;
+    let channel = inputs.require("channel")?;
+    let lane = ds_cli_auth::Lane::parse(channel)?;
+    note(component, "checking", 0, 0, 0);
+    let authority = ds_cli_auth::module_updates::capture_release_authority(lane)?;
+    let grant = authority
+        .acquire_active_ui(component, &|| false)
+        .map_err(install_failure)?;
+    let store = UiModuleStore::managed(component, channel).map_err(install_failure)?;
+    let mut total = 0;
+    let installed = store
+        .install_active(
+            grant,
+            guard(),
+            |progress| {
+                total = progress.bytes_total;
+                note(
+                    component,
+                    progress.status,
+                    progress.progress,
+                    progress.bytes_downloaded,
+                    progress.bytes_total,
+                )
+            },
+            &|| false,
+        )
+        .map_err(install_failure)?;
+    note(component, "installed", 100, total, total);
+    value(installed)
+}
 pub static STAGE_LOCAL: Command = Command {
     id: "core.component.stage-local",
     path: &["core", "component", "stage-local"],
@@ -140,9 +398,13 @@ pub static STAGE_LOCAL: Command = Command {
     args: &[
         UI_COMPONENT,
         CHANNEL,
-        Arg::value("runtime", "<wasm>", "The fixed UI WASM owners and the Network page engine unit.")
-            .choices(&["wasm"])
-            .default("wasm"),
+        Arg::value(
+            "runtime",
+            "<wasm>",
+            "The fixed UI WASM owners and the Network page engine unit.",
+        )
+        .choices(&["wasm"])
+        .default("wasm"),
         Arg::value(
             "scope",
             "<local-dev>",
@@ -399,6 +661,61 @@ pub fn member(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn install_refusals_are_declared_and_unknown_codes_fall_back() {
+        let codes = |refusals: &[Refusal]| refusals.iter().map(|r| r.code).collect::<Vec<_>>();
+        assert_eq!(codes(INSTALL_LATEST.refusals), codes(INSTALL_REFUSALS));
+        for refusal in INSTALL_REFUSALS {
+            let failure = install_failure(format!("{}: owner refusal", refusal.code));
+            assert_eq!(failure.code(), refusal.code);
+        }
+        let unknown = install_failure(format!("undeclared_code: {}", "x".repeat(4096)));
+        assert_eq!(unknown.code(), "module_stage_failed");
+        assert_eq!(unknown.message().chars().count(), 1024);
+    }
+
+    #[test]
+    fn install_latest_is_confirmed_ui_only_wasm_and_takes_no_digest_url_or_path() {
+        assert!(INSTALL_LATEST.requires_confirmation());
+        assert_eq!(INSTALL_LATEST.authority, Authority::None);
+        assert_eq!(
+            INSTALL_LATEST
+                .args
+                .iter()
+                .map(|arg| arg.name)
+                .collect::<Vec<_>>(),
+            ["component", "channel", "runtime"]
+        );
+        let context = |confirmed| Context {
+            confirmed,
+            output: ds_cli_contract::Output::resolve(ds_cli_contract::Format::Json, false, true),
+        };
+        let parse = |args: &[&str]| {
+            ds_cli_contract::parse(
+                &INSTALL_LATEST,
+                &args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>(),
+            )
+        };
+        let input = parse(&["--component", "command-kernel", "--channel", "stable"]).unwrap();
+        assert_eq!(
+            install_latest(&input, &context(false)).unwrap_err().code(),
+            "confirmation_required"
+        );
+        // Native engines are not UI units; the closed choice refuses before any effect.
+        assert!(parse(&["--component", "network", "--channel", "stable"]).is_err());
+        assert!(
+            parse(&[
+                "--component",
+                "interactions",
+                "--channel",
+                "stable",
+                "--runtime",
+                "native"
+            ])
+            .is_err()
+        );
+    }
 
     #[test]
     fn local_stage_requires_confirmation_and_release_consumers_cannot_select_local_scope() {

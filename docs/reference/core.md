@@ -222,6 +222,20 @@ rollback. Existing captures keep their immutable version bytes. These UI
 operations need no running job host and hold no compute database transaction;
 they grant no project, calculation or publication authority.
 
+First run and recovery use `core.component.install-latest`
+(`ds core component install-latest --component interactions|command-kernel
+--channel <lane> --yes`), so installing a UI unit never requires a UI unit.
+It composes the owners above in one Core process: the same single fixed
+gateway release read and complete admission as `core.module-stage`, digest
+verified staging, the installed-page export admission used by background
+convergence, then activation at the generation it read. Unlike convergence an
+absent or removed unit is installed (`outcome: installed`); an older one is
+replaced (`updated`); a unit that already is the active release is kept with no
+download (`current`). The result is `ds.ui-module-convergence/v1`; stderr
+carries `<component>: <step> <percent>% (<bytes>/<total>)` progress with steps
+`checking`, the transfer steps, and `installed`. The Desktop recovery panel
+calls only this command through its shell.
+
 The Tauri loader uses two typed read-only commands, with explicit runtime wasm:
 
 - `core.component.capture` verifies all four retained members under the updater

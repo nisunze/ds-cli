@@ -835,3 +835,100 @@ fn a_page_that_records_its_requirements_decides_removals_and_refuses_an_older_un
         assert!(store.page_requirements().unwrap().is_some());
     }
 }
+fn install_to(
+    store: &UiModuleStore,
+    revision: usize,
+    downloads: &Cell<usize>,
+) -> Result<UiConvergence, String> {
+    let (release, files) = fixture(store.component, revision);
+    let grant = active_grant(store.component, release)?;
+    store.install_active_with(grant, ActivationGuard::default(), &|| false, |grant| {
+        store.stage_with(grant, &|| false, |asset, path| {
+            downloads.set(downloads.get() + 1);
+            let bytes = &files
+                .iter()
+                .find(|(name, _)| asset.url.ends_with(name))
+                .unwrap()
+                .1;
+            fs::write(path, bytes).map_err(|e| e.to_string())
+        })
+    })
+}
+#[test]
+fn an_explicit_install_installs_absent_and_removed_units_and_keeps_a_current_one() {
+    for component in [UiComponent::Interactions, UiComponent::CommandKernel] {
+        let base = private_base();
+        let store = UiModuleStore::new(base.path(), component, "canary").unwrap();
+        let downloads = Cell::new(0);
+        // A fresh machine: nothing selected, the active release is installed.
+        let first = install_to(&store, 1, &downloads).unwrap();
+        assert_eq!(
+            (first.outcome, first.generation),
+            (UiConvergenceOutcome::Installed, 1)
+        );
+        assert_eq!(first.release_version.as_deref(), Some("0.1.0-r1"));
+        assert_eq!(downloads.get(), 4);
+        let captured = store.capture(&|| false).unwrap();
+        assert_eq!(
+            Some(captured.receipt.unit.unit_sha256()),
+            first.unit_sha256.as_deref()
+        );
+        // Asking again downloads nothing and changes no generation.
+        let current = install_to(&store, 1, &downloads).unwrap();
+        assert_eq!(
+            (current.outcome, current.generation),
+            (UiConvergenceOutcome::Current, 1)
+        );
+        assert_eq!(downloads.get(), 4);
+        // A newer active release replaces the installed unit.
+        let updated = install_to(&store, 2, &downloads).unwrap();
+        assert_eq!(
+            (updated.outcome, updated.generation),
+            (UiConvergenceOutcome::Updated, 2)
+        );
+        // An explicit request reinstalls a removed unit at its removed generation.
+        store
+            .remove(2, ActivationGuard::default(), &|| false)
+            .unwrap();
+        let reinstalled = install_to(&store, 2, &downloads).unwrap();
+        assert_eq!(
+            (reinstalled.outcome, reinstalled.generation),
+            (UiConvergenceOutcome::Installed, 4)
+        );
+        assert!(store.capture(&|| false).is_ok());
+    }
+}
+#[test]
+fn an_explicit_install_never_activates_a_changed_or_unverified_release() {
+    let base = private_base();
+    let store = UiModuleStore::new(base.path(), UiComponent::Interactions, "canary").unwrap();
+    let (release, files) = fixture(UiComponent::Interactions, 1);
+    let grant = active_grant(UiComponent::Interactions, release).unwrap();
+    // Bytes that differ from the admitted unit refuse before any selection exists.
+    let refused = store
+        .install_active_with(grant, ActivationGuard::default(), &|| false, |grant| {
+            store.stage_with(grant, &|| false, |asset, path| {
+                let bytes = &files
+                    .iter()
+                    .find(|(name, _)| asset.url.ends_with(name))
+                    .unwrap()
+                    .1;
+                let mut planted = bytes.clone();
+                planted.push(0);
+                fs::write(path, planted).map_err(|e| e.to_string())
+            })
+        })
+        .unwrap_err();
+    assert!(!refused.is_empty());
+    assert!(store.selection().unwrap().is_none());
+    // A cancelled request stages nothing.
+    let (release, _) = fixture(UiComponent::Interactions, 1);
+    let grant = active_grant(UiComponent::Interactions, release).unwrap();
+    assert!(store
+        .install_active_with(grant, ActivationGuard::default(), &|| true, |_| {
+            panic!("a cancelled install never stages")
+        })
+        .unwrap_err()
+        .starts_with("module_update_cancelled"));
+    assert!(store.selection().unwrap().is_none());
+}

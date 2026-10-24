@@ -222,6 +222,8 @@ pub enum UiConvergenceOutcome {
     Current,
     /// The channel's active release was verified and activated.
     Updated,
+    /// An absent or removed unit was installed on an explicit install request.
+    Installed,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -834,6 +836,40 @@ impl UiModuleStore {
         cancelled: &dyn Fn() -> bool,
         stage: impl FnOnce(TrustedUiGrant) -> Result<StagedUiModule, String>,
     ) -> Result<UiConvergence, String> {
+        self.settle_with(grant, guard, cancelled, false, stage)
+    }
+    /// First run and recovery: install the channel's active release whatever
+    /// the selection holds. Unlike background convergence an absent or removed
+    /// unit is installed too, through the same staging, installed-page
+    /// admission and generation fence; an active current unit is kept.
+    pub fn install_active<F: FnMut(TransferProgress)>(
+        &self,
+        grant: TrustedUiGrant,
+        guard: ActivationGuard,
+        report: F,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<UiConvergence, String> {
+        self.install_active_with(grant, guard, cancelled, |grant| {
+            self.stage(grant, report, cancelled)
+        })
+    }
+    pub(super) fn install_active_with(
+        &self,
+        grant: TrustedUiGrant,
+        guard: ActivationGuard,
+        cancelled: &dyn Fn() -> bool,
+        stage: impl FnOnce(TrustedUiGrant) -> Result<StagedUiModule, String>,
+    ) -> Result<UiConvergence, String> {
+        self.settle_with(grant, guard, cancelled, true, stage)
+    }
+    fn settle_with(
+        &self,
+        grant: TrustedUiGrant,
+        guard: ActivationGuard,
+        cancelled: &dyn Fn() -> bool,
+        install: bool,
+        stage: impl FnOnce(TrustedUiGrant) -> Result<StagedUiModule, String>,
+    ) -> Result<UiConvergence, String> {
         check_cancel(cancelled)?;
         if grant.unit.component() != self.component || grant.unit.channel() != self.channel {
             return Err("module_receipt_invalid: crossed UI grant".into());
@@ -842,8 +878,16 @@ impl UiModuleStore {
         let planned = current.as_ref().map_or(0, |selected| selected.generation);
         let version = grant.unit.version();
         let digest = grant.unit.unit_sha256().to_owned();
-        let outcome = convergence_plan(current.as_ref(), &digest);
-        let generation = if outcome == UiConvergenceOutcome::Updated {
+        let outcome = match convergence_plan(current.as_ref(), &digest) {
+            UiConvergenceOutcome::Absent | UiConvergenceOutcome::Removed if install => {
+                UiConvergenceOutcome::Installed
+            }
+            planned => planned,
+        };
+        let generation = if matches!(
+            outcome,
+            UiConvergenceOutcome::Updated | UiConvergenceOutcome::Installed
+        ) {
             let staged = stage(grant)?;
             // The installed page decides, not a version: a unit lacking an
             // export it calls keeps the installed unit (owner 22 Oct).

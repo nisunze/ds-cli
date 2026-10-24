@@ -990,6 +990,7 @@ pub static DOMAIN: Domain = Domain {
         &module_updates::STAGE,
         &core_components::SELECTION,
         &ui_components::STAGE_LOCAL,
+        &ui_components::INSTALL_LATEST,
         &ui_components::CAPTURE,
         &ui_components::MEMBER,
         &core_components::REMOVE,

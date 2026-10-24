@@ -3304,6 +3304,11 @@ static SERVER_ENTRIES: &[Entry] = &[
         render: ds_cli_server::render,
     },
     Entry {
+        command: &ds_cli_server::ui_components::INSTALL_LATEST,
+        handler: ds_cli_server::ui_components::install_latest,
+        render: ds_cli_server::render,
+    },
+    Entry {
         command: &ds_cli_server::ui_components::CAPTURE,
         handler: ds_cli_server::ui_components::capture,
         render: ds_cli_server::render,

@@ -174,6 +174,13 @@ const CODE_NOT_A_LITERAL: &[(&str, &str)] = &[
         "terminal mechanics preserve the shared native data application's typed code and class; its closed codes are the NATIVE_DATA_REFUSED and NATIVE_DATA_FAILED entries declared by the elevation and terrain commands",
     ),
     (
+        "ds-cli-server/src/ui_components.rs",
+        "install_failure selects only from core.component.install-latest's \
+         declared INSTALL_REFUSALS, with module_stage_failed as the fallback; \
+         install_refusals_are_declared_and_unknown_codes_fall_back exercises \
+         that entire closed roster",
+    ),
+    (
         "ds-cli-server/src/core_components.rs",
         "owner_failure selects only from the command's declared REFUSALS; \
          every_owner_refusal_is_declared_and_actionable exercises that entire \
