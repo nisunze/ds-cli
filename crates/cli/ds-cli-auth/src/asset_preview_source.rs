@@ -84,7 +84,7 @@ impl SourceProvider for Provider<'_> {
         &mut self,
         request: &Request,
         control: &dyn Control,
-    ) -> Result<SourceProof, SourceFailure> {
+    ) -> Result<SourceProof, Box<SourceFailure>> {
         control.check_current()?;
         let named = headless_named_project(
             self.lane,
@@ -103,10 +103,10 @@ impl SourceProvider for Provider<'_> {
                 matches!(status, Some(401 | 403 | 404)) && code.is_some()
             });
             *self.original_failure.borrow_mut() = Some(error.clone());
-            SourceFailure {
+            Box::new(SourceFailure {
                 failure: host(error),
                 retained_forbidden: denied,
-            }
+            })
         })?;
         control.check_current()?;
         if named.identity().uid() != self.uid

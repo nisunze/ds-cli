@@ -43,12 +43,13 @@ pub struct SourceFailure {
     /// Only a typed source denial/deletion may revoke retained bytes.
     pub retained_forbidden: bool,
 }
-impl From<HostFailure> for SourceFailure {
+// Boxed so the provider `Result` stays small.
+impl From<HostFailure> for Box<SourceFailure> {
     fn from(failure: HostFailure) -> Self {
-        Self {
+        Box::new(SourceFailure {
             failure,
             retained_forbidden: false,
-        }
+        })
     }
 }
 /// The provider retains its private signed generation grant internally. A
@@ -58,7 +59,7 @@ pub trait SourceProvider {
         &mut self,
         request: &Request,
         control: &dyn Control,
-    ) -> Result<SourceProof, SourceFailure>;
+    ) -> Result<SourceProof, Box<SourceFailure>>;
     fn acquire(
         &mut self,
         source: &SourceProof,
@@ -423,14 +424,14 @@ mod tests {
             &mut self,
             _: &Request,
             control: &dyn Control,
-        ) -> Result<SourceProof, SourceFailure> {
+        ) -> Result<SourceProof, Box<SourceFailure>> {
             self.counts.authorizations.fetch_add(1, Ordering::SeqCst);
             control.check_current()?;
             if self.denied {
-                return Err(SourceFailure {
+                return Err(Box::new(SourceFailure {
                     failure: fail("asset_denied", "Source authority denied the attachment."),
                     retained_forbidden: true,
-                });
+                }));
             }
             Ok(self.source.clone())
         }

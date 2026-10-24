@@ -29,7 +29,8 @@ impl asset_preview::SourceProvider for Offline {
         &mut self,
         _: &Request,
         _: &dyn asset_preview::Control,
-    ) -> Result<ds_command_kernel::asset_preview::SourceProof, asset_preview::SourceFailure> {
+    ) -> Result<ds_command_kernel::asset_preview::SourceProof, Box<asset_preview::SourceFailure>>
+    {
         Err(fail("semantic retained export cannot authorize an unselected source").into())
     }
     fn acquire(
@@ -383,7 +384,7 @@ mod tests {
             &mut self,
             _: &Request,
             _: &dyn asset_preview::Control,
-        ) -> Result<ds_command_kernel::asset_preview::SourceProof, asset_preview::SourceFailure>
+        ) -> Result<ds_command_kernel::asset_preview::SourceProof, Box<asset_preview::SourceFailure>>
         {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(ds_command_kernel::asset_preview::SourceProof {
@@ -633,8 +634,10 @@ mod tests {
                 &mut self,
                 request: &Request,
                 _: &dyn asset_preview::Control,
-            ) -> Result<ds_command_kernel::asset_preview::SourceProof, asset_preview::SourceFailure>
-            {
+            ) -> Result<
+                ds_command_kernel::asset_preview::SourceProof,
+                Box<asset_preview::SourceFailure>,
+            > {
                 self.calls += 1;
                 Ok(ds_command_kernel::asset_preview::SourceProof {
                     project_id: "project".into(),

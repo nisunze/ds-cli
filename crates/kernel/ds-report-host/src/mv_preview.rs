@@ -271,6 +271,25 @@ fn answer(
     })
 }
 
+pub(crate) fn validate_source(
+    inputs: &MvPreviewInputs<'_>,
+    source: Option<&printing::mv_models::SourceBinding>,
+) -> Result<(), HostFailure> {
+    if let Some(source) = source {
+        printing::mv_models::admit_context(inputs.project_id, source)
+            .map_err(|code| HostFailure::new(CODE_INPUTS_INVALID, code))?;
+        let revision = printing::mv_models::scene_revision(inputs.scene)
+            .map_err(|code| HostFailure::new(CODE_INPUTS_INVALID, code))?;
+        if source.worker_revision != revision {
+            return Err(HostFailure::new(
+                CODE_INPUTS_INVALID,
+                "native MV source revision differs from its captured scene",
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -596,23 +615,4 @@ mod tests {
         assert!(matches!(answer, Err(MvPreviewRefusal::Host(f)) if f.code == CODE_INPUTS_INVALID));
         assert_eq!(calls, 0);
     }
-}
-
-pub(crate) fn validate_source(
-    inputs: &MvPreviewInputs<'_>,
-    source: Option<&printing::mv_models::SourceBinding>,
-) -> Result<(), HostFailure> {
-    if let Some(source) = source {
-        printing::mv_models::admit_context(inputs.project_id, source)
-            .map_err(|code| HostFailure::new(CODE_INPUTS_INVALID, code))?;
-        let revision = printing::mv_models::scene_revision(inputs.scene)
-            .map_err(|code| HostFailure::new(CODE_INPUTS_INVALID, code))?;
-        if source.worker_revision != revision {
-            return Err(HostFailure::new(
-                CODE_INPUTS_INVALID,
-                "native MV source revision differs from its captured scene",
-            ));
-        }
-    }
-    Ok(())
 }

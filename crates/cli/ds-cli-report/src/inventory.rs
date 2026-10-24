@@ -74,22 +74,20 @@ pub fn run(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
         )
     });
     let before_owner = before.owner.clone();
-    if let Some(touch) = sync.as_mut() {
-        if touch.current
-            && touch.published.iter().any(|id| {
-                id.engine == "network_reporter"
-                    && id.operation
-                        == format!("export-{}", inputs.value("transformer").unwrap_or_default())
-                    && id.variant == "default"
-            })
-        {
-            if let Err(error) = observe_published_selection(inputs) {
-                touch.current = false;
-                touch.receipt["state"] = json!("held");
-                touch.receipt["reason"] = json!("publication_observation_unavailable");
-                touch.receipt["detail"] = json!(error.message());
-            }
-        }
+    if let Some(touch) = sync.as_mut()
+        && touch.current
+        && touch.published.iter().any(|id| {
+            id.engine == "network_reporter"
+                && id.operation
+                    == format!("export-{}", inputs.value("transformer").unwrap_or_default())
+                && id.variant == "default"
+        })
+        && let Err(error) = observe_published_selection(inputs)
+    {
+        touch.current = false;
+        touch.receipt["state"] = json!("held");
+        touch.receipt["reason"] = json!("publication_observation_unavailable");
+        touch.receipt["detail"] = json!(error.message());
     }
     let mut snapshot = if sync.is_some() {
         crate::outbox::inventory_snapshot(inputs)?
@@ -223,6 +221,42 @@ pub(crate) fn attach_cloud(
     .map_err(failed)
 }
 
+fn observe_published_selection(inputs: &Inputs) -> Result<(), Failure> {
+    let lane = inputs.require("lane")?;
+    let project = inputs.require("project")?;
+    let before = fence(lane)?;
+    let operation = format!("export-{}", inputs.require("transformer")?);
+    let raw = ds_cli_auth::sync::publication_heads_for_project(
+        lane,
+        project,
+        ds_cli_auth::sync::PublicationHeadQuery::Show {
+            engine: "network_reporter",
+            operation: &operation,
+            variant: "default",
+        },
+    )?;
+    let head = ds_command_kernel::compute_artifact_inventory::decode_head(
+        &serde_json::to_vec(&raw).map_err(failed)?,
+    )
+    .map_err(failed)?;
+    if head.engine != "network_reporter"
+        || head.operation != operation
+        || head.variant != "default"
+        || fence(lane)? != before
+    {
+        return Err(failed("Selected publication observation changed scope."));
+    }
+    let state = crate::outbox::server_state(inputs)?;
+    let mut store = ds_sync_store::Store::open(&state.join("store.sqlite")).map_err(failed)?;
+    store
+        .observe_report_head(&before, project, ds_sync_runtime::now_ms(), &raw)
+        .map_err(failed)?;
+    if fence(lane)? != before {
+        return Err(failed("Account changed after publication observation."));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,40 +323,4 @@ mod tests {
         attach_cloud(&mut current, Some(&store), &fence, true, None).unwrap();
         assert!(matches!(current.cloud_read.state, ReadState::Ready));
     }
-}
-
-fn observe_published_selection(inputs: &Inputs) -> Result<(), Failure> {
-    let lane = inputs.require("lane")?;
-    let project = inputs.require("project")?;
-    let before = fence(lane)?;
-    let operation = format!("export-{}", inputs.require("transformer")?);
-    let raw = ds_cli_auth::sync::publication_heads_for_project(
-        lane,
-        project,
-        ds_cli_auth::sync::PublicationHeadQuery::Show {
-            engine: "network_reporter",
-            operation: &operation,
-            variant: "default",
-        },
-    )?;
-    let head = ds_command_kernel::compute_artifact_inventory::decode_head(
-        &serde_json::to_vec(&raw).map_err(failed)?,
-    )
-    .map_err(failed)?;
-    if head.engine != "network_reporter"
-        || head.operation != operation
-        || head.variant != "default"
-        || fence(lane)? != before
-    {
-        return Err(failed("Selected publication observation changed scope."));
-    }
-    let state = crate::outbox::server_state(inputs)?;
-    let mut store = ds_sync_store::Store::open(&state.join("store.sqlite")).map_err(failed)?;
-    store
-        .observe_report_head(&before, project, ds_sync_runtime::now_ms(), &raw)
-        .map_err(failed)?;
-    if fence(lane)? != before {
-        return Err(failed("Account changed after publication observation."));
-    }
-    Ok(())
 }

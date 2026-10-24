@@ -240,18 +240,33 @@ pub struct PrintContextBytes {
     pub omitted: Vec<String>,
 }
 
+/// The exact project, lane, principal, audience and server-issued sheets receipt
+/// a style capture must have been taken under.
+#[derive(Clone, Copy)]
+pub struct PrintStyleScope<'a> {
+    pub project: &'a str,
+    pub lane: &'a str,
+    pub principal: &'a str,
+    pub audience: &'a str,
+    pub sheets: &'a Value,
+    pub server_sheets_sha256: &'a str,
+}
+
 /// Bind an admitted style capture to the exact held context, preserving the
 /// server's original input receipt and every held vector/source byte.
 pub fn bind_print_styles(
     context: Option<PrintContextBytes>,
     capture: &ds_command_kernel::printing::style_capture::Capture,
-    project: &str,
-    lane: &str,
-    principal: &str,
-    audience: &str,
-    sheets: &Value,
-    server_sheets_sha256: &str,
+    scope: PrintStyleScope<'_>,
 ) -> Result<PrintContextBytes, HostFailure> {
+    let PrintStyleScope {
+        project,
+        lane,
+        principal,
+        audience,
+        sheets,
+        server_sheets_sha256,
+    } = scope;
     capture
         .validate_scope(project, lane, principal, audience, sheets)
         .map_err(|e| HostFailure::new("print_style_capture_context_mismatch", e))?;
@@ -1312,7 +1327,7 @@ fn complete_combined_reference_using(
         .ok_or("combined_missing_admin_bounds_asset: network_config path is required")?;
     let file = File::open(path).map_err(|e| format!("combined_missing_admin_bounds_asset: {e}"))?;
     let mut bytes = Vec::new();
-    file.take(MAX_SEMANTIC_REQUEST_BYTES as u64 + 1)
+    file.take(MAX_SEMANTIC_REQUEST_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|e| format!("combined_missing_admin_bounds_asset: {e}"))?;
     if bytes.len() as u64 > MAX_SEMANTIC_REQUEST_BYTES {
@@ -2564,12 +2579,14 @@ mod style_context_capture_tests {
         let bound = bind_print_styles(
             Some(held.clone()),
             &capture,
-            "project-a",
-            "stable",
-            "user-a",
-            &"a".repeat(64),
-            &sheets,
-            &"c".repeat(64),
+            PrintStyleScope {
+                project: "project-a",
+                lane: "stable",
+                principal: "user-a",
+                audience: &"a".repeat(64),
+                sheets: &sheets,
+                server_sheets_sha256: &"c".repeat(64),
+            },
         )
         .unwrap();
         let value: Value = serde_json::from_slice(&bound.bytes).unwrap();
@@ -2586,23 +2603,27 @@ mod style_context_capture_tests {
         assert!(bind_print_styles(
             Some(held.clone()),
             &capture,
-            "project-b",
-            "stable",
-            "user-a",
-            &"a".repeat(64),
-            &sheets,
-            &"c".repeat(64),
+            PrintStyleScope {
+                project: "project-b",
+                lane: "stable",
+                principal: "user-a",
+                audience: &"a".repeat(64),
+                sheets: &sheets,
+                server_sheets_sha256: &"c".repeat(64),
+            },
         )
         .is_err());
         assert!(bind_print_styles(
             Some(held.clone()),
             &capture,
-            "project-a",
-            "stable",
-            "user-a",
-            &"a".repeat(64),
-            &sheets,
-            &"d".repeat(64)
+            PrintStyleScope {
+                project: "project-a",
+                lane: "stable",
+                principal: "user-a",
+                audience: &"a".repeat(64),
+                sheets: &sheets,
+                server_sheets_sha256: &"d".repeat(64),
+            },
         )
         .is_err());
         let mut corrupted = held;
@@ -2610,12 +2631,14 @@ mod style_context_capture_tests {
         assert!(bind_print_styles(
             Some(corrupted),
             &capture,
-            "project-a",
-            "stable",
-            "user-a",
-            &"a".repeat(64),
-            &sheets,
-            &"c".repeat(64),
+            PrintStyleScope {
+                project: "project-a",
+                lane: "stable",
+                principal: "user-a",
+                audience: &"a".repeat(64),
+                sheets: &sheets,
+                server_sheets_sha256: &"c".repeat(64),
+            },
         )
         .is_err());
     }

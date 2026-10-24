@@ -135,12 +135,14 @@ fn explicit_local_proof_capture_keeps_original_server_receipt_and_admits_only_it
         ds_report_host::bind_print_styles(
             None,
             &capture,
-            "project-a",
-            "stable",
-            "user-a",
-            &"a".repeat(64),
-            &proof.sheets().unwrap(),
-            &source.sheets_sha256
+            ds_report_host::PrintStyleScope {
+                project: "project-a",
+                lane: "stable",
+                principal: "user-a",
+                audience: &"a".repeat(64),
+                sheets: &proof.sheets().unwrap(),
+                server_sheets_sha256: &source.sheets_sha256,
+            },
         )
         .is_ok()
     );
@@ -148,12 +150,14 @@ fn explicit_local_proof_capture_keeps_original_server_receipt_and_admits_only_it
         ds_report_host::bind_print_styles(
             None,
             &capture,
-            "project-a",
-            "stable",
-            "user-a",
-            &"a".repeat(64),
-            &proof.sheets().unwrap(),
-            &proof.sheets_sha256
+            ds_report_host::PrintStyleScope {
+                project: "project-a",
+                lane: "stable",
+                principal: "user-a",
+                audience: &"a".repeat(64),
+                sheets: &proof.sheets().unwrap(),
+                server_sheets_sha256: &proof.sheets_sha256,
+            },
         )
         .is_err()
     );

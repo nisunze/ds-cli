@@ -111,11 +111,20 @@ pub(super) fn run(inputs: &Inputs) -> Result<Value, Failure> {
         &room,
         &captured,
         &saved_room,
-        selection,
-        retention,
-        Path::new(inputs.require("out-dir")?),
+        PreviewRun {
+            selection,
+            retention,
+            scratch_parent: Path::new(inputs.require("out-dir")?),
+        },
         &guard,
     )
+}
+
+/// What one preview run selects, how long it is retained and where its scratch lives.
+struct PreviewRun<'a> {
+    selection: Option<DesignOutputSelection>,
+    retention: preview_artifact::Retention,
+    scratch_parent: &'a Path,
 }
 
 fn execute(
@@ -123,11 +132,14 @@ fn execute(
     room: &Room,
     captured: &hold::Inputs,
     saved_room: &ds_project_data::room_hold::Room,
-    selection: Option<DesignOutputSelection>,
-    retention: preview_artifact::Retention,
-    scratch_parent: &Path,
+    run: PreviewRun<'_>,
     guard: &dyn Fn() -> Result<(), Failure>,
 ) -> Result<Value, Failure> {
+    let PreviewRun {
+        selection,
+        retention,
+        scratch_parent,
+    } = run;
     guard()?;
     let transformer = &saved_room.transformer;
     if !captured
@@ -456,9 +468,11 @@ mod tests {
                         room,
                         captured,
                         held,
-                        None,
-                        preview_artifact::Retention::Hours24,
-                        &room.root.join("scratch"),
+                        PreviewRun {
+                            selection: None,
+                            retention: preview_artifact::Retention::Hours24,
+                            scratch_parent: &room.root.join("scratch"),
+                        },
                         &|| Ok(()),
                     )
                     .unwrap();
@@ -473,9 +487,11 @@ mod tests {
             &room,
             &captured,
             &held,
-            None,
-            preview_artifact::Retention::Hours24,
-            &dir.path().join("unused-scratch"),
+            PreviewRun {
+                selection: None,
+                retention: preview_artifact::Retention::Hours24,
+                scratch_parent: &dir.path().join("unused-scratch"),
+            },
             &|| Ok(()),
         )
         .unwrap();
@@ -513,9 +529,11 @@ mod tests {
                 &room,
                 &missing,
                 &held,
-                None,
-                preview_artifact::Retention::Hours24,
-                &dir.path().join("scratch"),
+                PreviewRun {
+                    selection: None,
+                    retention: preview_artifact::Retention::Hours24,
+                    scratch_parent: &dir.path().join("scratch"),
+                },
                 &|| Ok(())
             )
             .unwrap_err()
@@ -530,9 +548,11 @@ mod tests {
                 &room,
                 &captured,
                 &changed,
-                None,
-                preview_artifact::Retention::Hours24,
-                &dir.path().join("scratch"),
+                PreviewRun {
+                    selection: None,
+                    retention: preview_artifact::Retention::Hours24,
+                    scratch_parent: &dir.path().join("scratch"),
+                },
                 &|| Ok(())
             )
             .unwrap_err()
@@ -553,9 +573,11 @@ mod tests {
                     &wrong,
                     &captured,
                     &held,
-                    None,
-                    preview_artifact::Retention::Hours24,
-                    &dir.path().join("scratch"),
+                    PreviewRun {
+                        selection: None,
+                        retention: preview_artifact::Retention::Hours24,
+                        scratch_parent: &dir.path().join("scratch"),
+                    },
                     &|| Ok(())
                 )
                 .unwrap_err()

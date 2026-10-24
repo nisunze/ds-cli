@@ -2612,14 +2612,16 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
             Some(ds_report_host::bind_print_styles(
                 print_context,
                 capture,
-                &project_id,
-                lane,
-                identity.uid(),
-                identity.credential_audience_sha256(),
-                &receipt
-                    .sheets()
-                    .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e))?,
-                &server_sheets_sha256,
+                ds_report_host::PrintStyleScope {
+                    project: &project_id,
+                    lane,
+                    principal: identity.uid(),
+                    audience: identity.credential_audience_sha256(),
+                    sheets: &receipt
+                        .sheets()
+                        .map_err(|e| HostFailure::new(INPUTS_INVALID.code, e))?,
+                    server_sheets_sha256: &server_sheets_sha256,
+                },
             )?)
         } else {
             print_context

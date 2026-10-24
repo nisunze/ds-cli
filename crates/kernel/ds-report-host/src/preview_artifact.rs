@@ -628,12 +628,14 @@ fn materialize_svg_at(
     let sha256 = digest(svg.as_bytes());
     materialize_file_at(
         room,
-        size_bytes,
-        sha256,
-        metadata,
-        Media::Svg,
-        retention,
-        clock,
+        RetainedFile {
+            size_bytes,
+            sha256,
+            metadata,
+            media: Media::Svg,
+            retention,
+            clock,
+        },
         |path| crate::write_new_private(path, svg.as_bytes()),
     )
 }
@@ -698,12 +700,14 @@ pub fn materialize_document_retained(
         "content_type":media.mime(),"retention_ms":retention.millis()});
     materialize_file_at(
         room,
-        size_bytes,
-        sha256.into(),
-        metadata,
-        media,
-        retention,
-        now()?,
+        RetainedFile {
+            size_bytes,
+            sha256: sha256.into(),
+            metadata,
+            media,
+            retention,
+            clock: now()?,
+        },
         |path| {
             let mut target = ds_layer_store::private::open_options()
                 .write(true)
@@ -737,25 +741,39 @@ pub fn materialize_markdown_retained(
         "size_bytes":bytes.len(),"content_type":Media::Markdown.mime(),"retention_ms":retention.millis()});
     materialize_file_at(
         room,
-        bytes.len() as u64,
-        sha256,
-        metadata,
-        Media::Markdown,
-        retention,
-        now()?,
+        RetainedFile {
+            size_bytes: bytes.len() as u64,
+            sha256,
+            metadata,
+            media: Media::Markdown,
+            retention,
+            clock: now()?,
+        },
         |path| crate::write_new_private(path, bytes),
     )
 }
-fn materialize_file_at(
-    room: &Room,
+/// The exact bytes identity, metadata and clock one retained file is keyed by.
+struct RetainedFile {
     size_bytes: u64,
     sha256: String,
     metadata: Value,
     media: Media,
     retention: Retention,
     clock: u64,
+}
+fn materialize_file_at(
+    room: &Room,
+    file: RetainedFile,
     write: impl FnOnce(&Path) -> Result<(), HostFailure>,
 ) -> Result<Artifact, HostFailure> {
+    let RetainedFile {
+        size_bytes,
+        sha256,
+        metadata,
+        media,
+        retention,
+        clock,
+    } = file;
     let owner = authority(room)?;
     let result = digest(&serde_json::to_vec(&metadata).map_err(|e| failed(e.to_string()))?);
     let base = root(room, &owner);
@@ -780,7 +798,16 @@ fn materialize_file_at(
             metadata["native_re_admission"] = json!({"operation":crate::random_run_id()});
             drop(_lock);
             return materialize_file_at(
-                room, size_bytes, sha256, metadata, media, retention, clock, write,
+                room,
+                RetainedFile {
+                    size_bytes,
+                    sha256,
+                    metadata,
+                    media,
+                    retention,
+                    clock,
+                },
+                write,
             );
         }
         crate::verify_file(&path, size_bytes, &sha256)?;
@@ -840,12 +867,14 @@ pub(crate) fn materialize_pdf_at(
     let sha = digest(bytes);
     materialize_file_at(
         room,
-        bytes.len() as u64,
-        sha.clone(),
-        json!({"provenance":provenance,"sha256":sha,"size_bytes":bytes.len(),"content_type":Media::Pdf.mime(),"retention_ms":retention.millis()}),
-        Media::Pdf,
-        retention,
-        clock,
+        RetainedFile {
+            size_bytes: bytes.len() as u64,
+            sha256: sha.clone(),
+            metadata: json!({"provenance":provenance,"sha256":sha,"size_bytes":bytes.len(),"content_type":Media::Pdf.mime(),"retention_ms":retention.millis()}),
+            media: Media::Pdf,
+            retention,
+            clock,
+        },
         |path| crate::write_new_private(path, bytes),
     )
 }
