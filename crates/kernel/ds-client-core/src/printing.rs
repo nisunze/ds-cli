@@ -147,8 +147,9 @@ impl PrintingRequest {
         }
     }
 
-    /// A copy between projects must name another project than the one the
-    /// request writes; the same project is the ordinary same-library copy.
+    /// A source naming the request's own project is the ordinary
+    /// same-library copy, exactly as an absent source project is: it needs a
+    /// destination id other than its own.
     pub fn validate_for(&self, project: &str) -> Result<(), ClientError> {
         self.validate()?;
         crate::authorized::validate_tiles(project)?;
@@ -168,16 +169,17 @@ impl PrintingRequest {
         if let Self::Copy {
             source:
                 PrintingSource {
-                    project: Some(source),
+                    project: Some(source_project),
+                    id,
                     ..
                 },
-            ..
+            destination,
         } = self
         {
-            if source == project {
+            if source_project == project && *id == destination.id {
                 return Err(ClientError::new(
                     ErrorKind::InvalidInput,
-                    "A copy between projects names a source project other than the destination",
+                    "Print copy destination must differ from source",
                 ));
             }
         }
@@ -461,6 +463,17 @@ mod tests {
         );
         // The same project is the same-library copy, which needs another id.
         assert!(request.validate_for("czgmdwth_gisagara").is_err());
+        let mut renamed = between_projects("czgmdwth_gisagara");
+        if let PrintingRequest::Copy { destination, .. } = &mut renamed {
+            destination.id = "a3-landscape-gisagara-cjic-copy".into();
+        }
+        renamed.validate_for("czgmdwth_gisagara").unwrap();
+        let body: Value = serde_json::from_slice(&renamed.body("czgmdwth_gisagara")).unwrap();
+        assert_eq!(body["source"]["project_id"], json!("czgmdwth_gisagara"));
+        assert_eq!(
+            body["destination"]["project_id"],
+            json!("czgmdwth_gisagara")
+        );
         // A global location has no project of its own.
         let mut global = between_projects("czgmdwth_gisagara");
         if let PrintingRequest::Copy { source, .. } = &mut global {
