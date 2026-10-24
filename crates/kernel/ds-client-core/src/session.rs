@@ -869,6 +869,18 @@ impl<T: Transport, S: RefreshTokenStore> Client<T, S> {
         project_deletion
     }
 
+    /// Delete the restored account and its personal data (ds-brain
+    /// account-deletion contract). No project: the account is the identity
+    /// the gateway verifies, and the request carries only the confirmation.
+    pub fn delete_account(
+        &mut self,
+        now: u64,
+    ) -> Result<crate::account_deletion::Receipt, ClientError> {
+        self.with_authority(now, |profile, transport, authority| {
+            crate::account_deletion::run(profile, transport, authority)
+        })
+    }
+
     crate::gateway_compat::gateway_domain_command! {
         session;
         /// One selected account-private note action; no project or note catalogue read.

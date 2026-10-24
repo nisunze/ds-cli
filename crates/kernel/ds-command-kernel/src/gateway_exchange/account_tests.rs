@@ -256,3 +256,56 @@ fn the_profile_is_kept_from_a_read_and_from_a_write() {
         Some(&json!("Ana M"))
     );
 }
+
+fn deletion_receipt(sign_in: bool) -> Value {
+    json!({"success": true, "data": {
+        "schema": DELETION_SCHEMA, "receipt_id": "r-1", "state": "deleted", "already_deleted": false,
+        "started_at": "2026-10-24T09:00:00Z", "deleted_at": "2026-10-24T09:00:02Z",
+        "deleted": {"profile_documents": 4, "project_memberships": 1, "storage_objects": 2,
+                    "device_credentials": 0, "messaging_documents": 0, "sign_in_account": sign_in,
+                    "a_future_count": 3},
+        "retained": ["project_records", "audit_records"]
+    }})
+}
+
+#[test]
+fn account_deletion_sends_only_the_confirmation_once_the_person_confirmed() {
+    let sent = request(AccountDeletion { confirmed: true });
+    assert_eq!(
+        (sent.method, sent.path.as_str()),
+        (Method::Post, "/api/v1/account/delete")
+    );
+    assert_eq!(sent.timeout_ms, 120_000);
+    assert_eq!(
+        sent.body,
+        Some(json!({"confirmation": "DELETE_MY_ACCOUNT"}))
+    );
+    assert!(matches!(
+        start(AccountDeletion { confirmed: false }),
+        Step::Refused(r) if r.code == INPUT_INVALID
+    ));
+}
+
+#[test]
+fn account_deletion_admits_only_a_receipt_that_says_the_account_is_gone() {
+    let receipt = answered(
+        AccountDeletion { confirmed: true },
+        200,
+        deletion_receipt(true),
+    )
+    .unwrap();
+    assert_eq!(receipt.receipt_id, "r-1");
+    assert_eq!(receipt.deleted.profile_documents, 4);
+    assert!(matches!(
+        answered(AccountDeletion { confirmed: true }, 200, deletion_receipt(false)),
+        Err(r) if r.code == DELETION_RECEIPT_INVALID
+    ));
+    let refused = answered(
+        AccountDeletion { confirmed: true },
+        500,
+        json!({"success": false, "error": {"code": "account_delete_incomplete",
+            "message": "Account deletion did not finish", "details": {"step": "profile", "retryable": true}}}),
+    )
+    .unwrap_err();
+    assert_eq!(refused.code, "account_delete_incomplete");
+}

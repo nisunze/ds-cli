@@ -261,6 +261,9 @@ const EXPECTED: &[(&str, &str, &str)] = &[
     // The one sign-in a person is asked to do: it composes the three link
     // commands below and writes only this device's own credential.
     ("account.connect", "local_auth_state", "none"),
+    // Deletes the signed-in account through ds-brain (Google Play policy);
+    // human-only, never an MCP tool.
+    ("account.delete", "global_write", "headless_user"),
     // Native auth is one local-state class because even status/list can rotate
     // a refresh credential. None of these authorities implies Desktop.
     ("auth.link.begin", "local_auth_state", "none"),

@@ -3,6 +3,63 @@
   "title": "EDS Backend API"
   "version": "2.0.0"
 "paths":
+  "/api/v1/account/delete":
+    "options":
+      "operationId": "corsDeleteOwnAccount"
+      "responses":
+        "204":
+          "description": "Preflight OK"
+      "security": []
+      "summary": "CORS preflight for account deletion"
+      "x-google-backend":
+        "address": "https://ds-brain-261257746301.us-east1.run.app"
+        "deadline": 30
+        "jwt_audience": "https://ds-brain-261257746301.us-east1.run.app"
+        "path_translation": "APPEND_PATH_TO_ADDRESS"
+    "post":
+      "description": |
+        Deletes the verified caller's DS account and personal data (profile,
+        personal notes, uploads, notifications, devices, project memberships
+        and the sign-in account). Shared organisation project records are
+        kept. Idempotent: an interrupted deletion is finished by sending the
+        same request again. Identity always comes from the verified token.
+      "operationId": "deleteOwnAccount"
+      "parameters":
+      - "description": "Explicit deletion confirmation"
+        "in": "body"
+        "name": "body"
+        "required": true
+        "schema":
+          "additionalProperties": false
+          "properties":
+            "confirmation":
+              "enum":
+              - "DELETE_MY_ACCOUNT"
+              "type": "string"
+          "required":
+          - "confirmation"
+          "type": "object"
+      "responses":
+        "200":
+          "description": "Account deleted; the body is the deletion receipt"
+        "400":
+          "description": "Invalid request or missing confirmation; nothing was deleted"
+        "401":
+          "description": "Unauthenticated, or the account is already deleted"
+        "403":
+          "description": "The verified identity cannot address its own account data"
+        "500":
+          "description": "Deletion did not finish; retry the same request"
+        "503":
+          "description": "Account deletion is unavailable; nothing was deleted"
+      "security":
+      - "apiKey": []
+      "summary": "Delete the caller's own account"
+      "x-google-backend":
+        "address": "https://ds-brain-261257746301.us-east1.run.app"
+        "deadline": 120
+        "jwt_audience": "https://ds-brain-261257746301.us-east1.run.app"
+        "path_translation": "APPEND_PATH_TO_ADDRESS"
   "/api/v1/admin/rwanda":
     "get":
       "description": |

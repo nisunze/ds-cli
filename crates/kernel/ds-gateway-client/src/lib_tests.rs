@@ -44,7 +44,7 @@ fn typed_dispatch_is_closed_and_const_coordinates_preserve_existing_reads() {
     assert_eq!(METHOD.as_str(), "GET");
     assert_eq!(PATH, "/api/v1/user/projects");
     assert_eq!(Operation::from_id("not_a_route"), None);
-    assert_eq!(Operation::ALL.len(), 126);
+    assert_eq!(Operation::ALL.len(), 127);
     for operation in Operation::ALL {
         assert_eq!(
             Operation::from_id(operation.operation_id()),

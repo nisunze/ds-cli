@@ -5,7 +5,7 @@ planning below `ds-command-kernel` and `ds-client-core`. Declared Kernel routes
 and ordinary native gateway requests use this catalogue. It has no
 HTTP, credential, database, engine, CLI or UI dependency.
 
-The copied gateway specification declares 114 paths and 126 non-CORS operations.
+The copied gateway specification declares 115 paths and 127 non-CORS operations.
 Many response bodies have no schema. Generated descriptors expose that fact;
 the existing typed application validators continue to admit request/response
 bodies. This crate does not invent missing Survey, report-artifact or printing

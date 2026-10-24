@@ -460,6 +460,27 @@ pub(crate) fn discard_pending_link(lane: Lane) -> Result<(), Failure> {
     release(&mut store, &key)
 }
 
+/// Forget the lane's stored device bundle, whatever it holds. Used only once
+/// the account it names is deleted, when no credential of it can work again.
+/// Answers whether a bundle was removed.
+pub(crate) fn forget_credential(lane: Lane) -> Result<bool, Failure> {
+    let (profile, _, _) = profile::load_device(lane)?;
+    let key = state_key(&profile);
+    let mut store = NativeDeviceStore::open()?;
+    store.acquire(&key).map_err(store_failure)?;
+    let removed = match store.load(&key).map_err(store_failure)?.map(Zeroizing::new) {
+        Some(bytes) => {
+            store
+                .compare_and_swap(&key, Some(&bytes), None)
+                .map_err(store_failure)?;
+            true
+        }
+        None => false,
+    };
+    release(&mut store, &key)?;
+    Ok(removed)
+}
+
 pub fn run_complete(inputs: &Inputs, _: &Context) -> Result<Value, Failure> {
     complete_link(lane(inputs)?, Some(inputs.require("request")?))
 }
@@ -980,6 +1001,13 @@ impl<T: ds_client_core::Transport> DeviceSession<T> {
         command: &ds_client_core::feedback::Command,
     ) -> Result<Value, ClientError> {
         fixed_device_call!(self, feedback, command)
+    }
+    /// Delete the account of this device's principal. ds-brain admits a
+    /// device credential exactly as it admits a restored user.
+    pub fn delete_account(
+        &mut self,
+    ) -> Result<ds_client_core::account_deletion::Receipt, ClientError> {
+        fixed_device_call!(self, delete_account)
     }
     /// The projectless governance doors. Governance is server-side, and
     /// ds-brain admits a device credential on them exactly as it admits a

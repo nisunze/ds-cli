@@ -275,6 +275,8 @@ pub use transport::GlobalTilesCall;
 pub use transport::GridCatalogCall;
 pub use transport::InstallsCall;
 
+/// Self-service deletion of the signed-in account; closed to its confirmation.
+pub mod account_deletion;
 /// The installation inventory: global, admin-gated, and reachable without a
 /// browser for the first time.
 pub mod installs;

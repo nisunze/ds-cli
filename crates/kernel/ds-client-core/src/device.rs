@@ -1164,6 +1164,17 @@ impl DeviceApiAuthorization<'_> {
     crate::gateway_compat::gateway_domain_command!(device; tile_remove);
 
     crate::gateway_compat::gateway_domain_command!(device; design_selections);
+    /// Delete the account of this captured device principal. ds-brain admits a
+    /// device credential exactly as it admits a restored user, and removes this
+    /// device credential last.
+    pub fn delete_account<T: AuthorizedTransport>(
+        &self,
+        transport: &mut T,
+        now: u64,
+    ) -> Result<crate::account_deletion::Receipt, ClientError> {
+        self.ensure_active(now)?;
+        crate::account_deletion::run(self.profile, transport, self.authority())
+    }
     crate::gateway_compat::gateway_domain_command! {
         device;
         /// One selected account-private note action under this captured device principal.

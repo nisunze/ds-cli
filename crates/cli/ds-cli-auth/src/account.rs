@@ -83,8 +83,8 @@ const MAX_POLL: Duration = Duration::from_secs(30);
 
 pub static DOMAIN: Domain = Domain {
     id: "account",
-    summary: "Your DS account: connect this machine once, approved in the Desktop.",
-    commands: &[&CONNECT_COMMAND],
+    summary: "Your DS account: connect this machine once, or delete the account.",
+    commands: &[&CONNECT_COMMAND, &crate::account_delete::DELETE_COMMAND],
 };
 
 const LANE: ds_cli_contract::spec::Arg =

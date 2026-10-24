@@ -373,6 +373,86 @@ impl Exchange for DeviceApproval {
     }
 }
 
+/// The fixed phrase ds-brain requires after the person's explicit confirmation
+/// (ds-brain `docs/contracts/account-deletion.md`).
+pub const DELETION_CONFIRMATION: &str = "DELETE_MY_ACCOUNT";
+pub const DELETION_SCHEMA: &str = "ds-account-deletion/v1";
+pub const DELETION_RECEIPT_INVALID: &str = "account_deletion_receipt_invalid";
+/// The deletion walks the account's whole personal tree; the gateway allows 120 s.
+const DELETION_TIMEOUT_MS: u64 = 120_000;
+
+/// What one deletion removed, across retries. Replies may add members.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+pub struct AccountDeletionCounts {
+    pub profile_documents: u64,
+    pub project_memberships: u64,
+    pub storage_objects: u64,
+    pub device_credentials: u64,
+    pub messaging_documents: u64,
+    pub sign_in_account: bool,
+}
+
+/// The audited receipt of one account deletion.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+pub struct AccountDeletionReceipt {
+    pub schema: String,
+    pub receipt_id: String,
+    pub state: String,
+    pub already_deleted: bool,
+    pub deleted_at: String,
+    pub deleted: AccountDeletionCounts,
+    /// The classes of shared or legally kept records the deletion keeps.
+    pub retained: Vec<String>,
+}
+
+/// Delete the signed-in account and its personal data. The account is the
+/// bearer Brain verifies; the request carries only the fixed phrase, sent
+/// once the person has confirmed. Never resent automatically: a person
+/// retries an interrupted deletion, and the route finishes it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AccountDeletion {
+    pub confirmed: bool,
+}
+
+impl Exchange for AccountDeletion {
+    type Output = AccountDeletionReceipt;
+
+    fn plan(&self) -> Result<Plan, Refusal> {
+        if !self.confirmed {
+            return Err(Refusal::new(
+                INPUT_INVALID,
+                "Confirm the account deletion before it is sent.",
+            ));
+        }
+        let body = json!({ "confirmation": DELETION_CONFIRMATION });
+        Ok(Request::generated(Operation::DeleteOwnAccount, Some(body))?
+            .timeout_ms(DELETION_TIMEOUT_MS)
+            .into())
+    }
+
+    fn admit(self, _status: u16, body: Value) -> Result<Admitted<Self>, Refusal> {
+        let receipt = AccountDeletionReceipt::deserialize(data(&body)).map_err(|_| {
+            Refusal::new(
+                DELETION_RECEIPT_INVALID,
+                "The account deletion receipt is unreadable.",
+            )
+        })?;
+        if receipt.schema != DELETION_SCHEMA
+            || receipt.state != "deleted"
+            || !bounded(&receipt.receipt_id, 128)
+            || !receipt.deleted.sign_in_account
+        {
+            return Err(Refusal::new(
+                DELETION_RECEIPT_INVALID,
+                "The account deletion receipt does not say the account is deleted.",
+            ));
+        }
+        Ok(Admitted::Done(receipt))
+    }
+}
+
 /// The account's profile from Brain, or as stored by a write, kept so the
 /// next open paints it at once and offline.
 #[cfg(feature = "durable-store")]
@@ -397,8 +477,8 @@ pub async fn held_profile(edge: &impl super::retained::Edge) -> Option<Map<Strin
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 mod exports {
     use super::{
-        held_profile, kept_profile, Capabilities, DeviceApproval, DeviceDecision, IdentityRepair,
-        Profile, ProfileWrite,
+        held_profile, kept_profile, AccountDeletion, Capabilities, DeviceApproval, DeviceDecision,
+        IdentityRepair, Profile, ProfileWrite,
     };
     use crate::durable_store::port::StoreHost;
     use crate::gateway_exchange::browser::{attempt, rejection, run, typed, GatewayHost};
@@ -470,6 +550,13 @@ mod exports {
         project: Option<String>,
     ) -> Result<JsValue, JsValue> {
         typed(&run(&host, Capabilities { project }).await?)
+    }
+
+    /// Delete the signed-in account and its personal data, once the person
+    /// has confirmed; answers the audited receipt.
+    #[wasm_bindgen(js_name = accountDelete, unchecked_return_type = "AccountDeletionReceipt")]
+    pub async fn account_delete(host: GatewayHost, confirmed: bool) -> Result<JsValue, JsValue> {
+        typed(&run(&host, AccountDeletion { confirmed }).await?)
     }
 
     /// Preview or record one device decision as the signed-in account.

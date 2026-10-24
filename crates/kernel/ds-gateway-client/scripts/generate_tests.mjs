@@ -71,9 +71,9 @@ test('copied source regenerates byte-identically and covers every declared route
   assert.deepEqual(one, two);
   assert.deepEqual(source, before);
   const provenance = JSON.parse(one.get('spec/provenance.json'));
-  assert.equal(provenance.paths, 114);
-  assert.equal(provenance.operations, 126);
-  assert.equal(provenance.cors_operations, 112);
+  assert.equal(provenance.paths, 115);
+  assert.equal(provenance.operations, 127);
+  assert.equal(provenance.cors_operations, 113);
   for (const [name, contents] of one) {
     assert.equal(await fs.readFile(new URL(`../${name}`, import.meta.url), 'utf8'), contents, name);
   }

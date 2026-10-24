@@ -136,6 +136,7 @@ macro_rules! __ds_gateway_calls {
         $crate::__ds_gateway_item!($mode $(, $handler)?; optional, device_approve, $crate::DeviceApproveCall<'_>, bytes, (fixed $crate::DeviceApproveCall<'_>));
         $crate::__ds_gateway_item!($mode $(, $handler)?; optional, messaging, $crate::messaging::MessagingCall<'_>, messaging, (selected));
         $crate::__ds_gateway_item!($mode $(, $handler)?; optional, personal_notes, $crate::personal_notes::PersonalNotesCall<'_>, bytes, (fixed $crate::personal_notes::PersonalNotesCall<'_>));
+        $crate::__ds_gateway_item!($mode $(, $handler)?; optional, account_deletion, $crate::account_deletion::AccountDeletionCall<'_>, bytes, (fixed $crate::account_deletion::AccountDeletionCall<'_>));
         $crate::__ds_gateway_item!($mode $(, $handler)?; optional, project_management, $crate::ProjectManagementCall<'_>, bytes, (fixed $crate::ProjectManagementCall<'_>));
         $crate::__ds_gateway_item!($mode $(, $handler)?; optional, member_form_grant, $crate::MemberFormGrantCall<'_>, bytes, (fixed $crate::MemberFormGrantCall<'_>));
         $crate::__ds_gateway_item!($mode $(, $handler)?; optional, admin_bounds, $crate::AdminBoundsCall<'_>, get, (fixed $crate::AdminBoundsCall<'_>));

@@ -1,12 +1,12 @@
 {
-  "source_sha256": "ca7955f95f06e6094952fc35cac137b71d85221848b0670f7773bc300e92b33f",
-  "openapi_sha256": "125482e1255d176d38bbd0e3c0c560453fea7e5dd29da1133ee9fc35359ce870",
-  "generated_rust_sha256": "571b939dcb30d95bb4fef9daba4f143d92c722a8f277c2a771ee8bfd1e5b3dd4",
+  "source_sha256": "4944360bc36551ec52e4a9e5a5664bc02a31a186aa050760ea36ba87c3873073",
+  "openapi_sha256": "9e5bceb487697e791ce0094a5a25c0e0c10ecba6ed3db777a5f6b5d0a34e408f",
+  "generated_rust_sha256": "fa6626609fb781e9954a51d7fafb7982b0eacaef931a9de78f695ff21c93d4f7",
   "generator_sha256": "308bc989673db4abe75843464bcc30f14c171676998fd47c50ed2080cd2ac3df",
   "converter": "swagger2openapi@7.0.8",
   "openapi": "3.0.3",
-  "paths": 114,
-  "operations": 126,
-  "cors_operations": 112,
+  "paths": 115,
+  "operations": 127,
+  "cors_operations": 113,
   "operations_with_response_schema": 3
 }

@@ -30,6 +30,26 @@ broad chapter surface; the MCP instructions name it as the only sign-in.
 The shared signed-out remedy — `ds_cli_auth::SIGNED_OUT_REMEDY` — is the one
 sentence every `headless_signed_out` refusal carries, in every domain.
 
+## `ds account delete --yes` — delete the signed-in account
+
+Deletes the account the lane's credential belongs to through ds-brain
+`POST /api/v1/account/delete` (ds-brain `docs/contracts/account-deletion.md`):
+profile and roles, personal notes and attachments, personal data uploads,
+notifications and push registrations, devices and device links, project
+memberships, and the sign-in account. Records in organisation projects stay
+with those projects with the attribution they carry; audit, product feedback
+and installation licence records are kept. The request names no account and
+carries only the fixed confirmation phrase; `--yes` is the person's
+confirmation, and without it the command refuses `confirmation_required`.
+
+After a deletion the lane's device credential, native refresh credential and
+project context are forgotten (`local_credentials_forgotten`); if that fails
+the answer names `ds auth logout`. An interrupted deletion
+(`account_delete_incomplete`, `detail.step`) is finished by running the same
+command again. The command is human-only: MCP never publishes it
+(`ds_cli_mcp::tools::NEVER_TOOLS`). The same deletion is in the Web account
+menu and DS Field settings, and the public page is `/delete-account`.
+
 `auth status` contract 2 also emits the non-secret, provider-independent
 `ds.auth-context/v1` projection while preserving the earlier `lane`,
 `signed_in`, `uid`, and `email` fields. The context and compatibility mapping
