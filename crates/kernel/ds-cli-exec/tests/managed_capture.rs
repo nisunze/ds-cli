@@ -77,7 +77,7 @@ fn isolated_managed_capture() {
     fs::write(
         &selection,
         serde_json::to_vec(&serde_json::json!({
-            "schema": ds_command_kernel::module_install::REMOVED_SELECTION_SCHEMA,
+            "schema": ds_module_contracts::module_install::REMOVED_SELECTION_SCHEMA,
             "component": "network", "channel": "canary", "generation": 1, "state": "removed"
         }))
         .unwrap(),

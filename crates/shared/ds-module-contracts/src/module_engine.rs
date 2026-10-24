@@ -1,11 +1,11 @@
 //! Module components and their engine build admission: native executables,
 //! browser engine units and UI units.
 //!
-//! One decision serves the installed updaters (`module_install`,
+//! One decision serves the installed updaters (`module_install`, the Kernel's
 //! `module_release::{browser, ui}`) and release packaging.
-//! `crates/ds-module-admission` compiles this same file through `#[path]`, so
-//! packaging admits a freshly built engine with exactly the rules an
-//! installation applies, without compiling the whole Kernel or adding a
+//! `ds-cli/crates/kernel/ds-module-admission` compiles this same file through
+//! `#[path]`, so packaging admits a freshly built engine with exactly the rules
+//! an installation applies, without compiling the Kernel or adding a
 //! dependency edge to it. Keep this file free of `crate::` paths and of
 //! dependencies beyond serde, serde_json, sha2 and regex.
 use std::collections::BTreeMap;
@@ -447,7 +447,10 @@ pub const UI_PROTOCOL: &str = "ds.ui-wasm/v1";
 
 /// UI components are deliberately separate from the three native engines.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(all(feature = "wasm", target_arch = "wasm32"), derive(tsify::Tsify))]
+#[cfg_attr(
+    all(feature = "bindings", target_arch = "wasm32"),
+    derive(tsify::Tsify)
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum UiComponent {
     Interactions,

@@ -11,7 +11,7 @@ use std::process::ExitCode;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-#[path = "../../ds-command-kernel/src/module_engine.rs"]
+#[path = "../../../shared/ds-module-contracts/src/module_engine.rs"]
 mod module_engine;
 
 use module_engine::{

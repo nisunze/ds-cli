@@ -1639,8 +1639,8 @@ dependencies = [
 name = "ds-cli-exec"
 version = "0.1.0"
 dependencies = [
- "ds-command-kernel",
  "ds-core-contracts",
+ "ds-module-contracts",
  "ds-network-contracts",
  "ds-solar-contracts",
  "libc",
@@ -1984,6 +1984,7 @@ dependencies = [
  "ds-geo",
  "ds-geo-lite",
  "ds-kml",
+ "ds-module-contracts",
  "ds-network-contracts",
  "ds-network-information",
  "ds-profile-policy",
@@ -2352,6 +2353,20 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "ds-module-contracts"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "time",
+ "tsify",
+ "url",
+ "wasm-bindgen",
 ]
 
 [[package]]

@@ -11,8 +11,6 @@
 //! Compatibility is the catalogue's answer for the task actually run, never
 //! a version, build date or digest equality with this Core.
 use crate::{CapturedExternal, Completed, addons::REPORTER};
-use ds_command_kernel::project_dataset_revisions::tasks as dataset_tasks;
-use ds_command_kernel::report_export;
 use ds_core_contracts::Failure;
 use serde_json::{Value, json};
 use std::ffi::OsString;
@@ -75,9 +73,9 @@ impl Task {
     /// The fixed process subcommand; only this owner passes it to a process.
     pub const fn subcommand(self) -> &'static str {
         match self {
-            Self::ExportTransformerReport => report_export::REPORT_SUBCOMMAND,
-            Self::ExportCombinedTransformerReport => report_export::combined::SUBCOMMAND,
-            Self::DiscoverCombinedMediaReferences => report_export::combined::MEDIA_SUBCOMMAND,
+            Self::ExportTransformerReport => "export-transformer-report",
+            Self::ExportCombinedTransformerReport => "export-combined-transformer-report",
+            Self::DiscoverCombinedMediaReferences => "discover-combined-media-references",
             Self::ExportCompoundedReport => "export-compounded-report",
             Self::ExportSpatialSectorCounts => "export-spatial-sector-counts",
             Self::ExportLvStandard => "export-lv-standard",
@@ -89,9 +87,9 @@ impl Task {
             Self::RenderVoltageDropCombined => "render-voltage-drop-combined",
             Self::PlanSolarNetworkSeed => "plan-solar-network-seed",
             Self::DetectCollisions => "detect-collisions",
-            Self::PreparePublisherFootprints => dataset_tasks::FOOTPRINTS_SUBCOMMAND,
-            Self::PlanContourLattice => dataset_tasks::CONTOUR_PLAN_SUBCOMMAND,
-            Self::DeriveContours => dataset_tasks::CONTOURS_SUBCOMMAND,
+            Self::PreparePublisherFootprints => "prepare-publisher-footprints",
+            Self::PlanContourLattice => "plan-contour-lattice",
+            Self::DeriveContours => "derive-contours",
         }
     }
 }

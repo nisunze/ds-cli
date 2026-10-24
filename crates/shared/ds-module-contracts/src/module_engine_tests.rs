@@ -481,11 +481,20 @@ fn browser_engine_units_refuse_native_crossed_or_unversioned_identities() {
     assert!(error.contains("exceeds 16 KiB"), "{error}");
 }
 
+/// The same facts as the Kernel's `module_release/fixtures/interactions-ui-engine-build.json`.
 fn ui_identity() -> Value {
-    serde_json::from_str(include_str!(
-        "module_release/fixtures/interactions-ui-engine-build.json"
-    ))
-    .unwrap()
+    json!({
+        "schema": "ds.ui-engine-build/v1",
+        "component": "interactions",
+        "protocol": "ds.ui-wasm/v1",
+        "ui_contract": 1,
+        "source_sha": "b".repeat(40),
+        "cargo_lock_sha256": "c".repeat(64),
+        "rustc": "rustc 1.90.0 (1159e78c4 2025-09-14); binary: rustc; commit-hash: 1159e78c4747b1e8c650a0b0c0d0e0f012345678; commit-date: 2025-09-14; host: x86_64-unknown-linux-gnu; release: 1.90.0; LLVM version: 20.1.8",
+        "target": "wasm32-unknown-unknown",
+        "profile": "release",
+        "config_sha256": "d".repeat(64)
+    })
 }
 
 #[test]

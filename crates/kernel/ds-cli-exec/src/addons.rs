@@ -54,7 +54,7 @@ fn capabilities(component: &str, identity: &Value) -> Option<Value> {
         identity["schema"].as_str().is_some_and(|schema| {
             ds_network_contracts::engine::schema_family(schema)
                 == ds_network_contracts::engine::ENGINE_BUILD_SCHEMA_FAMILY
-        }) && ds_command_kernel::module_engine::is_reporter_build(identity)
+        }) && ds_module_contracts::module_engine::is_reporter_build(identity)
     };
     let schemas = identity["schemas"].as_array().filter(|schemas| {
         schemas.len() <= 128
@@ -89,7 +89,7 @@ pub fn inventory() -> Value {
 
 /// Intentional consumers inspect a declared owner without starting other addons.
 pub fn inventory_for(
-    component: Option<ds_command_kernel::module_release::ModuleComponent>,
+    component: Option<ds_module_contracts::module_release::ModuleComponent>,
 ) -> Value {
     inventory_in_context(component, None)
 }
@@ -97,7 +97,7 @@ pub fn inventory_for(
 /// The installed native host supplies its captured lane. This never chooses
 /// a lane from an account/project default or acquires an unused catalog.
 pub fn inventory_for_lane(
-    component: Option<ds_command_kernel::module_release::ModuleComponent>,
+    component: Option<ds_module_contracts::module_release::ModuleComponent>,
     lane: &str,
 ) -> Result<Value, ds_core_contracts::Failure> {
     if !matches!(lane, "stable" | "canary") {
@@ -109,7 +109,7 @@ pub fn inventory_for_lane(
     Ok(inventory_in_context(component, Some(lane)))
 }
 fn inventory_in_context(
-    component: Option<ds_command_kernel::module_release::ModuleComponent>,
+    component: Option<ds_module_contracts::module_release::ModuleComponent>,
     lane: Option<&str>,
 ) -> Value {
     let modules: Vec<Value> = [

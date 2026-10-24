@@ -73,6 +73,7 @@ members = [
     "crates/kernel/ds-update-runtime",
     "crates/shared/ds-columnar",
     "crates/shared/ds-geo-lite",
+    "crates/shared/ds-module-contracts",
     "crates/shared/ds-report-contracts",
     "crates/shared/ds-upload-rules",
     "crates/shared/ds-xlsx-read",
@@ -97,6 +98,7 @@ ds-native-data = { path = "crates/kernel/ds-native-data" }
 thiserror = "2"
 wasm-bindgen = "0.2"
 ds-core-contracts = { path = "crates/kernel/ds-core-contracts" }
+ds-module-contracts = { path = "crates/shared/ds-module-contracts" }
 ds-native-host = { path = "crates/kernel/ds-native-host" }
 ds-canvas = { path = "crates/interactions/ds-canvas" }
 ds-canvas-graph = { path = "crates/interactions/ds-canvas-graph" }

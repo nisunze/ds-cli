@@ -1,7 +1,7 @@
 //! Lane-explicit lookup of native-owned immutable addon selection receipts.
 use super::*;
-use ds_command_kernel::module_install::{self, ModuleSelectionRecord};
-use ds_command_kernel::module_release::ModuleComponent;
+use ds_module_contracts::module_install::{self, ModuleSelectionRecord};
+use ds_module_contracts::module_release::ModuleComponent;
 use sha2::{Digest, Sha256};
 use std::io::Read;
 

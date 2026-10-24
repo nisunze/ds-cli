@@ -5,7 +5,12 @@ are `ds-solar`, `ds-network-reporter` and `ds-network`. The shell retains its ex
 release namespace and is not decoded as a module. This slice introduces no
 general plugin registry or installation framework.
 
-`src/module_release.rs` owns semantic admission of held public metadata:
+`ds-cli/crates/shared/ds-module-contracts` (`src/module_release.rs`, re-exported
+as `ds_command_kernel::module_release`) owns semantic admission of held public
+metadata. It is types and pure decisions only, together with the component
+catalogue and build admission (`module_engine`) and the native installation and
+selection receipts (`module_install`), so the process boundary (`ds-cli-exec`)
+and the engines that link it read the addon store without compiling the Kernel:
 
 ```rust
 validate_module_release(component: &str, channel: &str, release: &serde_json::Value)

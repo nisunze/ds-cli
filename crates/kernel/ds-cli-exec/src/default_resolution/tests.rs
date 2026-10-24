@@ -1,5 +1,5 @@
 use super::*;
-use ds_command_kernel::{module_install::*, module_release::*};
+use ds_module_contracts::{module_install::*, module_release::*};
 use sha2::{Digest, Sha256};
 use std::{fs, os::unix::fs::PermissionsExt, sync::atomic::AtomicUsize};
 static NEXT: AtomicUsize = AtomicUsize::new(0);

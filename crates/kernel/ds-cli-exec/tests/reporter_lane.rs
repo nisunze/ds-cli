@@ -77,7 +77,7 @@ fn managed_reporter(base: &Path, bytes: &[u8]) {
     let source = "b".repeat(40);
     let manifest = "d".repeat(64);
     let producer = format!("ds-network-reporter@0.1.0+{source}");
-    let release: ds_command_kernel::module_release::ModuleRelease = serde_json::from_value(json!({
+    let release: ds_module_contracts::module_release::ModuleRelease = serde_json::from_value(json!({
         "schema":"ds.module-release/v1", "component":"reporter", "channel":"canary",
         "product_id":"rw.datasolutions.module.reporter.canary", "version":"0.1.0-r1",
         "protocol":"ds.module/v1", "released_at":"2026-10-17T08:00:00Z", "status":"active",

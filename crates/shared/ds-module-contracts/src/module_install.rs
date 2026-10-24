@@ -57,6 +57,9 @@ pub struct RemovedModuleSelection {
 pub enum RemovedModuleState {
     Removed,
 }
+// One record is read per capture and matched by value across crates; boxing the
+// installed variant would only add an indirection to every consumer.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ModuleSelectionRecord {

@@ -37,6 +37,7 @@ wasm = [
     "ds-design-session/bindings",
     "ds-geo-lite/bindings",
     "ds-core-contracts/bindings",
+    "ds-module-contracts/bindings",
     "ds-network-contracts/bindings",
     "ds-design-session/enable_dataframes",
     "ds-columnar/artifacts",
@@ -70,6 +71,7 @@ vector-tools = []
 [dependencies]
 ds-gateway-client = { path = "../ds-gateway-client" }
 ds-core-contracts = { path = "../ds-core-contracts" }
+ds-module-contracts = { path = "../../shared/ds-module-contracts" }
 ds-network-contracts = { path = "../../../../ds-network/crates/ds-network-contracts" }
 ds-design-session = { path = "../ds-design-session" }
 ds-columnar = { path = "../../shared/ds-columnar", default-features = false }

@@ -16,34 +16,6 @@ pub const SELECTION_SCHEMA: &str = "ds.ui-module-selection/v1";
 pub const MAX_WIRE_BYTES: usize = 384 * 1024;
 const MAX_UNIT_BYTES: i64 = 128 * 1024 * 1024;
 const MAX_GENERATION: u64 = crate::desktop_instance::MAX_GENERATION;
-impl UiComponent {
-    pub fn parse(value: &str) -> Result<Self, ModuleReleaseError> {
-        match value {
-            "interactions" => Ok(Self::Interactions),
-            "command-kernel" => Ok(Self::CommandKernel),
-            _ => fail(
-                "module_release_component_invalid",
-                "Expected interactions or command-kernel",
-            ),
-        }
-    }
-    pub fn files(self) -> [(&'static str, &'static str); 4] {
-        match self {
-            Self::Interactions => [
-                ("ds_interactions_wasm.js", "module-javascript"),
-                ("ds_interactions_wasm_bg.wasm", "module-wasm"),
-                ("ds_interactions_wasm.d.ts", "module-types"),
-                ("ds_interactions_wasm_bg.wasm.d.ts", "module-types"),
-            ],
-            Self::CommandKernel => [
-                ("ds_command_kernel.js", "module-javascript"),
-                ("ds_command_kernel_bg.wasm", "module-wasm"),
-                ("ds_command_kernel.d.ts", "module-types"),
-                ("ds_command_kernel_bg.wasm.d.ts", "module-types"),
-            ],
-        }
-    }
-}
 
 /// Brain's published catalog member: additive members from a newer publisher
 /// are accepted within the shared bounds (owner 22 Oct). Its `build_manifest`

@@ -10,7 +10,7 @@ publish.workspace = true
 
 [dependencies]
 ds-core-contracts = { workspace = true }
-ds-command-kernel = { workspace = true }
+ds-module-contracts = { workspace = true }
 ds-network-contracts = { workspace = true }
 ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
 serde_json = { workspace = true }
