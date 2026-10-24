@@ -10,8 +10,8 @@ use std::io::Read;
 const REFUSALS: &[Refusal] = &[
     Refusal {
         code: "process_settings_invalid",
-        when: "A settings file is malformed, or a value is neither boolean nor finite numeric",
-        remedy: "Pass the project configuration as `ds design config` returns it and settings as {key: bool|number}",
+        when: "A settings file is malformed, or a value is not boolean or finite numeric",
+        remedy: "Pass the configuration `ds design config` returns and settings as {key: bool|number}",
     },
     crate::lv::catalogue::PRESET_NOT_OFFERED,
     crate::lv::catalogue::CATALOGUE_INVALID,
@@ -25,7 +25,7 @@ const REFUSALS: &[Refusal] = &[
 
 const CATALOG: Arg = Arg::switch(
     "catalog",
-    "Include the installed Network engine's settings catalog for a process-settings editor.",
+    "Include the installed engine's settings catalog for a process-settings editor.",
 );
 
 const PRESET: Arg = Arg::value(
@@ -54,7 +54,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "process", "settings"],
     contract: 1,
     summary: "Resolve the process settings a preset would send.",
-    purpose: "What a named preset produces for a project, which dependent flags collapse into the effective contract, which settings the operator may see for that preset, and what a hidden setting puts on the wire are decided once in ds-command-kernel (process_settings) over the catalogue the installed Network engine answers (its lv_processor_catalog task; Core compiles none) — the same answer the LV process dialog sends. A preset the engine does not offer is refused. Every key that leaves the wire is named with its reason.",
+    purpose: "Decided once in ds-command-kernel (process_settings) over the installed Network engine's catalogue (its lv_processor_catalog task; Core compiles none), as the LV process dialog sends it: a named preset's result for a project, the dependent flags that collapse into the effective contract, the settings the operator may see for it, and what a hidden setting puts on the wire. A preset the engine does not offer is refused; each key leaving the wire is named with its reason.",
     chapter: Chapter::Design,
     effect: Effect::ReadOnly,
     authority: Authority::None,
@@ -81,7 +81,7 @@ pub static COMMAND: Command = Command {
 
 fn invalid(e: impl std::fmt::Display) -> Failure {
     Failure::invalid("process_settings_invalid", e.to_string())
-        .remedy("Pass the project configuration as `ds design config` returns it and settings as {key: bool|number}")
+        .remedy("Pass the configuration `ds design config` returns and settings as {key: bool|number}")
 }
 
 fn json_file(path: &str) -> Result<Value, Failure> {

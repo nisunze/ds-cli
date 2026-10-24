@@ -118,7 +118,17 @@ impl Fixture {
         for dir in [fixture.state(), fixture.data()] {
             private_dir(&dir);
         }
+        // Report commands need an installed Reporter (a09590b8) and this
+        // fixture clears the environment, so it names a stub through
+        // DS_REPORT_BIN. The stub only exists: it fails if ever started, so
+        // nothing here can depend on Reporter output.
+        let reporter = fixture.reporter();
+        fs::write(&reporter, "#!/bin/sh\nexit 70\n").unwrap();
+        fs::set_permissions(&reporter, fs::Permissions::from_mode(0o700)).unwrap();
         fixture
+    }
+    fn reporter(&self) -> PathBuf {
+        self.root.path().join("reporter-stub")
     }
     fn config(&self) -> PathBuf {
         self.root.path().join("config")
@@ -166,6 +176,7 @@ impl Fixture {
                     .join("../ds-cli-auth/tests/fixtures/development-catalog.json"),
             )
             .env("DS_CLI_NONINTERACTIVE", "1")
+            .env("DS_REPORT_BIN", self.reporter())
             // Refusals are not reported to SRE here: only the read itself may touch the network.
             .env("DS_SRE_REPORTING", "off")
             .env(
@@ -454,7 +465,7 @@ fn held_export_reads_only_held_status_and_configuration() {
         "report_held_export_source_changed"
     );
     // Held status and configuration agree: admission passes offline and the
-    // export proceeds to its local owners (no engine is installed here).
+    // export proceeds to its local owners (the stub Reporter does no work).
     fixture.hold_status(
         PROJECT,
         json!([{"name":"tx_1","kind":"individual","metadata":{"version":3,"content_digest":request.content_digest}}]),
