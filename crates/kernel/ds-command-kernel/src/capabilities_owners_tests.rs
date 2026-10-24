@@ -36,6 +36,10 @@ const NOT_ROWS: &[(&str, Why)] = &[
     ("CapturedLvProcess", Mechanics("handle")),
     ("DurableStoreReply", Mechanics("store")),
     ("EndedSession", Mechanics("session handle")),
+    // The browser report export session; its rows (`report.project.export`,
+    // `report.project.combined`) stay pending until the page builds the
+    // native request from held inputs (OPEN.md §7).
+    ("ReporterExportSession", Pending("web report exports: no page request builder yet")),
     ("SelectionCoordinator", Mechanics("handle")),
     ("SessionHandle", Mechanics("handle")),
     ("SolarCalculation", Mechanics("handle")),
@@ -251,6 +255,7 @@ const NOT_ROWS: &[(&str, Why)] = &[
     ("reportHeadStore", Mechanics("store")),
     ("reportJobReceiptsHeld", Mechanics("store")),
     ("reportJobReceiptsHold", Mechanics("helper")),
+    ("reporterEngineUnavailable", Mechanics("helper")),
     ("resolveDesignSources", Shared("design.project.resolve-sources")),
     ("responsePolicy", Mechanics("helper")),
     ("resumableUpload", Mechanics("helper")),
