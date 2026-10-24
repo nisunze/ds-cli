@@ -80,8 +80,10 @@ ds-grid-exchange = { workspace = true }
 # convert` writes, to prove what a client GIS file does and does not hold.
 zip = { workspace = true }
 ds-solar-contracts = { workspace = true }
-# Public cache-only preparation tests seed through the real reference cache owner.
+# Public cache-only preparation tests seed through the real reference cache
+# owner and plan through the same addon capture the command selects.
 ds-solar-host = { path = "../../kernel/ds-solar-host" }
+ds-cli-exec = { workspace = true }
 serde_json = { workspace = true }
 # Offline report negative controls use only their own synthetic workspace to
 # emulate historical/damaged saved results; they never touch native auth state.

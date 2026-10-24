@@ -1393,6 +1393,7 @@ dependencies = [
  "ds-cli-desktop",
  "ds-cli-dsgrid",
  "ds-cli-dsgrid-exchange",
+ "ds-cli-exec",
  "ds-cli-feedback",
  "ds-cli-installs",
  "ds-cli-map",
