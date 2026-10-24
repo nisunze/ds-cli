@@ -633,7 +633,7 @@ pub static SEED_COMMAND: Command = Command {
     path: &["data", "project-cache", "seed"],
     contract: 1,
     summary: "Acquire the geographic datasets this project's design needs.",
-    purpose: "Seeds design/MV coverage under --project. Buildings and contours are acquired once per project for the union of its active LV designs and MV routes (and --mv-model), each widened by its project_context_tolerance_m setting (default 200 m), never one project-wide box. Published revisions are replayed first; Core fetches only uncovered Google tiles or Rwanda DEM cells, the Reporter converts offline, and the delta is published as the next shared revision. Seeds declared datasets plus what it holds. --local-source/--publisher-input pin inputs; --refresh re-acquires and republishes. Incomplete results refuse with detail.result.",
+    purpose: "Seeds design/MV coverage under --project. Buildings and contours are acquired once per project for the union of its active LV designs and MV routes (and --mv-model), each widened by project_context_tolerance_m (default 200 m), never one project-wide box. Published revisions replay first; Core fetches only uncovered Google tiles or Rwanda DEM cells, the Reporter converts offline, and the delta is published as the next revision. Seeds declared datasets plus what it holds. --local-source/--publisher-input pin inputs; --refresh re-acquires and republishes. Incomplete results refuse with detail.result.",
     chapter: Chapter::Data,
     effect: Effect::ArtifactWrite,
     authority: Authority::HeadlessProject,
