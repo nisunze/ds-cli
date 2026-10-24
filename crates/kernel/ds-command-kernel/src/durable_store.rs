@@ -163,6 +163,10 @@ pub enum Request {
     AuthSession {
         operation: crate::auth_session::store::Operation,
     },
+    /// `ds.store-status/v1`: usage, quota and persistence of this store.
+    StoreStatus {
+        operation: crate::store_status::Operation,
+    },
 }
 impl Request {
     pub fn store(&self) -> &'static str {
@@ -181,6 +185,7 @@ impl Request {
             Request::WorkDrafts { .. } => crate::work_drafts::STORE,
             Request::Outbox { .. } => crate::outbox::STORE,
             Request::AuthSession { .. } => crate::auth_session::store::STORE,
+            Request::StoreStatus { .. } => crate::store_status::STORE,
         }
     }
     /// Refuse a store whose native home is its own Core command, so one store
@@ -200,7 +205,7 @@ impl Request {
             | Request::GridModelStore { .. } => Ok(()),
             Request::DesignRooms { .. } => Ok(()),
             Request::ByteCache { .. } | Request::MediaOutbox { .. } | Request::UploadChunks { .. } => Ok(()),
-            Request::WorkDrafts { .. } | Request::Outbox { .. } => Ok(()),
+            Request::WorkDrafts { .. } | Request::Outbox { .. } | Request::StoreStatus { .. } => Ok(()),
             Request::AuthSession { .. } => Err(format!(
                 "{NOT_CORE}: auth_session is a browser profile's own session; Core holds its principal in its protected account"
             )),
@@ -367,8 +372,17 @@ macro_rules! statements {
 
 /// Run one call in one IMMEDIATE transaction and commit only on success.
 /// A Core-homed store requires the host's identity; bytes reach only a store
-/// whose operation takes them.
+/// whose operation takes them. A write the device has no room for is refused
+/// `store_quota_exhausted` with its remedy, never a generic I/O error.
 pub fn execute(
+    connection: &mut Connection,
+    identity: Option<&Identity>,
+    call: Call,
+    bytes: Option<Vec<u8>>,
+) -> Result<Answer, String> {
+    execute_call(connection, identity, call, bytes).map_err(crate::store_status::refine)
+}
+fn execute_call(
     connection: &mut Connection,
     identity: Option<&Identity>,
     call: Call,
@@ -472,6 +486,9 @@ pub fn execute(
                 }
                 Request::AuthSession { operation } => {
                     crate::auth_session::store::execute(&transaction, input, operation)?
+                }
+                Request::StoreStatus { operation } => {
+                    crate::store_status::execute(&transaction, input, operation)?
                 }
                 Request::Status { .. } | Request::GridProjectCatalog { .. } => {
                     unreachable!("statement-protocol stores are answered above")

@@ -244,6 +244,8 @@ pub mod survey_capture;
 #[cfg(feature = "durable-store")]
 pub mod work_drafts;
 #[cfg(feature = "durable-store")]
+pub mod store_status;
+#[cfg(feature = "durable-store")]
 pub mod outbox;
 /// The page's signed-in session: its record, refresh policy, Google redirect
 /// sign-in and the profile store that keeps it.

@@ -46,6 +46,9 @@ fn failure(error: String, reset: bool) -> JsValue {
     )
 }
 fn js(error: JsValue) -> String {
+    if let Some(exception) = error.dyn_ref::<web_sys::DomException>() {
+        return format!("{}: {}", exception.name(), exception.message());
+    }
     error
         .as_string()
         .or_else(|| {
@@ -74,6 +77,8 @@ async fn pool() -> Result<Rc<OpfsSAHPoolUtil>, String> {
             .map_err(|e| e.to_string())?,
     );
     POOL.with(|held| *held.borrow_mut() = Some(pool.clone()));
+    // Ask the browser once to keep this store; its answer is recorded, never retried.
+    crate::store_status::browser::request_persistence().await;
     Ok(pool)
 }
 
@@ -183,6 +188,21 @@ impl DurableStoreReply {
     }
 }
 
+/// A write the browser had no room for is `store_quota_exhausted`. A named
+/// `QuotaExceededError` is certain; an opaque SQLite I/O error counts only when
+/// the browser's estimate says the origin is at its quota.
+async fn exhausted(error: String) -> String {
+    let refined = crate::store_status::refine(error);
+    if refined.starts_with(crate::store_status::QUOTA_EXHAUSTED) || !refined.contains("disk I/O error") {
+        return refined;
+    }
+    let status = crate::store_status::browser::status().await;
+    if crate::store_status::at_quota(status.usage_bytes, status.quota_bytes) {
+        return crate::store_status::quota_refusal(&refined);
+    }
+    refined
+}
+
 /// One call in one transaction on OPFS. The caller holds [`LOCK`]; the pool
 /// releases its OPFS handles before this returns, so another tab's worker can
 /// take the lock next. `call` is the Call JSON, `identity` the Identity JSON
@@ -200,6 +220,12 @@ pub async fn transaction(
         .map(|text| serde_json::from_str::<Identity>(&text))
         .transpose()
         .map_err(|e| failure(format!("{INVALID}: {e}"), false))?;
+    if matches!(call.request, super::Request::StoreStatus { .. }) {
+        // The browser's own account of this origin's storage, not the database's.
+        let status = crate::store_status::browser::status().await;
+        let answer = serde_json::to_string(&status).map_err(|e| failure(e.to_string(), false))?;
+        return Ok(DurableStoreReply::new(answer, None));
+    }
     let pool = pool()
         .await
         .map_err(|e| failure(format!("{UNAVAILABLE}: {e}"), true))?;
@@ -220,13 +246,13 @@ pub async fn transaction(
     let paused = pool.pause_vfs();
     let answer = match (answer, paused) {
         (_, Err(error)) => return Err(failure(format!("{UNAVAILABLE}: {error}"), true)),
-        (Err((error, reset)), Ok(())) => return Err(failure(error, reset)),
+        (Err((error, reset)), Ok(())) => return Err(failure(exhausted(error).await, reset)),
         (Ok(answer), Ok(())) => answer,
     };
     // Committed: the after-effects run under the same lock.
     run(&answer.effects)
         .await
-        .map_err(|e| failure(format!("{UNAVAILABLE}: {e}"), false))?;
+        .map_err(|e| failure(crate::store_status::refine(format!("{UNAVAILABLE}: {e}")), false))?;
     Ok(DurableStoreReply {
         answer: serde_json::to_string(&answer).map_err(|e| failure(e.to_string(), false))?,
         bytes: answer.bytes,

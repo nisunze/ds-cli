@@ -225,9 +225,41 @@ live folder connections and their `ds-folder-handles` table are retired (owner,
 2026-10-20): live folders are native Desktop/Core only, and ds-web deletes that
 database at startup (`src/lib/storage/retired-databases.ts`).
 
+## Persistence, status and quota
+
+Owner, 2026-10-24: DS is offline-first on every edge with the same store
+semantics, and what is held locally is held forever. Nothing in the *work*
+stores (drafts, outboxes, models, local layers, rooms, sessions) is evicted or
+expired; the only retention rules are the declared caches below.
+
+- **Persistent storage.** When the storage worker installs its OPFS pool it
+  asks `navigator.storage.persist()` once and records the answer
+  (`store_status::Persistence`); a refusal is recorded, never retried in a loop.
+- **`ds.store-status/v1`** (`src/store_status.rs`; capability `store.status`):
+  `{schema, persisted: true | false | "unknown", usage_bytes, quota_bytes | null,
+  backend: "opfs" | "native_sqlite" | "core_store"}`. Web: `navigator.storage`
+  `persisted()` and `estimate()`, backend `opfs`. Desktop's native
+  `kernel-store.sqlite` (`native_sqlite`) and Core's `store.sqlite`
+  (`core_store`): the durable-store call `{"store":"store_status","operation":
+  {"action":"status"}}`, `persisted: true`, usage from the database file plus
+  its WAL/journal, quota from the volume's free bytes on unix, otherwise null.
+  The page's `storeStatus(native?)` export returns the record; given a native
+  answer it validates it into the same record. `ds core store` reports Core's;
+  a dedicated `ds store status` command is pending in the manifest.
+- **`store_quota_exhausted: … Remedy: …`** replaces a generic I/O error when the
+  store can tell the device is full (SQLite `database or disk is full`/ENOSPC,
+  a browser `QuotaExceededError`, or an opaque OPFS I/O error while the
+  browser's estimate is at its quota). Nothing already held is removed.
+- **Declared cache retention (audited 2026-10-24).** `byte_cache` drops the
+  oldest entries of a kind past its byte budget; `retained_reads` drops its
+  least recently used rows past a row bound; `byte_parts` sweeps an upload
+  staging untouched for an hour; Core's `profile_sources` evicts a dormant
+  eligible row on an intentional open. These predate the persistence rule and
+  are the owner's call to keep, bound or remove.
+
 ## Proof
 
-Kernel: `cargo test --lib --features durable-store -- durable_store
+Kernel: `cargo test --lib --features durable-store -- durable_store store_status
 ui_preferences push_state local_layer_store
 grid_model_store work_drafts outbox auth_session`. Core: `ds-sync-store` and `core.store` tests. Browser: the
 real-Chromium OPFS acceptance of the storage worker (reopen, worker loss

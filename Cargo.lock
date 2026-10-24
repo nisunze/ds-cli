@@ -2000,6 +2000,7 @@ dependencies = [
  "image",
  "imagesize",
  "js-sys",
+ "libc",
  "mail-parser",
  "percent-encoding",
  "quick-xml 0.41.0",

@@ -115,6 +115,10 @@ rusqlite = { version = "0.40.2", optional = true, features = ["bundled"] }
 # One drain runs its lanes at once (`future::join`).
 futures-util = { version = "0.3", default-features = false }
 
+# Free disk for the native store status (statvfs); already in the lock.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # HTTP through reqwest (development philosophy §9): its WebAssembly client is
 # the page's own `fetch`. tsify generates the TypeScript types of the typed
 # exports from the Rust types they return.
