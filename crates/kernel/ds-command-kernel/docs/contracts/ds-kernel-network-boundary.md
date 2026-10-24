@@ -231,9 +231,10 @@ field build would carry. (Measured again in the severance lane with one command
 before and after: see §3.1 — the figure is dominated by the kernel itself, not
 by the engine crates.)
 
-One thing that is **not** a problem, recorded so nobody spends effort on it:
-`polars` is *not* in the graph. `ds-geo` declares `default = []` and puts polars
-behind `enable_dataframes`, which the kernel does not enable.
+One thing that was **not** a problem then: `polars` was *not* in this graph.
+(It later reached the page Kernel through `ds-design-session/enable_dataframes`,
+which held its attribute table as Polars text columns; on 24 Oct 2026 that
+table became plain session rows and the Kernel links no polars on any target.)
 
 ### 3.1 Measured after (2026-09-11)
 

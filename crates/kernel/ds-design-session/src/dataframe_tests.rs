@@ -39,13 +39,17 @@ fn layer_table_round_trips_features() {
 }
 
 #[test]
-fn empty_layer_table_has_expected_schema() {
+fn empty_layer_table_serves_empty_reads() {
+    // The table no longer has a column schema to inspect (its rows are the
+    // session's features); an empty layer must still answer every read.
     let table = LayerTable::from_features("lv_poles", &[]).unwrap();
 
     assert_eq!(table.height(), 0);
-    assert!(table.dataframe().column(FEATURE_ID_COLUMN).is_ok());
-    assert!(table.dataframe().column(GEOMETRY_COLUMN).is_ok());
-    assert!(table.dataframe().column(PROPERTIES_COLUMN).is_ok());
+    assert!(table.feature_ids().unwrap().is_empty());
+    assert!(table.get_row("pole-1").unwrap().is_none());
+    let window = table.get_rows(0, 10).unwrap();
+    assert_eq!((window.total_rows, window.rows.len()), (0, 0));
+    assert!(table.to_features().unwrap().is_empty());
 }
 
 #[test]

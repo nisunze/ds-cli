@@ -1,25 +1,24 @@
-//! Phase C bootstrap: a Polars-backed table view for one design layer.
+//! The attribute-table view of one design layer.
 //!
-//! This module is feature-gated behind `enable_dataframes` while we prove
-//! wasm32 build viability and bundle size. The first contract is deliberately
-//! small: preserve feature id + geometry + properties round-trips in a real
-//! Polars `DataFrame`, then expose row windows to ds-web through the session
-//! handle.
+//! `SessionHandle` keeps one `LayerTable` per mounted layer, in source row
+//! order, and serves row windows, single rows and cell edits from it. The
+//! table is design working state, not compute: filter, sort and value
+//! profiles run in the Network page unit over Arrow IPC (`ds_geo::table`).
+//! Rows are the session's own `Feature` values, so no dataframe engine is
+//! linked into the Kernel. (Until 24 Oct 2026 the rows were held as JSON
+//! text columns of a Polars `DataFrame`; every read and edit decoded them
+//! back to these same values, and the Kernel build's exact-float,
+//! order-preserving JSON made that round trip the identity.)
 
 use crate::session::{Feature, Geometry};
-use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
-pub const FEATURE_ID_COLUMN: &str = "feature_id";
-pub const GEOMETRY_COLUMN: &str = "geometry";
-pub const PROPERTIES_COLUMN: &str = "properties";
-
 #[derive(Clone, Debug)]
 pub struct LayerTable {
     layer_name: String,
-    df: DataFrame,
+    rows: Vec<Feature>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -99,30 +98,10 @@ impl LayerTable {
         layer_name: impl Into<String>,
         features: &[Feature],
     ) -> Result<Self, String> {
-        let layer_name = layer_name.into();
-        let mut ids = Vec::with_capacity(features.len());
-        let mut geometries = Vec::with_capacity(features.len());
-        let mut properties = Vec::with_capacity(features.len());
-
-        for feature in features {
-            ids.push(feature.id.0.clone());
-            geometries
-                .push(serde_json::to_string(&feature.geometry).map_err(|err| err.to_string())?);
-            properties
-                .push(serde_json::to_string(&feature.properties).map_err(|err| err.to_string())?);
-        }
-
-        let df = DataFrame::new(
-            features.len(),
-            vec![
-                Series::new(FEATURE_ID_COLUMN.into(), ids).into(),
-                Series::new(GEOMETRY_COLUMN.into(), geometries).into(),
-                Series::new(PROPERTIES_COLUMN.into(), properties).into(),
-            ],
-        )
-        .map_err(|err| err.to_string())?;
-
-        Ok(Self { layer_name, df })
+        Ok(Self {
+            layer_name: layer_name.into(),
+            rows: features.to_vec(),
+        })
     }
 
     pub fn layer_name(&self) -> &str {
@@ -130,37 +109,20 @@ impl LayerTable {
     }
 
     pub fn height(&self) -> usize {
-        self.df.height()
-    }
-
-    pub fn dataframe(&self) -> &DataFrame {
-        &self.df
+        self.rows.len()
     }
 
     pub fn feature_ids(&self) -> Result<Vec<String>, String> {
-        let ids = self
-            .df
-            .column(FEATURE_ID_COLUMN)
-            .map_err(|err| err.to_string())?
-            .str()
-            .map_err(|err| err.to_string())?;
-
-        // Polars 0.55 no longer offers `into_iter` on a `&ChunkedArray`.
-        Ok(ids
-            .iter()
-            .map(|id| id.unwrap_or_default().to_string())
-            .collect())
+        Ok(self.rows.iter().map(|row| row.id.0.clone()).collect())
     }
 
     pub fn get_rows(&self, offset: usize, limit: usize) -> Result<RowWindow, String> {
-        let total_rows = self.df.height();
+        let total_rows = self.rows.len();
         let start = offset.min(total_rows);
         let end = start.saturating_add(limit).min(total_rows);
-        let mut rows = Vec::with_capacity(end.saturating_sub(start));
-
-        for row_index in start..end {
-            rows.push(self.row_at(row_index)?);
-        }
+        let rows = (start..end)
+            .map(|row_index| self.row_at(row_index))
+            .collect();
 
         Ok(RowWindow {
             layer_name: self.layer_name.clone(),
@@ -172,76 +134,56 @@ impl LayerTable {
     }
 
     pub fn get_row(&self, feature_id: &str) -> Result<Option<LayerRow>, String> {
-        let ids = self.feature_id_column()?;
-        for row_index in 0..self.df.height() {
-            if ids.get(row_index) == Some(feature_id) {
-                return Ok(Some(self.row_at(row_index)?));
-            }
-        }
-        Ok(None)
+        Ok(self
+            .rows
+            .iter()
+            .position(|row| row.id.0 == feature_id)
+            .map(|row_index| self.row_at(row_index)))
     }
 
     pub fn insert_feature(&mut self, feature: Feature) -> Result<(), String> {
-        if self.get_row(&feature.id.0)?.is_some() {
+        if self.rows.iter().any(|row| row.id.0 == feature.id.0) {
             return Err(format!(
                 "layer `{}` already contains feature `{}`",
                 self.layer_name, feature.id.0
             ));
         }
-
-        let mut features = self.to_features()?;
-        features.push(feature);
-        self.replace_all_features(&features)
+        self.rows.push(feature);
+        Ok(())
     }
 
     pub fn replace_feature(&mut self, feature: Feature) -> Result<Option<Feature>, String> {
-        let mut features = self.to_features()?;
-        let old = match features.iter().position(|row| row.id == feature.id) {
-            Some(pos) => Some(std::mem::replace(&mut features[pos], feature)),
-            None => {
-                features.push(feature);
-                None
-            }
-        };
-        self.replace_all_features(&features)?;
-        Ok(old)
+        Ok(
+            match self.rows.iter().position(|row| row.id == feature.id) {
+                Some(pos) => Some(std::mem::replace(&mut self.rows[pos], feature)),
+                None => {
+                    self.rows.push(feature);
+                    None
+                }
+            },
+        )
     }
 
     pub fn remove_feature(&mut self, feature_id: &str) -> Result<Option<Feature>, String> {
-        let mut features = self.to_features()?;
-        let Some(pos) = features.iter().position(|row| row.id.0 == feature_id) else {
-            return Ok(None);
-        };
-        let removed = features.remove(pos);
-        self.replace_all_features(&features)?;
-        Ok(Some(removed))
+        Ok(self
+            .rows
+            .iter()
+            .position(|row| row.id.0 == feature_id)
+            .map(|pos| self.rows.remove(pos)))
     }
 
-    /// Bulk-remove features by local feature id in ONE table rebuild.
-    ///
-    /// [`Self::remove_feature`] does a full `to_features` + `from_features`
-    /// JSON round-trip per call, so removing a scope's worth of rows one at a
-    /// time is O(count * H) — the edit-exit / batch-delete O(N^2) freeze. This
-    /// materializes the layer once, partitions out the requested ids, and
-    /// rebuilds the DataFrame a single time. Returns the removed features in
+    /// Bulk-remove features by local feature id in one pass over the rows,
+    /// so removing a scope's worth of rows stays O(H) rather than O(count * H)
+    /// (the edit-exit / batch-delete freeze). Returns the removed features in
     /// table order; ids not present are silently skipped.
     pub fn remove_features(&mut self, feature_ids: &HashSet<&str>) -> Result<Vec<Feature>, String> {
         if feature_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let features = self.to_features()?;
-        let mut removed = Vec::new();
-        let mut retained = Vec::with_capacity(features.len());
-        for feature in features {
-            if feature_ids.contains(feature.id.0.as_str()) {
-                removed.push(feature);
-            } else {
-                retained.push(feature);
-            }
-        }
-        if !removed.is_empty() {
-            self.replace_all_features(&retained)?;
-        }
+        let (removed, retained): (Vec<Feature>, Vec<Feature>) = std::mem::take(&mut self.rows)
+            .into_iter()
+            .partition(|feature| feature_ids.contains(feature.id.0.as_str()));
+        self.rows = retained;
         Ok(removed)
     }
 
@@ -251,15 +193,12 @@ impl LayerTable {
         column: &str,
         value: Value,
     ) -> Result<Option<CellEditDiff>, String> {
-        let mut features = self.to_features()?;
-        let Some(pos) = features.iter().position(|row| row.id.0 == feature_id) else {
+        let Some(pos) = self.rows.iter().position(|row| row.id.0 == feature_id) else {
             return Ok(None);
         };
-        let before = features[pos].properties.get(column).cloned();
-        features[pos]
-            .properties
-            .insert(column.to_string(), value.clone());
-        self.replace_all_features(&features)?;
+        let properties = &mut self.rows[pos].properties;
+        let before = properties.get(column).cloned();
+        properties.insert(column.to_string(), value.clone());
         Ok(Some(CellEditDiff {
             layer_name: self.layer_name.clone(),
             row_index: pos,
@@ -284,27 +223,30 @@ impl LayerTable {
             return Ok(BulkCellEditResult::default());
         }
 
-        let mut features = self.to_features()?;
-        let positions: HashMap<String, usize> = features
+        // A repeated table id resolves to its last row, as it always has.
+        let positions: HashMap<&str, usize> = self
+            .rows
             .iter()
             .enumerate()
-            .map(|(pos, feature)| (feature.id.0.clone(), pos))
+            .map(|(pos, feature)| (feature.id.0.as_str(), pos))
             .collect();
+        let mut targets = Vec::with_capacity(feature_ids.len());
         let mut result = BulkCellEditResult::default();
-
         for feature_id in feature_ids {
-            let Some(pos) = positions.get(feature_id).copied() else {
-                result.missing_feature_ids.push(feature_id.clone());
-                continue;
-            };
+            match positions.get(feature_id.as_str()) {
+                Some(pos) => targets.push((feature_id, *pos)),
+                None => result.missing_feature_ids.push(feature_id.clone()),
+            }
+        }
+
+        for (feature_id, pos) in targets {
             for (column, value) in values {
-                let before = features[pos].properties.get(column).cloned();
+                let properties = &mut self.rows[pos].properties;
+                let before = properties.get(column).cloned();
                 if before.as_ref() == Some(value) {
                     continue;
                 }
-                features[pos]
-                    .properties
-                    .insert(column.clone(), value.clone());
+                properties.insert(column.clone(), value.clone());
                 result.changed.push(CellEditDiff {
                     layer_name: self.layer_name.clone(),
                     row_index: pos,
@@ -315,94 +257,31 @@ impl LayerTable {
                 });
             }
         }
-
-        if !result.changed.is_empty() {
-            self.replace_all_features(&features)?;
-        }
         Ok(result)
     }
 
     pub fn delete_column(&mut self, column: &str) -> Result<usize, String> {
-        let mut features = self.to_features()?;
         let mut count = 0;
-        for feature in &mut features {
+        for feature in &mut self.rows {
             if feature.properties.remove(column).is_some() {
                 count += 1;
             }
-        }
-        if count > 0 {
-            self.replace_all_features(&features)?;
         }
         Ok(count)
     }
 
     pub fn to_features(&self) -> Result<Vec<Feature>, String> {
-        let mut features = Vec::with_capacity(self.df.height());
-        for row_index in 0..self.df.height() {
-            let row = self.row_at(row_index)?;
-            features.push(Feature::with_properties(
-                row.feature_id,
-                row.geometry,
-                row.properties,
-            ));
-        }
-        Ok(features)
+        Ok(self.rows.clone())
     }
 
-    fn row_at(&self, row_index: usize) -> Result<LayerRow, String> {
-        let ids = self
-            .df
-            .column(FEATURE_ID_COLUMN)
-            .map_err(|err| err.to_string())?
-            .str()
-            .map_err(|err| err.to_string())?;
-        let geometries = self
-            .df
-            .column(GEOMETRY_COLUMN)
-            .map_err(|err| err.to_string())?
-            .str()
-            .map_err(|err| err.to_string())?;
-        let properties = self
-            .df
-            .column(PROPERTIES_COLUMN)
-            .map_err(|err| err.to_string())?
-            .str()
-            .map_err(|err| err.to_string())?;
-
-        let feature_id = ids
-            .get(row_index)
-            .ok_or_else(|| format!("missing `{FEATURE_ID_COLUMN}` at row {row_index}"))?;
-        let geometry_json = geometries
-            .get(row_index)
-            .ok_or_else(|| format!("missing `{GEOMETRY_COLUMN}` at row {row_index}"))?;
-        let geometry: Geometry =
-            serde_json::from_str(geometry_json).map_err(|err| err.to_string())?;
-        let properties_json = properties
-            .get(row_index)
-            .ok_or_else(|| format!("missing `{PROPERTIES_COLUMN}` at row {row_index}"))?;
-        let properties: Map<String, Value> =
-            serde_json::from_str(properties_json).map_err(|err| err.to_string())?;
-
-        Ok(LayerRow {
+    fn row_at(&self, row_index: usize) -> LayerRow {
+        let feature = &self.rows[row_index];
+        LayerRow {
             row_index,
-            feature_id: feature_id.to_string(),
-            geometry,
-            properties,
-        })
-    }
-
-    fn feature_id_column(&self) -> Result<&StringChunked, String> {
-        self.df
-            .column(FEATURE_ID_COLUMN)
-            .map_err(|err| err.to_string())?
-            .str()
-            .map_err(|err| err.to_string())
-    }
-
-    fn replace_all_features(&mut self, features: &[Feature]) -> Result<(), String> {
-        let next = LayerTable::from_features(self.layer_name.clone(), features)?;
-        self.df = next.df;
-        Ok(())
+            feature_id: feature.id.0.clone(),
+            geometry: feature.geometry.clone(),
+            properties: feature.properties.clone(),
+        }
     }
 }
 

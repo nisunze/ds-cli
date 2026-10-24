@@ -49,6 +49,8 @@ pub mod projection;
 pub mod types;
 #[cfg(feature = "vector_types")]
 pub mod vector_types;
+#[cfg(feature = "projection")]
+pub mod vertex_dedupe;
 #[cfg(feature = "vector_types")]
 pub mod window;
 use types::Coord;

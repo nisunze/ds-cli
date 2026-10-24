@@ -2146,7 +2146,6 @@ name = "ds-design-session"
 version = "0.1.0"
 dependencies = [
  "ds-geo-lite",
- "polars",
  "serde",
  "serde_json",
  "tsify",

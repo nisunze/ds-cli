@@ -10,14 +10,15 @@ publish.workspace = true
 
 [features]
 default = []
-enable_dataframes = ["dep:polars"]
+# The per-layer attribute-table view (row windows and cell edits) the page
+# Kernel serves. It holds the session's own rows and links no dataframe engine.
+enable_dataframes = []
 bindings = ["dep:tsify", "dep:wasm-bindgen", "ds-geo-lite/bindings"]
 
 [dependencies]
 ds-geo-lite = { path = "../../shared/ds-geo-lite", features = ["revision", "projection", "geojson", "index"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-polars = { version = "0.53.0", default-features = false, optional = true }
 tsify = { version = "0.5.8", default-features = false, features = ["js"], optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 
