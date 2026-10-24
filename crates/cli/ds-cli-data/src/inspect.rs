@@ -75,7 +75,7 @@ source that already carries geometry. Converted GeoParquet returns its exact foo
 pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     let source = crate::required_source(inputs)?;
     let name = crate::file_name(&source);
-    if name.to_ascii_lowercase().ends_with(".parquet") {
+    if is_converted_geoparquet(std::path::Path::new(&source), &name) {
         let limit = inputs
             .value("rows")
             .unwrap_or("0")
@@ -106,8 +106,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     {
         return Err(Failure::invalid(
             "source_unsupported",
-            "--rows reads converted GeoParquet; run data convert first",
-        ));
+            format!("--rows, --offset and --geometry read converted GeoParquet, and {name} is not GeoParquet; run data convert first"),
+        )
+        .remedy("Run `ds data convert --source <file> --out <file.parquet>`, then inspect that output with --rows; its content, not its suffix, identifies it."));
     }
     let (name, bytes) = read_geometry_source(&source)?;
     let engine = crate::source_engine::capture()?;
@@ -166,6 +167,30 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
         .collect();
 
     Ok(json!({ "source": name, "carries_geometry": false, "sheets": sheets }))
+}
+
+/// Whether a source is a Parquet file, by its content: the `PAR1` magic that
+/// opens and closes every Parquet file. `ds data convert` writes to whatever
+/// `--out` names, so its output is recognised by format rather than by a
+/// `.parquet` suffix (feedback 8ed4a478: a `.geoparquet` output was refused).
+/// A `.parquet` name still selects this reader, so a damaged artifact keeps
+/// the reader's own refusal instead of falling through to the table readers.
+pub(crate) fn is_converted_geoparquet(path: &std::path::Path, name: &str) -> bool {
+    if name.to_ascii_lowercase().ends_with(".parquet") {
+        return true;
+    }
+    use std::io::{Read, Seek, SeekFrom};
+    const MAGIC: &[u8; 4] = b"PAR1";
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut head = [0u8; 4];
+    let mut tail = [0u8; 4];
+    file.read_exact(&mut head).is_ok()
+        && &head == MAGIC
+        && file.seek(SeekFrom::End(-4)).is_ok()
+        && file.read_exact(&mut tail).is_ok()
+        && &tail == MAGIC
 }
 
 /// The name a reader dispatches on and the bytes it reads. A bare `.shp`
@@ -279,3 +304,7 @@ fn inspect_parquet(
 #[cfg(test)]
 #[path = "inspect_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "inspect_format_tests.rs"]
+mod format_tests;
