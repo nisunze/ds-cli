@@ -3,6 +3,9 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+#[cfg(test)]
+mod test_directory;
+
 pub mod application;
 pub mod dashboard;
 pub mod native;
@@ -127,6 +130,25 @@ impl NativeHost {
     }
     pub(crate) fn capture_engine(&self) -> Result<ds_cli_exec::CapturedExternal, String> {
         self.capture_engine_from(None)
+    }
+    /// One lazy preparation scope retains this native context's selected lane.
+    /// Saved prepared reads never consume this capability or probe an addon.
+    pub(crate) fn preparation_tasks(
+        &self,
+        cancel: ds_solar_host::cancel::CancelToken,
+    ) -> Arc<dyn ds_solar_host::preparation::PreparationTasks> {
+        let host = self.clone();
+        Arc::new(
+            ds_solar_host::preparation::AddonPreparation::from_factory(
+                self.data.clone(),
+                move || {
+                    host.capture_engine()
+                        .map(ds_cli_exec::solar::Solar::from_captured)
+                        .map_err(SolarError::artifact_failed)
+                },
+            )
+            .with_cancel(cancel),
+        )
     }
     /// Privileged native host support for an explicitly relocated owned module
     /// store. This diagnostic path is not a captured execution authority.

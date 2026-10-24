@@ -1,0 +1,1585 @@
+{
+  "00_templates": {
+    "customer_categories": {
+      "categories": [
+        {
+          "capacity_w": 150,
+          "category": "Pauvre"
+        },
+        {
+          "capacity_w": 250,
+          "category": "Moyenne"
+        },
+        {
+          "capacity_w": 1000,
+          "category": "Riche"
+        },
+        {
+          "capacity_w": 1000,
+          "category": "Administration_I"
+        },
+        {
+          "capacity_w": 2500,
+          "category": "Administration_II"
+        },
+        {
+          "capacity_w": 5000,
+          "category": "Administration_III"
+        },
+        {
+          "capacity_w": 1500,
+          "category": "Centre de Sante"
+        },
+        {
+          "capacity_w": 600,
+          "category": "Commerce_I"
+        },
+        {
+          "capacity_w": 1500,
+          "category": "Commerce_II"
+        },
+        {
+          "capacity_w": 1000,
+          "category": "Education_I"
+        },
+        {
+          "capacity_w": 5000,
+          "category": "Education_II"
+        },
+        {
+          "capacity_w": 150000,
+          "category": "Education_III"
+        },
+        {
+          "capacity_w": 75000,
+          "category": "Grand Marche"
+        },
+        {
+          "capacity_w": 75000,
+          "category": "Hopital de District"
+        },
+        {
+          "capacity_w": 1000,
+          "category": "Humanitaire_I"
+        },
+        {
+          "capacity_w": 600,
+          "category": "Industrie_I"
+        },
+        {
+          "capacity_w": 600,
+          "category": "Pompage_Eau_I"
+        },
+        {
+          "capacity_w": 5000,
+          "category": "Pompage_Eau_II"
+        },
+        {
+          "capacity_w": 1000,
+          "category": "Religion_I"
+        },
+        {
+          "capacity_w": 5000,
+          "category": "Religion_II"
+        },
+        {
+          "capacity_w": 1000,
+          "category": "Securite Publique_I"
+        },
+        {
+          "capacity_w": 600,
+          "category": "Technologie_I"
+        },
+        {
+          "capacity_w": 3000,
+          "category": "Hotel_I"
+        },
+        {
+          "capacity_w": 3000,
+          "category": "Banque_I"
+        },
+        {
+          "capacity_w": 5000,
+          "category": "Mosque_I"
+        }
+      ],
+      "metadata": {
+        "created_at": "Thu, 27 Nov 2025 09:12:42 GMT",
+        "is_deleted": false,
+        "updated_at": 1766462214972178944,
+        "updated_by": "fixtures@ds-solar.invalid",
+        "user_email": "fixtures@ds-solar.invalid"
+      }
+    },
+    "diesel_consumption": {
+      "_migrated": {
+        "at": "2025-11-27T05:19:31.442529",
+        "from": "eds_solar/diesel_consumption",
+        "renamed_at": "2025-11-27T05:23:12.263239+00:00",
+        "renamed_from": "design/diesel_consumption"
+      },
+      "generators": [
+        {
+          "capacity_mw": 0.008,
+          "consumption_100": 2.08,
+          "consumption_50": 1.04,
+          "consumption_75": 1.56,
+          "kva": 10
+        },
+        {
+          "capacity_mw": 0.012,
+          "consumption_100": 3.12,
+          "consumption_50": 1.56,
+          "consumption_75": 2.34,
+          "kva": 15
+        },
+        {
+          "capacity_mw": 0.016,
+          "consumption_100": 4.16,
+          "consumption_50": 2.08,
+          "consumption_75": 3.12,
+          "kva": 20
+        },
+        {
+          "capacity_mw": 0.024,
+          "consumption_100": 6.24,
+          "consumption_50": 3.12,
+          "consumption_75": 4.68,
+          "kva": 30
+        },
+        {
+          "capacity_mw": 0.032,
+          "consumption_100": 8.32,
+          "consumption_50": 4.16,
+          "consumption_75": 6.24,
+          "kva": 40
+        },
+        {
+          "capacity_mw": 0.04,
+          "consumption_100": 10.4,
+          "consumption_50": 5.2,
+          "consumption_75": 7.8,
+          "kva": 50
+        },
+        {
+          "capacity_mw": 0.048,
+          "consumption_100": 12.48,
+          "consumption_50": 6.24,
+          "consumption_75": 9.36,
+          "kva": 60
+        },
+        {
+          "capacity_mw": 0.06,
+          "consumption_100": 15.6,
+          "consumption_50": 7.8,
+          "consumption_75": 11.7,
+          "kva": 75
+        },
+        {
+          "capacity_mw": 0.08,
+          "consumption_100": 20.8,
+          "consumption_50": 10.4,
+          "consumption_75": 15.6,
+          "kva": 100
+        },
+        {
+          "capacity_mw": 0.104,
+          "consumption_100": 27.04,
+          "consumption_50": 13.52,
+          "consumption_75": 20.28,
+          "kva": 130
+        },
+        {
+          "capacity_mw": 0.12,
+          "consumption_100": 31.2,
+          "consumption_50": 15.6,
+          "consumption_75": 23.4,
+          "kva": 150
+        },
+        {
+          "capacity_mw": 0.16,
+          "consumption_100": 41.6,
+          "consumption_50": 20.8,
+          "consumption_75": 31.2,
+          "kva": 200
+        },
+        {
+          "capacity_mw": 0.2,
+          "consumption_100": 52.0,
+          "consumption_50": 26.0,
+          "consumption_75": 39.0,
+          "kva": 250
+        },
+        {
+          "capacity_mw": 0.256,
+          "consumption_100": 66.56,
+          "consumption_50": 33.28,
+          "consumption_75": 49.92,
+          "kva": 320
+        },
+        {
+          "capacity_mw": 0.28,
+          "consumption_100": 72.8,
+          "consumption_50": 36.4,
+          "consumption_75": 54.6,
+          "kva": 350
+        },
+        {
+          "capacity_mw": 0.32,
+          "consumption_100": 83.2,
+          "consumption_50": 41.6,
+          "consumption_75": 62.4,
+          "kva": 400
+        },
+        {
+          "capacity_mw": 0.4,
+          "consumption_100": 104.0,
+          "consumption_50": 52.0,
+          "consumption_75": 78.0,
+          "kva": 500
+        },
+        {
+          "capacity_mw": 0.52,
+          "consumption_100": 135.2,
+          "consumption_50": 67.6,
+          "consumption_75": 101.4,
+          "kva": 650
+        },
+        {
+          "capacity_mw": 0.6,
+          "consumption_100": 156.0,
+          "consumption_50": 78.0,
+          "consumption_75": 117.0,
+          "kva": 750
+        },
+        {
+          "capacity_mw": 0.8,
+          "consumption_100": 208.0,
+          "consumption_50": 104.0,
+          "consumption_75": 156.0,
+          "kva": 1000
+        }
+      ],
+      "updated_at": "2025-11-26 06:55:29.075000+00:00",
+      "updated_by": "fixtures@ds-solar.invalid"
+    },
+    "financial_params": {
+      "_schema": "financial_params",
+      "_version": "2.0",
+      "analysis_options": {
+        "include_network_cost": true,
+        "include_network_cost_in_financial_calculations": true
+      },
+      "capital_structure": {
+        "debt_ratio": 0.7,
+        "equity_ratio": 0.3,
+        "grant_ratio": 0.0
+      },
+      "currency": {
+        "exchange_rate": 600.0,
+        "primary": "XAF",
+        "primary_label": "FCFA",
+        "secondary": "USD",
+        "secondary_label": "$",
+        "show_secondary_in_dashboard": true,
+        "show_secondary_in_reports": true
+      },
+      "debt": {
+        "grace_period_years": 2,
+        "interest_rate": 0.07,
+        "nominal_interest_rate": 0.084,
+        "term_years": 15
+      },
+      "decommissioning": {
+        "enabled": false,
+        "method": "percent_of_capex",
+        "percent_of_capex": 0.02,
+        "salvage_value_percent": 0.15
+      },
+      "discount_rates": {
+        "fuel_discount_rate": 0.0,
+        "social_discount_rate": 0.06
+      },
+      "escalation": {
+        "fuel": {
+          "annual_rate": 0.005,
+          "enabled": true
+        },
+        "om": {
+          "annual_rate": 0.005,
+          "enabled": true
+        },
+        "tariff": {
+          "annual_rate": 0.0,
+          "enabled": false
+        }
+      },
+      "fuel_modeling": {
+        "apply_discount": true,
+        "apply_inflation": true,
+        "enabled": true,
+        "has_generator": true,
+        "replacement_efficiency_gain": 0.0,
+        "requires_subsidy": false,
+        "reset_at_replacement": true
+      },
+      "metadata": {
+        "created_at": 1766164538443662848,
+        "is_deleted": false,
+        "updated_at": 1766703593656475136,
+        "updated_by": "fixtures@ds-solar.invalid",
+        "user_email": "fixtures@ds-solar.invalid"
+      },
+      "om_modeling": {
+        "reset_at_replacement": true
+      },
+      "project": {
+        "construction_months": 12,
+        "diesel_price_per_liter": 750.0,
+        "lifetime_years": 25
+      },
+      "project_finance": {
+        "enabled": true,
+        "min_dscr": 1.2,
+        "target_equity_irr": 0.15
+      },
+      "revenue": {
+        "carbon_price_per_ton": 35000,
+        "sell_price_kwh": 147
+      },
+      "targets": {
+        "min_irr": 0.12,
+        "npv_profitable_margin": 0.15
+      },
+      "tax": {
+        "corporate_tax_rate": 0.0,
+        "inflation_rate": 0.025
+      },
+      "wacc_inputs": {
+        "beta": 1.0,
+        "country_risk_premium": 0.04,
+        "market_risk_premium": 0.05,
+        "risk_free_rate": 0.04,
+        "specific_risk_premium": 0.02
+      }
+    },
+    "load_profiles": {
+      "_migrated": {
+        "at": "2025-11-27T05:19:34.015242",
+        "from": "eds_solar/load_profiles",
+        "renamed_at": "2025-11-27T05:23:16.061665+00:00",
+        "renamed_from": "design/load_profiles"
+      },
+      "profiles": {
+        "Moyenne": [
+          50,
+          50,
+          50,
+          50,
+          50,
+          50,
+          150,
+          150,
+          105,
+          105,
+          145,
+          145,
+          145,
+          150,
+          145,
+          95,
+          95,
+          250,
+          245,
+          245,
+          255,
+          225,
+          110,
+          100
+        ],
+        "Pauvre": [
+          35,
+          35,
+          35,
+          35,
+          35,
+          35,
+          0,
+          0,
+          5,
+          52,
+          47,
+          47,
+          47,
+          52,
+          47,
+          47,
+          47,
+          92,
+          117,
+          117,
+          123,
+          70,
+          45,
+          35
+        ],
+        "Riche": [
+          155,
+          145,
+          145,
+          145,
+          145,
+          145,
+          225,
+          225,
+          185,
+          175,
+          720,
+          720,
+          720,
+          730,
+          1220,
+          1170,
+          1170,
+          1370,
+          860,
+          860,
+          870,
+          840,
+          225,
+          215
+        ]
+      },
+      "updated_at": "2025-11-26 11:41:05.627000+00:00",
+      "updated_by": "fixtures@ds-solar.invalid"
+    },
+    "network_boq": {
+      "items": [
+        {
+          "description": "Réseaux moyenne tension avec poteaux, câbles, protection et installation",
+          "key": "mt_km",
+          "name": "Ligne MT",
+          "unit": "km",
+          "unit_price": 22057000
+        },
+        {
+          "description": "Réseaux basse tension avec poteaux, protection et raccordement des clients",
+          "key": "bt_km",
+          "name": "Ligne BT",
+          "unit": "km",
+          "unit_price": 18700000
+        },
+        {
+          "description": "Réparation et/ou achèvement des lignes moyenne tension (MT) existantes",
+          "key": "existing_mv_new",
+          "name": "Ligne MT - Existant, En Bonne Condition",
+          "unit": "km",
+          "unit_price": 3000000
+        },
+        {
+          "description": "Réparation et/ou achèvement des lignes basse tension (BT) existantes, en bonne condition",
+          "key": "existing_lv_new",
+          "name": "Ligne BT - Existant, En Bonne Condition",
+          "unit": "km",
+          "unit_price": 1000000
+        },
+        {
+          "description": "Transformateur avec sectionnement, protection, installation et travaux civils",
+          "key": "kva_50",
+          "name": "50 kVA 15/400V",
+          "unit": "u",
+          "unit_price": 3700000
+        },
+        {
+          "description": "Transformateur avec sectionnement, protection, installation et travaux civils",
+          "key": "kva_100",
+          "name": "100 kVA 15kV/400V",
+          "unit": "u",
+          "unit_price": 5000000
+        },
+        {
+          "description": "Transformateur avec sectionnement, protection, installation et travaux civils",
+          "key": "kva_160",
+          "name": "160 kVA 15kV/400V",
+          "unit": "u",
+          "unit_price": 7000000
+        },
+        {
+          "description": "Transformateur avec sectionnement, protection, installation et travaux civils",
+          "key": "kva_250",
+          "name": "250 kVA 15kV/400V",
+          "unit": "u",
+          "unit_price": 9000000
+        },
+        {
+          "description": "Études environnementales et autres études complémentaires",
+          "key": "etudes",
+          "name": "Études",
+          "unit": "%",
+          "unit_price": 10
+        },
+        {
+          "description": "Installation du site",
+          "key": "installation",
+          "name": "Installation de Chantier",
+          "unit": "%",
+          "unit_price": 15
+        },
+        {
+          "description": "Contingence",
+          "key": "imprevu",
+          "name": "Imprévu",
+          "unit": "%",
+          "unit_price": 10
+        },
+        {
+          "description": "Transformateur avec sectionnement, protection, installation et travaux civils",
+          "key": "kva_200",
+          "name": "200 kVA 15kV/400V",
+          "unit": "u",
+          "unit_price": 8000000
+        },
+        {
+          "description": "Transformateur avec sectionnement, protection, installation et travaux civils (prix extrapolé, loi de puissance sur kva_50..kva_250, 2026-08-13)",
+          "key": "kva_25",
+          "name": "25 kVA 15kV/400V",
+          "unit": "u",
+          "unit_price": 2400000
+        },
+        {
+          "description": "Transformateur avec sectionnement, protection, installation et travaux civils (prix extrapolé, loi de puissance sur kva_50..kva_250, 2026-08-13)",
+          "key": "kva_315",
+          "name": "315 kVA 15kV/400V",
+          "unit": "u",
+          "unit_price": 10200000
+        },
+        {
+          "description": "Transformateur existant en bonne condition",
+          "key": "existing_kva_50_new",
+          "name": "Transfo Existint, 50 kVA, en bonne condition",
+          "unit": "u",
+          "unit_price": 150000
+        }
+      ],
+      "metadata": {
+        "created_at": "Fri, 05 Dec 2025 10:06:41 GMT",
+        "is_deleted": false,
+        "updated_at": 1766648365366571776,
+        "updated_by": "fixtures@ds-solar.invalid",
+        "user_email": "fixtures@ds-solar.invalid"
+      }
+    },
+    "plant_boq": {
+      "items": [
+        {
+          "description": "Battery energy storage system (energy capacity)",
+          "key": "battery",
+          "name": "Battery",
+          "unit": "MWh",
+          "unit_price": 240000000.0
+        },
+        {
+          "description": "Power conversion blocks for PV/BESS (0.1 MW step)",
+          "key": "inverter",
+          "name": "Inverters",
+          "unit": "0.1MW",
+          "unit_price": 14700000.0
+        },
+        {
+          "description": "Photovoltaic module with structure and mounting",
+          "key": "solar_panel",
+          "name": "Solar Panel",
+          "unit": "panel",
+          "unit_price": 155000.0
+        },
+        {
+          "description": "Diesel generator 350 kVA including installation",
+          "key": "generator_350",
+          "name": "Generator 350kVA",
+          "unit": "u",
+          "unit_price": 37000000.0
+        },
+        {
+          "description": "Diesel generator 630 kVA including installation",
+          "key": "generator_650",
+          "name": "Generator 630kVA",
+          "unit": "u",
+          "unit_price": 55000000.0
+        },
+        {
+          "description": "Diesel generator 1000 kVA including installation",
+          "key": "generator_1000",
+          "name": "Generator 1000kVA",
+          "unit": "u",
+          "unit_price": 90000000.0
+        },
+        {
+          "description": "O&M for batteries per delivered MWh",
+          "key": "battery_maintenance",
+          "name": "Battery Maintenance",
+          "unit": "XAF/MWh",
+          "unit_price": 377.79
+        },
+        {
+          "description": "O&M for generators per delivered MWh",
+          "key": "generator_maintenance",
+          "name": "Generator Maintenance",
+          "unit": "XAF/MWh",
+          "unit_price": 5033.28
+        },
+        {
+          "description": "Environmental impact assessment and studies",
+          "key": "env_study",
+          "name": "Environment Study",
+          "unit": "%",
+          "unit_price": 5.0
+        },
+        {
+          "description": "Detailed engineering studies and design",
+          "key": "detailed_study",
+          "name": "Detailed Study",
+          "unit": "%",
+          "unit_price": 5.0
+        },
+        {
+          "description": "Logistics, freight, insurance, and handling",
+          "key": "logistics",
+          "name": "Logistics",
+          "unit": "%",
+          "unit_price": 10.0
+        },
+        {
+          "description": "Civil works, site preparation, and construction",
+          "key": "construction",
+          "name": "Construction",
+          "unit": "%",
+          "unit_price": 15.0
+        },
+        {
+          "description": "Testing and commissioning of plant systems",
+          "key": "commissioning",
+          "name": "Commissioning",
+          "unit": "%",
+          "unit_price": 5.0
+        },
+        {
+          "description": "Allowance for unforeseen items",
+          "key": "contingency",
+          "name": "Contingency",
+          "unit": "%",
+          "unit_price": 10.0
+        },
+        {
+          "description": "Existing Generator in good condition, 650 kVA",
+          "key": "existing_generator_650_new",
+          "name": "Existing Generator 650 kVA, Newly installed",
+          "unit": "u",
+          "unit_price": 1000000.0
+        },
+        {
+          "description": "Existing Generator in good condition, 650 kVA",
+          "key": "existing_generator_350_new",
+          "name": "Existing Generator 350 kVA, Newly installed",
+          "unit": "u",
+          "unit_price": 500000.0
+        }
+      ],
+      "metadata": {
+        "created_at": 1.7654543681339804e+18,
+        "is_deleted": false,
+        "updated_at": 1.7664334761183939e+18,
+        "updated_by": "fixtures@ds-solar.invalid",
+        "user_email": "fixtures@ds-solar.invalid"
+      }
+    },
+    "technical_params": {
+      "_schema": "technical_params",
+      "_version": "2.0",
+      "analysis": {
+        "consider_carbon_credits": false,
+        "consider_social_discount": false
+      },
+      "battery": {
+        "charger": {
+          "capacity_kw": 5000.0,
+          "max_c_rate": 0.5
+        },
+        "chemistry": "LFP",
+        "efficiency": {
+          "charge_loss_percent": 2.0,
+          "discharge_loss_percent": 2.0
+        },
+        "sizing": {
+          "full_charge_check_hour": 15.0
+        },
+        "soc_limits": {
+          "max_percent": 95.0,
+          "min_percent": 20.0
+        }
+      },
+      "degradation": {
+        "battery_annual_percent": 2.0,
+        "inverter_annual_percent": 0.0,
+        "module_annual_percent": 0.5
+      },
+      "demand": {
+        "monthly_factors": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "noise_sigma": 0.1
+      },
+      "environmental": {
+        "diesel_co2_kg_per_liter": 2.68,
+        "grid_co2_kg_per_kwh": 0.5,
+        "water_usage_liters_per_mwh": 0.0
+      },
+      "equipment_life": {
+        "battery": {
+          "lifetime_years": 13.0,
+          "replace": true
+        },
+        "generator": {
+          "lifetime_hours": 13.0,
+          "lifetime_years": 13.0,
+          "replace": true
+        },
+        "inverter": {
+          "lifetime_years": 13.0,
+          "replace": true
+        },
+        "module": {
+          "lifetime_years": 25.0,
+          "replace": false
+        }
+      },
+      "fuel": {
+        "diesel_density_kg_per_liter": 0.85,
+        "diesel_energy_kwh_per_liter": 10.0,
+        "diesel_price_per_liter": 750.0
+      },
+      "generator": {
+        "auto_start_soc_percent": 20.0,
+        "auto_stop_soc_percent": 80.0,
+        "enabled": true,
+        "fuel_consumption_curve": "linear",
+        "min_load_ratio": 0.3
+      },
+      "losses": {
+        "ac": {
+          "grid_percent": 1.0,
+          "inverter_percent": 2.0,
+          "transformer_percent": 1.0
+        },
+        "dc": {
+          "connections_percent": 0.5,
+          "lid_percent": 1.5,
+          "mismatch_percent": 1.0,
+          "nameplate_percent": 1.0,
+          "shading_percent": 1.0,
+          "soiling_percent": 5.0,
+          "wiring_percent": 2.0
+        }
+      },
+      "metadata": {
+        "created_at": 1.7661645524540252e+18,
+        "is_deleted": false,
+        "updated_at": 1.766514416899771e+18,
+        "updated_by": "fixtures@ds-solar.invalid",
+        "user_email": "fixtures@ds-solar.invalid"
+      },
+      "network": {
+        "existing_max_service_length_m": 60.0,
+        "power_factor": 0.95,
+        "voltage_drop_max_percent": 10.0
+      },
+      "om_costs": {
+        "battery_per_mwh": 377.0,
+        "currency": "XAF",
+        "generator_per_mwh": 5033.0,
+        "solar_per_mwh": 1511.0
+      },
+      "project": {
+        "lifetime_years": 25.0
+      },
+      "pv_system": {
+        "array": {
+          "azimuth_degrees": null,
+          "ground_coverage_ratio": 0.4,
+          "tilt_degrees": null,
+          "tracking": "fixed"
+        },
+        "inverter": {
+          "capacity_kw": 100.0,
+          "dc_ac_ratio": 1.2,
+          "grid_forming": false
+        },
+        "module": {
+          "bifacial": false,
+          "bifacial_gain": 0.0,
+          "capacity_wp": 509.0,
+          "noct_celsius": 45.0,
+          "technology": "mono-Si",
+          "temp_coefficient_pmax": -0.35
+        },
+        "sizing": {
+          "apply_buffer": false,
+          "buffer_percent": 5.0,
+          "safety_margin": 0.1
+        }
+      }
+    }
+  },
+  "01_city_inputs": {
+    "city": {
+      "_meta": {
+        "distance_to_city_m": 0.0,
+        "location_set_from": "solar_site",
+        "set_at": 1775584930411,
+        "set_by": "fixtures@ds-solar.invalid",
+        "site_fid": 4,
+        "source_city": "Kyabé"
+      },
+      "altitude": 410.0,
+      "city": "Kyabe",
+      "country": "Tchad",
+      "description": "Centrale isolée de Kyabe",
+      "latitude": 9.468258,
+      "longitude": 18.964983,
+      "metadata": {
+        "created_at": 1.7751207323199242e+18,
+        "is_deleted": false,
+        "updated_at": 1.7751207323199242e+18,
+        "updated_by": "fixtures@ds-solar.invalid",
+        "user_email": "fixtures@ds-solar.invalid"
+      },
+      "tz": "Africa/Ndjamena"
+    },
+    "design_options": {
+      "chart_style": "color",
+      "consider_inst": true,
+      "metadata": {
+        "created_at": 1775120732319934976,
+        "is_deleted": false,
+        "updated_at": 1775120732319934976,
+        "updated_by": "fixtures@ds-solar.invalid",
+        "user_email": "fixtures@ds-solar.invalid"
+      },
+      "minimum_load_profile": 0.35,
+      "project_scope": "plant_and_network"
+    },
+    "existing_infrastructure": {
+      "enabled": false,
+      "metadata": {
+        "is_deleted": false,
+        "updated_by": "fixtures@ds-solar.invalid",
+        "user_email": "fixtures@ds-solar.invalid"
+      },
+      "network_items": [],
+      "network_map": "",
+      "plant_items": []
+    },
+    "network_data": {
+      "_meta": {
+        "bridged_at": 1775588214096,
+        "bridged_by": "offline-ingest",
+        "bridged_from": "design_data",
+        "source_city": "Kyabé"
+      },
+      "consider_inst": false,
+      "customers": [
+        {
+          "category": "Centre de Sante",
+          "count": 3
+        },
+        {
+          "category": "Education_II",
+          "count": 2
+        },
+        {
+          "category": "Grand Marche",
+          "count": 1
+        },
+        {
+          "category": "Hopital de District",
+          "count": 3
+        },
+        {
+          "category": "Mosque_I",
+          "count": 2
+        },
+        {
+          "category": "Moyenne",
+          "count": 1979
+        },
+        {
+          "category": "Pauvre",
+          "count": 2312
+        },
+        {
+          "category": "Religion_I",
+          "count": 2
+        },
+        {
+          "category": "Riche",
+          "count": 365
+        }
+      ],
+      "maps": {
+        "reseau_propose": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/reseau_propose.jpg",
+        "reseau_propose_phase1": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/reseau_propose_mt.png",
+        "transformers": {
+          "KYABE_01": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_01.jpg",
+          "KYABE_02": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_02.jpg",
+          "KYABE_03": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_03.jpg",
+          "KYABE_04": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_04.jpg",
+          "KYABE_05": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_05.jpg",
+          "KYABE_06": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_06.jpg",
+          "KYABE_07": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_07.jpg",
+          "KYABE_08": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_08.jpg",
+          "KYABE_09": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_09.jpg",
+          "KYABE_10": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_10.jpg",
+          "KYABE_11": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_11.jpg",
+          "KYABE_12": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_12.jpg",
+          "KYABE_13": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_13.jpg",
+          "KYABE_14": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_14.jpg",
+          "KYABE_15": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_15.jpg",
+          "KYABE_16": "eds_project/arjgpydw_aderm_loc7/eds_solar/aderm_kyabe/network_plots/BT_KYABE_16.jpg"
+        }
+      },
+      "material_quantities": {
+        "customers_by_category": {
+          "Centre de Sante": 3,
+          "Education_II": 2,
+          "Grand Marche": 1,
+          "Hopital de District": 3,
+          "Mosque_I": 2,
+          "Moyenne": 1979,
+          "Pauvre": 2312,
+          "Religion_I": 2,
+          "Riche": 365
+        },
+        "lv_lines_by_cable_size_m": {
+          "3 x 35 + 54.6mm² ABC": 46537.08,
+          "3 x 50 + 54.6mm² ABC": 23564.56,
+          "3 x 70 + 54.6mm² ABC": 41360.93
+        },
+        "lv_pole_count": 2556,
+        "lv_poles_by_assembly_type": {},
+        "lv_poles_by_resolved_spec": {},
+        "lv_poles_by_struct_type": {},
+        "lv_poles_hardware_totals": {
+          "EAD 54-10": 0,
+          "EAS 54-10": 0,
+          "EAT 54-10": 0,
+          "ES 54-14": 0
+        },
+        "service_cable_drops_by_meter_type": {},
+        "service_cable_drops_by_size": {},
+        "service_cables_by_cable_size_m": {},
+        "total_customers": 4669,
+        "total_lv_length_m": 111462.57,
+        "total_service_cable_length_m": 0,
+        "total_service_drops": 0,
+        "transformers_by_kva": {
+          "100": 3,
+          "160": 5,
+          "25": 2,
+          "250": 2,
+          "315": 1,
+          "50": 3
+        },
+        "transformers_resolved": [
+          {
+            "count": 2,
+            "kva": 25,
+            "lv_breaker_a": 40,
+            "lv_bundle": "3 x 35 + 54.6mm² ABC",
+            "mv_fuse_15kv_a": 2,
+            "standard_cable": "4 x 35 mm²"
+          },
+          {
+            "count": 3,
+            "kva": 50,
+            "lv_breaker_a": 80,
+            "lv_bundle": "3 x 50 + 54.6mm² ABC",
+            "mv_fuse_15kv_a": 4,
+            "standard_cable": "4 x 35 mm²"
+          },
+          {
+            "count": 3,
+            "kva": 100,
+            "lv_breaker_a": 160,
+            "lv_bundle": "3 x 70 + 54.6mm² ABC",
+            "mv_fuse_15kv_a": 6,
+            "standard_cable": "4 x 50 mm²"
+          },
+          {
+            "count": 5,
+            "kva": 160,
+            "lv_breaker_a": 250,
+            "lv_bundle": "3 x 95 + 54.6mm² ABC",
+            "mv_fuse_15kv_a": 8,
+            "standard_cable": "4 x 70 mm²"
+          },
+          {
+            "count": 2,
+            "kva": 250,
+            "lv_breaker_a": 400,
+            "lv_bundle": "4 x 150",
+            "mv_fuse_15kv_a": 12,
+            "standard_cable": "4 x 1 x 150 mm²"
+          },
+          {
+            "count": 1,
+            "kva": 315,
+            "lv_breaker_a": null,
+            "lv_bundle": null,
+            "mv_fuse_15kv_a": null,
+            "standard_cable": null
+          }
+        ]
+      },
+      "metadata": {
+        "created_at": 1.7751207323199278e+18,
+        "is_deleted": false,
+        "updated_at": 1.7751207323199278e+18,
+        "updated_by": "fixtures@ds-solar.invalid",
+        "user_email": "fixtures@ds-solar.invalid"
+      },
+      "minimum_load_profile": 0.25,
+      "proposed": {
+        "active_network_phases": [
+          "I"
+        ],
+        "active_summary": {
+          "active_network_phases": [
+            "I"
+          ],
+          "active_transformers": [
+            {
+              "Centre de Sante": 1,
+              "Moyenne": 238,
+              "Pauvre": 40,
+              "Riche": 28,
+              "bt_km": 7.293,
+              "clients": 307,
+              "kva": 160,
+              "name": "KYABE_02",
+              "phase": "I"
+            },
+            {
+              "Moyenne": 1,
+              "Pauvre": 136,
+              "bt_km": 5.106,
+              "clients": 137,
+              "kva": 25,
+              "name": "KYABE_03",
+              "phase": "I"
+            },
+            {
+              "Education_II": 1,
+              "Hopital de District": 1,
+              "Mosque_I": 1,
+              "Moyenne": 49,
+              "Pauvre": 35,
+              "Riche": 126,
+              "bt_km": 4.876,
+              "clients": 213,
+              "kva": 315,
+              "name": "KYABE_05",
+              "phase": "I"
+            },
+            {
+              "Centre de Sante": 1,
+              "Moyenne": 373,
+              "Pauvre": 114,
+              "Riche": 98,
+              "bt_km": 6.503,
+              "clients": 586,
+              "kva": 250,
+              "name": "KYABE_06",
+              "phase": "I"
+            },
+            {
+              "Moyenne": 87,
+              "Pauvre": 26,
+              "Riche": 3,
+              "bt_km": 4.769,
+              "clients": 116,
+              "kva": 50,
+              "name": "KYABE_07",
+              "phase": "I"
+            },
+            {
+              "Mosque_I": 1,
+              "Moyenne": 70,
+              "Pauvre": 315,
+              "bt_km": 6.029,
+              "clients": 386,
+              "kva": 100,
+              "name": "KYABE_08",
+              "phase": "I"
+            },
+            {
+              "Moyenne": 105,
+              "Pauvre": 166,
+              "Riche": 30,
+              "bt_km": 6.448,
+              "clients": 301,
+              "kva": 100,
+              "name": "KYABE_09",
+              "phase": "I"
+            },
+            {
+              "Hopital de District": 1,
+              "Moyenne": 11,
+              "Pauvre": 173,
+              "bt_km": 9.311,
+              "clients": 185,
+              "kva": 160,
+              "name": "KYABE_10",
+              "phase": "I"
+            },
+            {
+              "Moyenne": 279,
+              "Pauvre": 66,
+              "Religion_I": 1,
+              "Riche": 32,
+              "bt_km": 7.148,
+              "clients": 378,
+              "kva": 160,
+              "name": "KYABE_11",
+              "phase": "I"
+            },
+            {
+              "Centre de Sante": 1,
+              "Grand Marche": 1,
+              "Moyenne": 154,
+              "Pauvre": 426,
+              "Riche": 28,
+              "bt_km": 7.293,
+              "clients": 610,
+              "kva": 250,
+              "name": "KYABE_12",
+              "phase": "I"
+            },
+            {
+              "Education_II": 1,
+              "Moyenne": 94,
+              "Pauvre": 405,
+              "Riche": 2,
+              "bt_km": 8.333,
+              "clients": 502,
+              "kva": 160,
+              "name": "KYABE_13",
+              "phase": "I"
+            },
+            {
+              "Hopital de District": 1,
+              "Moyenne": 207,
+              "Religion_I": 1,
+              "bt_km": 9.747,
+              "clients": 209,
+              "kva": 160,
+              "name": "KYABE_14",
+              "phase": "I"
+            }
+          ],
+          "all_phases": [
+            "I",
+            "II"
+          ],
+          "customers_by_category_active": {
+            "Centre de Sante": 3,
+            "Education_II": 2,
+            "Grand Marche": 1,
+            "Hopital de District": 3,
+            "Mosque_I": 2,
+            "Moyenne": 1668,
+            "Pauvre": 1902,
+            "Religion_I": 2,
+            "Riche": 347
+          },
+          "customers_by_category_full": {
+            "Centre de Sante": 3,
+            "Education_II": 2,
+            "Grand Marche": 1,
+            "Hopital de District": 3,
+            "Mosque_I": 2,
+            "Moyenne": 1979,
+            "Pauvre": 2312,
+            "Religion_I": 2,
+            "Riche": 365
+          },
+          "is_phased_deployment": true,
+          "n_active_transformers": 12,
+          "n_total_transformers": 16,
+          "phase_breakdown": {
+            "I": {
+              "customers_by_category": {
+                "Centre de Sante": 3,
+                "Education_II": 2,
+                "Grand Marche": 1,
+                "Hopital de District": 3,
+                "Mosque_I": 2,
+                "Moyenne": 1668,
+                "Pauvre": 1902,
+                "Religion_I": 2,
+                "Riche": 347
+              },
+              "is_active": true,
+              "n_transformers": 12,
+              "total_bt_km": 82.856,
+              "total_clients": 3930
+            },
+            "II": {
+              "customers_by_category": {
+                "Moyenne": 311,
+                "Pauvre": 410,
+                "Riche": 18
+              },
+              "is_active": false,
+              "n_transformers": 4,
+              "total_bt_km": 28.607,
+              "total_clients": 739
+            }
+          },
+          "total_bt_km_active": 82.856,
+          "total_bt_km_full": 111.463,
+          "total_clients_active": 3930,
+          "total_clients_full": 4669,
+          "total_mv_length_km": 19.042
+        },
+        "customers": [
+          {
+            "category": "Moyenne",
+            "count": 5330.0
+          },
+          {
+            "category": "Pauvre",
+            "count": 373.0
+          },
+          {
+            "category": "Riche",
+            "count": 103.0
+          }
+        ],
+        "num_transformers": 16,
+        "total_bt_km": 111.463,
+        "total_mv_length_km": 19.042,
+        "transformers": [
+          {
+            "Moyenne": 219,
+            "Pauvre": 23,
+            "Riche": 17,
+            "bt_km": 9.152,
+            "clients": 259,
+            "kva": 100,
+            "name": "KYABE_01",
+            "phase": "II"
+          },
+          {
+            "Centre de Sante": 1,
+            "Moyenne": 238,
+            "Pauvre": 40,
+            "Riche": 28,
+            "bt_km": 7.293,
+            "clients": 307,
+            "kva": 160,
+            "name": "KYABE_02",
+            "phase": "I"
+          },
+          {
+            "Moyenne": 1,
+            "Pauvre": 136,
+            "bt_km": 5.106,
+            "clients": 137,
+            "kva": 25,
+            "name": "KYABE_03",
+            "phase": "I"
+          },
+          {
+            "Moyenne": 51,
+            "bt_km": 5.382,
+            "clients": 51,
+            "kva": 25,
+            "name": "KYABE_04",
+            "phase": "II"
+          },
+          {
+            "Education_II": 1,
+            "Hopital de District": 1,
+            "Mosque_I": 1,
+            "Moyenne": 49,
+            "Pauvre": 35,
+            "Riche": 126,
+            "bt_km": 4.876,
+            "clients": 213,
+            "kva": 315,
+            "name": "KYABE_05",
+            "phase": "I"
+          },
+          {
+            "Centre de Sante": 1,
+            "Moyenne": 373,
+            "Pauvre": 114,
+            "Riche": 98,
+            "bt_km": 6.503,
+            "clients": 586,
+            "kva": 250,
+            "name": "KYABE_06",
+            "phase": "I"
+          },
+          {
+            "Moyenne": 87,
+            "Pauvre": 26,
+            "Riche": 3,
+            "bt_km": 4.769,
+            "clients": 116,
+            "kva": 50,
+            "name": "KYABE_07",
+            "phase": "I"
+          },
+          {
+            "Mosque_I": 1,
+            "Moyenne": 70,
+            "Pauvre": 315,
+            "bt_km": 6.029,
+            "clients": 386,
+            "kva": 100,
+            "name": "KYABE_08",
+            "phase": "I"
+          },
+          {
+            "Moyenne": 105,
+            "Pauvre": 166,
+            "Riche": 30,
+            "bt_km": 6.448,
+            "clients": 301,
+            "kva": 100,
+            "name": "KYABE_09",
+            "phase": "I"
+          },
+          {
+            "Hopital de District": 1,
+            "Moyenne": 11,
+            "Pauvre": 173,
+            "bt_km": 9.311,
+            "clients": 185,
+            "kva": 160,
+            "name": "KYABE_10",
+            "phase": "I"
+          },
+          {
+            "Moyenne": 279,
+            "Pauvre": 66,
+            "Religion_I": 1,
+            "Riche": 32,
+            "bt_km": 7.148,
+            "clients": 378,
+            "kva": 160,
+            "name": "KYABE_11",
+            "phase": "I"
+          },
+          {
+            "Centre de Sante": 1,
+            "Grand Marche": 1,
+            "Moyenne": 154,
+            "Pauvre": 426,
+            "Riche": 28,
+            "bt_km": 7.293,
+            "clients": 610,
+            "kva": 250,
+            "name": "KYABE_12",
+            "phase": "I"
+          },
+          {
+            "Education_II": 1,
+            "Moyenne": 94,
+            "Pauvre": 405,
+            "Riche": 2,
+            "bt_km": 8.333,
+            "clients": 502,
+            "kva": 160,
+            "name": "KYABE_13",
+            "phase": "I"
+          },
+          {
+            "Hopital de District": 1,
+            "Moyenne": 207,
+            "Religion_I": 1,
+            "bt_km": 9.747,
+            "clients": 209,
+            "kva": 160,
+            "name": "KYABE_14",
+            "phase": "I"
+          },
+          {
+            "Moyenne": 29,
+            "Pauvre": 173,
+            "Riche": 1,
+            "bt_km": 5.602,
+            "clients": 203,
+            "kva": 50,
+            "name": "KYABE_15",
+            "phase": "II"
+          },
+          {
+            "Moyenne": 12,
+            "Pauvre": 214,
+            "bt_km": 8.471,
+            "clients": 226,
+            "kva": 50,
+            "name": "KYABE_16",
+            "phase": "II"
+          }
+        ]
+      }
+    },
+    "plant_config": {
+      "hybrid_plant": {
+        "battery_mwh": null,
+        "consider_phases": true,
+        "generators": {
+          "generator_350": {
+            "capacity_mw": 0.28,
+            "consumption_at_100": 72.8,
+            "consumption_at_50": 36.4,
+            "consumption_at_75": 54.6,
+            "qty": 1.0
+          },
+          "generator_650": {
+            "capacity_mw": 0.52,
+            "consumption_at_100": 135.2,
+            "consumption_at_50": 67.6,
+            "consumption_at_75": 101.4,
+            "qty": 4.0
+          }
+        },
+        "generators_by_year": {},
+        "min_days_battery_not_fully_charged": 45.0,
+        "num_inverters": null,
+        "preselect_plant_size": false,
+        "renewable_fraction": 0.9,
+        "solar_phases": {},
+        "use_gen_in_peak": false,
+        "use_gen_when_capacity_unmet": true
+      },
+      "metadata": {
+        "created_at": 1.775120732319933e+18,
+        "is_deleted": false,
+        "updated_at": 1.775120732319933e+18,
+        "updated_by": "fixtures@ds-solar.invalid",
+        "user_email": "fixtures@ds-solar.invalid"
+      },
+      "selected_system": "hybrid",
+      "solar_plant": {
+        "battery_mwh": null,
+        "consider_phases": false,
+        "design_availability": 0.995,
+        "min_days_battery_not_fully_charged": 30.0,
+        "num_inverters": null,
+        "preselect_plant_size": false,
+        "solar_phases": {},
+        "target_size_mw": null
+      },
+      "thermal_plant": {
+        "consider_phases": false,
+        "generators": {
+          "generator_350": {
+            "capacity_mw": 0.28,
+            "consumption_at_100": 72.8,
+            "consumption_at_50": 36.4,
+            "consumption_at_75": 54.6,
+            "qty": 2.0
+          },
+          "generator_650": {
+            "capacity_mw": 0.52,
+            "consumption_at_100": 135.2,
+            "consumption_at_50": 67.6,
+            "consumption_at_75": 101.4,
+            "qty": 5.0
+          }
+        }
+      }
+    },
+    "tariffs": {
+      "currency": "XAF",
+      "metadata": {
+        "created_at": 1775120732319933952,
+        "is_deleted": false,
+        "updated_at": 1775120732319933952,
+        "updated_by": "fixtures@ds-solar.invalid",
+        "user_email": "fixtures@ds-solar.invalid"
+      },
+      "sell_price_kwh": 147
+    }
+  },
+  "_provenance": {
+    "bulk_assembled_at_ms": 1775679283972,
+    "captured_on": "2026-08-08",
+    "manifest_saved_at": "2026-04-08T20:11:28.741926+00:00",
+    "network_data_ingest": {
+      "captured_on": "2026-08-08",
+      "design_sha256": "43a85e3267626fa453103dc32a6966c9f1b8ff0366965931f2b66090da072987",
+      "read_path": "eds_project/arjgpydw_aderm_loc7/eds_solar/_project/_config/design_data",
+      "snapshot_file": "tests/fixtures/offline/design/arjgpydw_aderm_loc7.json",
+      "source_city": "Kyabé",
+      "source_kind": "design snapshot (cached prod design_data)"
+    },
+    "post_capture_overlays": [
+      {
+        "applied_on": "2026-08-13",
+        "captured_on": "2026-08-13",
+        "keys": [
+          "00_templates.network_boq.items.kva_25",
+          "00_templates.network_boq.items.kva_315"
+        ],
+        "source_artifact": "desktop-workspace/snapshots/aderm_kyabe.json",
+        "source_kind": "authenticated ds-brain desktop snapshot (shared project template)",
+        "source_sha256": "2edb3abd010a859b80e09f0ee0f3db00055452a163393c48f43e453f038cd366"
+      }
+    ],
+    "sections": [
+      "_root",
+      "_config.paths",
+      "00_templates",
+      "01_city_inputs"
+    ],
+    "source_artifact": "ds-solar-reporter/tests/fixtures/bulk/aderm_kyabe_bulk_data.json",
+    "source_kind": "frozen reporter bulk (no Firestore access)",
+    "source_repo_head": "00584d2a32c0687f3b6eeb51fae9b06f1b198898",
+    "source_sha256": "da9b66250e9e6f1ad5e7b09963bfcc009bec80eedaf652d9e20497bda6753fe7"
+  },
+  "_root": {
+    "altitude": 410,
+    "city": "Kyabe",
+    "country": "Tchad",
+    "description": "City: Kyabe",
+    "display_name": "Kyabe",
+    "latitude": 9.45,
+    "longitude": 18.95,
+    "metadata": {
+      "created_at": 1775120732319915008,
+      "is_deleted": false,
+      "solar_design_source_city": "Kyabé",
+      "updated_at": 1775120732319915008,
+      "updated_by": "fixtures@ds-solar.invalid",
+      "user_email": "fixtures@ds-solar.invalid"
+    },
+    "project_scope": "plant_and_network",
+    "type": "city",
+    "tz": "Africa/Ndjamena"
+  }
+}

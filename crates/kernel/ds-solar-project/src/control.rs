@@ -7,9 +7,10 @@ use crate::{
 };
 use anyhow::{Result, ensure};
 use ds_solar_contracts::SolarCityInput;
+use ds_solar_host::preparation::{AddonPreparation, PreparationTasks};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
@@ -191,6 +192,16 @@ pub fn execute(request: Value) -> Result<Value> {
 /// [`execute`] with a host-supplied local run calculation. Only local tooling
 /// that links an engine supplies one. Portfolio aggregation is never local.
 pub fn execute_with(request: Value, calculate: Option<&LocalCalculator<'_>>) -> Result<Value> {
+    execute_with_tasks(request, calculate, Arc::new(AddonPreparation::installed()))
+}
+
+/// Retain the native caller's selected preparation client across one control.
+/// Read-only controls never consume it or probe the installed addon.
+pub fn execute_with_tasks(
+    request: Value,
+    calculate: Option<&LocalCalculator<'_>>,
+    tasks: Arc<dyn PreparationTasks>,
+) -> Result<Value> {
     let bytes = serde_json::to_vec(&request)?;
     ensure!(
         bytes.len() <= 32 * 1024 * 1024,
@@ -280,21 +291,25 @@ pub fn execute_with(request: Value, calculate: Option<&LocalCalculator<'_>>) -> 
             workspace,
             city,
             cache,
-        } => crate::reference::plan(&workspace, &city, &cache)?,
+        } => crate::reference::plan_with_tasks(&workspace, &city, &cache, tasks)?,
         Request::ReferenceImport {
             workspace,
             city,
             cache,
             expected,
             bundle,
-        } => crate::reference::import(&workspace, &city, &cache, &expected, &bundle)?,
+        } => crate::reference::import_with_tasks(
+            &workspace, &city, &cache, &expected, &bundle, tasks,
+        )?,
         Request::ReferencePlanFile {
             workspace,
             project,
             city,
             cache,
             out,
-        } => crate::reference::plan_file(&workspace, &project, &city, &cache, &out)?,
+        } => crate::reference::plan_file_with_tasks(
+            &workspace, &project, &city, &cache, &out, tasks,
+        )?,
         Request::ReferenceImportFiles {
             workspace,
             project,
@@ -302,9 +317,9 @@ pub fn execute_with(request: Value, calculate: Option<&LocalCalculator<'_>>) -> 
             cache,
             expected,
             bundle,
-        } => {
-            crate::reference::import_files(&workspace, &project, &city, &cache, &expected, &bundle)?
-        }
+        } => crate::reference::import_files_with_tasks(
+            &workspace, &project, &city, &cache, &expected, &bundle, tasks,
+        )?,
         Request::Initialize {
             workspace,
             identity,
@@ -367,7 +382,7 @@ pub fn execute_with(request: Value, calculate: Option<&LocalCalculator<'_>>) -> 
                 anyhow::bail!(NO_ENGINE)
             };
             Workspace::open(&workspace)?
-                .execute_with_network(&request, &cache, &network, calculate)?
+                .execute_with_network_and_tasks(&request, &cache, &network, tasks, calculate)?
         }
         Request::Result { workspace, run_id } => {
             Workspace::open(&workspace)?.run_result(&run_id)?

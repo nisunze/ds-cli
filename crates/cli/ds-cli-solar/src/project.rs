@@ -45,6 +45,11 @@ const fn command(
         examples: &[],
         refusals: &[
             Refusal {
+                code: "solar_engine_update_required",
+                when: "a reference preparation operation needs a task the selected Solar addon does not declare",
+                remedy: "install a Solar addon for the selected lane that declares raw-reference preparation",
+            },
+            Refusal {
                 code: "solar_project_inputs",
                 when: "a seed carries no --input, or more than 64",
                 remedy: "pass one --input per city, 1 through 64",
@@ -122,6 +127,11 @@ pub static RUN: Command = Command {
     authority: Authority::HeadlessProject,
     purpose: "Run captured Solar-owned input snapshots and manual edits without refreshing network assets. Seeding or refreshing is a separate explicit operation. Copied maps and sizing data belong to Solar; missing geographic data never blocks manual input. A verified reference cache must already exist. The selected lane's Solar addon calculates by typed request, offline; the workspace verifies and commits its closed batch.",
     refusals: &[
+        Refusal {
+            code: "solar_engine_update_required",
+            when: "the captured Solar addon does not declare raw-reference preparation",
+            remedy: "install a Solar addon for the selected lane that declares the required preparation task",
+        },
         Refusal {
             code: "solar_engine_missing",
             when: "the selected lane has no managed Solar addon and no explicit development override",
@@ -314,10 +324,15 @@ pub(crate) fn run_with(
     let request = json!({"operation":"run","workspace":i.require("workspace")?,"cache":i.require("cache")?,"request":{"run_id":i.require("run-id")?,"cities":cities,"concurrency":concurrency,"charts":i.switch("charts"),"drafts":drafts}});
     // The addon is captured before any workspace effect: a missing or invalid
     // engine refuses with its own typed code and leaves no run behind.
-    let engine = capture()?;
+    let engine = std::sync::Arc::new(capture()?);
+    let preparation =
+        std::sync::Arc::new(ds_solar_host::preparation::AddonPreparation::from_client(
+            std::env::temp_dir(),
+            engine.clone(),
+        ));
     let lane = i.value("lane").unwrap_or("stable");
     let engine_refusal = std::cell::RefCell::new(None);
-    let calculated = ds_solar_project::control::execute_with(
+    let calculated = ds_solar_project::control::execute_with_tasks(
         request,
         Some(&|calculation| {
             crate::run::calculate_captured(&engine, lane, calculation).map_err(|failure| {
@@ -326,9 +341,16 @@ pub(crate) fn run_with(
                 std::io::Error::other(message).into()
             })
         }),
+        preparation,
     );
     let mut result = calculated.map_err(|error| {
         engine_refusal.take().unwrap_or_else(|| {
+            if let Some(solar) = error.downcast_ref::<ds_solar_contracts::SolarError>()
+                && solar.code == ds_solar_contracts::SolarErrorCode::SolarEngineUpdateRequired
+            {
+                return Failure::unavailable("solar_engine_update_required", &solar.message)
+                    .remedy("install a Solar addon for the selected lane that declares raw-reference preparation");
+            }
             Failure::failed("engine_refused", error.to_string())
                 .remedy("inspect the owner refusal; use exact local project inputs and a verified reference cache")
         })

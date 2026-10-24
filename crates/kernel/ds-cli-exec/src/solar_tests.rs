@@ -40,7 +40,11 @@ fn fixture(schemas: &[&str]) -> (Scratch, Solar) {
     let root = dir.path();
     let identity = json!({"name": "ds-solar-engine", "version": "9.9.9", "schemas": schemas,
         "a_newer_member": {"additive": true}});
-    std::fs::write(root.join("identity.json"), serde_json::to_vec(&identity).unwrap()).unwrap();
+    std::fs::write(
+        root.join("identity.json"),
+        serde_json::to_vec(&identity).unwrap(),
+    )
+    .unwrap();
     let script = format!(
         "#!/bin/sh\nroot='{}'\ncase \"$1\" in\n\
          build-info) printf x >> \"$root/identity-reads\"; cat \"$root/identity.json\";;\n\
@@ -62,6 +66,8 @@ fn every_task_names_one_subcommand_and_one_catalogue_schema() {
         Task::CalculatePrepared,
         Task::CalculateBatch,
         Task::CalculatePortfolio,
+        Task::PrepareReference,
+        Task::EncodeOutputs,
     ];
     let subcommands: std::collections::BTreeSet<_> =
         tasks.iter().map(|task| task.subcommand()).collect();
@@ -79,7 +85,12 @@ fn an_undeclared_task_refuses_before_any_process_and_the_identity_is_read_once()
     assert!(solar.require(Task::CalculateBatch).is_ok());
     for task in [Task::CalculatePrepared, Task::CalculatePortfolio] {
         let refused = solar
-            .run(task, &dir.path().join("request.json"), &dir.path().join("out"), DISCOVERY_TIMEOUT)
+            .run(
+                task,
+                &dir.path().join("request.json"),
+                &dir.path().join("out"),
+                DISCOVERY_TIMEOUT,
+            )
             .err()
             .expect("an undeclared task refuses");
         assert_eq!(refused.code(), TASK_UNSUPPORTED);
@@ -87,7 +98,10 @@ fn an_undeclared_task_refuses_before_any_process_and_the_identity_is_read_once()
         let transport = solar.with_task_executable(task, |_| unreachable!("no transport runs"));
         assert_eq!(transport.err().unwrap().code(), TASK_UNSUPPORTED);
     }
-    assert!(!dir.path().join("started").exists(), "no task process started");
+    assert!(
+        !dir.path().join("started").exists(),
+        "no task process started"
+    );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("identity-reads")).unwrap(),
         "x",
@@ -133,4 +147,29 @@ fn an_identity_that_is_not_the_solar_engine_is_a_contract_mismatch() {
         solar.build_info().err().unwrap().code(),
         "callee_contract_mismatch"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn new_tasks_require_update_only_at_the_named_boundary_and_accept_typed_future_families() {
+    let (dir, solar) = fixture(&[Task::CalculatePrepared.catalogue_schema()]);
+    assert!(solar.require(Task::CalculatePrepared).is_ok());
+    for task in [Task::PrepareReference, Task::EncodeOutputs] {
+        let error = solar
+            .with_task_executable(task, |_| unreachable!("unsupported task started"))
+            .unwrap_err();
+        assert_eq!(error.code(), "solar_engine_update_required");
+        assert_eq!(error.detail_value().unwrap()["task"], task.name());
+    }
+    assert!(!dir.path().join("started").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("identity-reads")).unwrap(),
+        "x"
+    );
+    let (_dir, future) = fixture(&[
+        "ds-solar.reference-preparation-request/v2",
+        "ds-solar.output-encoding-request/v2",
+    ]);
+    assert!(future.require(Task::PrepareReference).is_ok());
+    assert!(future.require(Task::EncodeOutputs).is_ok());
 }

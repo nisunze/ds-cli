@@ -18,7 +18,7 @@ pub mod progress;
 pub mod scheduling;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod reference {
-    pub use ds_solar_contracts::reference_unit::{OpenedBundle, decode_profile, open};
+    pub use ds_solar_contracts::reference_unit::OpenedBundle;
 }
 pub const MAX_REFERENCE_ARTIFACT_BYTES: u64 = 16 * 1024 * 1024;
 

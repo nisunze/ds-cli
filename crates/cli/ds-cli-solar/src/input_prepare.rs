@@ -11,8 +11,9 @@ use ds_cli_contract::{Context, Failure, Inputs};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use ds_solar_contracts::EngineIdentity;
-use ds_solar_project::{intake::GovernedCityIntake, preparation::prepare_cached};
+use ds_solar_contracts::{EngineIdentity, SolarError, SolarErrorCode};
+use ds_solar_host::preparation::AddonPreparation;
+use ds_solar_project::{intake::GovernedCityIntake, preparation::prepare_cached_with_tasks};
 const MAX_INTAKE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_ARTIFACT_BYTES: u64 = 128 * 1024 * 1024;
 
@@ -21,12 +22,13 @@ pub static COMMAND: Command = Command {
     path: &["solar", "input", "prepare"],
     contract: 2,
     summary: "Prepare one governed Solar intake from a verified local cache.",
-    purpose: "Prepare one intake from a populated local reference cache through the linked engine-free ds-solar-project owner. The fresh private directory holds the prepared city input, its publication claim and a validated Server submission envelope; submit that with server solar submit. Headless and cache-only: a cache miss refuses instead of reaching the network.",
+    purpose: "Prepare one intake from a populated local reference cache through the ds-solar-project owner and the selected standalone Solar addon. The fresh private directory holds the prepared city input, its publication claim and a validated Server submission envelope; submit that with server solar submit. Headless and cache-only: a cache miss refuses instead of reaching the network.",
     chapter: Chapter::Solar,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
     execution: Execution::Sync,
     args: &[
+        crate::ENGINE_LANE,
         Arg::value(
             "intake",
             "<path>",
@@ -53,6 +55,11 @@ pub static COMMAND: Command = Command {
         runnable: false,
     }],
     refusals: &[
+        Refusal {
+            code: "solar_engine_update_required",
+            when: "the selected Solar addon does not declare raw-reference preparation",
+            remedy: "install a Solar addon for the selected lane that declares the required preparation task",
+        },
         Refusal {
             code: "solar_prepare_intake_unsafe",
             when: "--intake is missing, symlinked, non-file, public on Unix, empty, or above 32 MiB",
@@ -98,7 +105,25 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
     validate_cache(&cache)?;
     ensure_absent(&out)?;
     let intake = read_intake(&intake)?;
-    let (input, claim) = prepare_cached(intake, &cache).map_err(owner_refused)?;
+    let lane = inputs.value("lane").unwrap_or("stable").to_owned();
+    // Admission above and governed-intake validation precede this lazy capture.
+    let tasks = std::sync::Arc::new(AddonPreparation::from_factory(
+        std::env::temp_dir(),
+        move || {
+            crate::Solar::capture_for_lane(&lane)
+                .map_err(|error| SolarError::artifact_failed(format!("{}: {error}", error.code())))
+        },
+    ));
+    let (input, claim) = prepare_cached_with_tasks(intake, &cache, tasks).map_err(|error| {
+        if let Some(solar) = error.downcast_ref::<SolarError>()
+            && solar.code == SolarErrorCode::SolarEngineUpdateRequired
+        {
+            Failure::unavailable("solar_engine_update_required", &solar.message)
+                .remedy("install a Solar addon for the selected lane that declares raw-reference preparation")
+        } else {
+            owner_refused(error)
+        }
+    })?;
     create_private_output(&out)?;
     let city = &input.city.identity.city_id;
     write_json_new(&out.join(format!("{city}.prepared.json")), &input)?;

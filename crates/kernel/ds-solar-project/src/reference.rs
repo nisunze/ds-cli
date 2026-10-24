@@ -1,25 +1,65 @@
 //! Verified reference cache preparation for one captured local city.
 use crate::{Workspace, files, timestamp};
 use anyhow::{Result, ensure};
-use ds_solar_contracts::{BundleBytes, SolarCityInput};
-use ds_solar_host::cache::DirectoryReferenceCache;
+use ds_solar_contracts::{BundleBytes, ReferencePin, SolarCityInput, SolarErrorCode};
+use ds_solar_host::{
+    cache::{DirectoryReferenceCache, ReferenceCache},
+    preparation::{AddonPreparation, PreparationTasks},
+};
+#[cfg(test)]
 use ds_solar_reference_host::ReferencePreparer;
 use serde_json::{Value, json};
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 pub fn plan(workspace: &Path, city: &str, cache: &Path) -> Result<Value> {
+    plan_with_tasks(
+        workspace,
+        city,
+        cache,
+        Arc::new(AddonPreparation::installed()),
+    )
+}
+pub fn plan_with_tasks(
+    workspace: &Path,
+    city: &str,
+    cache: &Path,
+    tasks: Arc<dyn PreparationTasks>,
+) -> Result<Value> {
     let ws = Workspace::open(workspace)?;
     let input = ws.cities(&[city.to_owned()])?.remove(0);
-    plan_input(&ws, city, cache, input)
+    plan_input(&ws, city, cache, input, tasks)
 }
-fn plan_input(ws: &Workspace, city: &str, cache: &Path, input: SolarCityInput) -> Result<Value> {
+fn plan_input(
+    ws: &Workspace,
+    city: &str,
+    cache: &Path,
+    input: SolarCityInput,
+    tasks: Arc<dyn PreparationTasks>,
+) -> Result<Value> {
     let cache_root = cache.to_path_buf();
     let cache = DirectoryReferenceCache::new(cache);
-    let preparer = ReferencePreparer::new().with_cache(&cache);
-    let ready = preparer.prepare(input.clone(), timestamp()).is_ok();
+    let pin = ReferencePin::current();
+    let planned = tasks.plan(&input, pin.clone())?;
+    let ready = match cache.get(&planned.key)? {
+        None => false,
+        Some(bundle) => match tasks.prepare(planned.city, pin, &bundle, &timestamp()) {
+            Ok(_) => true,
+            Err(error)
+                if matches!(
+                    error.code,
+                    SolarErrorCode::SolarEngineUpdateRequired
+                        | SolarErrorCode::Cancelled
+                        | SolarErrorCode::ArtifactFailed
+                ) =>
+            {
+                return Err(error.into());
+            }
+            Err(_) => false,
+        },
+    };
     Ok(
         json!({"project":ws.identity.project_id,"city":city,"input_digest":input.content_digest,
-        "ready":ready,"request":preparer.request_for(&input)?,"cache":cache_root,"versioned_cache":cache.versioned_root()}),
+        "ready":ready,"request":planned.request,"cache":cache_root,"versioned_cache":cache.versioned_root()}),
     )
 }
 /// Export the owner's exact selected-city request, with no provider or API.
@@ -30,13 +70,30 @@ pub fn plan_file(
     cache: &Path,
     output: &Path,
 ) -> Result<Value> {
+    plan_file_with_tasks(
+        workspace,
+        project,
+        city,
+        cache,
+        output,
+        Arc::new(AddonPreparation::installed()),
+    )
+}
+pub fn plan_file_with_tasks(
+    workspace: &Path,
+    project: &str,
+    city: &str,
+    cache: &Path,
+    output: &Path,
+    tasks: Arc<dyn PreparationTasks>,
+) -> Result<Value> {
     ensure!(
         std::fs::symlink_metadata(output).is_err(),
         "reference request output already exists"
     );
     let ws = scoped_workspace(workspace, project)?;
     let input = ws.cities(&[city.to_owned()])?.remove(0);
-    let mut result = plan_input(&ws, city, cache, input)?;
+    let mut result = plan_input(&ws, city, cache, input, tasks)?;
     files::json(output, &result["request"])?;
     result
         .as_object_mut()
@@ -60,6 +117,23 @@ pub fn import(
     expected: &str,
     payload: &Value,
 ) -> Result<Value> {
+    import_with_tasks(
+        workspace,
+        city,
+        cache,
+        expected,
+        payload,
+        Arc::new(AddonPreparation::installed()),
+    )
+}
+pub fn import_with_tasks(
+    workspace: &Path,
+    city: &str,
+    cache: &Path,
+    expected: &str,
+    payload: &Value,
+    tasks: Arc<dyn PreparationTasks>,
+) -> Result<Value> {
     let ws = Workspace::open(workspace)?;
     let input = ws.cities(&[city.to_owned()])?.remove(0);
     ensure!(
@@ -67,7 +141,7 @@ pub fn import(
         "Solar city changed during reference acquisition"
     );
     let bundle = ds_solar_host::delivery::bundle_from_delivery(&ws.identity.project_id, payload)?;
-    commit_bundle(&ws, city, cache, expected, input, bundle)
+    commit_bundle(&ws, city, cache, expected, input, bundle, tasks)
 }
 /// Read only the four declared local artifacts after project/revision admission.
 pub fn import_files(
@@ -78,6 +152,25 @@ pub fn import_files(
     expected: &str,
     directory: &Path,
 ) -> Result<Value> {
+    import_files_with_tasks(
+        workspace,
+        project,
+        city,
+        cache,
+        expected,
+        directory,
+        Arc::new(AddonPreparation::installed()),
+    )
+}
+pub fn import_files_with_tasks(
+    workspace: &Path,
+    project: &str,
+    city: &str,
+    cache: &Path,
+    expected: &str,
+    directory: &Path,
+    tasks: Arc<dyn PreparationTasks>,
+) -> Result<Value> {
     let ws = scoped_workspace(workspace, project)?;
     let input = ws.cities(&[city.to_owned()])?.remove(0);
     ensure!(
@@ -85,7 +178,7 @@ pub fn import_files(
         "Solar city changed during reference acquisition"
     );
     let bundle = ds_solar_reference_host::reference_import::read_bundle(directory)?;
-    commit_bundle(&ws, city, cache, expected, input, bundle)
+    commit_bundle(&ws, city, cache, expected, input, bundle, tasks)
 }
 fn commit_bundle(
     ws: &Workspace,
@@ -94,11 +187,13 @@ fn commit_bundle(
     expected: &str,
     input: SolarCityInput,
     bundle: BundleBytes,
+    tasks: Arc<dyn PreparationTasks>,
 ) -> Result<Value> {
-    let verified = ds_solar_reference_host::reference_import::VerifiedBundle::verify(
+    let verified = ds_solar_reference_host::reference_import::VerifiedBundle::verify_with_tasks(
         input,
         bundle,
         &timestamp(),
+        tasks,
     )?;
     ensure!(
         ws.cities(&[city.to_owned()])?.remove(0).content_digest == expected,

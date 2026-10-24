@@ -1,6 +1,7 @@
 //! Independent Solar input persistence with explicit source refresh and manual edits.
 use crate::Workspace;
 use anyhow::{Result, ensure};
+pub use ds_command_kernel::solar_network_form::decode_information;
 use ds_solar_contracts::network_form::{self, ResolvedInformation};
 use serde_json::{Value, json};
 
@@ -29,7 +30,18 @@ impl Workspace {
             record.digest() == expected,
             "network form changed; reload before saving"
         );
-        let frozen = network_form::snapshot(&self.identity.project_id, &document, information)?;
+        if let Some(information) = information {
+            let form = network_form::parse(&self.identity.project_id, &document)?;
+            if form.sources.information.as_ref() != Some(&information.reference) {
+                return Err(ds_solar_contracts::SolarError::invalid_input(
+                    "resolved information does not match the form's source",
+                )
+                .into());
+            }
+        }
+        let information = information.map(decode_information).transpose()?;
+        let frozen =
+            network_form::snapshot(&self.identity.project_id, &document, information.as_ref())?;
         let document = frozen["document"].clone();
         let preview = frozen["values"].clone();
         let mut snapshot = record.snapshot();

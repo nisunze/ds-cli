@@ -17,6 +17,10 @@
 //! The host owns admission, progress, cancellation and verified local commit;
 //! the executable owns the calculation and report algorithms.
 
+#[cfg(test)]
+#[path = "../../../../tests/common/solar_opened_fixture_tests.rs"]
+mod solar_opened_fixtures;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -1000,6 +1004,7 @@ fn start_preparation(
                     &language,
                     &prepared_dir,
                     &cache_dir,
+                    worker_app.preparation_tasks(cancel.clone()),
                     worker_app.references.as_deref(),
                     if capture {
                         worker_app.snapshots.as_deref()
@@ -4103,8 +4108,8 @@ pub fn solar_native_engine_for_host(app: &AppHandle) -> Result<NativeEngineIdent
 }
 
 fn native_engine_identity(path: PathBuf) -> Result<NativeEngineIdentity, String> {
-    let identity =
-        ds_solar_host::process::selected_engine_identity(&path).map_err(|error| error.to_string())?;
+    let identity = ds_solar_host::process::selected_engine_identity(&path)
+        .map_err(|error| error.to_string())?;
     Ok(NativeEngineIdentity {
         name: identity.name,
         version: identity.version,
@@ -4153,6 +4158,7 @@ fn prepare_all(
     language: &str,
     prepared_dir: &Path,
     cache_dir: &Path,
+    tasks: std::sync::Arc<dyn ds_solar_host::preparation::PreparationTasks>,
     native_provider: Option<&dyn ReferenceBundleProvider>,
     snapshots: Option<&dyn crate::SnapshotProvider>,
     cancel: Option<&CancelToken>,
@@ -4185,6 +4191,7 @@ fn prepare_all(
     };
 
     let mut preparer = ReferencePreparer::new()
+        .with_tasks(tasks)
         .with_cache(&cache)
         .with_pin(ReferencePin::current())
         .with_refresh(if overwrite {
@@ -4944,6 +4951,14 @@ mod tests {
     use super::*;
     use crate::NativeHost;
 
+    // Exact-byte local copies of the owner fixtures. Their source digests are
+    // recorded in tests/fixtures/solar/opened/PROVENANCE.json.
+    fn fixture(path: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/solar/aderm_bere")
+            .join(path)
+    }
+
     fn snapshot_input(city_id: &str, snapshot_json: &str) -> CitySnapshotInput {
         CitySnapshotInput {
             city_id: city_id.to_string(),
@@ -4966,11 +4981,7 @@ mod tests {
     impl crate::SnapshotProvider for GovernedFixtureSnapshots {
         fn capture(&self, city: &str) -> Result<crate::CapturedCitySnapshot, String> {
             let mut doc: serde_json::Value = serde_json::from_str(
-                &std::fs::read_to_string(
-                    Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .join("../../../../ds-solar/fixtures/city/aderm_bere.snapshot.json"),
-                )
-                .unwrap(),
+                &std::fs::read_to_string(fixture("city.snapshot.json")).unwrap(),
             )
             .unwrap();
             doc["_provenance"]["root"] = "eds_project/arjgpydw_aderm_loc7/eds_solar".into();
@@ -4996,8 +5007,7 @@ mod tests {
             _: &ds_solar_reference_host::provider::ReferenceRequest,
         ) -> ds_solar_contracts::SolarResult<ds_solar_contracts::BundleBytes> {
             self.0.fetch_add(1, Ordering::SeqCst);
-            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../../../ds-solar/fixtures/reference/aderm_bere");
+            let path = fixture("reference");
             let read = |name: &str| std::fs::read(path.join(name)).unwrap();
             Ok(ds_solar_contracts::BundleBytes {
                 weather_json: read("weather.json"),
@@ -5008,14 +5018,21 @@ mod tests {
         }
     }
     fn wait_preparation(host: &NativeHost, job: &str) -> serde_json::Value {
-        for _ in 0..1500 {
+        // Planning and admission are separate bounded addon tasks, and may
+        // wait for another calculation's worker lease. A city-level progress
+        // row changes only when that work settles.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(240);
+        loop {
             let p = preparation_progress(host, "arjgpydw_aderm_loc7", job).unwrap();
             if p["done"] == true {
                 return p;
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            if std::time::Instant::now() >= deadline {
+                let _ = preparation_cancel(host, "arjgpydw_aderm_loc7", job);
+                panic!("Native preparation did not settle within its task budget: {p}");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        panic!("Native preparation did not settle");
     }
     pub(super) struct LocalPublicationStore(pub(super) ds_sync_runtime::SharedStore);
     impl LocalPublicationStore {
@@ -5067,7 +5084,7 @@ mod tests {
     }
     #[test]
     fn server_captures_and_prepares_cold_inputs_and_recovers_durable_progress() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::test_directory::tempdir().unwrap();
         let data = tmp.path().join("authority");
         let references = std::sync::Arc::new(FixtureReferenceProvider(AtomicU64::new(0)));
         let host = NativeHost::headless(data.clone())
@@ -5260,7 +5277,7 @@ mod tests {
                 crate::SnapshotProvider::capture(&GovernedFixtureSnapshots, city)
             }
         }
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::test_directory::tempdir().unwrap();
         let entered = std::sync::Arc::new(std::sync::Barrier::new(2));
         let release = std::sync::Arc::new(std::sync::Barrier::new(2));
         let references = std::sync::Arc::new(FixtureReferenceProvider(AtomicU64::new(0)));
@@ -5315,11 +5332,7 @@ mod tests {
             }
         }
         let path = std::env::temp_dir().join(format!("solar-cold-{}", uuid::Uuid::new_v4()));
-        let snapshot = std::fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../../../ds-solar/fixtures/city/aderm_bere.snapshot.json"),
-        )
-        .unwrap();
+        let snapshot = std::fs::read_to_string(fixture("city.snapshot.json")).unwrap();
         let provider = Provider(AtomicU64::new(0));
         let readiness = prepare_all(
             &[snapshot_input("aderm_bere", &snapshot)],
@@ -5328,6 +5341,7 @@ mod tests {
             "fr",
             &path.join("prepared"),
             &path.join("cache"),
+            std::sync::Arc::new(ds_solar_host::preparation::AddonPreparation::installed()),
             Some(&provider),
             None,
             None,
@@ -6034,10 +6048,8 @@ mod tests {
         // derive its reference-unit cache key — and there is simply nothing
         // to compute against yet. This is the state the input page paints on
         // a cold machine.
-        let fixtures =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/fixtures");
-        let body = std::fs::read_to_string(fixtures.join("city/aderm_bere.snapshot.json"))
-            .expect("complete city fixture");
+        let body =
+            std::fs::read_to_string(fixture("city.snapshot.json")).expect("complete city fixture");
         let readiness = prepare_city(
             &snapshot_input("aderm_bere", &body),
             "project",
@@ -6063,19 +6075,10 @@ mod tests {
     // The committed run
     // -----------------------------------------------------------------------
 
-    /// One prepared corpus city, read from the ds-solar fixture set.
-    ///
-    /// A sibling-repo relative path on purpose: these are the same seven cities
-    /// the engine's parity suite is frozen against, so a desktop test that
-    /// passes here is testing the shipped engine and not a hand-written stub.
+    /// One prepared corpus city, loaded from the exact copied snapshots and
+    /// opened tuples whose source and hourly-bit digests accompany the fixtures.
     fn prepared_fixture(city: &str) -> PreparedSolarCityInput {
-        let fixtures =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/fixtures");
-        let snapshot: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(fixtures.join(format!("city/{city}.snapshot.json")))
-                .expect("city fixture"),
-        )
-        .expect("city fixture is JSON");
+        let snapshot = solar_opened_fixtures::snapshot(city);
         let input = SolarCityInput::from_city_snapshot(
             CityIdentity {
                 project_id: "ds-solar-fixtures".to_string(),
@@ -6096,11 +6099,7 @@ mod tests {
             &snapshot,
         )
         .expect("the fixture snapshot normalises");
-        let weather: ds_solar_contracts::WeatherDataset = serde_json::from_str(
-            &std::fs::read_to_string(fixtures.join(format!("weather/{city}.weather.json")))
-                .expect("weather fixture"),
-        )
-        .expect("weather fixture is JSON");
+        let (weather, reference) = solar_opened_fixtures::opened(city);
         let key = ds_solar_contracts::WeatherKey::new(
             input.site.latitude,
             input.site.longitude,
@@ -6108,18 +6107,6 @@ mod tests {
             WeatherPin::pvgis_tmy(),
         )
         .expect("the weather key derives");
-        let directory = fixtures.join("reference").join(city);
-        let read =
-            |name: &str| std::fs::read(directory.join(name)).expect("the sealed reference fixture");
-        let reference =
-            ds_solar_contracts::reference_unit::open(&ds_solar_contracts::BundleBytes {
-                weather_json: read("weather.json"),
-                reference_unit_json: read("reference-unit.json"),
-                reference_unit_parquet: read("reference-unit.parquet"),
-                manifest_json: read("manifest.json"),
-            })
-            .expect("the sealed reference unit verifies")
-            .reference_unit;
         PreparedSolarCityInput::commit(input, key, weather, reference, "2026-08-20T00:00:00Z")
             .expect("the prepared input commits")
     }
@@ -6196,7 +6183,7 @@ mod tests {
             .expect("clock")
             .as_nanos();
         let directory = std::env::temp_dir().join(format!("ds-solar-native-{name}-{nonce}"));
-        std::fs::create_dir_all(&directory).expect("scratch directory");
+        secure_private_directory(&directory).expect("private scratch directory");
         directory
     }
 
@@ -6219,7 +6206,7 @@ mod tests {
         use ds_solar_contracts::{
             ArtifactRole, BatchArtifact, BatchCity, BatchRunIdentity, SolarArtifactBatch,
         };
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::test_directory::tempdir().unwrap();
         let data = tmp.path().join("authority");
         let queue = std::sync::Arc::new(LocalPublicationStore(
             ds_sync_runtime::open_store(&tmp.path().join("sync.sqlite")).unwrap(),

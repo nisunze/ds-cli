@@ -4,11 +4,11 @@ use crate::{
     native::{self, CitySnapshotInput},
     workspace,
 };
-use ds_solar_contracts::SolarCityInput;
-use ds_solar_reference_host::{
-    preparation::ReferencePreparer,
-    reference_import::{self, VerifiedBundle},
-};
+use ds_solar_contracts::{ReferenceKey, ReferencePin, SolarCityInput};
+use ds_solar_host::cancel::CancelToken;
+#[cfg(test)]
+use ds_solar_reference_host::preparation::ReferencePreparer;
+use ds_solar_reference_host::reference_import::{self, VerifiedBundle};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -75,11 +75,9 @@ fn receipt(
     city: &str,
     fingerprint: &str,
     input: &SolarCityInput,
-) -> Result<Value, String> {
-    let preparer = ReferencePreparer::new();
-    Ok(
-        json!({"project":project,"city":city,"source_fingerprint":fingerprint,"input_digest":input.content_digest,"reference_key":preparer.reference_key(input).map_err(|e| e.to_string())?}),
-    )
+    key: &ReferenceKey,
+) -> Value {
+    json!({"project":project,"city":city,"source_fingerprint":fingerprint,"input_digest":input.content_digest,"reference_key":key})
 }
 pub fn plan(host: &NativeHost, project: &str, command: PlanCommand) -> Result<Value, String> {
     workspace::resolve_workspace_handle(host, &command.workspace_handle)?;
@@ -98,14 +96,21 @@ pub fn plan(host: &NativeHost, project: &str, command: PlanCommand) -> Result<Va
         &command.city_id,
         language(command.language.as_deref())?,
     )?;
-    let request = ReferencePreparer::new()
-        .request_for(&input)
+    let tasks = host.preparation_tasks(CancelToken::new());
+    let planned = tasks
+        .plan(&input, ReferencePin::current())
         .map_err(|e| e.to_string())?;
-    let bytes = serde_json::to_vec_pretty(&request).map_err(|e| e.to_string())?;
+    let bytes = serde_json::to_vec_pretty(&planned.request).map_err(|e| e.to_string())?;
     if bytes.len() > 8 * 1024 {
         return Err("Reference request exceeds its byte bound".into());
     }
-    let mut result = receipt(project, &command.city_id, &fingerprint, &input)?;
+    let mut result = receipt(
+        project,
+        &command.city_id,
+        &fingerprint,
+        &input,
+        &planned.key,
+    );
     ds_solar_host::files::write(&command.output, &bytes).map_err(|e| e.to_string())?;
     ds_solar_host::files::sync_dir(parent).map_err(|e| e.to_string())?;
     result["request_file"] = json!(command.output);
@@ -118,10 +123,21 @@ pub fn import(host: &NativeHost, project: &str, command: ImportCommand) -> Resul
     if fingerprint != command.expected_source_fingerprint {
         return Err("Solar city changed during reference acquisition".into());
     }
-    let mut result = receipt(project, &command.city_id, &fingerprint, &input)?;
-    let bundle = reference_import::read_bundle(&command.directory).map_err(|e| e.to_string())?;
-    let verified = VerifiedBundle::verify(input, bundle, &chrono::Utc::now().to_rfc3339())
+    let tasks = host.preparation_tasks(CancelToken::new());
+    let planned = tasks
+        .plan(&input, ReferencePin::current())
         .map_err(|e| e.to_string())?;
+    let mut result = receipt(
+        project,
+        &command.city_id,
+        &fingerprint,
+        &input,
+        &planned.key,
+    );
+    let bundle = reference_import::read_bundle(&command.directory).map_err(|e| e.to_string())?;
+    let verified =
+        VerifiedBundle::verify_with_tasks(input, bundle, &chrono::Utc::now().to_rfc3339(), tasks)
+            .map_err(|e| e.to_string())?;
     let (_, current) = capture(host, project, &command.city_id, language)?;
     if current != fingerprint {
         return Err("Solar city changed during reference verification".into());

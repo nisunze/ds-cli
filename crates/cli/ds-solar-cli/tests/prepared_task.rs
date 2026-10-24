@@ -1,4 +1,4 @@
-#[path = "../../../../../ds-solar/apps/solar/tests/common/prepared_cases.rs"]
+#[path = "common/prepared_cases_tests.rs"]
 mod cases;
 
 #[test]

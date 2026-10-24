@@ -185,7 +185,7 @@ ds-cli-mcp = { path = "crates/cli/ds-cli-mcp" }
 ds-cli-skills = { path = "crates/cli/ds-cli-skills" }
 ds-command-kernel = { path = "crates/kernel/ds-command-kernel" }
 ds-design-workspace = { path = "crates/kernel/ds-design-workspace" }
-ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts" }
+ds-solar-contracts = { path = "../ds-solar/crates/ds-solar-contracts", default-features = false }
 
 # The authoritative engine crates, by path, exactly as ds-web/src-tauri
 # reaches them. `ds` links the same code the desktop links; it does not

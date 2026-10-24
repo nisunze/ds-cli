@@ -1,17 +1,22 @@
 //! Cache-only preparation and prepared-input admission shared by local adapters.
-//! This owner has no provider parameter, executable selection or calculation runtime.
+//! The caller retains its preparation addon; this owner acquires no provider.
+//! Reading saved prepared inputs consumes no preparation capability.
 use crate::intake::{
     GovernedCityIntake, GovernedIntakeAuthority, MAX_GOVERNED_SNAPSHOT_BYTES, canonical_uuid,
     lower_sha256, project_from_root,
 };
 use anyhow::{Context, Result, bail};
 use ds_solar_contracts::{PreparedSolarCityInput, version::GOVERNED_CITY_INTAKE_SCHEMA_VERSION};
-use ds_solar_host::cache::DirectoryReferenceCache;
+use ds_solar_host::{
+    cache::DirectoryReferenceCache,
+    preparation::{AddonPreparation, PreparationTasks},
+};
 use ds_solar_reference_host::ReferencePreparer;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 /// The existing local prepared-input read bound, applied to every discovered file.
@@ -79,18 +84,30 @@ pub fn validate_governed_intake(intake: &GovernedCityIntake) -> Result<()> {
     Ok(())
 }
 
-/// Resolve only an exact verified local reference bundle. A miss refuses: no
-/// provider, refresh, fixture or ambient executable can be attached here.
+/// Standalone compatibility entry point; selection remains lazy until raw intake.
 pub fn prepare_cached(
     intake: GovernedCityIntake,
     cache: &Path,
 ) -> Result<(PreparedSolarCityInput, PreparedPublicationClaim)> {
+    prepare_cached_with_tasks(intake, cache, Arc::new(AddonPreparation::installed()))
+}
+
+/// Resolve only an exact local candidate through the caller's retained addon.
+/// A cache miss refuses; no provider, refresh or fixture fallback is attached.
+pub fn prepare_cached_with_tasks(
+    intake: GovernedCityIntake,
+    cache: &Path,
+    tasks: Arc<dyn PreparationTasks>,
+) -> Result<(PreparedSolarCityInput, PreparedPublicationClaim)> {
     validate_governed_intake(&intake)?;
     let cache = DirectoryReferenceCache::new(cache);
-    let prepared = ReferencePreparer::new().with_cache(&cache).prepare(
-        intake.city_input,
-        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-    )?;
+    let prepared = ReferencePreparer::new()
+        .with_tasks(tasks)
+        .with_cache(&cache)
+        .prepare(
+            intake.city_input,
+            chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        )?;
     let claim = prepared_publication_claim(&prepared.input, &intake.authority)?;
     Ok((prepared.input, claim))
 }

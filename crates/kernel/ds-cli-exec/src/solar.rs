@@ -30,6 +30,8 @@ const ENGINE_NAME: &str = "ds-solar-engine";
 pub enum Task {
     /// One complete prepared city into a fresh artifact directory.
     CalculatePrepared,
+    PrepareReference,
+    EncodeOutputs,
     /// An ordered prepared-city batch into a fresh artifact directory.
     CalculateBatch,
     /// One exact saved city batch aggregated into a portfolio.
@@ -40,6 +42,8 @@ impl Task {
     pub const fn name(self) -> &'static str {
         match self {
             Self::CalculatePrepared => "calculate_prepared",
+            Self::PrepareReference => "prepare_reference",
+            Self::EncodeOutputs => "encode_outputs",
             Self::CalculateBatch => "calculate_batch",
             Self::CalculatePortfolio => "calculate_portfolio",
         }
@@ -49,6 +53,8 @@ impl Task {
     pub const fn subcommand(self) -> &'static str {
         match self {
             Self::CalculatePrepared => "calculate-prepared",
+            Self::PrepareReference => "prepare-reference",
+            Self::EncodeOutputs => "encode-outputs",
             Self::CalculateBatch => "calculate-batch",
             Self::CalculatePortfolio => "calculate-portfolio",
         }
@@ -58,6 +64,10 @@ impl Task {
     pub const fn catalogue_schema(self) -> &'static str {
         match self {
             Self::CalculatePrepared => ds_solar_contracts::PREPARED_CALCULATION_TASK_SCHEMA,
+            Self::PrepareReference => {
+                ds_solar_contracts::preparation_task::REFERENCE_PREPARATION_REQUEST_SCHEMA
+            }
+            Self::EncodeOutputs => ds_solar_contracts::output_task::OUTPUT_ENCODING_REQUEST_SCHEMA,
             Self::CalculateBatch => {
                 ds_solar_contracts::prepared_batch::PREPARED_BATCH_REQUEST_SCHEMA
             }
@@ -90,7 +100,9 @@ impl Solar {
 
     /// Native-owned relocated addon store, never a command-supplied path.
     pub fn capture_for_lane_in(lane: &str, base: &Path) -> Result<Self, Failure> {
-        SOLAR.capture_for_lane_in(lane, base).map(Self::from_captured)
+        SOLAR
+            .capture_for_lane_in(lane, base)
+            .map(Self::from_captured)
     }
 
     /// Reopen one exact executable a retained run or a test fixture pinned.
@@ -98,7 +110,7 @@ impl Solar {
         SOLAR.capture_pinned(path).map(Self::from_captured)
     }
 
-    fn from_captured(engine: CapturedExternal) -> Self {
+    pub fn from_captured(engine: CapturedExternal) -> Self {
         Self {
             engine,
             identity: OnceLock::new(),
@@ -136,7 +148,13 @@ impl Solar {
             .as_array()
             .into_iter()
             .flatten()
-            .any(|schema| schema == task.catalogue_schema());
+            .any(|schema| {
+                schema == task.catalogue_schema()
+                    || matches!(task, Task::PrepareReference | Task::EncodeOutputs)
+                        && schema
+                            .as_str()
+                            .is_some_and(|actual| same_task_family(actual, task.catalogue_schema()))
+            });
         if declared {
             Ok(identity)
         } else {
@@ -203,15 +221,30 @@ impl Reply {
     }
 }
 
+fn same_task_family(actual: &str, expected: &str) -> bool {
+    let Some((family, version)) = actual.rsplit_once("/v") else {
+        return false;
+    };
+    expected
+        .rsplit_once("/v")
+        .is_some_and(|(expected, _)| family == expected)
+        && !version.is_empty()
+        && version.bytes().all(|byte| byte.is_ascii_digit())
+}
+
 fn unsupported(task: Task) -> Failure {
-    // The literal is TASK_UNSUPPORTED, written out for the refusal-coverage scan.
-    Failure::unavailable(
-        "unknown_task",
-        format!(
-            "the installed Solar addon does not declare the {} task",
-            task.name()
-        ),
-    )
+    let message = format!(
+        "the installed Solar addon does not declare the {} task",
+        task.name()
+    );
+    // Literal owner codes also feed the refusal-coverage scan.
+    let failure = match task {
+        Task::PrepareReference | Task::EncodeOutputs => {
+            Failure::unavailable("solar_engine_update_required", message)
+        }
+        _ => Failure::unavailable("unknown_task", message),
+    };
+    failure
     .remedy(format!(
         "install a Solar addon for this lane that declares {}; no in-process or alternate calculation exists",
         task.catalogue_schema()

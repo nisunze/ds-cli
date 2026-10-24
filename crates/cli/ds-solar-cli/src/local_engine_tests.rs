@@ -7,9 +7,9 @@ use ds_solar_contracts::{
     ArtifactRole, PreparedSolarCityInput, ReferencePin, SolarArtifactBatch, SolarCityInput,
     SolarError,
 };
+use ds_solar_host::cache::DirectoryReferenceCache;
 use ds_solar_project::{ProjectIdentity, Workspace, run::RunRequest};
 use ds_solar_reference_host::{FixtureReferenceProvider, ReferencePreparer};
-use ds_solar_host::cache::DirectoryReferenceCache;
 use serde_json::json;
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -267,6 +267,7 @@ fn copied_classification_runs_offline_with_owned_map_and_portfolio_summary() {
     let document = json!({"seeded":{"maps":{"reseau_propose":{"bucket":"solar","object":"eds_project/project-1/eds_solar/aderm_bere/network_plots/_immutable/map","generation":1}}},"schema":network_form::SCHEMA,"city_tag":{"definition_id":"city","value":"Bere"},"sources":{"information":reference,"city_map":map_reference,"transformer_maps":{transformer_name:map_reference}},"overrides":manual,"transformer_overrides":phase_overrides});
     a.seeded.city_inputs["network_data"] = document.clone();
     a = a.sealed();
+    let information = ds_solar_project::network::decode_information(&information).unwrap();
     let resolved = network_form::prepare_input(a.clone(), Some(&information)).unwrap();
     assert_eq!(
         resolved.seeded.city_inputs["network_data"]["proposed"]["transformers"]

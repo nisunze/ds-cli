@@ -1,17 +1,15 @@
+#[path = "../../../../../tests/common/solar_opened_fixture_tests.rs"]
+mod solar_opened_fixtures;
+
 use ds_solar_contracts::{
-    BundleBytes, CityIdentity, PreparedSolarCityInput, RunOptions, SnapshotRevision,
-    SolarCityInput, WeatherDataset, WeatherKey, WeatherPin,
+    CityIdentity, PreparedSolarCityInput, RunOptions, SnapshotRevision, SolarCityInput, WeatherKey,
+    WeatherPin,
 };
 use serde_json::json;
 const SOLAR_PROJECT: &str = "durable-server-test";
 pub fn prepared_solar_request() -> Vec<u8> {
-    let root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/fixtures");
     let city = "aderm_bere";
-    let snapshot: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(root.join(format!("city/{city}.snapshot.json"))).unwrap(),
-    )
-    .unwrap();
+    let snapshot = solar_opened_fixtures::snapshot(city);
     let input = SolarCityInput::from_city_snapshot(
         CityIdentity {
             project_id: SOLAR_PROJECT.to_string(),
@@ -32,10 +30,7 @@ pub fn prepared_solar_request() -> Vec<u8> {
         &snapshot,
     )
     .unwrap();
-    let weather: WeatherDataset = serde_json::from_slice(
-        &std::fs::read(root.join(format!("weather/{city}.weather.json"))).unwrap(),
-    )
-    .unwrap();
+    let (weather, reference) = solar_opened_fixtures::opened(city);
     let weather_key = WeatherKey::new(
         input.site.latitude,
         input.site.longitude,
@@ -43,16 +38,6 @@ pub fn prepared_solar_request() -> Vec<u8> {
         WeatherPin::pvgis_tmy(),
     )
     .unwrap();
-    let reference_root = root.join("reference").join(city);
-    let reference = ds_solar_contracts::reference_unit::open(&BundleBytes {
-        weather_json: std::fs::read(reference_root.join("weather.json")).unwrap(),
-        reference_unit_json: std::fs::read(reference_root.join("reference-unit.json")).unwrap(),
-        reference_unit_parquet: std::fs::read(reference_root.join("reference-unit.parquet"))
-            .unwrap(),
-        manifest_json: std::fs::read(reference_root.join("manifest.json")).unwrap(),
-    })
-    .unwrap()
-    .reference_unit;
     let prepared = PreparedSolarCityInput::commit(
         input,
         weather_key,

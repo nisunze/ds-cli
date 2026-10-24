@@ -28,7 +28,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
@@ -38,11 +41,11 @@ use ds_solar_contracts::{
     PortfolioReportIntent, PortfolioRepresentativeStrategy, PortfolioRunInput, ReferencePin,
     SolarArtifactBatch, SolarCalculationResult, SolarCityInput, WeatherDataset,
 };
+use ds_solar_host::{cache::DirectoryReferenceCache, preparation::AddonPreparation};
 use ds_solar_runtime::{
-    CalculationOptions, CollectingProgressSink, Concurrency, DirectoryDebugSink,
-    SolarRuntime, run_cities, run_portfolio,
+    CalculationOptions, CollectingProgressSink, Concurrency, DirectoryDebugSink, SolarRuntime,
+    run_cities, run_portfolio,
 };
-use ds_solar_host::cache::DirectoryReferenceCache;
 use sha2::{Digest, Sha256};
 
 /// JSON and artifact bounds are enforced before allocation. The batch schema
@@ -396,11 +399,13 @@ fn prepare(set: &fixtures::FixtureSet, args: PrepareArgs) -> Result<()> {
         .map(|provider| provider as &dyn ReferenceBundleProvider);
     let cache = args.cache.as_ref().map(DirectoryReferenceCache::new);
 
-    let mut preparer = ReferencePreparer::new().with_refresh(if args.overwrite {
-        Refresh::Overwrite
-    } else {
-        Refresh::UseCache
-    });
+    let mut preparer = ReferencePreparer::new()
+        .with_tasks(Arc::new(AddonPreparation::installed()))
+        .with_refresh(if args.overwrite {
+            Refresh::Overwrite
+        } else {
+            Refresh::UseCache
+        });
     if let Some(provider) = provider {
         preparer = preparer.with_provider(provider);
     }

@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn six_reviewed_city_variants_keep_independent_closures_and_finish_after_restart() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::test_directory::tempdir().unwrap();
         let data = tmp.path().join("authority");
         let queue = std::sync::Arc::new(super::super::tests::LocalPublicationStore(
             ds_sync_runtime::open_store(&tmp.path().join("sync.sqlite")).unwrap(),

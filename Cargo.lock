@@ -2067,6 +2067,7 @@ dependencies = [
  "ds-geo-lite",
  "ds-kml",
  "ds-network-contracts",
+ "ds-network-information",
  "ds-profile-policy",
  "ds-report-contracts",
  "ds-solar-contracts",
@@ -2684,13 +2685,9 @@ dependencies = [
 name = "ds-solar-contracts"
 version = "0.1.0"
 dependencies = [
- "arrow-array",
- "base64 0.22.1",
- "bytes",
  "chrono",
  "ds-network-information",
  "hex",
- "parquet",
  "pulldown-cmark",
  "serde",
  "serde_json",
@@ -2715,6 +2712,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "ds-cli-exec",
+ "ds-core-contracts",
  "ds-solar-contracts",
  "fs2",
  "libc",
@@ -2730,7 +2729,13 @@ name = "ds-solar-io"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arrow-array",
+ "base64 0.22.1",
+ "bytes",
  "ds-solar-contracts",
+ "ds-solar-engine",
+ "parquet",
+ "serde_json",
  "tracing",
 ]
 

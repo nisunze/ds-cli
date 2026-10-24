@@ -1,4 +1,7 @@
-//! The versioned local reference-bundle cache.
+//! Versioned transport for raw reference-bundle candidates.
+//! A successful read proves bounded exact-byte integrity only. It grants no
+//! Ready or prepared-input authority: the Solar preparation task must admit
+//! the candidate before a caller commits or reports it usable.
 //!
 //! The cache is what makes a completely offline run possible, so its contract
 //! is narrow and strict: an entry is returned only if every artifact in it
@@ -38,6 +41,31 @@ pub const ARTIFACT_NAMES: [&str; 4] = [
     "reference-unit.parquet",
     "manifest.json",
 ];
+
+/// Byte-integrity admission for a candidate, without decoding or accepting its
+/// physical/numerical meaning. Semantic admission belongs to the addon task.
+fn verify_candidate(
+    artifacts: &BundleBytes,
+) -> SolarResult<ds_solar_contracts::ReferenceBundleManifest> {
+    for bytes in [
+        &artifacts.weather_json,
+        &artifacts.reference_unit_json,
+        &artifacts.reference_unit_parquet,
+        &artifacts.manifest_json,
+    ] {
+        if bytes.is_empty() || bytes.len() as u64 > crate::MAX_REFERENCE_ARTIFACT_BYTES {
+            return Err(SolarError::reference_unit_invalid(
+                "reference candidate exceeds its artifact bound",
+            ));
+        }
+    }
+    let manifest: ds_solar_contracts::ReferenceBundleManifest =
+        serde_json::from_slice(&artifacts.manifest_json).map_err(|error| {
+            SolarError::reference_unit_invalid(format!("reference candidate manifest: {error}"))
+        })?;
+    manifest.verify(artifacts)?;
+    Ok(manifest)
+}
 
 /// A place cached reference bundles live.
 pub trait ReferenceCache: Send + Sync {
@@ -85,11 +113,11 @@ impl ReferenceCache for InMemoryReferenceCache {
         Ok(entries
             .get(&key.cache_entry())
             .cloned()
-            .filter(|artifacts| crate::reference::open(artifacts).is_ok()))
+            .filter(|artifacts| verify_candidate(artifacts).is_ok()))
     }
 
     fn put(&self, key: &ReferenceKey, artifacts: &BundleBytes) -> SolarResult<()> {
-        crate::reference::open(artifacts)?;
+        verify_candidate(artifacts)?;
         let mut entries = self
             .entries
             .write()
@@ -205,16 +233,12 @@ impl ReferenceCache for DirectoryReferenceCache {
             reference_unit_parquet: bodies.next().expect("four artifacts"),
             manifest_json: bodies.next().expect("four artifacts"),
         };
-        Ok(Some(artifacts).filter(|artifacts| crate::reference::open(artifacts).is_ok()))
+        Ok(Some(artifacts).filter(|artifacts| verify_candidate(artifacts).is_ok()))
     }
 
     fn put(&self, key: &ReferenceKey, artifacts: &BundleBytes) -> SolarResult<()> {
-        let opened = crate::reference::open(artifacts)?;
-        let generation = opened
-            .reference_unit
-            .manifest
-            .bundle_digest
-            .trim_start_matches("sha256:");
+        let manifest = verify_candidate(artifacts)?;
+        let generation = manifest.bundle_digest.trim_start_matches("sha256:");
         if generation.len() != 64 || !generation.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(SolarError::reference_unit_invalid(
                 "Invalid cache generation digest",

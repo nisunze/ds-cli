@@ -1,7 +1,10 @@
+#[path = "../../../../../tests/common/solar_opened_fixture_tests.rs"]
+mod solar_opened_fixtures;
+
 use super::*;
 use ds_solar_contracts::{
-    BundleBytes, CityIdentity, PreparedSolarCityInput, RunOptions, SnapshotRevision,
-    SolarCityInput, WeatherDataset, WeatherKey, WeatherPin,
+    CityIdentity, PreparedSolarCityInput, RunOptions, SnapshotRevision, SolarCityInput, WeatherKey,
+    WeatherPin,
 };
 use std::{os::unix::fs::PermissionsExt, sync::OnceLock};
 
@@ -26,7 +29,8 @@ pub(super) fn engine_under_test() -> &'static Path {
         if let Some(path) = std::env::var_os("DS_SOLAR_ENGINE_BIN") {
             return PathBuf::from(path);
         }
-        let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/Cargo.toml");
+        let manifest =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/Cargo.toml");
         let output = Command::new(env!("CARGO"))
             .args(["build", "--package", "ds-solar-addon", "--bin", "solar"])
             .arg("--message-format=json-render-diagnostics")
@@ -196,10 +200,7 @@ fn prepared_request() -> PreparedCalculationRequest {
 }
 
 pub(super) fn prepared_request_city(city: &str) -> PreparedCalculationRequest {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/fixtures");
-    let snapshot: serde_json::Value =
-        serde_json::from_slice(&fs::read(root.join(format!("city/{city}.snapshot.json"))).unwrap())
-            .unwrap();
+    let snapshot = solar_opened_fixtures::snapshot(city);
     let input = SolarCityInput::from_city_snapshot(
         CityIdentity {
             project_id: "ds-solar-fixtures".into(),
@@ -217,10 +218,7 @@ pub(super) fn prepared_request_city(city: &str) -> PreparedCalculationRequest {
         &snapshot,
     )
     .unwrap();
-    let weather: WeatherDataset = serde_json::from_slice(
-        &fs::read(root.join(format!("weather/{city}.weather.json"))).unwrap(),
-    )
-    .unwrap();
+    let (weather, reference) = solar_opened_fixtures::opened(city);
     let weather_key = WeatherKey::new(
         input.site.latitude,
         input.site.longitude,
@@ -228,21 +226,12 @@ pub(super) fn prepared_request_city(city: &str) -> PreparedCalculationRequest {
         WeatherPin::pvgis_tmy(),
     )
     .unwrap();
-    let reference = root.join("reference").join(city);
-    let bundle = BundleBytes {
-        weather_json: fs::read(reference.join("weather.json")).unwrap(),
-        reference_unit_json: fs::read(reference.join("reference-unit.json")).unwrap(),
-        reference_unit_parquet: fs::read(reference.join("reference-unit.parquet")).unwrap(),
-        manifest_json: fs::read(reference.join("manifest.json")).unwrap(),
-    };
     PreparedCalculationRequest {
         prepared: PreparedSolarCityInput::commit(
             input,
             weather_key,
             weather,
-            ds_solar_contracts::reference_unit::open(&bundle)
-                .unwrap()
-                .reference_unit,
+            reference,
             "2026-08-20T00:00:00Z",
         )
         .unwrap(),

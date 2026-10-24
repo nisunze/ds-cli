@@ -7,7 +7,11 @@ use ds_solar_contracts::{
     PreparedSolarCityInput, SolarArtifactBatch, SolarCityInput, digest,
     network_form::ResolvedInformation,
 };
-use ds_solar_host::{cache::DirectoryReferenceCache, output::GeneratedDocument};
+use ds_solar_host::{
+    cache::DirectoryReferenceCache,
+    output::GeneratedDocument,
+    preparation::{AddonPreparation, PreparationTasks},
+};
 use ds_solar_reference_host::ReferencePreparer;
 use fs2::FileExt;
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
@@ -17,6 +21,7 @@ use std::{
     collections::BTreeMap,
     fs::{self, OpenOptions},
     path::Path,
+    sync::Arc,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +70,24 @@ impl Workspace {
         request: &RunRequest,
         reference_cache: &Path,
         network: &BTreeMap<String, ResolvedInformation>,
+        calculate: impl FnOnce(LocalCalculation<'_>) -> Result<()>,
+    ) -> Result<Value> {
+        self.execute_with_network_and_tasks(
+            request,
+            reference_cache,
+            network,
+            Arc::new(AddonPreparation::installed()),
+            calculate,
+        )
+    }
+
+    /// Explicit retained preparation owner for a native lane's captured run.
+    pub fn execute_with_network_and_tasks(
+        &mut self,
+        request: &RunRequest,
+        reference_cache: &Path,
+        network: &BTreeMap<String, ResolvedInformation>,
+        tasks: Arc<dyn PreparationTasks>,
         calculate: impl FnOnce(LocalCalculation<'_>) -> Result<()>,
     ) -> Result<Value> {
         ensure!(identifier(&request.run_id), "invalid Solar run id");
@@ -149,12 +172,35 @@ impl Workspace {
         )?;
         let result = (|| {
             let cache = DirectoryReferenceCache::new(reference_cache);
-            let preparer = ReferencePreparer::new().with_cache(&cache);
+            let preparer = ReferencePreparer::new()
+                .with_tasks(tasks)
+                .with_cache(&cache);
             let mut prepared = Vec::new();
             for input in &captured.inputs {
+                let information = network.get(&input.identity.city_id).filter(|_| {
+                    ds_solar_contracts::network_form::is_shared(
+                        &input.seeded.city_inputs["network_data"],
+                    )
+                });
+                if let Some(information) = information {
+                    let form = ds_solar_contracts::network_form::parse(
+                        &input.identity.project_id,
+                        &input.seeded.city_inputs["network_data"],
+                    )?;
+                    information.reference.validate(&input.identity.project_id)?;
+                    if form.sources.information.as_ref() != Some(&information.reference) {
+                        return Err(ds_solar_contracts::SolarError::invalid_input(
+                            "resolved information is not this form's asset",
+                        )
+                        .into());
+                    }
+                }
+                let information = information
+                    .map(crate::network::decode_information)
+                    .transpose()?;
                 let resolved = ds_solar_contracts::network_form::prepare_input(
                     input.clone(),
-                    network.get(&input.identity.city_id),
+                    information.as_ref(),
                 )?;
                 prepared.push(preparer.prepare(resolved, timestamp())?.input);
             }

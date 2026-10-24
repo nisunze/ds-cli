@@ -88,6 +88,7 @@ mail-parser = { version = "=0.11.9", default-features = false }
 reactive_graph = { version = "0.2.16", features = ["effects"], optional = true }
 any_spawner = { version = "0.3.0", optional = true }
 ds-solar-contracts = { path = "../../../../ds-solar/crates/ds-solar-contracts", default-features = false }
+ds-network-information = { path = "../../../../ds-network-reporter/crates/ds-network-information" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "raw_value", "float_roundtrip"] }
 sha2 = "0.10"

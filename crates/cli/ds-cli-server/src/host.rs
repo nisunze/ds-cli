@@ -9,6 +9,10 @@
 //! state directory, a peer the kernel names as this Server's own account, and
 //! one re-authorized native account behind it. No bearer and no port.
 
+#[cfg(test)]
+#[path = "../../../../tests/common/solar_opened_fixture_tests.rs"]
+mod solar_opened_fixtures;
+
 use axum::extract::{Query, Request};
 use axum::middleware::{self, Next};
 use axum::{
@@ -1343,7 +1347,7 @@ pub(crate) mod tests {
     }
     #[tokio::test]
     async fn native_solar_application_is_headless_and_project_workspaces_cannot_cross() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app(dir.path(), true);
         let body = serde_json::to_vec(&json!({"operation":"workspace_default"})).unwrap();
         let (status, a) = call(
@@ -1448,7 +1452,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn unauthenticated_or_revoked_calls_never_read_or_create_jobs() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         for (allowed, peer) in [
             (
                 true,
@@ -1466,7 +1470,7 @@ pub(crate) mod tests {
     }
     #[tokio::test]
     async fn authenticated_status_is_served_without_a_ui() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let (status, value) = call(app(dir.path(), true), "GET", "/v1/jobs", None).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(value, json!({"jobs":[],"more":false}));
@@ -1479,7 +1483,7 @@ pub(crate) mod tests {
             rows,
             store::{ArtifactState, Event},
         };
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let application = app(dir.path(), true);
         let control = |project: &str, command: Value| {
             serde_json::to_vec(&json!({"schema":SCHEMA,"project":project,"command":command}))
@@ -1650,7 +1654,7 @@ pub(crate) mod tests {
     /// the whole of the rule. Many users are many machines.
     #[tokio::test]
     async fn one_owner_per_server_is_the_socket_peer_and_nothing_else() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         for stranger in [OS_UID + 1, 0] {
             let response = as_peer(
                 app(dir.path(), true),
@@ -1708,7 +1712,7 @@ pub(crate) mod tests {
     /// host genuinely cannot, it says which one can.
     #[tokio::test]
     async fn an_operation_that_needs_a_rendered_map_is_refused_by_name() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let (status, refused) = call(
             app(dir.path(), true),
             "POST",
@@ -1737,7 +1741,7 @@ pub(crate) mod tests {
     /// of memory: the Server refuses it at admission and queues nothing.
     #[tokio::test]
     async fn tile_admission_refuses_an_inverted_polygon_before_anything_is_queued() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let lake = r#"{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[180,90],[-180,90],[-180,-90],[180,-90],[180,90]],[[30,-2],[30.1,-2],[30.1,-2.1],[30,-2.1],[30,-2]]]},"properties":{}}"#;
         let input = serde_json::to_vec(&json!({
             "schema":"ds.tiles.prepared/v1", "project":A,
@@ -1773,7 +1777,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn tile_jobs_retain_bytes_and_isolate_sealed_projects_across_restart() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let host = app(dir.path(), true);
         let prepared = |project: &str| {
             serde_json::to_vec(&json!({
@@ -1847,7 +1851,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn two_projects_run_on_one_server_and_neither_is_disclosed_to_the_other() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app(dir.path(), true);
         let (status, first) = call(
             app.clone(),
@@ -1956,7 +1960,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn a_key_is_one_handle_inside_its_project_and_other_work_outside_it() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app(dir.path(), true);
         let (status, first) = call(
             app.clone(),
@@ -2005,7 +2009,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn a_submit_names_a_project_or_is_refused_before_anything_is_written() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app(dir.path(), true);
         let (status, unnamed) = call(
             app.clone(),
@@ -2048,7 +2052,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn capacity_is_a_typed_answer_and_a_cancellation_gives_the_room_back() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app_with(
             dir.path(),
             true,
@@ -2131,7 +2135,7 @@ pub(crate) mod tests {
     /// admitted into, and no restart, refresh or directory is involved.
     #[tokio::test]
     async fn a_project_named_mid_flight_is_admitted_and_re_scopes_nothing_queued() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app_with(dir.path(), true, limits());
         let mut ids = Vec::new();
         for (key, project, name) in [("a1", A, "T1"), ("b1", B, "T2")] {
@@ -2178,7 +2182,7 @@ pub(crate) mod tests {
     /// sharing it across projects is the refusal proven above.
     #[tokio::test]
     async fn identical_work_in_two_projects_never_collides() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app(dir.path(), true);
         let mut ids = Vec::new();
         for (key, project) in [("daily-a", A), ("daily-b", B)] {
@@ -2223,7 +2227,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn the_activity_scope_is_one_entry_per_project_that_holds_work() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app(dir.path(), true);
         for (key, project, name) in [("a1", A, "T1"), ("b1", B, "T2")] {
             let (status, body) = call(
@@ -2249,7 +2253,7 @@ pub(crate) mod tests {
     /// admitted, so a missing claim is the caller's malformed input (400).
     #[tokio::test]
     async fn solar_submit_reads_the_named_workspace_file_and_still_requires_the_claim() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let envelope = dir.path().join("solar.server-submission.json");
         fs::write(
             &envelope,
@@ -2301,7 +2305,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn activity_route_is_authenticated_and_refuses_prestartup_projection() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let unauthorized = router(app(dir.path(), true))
             .oneshot(
                 Request::builder()
@@ -2323,7 +2327,7 @@ pub(crate) mod tests {
     /// behind another project's failure.
     #[tokio::test]
     async fn a_project_whose_projection_fails_does_not_hide_another_projects_work() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let mut app = app(dir.path(), true);
         for (key, project) in [("a1", A), ("b1", B)] {
             runtime::submit(
@@ -2372,7 +2376,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn completed_solar_cancel_keeps_compute_result_and_requires_publication_owner() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let database = dir.path().join("store.sqlite");
         let input = b"sealed Solar input";
         let app = app(dir.path(), true);
@@ -2477,7 +2481,7 @@ pub(crate) mod tests {
     /// whose every refresh fails. Nothing may reach for that refresh.
     #[tokio::test]
     async fn every_route_answers_from_the_held_credential_with_no_gateway() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let source = crate::auth::tests::FixtureCredential::held("test-owner", "device:first");
         let mut app = offline_app(dir.path(), source.clone());
         app.activity = Some(
@@ -2544,7 +2548,7 @@ pub(crate) mod tests {
     /// depended on it: the same requests, before and after, byte for byte.
     #[tokio::test]
     async fn losing_the_gateway_mid_run_changes_no_answer() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let source = crate::auth::tests::FixtureCredential::held("test-owner", "device:first");
         let app = offline_app(dir.path(), source.clone());
         let (status, submitted) = call(
@@ -2572,7 +2576,7 @@ pub(crate) mod tests {
     /// The one thing that stops a host, over the wire and by its own name.
     #[tokio::test]
     async fn a_changed_credential_on_disk_stops_the_host_by_name() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let source = crate::auth::tests::FixtureCredential::held("test-owner", "device:first");
         let app = offline_app(dir.path(), source.clone());
         let (status, _) = call(app.clone(), "GET", "/v1/jobs", None).await;
@@ -2615,7 +2619,7 @@ pub(crate) mod tests {
     /// a caller has to guess about.
     #[tokio::test]
     async fn a_full_door_answers_a_typed_refusal_with_its_own_scope() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let mut app = app(dir.path(), true);
         app.requests = Arc::new(Door::new(1));
         let held = app.requests.enter().expect("the only place in the door");
@@ -2662,7 +2666,7 @@ pub(crate) mod tests {
     /// that has no result to read — and to nobody else.
     #[tokio::test]
     async fn a_jobs_stored_input_is_readable_by_its_owner_and_by_nobody_else() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app(dir.path(), true);
         let bytes = transformer("T1");
         let (status, submitted) = call(
@@ -2705,7 +2709,7 @@ pub(crate) mod tests {
     /// that used to be a hard failure at 4096 rows is now a page and a flag.
     #[tokio::test]
     async fn a_project_with_more_solar_rows_than_a_projection_says_so() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let mut app = app(dir.path(), true);
         seed_solar_rows(&app, A, 5_000);
         seed_solar_rows(&app, B, 3);
@@ -2844,16 +2848,11 @@ pub(crate) mod tests {
     /// builds it.
     fn prepared_solar_request(project: &str, run_id: &str) -> Vec<u8> {
         use ds_solar_contracts::{
-            BundleBytes, CityIdentity, PreparedSolarCityInput, RunOptions, SnapshotRevision,
-            SolarCityInput, WeatherDataset, WeatherKey, WeatherPin,
+            CityIdentity, PreparedSolarCityInput, RunOptions, SnapshotRevision, SolarCityInput,
+            WeatherKey, WeatherPin,
         };
-        let root =
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../../ds-solar/fixtures");
         let city = "aderm_bere";
-        let snapshot: Value = serde_json::from_slice(
-            &fs::read(root.join(format!("city/{city}.snapshot.json"))).unwrap(),
-        )
-        .unwrap();
+        let snapshot = solar_opened_fixtures::snapshot(city);
         let input = SolarCityInput::from_city_snapshot(
             CityIdentity {
                 project_id: project.to_string(),
@@ -2874,10 +2873,7 @@ pub(crate) mod tests {
             &snapshot,
         )
         .unwrap();
-        let weather: WeatherDataset = serde_json::from_slice(
-            &fs::read(root.join(format!("weather/{city}.weather.json"))).unwrap(),
-        )
-        .unwrap();
+        let (weather, reference) = solar_opened_fixtures::opened(city);
         let weather_key = WeatherKey::new(
             input.site.latitude,
             input.site.longitude,
@@ -2885,16 +2881,6 @@ pub(crate) mod tests {
             WeatherPin::pvgis_tmy(),
         )
         .unwrap();
-        let reference_root = root.join("reference").join(city);
-        let reference = ds_solar_contracts::reference_unit::open(&BundleBytes {
-            weather_json: fs::read(reference_root.join("weather.json")).unwrap(),
-            reference_unit_json: fs::read(reference_root.join("reference-unit.json")).unwrap(),
-            reference_unit_parquet: fs::read(reference_root.join("reference-unit.parquet"))
-                .unwrap(),
-            manifest_json: fs::read(reference_root.join("manifest.json")).unwrap(),
-        })
-        .unwrap()
-        .reference_unit;
         let prepared = PreparedSolarCityInput::commit(
             input,
             weather_key,
@@ -2937,7 +2923,7 @@ pub(crate) mod tests {
     #[test]
     fn a_completed_solar_job_seals_its_row_with_no_session_and_the_pump_adopts_nothing() {
         use ds_command_kernel::sync_store::ArtifactState;
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app(dir.path(), true);
         let identity = app.sessions.identity().clone();
         let activity =
@@ -3067,7 +3053,7 @@ pub(crate) mod tests {
     /// has nothing left to retire. The job can be run again.
     #[test]
     fn a_solar_job_completed_with_no_row_is_not_adopted_and_its_result_is_retired_on_observation() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app(dir.path(), true);
         let identity = app.sessions.identity().clone();
         let bytes = prepared_solar_request(A, "before-the-seal");
@@ -3175,7 +3161,7 @@ pub(crate) mod tests {
     /// (`a_solar_completion_sealed_behind_a_newer_one_frees_its_own_result_and_the_newer_row_stands`).
     #[test]
     fn a_restart_replays_no_completion_and_unsealed_results_of_one_city_are_all_retired() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = ds_cli_contract::testing::private_tempdir("core-test-");
         let app = app(dir.path(), true);
         let identity = app.sessions.identity().clone();
         let submitted_at = runtime::now_ms();

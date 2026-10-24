@@ -217,13 +217,20 @@ impl ReferenceBundleProvider for HttpReferenceProvider {
         }
         // The manifest that arrived must agree with the inventory that
         // announced it, or the two halves of the answer disagree.
-        let opened = ds_solar_host::reference::open(&artifacts)?;
-        if opened.reference_unit.manifest.source_key != published.source_key
-            || opened.reference_unit.manifest.bundle_digest != published.bundle_digest
+        // This provider returns a transport candidate. Readiness and import
+        // admission are established only by the captured preparation task.
+        let manifest: ds_solar_contracts::ReferenceBundleManifest =
+            serde_json::from_slice(&artifacts.manifest_json).map_err(|error| {
+                SolarError::reference_unit_invalid(format!(
+                    "{url} published an invalid reference manifest: {error}"
+                ))
+            })?;
+        if manifest.source_key != published.source_key
+            || manifest.bundle_digest != published.bundle_digest
         {
             return Err(SolarError::reference_unit_invalid(format!(
                 "{url} announced bundle {} but published {}",
-                published.bundle_digest, opened.reference_unit.manifest.bundle_digest
+                published.bundle_digest, manifest.bundle_digest
             )));
         }
         Ok(artifacts)

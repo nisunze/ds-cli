@@ -5,6 +5,8 @@
 //! provider call at all, and the request that leaves carries nothing but a
 //! place.
 
+#[path = "common/preparation_admission_tests.rs"]
+mod admission_tests;
 mod common;
 
 use std::sync::Mutex;
@@ -79,7 +81,7 @@ fn explicit_held_bundle_admission_matches_application_preparation_and_refuses_an
         .with_provider(&provider)
         .prepare(input.clone(), common::PREPARED_AT)
         .unwrap();
-    let pure = ds_solar_host::preparation::ReferencePreparer::new()
+    let pure = ds_solar_runtime::ReferencePreparer::new()
         .prepare(input.clone(), &bytes, common::PREPARED_AT)
         .unwrap();
     assert_eq!(provider.calls(), 1);
@@ -87,7 +89,7 @@ fn explicit_held_bundle_admission_matches_application_preparation_and_refuses_an
         serde_json::to_value(application.input).unwrap(),
         serde_json::to_value(pure).unwrap()
     );
-    let wrong_site = ds_solar_host::preparation::ReferencePreparer::new()
+    let wrong_site = ds_solar_runtime::ReferencePreparer::new()
         .prepare(
             input,
             &common::reference_bytes("aderm_gagal"),
@@ -526,10 +528,7 @@ fn the_request_that_leaves_carries_a_place_and_its_equipment_and_nothing_else() 
     assert_eq!(losses["dc"]["soiling_percent"], 5.0);
     assert_eq!(losses["dc"]["wiring_percent"], 2.0);
     assert_eq!(losses["ac_inverter_percent"], 2.0);
-    assert_eq!(
-        encoded["equipment"]["dc_ac_ratio"],
-        ds_solar_contracts::calculation_input::site_pv::ORACLE_DC_AC_RATIO
-    );
+    assert_eq!(encoded["equipment"]["dc_ac_ratio"], 1.3);
     assert_eq!(
         encoded["capacity_override"]["target_inverter_capacity_kw"],
         100.0
@@ -615,15 +614,15 @@ fn the_dc_ac_ratio_sent_is_the_oracles_and_the_discrepancy_is_visible() {
     //
     // This test exists so that switching is a decision somebody makes rather
     // than a line somebody changes.
-    let configured = ds_solar_contracts::calculation_input::site_pv::resolve_inputs(
-        &common::city_input("aderm_bere"),
-    )
-    .expect("the fixture city resolves");
-    assert_eq!(configured.configured_dc_ac_ratio, 1.2);
+    let input = common::city_input("aderm_bere");
     assert_eq!(
-        ds_solar_contracts::calculation_input::site_pv::ORACLE_DC_AC_RATIO,
-        1.3
+        input.seeded.templates["technical_params"]["pv_system"]["inverter"]["dc_ac_ratio"],
+        1.2
     );
+    let owner_request = ds_solar_runtime::ReferencePreparer::new()
+        .request_for(&input)
+        .expect("the owning runtime admits the request");
+    assert_eq!(owner_request.equipment.unwrap().dc_ac_ratio, 1.3);
 
     let request = ReferencePreparer::new()
         .request_for(&common::city_input("aderm_bere"))

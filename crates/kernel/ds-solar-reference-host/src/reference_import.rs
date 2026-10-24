@@ -1,10 +1,12 @@
 //! Explicit sealed-bundle verification and cache commit shared by native hosts.
 //! Callers retain project/revision admission before reads and before commit.
-use crate::{preparation::ReferencePreparer, provider::ReferenceBundleProvider};
 use anyhow::{Result, ensure};
-use ds_solar_contracts::{BundleBytes, SolarCityInput, SolarResult};
-use ds_solar_host::cache::{DirectoryReferenceCache, ReferenceCache};
-use std::path::Path;
+use ds_solar_contracts::{BundleBytes, ReferenceKey, ReferencePin, SolarCityInput};
+use ds_solar_host::{
+    cache::{DirectoryReferenceCache, ReferenceCache},
+    preparation::{AddonPreparation, PreparationTasks},
+};
+use std::{path::Path, sync::Arc};
 
 pub fn read_bundle(directory: &Path) -> Result<BundleBytes> {
     let metadata = std::fs::symlink_metadata(directory)?;
@@ -25,17 +27,10 @@ pub fn read_bundle(directory: &Path) -> Result<BundleBytes> {
         manifest_json: read("manifest.json")?,
     })
 }
-struct OneBundle(BundleBytes);
-impl ReferenceBundleProvider for OneBundle {
-    fn fetch(&self, _: &crate::provider::ReferenceRequest) -> SolarResult<BundleBytes> {
-        Ok(self.0.clone())
-    }
-}
 /// Verification has no durable effects. Hold this until the caller rechecks source authority.
 pub struct VerifiedBundle {
-    input: SolarCityInput,
+    key: ReferenceKey,
     bundle: BundleBytes,
-    prepared_at: String,
     prepared_input_digest: String,
 }
 pub struct CommitReceipt {
@@ -45,35 +40,46 @@ pub struct CommitReceipt {
 }
 impl VerifiedBundle {
     pub fn verify(input: SolarCityInput, bundle: BundleBytes, prepared_at: &str) -> Result<Self> {
-        let provider = OneBundle(bundle);
-        let prepared = ReferencePreparer::new()
-            .with_provider(&provider)
-            .prepare(input.clone(), prepared_at)?;
-        Ok(Self {
+        Self::verify_with_tasks(
             input,
-            bundle: provider.0,
-            prepared_at: prepared_at.into(),
-            prepared_input_digest: prepared.input.input_digest,
+            bundle,
+            prepared_at,
+            Arc::new(AddonPreparation::installed()),
+        )
+    }
+
+    pub fn verify_with_tasks(
+        input: SolarCityInput,
+        bundle: BundleBytes,
+        prepared_at: &str,
+        tasks: Arc<dyn PreparationTasks>,
+    ) -> Result<Self> {
+        let pin = ReferencePin::current();
+        let plan = tasks.plan(&input, pin.clone())?;
+        let prepared = tasks.prepare(plan.city, pin, &bundle, prepared_at)?;
+        Ok(Self {
+            key: plan.key,
+            bundle,
+            prepared_input_digest: prepared.input_digest,
         })
     }
     pub fn commit(self, cache: &Path) -> Result<CommitReceipt> {
-        let key = ReferencePreparer::new().reference_key(&self.input)?;
         let cache = DirectoryReferenceCache::new(cache);
-        let retained = cache.get(&key)?;
-        let reused = retained.as_ref().is_some_and(|held| {
-            held.weather_json == self.bundle.weather_json
-                && held.reference_unit_json == self.bundle.reference_unit_json
-                && held.reference_unit_parquet == self.bundle.reference_unit_parquet
-                && held.manifest_json == self.bundle.manifest_json
-        });
+        let retained = cache.get(&self.key)?;
+        let reused = retained
+            .as_ref()
+            .is_some_and(|held| same_bytes(held, &self.bundle));
         if !reused {
-            cache.put(&key, &self.bundle)?;
+            cache.put(&self.key, &self.bundle)?;
         }
-        let verified = ReferencePreparer::new()
-            .with_cache(&cache)
-            .prepare(self.input, &self.prepared_at)?;
+        // Admission already completed before the caller's authority recheck.
+        // Commit proves exact four-file retention, with no new addon selection,
+        // semantic calculation or second decode at this filesystem boundary.
+        let retained = cache.get(&self.key)?;
         ensure!(
-            self.prepared_input_digest == verified.input.input_digest,
+            retained
+                .as_ref()
+                .is_some_and(|held| same_bytes(held, &self.bundle)),
             "reference cache readback mismatch"
         );
         Ok(CommitReceipt {
@@ -82,7 +88,14 @@ impl VerifiedBundle {
                 + self.bundle.reference_unit_json.len()
                 + self.bundle.reference_unit_parquet.len()
                 + self.bundle.manifest_json.len(),
-            prepared_input_digest: verified.input.input_digest,
+            prepared_input_digest: self.prepared_input_digest,
         })
     }
+}
+
+fn same_bytes(left: &BundleBytes, right: &BundleBytes) -> bool {
+    left.weather_json == right.weather_json
+        && left.reference_unit_json == right.reference_unit_json
+        && left.reference_unit_parquet == right.reference_unit_parquet
+        && left.manifest_json == right.manifest_json
 }

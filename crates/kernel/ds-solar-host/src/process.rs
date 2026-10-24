@@ -1,16 +1,16 @@
 //! Native effects for fixed standalone Solar engine tasks.
 //! No linked engine, acquisition, authorization or publication capability.
 
-use ds_solar_contracts::{
-    ArtifactEntry, EngineIdentity, PREPARED_CALCULATION_TASK_SCHEMA, PreparedCalculationRequest,
-    PreparedCalculationTaskResult, digest::sha256_hex,
-};
 use crate::{
     cancel::CancelToken,
     files,
     output::{
-        MAX_OUTPUT_BYTES, MAX_OUTPUT_FILE_BYTES, MAX_OUTPUT_FILES, OutputFile, encode_outputs,
+        GeneratedDocument, MAX_OUTPUT_BYTES, MAX_OUTPUT_FILE_BYTES, MAX_OUTPUT_FILES, OutputFile,
     },
+};
+use ds_solar_contracts::{
+    ArtifactEntry, EngineIdentity, PREPARED_CALCULATION_TASK_SCHEMA, PreparedCalculationRequest,
+    PreparedCalculationTaskResult, digest::sha256_hex,
 };
 use sha2::{Digest, Sha256};
 use std::{
@@ -84,7 +84,12 @@ impl From<String> for ProcessFailure {
         } else {
             ProcessFailureKind::Io
         };
-        let refusal = if kind == ProcessFailureKind::Refused {
+        let refusal = if message.starts_with("solar_engine_update_required") {
+            Some(ds_solar_contracts::SolarError::new(
+                ds_solar_contracts::SolarErrorCode::SolarEngineUpdateRequired,
+                message.clone(),
+            ))
+        } else if kind == ProcessFailureKind::Refused {
             message
                 .split_once("; ")
                 .and_then(|(_, completion)| {
@@ -226,7 +231,9 @@ fn engine_probe(
     let stdout = stdout?;
     let probe: ds_solar_contracts::engine_probe::EngineBuildProbe = serde_json::from_slice(&stdout)
         .map_err(|e| format!("solar_engine_identity_invalid: {e}"))?;
-    validate_identity(&probe.identity)?;
+    if probe.identity.name != "ds-solar-engine" || probe.identity.version.is_empty() {
+        return Err("solar_engine_identity_invalid".into());
+    }
     Ok(probe)
 }
 
@@ -244,7 +251,9 @@ pub struct PreparedEngine {
 
 mod batch;
 mod budget;
+mod encoding;
 mod portfolio;
+pub(crate) mod preparation;
 pub use batch::{
     BatchEngine, BatchProgressSink, MAX_BATCH_TIMEOUT, VerifiedBatch, VerifiedBatchFile,
 };
@@ -261,6 +270,17 @@ impl PreparedEngine {
     }
 
     fn capture_inner(
+        engine: &Path,
+        scratch: &Path,
+        workers: usize,
+        cancel: &CancelToken,
+    ) -> Result<Self, String> {
+        let captured = Self::capture_transport(engine, scratch, workers, cancel)?;
+        validate_identity(&captured.identity)?;
+        Ok(captured)
+    }
+
+    fn capture_transport(
         engine: &Path,
         scratch: &Path,
         workers: usize,
@@ -342,7 +362,19 @@ impl PreparedEngine {
             .map_err(|e| format!("solar_task_result_invalid: {e}"))?;
         let task: PreparedCalculationTaskResult = serde_json::from_slice(&result)
             .map_err(|e| format!("solar_task_result_invalid: {e}"))?;
-        verify_task(task, request, &bytes, &self.identity, &out, cancel)
+        let verified = verify_task(task, request, &bytes, &self.identity, &out, cancel)?;
+        let outputs = encoding::encode(
+            &self.executable,
+            self.directory.path(),
+            &verified.outputs,
+            cancel,
+        )?;
+        Ok(VerifiedCalculation {
+            result: verified.result,
+            timings: verified.timings,
+            plots_generated: verified.plots_generated,
+            outputs,
+        })
     }
 }
 
@@ -375,6 +407,13 @@ fn validate_identity(identity: &EngineIdentity) -> Result<(), String> {
     Ok(())
 }
 
+struct VerifiedArtifacts {
+    result: ds_solar_contracts::SolarCalculationResult,
+    timings: ds_solar_contracts::CalculationTimings,
+    plots_generated: bool,
+    outputs: Vec<GeneratedDocument>,
+}
+
 fn verify_task(
     task: PreparedCalculationTaskResult,
     request: &PreparedCalculationRequest,
@@ -382,7 +421,7 @@ fn verify_task(
     identity: &EngineIdentity,
     out: &Path,
     cancel: &CancelToken,
-) -> Result<VerifiedCalculation, String> {
+) -> Result<VerifiedArtifacts, String> {
     check_cancel(cancel)?;
     let mut result_identity = task.result.engine.clone();
     // Development semantic results omit schemas; admission always stamps them.
@@ -448,7 +487,10 @@ fn verify_task(
         {
             return Err("solar_task_artifact_digest_or_size_mismatch".into());
         }
-        artifacts.push((entry.name.clone(), entry.media_type.clone(), bytes));
+        artifacts.push(GeneratedDocument {
+            entry: entry.clone(),
+            bytes,
+        });
     }
     // The result manifest must describe the same closed artifacts.
     let mut manifested = task
@@ -461,18 +503,12 @@ fn verify_task(
     if !names.contains("report_input.json") || task.result.artifacts.artifacts != manifested {
         return Err("solar_task_artifact_manifest_mismatch".into());
     }
-    let outputs = encode_outputs(
-        artifacts
-            .iter()
-            .map(|(name, media, bytes)| (name.as_str(), media.as_str(), bytes.as_slice())),
-    )
-    .map_err(|e| e.to_string())?;
     check_cancel(cancel)?;
-    Ok(VerifiedCalculation {
+    Ok(VerifiedArtifacts {
         result: task.result,
         timings: task.timings,
         plots_generated: task.plots_generated,
-        outputs,
+        outputs: artifacts,
     })
 }
 
@@ -494,6 +530,8 @@ fn check_cancel(cancel: &CancelToken) -> Result<(), String> {
 
 enum Task<'a> {
     BuildInfo,
+    Preparation { request: &'a Path, out: &'a Path },
+    Encoding { request: &'a Path, out: &'a Path },
     Calculate { request: &'a Path, out: &'a Path },
     Batch { request: &'a Path, out: &'a Path },
     Portfolio { request: &'a Path, out: &'a Path },
@@ -548,6 +586,8 @@ fn run_task_observed(
     check_cancel(cancel)?;
     let bounds = match &task {
         Task::BuildInfo => None,
+        Task::Preparation { .. } => Some(FileBounds::preparation()),
+        Task::Encoding { .. } => Some(FileBounds::encoding()),
         Task::Calculate { .. } => Some(FileBounds::prepared()),
         Task::Batch { .. } => Some(FileBounds::batch()),
         Task::Portfolio { .. } => Some(FileBounds::portfolio()),
@@ -556,6 +596,22 @@ fn run_task_observed(
     match task {
         Task::BuildInfo => {
             command.arg("build-info");
+        }
+        Task::Preparation { request, out } => {
+            command
+                .arg(ds_cli_exec::solar::Task::PrepareReference.subcommand())
+                .arg("--request")
+                .arg(request)
+                .arg("--out")
+                .arg(out);
+        }
+        Task::Encoding { request, out } => {
+            command
+                .arg(ds_cli_exec::solar::Task::EncodeOutputs.subcommand())
+                .arg("--request")
+                .arg(request)
+                .arg("--out")
+                .arg(out);
         }
         Task::Calculate { request, out } => {
             command
@@ -723,6 +779,28 @@ struct FileBounds {
     depth: usize,
 }
 impl FileBounds {
+    fn preparation() -> Self {
+        use ds_solar_contracts::preparation_task::*;
+        Self {
+            request: MAX_REFERENCE_PREPARATION_REQUEST_BYTES,
+            result: MAX_REFERENCE_PREPARATION_RESULT_BYTES,
+            output: 64 * 1024 * 1024,
+            files: 12,
+            file: 16 * 1024 * 1024,
+            depth: 4,
+        }
+    }
+    fn encoding() -> Self {
+        use ds_solar_contracts::output_task::*;
+        Self {
+            request: OUTPUT_ENCODING_MAX_REQUEST_BYTES,
+            result: OUTPUT_ENCODING_MAX_RESULT_BYTES,
+            output: MAX_OUTPUT_BYTES as u64,
+            files: MAX_OUTPUT_FILES * 17 + 16,
+            file: MAX_OUTPUT_FILE_BYTES as u64,
+            depth: 19,
+        }
+    }
     fn prepared() -> Self {
         Self {
             request: MAX_REQUEST_BYTES as u64,

@@ -74,7 +74,7 @@ fn rows_of(database: &std::path::Path) -> Vec<ds_command_kernel::sync_store::Art
 
 #[test]
 fn completion_is_retained_offline_and_replays_after_restart() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = crate::test_directory::tempdir().unwrap();
     let database = dir.path().join("store.sqlite");
     let authorized = Arc::new(AtomicBool::new(true));
     let host = retention(database.clone(), authorized.clone());
@@ -128,7 +128,7 @@ fn completion_is_retained_offline_and_replays_after_restart() {
 
 #[test]
 fn refused_authority_project_or_corrupted_bytes_create_no_publication() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = crate::test_directory::tempdir().unwrap();
     let database = dir.path().join("store.sqlite");
     let authorized = Arc::new(AtomicBool::new(false));
     let host = retention(database.clone(), authorized.clone());
@@ -152,7 +152,7 @@ fn refused_authority_project_or_corrupted_bytes_create_no_publication() {
 
 #[test]
 fn identical_bytes_from_a_new_build_keep_their_new_provenance() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = crate::test_directory::tempdir().unwrap();
     let database = dir.path().join("store.sqlite");
     let host = retention(database.clone(), Arc::new(AtomicBool::new(true)));
     let old = host
@@ -187,7 +187,7 @@ fn identical_bytes_from_a_new_build_keep_their_new_provenance() {
 
 #[test]
 fn a_retention_or_observation_wakes_the_host_pass() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = crate::test_directory::tempdir().unwrap();
     let woken = Arc::new(AtomicUsize::new(0));
     let counter = woken.clone();
     let host = retention(
