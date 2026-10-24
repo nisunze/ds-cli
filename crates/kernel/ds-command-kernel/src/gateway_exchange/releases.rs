@@ -142,10 +142,19 @@ pub fn installation_manager(body: &Value, channel: &str) -> Option<Value> {
 
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
 pub(crate) mod exports {
+    use crate::gateway_exchange::browser::{facts, GatewayHost};
     use futures_util::StreamExt;
 
     /// One anonymous JSON read of at most `cap` bytes; `None` on any failure.
-    pub(crate) async fn read(url: &str, cap: usize) -> Option<serde_json::Value> {
+    pub(crate) async fn read(
+        host: &GatewayHost,
+        url: &str,
+        cap: usize,
+    ) -> Option<serde_json::Value> {
+        let facts = facts(host).ok()?;
+        if facts.offline_mode || !facts.link_up {
+            return None;
+        }
         let parsed = url::Url::parse(url).ok()?;
         if !matches!(parsed.scheme(), "https" | "http") {
             return None;

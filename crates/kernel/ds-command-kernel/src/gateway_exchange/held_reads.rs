@@ -539,7 +539,11 @@ export interface AssetsCatalogue { assets: Record<string, unknown>[]; folders: R
         store: StoreHost,
         url: String,
     ) -> Result<JsValue, JsValue> {
-        match read(&url, ANSWER_CAP).await.as_ref().map(release_member) {
+        match read(&host, &url, ANSWER_CAP)
+            .await
+            .as_ref()
+            .map(release_member)
+        {
             Some(Some(member)) => typed(
                 &release::retain(&edge(host, store), &url, member)
                     .await
@@ -560,7 +564,10 @@ export interface AssetsCatalogue { assets: Record<string, unknown>[]; folders: R
         url: String,
         channel: String,
     ) -> Result<JsValue, JsValue> {
-        match read(&url, MANAGER_CAP)
+        if !matches!(channel.as_str(), "stable" | "canary") {
+            return Ok(JsValue::UNDEFINED);
+        }
+        match read(&host, &url, MANAGER_CAP)
             .await
             .and_then(|body| installation_manager(&body, &channel))
         {

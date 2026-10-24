@@ -23,6 +23,12 @@ filesystem reads. A visible consumer or explicit refresh acquires a catalog;
 unused catalogs receive no request, and retained metadata remains available
 offline. The error carries one stable `code` and a bounded rule `message`.
 
+Anonymous page reads honor the host's offline and link facts before fetching;
+an offline acquisition leaves retained metadata untouched. `isFresh` compares
+complete captured/current source identities without IO. Without a current
+source basis, freshness remains unknown: neither a held value nor its age
+justifies claiming freshness or inventing a backend stamp/warmup request.
+
 The closed `ds.module-release/v1` DTO carries component, channel, lane-bound
 product ID (`rw.datasolutions.module.<component>[.canary]`), version, protocol
 `ds.module/v1` for Solar/Reporter or `ds.network-engine/v1` for Network, release timestamp, governance status, optional notes and one or
