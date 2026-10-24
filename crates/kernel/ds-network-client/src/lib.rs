@@ -46,7 +46,7 @@ pub use lv_publication::{LvAnalysisValidationOutcome, LvPublicationOutcome};
 pub use profile::{ProfileCheckpoint, ProfileOutcome, ProfileSession};
 pub use report_engineering::ReportEngineeringOutcome;
 use sha2::{Digest, Sha256};
-pub use source_io::SOURCE_UNREADABLE;
+pub use source_io::{SourceEngineRefusal, SOURCE_ENGINE_REFUSALS, SOURCE_UNREADABLE};
 pub use staging::private_disk_stage;
 use std::{
     ffi::OsString,

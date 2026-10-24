@@ -6,11 +6,35 @@
 //! the closed `gis_source_io_v1` calls. A reader's refusal keeps its own words;
 //! an engine that is absent or cannot serve the call is a typed refusal.
 use ds_cli_contract::Failure;
+use ds_cli_contract::spec::Refusal;
 use ds_network_client::{CapturedNetworkClient, NetworkFailure};
 use ds_network_contracts::source_io::{GeopackageLayersV1, SourceLayersV1, SourceReaderV1};
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::Path;
+
+pub(crate) const REFUSALS: [Refusal; ds_network_client::SOURCE_ENGINE_REFUSALS.len()] =
+    source_refusals();
+
+const fn source_refusals() -> [Refusal; ds_network_client::SOURCE_ENGINE_REFUSALS.len()] {
+    let first = ds_network_client::SOURCE_ENGINE_REFUSALS[0];
+    let mut out = [Refusal {
+        code: first.code,
+        when: first.when,
+        remedy: first.remedy,
+    }; ds_network_client::SOURCE_ENGINE_REFUSALS.len()];
+    let mut index = 0;
+    while index < out.len() {
+        let row = ds_network_client::SOURCE_ENGINE_REFUSALS[index];
+        out[index] = Refusal {
+            code: row.code,
+            when: row.when,
+            remedy: row.remedy,
+        };
+        index += 1;
+    }
+    out
+}
 
 /// A reader's refusal (its words) or a typed engine refusal.
 pub(crate) enum ReadFailure {
@@ -32,6 +56,9 @@ fn engine_failure(error: NetworkFailure) -> ReadFailure {
     if error.is_source_refusal() {
         return ReadFailure::Source(error.message);
     }
+    if unknown_owner_cause(&error) {
+        return ReadFailure::Engine(unknown_engine_failure(&error));
+    }
     let code = error.code();
     let message = error.message.clone();
     ReadFailure::Engine(match code {
@@ -40,11 +67,66 @@ fn engine_failure(error: NetworkFailure) -> ReadFailure {
                 "install Network or set DS_NETWORK_ENGINE_BIN to a compatible executable; design files are read there",
             )
         }
-        "network_engine_incompatible" | "network_serialization_incompatible" => {
-            Failure::unavailable(code, message)
-                .remedy("select the insertion-order Network engine that serves gis_source_io_v1")
-        }
-        _ => Failure::failed(code, message),
+        "network_engine_incompatible" => Failure::unavailable("network_engine_incompatible", message)
+            .remedy("select the insertion-order Network engine that serves gis_source_io_v1"),
+        "network_serialization_incompatible" => Failure::unavailable("network_serialization_incompatible", message)
+            .remedy("select the insertion-order Network engine that serves gis_source_io_v1"),
+        "network_engine_path_invalid"
+        | "network_engine_invalid"
+        | "network_engine_unqualified"
+        | "network_engine_identity_invalid"
+        | "network_engine_changed"
+        | "network_engine_refused"
+        | "network_workers_invalid"
+        | "network_scratch_invalid"
+        | "network_request_invalid"
+        | "network_request_io"
+        | "grid_task_bound_refused"
+        | "network_receipt_bounded"
+        | "network_receipt_invalid"
+        | "network_refusal_invalid"
+        | "network_result_invalid"
+        | "network_result_digest_mismatch"
+        | "network_input_changed"
+        | "callee_cancelled"
+        | "callee_timed_out"
+        | "callee_wait_failed"
+        | "callee_supervision_failed"
+        | "network_task_cancelled"
+        | "network_control_unavailable"
+        | "network_control_invalid"
+        | "network_input_invalid"
+        | "network_output_invalid"
+        | "network_artifact_io"
+        | "callee_stdin_failed"
+        | "fast_lv_input_too_large"
+        | "fast_lv_input_invalid"
+        | "fast_lv_schema_unsupported"
+        | "fast_lv_bound_refused"
+        | "fast_lv_output_too_large"
+        | "fast_lv_result_encoding_failed"
+        | "fast_lv_publication_invalid"
+        | "design_snapshot_processing_failed" => Failure::failed(code, message),
+        _ => unknown_engine_failure(&error),
+    })
+}
+
+fn unknown_engine_failure(error: &NetworkFailure) -> Failure {
+    Failure::failed(
+        "network_engine_refusal_unknown",
+        "The Network engine returned an unrecognized source-read failure.",
+    )
+    .remedy("retain the bounded cause and use a compatible Network component")
+    .detail(error.bounded_source_cause())
+}
+
+fn unknown_owner_cause(error: &NetworkFailure) -> bool {
+    error.owner_code().is_some_and(|code| {
+        code != "module_removed"
+            && code != ds_network_client::SOURCE_UNREADABLE
+            && !ds_network_client::SOURCE_ENGINE_REFUSALS
+                .iter()
+                .any(|row| row.code == code)
     })
 }
 

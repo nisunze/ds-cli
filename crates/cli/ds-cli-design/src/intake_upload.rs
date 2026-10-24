@@ -49,6 +49,7 @@ const PARTS: &[&[Refusal]] = &[
     OWN,
     crate::lv::project_save::COMMAND.refusals,
     crate::lv::process::COMMAND.refusals,
+    &crate::source_read::REFUSALS,
 ];
 const REFUSALS: &[Refusal] =
     &ds_cli_report::project::distinct::<{ ds_cli_report::project::distinct_count(PARTS) }>(PARTS);

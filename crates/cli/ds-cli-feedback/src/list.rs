@@ -26,15 +26,7 @@ pub static COMMAND: Command = Command {
     path: &["feedback", "list"],
     contract: 2,
     summary: "The shared feedback backlog, as a difference since you last read it.",
-    purpose: "\
-Read the deduplicated `fb` backlog through the native signed-in user, without \
-a project or Desktop. The API remembers this account's position; no changes \
-returns `changed: false` with no rows or local state to keep. Enumeration is \
-complete: --limit holds remaining rows for the NEXT call; repeat until empty. \
---component and --query are complete lookups that preserve the sweep position; \
---all peeks from the top without moving it. \
-Each row decides on its own: status, whether it is blocked and on what, the \
-latest note, and the id and version a close must carry.",
+    purpose: "Read the shared backlog through the signed-in user; no project or Desktop. This account's sweep position is retained; unchanged means changed:false and no rows. Repeat --limit pages until empty. --component/--query are complete lookups preserving the sweep; --all peeks without moving it. Each row carries status, blocker, latest note and the id/version needed to close.",
     chapter: Chapter::Operations,
     effect: Effect::ReadOnly,
     authority: Authority::HeadlessUser,

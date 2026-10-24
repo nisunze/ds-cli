@@ -26,6 +26,53 @@ pub const ENGINE_ORDER: Refusal = Refusal {
     remedy: "Select the insertion-order Network engine the release ships.",
 };
 
+pub(crate) const REFUSALS: [Refusal; ds_network_client::SOURCE_ENGINE_REFUSALS.len()] =
+    source_refusals();
+
+const fn source_refusals() -> [Refusal; ds_network_client::SOURCE_ENGINE_REFUSALS.len()] {
+    let first = ds_network_client::SOURCE_ENGINE_REFUSALS[0];
+    let mut out = [Refusal {
+        code: first.code,
+        when: first.when,
+        remedy: first.remedy,
+    }; ds_network_client::SOURCE_ENGINE_REFUSALS.len()];
+    let mut index = 0;
+    while index < out.len() {
+        let row = ds_network_client::SOURCE_ENGINE_REFUSALS[index];
+        out[index] = if matches!(row.code.as_bytes(), b"network_engine_missing") {
+            ENGINE_MISSING
+        } else if matches!(row.code.as_bytes(), b"network_engine_incompatible") {
+            ENGINE_INCOMPATIBLE
+        } else if matches!(row.code.as_bytes(), b"network_serialization_incompatible") {
+            ENGINE_ORDER
+        } else {
+            Refusal {
+                code: row.code,
+                when: row.when,
+                remedy: row.remedy,
+            }
+        };
+        index += 1;
+    }
+    out
+}
+
+/// Append the source owner vocabulary to the command's own refusals.
+pub(crate) const fn with_refusals<const N: usize>(own: &[Refusal]) -> [Refusal; N] {
+    assert!(N == own.len() + REFUSALS.len());
+    let mut out = [ENGINE_MISSING; N];
+    let mut index = 0;
+    while index < N {
+        out[index] = if index < own.len() {
+            own[index]
+        } else {
+            REFUSALS[index - own.len()]
+        };
+        index += 1;
+    }
+    out
+}
+
 /// The lane's Network engine, captured once for this command.
 pub(crate) fn capture() -> Result<CapturedNetworkClient, Failure> {
     let lane = ds_cli_auth::reliability::release_lane();
@@ -47,6 +94,9 @@ pub(crate) fn split(error: NetworkFailure) -> Result<String, Failure> {
 }
 
 pub(crate) fn engine_failure(error: NetworkFailure) -> Failure {
+    if unknown_owner_cause(&error) {
+        return unknown_engine_failure(&error);
+    }
     let code = error.code();
     let message = error.message.clone();
     match code {
@@ -58,8 +108,63 @@ pub(crate) fn engine_failure(error: NetworkFailure) -> Failure {
         "network_serialization_incompatible" => {
             Failure::unavailable(ENGINE_ORDER.code, message).remedy(ENGINE_ORDER.remedy)
         }
-        _ => Failure::failed(code, message),
+        "network_engine_path_invalid"
+        | "network_engine_invalid"
+        | "network_engine_unqualified"
+        | "network_engine_identity_invalid"
+        | "network_engine_changed"
+        | "network_engine_refused"
+        | "network_workers_invalid"
+        | "network_scratch_invalid"
+        | "network_request_invalid"
+        | "network_request_io"
+        | "grid_task_bound_refused"
+        | "network_receipt_bounded"
+        | "network_receipt_invalid"
+        | "network_refusal_invalid"
+        | "network_result_invalid"
+        | "network_result_digest_mismatch"
+        | "network_input_changed"
+        | "callee_cancelled"
+        | "callee_timed_out"
+        | "callee_wait_failed"
+        | "callee_supervision_failed"
+        | "network_task_cancelled"
+        | "network_control_unavailable"
+        | "network_control_invalid"
+        | "network_input_invalid"
+        | "network_output_invalid"
+        | "network_artifact_io"
+        | "callee_stdin_failed"
+        | "fast_lv_input_too_large"
+        | "fast_lv_input_invalid"
+        | "fast_lv_schema_unsupported"
+        | "fast_lv_bound_refused"
+        | "fast_lv_output_too_large"
+        | "fast_lv_result_encoding_failed"
+        | "fast_lv_publication_invalid"
+        | "design_snapshot_processing_failed" => Failure::failed(code, message),
+        _ => unknown_engine_failure(&error),
     }
+}
+
+fn unknown_engine_failure(error: &NetworkFailure) -> Failure {
+    Failure::failed(
+        "network_engine_refusal_unknown",
+        "The Network engine returned an unrecognized source-read failure.",
+    )
+    .remedy("retain the bounded cause and use a compatible Network component")
+    .detail(error.bounded_source_cause())
+}
+
+fn unknown_owner_cause(error: &NetworkFailure) -> bool {
+    error.owner_code().is_some_and(|code| {
+        code != "module_removed"
+            && code != ds_network_client::SOURCE_UNREADABLE
+            && !ds_network_client::SOURCE_ENGINE_REFUSALS
+                .iter()
+                .any(|row| row.code == code)
+    })
 }
 
 /// The reader a source that carries its own geometry is read with, by name.

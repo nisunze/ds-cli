@@ -27,16 +27,7 @@ pub static COMMAND: Command = Command {
     path: &["feedback", "draft"],
     contract: 1,
     summary: "Draft feedback from the last failed, crashed or refused ds command.",
-    purpose: "\
-Turns the newest failed, crashed or refused invocations in this machine's ds \
-journal into ready `feedback submit` payloads: title, component, kind, severity \
-guess, evidence (command id, error code, release, request id) and context with \
-the SRE event id, and the `replay`: exact ds version, source SHA, channel, \
-OS/arch, command id and argument list (values the descriptor marks sensitive \
-withheld) plus a crash's panic `file:line`, never its message. Add only what \
-you expected and what would show it works to the detail, then submit with \
-`--replay-last` to attach the replay. Reads only the local journal: no \
-account, no network.",
+    purpose: "Draft feedback from failed, crashed or refused local commands. Fill Expected and Acceptance, then submit with --replay-last. Reads only the local journal; no account or network.",
     chapter: Chapter::Operations,
     effect: Effect::ReadOnly,
     authority: Authority::None,

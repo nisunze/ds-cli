@@ -59,7 +59,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "project-export"],
     contract: 1,
     summary: "Prepare one project transformer for headless LV processing.",
-    purpose: "Prepare a saved transformer for headless reprocessing. Read one exact signed-in project transformer with server version/digest fences. Use --project-config to include current project sheets, including pole material seeds, under the same identity; otherwise config is empty, such a request fails every job in design.lv.process, and the result carries a project_config_not_included warning. Process settings are owner defaults unless --preset (with optional --operator toggles) carries what the LV process dialog would send. design.lv.process accepts bounded parallel batches; design.lv.project-save publishes their verified results.",
+    purpose: "Prepare a saved transformer for headless reprocessing: read one exact signed-in project transformer with server version/digest fences. --project-config includes current project sheets, including pole material seeds, under the same identity; otherwise config is empty, every design.lv.process job fails, and the result warns project_config_not_included. Process settings are owner defaults unless --preset (with optional --operator toggles) carries what the LV process dialog would send. design.lv.process accepts bounded parallel batches; design.lv.project-save publishes verified results.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -545,8 +545,11 @@ pub(crate) fn apply_process_preset(
     let admitted = ds_network_contracts::lv_processing::decode_native_lv_request(&bytes)
         .map_err(map_owner_error)?;
     offer.admit_request(&admitted).map_err(|error| {
-        Failure::invalid(error.code(), error.to_string())
-            .remedy(super::catalogue::SETTING_NOT_OFFERED.remedy)
+        Failure::invalid(
+            super::catalogue::SETTING_NOT_OFFERED.code,
+            error.to_string(),
+        )
+        .remedy(super::catalogue::SETTING_NOT_OFFERED.remedy)
     })?;
     Ok((bytes, wire))
 }

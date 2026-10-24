@@ -13,6 +13,16 @@ const PROJECT: Arg = Arg::value(
     "Exact project for the prepared baseline; saved selection unused.",
 )
 .required();
+const OWN_REFUSALS: &[Refusal] = &[Refusal {
+    code: "history_import_invalid",
+    when: "Closed source/request, native geometry/fid bounds, exact file hash, project scope or server acknowledgement differs",
+    remedy: "Read the exact source and pinned receipt; do not rewrite IDs, geometry, provenance or immutable history to force acceptance",
+}];
+const PREPARE_PARTS: &[&[Refusal]] = &[OWN_REFUSALS, &crate::source_read::REFUSALS];
+const PREPARE_REFUSALS: &[Refusal] = &ds_cli_report::project::distinct::<
+    { ds_cli_report::project::distinct_count(PREPARE_PARTS) },
+>(PREPARE_PARTS);
+
 const fn cmd(
     id: &'static str,
     path: &'static [&'static str],
@@ -36,11 +46,8 @@ const fn cmd(
         purpose: "Import a declared archival exported design as immutable v0. Six native GeoPackage layers retain original fid, source properties and dimensions; no runtime Survey identity is invented. Explicit source record, asset/version/member hashes and current transformer source fence are mandatory. Import never changes the working design or history. Scope exported_design stays read-only. Import before runtime baseline bootstrap; conflicting v0 refuses.",
         output: "Verified archival pins, native feature counts and new prepared artifact, or exact source-pinned exported-design v0 acknowledgement. No working design save, engineering approval, PM issuance or runtime restore.",
         examples: &[],
-        refusals: &[Refusal {
-            code: "history_import_invalid",
-            when: "Closed source/request, native geometry/fid bounds, exact file hash, project scope or server acknowledgement differs",
-            remedy: "Read the exact source and pinned receipt; do not rewrite IDs, geometry, provenance or immutable history to force acceptance",
-        }],
+        refusals: OWN_REFUSALS,
+
         reference: Some("docs/reference/design.md"),
         search: &["historical baseline", "historical import"],
         availability: match authority {
@@ -52,7 +59,7 @@ const fn cmd(
 fn available() -> Availability {
     Availability::Available
 }
-pub static PREPARE:Command=cmd("design.version.import-prepare",&["design","version","import-prepare"],"Prepare a pinned native GeoPackage as read-only exported-design v0.",&[PROJECT,Arg::value("object","<transformer-id>","Exact existing transformer identity.").required(),Arg::value("path","<source.gpkg>","Closed original source file; never modified.").required(),Arg::value("source","<source-ref.json>","Closed Source fields record_id,asset_id,asset_version,asset_sha256,archive_member,member_sha256,historical_period.").required(),Arg::value("expected-source","<RFC3339>","Exact current transformer source revision fence.").required(),Arg::value("reason","<text>","Archival import reason.").required(),Arg::value("milestone","<text>","Optional historical milestone label."),Arg::value("idempotency-key","<key>","Stable exact-request replay key.").required(),Arg::value("out","<new.json>","New absolute prepared file; never overwrites.").required()],Effect::LocalFileWrite,Authority::None,Requires::Server);
+pub static PREPARE: Command = Command { refusals: PREPARE_REFUSALS, ..cmd("design.version.import-prepare",&["design","version","import-prepare"],"Prepare a pinned native GeoPackage as read-only exported-design v0.",&[PROJECT,Arg::value("object","<transformer-id>","Exact existing transformer identity.").required(),Arg::value("path","<source.gpkg>","Closed original source file; never modified.").required(),Arg::value("source","<source-ref.json>","Closed Source fields record_id,asset_id,asset_version,asset_sha256,archive_member,member_sha256,historical_period.").required(),Arg::value("expected-source","<RFC3339>","Exact current transformer source revision fence.").required(),Arg::value("reason","<text>","Archival import reason.").required(),Arg::value("milestone","<text>","Optional historical milestone label."),Arg::value("idempotency-key","<key>","Stable exact-request replay key.").required(),Arg::value("out","<new.json>","New absolute prepared file; never overwrites.").required()],Effect::LocalFileWrite,Authority::None,Requires::Server) };
 pub static PUBLISH: Command = cmd(
     "design.version.import",
     &["design", "version", "import"],

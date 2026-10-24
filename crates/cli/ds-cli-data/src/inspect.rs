@@ -50,13 +50,9 @@ source that already carries geometry. Converted GeoParquet returns its exact foo
         note: "`.data.sheets[0].key` is what `ds data convert --sheet` takes.",
         runnable: false,
     }],
-    refusals: &[
-        crate::UNREADABLE,
-        crate::UNSUPPORTED,
-        crate::source_engine::ENGINE_MISSING,
-        crate::source_engine::ENGINE_INCOMPATIBLE,
-        crate::source_engine::ENGINE_ORDER,
-    ],
+    refusals: &crate::source_engine::with_refusals::<{ 2 + crate::source_engine::REFUSALS.len() }>(
+        &[crate::UNREADABLE, crate::UNSUPPORTED],
+    ),
     reference: Some("docs/reference/data.md"),
     search: &[
         "crs",
@@ -138,7 +134,9 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 
     let separator = inputs.value("separator").map(str::to_string);
     let inspection = engine
-        .source_inspect(&name, bytes, SourceInspectV1::Table { separator }, &|| false)
+        .source_inspect(&name, bytes, SourceInspectV1::Table { separator }, &|| {
+            false
+        })
         .map_err(|error| match crate::source_engine::split(error) {
             Ok(error) => Failure::invalid("source_unsupported", error)
                 .remedy("Check the file is one of the supported formats, or pass --separator."),
@@ -173,15 +171,15 @@ pub fn run(inputs: &Inputs, _context: &Context) -> Result<Value, Failure> {
 pub(crate) fn read_geometry_source(source: &str) -> Result<(String, Vec<u8>), Failure> {
     let name = crate::file_name(source);
     if name.to_ascii_lowercase().ends_with(".shp") {
-        let bytes = crate::source_engine::shapefile_with_sidecars_to_zip(std::path::Path::new(source)).map_err(
-            |error| {
-                Failure::invalid(
-                    "source_unreadable",
-                    format!("Could not read the shapefile: {error}"),
-                )
-                .remedy("Check the .shp and its .dbf are readable in the same folder.")
-            },
-        )?;
+        let bytes =
+            crate::source_engine::shapefile_with_sidecars_to_zip(std::path::Path::new(source))
+                .map_err(|error| {
+                    Failure::invalid(
+                        "source_unreadable",
+                        format!("Could not read the shapefile: {error}"),
+                    )
+                    .remedy("Check the .shp and its .dbf are readable in the same folder.")
+                })?;
         return Ok((format!("{name}.zip"), bytes));
     }
     Ok((name, crate::read_source(source)?))
@@ -459,7 +457,9 @@ mod tests {
         assert_eq!(layers.len(), 1);
         assert_eq!(layers[0].name, "customers");
         assert_eq!(layers[0].feature_count, 1);
-        let read = engine.source_layers(&name, bytes, reader, &|| false).unwrap();
+        let read = engine
+            .source_layers(&name, bytes, reader, &|| false)
+            .unwrap();
         assert_eq!(read.layers[0].features.len(), 1);
 
         let missing = read_geometry_source(folder.join("absent.shp").to_str().unwrap())

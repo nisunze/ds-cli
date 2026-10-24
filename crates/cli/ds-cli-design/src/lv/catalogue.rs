@@ -48,7 +48,7 @@ pub(crate) fn engine_catalogue(lane: Option<&str>) -> Result<(Value, LvProcessor
 pub(crate) fn admit_preset(offer: &LvProcessorOffer, preset: &str) -> Result<(), Failure> {
     offer.admit_preset(preset).map_err(|error| {
         Failure::invalid(
-            error.code(),
+            PRESET_NOT_OFFERED.code,
             format!(
                 "{error}; it offers: {}",
                 offer.presets().collect::<Vec<_>>().join(", ")

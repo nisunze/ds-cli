@@ -34,11 +34,6 @@ const LOCAL_REFUSALS: &[Refusal] = &[
         remedy: "review the selected processed result and pass --yes",
     },
     Refusal {
-        code: "network_engine_missing",
-        when: "publication projection cannot find an installed Network addon",
-        remedy: "install the Network addon; retained files stay unchanged",
-    },
-    Refusal {
         code: "network_engine_incompatible",
         when: "the captured addon does not admit LV publication",
         remedy: "update the Network addon to a compatible release",
@@ -90,7 +85,13 @@ const fn refusals()
     }
     let mut other = 0;
     while other < super::project_export::COMMAND.refusals.len() {
-        result[index] = super::project_export::COMMAND.refusals[other];
+        let mut refusal = super::project_export::COMMAND.refusals[other];
+        if matches!(refusal.code.as_bytes(), b"network_engine_missing") {
+            // One shared code covers both publication and the inherited preset lookup.
+            refusal.when = "publication projection or --preset catalogue lookup cannot find the lane's installed Network addon";
+            refusal.remedy = "install the matching Network engine addon; retained files stay unchanged";
+        }
+        result[index] = refusal;
         index += 1;
         other += 1;
     }

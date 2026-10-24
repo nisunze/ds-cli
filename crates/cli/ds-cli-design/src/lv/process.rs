@@ -18,7 +18,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "process"],
     contract: 4,
     summary: "Process transformer batches headlessly in parallel from local files.",
-    purpose: "Process one ds.lv.process.request/v1 batch through the admitted offline Network executable: 1..=32 jobs, at most 100,000 features, with intended settings and configuration. Historical ds.fast-lv.request/v1 remains explicit read compatibility and retains its result schema. Optional differential intent selects feeders or captured edits through the shared Rust LV owner. Results retain input order. Full layers go to --out; keep the receipt for design.lv.project-save. See the reference for schemas and preservation rules.",
+    purpose: "Process an offline ds.lv.process.request/v1 batch through Network: 1..=32 jobs and at most 100,000 features. Preserve input order, intended settings/configuration and differential intent. Historical ds.fast-lv.request/v1 keeps its result schema. Write full layers to --out and retain the project-save receipt. See the reference for schemas and preservation rules.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,
@@ -394,8 +394,11 @@ pub(crate) fn map_network_error(error: ds_network_client::NetworkFailure) -> Fai
     let failure = match code {
         "network_engine_missing" => Failure::unavailable(code, message),
         // The installed engine's catalogue does not offer what the request asks.
-        "lv_process_setting_not_offered" | "lv_process_preset_not_offered" => {
-            Failure::invalid(code, message)
+        "lv_process_setting_not_offered" => {
+            Failure::invalid(super::catalogue::SETTING_NOT_OFFERED.code, message)
+        }
+        "lv_process_preset_not_offered" => {
+            Failure::invalid(super::catalogue::PRESET_NOT_OFFERED.code, message)
         }
         "lv_processor_catalog_invalid" => Failure::failed(code, message),
         // Only a preset to resolve needs the catalogue an older engine lacks.

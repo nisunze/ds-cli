@@ -89,7 +89,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "voltage-drop"],
     contract: 1,
     summary: "Check LV voltage drop by year and recommend compliant upgrades.",
-    purpose: "Check whether every customer of an LV transformer stays within the voltage limit of the project's rule set (IEC 60038 ±10 % when it has none) at the design year's load, and the first outlook year the drawn design fails (method ds-lv-vd/1). Input: the ds.fast-lv.request/v1 of design.lv.project-export --project-config. Every transformer is calculated, fill-ins and upgrades included. Stage 2 recommends the cheapest compliant upgrades for calculated transformers, each scheduled by the year it is first needed. --year, --outlook, --no-outlook, --load and --set change this run only, never the project; the result echoes them. --print-a4 prints its governed A4 from the export's sealed capture; nothing is saved or published.",
+    purpose: "Calculate every transformer's customer voltage at the design load and first failing outlook year (ds-lv-vd/1), using the project rule or IEC 60038 +/-10%. Input comes from project-export --project-config. Stage 2 schedules the cheapest compliant upgrades by year. --year, --outlook, --no-outlook, --load and --set affect this run only and are echoed. --print-a4 uses the export's sealed capture. Nothing is saved or published.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::None,

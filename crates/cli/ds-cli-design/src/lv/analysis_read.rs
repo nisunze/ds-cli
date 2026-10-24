@@ -30,16 +30,16 @@ const OWN: &[Refusal] = &[
     Refusal {
         code: "lv_analysis_stale",
         when: "the saved receipt or held layer digest is stale",
-        remedy: "Read the current head again; a missing current analysis requires an authorized analysis save, never a report-time recomputation.",
+        remedy: "Read the current head again; a missing analysis needs an authorized save, never a report-time recomputation.",
     },
     Refusal {
         code: "lv_analysis_bound_refused",
         when: "held layers exceed 64 MiB or saved analysis exceeds the native 32 MiB bound",
-        remedy: "Use an owner-supported smaller snapshot; no layers or analysis are truncated.",
+        remedy: "Use a smaller owner-supported snapshot; nothing is truncated.",
     },
     Refusal {
         code: "lv_analysis_output_exists",
-        when: "--out already exists, including a symlink",
+        when: "--out already exists, or is a symlink",
         remedy: ARTIFACT.exists_remedy,
     },
     Refusal {
@@ -69,7 +69,7 @@ pub static COMMAND: Command = Command {
     path: &["design", "lv", "analysis-read"],
     contract: 1,
     summary: "Read current saved LV analysis JSON and its held model.",
-    purpose: "Read one explicit project's persisted transformer layers and compact analysis receipt under one restored user/device session, then fetch exact saved ds.lv-voltage-drop.analysis/v1 bytes under its version, content digest and analysis SHA-256. The server refuses moved heads, stale governed nature, missing or invalid analysis. It never computes, heals, saves, uploads or renders. It writes one create-new ZIP with saved-analysis.json (unchanged bytes), layers.json (the Reporter plain_local transformer_document shape) and source.json (project/lane/transformer and pins). The A4 request takes the layers member and saved JSON path/SHA; the A0 request takes layers.json as transformer_document. A legacy vd_summary alone is never reconstructed into an analysis.",
+    purpose: "Read one explicit project's saved transformer layers and analysis receipt in one restored session, then fetch the exact saved ds.lv-voltage-drop.analysis/v1 bytes under version, content digest and analysis SHA-256. Refuses moved heads, stale governed nature, missing or invalid analysis; never computes, heals, saves, uploads or renders. Writes one create-new ZIP: saved-analysis.json (unchanged bytes), layers.json (Reporter plain_local transformer_document shape) and source.json (identity and pins). A4 takes the layers member and saved JSON path/SHA; A0 takes layers.json as transformer_document. A legacy vd_summary is never reconstructed into an analysis.",
     chapter: Chapter::Design,
     effect: Effect::LocalFileWrite,
     authority: Authority::HeadlessProject,
@@ -90,10 +90,10 @@ pub static COMMAND: Command = Command {
         )
         .required(),
     ],
-    output: "Bundle path/SHA-256/bytes, explicit project/lane/transformer, saved head version/content digest, exact analysis SHA-256/bytes, and saved:false/processed:false/published:false. Missing/stale analysis refuses with captured head pins and analysis state in detail; no partial bundle is published.",
+    output: "Bundle path/SHA-256/bytes, explicit project/lane/transformer, saved head version/content digest, exact analysis SHA-256/bytes, and saved:false/processed:false/published:false. Missing or stale analysis refuses with head pins and analysis state in detail; no partial bundle.",
     examples: &[Example {
         command: "ds design lv analysis-read --project <id> --transformer T-1042 --out ./T-1042.saved-analysis.zip --output json",
-        note: "Read existing saved analysis without altering the model.",
+        note: "Read the saved analysis; the model is unchanged.",
         runnable: false,
     }],
     refusals: &refusals(),
